@@ -32,6 +32,9 @@ import sun.invoke.util.BytecodeDescriptor;
 import sun.invoke.util.Wrapper;
 import static sun.invoke.util.Wrapper.*;
 
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
+
 class TypeConvertingMethodAdapter extends MethodVisitor {
 
     TypeConvertingMethodAdapter(MethodVisitor mv) {
@@ -209,6 +212,84 @@ class TypeConvertingMethodAdapter extends MethodVisitor {
             return;
         }
         if (arg == Void.TYPE || target == Void.TYPE) {
+            return;
+        }
+        if (arg.isPrimitive()) {
+            Wrapper wArg = Wrapper.forPrimitiveType(arg);
+            if (target.isPrimitive()) {
+                // Both primitives: widening
+                widen(wArg, Wrapper.forPrimitiveType(target));
+            } else {
+                // Primitive argument to reference target
+                String dTarget = BytecodeDescriptor.unparse(target);
+                Wrapper wPrimTarget = wrapperOrNullFromDescriptor(dTarget);
+                if (wPrimTarget != null) {
+                    // The target is a boxed primitive type, widen to get there before boxing
+                    widen(wArg, wPrimTarget);
+                    box(wPrimTarget);
+                } else {
+                    // Otherwise, box and cast
+                    box(wArg);
+                    cast(wrapperName(wArg), dTarget);
+                }
+            }
+        } else {
+            String dArg = BytecodeDescriptor.unparse(arg);
+            String dSrc;
+            if (functional.isPrimitive()) {
+                dSrc = dArg;
+            } else {
+                // Cast to convert to possibly more specific type, and generate CCE for invalid arg
+                dSrc = BytecodeDescriptor.unparse(functional);
+                cast(dArg, dSrc);
+            }
+            String dTarget = BytecodeDescriptor.unparse(target);
+            if (target.isPrimitive()) {
+                Wrapper wTarget = toWrapper(dTarget);
+                // Reference argument to primitive target
+                Wrapper wps = wrapperOrNullFromDescriptor(dSrc);
+                if (wps != null) {
+                    if (wps.isSigned() || wps.isFloating()) {
+                        // Boxed number to primitive
+                        unbox(wrapperName(wps), wTarget);
+                    } else {
+                        // Character or Boolean
+                        unbox(wrapperName(wps), wps);
+                        widen(wps, wTarget);
+                    }
+                } else {
+                    // Source type is reference type, but not boxed type,
+                    // assume it is super type of target type
+                    String intermediate;
+                    if (wTarget.isSigned() || wTarget.isFloating()) {
+                        // Boxed number to primitive
+                        intermediate = "java/lang/Number";
+                    } else {
+                        // Character or Boolean
+                        intermediate = wrapperName(wTarget);
+                    }
+                    cast(dSrc, intermediate);
+                    unbox(intermediate, wTarget);
+                }
+            } else {
+                // Both reference types: just case to target type
+                cast(dSrc, dTarget);
+            }
+        }
+    }
+
+    /**
+     * Convert an argument of type 'arg' to be passed to 'target' assuring that it is 'functional'.
+     * Insert the needed conversion instructions in the method code.
+     * @param arg
+     * @param target
+     * @param functional
+     */
+    void convertType(ClassDesc arg, ClassDesc target, ClassDesc functional) {
+        if (arg.equals(target) && arg.equals(functional)) {
+            return;
+        }
+        if (arg.equals(ConstantDescs.CD_void) || target.equals(ConstantDescs.CD_void)) {
             return;
         }
         if (arg.isPrimitive()) {
