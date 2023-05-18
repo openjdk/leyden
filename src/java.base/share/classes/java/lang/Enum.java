@@ -250,9 +250,11 @@ public abstract class Enum<E extends Enum<E>>
      */
     @Override
     public final Optional<EnumDesc<E>> describeConstable() {
-        return getDeclaringClass()
-                .describeConstable()
-                .map(c -> EnumDesc.of(c, name));
+        // return getDeclaringClass()
+        //         .describeConstable()
+        //         .map(c -> EnumDesc.of(c, name));
+        ClassDesc cd = getDeclaringClass().describeConstable().orElseThrow();
+        return Optional.of(EnumDesc.<E>of(cd, name));
     }
 
     /**
