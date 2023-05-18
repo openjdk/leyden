@@ -25,6 +25,8 @@
 
 package sun.invoke.util;
 
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
 import jdk.internal.vm.annotation.DontInline;
 
 public enum Wrapper {
@@ -252,6 +254,24 @@ public enum Wrapper {
      *  Equivalent to {@code this.cast(this.zero(), type)}.
      */
     public <T> T zero(Class<T> type) { return convert(zero(), type); }
+
+    /** Return the wrapper that wraps values of the given type.
+     *  The type may be {@code Object}, meaning the {@code OBJECT} wrapper.
+     *  Otherwise, the type must be a primitive.
+     *  @throws IllegalArgumentException for unexpected types
+     */
+    public static Wrapper forPrimitiveType(ClassDesc type) {
+        if (type.equals(ConstantDescs.CD_int))     return INT;
+        if (type.equals(ConstantDescs.CD_long))    return LONG;
+        if (type.equals(ConstantDescs.CD_boolean)) return BOOLEAN;
+        if (type.equals(ConstantDescs.CD_short))   return SHORT;
+        if (type.equals(ConstantDescs.CD_byte))    return BYTE;
+        if (type.equals(ConstantDescs.CD_char))    return CHAR;
+        if (type.equals(ConstantDescs.CD_float))   return FLOAT;
+        if (type.equals(ConstantDescs.CD_double))  return DOUBLE;
+        if (type.equals(ConstantDescs.CD_void))    return VOID;
+        throw newIllegalArgumentException("not primitive: " + type);
+    }
 
     /** Return the wrapper that wraps values of the given type.
      *  The type may be {@code Object}, meaning the {@code OBJECT} wrapper.
