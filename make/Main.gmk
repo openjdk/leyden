@@ -480,6 +480,11 @@ $(eval $(call SetupTarget, static-libs-graal-image, \
     TARGET := static-libs-graal-image, \
 ))
 
+$(eval $(call SetupTarget, static-java-image, \
+    MAKEFILE := StaticLink, \
+    DEPS := jdk-image hotspot-server-static-libs static-libs-image, \
+))
+
 $(eval $(call SetupTarget, mac-jdk-bundle, \
     MAKEFILE := MacBundles, \
     TARGET := jdk-bundle, \

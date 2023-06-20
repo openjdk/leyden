@@ -578,6 +578,9 @@ LDFLAGS_CXX_JDK:=@LDFLAGS_CXX_JDK@
 # LDFLAGS specific to partial linking.
 LDFLAGS_CXX_PARTIAL_LINKING:=@LDFLAGS_CXX_PARTIAL_LINKING@
 
+# LDFLAGS specific to C++ static linking.
+LDFLAGS_CXX_STATIC_JDK=@LDFLAGS_CXX_STATIC_JDK@
+
 # Sometimes a different linker is needed for c++ libs
 LDCXX := @LDCXX@
 # The flags for linking libstdc++ linker.
