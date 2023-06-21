@@ -70,34 +70,53 @@ static void* dll_lookup(const char* name, const char* path, bool vm_exit_on_fail
   return func;
 }
 
-static void store_function_pointers(const char* path, bool vm_exit_on_failure) {
+static void store_function_pointers(bool is_static, const char* path, bool vm_exit_on_failure) {
   assert(_zip_handle != nullptr, "invariant");
-  ZIP_Open = CAST_TO_FN_PTR(ZIP_Open_t, dll_lookup("ZIP_Open", path, vm_exit_on_failure));
-  ZIP_Close = CAST_TO_FN_PTR(ZIP_Close_t, dll_lookup("ZIP_Close", path, vm_exit_on_failure));
-  ZIP_FindEntry = CAST_TO_FN_PTR(ZIP_FindEntry_t, dll_lookup("ZIP_FindEntry", path, vm_exit_on_failure));
-  ZIP_ReadEntry = CAST_TO_FN_PTR(ZIP_ReadEntry_t, dll_lookup("ZIP_ReadEntry", path, vm_exit_on_failure));
-  ZIP_CRC32 = CAST_TO_FN_PTR(ZIP_CRC32_t, dll_lookup("ZIP_CRC32", path, vm_exit_on_failure));
-  // The following entry points are most likely optional from a zip library implementation perspective.
-  // Hence no vm_exit on a resolution failure. Further refactorings should investigate this,
-  // and if possible, streamline setting all entry points consistently.
-  ZIP_GZip_InitParams = CAST_TO_FN_PTR(ZIP_GZip_InitParams_t, dll_lookup("ZIP_GZip_InitParams", path, false));
-  ZIP_GZip_Fully = CAST_TO_FN_PTR(ZIP_GZip_Fully_t, dll_lookup("ZIP_GZip_Fully", path, false));
+  if (!is_static) {
+    ZIP_Open = CAST_TO_FN_PTR(ZIP_Open_t, dll_lookup("ZIP_Open", path, vm_exit_on_failure));
+    ZIP_Close = CAST_TO_FN_PTR(ZIP_Close_t, dll_lookup("ZIP_Close", path, vm_exit_on_failure));
+    ZIP_FindEntry = CAST_TO_FN_PTR(ZIP_FindEntry_t, dll_lookup("ZIP_FindEntry", path, vm_exit_on_failure));
+    ZIP_ReadEntry = CAST_TO_FN_PTR(ZIP_ReadEntry_t, dll_lookup("ZIP_ReadEntry", path, vm_exit_on_failure));
+    ZIP_CRC32 = CAST_TO_FN_PTR(ZIP_CRC32_t, dll_lookup("ZIP_CRC32", path, vm_exit_on_failure));
+    // The following entry points are most likely optional from a zip library implementation perspective.
+    // Hence no vm_exit on a resolution failure. Further refactorings should investigate this,
+    // and if possible, streamline setting all entry points consistently.
+    ZIP_GZip_InitParams = CAST_TO_FN_PTR(ZIP_GZip_InitParams_t, dll_lookup("ZIP_GZip_InitParams", path, false));
+    ZIP_GZip_Fully = CAST_TO_FN_PTR(ZIP_GZip_Fully_t, dll_lookup("ZIP_GZip_Fully", path, false));
+  } else {
+    ZIP_Open = CAST_TO_FN_PTR(ZIP_Open_t, os::lookup_function("ZIP_Open"));
+    ZIP_Close = CAST_TO_FN_PTR(ZIP_Close_t, os::lookup_function("ZIP_Close"));
+    ZIP_FindEntry = CAST_TO_FN_PTR(ZIP_FindEntry_t, os::lookup_function("ZIP_FindEntry"));
+    ZIP_ReadEntry = CAST_TO_FN_PTR(ZIP_ReadEntry_t, os::lookup_function("ZIP_ReadEntry"));
+    ZIP_CRC32 = CAST_TO_FN_PTR(ZIP_CRC32_t, os::lookup_function("ZIP_CRC32"));
+    ZIP_GZip_InitParams = CAST_TO_FN_PTR(ZIP_GZip_InitParams_t, os::lookup_function("ZIP_GZip_InitParams"));    ZIP_GZip_Fully = CAST_TO_FN_PTR(ZIP_GZip_Fully_t, os::lookup_function("ZIP_GZip_Fully"));
+  }
 }
 
 static void load_zip_library(bool vm_exit_on_failure) {
   assert(!is_loaded(), "should not load zip library twice");
+
+  bool is_static = false;
   char path[JVM_MAXPATHLEN];
-  if (os::dll_locate_lib(&path[0], sizeof path, Arguments::get_dll_dir(), "zip")) {
-    char ebuf[1024];
-    _zip_handle = os::dll_load(&path[0], &ebuf[0], sizeof ebuf);
-  }
-  if (_zip_handle == nullptr) {
-    if (vm_exit_on_failure) {
-      vm_exit_during_initialization("Unable to load zip library", &path[0]);
+  // Check if we are running on a static build.
+  if (os::lookup_function("ZIP_Open") != nullptr) {
+    is_static = true;
+    _zip_handle = os::get_default_process_handle();
+  } else {
+    // Load the libzip shared library and lookup the needed functions. 
+    if (os::dll_locate_lib(&path[0], sizeof path, Arguments::get_dll_dir(), "zip")) {
+      char ebuf[1024];
+      _zip_handle = os::dll_load(&path[0], &ebuf[0], sizeof ebuf);
     }
-    return;
+    if (_zip_handle == nullptr) {
+      if (vm_exit_on_failure) {
+        vm_exit_during_initialization("Unable to load zip library", &path[0]);
+      }
+      return;
+    }
   }
-  store_function_pointers(&path[0], vm_exit_on_failure);
+
+  store_function_pointers(is_static, &path[0], vm_exit_on_failure);
   Atomic::release_store(&_loaded, true);
   assert(is_loaded(), "invariant");
 }

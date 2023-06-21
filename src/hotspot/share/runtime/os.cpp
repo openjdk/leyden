@@ -507,6 +507,13 @@ void* os::native_java_library() {
     char buffer[JVM_MAXPATHLEN];
     char ebuf[1024];
 
+    // Check
+    if (lookup_function(
+            "Java_java_lang_System_registerNatives") != nullptr) {
+      _native_java_library = get_default_process_handle();
+      return _native_java_library;
+    }
+
     // Load java dll
     if (dll_locate_lib(buffer, sizeof(buffer), Arguments::get_dll_dir(),
                        "java")) {

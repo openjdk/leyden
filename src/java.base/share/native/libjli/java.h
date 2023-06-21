@@ -73,6 +73,9 @@
 #define SPLASH_JAR_ENV_ENTRY "_JAVA_SPLASH_JAR"
 #define JDK_JAVA_OPTIONS "JDK_JAVA_OPTIONS"
 
+// FIXME: Add non-unix implementation. 
+jboolean JLI_IsStaticJDK();
+
 /*
  * Pointers to the needed JNI invocation API, initialized by LoadJavaVM.
  */
