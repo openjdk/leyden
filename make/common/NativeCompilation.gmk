@@ -808,11 +808,11 @@ define SetupNativeCompilationBody
     $1_EXTRA_ASFLAGS += $$(ASFLAGS_DEBUG_SYMBOLS)
   endif
 
-  # Pass the library name for static JNI library naming
-  ifeq ($$($1_TYPE), STATIC_LIBRARY)
-    $1_EXTRA_CFLAGS += -DLIBRARY_NAME=$$($1_NAME)
-    $1_EXTRA_CXXFLAGS += -DLIBRARY_NAME=$$($1_NAME)
-  endif
+  # Pass the library name for JNI library naming. It is used to form unique
+  # names for JNI_OnLoad and friends in different JNI libraries. See
+  # src/java.base/share/native/libjava/jni_util.h for more details.
+  $1_EXTRA_CFLAGS += -DLIBRARY_NAME=$$($1_NAME)
+  $1_EXTRA_CXXFLAGS += -DLIBRARY_NAME=$$($1_NAME)
 
   # Pick up disabled warnings, if possible on this platform.
   ifneq ($(DISABLE_WARNING_PREFIX), )

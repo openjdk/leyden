@@ -31,6 +31,7 @@
 #include "jni_util.h"
 #include "jlong.h"
 #include "jvm.h"
+#include "java_props.h"
 #include "jdk_internal_loader_NativeLibraries.h"
 
 typedef jint (JNICALL *JNI_OnLoad_t)(JavaVM *, void *);
@@ -61,10 +62,12 @@ static jboolean initIDs(JNIEnv *env)
 
 /*
  * Support for finding JNI_On(Un)Load_<lib_name> if it exists.
- * If cname == NULL then just find normal JNI_On(Un)Load entry point
+ * If findDefaultName is true, look up the JNI_On(Un)Load entry when
+ * JNI_On(Un)Load<_libname> entry cannot be found.
  */
 static void *findJniFunction(JNIEnv *env, void *handle,
-                                    const char *cname, jboolean isLoad) {
+                             const char *cname, jboolean isLoad,
+                             jboolean findDefaultName) {
     const char *onLoadSymbols[] = JNI_ONLOAD_SYMBOLS;
     const char *onUnloadSymbols[] = JNI_ONUNLOAD_SYMBOLS;
     const char **syms;
@@ -73,6 +76,37 @@ static void *findJniFunction(JNIEnv *env, void *handle,
     char *jniFunctionName;
     int i;
     size_t len;
+
+
+    char *libName = NULL;
+    const char *p1, *p2;
+    java_props_t *sprops = GetJavaProperties(env);
+    size_t separatorLen = strlen(sprops->file_separator);
+    // 'cname' may be the full path of the native library. Find the
+    // name of the native library by skipping path components of parent
+    // directories, JNI_LIB_PREFIX and JNI_LIB_SUFFIX.
+    p1 = cname;
+    while ((p2 = strstr(p1, sprops->file_separator)) != NULL) {
+        p1 = p2 + separatorLen;
+    }
+    if (p1 != cname) {
+        // Now prune the JNI_LIB_PREFIX and JNI_LIB_SUFFIX.
+        if ((p2 = strstr(p1, JNI_LIB_PREFIX)) != NULL) {
+            p1 = p2 + strlen(JNI_LIB_PREFIX);
+        }
+        p2 = strstr(p1, JNI_LIB_SUFFIX);
+        if (p2 != NULL) {
+            int libNameLen = p2 - p1;
+            libName = malloc(libNameLen + 1);
+            if (libName == NULL) {
+                JNU_ThrowOutOfMemoryError(env, NULL);
+                goto done;
+            }
+            strncpy(libName, p1, libNameLen);
+            libName[libNameLen] = '\0';
+            cname = libName;
+        }
+    }
 
     // Check for JNI_On(Un)Load<_libname> function
     if (isLoad) {
@@ -95,6 +129,11 @@ static void *findJniFunction(JNIEnv *env, void *handle,
         }
         buildJniFunctionName(syms[i], cname, jniFunctionName);
         entryName = JVM_FindLibraryEntry(handle, jniFunctionName);
+        if (findDefaultName && entryName == NULL) {
+            // Check for JNI_On(Un)Load function if JNI_On(Un)Load<_libname> is
+            // not found. An application JNI library can use JNI_On(Un)Load.
+            entryName = JVM_FindLibraryEntry(handle, syms[i]);
+        }
         free(jniFunctionName);
         if(entryName) {
             break;
@@ -102,6 +141,9 @@ static void *findJniFunction(JNIEnv *env, void *handle,
     }
 
  done:
+    if (libName != NULL) {
+        free(libName);
+    }
     return entryName;
 }
 
@@ -130,9 +172,8 @@ Java_jdk_internal_loader_NativeLibraries_load
     handle = isBuiltin ? procHandle : JVM_LoadLibrary(cname, throwExceptionIfFail);
     if (handle) {
         JNI_OnLoad_t JNI_OnLoad;
-        JNI_OnLoad = (JNI_OnLoad_t)findJniFunction(env, handle,
-                                                   isBuiltin ? cname : NULL,
-                                                   JNI_TRUE);
+        JNI_OnLoad = (JNI_OnLoad_t)findJniFunction(env, handle, cname,
+                                                   JNI_TRUE, !isBuiltin);
         if (JNI_OnLoad) {
             JavaVM *jvm;
             (*env)->GetJavaVM(env, &jvm);
@@ -203,9 +244,8 @@ Java_jdk_internal_loader_NativeLibraries_unload
     }
     handle = jlong_to_ptr(address);
 
-    JNI_OnUnload = (JNI_OnUnload_t )findJniFunction(env, handle,
-                                                    isBuiltin ? cname : NULL,
-                                                    JNI_FALSE);
+    JNI_OnUnload = (JNI_OnUnload_t )findJniFunction(env, handle, cname,
+                                                    JNI_FALSE, !isBuiltin);
     if (JNI_OnUnload) {
         JavaVM *jvm;
         (*env)->GetJavaVM(env, &jvm);
@@ -284,7 +324,7 @@ Java_jdk_internal_loader_NativeLibraries_findBuiltinLib
     libName[strlen(libName)-suffixLen] = '\0';
 
     // Check for JNI_OnLoad_libname function
-    ret = findJniFunction(env, procHandle, libName, JNI_TRUE);
+    ret = findJniFunction(env, procHandle, libName, JNI_TRUE, JNI_FALSE);
     if (ret != NULL) {
         lib = JNU_NewStringPlatform(env, libName);
         free(libName);
