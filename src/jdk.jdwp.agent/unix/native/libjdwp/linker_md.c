@@ -128,3 +128,8 @@ void * dbgsysFindLibraryEntry(void *handle, const char *name)
 {
     return dlsym(handle, name);
 }
+
+jboolean dbgsysIsStaticJDK()
+{
+    return dlsym(NULL, "IsStaticJDK") != NULL;
+}
