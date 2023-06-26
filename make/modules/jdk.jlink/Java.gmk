@@ -24,3 +24,7 @@
 #
 
 DISABLED_WARNINGS_java += this-escape
+
+JAVAC_FLAGS += -XDstringConcat=inline \
+    --enable-preview
+DISABLED_WARNINGS_java += preview

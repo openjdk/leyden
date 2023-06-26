@@ -22,6 +22,7 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
+import jdk.internal.javac.ParticipatesInPreview;
 
 /**
  * Defines the <em>{@index jlink jlink tool}</em> tool for creating run-time
@@ -51,6 +52,7 @@
  * @moduleGraph
  * @since 9
  */
+@ParticipatesInPreview
 module jdk.jlink {
     requires jdk.internal.opt;
     requires jdk.jdeps;
@@ -75,6 +77,7 @@ module jdk.jlink {
         jdk.tools.jlink.internal.plugins.ExcludeVMPlugin,
         jdk.tools.jlink.internal.plugins.IncludeLocalesPlugin,
         jdk.tools.jlink.internal.plugins.GenerateJLIClassesPlugin,
+        jdk.tools.jlink.internal.plugins.GenerateLambdaClassesPlugin,
         jdk.tools.jlink.internal.plugins.ReleaseInfoPlugin,
         jdk.tools.jlink.internal.plugins.AddOptionsPlugin,
         jdk.tools.jlink.internal.plugins.VendorBugURLPlugin,

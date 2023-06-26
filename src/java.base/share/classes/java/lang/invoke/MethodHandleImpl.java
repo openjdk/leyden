@@ -39,6 +39,9 @@ import sun.invoke.util.ValueConversions;
 import sun.invoke.util.VerifyType;
 import sun.invoke.util.Wrapper;
 
+import java.lang.constant.ClassDesc;
+import java.lang.constant.DirectMethodHandleDesc;
+import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
@@ -1659,6 +1662,22 @@ abstract class MethodHandleImpl {
             @Override
             public Class<?>[] exceptionTypes(MethodHandle handle) {
                 return VarHandles.exceptionTypes(handle);
+            }
+
+            @Override
+            public byte[] generateLambdaInnerClasses(
+                String interfaceMethodName,
+                MethodTypeDesc interfaceMethodTypeDesc,
+                MethodTypeDesc dynamicMethodTypeDesc,
+                ClassDesc targetClassDesc,
+                String[] interfaceNames,
+                MethodTypeDesc factoryTypeDesc,
+                boolean isSerializable,
+                boolean accidentallySerializable,
+                DirectMethodHandleDesc implMHDesc,
+                int implKind,
+                MethodTypeDesc[] altMethodDescs) throws LambdaConversionException {
+                return new InnerClassLambdaGenerator(interfaceMethodName, interfaceMethodTypeDesc, dynamicMethodTypeDesc, targetClassDesc, interfaceNames, factoryTypeDesc, isSerializable, accidentallySerializable, implMHDesc, implKind, altMethodDescs).generateInnerClassBytecode();
             }
         });
     }

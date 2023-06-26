@@ -27,6 +27,10 @@ package jdk.internal.access;
 
 import jdk.internal.foreign.abi.NativeEntryPoint;
 
+import java.lang.constant.ClassDesc;
+import java.lang.constant.DirectMethodHandleDesc;
+import java.lang.constant.MethodTypeDesc;
+import java.lang.invoke.LambdaConversionException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
@@ -173,4 +177,22 @@ public interface JavaLangInvokeAccess {
      * @return an array of exceptions, or {@code null}.
      */
     Class<?>[] exceptionTypes(MethodHandle handle);
+
+    /**
+     * Returns a byte[] representing an innerclass generated for a lambda
+     * exprression. Used by GenerateLambdaClassesPlugin to enable generation
+     * of such classes during the jlink phase.
+     */
+    byte[] generateLambdaInnerClasses(
+        String interfaceMethodName,
+        MethodTypeDesc interfaceMethodTypeDesc,
+        MethodTypeDesc dynamicMethodTypeDesc,
+        ClassDesc targetClassDesc,
+        String[] interfaceNames,
+        MethodTypeDesc factoryTypeDesc,
+        boolean isSerializable,
+        boolean accidentallySerializable,
+        DirectMethodHandleDesc implMHDesc,
+        int implKind,
+        MethodTypeDesc[] altMethodDescs) throws LambdaConversionException;
 }
