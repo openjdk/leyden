@@ -116,13 +116,17 @@ AWT_OnLoad(JavaVM *vm, void *reserved)
     }
 
     jvm = vm;
-#ifndef STATIC_BUILD
-    /* Get address of this library and the directory containing it. */
-    dladdr((void *)AWT_OnLoad, &dlinfo);
-    realpath((char *)dlinfo.dli_fname, buf);
-    len = strlen(buf);
-    p = strrchr(buf, '/');
-#endif
+
+    // IsStaticJDK is defined by libjli. Check if it is statically linked.
+    jboolean isStaticJDK = (dlsym(NULL, "IsStaticJDK") != NULL);
+    if (!isStaticJDK) {
+        /* Get address of this library and the directory containing it. */
+        dladdr((void *)AWT_OnLoad, &dlinfo);
+        realpath((char *)dlinfo.dli_fname, buf);
+        len = strlen(buf);
+        p = strrchr(buf, '/');
+    }
+
     /*
      * The code below is responsible for
      * loading appropriate awt library, i.e. libawt_xawt or libawt_headless
@@ -140,20 +144,20 @@ AWT_OnLoad(JavaVM *vm, void *reserved)
     }
 #endif
 
-#ifndef STATIC_BUILD
-    /* Calculate library name to load */
-    strncpy(p, tk, MAXPATHLEN-len-1);
-#endif
+    if (!isStaticJDK) {
+        /* Calculate library name to load */
+        strncpy(p, tk, MAXPATHLEN-len-1);
 
-#ifndef STATIC_BUILD
-    jstring jbuf = JNU_NewStringPlatform(env, buf);
-    CHECK_EXCEPTION_FATAL(env, "Could not allocate library name");
-    JNU_CallStaticMethodByName(env, NULL, "java/lang/System", "load",
-                               "(Ljava/lang/String;)V",
-                               jbuf);
+        jstring jbuf = JNU_NewStringPlatform(env, buf);
+        CHECK_EXCEPTION_FATAL(env, "Could not allocate library name");
+        JNU_CallStaticMethodByName(env, NULL, "java/lang/System", "load",
+                                   "(Ljava/lang/String;)V",
+                                   jbuf);
 
-    awtHandle = dlopen(buf, RTLD_LAZY | RTLD_GLOBAL);
-#endif
+        awtHandle = dlopen(buf, RTLD_LAZY | RTLD_GLOBAL);
+    } else {
+        awtHandle = dlopen(NULL, RTLD_LAZY);
+    }
     return JNI_VERSION_1_2;
 }
 
