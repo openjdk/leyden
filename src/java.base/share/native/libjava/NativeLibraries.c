@@ -59,6 +59,46 @@ static jboolean initIDs(JNIEnv *env)
     return JNI_TRUE;
 }
 
+// 'cname' may be the full path of the native library. Extract the name of the
+// native library by skipping path components of parent directories,
+// JNI_LIB_PREFIX and JNI_LIB_SUFFIX. The extracted name is set in 'libName'.
+// 'JNI_TRUE' is returned if extraction is needed. Otherwise, 'JNI_FALSE' is
+// returned.
+static jboolean extractLibName(JNIEnv *env, const char *cname, char **libName) {
+    const char *p1, *p2;
+    java_props_t *sprops = GetJavaProperties(env);
+    size_t separatorLen = strlen(sprops->file_separator);
+
+    p1 = cname;
+    while ((p2 = strstr(p1, sprops->file_separator)) != NULL) {
+        p1 = p2 + separatorLen;
+    }
+    if (p1 != cname) {
+        // Now prune the JNI_LIB_PREFIX and JNI_LIB_SUFFIX.
+        if ((p2 = strstr(p1, JNI_LIB_PREFIX)) != NULL) {
+            p1 = p2 + strlen(JNI_LIB_PREFIX);
+        }
+        p2 = strstr(p1, JNI_LIB_SUFFIX);
+        if (p2 != NULL) {
+            int libNameLen = p2 - p1;
+            char *p = malloc(libNameLen + 1);
+            if (p != NULL) {
+                strncpy(p, p1, libNameLen);
+                p[libNameLen] = '\0';
+                *libName = p;
+            } else {
+                JNU_ThrowOutOfMemoryError(env, NULL);
+            }
+            return JNI_TRUE;
+        }
+    }
+    return JNI_FALSE;
+}
+
+static void releaseLibName(char *libName) {
+    assert(libName != NULL);
+    free(libName);
+}
 
 /*
  * Support for finding JNI_On(Un)Load_<lib_name> if it exists.
@@ -77,35 +117,14 @@ static void *findJniFunction(JNIEnv *env, void *handle,
     int i;
     size_t len;
 
-
     char *libName = NULL;
-    const char *p1, *p2;
-    java_props_t *sprops = GetJavaProperties(env);
-    size_t separatorLen = strlen(sprops->file_separator);
-    // 'cname' may be the full path of the native library. Find the
-    // name of the native library by skipping path components of parent
-    // directories, JNI_LIB_PREFIX and JNI_LIB_SUFFIX.
-    p1 = cname;
-    while ((p2 = strstr(p1, sprops->file_separator)) != NULL) {
-        p1 = p2 + separatorLen;
-    }
-    if (p1 != cname) {
-        // Now prune the JNI_LIB_PREFIX and JNI_LIB_SUFFIX.
-        if ((p2 = strstr(p1, JNI_LIB_PREFIX)) != NULL) {
-            p1 = p2 + strlen(JNI_LIB_PREFIX);
-        }
-        p2 = strstr(p1, JNI_LIB_SUFFIX);
-        if (p2 != NULL) {
-            int libNameLen = p2 - p1;
-            libName = malloc(libNameLen + 1);
-            if (libName == NULL) {
-                JNU_ThrowOutOfMemoryError(env, NULL);
-                goto done;
-            }
-            strncpy(libName, p1, libNameLen);
-            libName[libNameLen] = '\0';
-            cname = libName;
-        }
+    jboolean extract = extractLibName(env, cname, &libName);
+    if (libName != NULL) {
+        assert(extract);
+        cname = libName;
+    } else if (extract) {
+        // Extraction is needed, but libName is NULL.
+        goto done;
     }
 
     // Check for JNI_On(Un)Load<_libname> function
@@ -142,7 +161,7 @@ static void *findJniFunction(JNIEnv *env, void *handle,
 
  done:
     if (libName != NULL) {
-        free(libName);
+        releaseLibName(libName);
     }
     return entryName;
 }

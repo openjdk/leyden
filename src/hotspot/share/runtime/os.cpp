@@ -568,15 +568,14 @@ void* os::find_agent_function(JvmtiAgent *agent_lib, bool check_lib,
     }
     entryName = dll_lookup(handle, agent_function_name);
     FREE_C_HEAP_ARRAY(char, agent_function_name);
-    if (entryName != nullptr) {
-      break;
-    } else if (!check_lib && !agent_lib->is_static_lib()) {
-      // If not checking, lookup using Agent_On(Un)Load/Attach for dynamically
-      // linked agent library.
+    if (entryName == NULL && !check_lib && !agent_lib->is_static_lib()) {
+      // If 'entryName' is NULL and not checking, also try lookup using
+      // Agent_On(Un)Load/Attach for dynamically linked agent library.
       entryName = dll_lookup(handle, syms[i]);
-      if (entryName != NULL) {
-        break;
-      }
+    }
+    if (entryName != nullptr) {
+      // Found entry.
+      break;
     }
   }
   return entryName;
