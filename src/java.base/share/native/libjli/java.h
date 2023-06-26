@@ -74,7 +74,7 @@
 #define JDK_JAVA_OPTIONS "JDK_JAVA_OPTIONS"
 
 // FIXME: Add non-unix implementation. 
-jboolean JLI_IsStaticJDK();
+jboolean IsStaticJDK();
 
 /*
  * Pointers to the needed JNI invocation API, initialized by LoadJavaVM.

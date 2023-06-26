@@ -299,7 +299,7 @@ CreateExecutionEnvironment(int *pargc, char ***pargv,
                            char jrepath[], jint so_jrepath,
                            char jvmpath[], jint so_jvmpath,
                            char jvmcfg[],  jint so_jvmcfg) {
-    if (JLI_IsStaticJDK()) {
+    if (IsStaticJDK()) {
         // With static builds, all JDK and VM natives are statically linked
         // with the launcher executable. No need to manipulate LD_LIBRARY_PATH
         // by adding <jdk_path>/lib and etc. The 'jrepath', 'jvmpath' and
@@ -477,7 +477,7 @@ static jboolean
 GetJVMPath(const char *jrepath, const char *jvmtype,
            char *jvmpath, jint jvmpathsize)
 {
-    assert(!JLI_IsStaticJDK());
+    assert(!IsStaticJDK());
 
     struct stat s;
 
@@ -504,13 +504,13 @@ GetJVMPath(const char *jrepath, const char *jvmtype,
 static jboolean
 GetJREPath(char *path, jint pathsize, jboolean speculative)
 {
-    assert(!JLI_IsStaticJDK());
+    assert(!IsStaticJDK());
 
     char libjava[MAXPATHLEN];
     struct stat s;
 
     if (GetApplicationHome(path, pathsize)) {
-        if (JLI_IsStaticJDK()) {
+        if (IsStaticJDK()) {
             return JNI_TRUE;
         }
 
@@ -554,7 +554,7 @@ LoadJavaVM(const char *jvmpath, InvocationFunctions *ifn)
 
     JLI_TraceLauncher("JVM path is %s\n", jvmpath);
 
-    if (JLI_IsStaticJDK()) {
+    if (IsStaticJDK()) {
         libjvm = dlopen(NULL, RTLD_NOW + RTLD_GLOBAL);
     } else {
         libjvm = dlopen(jvmpath, RTLD_NOW + RTLD_GLOBAL);
@@ -639,7 +639,7 @@ void* SplashProcAddress(const char* name) {
         char jrePath[MAXPATHLEN];
         char splashPath[MAXPATHLEN];
 
-        if (JLI_IsStaticJDK()) {
+        if (IsStaticJDK()) {
             hSplashLib = dlopen(NULL, RTLD_LAZY);
         } else {
             if (!GetJREPath(jrePath, sizeof(jrePath), JNI_FALSE)) {
@@ -765,7 +765,7 @@ ProcessPlatformOption(const char *arg)
     return JNI_FALSE;
 }
 
-jboolean JLI_IsStaticJDK() {
+jboolean IsStaticJDK() {
     if (exectype == JLI_UnknownBuild) {
         void* jni_createJavaVM_f = dlsym(RTLD_DEFAULT, "JNI_CreateJavaVM");
         if (jni_createJavaVM_f != NULL) {
