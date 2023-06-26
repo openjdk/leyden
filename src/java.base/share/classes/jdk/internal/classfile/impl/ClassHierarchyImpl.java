@@ -46,7 +46,7 @@ public final class ClassHierarchyImpl {
     private final ClassHierarchyResolver resolver;
 
     /**
-     * Public constructor of <code>ClassHierarchyImpl</code> accepting instances of <code>ClassHierarchyInfoResolver</code> to resolve individual class streams.
+     * Public constructor of <code>ClassHierarchyImpl</code> accepting instances of <code>ClassHierarchyResolver</code> to resolve individual class streams.
      * @param classHierarchyResolver <code>ClassHierarchyInfoResolver</code> instance
      */
     public ClassHierarchyImpl(ClassHierarchyResolver classHierarchyResolver) {
@@ -56,7 +56,7 @@ public final class ClassHierarchyImpl {
     private ClassHierarchyResolver.ClassHierarchyInfo resolve(ClassDesc classDesc) {
         var res = resolver.getClassInfo(classDesc);
         if (res != null) return res;
-        throw new IllegalArgumentException("Could not resolve class " + classDesc.displayName());
+        throw new IllegalArgumentException("Could not resolve class " + classDesc.descriptorString());
     }
 
     /**
