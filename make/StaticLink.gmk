@@ -71,8 +71,12 @@ JAVASTATIC_LDFLAGS := $(JVM_LDFLAGS) $(ORIGIN_ARG) -Wl$(COMMA)--export-dynamic
 JAVASTATIC_LD_OBJ_ARG := $(JAVASTATIC_OBJECT_DIR)/main.o
 
 # Link with headless native only for now.
+#
+# For headful support, we need to link with the following X11 libraries.
+# X11_LIBS := $(X_LIBS) -lX11 -lXext -lXrender -lXtst -lXi
+#
 JAVASTATIC_LIBS := -Wl$(COMMA)--whole-archive $(JAVASTATIC_LINK_LIBS)
-JAVASTATIC_EXTRA_LIBS := -Wl$(COMMA)--no-whole-archive -lpthread $(LIBDL) $(LIBM) $(LDFLAGS_CXX_STATIC_JDK) -lXext -lX11 -lXrender -lXtst -lXi -lasound
+JAVASTATIC_EXTRA_LIBS := -Wl$(COMMA)--no-whole-archive -lpthread $(LIBDL) $(LIBM) $(LDFLAGS_CXX_STATIC_JDK)
 
 #$(JVM_STATIC_LIB) : $(HOTSPOT_OUTPUTDIR)/variant-server/libjvm/objs/static/$(LIBRARY_PREFIX)jvm$(STATIC_LIBRARY_SUFFIX) 
 #	$(CP) $< $@
