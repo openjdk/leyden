@@ -51,12 +51,6 @@
 #define JLONG_FORMAT_SPECIFIER "%lld"
 #endif
 
-enum {
-  JLI_StaticBuild,
-  JLI_DynamicBuild,
-  JLI_UnknownBuild,
-};
-
 int UnsetEnv(char *name);
 char *FindExecName(char *program);
 const char *SetExecname(char **argv);

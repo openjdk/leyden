@@ -154,8 +154,6 @@
 /* Store the name of the executable once computed */
 static char *execname = NULL;
 
-static int exectype = JLI_UnknownBuild;
-
 /*
  * execname accessor from other parts of platform dependent logic
  */
@@ -299,7 +297,7 @@ CreateExecutionEnvironment(int *pargc, char ***pargv,
                            char jrepath[], jint so_jrepath,
                            char jvmpath[], jint so_jvmpath,
                            char jvmcfg[],  jint so_jvmcfg) {
-    if (IsStaticJDK()) {
+    if (JLI_IsStaticJDK()) {
         // With static builds, all JDK and VM natives are statically linked
         // with the launcher executable. No need to manipulate LD_LIBRARY_PATH
         // by adding <jdk_path>/lib and etc. The 'jrepath', 'jvmpath' and
@@ -477,7 +475,7 @@ static jboolean
 GetJVMPath(const char *jrepath, const char *jvmtype,
            char *jvmpath, jint jvmpathsize)
 {
-    assert(!IsStaticJDK());
+    assert(!JLI_IsStaticJDK());
 
     struct stat s;
 
@@ -504,13 +502,13 @@ GetJVMPath(const char *jrepath, const char *jvmtype,
 static jboolean
 GetJREPath(char *path, jint pathsize, jboolean speculative)
 {
-    assert(!IsStaticJDK());
+    assert(!JLI_IsStaticJDK());
 
     char libjava[MAXPATHLEN];
     struct stat s;
 
     if (GetApplicationHome(path, pathsize)) {
-        if (IsStaticJDK()) {
+        if (JLI_IsStaticJDK()) {
             return JNI_TRUE;
         }
 
@@ -554,7 +552,7 @@ LoadJavaVM(const char *jvmpath, InvocationFunctions *ifn)
 
     JLI_TraceLauncher("JVM path is %s\n", jvmpath);
 
-    if (IsStaticJDK()) {
+    if (JLI_IsStaticJDK()) {
         libjvm = dlopen(NULL, RTLD_NOW + RTLD_GLOBAL);
     } else {
         libjvm = dlopen(jvmpath, RTLD_NOW + RTLD_GLOBAL);
@@ -639,7 +637,7 @@ void* SplashProcAddress(const char* name) {
         char jrePath[MAXPATHLEN];
         char splashPath[MAXPATHLEN];
 
-        if (IsStaticJDK()) {
+        if (JLI_IsStaticJDK()) {
             hSplashLib = dlopen(NULL, RTLD_LAZY);
         } else {
             if (!GetJREPath(jrePath, sizeof(jrePath), JNI_FALSE)) {
@@ -765,15 +763,9 @@ ProcessPlatformOption(const char *arg)
     return JNI_FALSE;
 }
 
-jboolean IsStaticJDK() {
-    if (exectype == JLI_UnknownBuild) {
-        void* jni_createJavaVM_f = dlsym(RTLD_DEFAULT, "JNI_CreateJavaVM");
-        if (jni_createJavaVM_f != NULL) {
-            exectype = JLI_StaticBuild;
-        } else {
-            exectype = JLI_DynamicBuild;
-        }
-    }
-
-    return exectype == JLI_StaticBuild;
+/*
+ * Static JDK related.
+ */
+void* JLI_Lookup_Set_Static_JDK() {
+    return dlsym(RTLD_DEFAULT, "set_static_jdk");
 }

@@ -165,4 +165,6 @@ class JDK_Version {
 
 };
 
+extern bool is_static_jdk();
+
 #endif // SHARE_RUNTIME_JAVA_HPP

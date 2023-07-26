@@ -99,7 +99,7 @@ static void load_zip_library(bool vm_exit_on_failure) {
   bool is_static = false;
   char path[JVM_MAXPATHLEN];
   // Check if we are running on a static build.
-  if (os::lookup_function("ZIP_Open") != nullptr) {
+  if (is_static_jdk()) {
     is_static = true;
     _zip_handle = os::get_default_process_handle();
   } else {
