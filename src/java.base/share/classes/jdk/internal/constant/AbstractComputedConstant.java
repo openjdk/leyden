@@ -25,6 +25,7 @@
 
 package jdk.internal.constant;
 
+import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.Stable;
 
@@ -36,13 +37,17 @@ import java.util.function.Supplier;
 
 public abstract sealed class AbstractComputedConstant<V, P>
         implements ComputedConstant<V>
-        permits ListElementComputedConstant, MethodHandleComputedConstant, StandardComputedConstant {
+        permits ListElementComputedConstant,
+        MethodHandleComputedConstant,
+        StandardComputedConstant {
 
-    // Allows access to the "value" field with arbitrary memory semantics
-    private static final VarHandle VALUE_HANDLE;
+    // `Unsafe` is used rather than the supported API of `VarHandle` to allow
+    // the use of `ComputedConstant` constructs early in the boot process.
+    private static final long VALUE_OFFSET =
+            Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "value");
 
-    // Allows access to the "auxiliary" field with arbitrary memory semantics
-    private static final VarHandle AUX_HANDLE;
+    private static final long AUX_OFFSET =
+            Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "auxiliary");
 
     /**
      * This field holds a bound lazy value.
@@ -203,33 +208,22 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     @SuppressWarnings("unchecked")
     private V valueVolatile() {
-        return (V) VALUE_HANDLE.getVolatile(this);
+        return (V) Unsafe.getUnsafe().getReferenceVolatile(this, VALUE_OFFSET);
     }
 
     private Object auxiliaryVolatile() {
-        return AUX_HANDLE.getVolatile(this);
+        return Unsafe.getUnsafe().getReferenceVolatile(this, AUX_OFFSET);
     }
 
     private void casValue(Object o) {
-        if (!VALUE_HANDLE.compareAndSet(this, null, o)) {
+        if (!Unsafe.getUnsafe().compareAndSetReference(this, VALUE_OFFSET, null, o)) {
             throw new InternalError();
         }
     }
 
     private void setAuxiliaryVolatile(Object o) {
-        AUX_HANDLE.setVolatile(this, o);
-    }
-
-    static  {
-        try {
-            var lookup = MethodHandles.lookup();
-            VALUE_HANDLE = lookup
-                    .findVarHandle(AbstractComputedConstant.class, "value", Object.class);
-            AUX_HANDLE = lookup
-                    .findVarHandle(AbstractComputedConstant.class, "auxiliary", Object.class);
-        } catch (ReflectiveOperationException e) {
-            throw new ExceptionInInitializerError(e);
-        }
+        Unsafe.getUnsafe().putReferenceVolatile(this, AUX_OFFSET, o);
+        //AUX_HANDLE.setVolatile(this, o);
     }
 
 }
