@@ -415,7 +415,7 @@ public sealed interface ComputedConstant<V>
      *         }
      *     }
      *}
-     * @apiNote The list is free to return <a href="doc-files/ValueBased.html">value-based ComputedConstant elements</a>
+     * @apiNote The list is free to return <a href="doc-files/ValueBased.html">value-based</a> ComputedConstant elements</a>
      *          that has no valid identity.
      *
      * @param <V>             the type of the values

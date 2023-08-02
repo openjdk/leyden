@@ -35,7 +35,6 @@ public final class OnDemandComputedConstantList<V>
         return values.length;
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public ComputedConstant<V> get(int index) {
         // Try normal memory semantics first
@@ -43,32 +42,46 @@ public final class OnDemandComputedConstantList<V>
         if (v != null) {
             return v;
         }
-        // Another thread might have created the element
-        v = (ComputedConstant<V>) Unsafe.getUnsafe().getReferenceVolatile(values, offset(index));
-        if (v != null) {
-            return v;
-        }
         return slowPath(index);
     }
 
-    @SuppressWarnings("unchecked")
     private ComputedConstant<V> slowPath(int index) {
+        // Another thread might have created the element
+        ComputedConstant<V> v = elementVolatile(index);
+        if (v != null) {
+            return v;
+        }
+
         // Several candidates might be created ...
-        ComputedConstant<V> v = ListElementComputedConstant.create(index, provider);
-        // ... but only one will be used
-        if (!Unsafe.getUnsafe().compareAndSetReference(values, offset(index), null, v)) {
-            // Someone else created the element to use
-            v = (ComputedConstant<V>) Unsafe.getUnsafe().getReferenceVolatile(values, offset(index));
+        v = ListElementComputedConstant.create(index, provider);
+        // ... but only one will be selected
+        if (!casElement(index, v)) {
+            // Someone else created the selected element
+            v = elementVolatile(index);
         }
         return v;
     }
 
-    public static <V> List<ComputedConstant<V>> create(int size, IntFunction<? extends V> provider) {
-        return new OnDemandComputedConstantList<>(size, provider);
+    // Accessors
+
+    @SuppressWarnings("unchecked")
+    private ComputedConstant<V> elementVolatile(int index) {
+        return (ComputedConstant<V>) Unsafe.getUnsafe().getReferenceVolatile(values, offset(index));
+    }
+
+    private boolean casElement(int index, Object o) {
+        return Unsafe.getUnsafe().compareAndSetReference(values, offset(index), null, o);
     }
 
     private static long offset(int index) {
         return ARRAY_BASE_OFFSET + index * ARRAY_INDEX_SCALE;
     }
+
+    // Factory
+
+    public static <V> List<ComputedConstant<V>> create(int size, IntFunction<? extends V> provider) {
+        return new OnDemandComputedConstantList<>(size, provider);
+    }
+
 
 }

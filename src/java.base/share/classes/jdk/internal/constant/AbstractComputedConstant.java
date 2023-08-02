@@ -206,6 +206,8 @@ public abstract sealed class AbstractComputedConstant<V, P>
         return toStringDescription() + v;
     }
 
+    // Accessors
+
     @SuppressWarnings("unchecked")
     private V valueVolatile() {
         return (V) Unsafe.getUnsafe().getReferenceVolatile(this, VALUE_OFFSET);
@@ -223,7 +225,6 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     private void setAuxiliaryVolatile(Object o) {
         Unsafe.getUnsafe().putReferenceVolatile(this, AUX_OFFSET, o);
-        //AUX_HANDLE.setVolatile(this, o);
     }
 
 }
