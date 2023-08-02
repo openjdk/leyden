@@ -73,7 +73,7 @@ import java.util.function.Supplier;
  *         private static final ComputedConstant<Foo> FOO = ComputedConstant.of(Foo::new); // provider = Foo::new
  *
  *         public Foo theFoo() {
- *             // Foo is lazily constructed and recorded here upon first invocation
+ *             // Foo is constructed and recorded before the first invocation returns
  *             return FOO.get();
  *         }
  *     }
@@ -140,15 +140,15 @@ import java.util.function.Supplier;
  * methods in a similar way as for {@code ComputedConstant} instances but with an extra initial arity, indicating
  * the desired size of the List:
  * {@snippet lang = java:
- *     class DemoArray {
+ *     class DemoList {
  *
- *         // 1. Declare a list of ComputedConstant elements of size 32
+ *         // 1. Declare a List of ComputedConstant elements of size 32
  *         private static final List<ComputedConstant<Long>> VALUE_PO2_CACHE =
  *             ComputedConstant.of(32, index -> 1L << index); // mappingProvider = index -> 1L << index
  *
  *         public long powerOfTwo(int n) {
- *             // 2. The n:th slot is computed and bound here upon the
- *             //    first call of get(n). The other elements are not affected.
+ *             // 2. The n:th slot is computed and bound here before
+ *             //    the first call of get(n) returns. The other elements are not affected.
  *             // 3. Using an n outside the list will throw an IndexOutOfBoundsException
  *             return VALUE_PO2_CACHE.get(n).get();
  *         }
@@ -206,9 +206,9 @@ import java.util.function.Supplier;
  * All computed constant constructs are "null-friendly" meaning a value can be bound to {@code null}.  As usual, values of type
  * Optional may also express optionality, without using {@code null}, as exemplified here:
  * {@snippet lang = java:
- *     class NullDemo {
+ *     class DemoNull {
  *
- *         private Supplier<Optional<Color>> backgroundColor =
+ *         private final Supplier<Optional<Color>> backgroundColor =
  *                 ComputedConstant.of(() -> Optional.ofNullable(calculateBgColor()));
  *
  *         Color backgroundColor(Color defaultColor) {
