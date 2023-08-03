@@ -37,7 +37,10 @@ public final class ConstantUtil {
 
     sealed interface State {}
     sealed interface Bound {}
+
     static final class Binding   implements State        { private Binding() {} }
+    // The Null class must not have an internal state to enable
+    // plain memory semantic access.
     static final class Null      implements State, Bound { private Null() {} }
     static final class NonNull   implements State, Bound { private NonNull() {} }
     static final class BindError implements State        { private BindError() {} }

@@ -67,7 +67,11 @@ public abstract sealed class AbstractComputedConstant<V, P>
     private Object auxiliary;
 
     public AbstractComputedConstant(P provider) {
-        this.auxiliary = provider;
+        // Safely publish the provider using volatile access under the condition a first
+        // volatile read for `auxiliary` objects (having an internal state) is made by
+        // other threads.
+        // See JLS 17.4.5. Happens-before Order
+        setAuxiliaryVolatile(provider);
     }
 
     @ForceInline
@@ -79,7 +83,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
     @ForceInline
     @Override
     public final boolean isBound() {
-        // Try normal memory semantics first
+        // Try plain memory semantics first
         return value != null || auxiliaryVolatile() instanceof ConstantUtil.Bound;
     }
 
@@ -92,33 +96,35 @@ public abstract sealed class AbstractComputedConstant<V, P>
     @ForceInline
     @Override
     public final V get() {
-        // Try normal memory semantics first
+        // Try plain memory semantics first
+        // Todo: Review safe-publication properties
         V v = value;
         if (v != null) {
             return v;
         }
+        // ConstantUtil.Null does not have an internal state so,
+        // we are allowed to use plain memory semantics here.
         if (auxiliary instanceof ConstantUtil.Null) {
             return null;
         }
-        @SuppressWarnings("unchecked")
-        P provider = (P) auxiliary;
-        return slowPath(provider, null, true);
+        return slowPath(null, true);
     }
 
     @ForceInline
     @Override
     public final V orElse(V other) {
-        // Try normal memory semantics first
+        // Try plain memory semantics first
+        // Todo: Review safe-publication properties
         V v = value;
         if (v != null) {
             return v;
         }
+        // ConstantUtil.Null does not have an internal state so,
+        // we are allowed to use plain memory semantics here.
         if (auxiliary instanceof ConstantUtil.Null) {
             return null;
         }
-        @SuppressWarnings("unchecked")
-        P provider = (P) auxiliary;
-        return slowPath(provider, other, false);
+        return slowPath(other, false);
     }
 
     @ForceInline
@@ -131,37 +137,36 @@ public abstract sealed class AbstractComputedConstant<V, P>
         return v;
     }
 
-    private synchronized V slowPath(P provider,
-                                    V other,
+    private synchronized V slowPath(V other,
                                     boolean rethrow) {
 
-        // Under synchronization, visibility and atomicy is guaranteed for both
-        // the fields "value" and "auxiliary" as they are only changed within this block.
+        // Under synchronization, visibility and atomicy is guaranteed for
+        // the field "value" as it is only changed within this block.
         V v = value;
         if (v != null) {
             return v;
         }
-        return switch (auxiliary) {
+        // Volatile read is needed here as this might be the first read
+        // of an object that has an internal state for this thread
+        Object aux = auxiliaryVolatile();
+        return switch (aux) {
             case ConstantUtil.Null __ -> null;
             case ConstantUtil.Binding __ ->
                     throw new StackOverflowError("Circular provider detected: " + toStringDescription());
             case ConstantUtil.BindError __ ->
                     throw new NoSuchElementException("A previous provider threw an exception: "+toStringDescription());
-            default -> bindValue(rethrow, other, provider);
+            default -> {
+                @SuppressWarnings("unchecked")
+                P provider = (P) aux;
+                yield bindValue(rethrow, other, provider);
+            }
         };
     }
 
-    @SuppressWarnings("unchecked")
     private V bindValue(boolean rethrow, V other, P provider) {
         setAuxiliaryVolatile(ConstantUtil.BINDING_SENTINEL);
         try {
-            final V v;
-            if (provider instanceof Supplier<?> supplier) {
-                // Regardless of ComputedConstant implementation variant, computeIfUnbound might be called.
-                v = (V) supplier.get();
-            } else {
-                v = evaluate(provider);
-            }
+            V v = evaluate(provider);
             if (v == null) {
                 setAuxiliaryVolatile(ConstantUtil.NULL_SENTINEL);
             } else {
