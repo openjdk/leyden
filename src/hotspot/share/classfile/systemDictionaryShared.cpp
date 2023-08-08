@@ -51,6 +51,7 @@
 #include "classfile/verificationType.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "compiler/compilationPolicy.hpp"
 #include "interpreter/bootstrapInfo.hpp"
 #include "jfr/jfrEvents.hpp"
 #include "logging/log.hpp"
@@ -61,6 +62,7 @@
 #include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/methodData.hpp"
@@ -72,20 +74,24 @@
 #include "oops/typeArrayOop.inline.hpp"
 #include "runtime/arguments.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/init.hpp"
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/mutexLocker.hpp"
+#include "runtime/perfData.hpp"
+#include "services/management.hpp"
 #include "utilities/resourceHash.hpp"
 #include "utilities/stringUtils.hpp"
 
 SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_static_archive;
 SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_dynamic_archive;
 
-DumpTimeSharedClassTable* SystemDictionaryShared::_dumptime_table = nullptr;
+DumpTimeSharedClassTable*           SystemDictionaryShared::_dumptime_table                         = nullptr;
 DumpTimeLambdaProxyClassDictionary* SystemDictionaryShared::_dumptime_lambda_proxy_class_dictionary = nullptr;
 
-DumpTimeMethodInfoDictionary* SystemDictionaryShared::_dumptime_method_info_dictionary = nullptr;
-DumpTimeMethodInfoDictionary* SystemDictionaryShared::_cloned_dumptime_method_info_dictionary = nullptr;
+DumpTimeMethodInfoDictionary*       SystemDictionaryShared::_dumptime_method_info_dictionary        = nullptr;
+GrowableArray<InitInfo>*            SystemDictionaryShared::_dumptime_init_list                     = nullptr;
+
 static Array<InstanceKlass*>* _archived_lambda_form_classes = nullptr;
 static Array<InstanceKlass*>* _archived_lambda_proxy_classes_boot = nullptr;
 static Array<InstanceKlass*>* _archived_lambda_proxy_classes_boot2 = nullptr;
@@ -518,6 +524,7 @@ void SystemDictionaryShared::initialize() {
     _dumptime_lambda_proxy_class_dictionary =
                       new (mtClass) DumpTimeLambdaProxyClassDictionary;
     _dumptime_method_info_dictionary = new (mtClass) DumpTimeMethodInfoDictionary;
+    _dumptime_init_list = new (mtClass) GrowableArray<InitInfo>(0, mtClass);
   }
 }
 
@@ -571,6 +578,69 @@ void SystemDictionaryShared::init_dumptime_info(Method* m) {
     assert(created, "");
     if (created) {
       ++_dumptime_method_info_dictionary->_count;
+    }
+  }
+}
+
+void SystemDictionaryShared::record_init_info(InstanceKlass* ik) {
+  assert(ik != nullptr, "");
+  if (Arguments::is_dumping_archive()) {
+    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+    InitInfo klass_record(InitType::class_init, ik, ik->init_state());
+    _dumptime_init_list->append(klass_record);
+
+    LogStreamHandle(Debug, cds, dynamic) log;
+    if (log.is_enabled()) {
+      ResourceMark rm;
+      log.print("record_init_info: ");
+      klass_record.print_on(&log);
+    }
+  }
+}
+
+void SystemDictionaryShared::record_init_info(InstanceKlass* ik, int index) {
+  if (Arguments::is_dumping_archive()) {
+    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+    InitInfo method_record(InitType::invokedynamic, ik, index);
+    _dumptime_init_list->append(method_record);
+
+    LogStreamHandle(Debug, cds, dynamic) log;
+    if (log.is_enabled()) {
+      ResourceMark rm;
+      log.print("record_init_info: ");
+      method_record.print_on(&log);
+    }
+  }
+}
+
+void SystemDictionaryShared::record_init_info(Method* m, int bci) {
+  if (Arguments::is_dumping_archive()) {
+    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+    InitInfo method_record(InitType::invokehandle, m, bci);
+    _dumptime_init_list->append(method_record);
+
+    LogStreamHandle(Debug, cds, dynamic) log;
+    if (log.is_enabled()) {
+      ResourceMark rm;
+      log.print("record_init_info: ");
+      method_record.print_on(&log);
+    }
+  }
+}
+
+void SystemDictionaryShared::record_static_field_value(fieldDescriptor& fd) {
+  if (Arguments::is_dumping_archive() &&
+      fd.is_static() && fd.is_final() &&
+      fd.field_holder()->is_initialized()) {
+    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+    InitInfo field_info(fd);
+    _dumptime_init_list->append(field_info);
+
+    LogStreamHandle(Debug, cds, dynamic) log;
+    if (log.is_enabled()) {
+      ResourceMark rm;
+      log.print("record_static_field_value: ");
+      field_info.print_on(&log);
     }
   }
 }
@@ -681,6 +751,8 @@ void SystemDictionaryShared::check_excluded_classes() {
 
   cleanup_method_info_dictionary();
 
+  cleanup_init_list();
+
   TrainingData::cleanup_training_data();
 }
 
@@ -743,6 +815,10 @@ void SystemDictionaryShared::dumptime_classes_do(class MetaspaceClosure* it) {
     key.metaspace_pointers_do(it);
   };
   _dumptime_method_info_dictionary->iterate_all(do_method_info);
+
+  for (int i = 0; i < _dumptime_init_list->length(); i++) {
+    _dumptime_init_list->at(i).metaspace_pointers_do(it);
+  }
 }
 
 bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbol* name,
@@ -792,6 +868,8 @@ void SystemDictionaryShared::add_to_dump_time_lambda_proxy_class_dictionary(Lamb
   if (created) {
     ++_dumptime_lambda_proxy_class_dictionary->_count;
   }
+  assert(_dumptime_lambda_proxy_class_dictionary->get(key) == info, "");
+//  _dumptime_lambda_proxy_class_dictionary->iterate_all()
 }
 
 void SystemDictionaryShared::add_lambda_proxy_class(InstanceKlass* caller_ik,
@@ -1174,6 +1252,12 @@ size_t SystemDictionaryShared::estimate_size_for_archive() {
       (method_info_byte_size * _dumptime_method_info_dictionary->_count) +
       CompactHashtableWriter::estimate_size(_dumptime_method_info_dictionary->_count);
 
+//  size_t init_info_byte_size = align_up(sizeof(RunTimeInitInfo), SharedSpaceObjectAlignment);
+//  total_size +=
+//      (init_info_byte_size * _dumptime_init_list->length() +
+//      ArchiveBuilder::ro_array_bytesize<RunTimeInitInfo*>(_dumptime_init_list->length()));
+  total_size += ArchiveBuilder::ro_array_bytesize<InitInfo>(_dumptime_init_list->length());
+
   return total_size;
 }
 
@@ -1209,7 +1293,15 @@ public:
     //  return true;
     //}
     ResourceMark rm;
-    log_info(cds,dynamic)("Archiving hidden %s", info._proxy_klasses->at(0)->external_name());
+    LogStreamHandle(Info, cds, dynamic) log;
+    if (log.is_enabled()) {
+      log.print("Archiving hidden " UINT32_FORMAT_X_0 " " UINT32_FORMAT_X_0 ,
+                            key.hash(), key.dumptime_hash());
+//      key.print_on(&log);
+      log.print(" %d " PTR_FORMAT " %s",
+                            info._proxy_klasses->length(), p2i(info._proxy_klasses->at(0)),
+                            info._proxy_klasses->at(0)->external_name());
+    }
     size_t byte_size = sizeof(RunTimeLambdaProxyClassInfo);
     RunTimeLambdaProxyClassInfo* runtime_info =
         (RunTimeLambdaProxyClassInfo*)ArchiveBuilder::ro_region_alloc(byte_size);
@@ -1336,6 +1428,18 @@ void SystemDictionaryShared::write_dictionary(RunTimeSharedDictionary* dictionar
   writer.dump(dictionary, is_builtin ? "builtin dictionary" : "unregistered dictionary");
 }
 
+void SystemDictionaryShared::print_init_list(outputStream* st, bool filter, InstanceKlass* value) {
+  for (int i = 0; i < _dumptime_init_list->length(); i++) {
+    ResourceMark rm;
+    InitInfo info = _dumptime_init_list->at(i);
+    if (filter && info.klass() != value) {
+      continue; // skip
+    }
+    info.print_on(st);
+    st->cr();
+  }
+}
+
 void SystemDictionaryShared::write_to_archive(bool is_static_archive) {
   ArchiveInfo* archive = get_archive(is_static_archive);
 
@@ -1345,6 +1449,68 @@ void SystemDictionaryShared::write_to_archive(bool is_static_archive) {
   write_lambda_proxy_class_dictionary(&archive->_lambda_proxy_class_dictionary);
 
   write_method_info_dictionary(&archive->_method_info_dictionary);
+
+  if (is_static_archive) {
+    // ignore init lists for static archive
+  } else {
+    int len = _dumptime_init_list->length();
+    int pos = 0;
+    for (int i = 0; i < len; i++) {
+      InitInfo& info = _dumptime_init_list->at(i);
+
+      bool found = false;
+      if (info.type() == invalid) {
+        continue; // skip
+      }
+      if (info.metadata() == nullptr) {
+        assert(info.name() != nullptr, "");
+        ResourceMark rm;
+        log_debug(cds,dynamic)("init_list: metadata == nullptr: %s", info.name()->as_C_string());
+      }
+      if (info.type() == class_init) {
+        InstanceKlass::ClassState s = InstanceKlass::ClassState(info.value());
+        if (info.klass() != nullptr) {
+          for (int j = i+1; j < len; j++) {
+            InitInfo& info1 = _dumptime_init_list->at(j);
+            if (info1.equals(info)) {
+              assert(info1.value() > info.value(), "%s > %s",
+                     InstanceKlass::state2name(InstanceKlass::ClassState(info1.value())),
+                     InstanceKlass::state2name(InstanceKlass::ClassState(info.value())));
+              if (InstanceKlass::ClassState(info.value()) == InstanceKlass::being_initialized) {
+//                _dumptime_init_list->at_put(j, InitInfo());
+              } else {
+                found = true;
+                _dumptime_init_list->at_put(i, InitInfo());
+                break; // found
+              }
+            }
+          }
+        }
+      }
+      if (!found) {
+        _dumptime_init_list->at_put(pos++, _dumptime_init_list->at(i));
+      }
+    }
+    _dumptime_init_list->trunc_to(pos);
+    len = pos;
+    assert(_dumptime_init_list->length() == pos, "");
+
+    archive->_init_list = ArchiveBuilder::new_ro_array<InitInfo>(len);
+    for (int i = 0; i < len; i++) {
+      InitInfo& info = _dumptime_init_list->at(i);
+      archive->_init_list->adr_at(i)->init(info);
+
+      if (info.type() != invokehandle && info.klass() == nullptr) {
+        ResourceMark rm;
+        assert(info.name() != nullptr, "");
+        log_debug(cds,dynamic)("init_list: klass == nullptr: %s", info.name()->as_klass_external_name());
+      } else if (info.type() == field_init && info.metadata1() == nullptr) {
+        ResourceMark rm;
+        assert(info.name() != nullptr, "");
+        log_debug(cds,dynamic)("init_list: metadata1 == nullptr: %s", info.name()->as_klass_external_name());
+      }
+    }
+  }
 }
 
 void SystemDictionaryShared::adjust_lambda_proxy_class_dictionary() {
@@ -1390,6 +1556,8 @@ void SystemDictionaryShared::serialize_dictionary_headers(SerializeClosure* soc,
   archive->_unregistered_dictionary.serialize_header(soc);
   archive->_lambda_proxy_class_dictionary.serialize_header(soc);
   archive->_method_info_dictionary.serialize_header(soc);
+
+  soc->do_ptr((void**)&archive->_init_list);
 }
 
 void SystemDictionaryShared::serialize_vm_classes(SerializeClosure* soc) {
@@ -1496,6 +1664,11 @@ public:
   int index() const { return _index; }
 };
 
+void RunTimeSharedDictionary::print_on(outputStream* st) {
+  SharedDictionaryPrinter printer(st);
+  iterate(&printer);
+}
+
 class SharedLambdaDictionaryPrinter : StackObj {
   outputStream* _st;
   int _index;
@@ -1505,9 +1678,16 @@ public:
   void do_value(const RunTimeLambdaProxyClassInfo* record) {
     if (record->proxy_klass_head()->lambda_proxy_is_available()) {
       ResourceMark rm;
+      _st->print("LambdaProxyClassInfo: " UINT32_FORMAT_X_0 " " UINT32_FORMAT_X_0 " ",
+                 record->key().hash(), record->key().dumptime_hash());
+#ifndef PRODUCT
+      record->key().print_on(_st);
+#endif // !PRODUCT
+      _st->cr();
       Klass* k = record->proxy_klass_head();
       while (k != nullptr) {
-        _st->print_cr("%4d: %s %s", _index++, k->external_name(),
+        _st->print_cr("  %4d: " PTR_FORMAT " %s %s",
+                      _index++, p2i(k), k->external_name(),
                       SystemDictionaryShared::class_loader_name_for_shared(k));
         k = k->next_link();
       }
@@ -1545,17 +1725,109 @@ public:
                   tag(mc), p2i(mc),
                   tag(md), p2i(md),
                   m->external_name());
-    if (Verbose) {
-      if (mc != nullptr) {
-        mc->print_on(_st);
-      }
-      if (md != nullptr) {
-        md->print_on(_st);
-      }
-      _st->cr();
+    if (mc != nullptr) {
+      mc->print_on(_st);
     }
+    if (md != nullptr) {
+      md->print_on(_st);
+    }
+    _st->cr();
   }
 };
+
+static const char* type2name(InitType t) {
+  switch (t) {
+    case class_init:    return "class_init";
+    case field_init:    return "field_init";
+    case invokedynamic: return "invokedynamic";
+    case invokehandle:  return "invokehandle";
+    case invalid:       return "invalid";
+
+    default:
+      ShouldNotReachHere();
+      return nullptr;
+  }
+}
+
+void InitInfo::print_on(outputStream* st) {
+  st->print_raw(type2name(_type));
+  st->print(" {" PTR_FORMAT "}", p2i(metadata()));
+  switch (_type) {
+    case class_init: {
+      st->print(" ");
+      if (klass() != nullptr) {
+        klass()->print_value_on(st);
+      } else if (name() != nullptr) {
+        st->print("[SYM]%s", name()->as_C_string());
+      }
+      InstanceKlass::ClassState s = (InstanceKlass::ClassState)(value());
+      st->print(" %s", InstanceKlass::state2name(s));
+      break;
+    }
+    case invokedynamic: {
+      st->print(" ");
+      if (klass() != nullptr) {
+        klass()->print_value_on(st);
+      }
+      st->print(" %d", value());
+      break;
+    }
+    case invokehandle: {
+      st->print(" ");
+      if (method() != nullptr) {
+        method()->print_value_on(st);
+      }
+      st->print(" %d", value());
+      break;
+    }
+    case field_init: {
+      st->print(" ");
+
+      if (klass() != nullptr) {
+        klass()->print_value_on(st);
+
+        fieldDescriptor fd;
+        if (klass()->find_field_from_offset(_val, true /*is_static*/, &fd)) {
+          st->print("%s (+%d)%s = ", fd.name()->as_C_string(), _val, fd.signature()->as_C_string());
+          switch (fd.field_type()) {
+            case T_BOOLEAN: st->print(" = %d",  _value._int);    break;
+            case T_BYTE:    st->print(" = %d",  _value._int);    break;
+            case T_SHORT:   st->print(" = %d",  _value._int);    break;
+            case T_CHAR:    st->print(" = %d",  _value._int);    break;
+            case T_INT:     st->print(" = %d",  _value._int);    break;
+            case T_LONG:    st->print(" = %ld", _value._long);   break;
+            case T_FLOAT:   st->print(" = %f",  _value._float);  break;
+            case T_DOUBLE:  st->print(" = %f",  _value._double); break;
+
+            case T_ARRAY: // fall-through
+            case T_OBJECT: {
+              st->print(" = {" PTR_FORMAT "}", p2i(metadata1()));
+              if (metadata1() != nullptr) {
+                metadata1()->print_value_on(st);
+              }
+              break;
+            }
+
+            default: st->print(" = " JLONG_FORMAT, _value._long);
+          }
+        } else {
+          st->print(" +%d = " JLONG_FORMAT, _val, _value._long);
+        }
+      } else {
+        st->print("[SYM]%s+%d = " JLONG_FORMAT, name()->as_C_string(), _val, _value._long);
+      }
+      break;
+    }
+    case invalid: {
+      break;
+    }
+    default: ShouldNotReachHere();
+  }
+  st->print(" {" PTR_FORMAT "}", p2i(name()));
+  if (name() != nullptr) {
+    st->print(" %s", name()->as_C_string());
+  }
+}
 
 void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
                                                    outputStream* st) {
@@ -1579,6 +1851,17 @@ void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
   TrainingDataPrinter tdp(st);
   _builtin_dictionary.iterate(&tdp);
   _method_info_dictionary.iterate(&tdp);
+
+  if (_init_list != nullptr && _init_list->length() > 0) {
+    st->print_cr("%sShared Init List", prefix);
+    for (int i = 0; i < _init_list->length(); i++) {
+      ResourceMark rm;
+      InitInfo* info = _init_list->adr_at(i);
+      st->print("%4d: " PTR_FORMAT " " PTR_FORMAT " ", i, p2i(info->name()), p2i(info->metadata()));
+      info->print_on(st);
+      st->cr();
+    }
+  }
 }
 
 void SystemDictionaryShared::ArchiveInfo::print_table_statistics(const char* prefix,
@@ -1671,7 +1954,6 @@ void SystemDictionaryShared::cleanup_method_info_dictionary() {
   CleanupDumpTimeMethodInfoTable cleanup_method_info;
   _dumptime_method_info_dictionary->unlink(&cleanup_method_info);
 }
-
 
 static Array<InstanceKlass*>* copy_klass_array(GrowableArray<InstanceKlass*>* src) {
   Array<InstanceKlass*>* dst = ArchiveBuilder::new_ro_array<InstanceKlass*>(src->length());
@@ -1808,4 +2090,567 @@ void SystemDictionaryShared::init_archived_hidden_class(Handle class_loader,
   assert(ik->is_loaded(), "Must be in at least loaded state");
   ik->link_class(CHECK);
   ik->initialize(CHECK); // quick-init that doesn't go through <clinit>
+}
+
+void SystemDictionaryShared::cleanup_init_list() {
+  assert_lock_strong(DumpTimeTable_lock);
+
+  for (int i = 0; i < _dumptime_init_list->length(); i++) {
+    InitInfo& info = _dumptime_init_list->at(i);
+    if (info.type() != invalid) {
+      InstanceKlass* holder = info.holder();
+      bool is_excluded = SystemDictionaryShared::check_for_exclusion(holder, nullptr);
+      if (is_excluded) {
+        LogStreamHandle(Debug, cds, dynamic) log;
+        if (log.is_enabled()) {
+          ResourceMark rm;
+          log.print("record_init_info: EXCLUDED (holder):");
+          info.print_on(&log);
+        }
+//        _dumptime_init_list->at_put(i, InitInfo());
+        info.reset_metadata();
+      }
+    }
+    if (info.type() == field_init && info.metadata1() != nullptr) {
+      Klass* k = (Klass*)info.metadata1();
+      bool is_excluded = (k->is_objArray_klass() && !MetaspaceShared::is_in_shared_metaspace(k)) ||
+                         (k->is_instance_klass() && SystemDictionaryShared::check_for_exclusion(InstanceKlass::cast(k), nullptr));
+      if (is_excluded) {
+        LogStreamHandle(Debug, cds, dynamic) log;
+        if (log.is_enabled()) {
+          ResourceMark rm;
+          log.print("record_init_info: EXCLUDED (metadata1): ");
+          info.print_on(&log);
+        }
+        info.reset_metadata(); // invalidate for now
+        info.reset_metadata1();
+      }
+    } else {
+      assert(info.metadata1() == nullptr, "");
+    }
+  }
+}
+
+class PrecompileIterator : StackObj {
+public:
+  PrecompileIterator() {}
+  GrowableArray<Method*> _methods;
+
+  static bool include(Method* m) {
+    return !m->is_native() && !m->is_abstract();
+  }
+
+  void do_value(const RunTimeClassInfo* record) {
+    // FIXME: filter methods
+    Array<Method*>* methods = record->_klass->methods();
+    for (int i = 0; i < methods->length(); i++) {
+      Method* m = methods->at(i);
+      if (!_methods.contains(m) && include(m)) {
+        _methods.push(m);
+      }
+    }
+  }
+  void do_value(TrainingData* td) {
+//    LogStreamHandle(Trace, training) log;
+//    if (log.is_enabled()) {
+//      td->print_on(&log);
+//    }
+    if (td->is_MethodTrainingData()) {
+      MethodTrainingData* mtd = td->as_MethodTrainingData();
+      if (mtd->has_holder() && include((Method*)mtd->holder())) {
+        _methods.push((Method*)mtd->holder());
+      }
+    }
+  }
+};
+
+static int compile_id(methodHandle mh, int level) {
+  if (TrainingData::have_data()) {
+    MethodTrainingData* mtd = TrainingData::lookup_mtd_for(mh());
+    if (mtd != nullptr) {
+      CompileTrainingData* ctd = mtd->first_compile(level);
+      if (ctd != nullptr) {
+        return ctd->compile_id();
+      }
+    }
+  }
+  return 0;
+}
+
+static int compile_id(methodHandle mh) {
+  if (TrainingData::have_data()) {
+    MethodTrainingData* mtd = TrainingData::lookup_mtd_for(mh());
+    if (mtd != nullptr) {
+      CompileTrainingData* ctd = mtd->first_compile();
+      if (ctd != nullptr) {
+        return ctd->compile_id();
+      }
+    }
+  }
+  return 0;
+}
+
+static int compare_by_compile_id(Method** m1, Method** m2) {
+  JavaThread* jt = JavaThread::current();
+  methodHandle mh1(jt, *m1);
+  methodHandle mh2(jt, *m2);
+  int id1 = compile_id(mh1, CompLevel_full_optimization);
+  int id2 = compile_id(mh2, CompLevel_full_optimization);
+
+  if (id1 == 0 && id2 == 0) {
+    id1 = compile_id(mh1);
+    id2 = compile_id(mh2);
+  }
+
+  if (id1 == 0) {
+    return 1;
+  } else if (id2 == 0) {
+    return -1;
+  } else {
+    return id1 - id2;
+  }
+}
+
+void SystemDictionaryShared::preload_archived_classes(TRAPS) {
+  ResourceMark rm;
+
+  bool prelink                 = (PreloadArchivedClasses > 0);
+  bool preinit                 = (PreloadArchivedClasses > 1);
+  bool preresolve_cp           = (Preresolve & 1) == 1;
+  bool preresolve_indy         = (Preresolve & 2) == 2;
+  bool preresolve_invokehandle = (Preresolve & 4) == 4;
+
+  preload_archived_classes(prelink, preinit, preresolve_cp, preresolve_indy, preresolve_invokehandle, THREAD);
+
+  if (PrecompileLevel > 0) {
+    log_info(precompile)("Precompile started");
+
+    FlagSetting fs(UseRecompilation, false); // disable recompilation until precompilation is over
+    int count = force_compilation(false, THREAD);
+    assert(!HAS_PENDING_EXCEPTION, "");
+    if (log_is_enabled(Info, cds, nmethod)) {
+      MutexLocker ml(Threads_lock);
+      CodeCache::arm_all_nmethods();
+    }
+
+    log_info(precompile)("Precompile finished: %d methods compiled", count);
+  }
+
+  if (!preinit && ForceClassInit) {
+    preload_archived_classes(false, true, false, false, false, THREAD);
+  }
+}
+
+void SystemDictionaryShared::preload_archived_classes(bool prelink, bool preinit,
+                                                      bool preresolve_cp, bool preresolve_indy, bool preresolve_invokehandle,
+                                                      TRAPS) {
+  jlong l1 = (UsePerfData ? ClassLoader::perf_ik_link_methods_time()->get_value() : -1);
+  jlong l2 = (UsePerfData ? ClassLoader::perf_method_adapters_time()->get_value() : -1);
+  jlong l3 = (UsePerfData ? ClassLoader::perf_ik_link_methods_count()->get_value() : -1);
+  jlong l4 = (UsePerfData ? ClassLoader::perf_method_adapters_count()->get_value() : -1);
+
+  int preload_cnt = 0;
+  int prelink_cnt = 0;
+  int preinit_cnt = 0;
+
+  log_info(cds,dynamic)("Preload started (link_methods = %ld, adapters = %ld, clinit = %ldms)",
+                        l3, l4, ClassLoader::class_init_time_ms());
+
+  if (_dynamic_archive._init_list != nullptr) {
+    PerfTraceTime timer(ClassLoader::perf_preload_total_time());
+
+    Handle h_loader(THREAD, SystemDictionary::java_system_loader());
+    for (int i = 0; i < _dynamic_archive._init_list->length(); i++) {
+      ResourceMark rm;
+      InitInfo* info = _dynamic_archive._init_list->adr_at(i);
+      Symbol* name = info->name();
+      InstanceKlass* ik = info->holder();
+      int val = info->value();
+
+      if (ik == nullptr) {
+        log_debug(cds,dynamic)("Preload %d failed: not part of the archive: %s", i, name->as_klass_external_name());
+        continue;
+      } else if (!ik->is_loaded()) {
+        log_debug(cds,dynamic)("Preload %d failed: not preloaded: %s", i, name->as_klass_external_name());
+        continue;
+      }
+
+      switch (info->type()) {
+        case field_init: {
+          break; // nothing to do for now
+        }
+        case class_init: {
+          InstanceKlass::ClassState s = (InstanceKlass::ClassState)(info->value());
+
+          if (prelink && s >= InstanceKlass::being_linked) {
+            if (ik != nullptr && ik->is_loaded() && !ik->is_linked()) {
+              PerfTraceTime timer(ClassLoader::perf_prelink_time());
+              log_debug(cds,dynamic)("Prelink (%ldms) %d %s",
+                                     (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_prelink_time()->get_value()) : -1),
+                                     i, name->as_klass_external_name());
+              assert(!HAS_PENDING_EXCEPTION, "");
+              ik->link_class(THREAD);
+              if (HAS_PENDING_EXCEPTION) {
+                Handle exc_handle(THREAD, PENDING_EXCEPTION);
+                CLEAR_PENDING_EXCEPTION;
+
+                log_info(cds,dynamic)("Exception during prelinking of %s", ik->external_name());
+                LogStreamHandle(Debug, cds) log;
+                if (log.is_enabled()) {
+                  java_lang_Throwable::print(exc_handle(), &log);
+                  java_lang_Throwable::print_stack_trace(exc_handle, &log);
+                }
+              } else if (ik->is_linked()) {
+                ++prelink_cnt;
+              }
+            } else {
+              if (ik != nullptr && ik->is_linked()) {
+                log_debug(cds,dynamic)("Prelink %d: already linked: %s", i, name->as_klass_external_name());
+              } else {
+                assert(ik == nullptr || !ik->is_loaded(), "");
+                log_debug(cds,dynamic)("Prelink %d: not loaded: %s", i, name->as_klass_external_name());
+              }
+            }
+            if (ik != nullptr && ik->is_linked()) {
+              // ensure that nest_host is initialized
+              assert(!HAS_PENDING_EXCEPTION, "");
+
+              InstanceKlass* host = ik->nest_host(THREAD);
+
+              if (HAS_PENDING_EXCEPTION) {
+                Handle exc_handle(THREAD, PENDING_EXCEPTION);
+                CLEAR_PENDING_EXCEPTION;
+
+                log_info(cds,dynamic)("Exception during preloading of nest host for %s", name->as_klass_external_name());
+                LogStreamHandle(Debug, cds) log;
+                if (log.is_enabled()) {
+                  java_lang_Throwable::print(exc_handle(), &log);
+                  java_lang_Throwable::print_stack_trace(exc_handle, &log);
+                }
+              }
+            }
+          }
+          if (preinit && s >= InstanceKlass::being_initialized) {
+            if (ik != nullptr && ik->is_loaded() && !ik->is_initialized()) {
+              PerfTraceTime timer(ClassLoader::perf_preinit_time());
+
+              log_debug(cds,dynamic)("Preinit (%ldms) %d %s",
+                                     (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_preinit_time()->get_value()) : -1),
+                                     i, ik->external_name());
+              assert(!HAS_PENDING_EXCEPTION, "");
+              ik->initialize(THREAD);
+              if (HAS_PENDING_EXCEPTION) {
+                Handle exc_handle(THREAD, PENDING_EXCEPTION);
+                CLEAR_PENDING_EXCEPTION;
+
+                log_info(cds,dynamic)("Exception during pre-initialization of %s", ik->external_name());
+                LogStreamHandle(Debug, cds) log;
+                if (log.is_enabled()) {
+                  java_lang_Throwable::print(exc_handle(), &log);
+                  java_lang_Throwable::print_stack_trace(exc_handle, &log);
+                }
+              } else if (ik->is_initialized() || ik->is_in_error_state()) {
+                ++preinit_cnt;
+              }
+            } else {
+              if (ik != nullptr && ik->is_initialized()) {
+                log_debug(cds,dynamic)("Preinit %d: already initialized: %s", i, name->as_klass_external_name());
+              } else {
+                assert(ik == nullptr || !ik->is_loaded(), "");
+                log_debug(cds,dynamic)("Preinit %d: not loaded: %s", i, name->as_klass_external_name());
+              }
+            }
+          }
+          if (preresolve_cp && ik != nullptr && ik->is_initialized()) {
+            PerfTraceTime timer(ClassLoader::perf_preresolve_time());
+
+            log_debug(cds,dynamic)("Preresolve (%ldms) %d %s",
+                                   (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_preresolve_time()->get_value()) : -1),
+                                   i, ik->external_name());
+            assert(!HAS_PENDING_EXCEPTION, "");
+            ik->constants()->resolve_klass_constants(THREAD);
+            if (HAS_PENDING_EXCEPTION) {
+              Handle exc_handle(THREAD, PENDING_EXCEPTION);
+              CLEAR_PENDING_EXCEPTION;
+
+              log_info(cds,dynamic)("Exception during pre-resolution of %s", ik->external_name());
+              LogStreamHandle(Debug, cds) log;
+              if (log.is_enabled()) {
+                java_lang_Throwable::print(exc_handle(), &log);
+                java_lang_Throwable::print_stack_trace(exc_handle, &log);
+              }
+            }
+            JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
+            JavaValue result(T_VOID);
+            JavaCalls::call_special(&result,
+                                    vmClasses::Class_klass(),
+                                    vmSymbols::preinit_name(),
+                                    vmSymbols::void_method_signature(),
+                                    &args, THREAD);
+            if (HAS_PENDING_EXCEPTION) {
+              Handle exc_handle(THREAD, PENDING_EXCEPTION);
+              CLEAR_PENDING_EXCEPTION;
+
+              log_info(cds,dynamic)("Exception during preinit call of %s", ik->external_name());
+              LogStreamHandle(Debug, cds) log;
+              if (log.is_enabled()) {
+                java_lang_Throwable::print(exc_handle(), &log);
+                java_lang_Throwable::print_stack_trace(exc_handle, &log);
+              }
+            }
+          }
+          break;
+        }
+
+        case invokedynamic: {
+          if (preresolve_indy) {
+            if (ik == nullptr) {
+              log_debug(cds,dynamic)("Preresolve %d %s: failed to resolve the klass", i, name->as_klass_external_name());
+            } else if (preinit && !ik->is_initialized()) {
+              log_debug(cds,dynamic)("Preresolve %d %s: failed: klass not initialized", i, name->as_klass_external_name());
+            } else {
+              assert(!HAS_PENDING_EXCEPTION, "");
+              CallInfo result;
+              constantPoolHandle pool(THREAD, ik->constants());
+
+              int index = pool->decode_invokedynamic_index(val);
+              int pool_index = pool->resolved_indy_entry_at(index)->constant_pool_index();
+              BootstrapInfo bootstrap_specifier(pool, pool_index, index);
+              bool is_done = bootstrap_specifier.resolve_previously_linked_invokedynamic(result, CHECK);
+              if (is_done) {
+                log_debug(cds,dynamic)("Preresolve %d %s: already resolved: invokedynamic CP @ %d", i, name->as_klass_external_name(), val);
+              } else {
+                PerfTraceTime timer(ClassLoader::perf_preresolve_time());
+
+                log_debug(cds,dynamic)("Preresolve (%ldms) %d %s: resolve invokedynamic CP @ %d",
+                                       (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_preresolve_time()->get_value()) : -1),
+                                       i, name->as_klass_external_name(), val);
+                LinkResolver::resolve_invoke(result, Handle(), pool, val, Bytecodes::_invokedynamic, THREAD);
+                if (!HAS_PENDING_EXCEPTION) {
+                  pool->cache()->set_dynamic_call(result, pool->decode_invokedynamic_index(val));
+                } else {
+                  Handle exc_handle(THREAD, PENDING_EXCEPTION);
+                  CLEAR_PENDING_EXCEPTION;
+
+                  log_info(cds,dynamic)("Exception during pre-resolution of invokedynamic CP @ %d in %s", val, name->as_klass_external_name());
+                  LogStreamHandle(Debug, cds) log;
+                  if (log.is_enabled()) {
+                    java_lang_Throwable::print(exc_handle(), &log);
+                    java_lang_Throwable::print_stack_trace(exc_handle, &log);
+                  }
+                }
+              }
+            }
+          }
+          break;
+        }
+
+        case invokehandle: {
+          if (preresolve_invokehandle) {
+            if (ik == nullptr) {
+              log_debug(cds,dynamic)("Preresolve %d %s: failed to resolve the klass", i, name->as_klass_external_name());
+            } else if (preinit && !ik->is_initialized()) {
+              log_debug(cds,dynamic)("Preresolve %d %s: failed: klass not initialized", i, name->as_klass_external_name());
+            } else {
+              assert(!HAS_PENDING_EXCEPTION, "");
+              CallInfo result;
+              constantPoolHandle pool(THREAD, ik->constants());
+              methodHandle m(THREAD, info->method());
+              int bci = info->value();
+              Bytecode_invoke invoke(m, bci);
+              assert(invoke.is_invokehandle(), "%s", Bytecodes::name(invoke.java_code()));
+              int cpc_idx = invoke.get_index_u2_cpcache(Bytecodes::_invokehandle);
+
+              // Check if the call site has been bound already, and short circuit:
+              LinkInfo link_info(pool, cpc_idx, Bytecodes::_invokehandle, CHECK);
+              bool is_done = LinkResolver::resolve_previously_linked_invokehandle(result, link_info, pool, cpc_idx, THREAD);
+              if (is_done) {
+                log_debug(cds,dynamic)("Preresolve %d %s: already resolved: invokehandle CP @ %d",
+                                       i, name->as_klass_external_name(),  val);
+              } else {
+                PerfTraceTime timer(ClassLoader::perf_preresolve_time());
+
+                log_debug(cds,dynamic)("Preresolve (%ldms) %d %s: resolve invokehandle CP @ %d",
+                                       (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_preresolve_time()->get_value()) : -1),
+                                       i, name->as_klass_external_name(),  val);
+                LinkResolver::resolve_invoke(result, Handle(), pool, cpc_idx, Bytecodes::_invokehandle, THREAD);
+
+                if (!HAS_PENDING_EXCEPTION) {
+                  int idx = invoke.get_index_u2(Bytecodes::_invokehandle);
+                  ConstantPoolCacheEntry* cpc_entry = pool->cache()->entry_at(idx);
+                  cpc_entry->set_method_handle(pool, result);
+                } else {
+                  Handle exc_handle(THREAD, PENDING_EXCEPTION);
+                  CLEAR_PENDING_EXCEPTION;
+
+                  log_info(cds,dynamic)("Exception during pre-resolution of invokehandle CP @ %d in %s", val, name->as_klass_external_name());
+                  LogStreamHandle(Debug, cds) log;
+                  if (log.is_enabled()) {
+                    java_lang_Throwable::print(exc_handle(), &log);
+                    java_lang_Throwable::print_stack_trace(exc_handle, &log);
+                  }
+                  break;
+                }
+              }
+            }
+          }
+          break;
+        }
+
+        default: fatal("unknown: %d", info->type());
+      }
+    }
+  }
+
+  l1 = (UsePerfData ? ClassLoader::perf_ik_link_methods_time()->get_value() - l1: -1);
+  l2 = (UsePerfData ? ClassLoader::perf_method_adapters_time()->get_value() - l2: -1);
+  l3 = (UsePerfData ? ClassLoader::perf_ik_link_methods_count()->get_value() - l3: -1);
+  l4 = (UsePerfData ? ClassLoader::perf_method_adapters_count()->get_value() - l4: -1);
+
+  log_info(cds,dynamic)(
+      "Preload finished: preloaded %d classes, prelinked %d classes, pre-initialized %d classes in %ldms (preload: %ldms, prelink: %ldms, preinit: %ldms, preresolve: %ldms, precompile: unknown)"
+      " (linkMethods: %ld methods in %ldms, %ld ticks; makeAdapters: %ld adapters in %ldms, %ld ticks; clinit: %ldms)",
+      preload_cnt, prelink_cnt, preinit_cnt,
+      (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_preload_total_time()->get_value()) : -1),
+      (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_preload_time()->get_value()) : -1),
+      (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_prelink_time()->get_value()) : -1),
+      (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_preinit_time()->get_value()) : -1),
+      (UsePerfData ? Management::ticks_to_ms(ClassLoader::perf_preresolve_time()->get_value()) : -1),
+      l3, Management::ticks_to_ms(l1), l1,
+      l4, Management::ticks_to_ms(l2), l2,
+      ClassLoader::class_init_time_ms());
+}
+
+bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
+  PrecompileIterator comp;
+  TrainingData::archived_training_data_dictionary()->iterate(&comp);
+  if (ForcePrecompilation) {
+    _static_archive._builtin_dictionary.iterate(&comp);
+    _dynamic_archive._builtin_dictionary.iterate(&comp);
+  }
+
+  comp._methods.sort(&compare_by_compile_id);
+
+  CompileTask::CompileReason comp_reason = CompileTask::Reason_Recorded;
+
+  bool preinit = (PreloadArchivedClasses > 1) || recompile;
+  bool requires_online_comp = recompile;
+
+  int count = 0;
+  for (int i = 0; i < comp._methods.length(); i++) {
+    methodHandle mh(THREAD, comp._methods.at(i));
+    int cid = compile_id(mh, CompLevel_full_optimization);
+
+    if (mh->method_holder()->is_initialized() ||
+        (!preinit && mh->method_holder()->is_linked())) {
+      assert(!HAS_PENDING_EXCEPTION, "");
+
+      CompLevel comp_level = MIN2(CompLevel_full_optimization, (CompLevel)PrecompileLevel);
+      if (cid == 0 && !ForcePrecompileLevel) {
+        cid = compile_id(mh);
+        comp_level = MIN2(CompLevel_limited_profile, (CompLevel)PrecompileLevel);
+      }
+
+      bool compile = (cid > 0 && !DirectivesStack::getMatchingDirective(mh, nullptr)->DontPrecompileOption) || ForcePrecompilation;
+      if (compile) {
+        log_trace(cds,dynamic)("Precompile %d %s at level %d", cid, mh->name_and_sig_as_C_string(), PrecompileLevel);
+        ++count;
+        if (!recompile) {
+          MutexLocker ml(Compile_lock);
+          NoSafepointVerifier nsv;
+          CompiledMethod* nm = mh->code();
+          if (nm != nullptr) {
+            nm->make_not_used();
+          }
+          assert(mh->code() == nullptr, "");
+        }
+        CompileBroker::compile_method(mh, InvocationEntryBci, comp_level, methodHandle(), 0, requires_online_comp, comp_reason, THREAD);
+        if (mh->code() == nullptr) {
+          log_trace(cds,dynamic)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), PrecompileLevel);
+        }
+      } else if (//!recompile && // TODO: any sense NOT to recompile?
+                 /*!DirectivesStack::getMatchingDirective(mh, nullptr)->DontPrecompileOption &&*/
+                 DirectivesStack::getMatchingDirective(mh, nullptr)->PrecompileRecordedOption) {
+        log_trace(cds,dynamic)("Precompile (forced) %d %s at level %d", cid, mh->name_and_sig_as_C_string(), PrecompileLevel);
+        ++count;
+        if (!recompile) {
+          MutexLocker ml(Compile_lock);
+          NoSafepointVerifier nsv;
+          CompiledMethod* nm = mh->code();
+          if (nm != nullptr) {
+            nm->make_not_used();
+          }
+          assert(mh->code() == nullptr, "");
+        }
+        CompileBroker::compile_method(mh, InvocationEntryBci, PrecompileLevel, methodHandle(), 0, requires_online_comp, comp_reason, THREAD);
+        if (mh->code() == nullptr) {
+          log_trace(cds,dynamic)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), PrecompileLevel);
+        }
+      }
+    } else {
+      log_trace(cds,dynamic)("Precompile skipped (not initialized: %s) %d " PTR_FORMAT " " PTR_FORMAT " %s at level %d",
+                             InstanceKlass::state2name(mh->method_holder()->init_state()),
+                             cid,
+                             p2i(mh()), p2i(mh->method_holder()),
+                             mh->name_and_sig_as_C_string(), PrecompileLevel);
+    }
+    assert(!HAS_PENDING_EXCEPTION, "");
+  }
+  return count;
+}
+
+InstanceKlass::ClassState SystemDictionaryShared::ArchiveInfo::lookup_init_state(InstanceKlass* ik) const {
+  InstanceKlass::ClassState init_state = ik->init_state();
+  if (MetaspaceObj::is_shared(ik) && !ik->is_initialized() && _init_list != nullptr) {
+    for (int i = 0; i < _init_list->length(); i++) {
+      InitInfo* info = _init_list->adr_at(i);
+      if (info->type() == class_init && info->klass() == ik) {
+        init_state = MAX2(init_state, info->init_state());
+      }
+    }
+  }
+  return init_state;
+}
+
+int SystemDictionaryShared::ArchiveInfo::compute_init_count(InstanceKlass* ik) const {
+  if (_init_list != nullptr && (ik == nullptr || MetaspaceObj::is_shared(ik))) {
+    int init_count = 0;
+    for (int i = 0; i < _init_list->length(); i++) {
+      InitInfo* info = _init_list->adr_at(i);
+      if (info->type() == class_init && info->klass() != nullptr && info->init_state() == InstanceKlass::fully_initialized) {
+        if (info->klass()->init_state() < InstanceKlass::fully_initialized) {
+          ++init_count;
+        }
+      }
+    }
+    return init_count;
+  } else {
+    return (1 << 30); // MAX_INT
+  }
+}
+
+void SystemDictionaryShared::ArchiveInfo::print_init_count(outputStream* st) const {
+  if (_init_list != nullptr) {
+    for (int i = 0; i < _init_list->length(); i++) {
+      InitInfo* info = _init_list->adr_at(i);
+      if (info->type() == class_init && info->klass() != nullptr && info->init_state() == InstanceKlass::fully_initialized) {
+        if (info->klass()->init_state() < InstanceKlass::fully_initialized) {
+          ResourceMark rm;
+          st->print_cr("%6d: %s", i, info->klass()->external_name());
+        }
+      }
+    }
+  }
+}
+
+InitInfo* SystemDictionaryShared::ArchiveInfo::lookup_static_field_value(InstanceKlass* holder, int offset) const {
+  if (MetaspaceObj::is_shared(holder)) {
+    for (int i = 0; i < _init_list->length(); i++) {
+      InitInfo* info = _init_list->adr_at(i);
+      if (info->type() == field_init && info->klass() == holder && info->value() == offset) {
+        return info;
+      }
+    }
+  }
+  return nullptr;
 }

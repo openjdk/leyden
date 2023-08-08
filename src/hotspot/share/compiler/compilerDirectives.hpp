@@ -53,6 +53,9 @@
     cflags(DisableIntrinsic,        ccstrlist, DisableIntrinsic, DisableIntrinsic) \
     cflags(ControlIntrinsic,        ccstrlist, ControlIntrinsic, ControlIntrinsic) \
     cflags(RepeatCompilation,       intx, RepeatCompilation, RepeatCompilation) \
+    cflags(PrecompileRecorded,      bool, false, PrecompileRecorded) \
+    cflags(DontPrecompile,          bool, false, DontPrecompile) \
+    cflags(IgnoreRecordedProfile,   bool, false, IgnoreRecordedProfile) \
     cflags(TooManyTrapsAtBCI,       ccstrlist, "", TooManyTrapsAtBCI) \
 
 #ifdef COMPILER1

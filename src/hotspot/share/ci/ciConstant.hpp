@@ -27,6 +27,7 @@
 
 #include "ci/ciClassList.hpp"
 #include "utilities/globalDefinitions.hpp"
+#include "utilities/ostream.hpp"
 
 // ciConstant
 //
@@ -118,8 +119,33 @@ public:
 
   bool is_loaded() const;
 
+  bool operator==(ciConstant other) const {
+    if (_type == other._type) {
+      switch (_type) {
+        case T_BOOLEAN: // fall-through
+        case T_BYTE:    // fall-through
+        case T_SHORT:   // fall-through
+        case T_CHAR:    // fall-through
+        case T_INT:     return _value._int == other._value._int;
+        case T_LONG:    return _value._long == other._value._long;
+        case T_FLOAT:   return (_value._float == other._value._float) ||
+                               (g_isnan(_value._float) && g_isnan(other._value._float));
+        case T_DOUBLE:  return (_value._double == other._value._double) ||
+                               (g_isnan(_value._double) && g_isnan(other._value._double));
+        case T_OBJECT:  // fall-through
+        case T_ARRAY:   return _value._object == other._value._object;
+
+        case T_ILLEGAL: return true;
+
+        default: fatal("%s", type2name(_type));
+      }
+    }
+    return false;
+  }
+
   // Debugging output
-  void print();
+  void print_on(outputStream* st);
+  void print() { print_on(tty); };
 };
 
 #endif // SHARE_CI_CICONSTANT_HPP

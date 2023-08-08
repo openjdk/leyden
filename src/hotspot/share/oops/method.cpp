@@ -119,6 +119,11 @@ Method::Method(ConstMethod* xconst, AccessFlags access_flags, Symbol* name) {
     set_signature_handler(nullptr);
   }
 
+#if INCLUDE_CDS
+//  _archived_method_counters = nullptr;
+//  _archived_method_data = nullptr;
+#endif // INCLUDE_CDS
+
   NOT_PRODUCT(set_compiled_invocation_count(0);)
   // Name is very useful for debugging.
   NOT_PRODUCT(_name = name;)
@@ -130,7 +135,7 @@ void Method::deallocate_contents(ClassLoaderData* loader_data) {
   MetadataFactory::free_metadata(loader_data, constMethod());
   set_constMethod(nullptr);
   MetadataFactory::free_metadata(loader_data, method_data());
-  set_method_data(nullptr);
+  set_method_data(nullptr); // FIXME: remove from SharedSystemDictionary::_dumptime_method_info list
   MetadataFactory::free_metadata(loader_data, method_counters());
   clear_method_counters();
   // The nmethod will be gone when we get here.
@@ -397,8 +402,19 @@ void Method::metaspace_pointers_do(MetaspaceClosure* it) {
   } else {
     it->push(&_constMethod);
   }
+//  // FIXME: find the right place for it
+//  if (DumpMethodData > 0) {
+//    if (_method_data != nullptr && _archived_method_data == nullptr) {
+//      _archived_method_data = _method_data;
+//    }
+//    if (_method_counters != nullptr && _archived_method_counters == nullptr) {
+//      _archived_method_counters = _method_counters;
+//    }
+//  }
   it->push(&_method_data);
   it->push(&_method_counters);
+//  it->push(&_archived_method_data);
+//  it->push(&_archived_method_counters);
   NOT_PRODUCT(it->push(&_name);)
 }
 

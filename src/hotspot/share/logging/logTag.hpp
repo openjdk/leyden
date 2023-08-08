@@ -150,6 +150,7 @@ class outputStream;
   LOG_TAG(phases) \
   LOG_TAG(plab) \
   LOG_TAG(placeholders) \
+  LOG_TAG(precompile) \
   LOG_TAG(preempt) \
   LOG_TAG(preload) \
   LOG_TAG(preorder)  /* Trace all classes loaded in order referenced (not loaded) */ \
@@ -158,7 +159,8 @@ class outputStream;
   LOG_TAG(promotion) \
   LOG_TAG(protectiondomain) /* "Trace protection domain verification" */ \
   LOG_TAG(ptrqueue) \
-  LOG_TAG(purge) \
+  LOG_TAG(purge)     \
+  LOG_TAG(recompile) \
   LOG_TAG(record) \
   LOG_TAG(redefine) \
   LOG_TAG(ref) \

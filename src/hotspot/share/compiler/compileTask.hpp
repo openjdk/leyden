@@ -59,6 +59,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
       Reason_MustBeCompiled,   // Used for -Xcomp or AlwaysCompileLoopMethods (see CompilationPolicy::must_be_compiled())
       Reason_Bootstrap,        // JVMCI bootstrap
       Reason_Preload,          // pre-load SC code
+      Reason_Precompile,
+      Reason_Recorded,
       Reason_Count
   };
 
@@ -73,6 +75,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
       "must_be_compiled",
       "bootstrap",
       "preload"
+      "precompile",
+      "recorded",
     };
     return reason_names[compile_reason];
   }
@@ -171,6 +175,11 @@ class CompileTask : public CHeapObj<mtCompiler> {
     }
   }
 
+  bool is_precompiled() {
+    return compile_reason() == CompileTask::Reason_Precompile ||
+           compile_reason() == CompileTask::Reason_Recorded;
+  }
+
   bool         has_waiter() const                { return _has_waiter; }
   void         clear_waiter()                    { _has_waiter = false; }
   JVMCICompileState* blocking_jvmci_compile_state() const { return _blocking_jvmci_compile_state; }
@@ -205,6 +214,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
   CompileTrainingData* training_data() const     { return _training_data; }
   void set_training_data(CompileTrainingData*td) { _training_data = td; }
 
+  CompileReason compile_reason()                 { return _compile_reason; }
+
   // RedefineClasses support
   void         metadata_do(MetadataClosure* f);
   void         mark_on_stack();
@@ -212,9 +223,10 @@ class CompileTask : public CHeapObj<mtCompiler> {
 private:
   static void  print_impl(outputStream* st, Method* method, int compile_id, int comp_level,
                                       bool is_osr_method = false, int osr_bci = -1, bool is_blocking = false,
+                                      bool from_recorded_data = false,
                                       bool is_sca = false, bool is_preload = false,
-                                      const char* compiler_name = nullptr,
-                                      const char* msg = nullptr, bool short_form = false, bool cr = true,
+                                      bool has_clinit_barriers = false,
+                                      const char* compiler_name = nullptr, const char* msg = nullptr, bool short_form = false, bool cr = true,
                                       jlong time_queued = 0, jlong time_started = 0);
 
 public:
@@ -223,7 +235,8 @@ public:
   static void  print(outputStream* st, const nmethod* nm, const char* msg = nullptr, bool short_form = false, bool cr = true) {
     print_impl(st, nm->method(), nm->compile_id(), nm->comp_level(),
                            nm->is_osr_method(), nm->is_osr_method() ? nm->osr_entry_bci() : -1, /*is_blocking*/ false,
-                           nm->sca_entry() != nullptr, nm->preloaded(),
+                           nm->from_recorded_data(),
+                           nm->is_sca(), nm->preloaded(), nm->has_clinit_barriers(),
                            nm->compiler_name(), msg, short_form, cr);
   }
   static void  print_ul(const nmethod* nm, const char* msg = nullptr);

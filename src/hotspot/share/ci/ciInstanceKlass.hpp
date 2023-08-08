@@ -120,6 +120,8 @@ protected:
     }
   }
 
+  static InstanceKlass::ClassState compute_init_state(InstanceKlass* ik);
+
 public:
   // Has this klass been initialized?
   bool                   is_initialized() {

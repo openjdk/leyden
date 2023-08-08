@@ -151,9 +151,21 @@ static void trace_class_resolution_impl(Klass* to_class, TRAPS) {
   const char * source_file = nullptr;
   const char * trace = "explicit";
   InstanceKlass* caller = nullptr;
+
+  bool is_interpreted_top = false;
+  CompiledMethod* cm_top = nullptr;
+
+  bool is_interpreted_found = false;
+  CompiledMethod* cm_found = nullptr;
+
   JavaThread* jthread = THREAD;
   if (jthread->has_last_Java_frame()) {
     vframeStream vfst(jthread);
+
+    if (!vfst.at_end()) {
+      is_interpreted_top = vfst.is_interpreted_frame();
+      cm_top = vfst.nm_or_null();
+    }
 
     // scan up the stack skipping ClassLoader, AccessController and PrivilegedAction frames
     TempNewSymbol access_controller = SymbolTable::new_symbol("java/security/AccessController");
@@ -210,6 +222,8 @@ static void trace_class_resolution_impl(Klass* to_class, TRAPS) {
       if (s != nullptr) {
         source_file = s->as_C_string();
       }
+      is_interpreted_found = vfst.is_interpreted_frame();
+      cm_found = vfst.nm_or_null();
     }
   }
   if (caller != nullptr) {
@@ -218,9 +232,15 @@ static void trace_class_resolution_impl(Klass* to_class, TRAPS) {
       const char * to = to_class->external_name();
       // print in a single call to reduce interleaving between threads
       if (source_file != nullptr) {
-        log_debug(class, resolve)("%s %s %s:%d (%s)", from, to, source_file, line_number, trace);
+        log_debug(class, resolve)("JVM: %s %s %s:%d (%s) is_interpreted_top=%d compile_id_top=%d is_interpreted_found=%d compile_id_found=%d",
+                                  from, to, source_file, line_number, trace,
+                                  is_interpreted_top, (cm_top != nullptr ? cm_top->compile_id() : -1),
+                                  is_interpreted_found, (cm_found != nullptr ? cm_found->compile_id() : -1));
       } else {
-        log_debug(class, resolve)("%s %s (%s)", from, to, trace);
+        log_debug(class, resolve)("JVM: %s %s (%s) is_interpreted_top=%d compile_id_top=%d is_interpreted_found=%d compile_id_found=%d",
+                                  from, to, trace,
+                                  is_interpreted_top, (cm_top != nullptr ? cm_top->compile_id() : -1),
+                                  is_interpreted_found, (cm_found != nullptr ? cm_found->compile_id() : -1));
       }
     }
   }

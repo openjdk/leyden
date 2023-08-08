@@ -4217,6 +4217,58 @@ bool Compile::needs_clinit_barrier(ciInstanceKlass* holder, ciMethod* accessing_
   return true;
 }
 
+bool Compile::needs_clinit_barrier_precompiled(ciMethod* method, ciMethod* accessing_method) {
+  return method->is_static() && needs_clinit_barrier_precompiled(method->holder(), accessing_method);
+}
+
+bool Compile::needs_clinit_barrier_precompiled(ciField* field, ciMethod* accessing_method) {
+  return field->is_static() && needs_clinit_barrier_precompiled(field->holder(), accessing_method);
+}
+
+bool Compile::needs_clinit_barrier_precompiled(ciInstanceKlass* holder, ciMethod* accessing_method) {
+  bool result = needs_clinit_barrier_precompiled_helper(holder, accessing_method);
+  LogStreamHandle(Trace, precompile) log;
+  if (log.is_enabled()) {
+    log.print("needs_clinit_barrier_precompiled ");
+    holder->print_name_on(&log);
+    log.print(" ");
+    accessing_method->print_name(&log);
+    log.print(" = %s", (result ? "true" : "false"));
+  }
+  return result;
+}
+
+bool Compile::needs_clinit_barrier_precompiled_helper(ciInstanceKlass* holder, ciMethod* accessing_method) {
+  if (!env()->is_precompiled()) {
+    return false; // not a precompilation
+  }
+  if (PrecompileBarriers == 0) {
+    return false; // disabled
+  }
+  if (accessing_method->holder() == holder) {
+    // Access inside a class. The barrier can be elided when access happens in <clinit>,
+    // <init>, or a static method. In all those cases, there was an initialization
+    // barrier on the holder klass passed.
+    if (accessing_method->is_static_initializer() ||
+        accessing_method->is_object_initializer() ||
+        accessing_method->is_static()) {
+      return false;
+    }
+  } else if (accessing_method->holder()->is_subclass_of(holder)) {
+    // Access from a subclass. The barrier can be elided only when access happens in <clinit>.
+    // In case of <init> or a static method, the barrier is on the subclass is not enough:
+    // child class can become fully initialized while its parent class is still being initialized.
+    if (accessing_method->is_static_initializer()) {
+      return false;
+    }
+  }
+  ciMethod* root = method(); // the root method of compilation
+  if (root != accessing_method) {
+    return needs_clinit_barrier_precompiled(holder, root); // check access in the context of compilation root
+  }
+  return true;
+}
+
 #ifndef PRODUCT
 //------------------------------verify_bidirectional_edges---------------------
 // For each input edge to a node (ie - for each Use-Def edge), verify that

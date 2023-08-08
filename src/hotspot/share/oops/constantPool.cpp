@@ -666,6 +666,8 @@ void ConstantPool::trace_class_resolution(const constantPoolHandle& this_cp, Kla
   ResourceMark rm;
   int line_number = -1;
   const char * source_file = nullptr;
+  bool is_interpreted = false;
+  CompiledMethod* cm = nullptr;
   if (JavaThread::current()->has_last_Java_frame()) {
     // try to identify the method which called this function.
     vframeStream vfst(JavaThread::current());
@@ -675,18 +677,22 @@ void ConstantPool::trace_class_resolution(const constantPoolHandle& this_cp, Kla
       if (s != nullptr) {
         source_file = s->as_C_string();
       }
+      cm = vfst.nm_or_null();
+      is_interpreted = vfst.is_interpreted_frame();
     }
   }
   if (k != this_cp->pool_holder()) {
     // only print something if the classes are different
     if (source_file != nullptr) {
-      log_debug(class, resolve)("%s %s %s:%d",
+      log_debug(class, resolve)("ConstantPool: %s %s %s:%d is_interpreted=%d compile_id=%d",
                  this_cp->pool_holder()->external_name(),
-                 k->external_name(), source_file, line_number);
+                 k->external_name(), source_file, line_number,
+                 is_interpreted, (cm != nullptr ? cm->compile_id() : -1));
     } else {
-      log_debug(class, resolve)("%s %s",
+      log_debug(class, resolve)("ConstantPool: %s %s is_interpreted=%d compile_id=%d",
                  this_cp->pool_holder()->external_name(),
-                 k->external_name());
+                 k->external_name(),
+                 is_interpreted, (cm != nullptr ? cm->compile_id() : -1));
     }
   }
 }
@@ -1003,6 +1009,17 @@ void ConstantPool::resolve_string_constants_impl(const constantPoolHandle& this_
   for (int index = 1; index < this_cp->length(); index++) { // Index 0 is unused
     if (this_cp->tag_at(index).is_string()) {
       this_cp->string_at(index, CHECK);
+    }
+  }
+}
+
+void ConstantPool::resolve_klass_constants_impl(const constantPoolHandle& this_cp, TRAPS) {
+  for (int index = 1; index < this_cp->length(); index++) { // Index 0 is unused
+    if (this_cp->tag_at(index).is_unresolved_klass() && !this_cp->tag_at(index).is_in_error()) {
+      Klass* tk = this_cp->klass_at(index, THREAD);
+      if (HAS_PENDING_EXCEPTION) {
+        CLEAR_PENDING_EXCEPTION; // FIXME: async exceptions?
+      }
     }
   }
 }

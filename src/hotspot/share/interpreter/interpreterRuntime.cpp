@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "code/codeCache.hpp"
@@ -973,6 +974,8 @@ void InterpreterRuntime::resolve_invokehandle(JavaThread* current) {
                                  last_frame.get_index_u2_cpcache(bytecode), bytecode,
                                  CHECK);
   } // end JvmtiHideSingleStepping
+
+  SystemDictionaryShared::record_init_info(last_frame.method(), last_frame.bci());
 
   ConstantPoolCacheEntry* cp_cache_entry = last_frame.cache_entry();
   cp_cache_entry->set_method_handle(pool, info);

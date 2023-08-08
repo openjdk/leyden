@@ -32,7 +32,7 @@
 #include "runtime/arguments.hpp"
 
 inline bool CompilerConfig::is_interpreter_only() {
-  return Arguments::is_interpreter_only() || TieredStopAtLevel == CompLevel_none;
+  return Arguments::is_interpreter_only() /*|| TieredStopAtLevel == CompLevel_none*/;
 }
 
 inline bool CompilerConfig::is_jvmci_compiler()    { return JVMCI_ONLY(has_jvmci() && UseJVMCICompiler) NOT_JVMCI(false); }
@@ -51,7 +51,8 @@ inline bool CompilerConfig::is_c1_only() {
     const bool c1_only = !has_c2() && !is_jvmci_compiler();
     const bool tiered_degraded_to_c1_only = TieredCompilation && TieredStopAtLevel >= CompLevel_simple && TieredStopAtLevel < CompLevel_full_optimization;
     const bool c1_only_compilation_mode = CompilationModeFlag::quick_only();
-    return c1_only || tiered_degraded_to_c1_only || c1_only_compilation_mode;
+//    return c1_only || tiered_degraded_to_c1_only || c1_only_compilation_mode;
+    return false; // FIXME
   }
   return false;
 }

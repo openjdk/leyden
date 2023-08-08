@@ -1722,6 +1722,9 @@ void GraphBuilder::access_field(Bytecodes::Code code) {
   // call will_link again to determine if the field is valid.
   const bool needs_patching = !holder->is_loaded() ||
                               !field->will_link(method(), code) ||
+                              (compilation()->env()->is_precompiled() &&
+                               (code == Bytecodes::_getstatic || code == Bytecodes::_putstatic) &&
+                               ((PrecompileBarriers & 1) == 1)) ||
                               PatchALot;
 
   ValueStack* state_before = nullptr;
@@ -1999,7 +2002,11 @@ void GraphBuilder::invoke(Bytecodes::Code code) {
   // Push appendix argument (MethodType, CallSite, etc.), if one.
   bool patch_for_appendix = false;
   int patching_appendix_arg = 0;
-  if (Bytecodes::has_optional_appendix(bc_raw) && (!will_link || PatchALot)) {
+
+  bool precompile = compilation()->env()->is_precompiled() && PreloadArchivedClasses < 2;
+  bool preresolved = ((Preresolve & 2) == 2 && bc_raw == Bytecodes::_invokedynamic) ||
+                     ((Preresolve & 4) == 4 && bc_raw == Bytecodes::_invokehandle);
+  if (Bytecodes::has_optional_appendix(bc_raw) && (!will_link || (precompile && !preresolved) || PatchALot)) {
     Value arg = append(new Constant(new ObjectConstant(compilation()->env()->unloaded_ciinstance()), copy_state_before()));
     apush(arg);
     patch_for_appendix = true;
@@ -2128,7 +2135,8 @@ void GraphBuilder::invoke(Bytecodes::Code code) {
       callee_holder->is_loaded()) { // the effect of symbolic reference resolution
 
     // callee is known => check if we have static binding
-    if ((code == Bytecodes::_invokestatic && klass->is_initialized()) || // invokestatic involves an initialization barrier on declaring class
+    if ((code == Bytecodes::_invokestatic && klass->is_initialized()
+                                          && (!precompile || ((PrecompileBarriers & 2) != 2))) || // invokestatic involves an initialization barrier on declaring class
         code == Bytecodes::_invokespecial ||
         (code == Bytecodes::_invokevirtual && target->is_final_method()) ||
         code == Bytecodes::_invokedynamic) {
@@ -2234,7 +2242,9 @@ void GraphBuilder::new_instance(int klass_index) {
   ValueStack* state_before = copy_state_exhandling();
   ciKlass* klass = stream()->get_klass();
   assert(klass->is_instance_klass(), "must be an instance klass");
-  NewInstance* new_instance = new NewInstance(klass->as_instance_klass(), state_before, stream()->is_unresolved_klass());
+  bool force_patching = compilation()->env()->is_precompiled() &&
+                        (PrecompileBarriers & 4) == 4;
+  NewInstance* new_instance = new NewInstance(klass->as_instance_klass(), state_before, stream()->is_unresolved_klass() || force_patching);
   _memory->new_instance(new_instance);
   apush(append_split(new_instance));
 }
@@ -3873,8 +3883,11 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
   if (callee->is_synchronized() &&
       !InlineSynchronizedMethods         ) INLINE_BAILOUT("callee is synchronized");
   if (!callee->holder()->is_linked())      INLINE_BAILOUT("callee's klass not linked yet");
+
+  bool precompile = compilation()->env()->is_precompiled() && PreloadArchivedClasses < 2;
   if (bc == Bytecodes::_invokestatic &&
-      !callee->holder()->is_initialized()) INLINE_BAILOUT("callee's klass not initialized yet");
+      !callee->holder()->is_initialized() &&
+      (!precompile || ((PrecompileBarriers & 8) != 8))) INLINE_BAILOUT("callee's klass not initialized yet");
   if (!callee->has_balanced_monitors())    INLINE_BAILOUT("callee's monitors do not match");
 
   // Proper inlining of methods with jsrs requires a little more work.
@@ -4141,6 +4154,9 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
 
 
 bool GraphBuilder::try_method_handle_inline(ciMethod* callee, bool ignore_return) {
+  if (compilation()->env()->is_precompiled() && StoreSharedCode && PreloadArchivedClasses < 2) {
+    return false; // FIXME
+  }
   ValueStack* state_before = copy_state_before();
   vmIntrinsics::ID iid = callee->intrinsic_id();
   switch (iid) {

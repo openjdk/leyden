@@ -2036,6 +2036,8 @@ JRT_ENTRY(void, Deoptimization::uncommon_trap_inner(JavaThread* current, jint tr
 
     CompiledMethod* nm = cvf->code();
 
+    bool is_precompiled = (nm->is_nmethod() && nm->as_nmethod()->from_recorded_data());
+
     ScopeDesc*      trap_scope  = cvf->scope();
 
     bool is_receiver_constraint_failure = COMPILER2_PRESENT(VerifyReceiverTypes &&) (reason == Deoptimization::Reason_receiver_constraint);
@@ -2159,7 +2161,11 @@ JRT_ENTRY(void, Deoptimization::uncommon_trap_inner(JavaThread* current, jint tr
         st.print("UNCOMMON TRAP method=%s", trap_scope->method()->name_and_sig_as_C_string());
         st.print("  bci=%d pc=" INTPTR_FORMAT ", relative_pc=" INTPTR_FORMAT JVMCI_ONLY(", debug_id=%d"),
                  trap_scope->bci(), p2i(fr.pc()), fr.pc() - nm->code_begin() JVMCI_ONLY(COMMA debug_id));
-        st.print(" compiler=%s compile_id=%d", nm->compiler_name(), nm->compile_id());
+        st.print(" compiler=%s compile_id=%d%s%s%s%s", nm->compiler_name(), nm->compile_id(),
+                 (nm->as_nmethod()->from_recorded_data()   ? " is_recorded"         : ""),
+                 (nm->as_nmethod()->sca_entry() != nullptr ? " from_sca"            : ""),
+                 (nm->as_nmethod()->preloaded()            ? " preloaded"           : ""),
+                 (nm->as_nmethod()->has_clinit_barriers()  ? " has_clinit_barriers" : ""));
 #if INCLUDE_JVMCI
         if (nm->is_nmethod()) {
           const char* installed_code_name = nm->as_nmethod()->jvmci_name();
@@ -2251,6 +2257,14 @@ JRT_ENTRY(void, Deoptimization::uncommon_trap_inner(JavaThread* current, jint tr
     // and until the compiler gets around to recompiling the trapping method.
     //
     // The other actions cause immediate removal of the present code.
+
+    if (is_precompiled && action != Action_none) {
+      if (Arguments::is_interpreter_only() || TieredStopAtLevel == CompLevel_none) {
+        action = Action_none;
+      } else {
+        action = Action_maybe_recompile;
+      }
+    }
 
     // Traps caused by injected profile shouldn't pollute trap counts.
     bool injected_profile_trap = trap_method->has_injected_profile() &&
@@ -2686,6 +2700,7 @@ const char* Deoptimization::_trap_reason_name[] = {
   "speculate_class_check",
   "speculate_null_check",
   "speculate_null_assert",
+  "speculate_value_assert",
   "rtm_state_change",
   "unstable_if",
   "unstable_fused_if",

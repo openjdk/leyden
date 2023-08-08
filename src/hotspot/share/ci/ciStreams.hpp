@@ -238,10 +238,11 @@ public:
     return get_raw_pool_tag_at(index);
   }
 
-    // True if the klass-using bytecode points to an unresolved klass
+  // True if the klass-using bytecode points to an unresolved klass
   bool is_unresolved_klass() const {
-    constantTag tag = get_constant_pool_tag(get_klass_index());
-    return tag.is_unresolved_klass();
+//    constantTag tag = get_constant_pool_tag(get_klass_index());
+//    return tag.is_unresolved_klass();
+    return false;
   }
 
   bool is_dynamic_constant() const {

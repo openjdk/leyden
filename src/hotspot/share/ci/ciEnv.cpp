@@ -53,7 +53,7 @@
 #include "interpreter/linkResolver.hpp"
 #include "jfr/jfrEvents.hpp"
 #include "jvm.h"
-#include "logging/log.hpp"
+#include "logging/logStream.hpp"
 #include "memory/allocation.inline.hpp"
 #include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
@@ -180,6 +180,23 @@ ciEnv::ciEnv(CompileTask* task)
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
   _dyno_name[0] = '\0';
+
+  if (TrainingData::have_data() && EnforceClassInitDependencies && is_precompiled()) {
+    LogStreamHandle(Trace, precompile) log;
+    if (log.is_enabled()) {
+      log.print("%d: training data: ", task->compile_id());
+      CompileTrainingData* ctd = training_data();
+      if (ctd != nullptr) {
+        ctd->print_on(&log, true /*name_only*/);
+        log.cr();
+        for (int i = 0; i < ctd->init_dep_count(); i++) {
+          log.print("  %2d:", i);
+          ctd->init_dep(i)->print_on(&log, true);
+          log.cr();
+        }
+      }
+    }
+  }
 }
 
 // Record components of a location descriptor string.  Components are appended by the constructor and
@@ -619,6 +636,7 @@ ciKlass* ciEnv::get_klass_by_index_impl(const constantPoolHandle& cpool,
     if (!k->is_loaded()) {
       is_accessible = false;
     } else if (k->loader() != accessor->loader() &&
+               !SystemDictionary::is_builtin_class_loader(accessor->loader()) &&
                get_klass_by_name_impl(accessor, cpool, k->name(), true) == nullptr) {
       // Loaded only remotely.  Not linked yet.
       is_accessible = false;
@@ -644,6 +662,12 @@ ciKlass* ciEnv::get_klass_by_index_impl(const constantPoolHandle& cpool,
   if (ReplayCompiles && ciKlass == _unloaded_ciinstance_klass) {
     // Klass was unresolved at replay dump time and therefore not accessible.
     is_accessible = false;
+  }
+  if (is_precompiled() && StoreSharedCode && PreloadArchivedClasses < 2) {
+    if (ciKlass == _unloaded_ciinstance_klass ||
+        ciKlass == _unloaded_ciobjarrayklass) {
+      is_accessible = false;
+    }
   }
   return ciKlass;
 }
@@ -928,10 +952,8 @@ ciMethod* ciEnv::get_method_by_index_impl(const constantPoolHandle& cpool,
       constantTag tag = cpool->tag_ref_at(index, bc);
       assert(accessor->get_instanceKlass() == cpool->pool_holder(), "not the pool holder?");
       Method* m = lookup_method(accessor, holder, name_sym, sig_sym, bc, tag);
-      if (m != nullptr &&
-          (bc == Bytecodes::_invokestatic
-           ?  m->method_holder()->is_not_initialized()
-           : !m->method_holder()->is_loaded())) {
+      assert(m == nullptr || m->method_holder()->is_loaded(), "");
+      if (m != nullptr && !m->method_holder()->is_loaded()) {
         m = nullptr;
       }
       if (m != nullptr && ReplayCompiles && !ciReplay::is_loaded(m)) {
@@ -1046,6 +1068,7 @@ void ciEnv::register_method(ciMethod* target,
                             bool has_wide_vectors,
                             bool has_monitors,
                             int immediate_oops_patched,
+                            bool install_code,
                             RTMState  rtm_state,
                             SCAEntry* sca_entry) {
   VM_ENTRY_MARK;
@@ -1110,7 +1133,8 @@ void ciEnv::register_method(ciMethod* target,
       dependencies()->encode_content_bytes();
     }
     // Check for {class loads, evolution, breakpoints, ...} during compilation
-    if (!preload) {
+    if (install_code && !preload) {
+      // Check for {class loads, evolution, breakpoints, ...} during compilation
       validate_compile_task_dependencies(target);
     }
 #if INCLUDE_RTM_OPT
@@ -1139,7 +1163,15 @@ void ciEnv::register_method(ciMethod* target,
     assert(offsets->value(CodeOffsets::Deopt) != -1, "must have deopt entry");
     assert(offsets->value(CodeOffsets::Exceptions) != -1, "must have exception entry");
 
-    if (rtm_state == NoRTM && sca_entry == nullptr) {
+    if (StoreSharedCode &&
+        (PrecompileLevel == 0 || is_precompiled()) && // store only precompiled code
+        rtm_state == NoRTM && sca_entry == nullptr) {
+
+      uint decompile_count = 0;
+      if (method->method_data() != nullptr && !is_precompiled()) {
+        decompile_count = method->method_data()->decompile_count();
+      }
+
       sca_entry = SCAFile::store_nmethod(method,
                              compile_id(),
                              entry_bci,
@@ -1154,7 +1186,7 @@ void ciEnv::register_method(ciMethod* target,
                              for_preload,
                              has_unsafe_access,
                              has_wide_vectors,
-                             has_monitors);
+                             has_monitors, decompile_count);
       if (sca_entry != nullptr) {
         sca_entry->set_inlined_bytecodes(num_inlined_bytecodes());
         if (has_clinit_barriers) {
@@ -1168,17 +1200,17 @@ void ciEnv::register_method(ciMethod* target,
         }
       }
     }
-    nm =  nmethod::new_nmethod(method,
-                               compile_id(),
-                               entry_bci,
-                               offsets,
-                               orig_pc_offset,
-                               debug_info(), dependencies(), code_buffer,
-                               frame_words, oop_map_set,
-                               handler_table, inc_table,
-                               compiler, CompLevel(task()->comp_level()),
-                               sca_entry);
-
+    if (install_code) {
+      nm =  nmethod::new_nmethod(method,
+                                 compile_id(),
+                                 entry_bci,
+                                 offsets,
+                                 orig_pc_offset,
+                                 debug_info(), dependencies(), code_buffer,
+                                 frame_words, oop_map_set,
+                                 handler_table, inc_table,
+                                 compiler, CompLevel(task()->comp_level()), sca_entry);
+    }
     // Free codeBlobs
     code_buffer->free_blob();
 
@@ -1246,7 +1278,7 @@ void ciEnv::register_method(ciMethod* target,
     // Compilation succeeded, post what we know about it
     nm->post_compiled_method(task());
     task()->set_num_inlined_bytecodes(num_inlined_bytecodes());
-  } else {
+  } else if (install_code) {
     // The CodeCache is full.
     record_failure("code cache is full");
   }
@@ -1806,3 +1838,70 @@ void ciEnv::dump_inline_data(int compile_id) {
 void ciEnv::dump_replay_data_version(outputStream* out) {
   out->print_cr("version %d", REPLAY_VERSION);
 }
+
+bool ciEnv::is_precompiled() {
+  if (task() != nullptr) {
+    return task()->compile_reason() == CompileTask::Reason_Precompile ||
+           task()->compile_reason() == CompileTask::Reason_Recorded;
+  }
+  return false;
+}
+
+CompileTrainingData* ciEnv::training_data() {
+  ASSERT_IN_VM;
+  MethodTrainingData* mtd = TrainingData::lookup_mtd_for(task()->method());
+  if (mtd != nullptr) {
+    return mtd->last_toplevel_compile(task()->comp_level()); // FIXME: last one?
+  }
+  return nullptr;
+}
+
+bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
+  if (task()->method()->method_holder() == ik) {
+    return true; // FIXME: may be too strong; being_initialized, at least
+  }
+  if (task()->comp_level() == CompLevel_full_optimization &&
+      (PrecompileBarriers > 0 || false /* do_init_barriers */ ) &&
+      (SystemDictionaryShared::lookup_init_state(ik) == InstanceKlass::ClassState::fully_initialized)) {
+    return true; // class init barriers in C2 code
+  }
+  if (EnforceClassInitDependencies) {
+    CompileTrainingData *ctd = training_data();
+    if (ctd != nullptr) {
+      for (int i = 0; i < ctd->init_dep_count(); i++) {
+        KlassTrainingData *dep = ctd->init_dep(i);
+        if (dep->has_holder() && dep->holder() == ik) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
+  ASSERT_IN_VM;
+  assert(is_precompiled(), "");
+  ResourceMark rm;
+  if (StoreSharedCode && PreloadArchivedClasses < 2) {
+    if (is_fully_initialized(ik)) {
+      log_trace(precompile)("%d: fully_initialized: %s", task()->compile_id(), ik->external_name());
+      return InstanceKlass::ClassState::fully_initialized;
+    } else if (MetaspaceObj::is_shared(ik)) {
+      guarantee(ik->is_linked(), "");
+      log_trace(precompile)("%d: linked: %s", task()->compile_id(), ik->external_name());
+      return InstanceKlass::ClassState::linked; // not yet initialized
+    } else {
+      // Not present in the archive.
+      fatal("unloaded: %s", ik->external_name());
+      guarantee(SystemDictionaryShared::lookup_init_state(ik) == ik->init_state(), "");
+      log_trace(precompile)("%d: allocated: %s", task()->compile_id(), ik->external_name());
+      return InstanceKlass::ClassState::allocated; // not yet linked
+    }
+  } else {
+    InstanceKlass::ClassState s = SystemDictionaryShared::lookup_init_state(ik);
+    log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(s), ik->external_name());
+    return s;
+  }
+}
+

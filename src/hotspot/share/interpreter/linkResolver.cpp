@@ -1746,14 +1746,14 @@ void LinkResolver::resolve_invokehandle(CallInfo& result, const constantPoolHand
                             THREAD->class_being_initialized() == nullptr);
 
   LinkInfo link_info(pool, index, Bytecodes::_invokehandle, CHECK);
+  { // Check if the call site has been bound already, and short circuit:
+    bool is_done = resolve_previously_linked_invokehandle(result, link_info, pool, index, CHECK);
+    if (is_done) return;
+  }
   if (log_is_enabled(Info, methodhandles)) {
     ResourceMark rm(THREAD);
     log_info(methodhandles)("resolve_invokehandle %s %s", link_info.name()->as_C_string(),
                             link_info.signature()->as_C_string());
-  }
-  { // Check if the call site has been bound already, and short circuit:
-    bool is_done = resolve_previously_linked_invokehandle(result, link_info, pool, index, CHECK);
-    if (is_done) return;
   }
   resolve_handle_call(result, link_info, CHECK);
 }
@@ -1820,6 +1820,7 @@ void LinkResolver::resolve_invokedynamic(CallInfo& result, const constantPoolHan
   // Any subsequent invokedynamic instruction which shares
   // this bootstrap method will encounter the resolution of MethodHandleInError.
 
+  SystemDictionaryShared::record_init_info(pool->pool_holder(), indy_index);
   resolve_dynamic_call(result, bootstrap_specifier, CHECK);
 
   LogTarget(Debug, methodhandles, indy) lt_indy;

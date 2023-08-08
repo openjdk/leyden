@@ -436,7 +436,8 @@ void Compilation::install_code(int frame_size) {
     has_unsafe_access(),
     SharedRuntime::is_wide_vector(max_vector_size()),
     has_monitors(),
-    _immediate_oops_patched
+    _immediate_oops_patched,
+    should_install_code()
   );
 }
 
@@ -478,8 +479,7 @@ void Compilation::compile_method() {
   // Note: make sure we mark the method as not compilable!
   CHECK_BAILOUT();
 
-  if (should_install_code()) {
-    // install code
+  { // install code
     PhaseTraceTime timeit(_t_codeinstall);
     install_code(frame_size);
   }

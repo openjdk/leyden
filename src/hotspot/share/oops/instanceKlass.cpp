@@ -1244,6 +1244,34 @@ void InstanceKlass::initialize_impl(TRAPS) {
       const methodHandle mh(THREAD, methods()->at(i));
       CompilationPolicy::compile_if_required_after_init(mh, THREAD);
     }
+
+    if (ForceRecompilation && Universe::is_fully_initialized() && is_shared()) {
+      int init_count = SystemDictionaryShared::compute_init_count(this);
+      log_debug(recompile)("init_count = %d", init_count);
+
+      if (init_count <= ForceRecompilationThreshold) {
+        ForceRecompilation = false; // FIXME: coordinate recompilation
+
+        log_info(recompile)("Recompilation started");
+
+        LogTarget(Trace, recompile) lt;
+        if (lt.is_enabled()) {
+          ResourceMark rm(THREAD);
+          LogStream ls(lt);
+          SystemDictionaryShared::print_init_count(&ls);
+        }
+
+        IntFlagSetting fs(PrecompileBarriers, 0); // produce barrier-free code for recompilation purposes
+        int count = SystemDictionaryShared::force_compilation(true, THREAD);
+        assert(!HAS_PENDING_EXCEPTION, "");
+        if (log_is_enabled(Info, cds, nmethod)) {
+          MutexLocker ml(Threads_lock);
+          CodeCache::arm_all_nmethods();
+        }
+
+        log_info(recompile)("Recompilation finished: %d methods recompiled", count);
+      }
+    }
   }
 }
 
@@ -1269,6 +1297,18 @@ void InstanceKlass::set_initialization_state_and_notify(ClassState state, JavaTh
     set_init_thread(nullptr); // reset _init_thread before changing _init_state
     set_init_state(state);
   }
+
+  if (RecordTraining && state == ClassState::fully_initialized) {
+    KlassTrainingData* ktd = KlassTrainingData::make(this);
+    for (JavaFieldStream fs(this); !fs.done(); fs.next()) {
+      if (fs.access_flags().is_static() &&
+          fs.access_flags().is_final() &&
+          fs.initval_index() == 0) { // skip constants initialized directly by the JVM
+        SystemDictionaryShared::record_static_field_value(fs.field_descriptor());
+      }
+    }
+  }
+
   ml.notify_all();
 }
 
@@ -1618,7 +1658,7 @@ void InstanceKlass::call_class_initializer(TRAPS) {
   if (lt.is_enabled()) {
     ResourceMark rm(THREAD);
     LogStream ls(lt);
-    ls.print("%d Initializing ", call_class_initializer_counter++);
+    ls.print("%d Initializing ", call_class_initializer_counter);
     name()->print_value_on(&ls);
     ls.print_cr("%s (" PTR_FORMAT ")", h_method() == nullptr ? "(no method)" : "", p2i(this));
   }
@@ -1642,6 +1682,13 @@ void InstanceKlass::call_class_initializer(TRAPS) {
       tdata->record_initialization_end();
       THREAD->set_class_being_initialized(outer);
     }
+  }
+  if (lt.is_enabled()) {
+    ResourceMark rm(THREAD);
+    LogStream ls(lt);
+    ls.print("%d Initialized ", call_class_initializer_counter++);
+    name()->print_value_on(&ls);
+    ls.print_cr("%s (" PTR_FORMAT ")", h_method() == nullptr ? "(no method)" : "", p2i(this));
   }
 }
 
@@ -3620,6 +3667,10 @@ const char* InstanceKlass::init_state_name() const {
   return state_names[init_state()];
 }
 
+const char* InstanceKlass::state2name(ClassState s) {
+  return state_names[s];
+}
+
 void InstanceKlass::print_on(outputStream* st) const {
   assert(is_klass(), "must be klass");
   Klass::print_on(st);
@@ -4163,6 +4214,8 @@ void InstanceKlass::set_init_state(ClassState state) {
 #endif
   assert(_init_thread == nullptr, "should be cleared before state change");
   Atomic::store(&_init_state, state);
+
+  SystemDictionaryShared::record_init_info(this);
 }
 
 #if INCLUDE_JVMTI

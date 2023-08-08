@@ -463,7 +463,7 @@ void LIRGenerator::klass2reg_with_patching(LIR_Opr r, ciMetadata* obj, CodeEmitI
   /* C2 relies on constant pool entries being resolved (ciTypeFlow), so if tiered compilation
    * is active and the class hasn't yet been resolved we need to emit a patch that resolves
    * the class. */
-  if ((!CompilerConfig::is_c1_only_no_jvmci() && need_resolve) || !obj->is_loaded() || PatchALot) {
+  if ((/*!CompilerConfig::is_c1_only_no_jvmci() &&*/ need_resolve) || !obj->is_loaded() || PatchALot) {
     assert(info != nullptr, "info must be set if class is not loaded");
     __ klass2reg_patch(nullptr, r, info);
   } else {

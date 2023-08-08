@@ -23,10 +23,10 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cds_globals.hpp"
 #include "compiler/compileLog.hpp"
 #include "interpreter/linkResolver.hpp"
-#include "memory/universe.hpp"
-#include "oops/objArrayKlass.hpp"
+#include "logging/logStream.hpp"
 #include "opto/addnode.hpp"
 #include "opto/castnode.hpp"
 #include "opto/memnode.hpp"
@@ -35,7 +35,6 @@
 #include "opto/runtime.hpp"
 #include "opto/subnode.hpp"
 #include "runtime/deoptimization.hpp"
-#include "runtime/handles.inline.hpp"
 
 //=============================================================================
 // Helper methods for _get* and _put* bytecodes
@@ -69,6 +68,11 @@ void Parse::do_field_access(bool is_get, bool is_field) {
     if (stopped())  return;
   }
 
+  if ((PrecompileBarriers & 4) == 4 &&
+      C->needs_clinit_barrier_precompiled(field, method())) {
+    clinit_barrier_precompiled(field_holder, method());
+    if (stopped())  return;
+  }
   assert(field->will_link(method(), bc()), "getfield: typeflow responsibility");
 
   // Note:  We do not check for an unloaded field type here any more.
@@ -104,6 +108,42 @@ void Parse::do_field_access(bool is_get, bool is_field) {
   }
 }
 
+Node* GraphKit::speculate_type(Node* obj, ciKlass* predicted_type) {
+  const TypeOopPtr* toop = TypeOopPtr::make_from_klass(predicted_type, Type::trust_interfaces);
+
+  enum { _obj_path = 1, _null_path, PATH_LIMIT };
+  RegionNode* region = new RegionNode(PATH_LIMIT);
+  Node*       phi    = new PhiNode(region, toop);
+  C->set_has_split_ifs(true); // Has chance for split-if optimization
+
+  // Null check; get casted pointer; set region slot 3
+  Node* null_ctl = top();
+  Node* not_null_obj = null_check_oop(obj, &null_ctl);
+
+  if (stopped()) {
+    set_control(null_ctl);
+    return null();
+  }
+
+  Node* cast_obj = not_null_obj;
+  Node* obj_ctl = type_check_receiver(cast_obj, predicted_type, PROB_ALWAYS, &cast_obj);
+
+  { PreserveJVMState pjvms(this);
+    set_control(obj_ctl);
+    uncommon_trap_exact(Deoptimization::Reason_speculate_class_check, Deoptimization::Action_make_not_entrant);
+  }
+
+  region->init_req(_obj_path, control());
+  region->init_req(_null_path, null_ctl);
+
+  phi->init_req(_null_path, null());
+  phi->init_req( _obj_path, cast_obj);
+  phi->raise_bottom_type(_gvn.type(cast_obj)->meet_speculative(TypePtr::NULL_PTR));
+
+  // A merge of null or Casted-NotNull obj
+  set_control(_gvn.transform(region));
+  return _gvn.transform(phi);
+}
 
 void Parse::do_get_xxx(Node* obj, ciField* field, bool is_field) {
   BasicType bt = field->layout_type();
@@ -147,6 +187,8 @@ void Parse::do_get_xxx(Node* obj, ciField* field, bool is_field) {
       type = TypeInstPtr::BOTTOM;
       must_assert_null = true;
     } else if (field->is_static_constant()) {
+      assert((PrecompileBarriers & 16) == 0 || !CURRENT_ENV->is_precompiled(), "");
+
       // This can happen if the constant oop is non-perm.
       ciObject* con = field->constant_value().as_object();
       // Do not "join" in the previous type; it doesn't add value,
@@ -165,6 +207,85 @@ void Parse::do_get_xxx(Node* obj, ciField* field, bool is_field) {
   }
 
   Node* ld = access_load_at(obj, adr, adr_type, type, bt, decorators);
+
+  if (CURRENT_ENV->is_precompiled() && is_obj && strcmp(field_klass->name(), "jdk/vm/ci/meta/SpeculationLog$Speculation") == 0) {
+    LogStreamHandle(Debug, precompile) log;
+    if (log.is_enabled()) {
+      log.print("getstatic: must_be_not_null ");
+      field->print_on(&log);
+    }
+    ld = must_be_not_null(ld, true);
+  } else {
+    log_trace(precompile)("getstatic: %s", field_klass->name());
+  }
+
+  if (UseNewCode && CURRENT_ENV->is_precompiled() && field->is_static() && field->is_constant() && (PrecompileBarriers & 16) == 16) {
+    ciConstant con = field->archived_value();
+    if (con.is_valid()) {
+//      LogStreamHandle(Debug, cds, dynamic) log;
+//      if (log.is_enabled()) {
+//        ResourceMark rm;
+//        log.print("constant_value: STATIC: ");
+//        field->print_on(&log);
+//        log.print(" = ");
+//        con.print_on(&log);
+//      }
+
+      if (is_obj && !con.as_object()->is_null_object()) {
+        ciKlass* predicted_type = con.as_object()->as_instance()->java_lang_Class_klass();
+        const TypeOopPtr* toop = TypeOopPtr::make_from_klass(predicted_type, Type::trust_interfaces);
+        if (_gvn.type(ld)->join(toop)->empty()) {
+          // nothing to do: speculative info contradicts observations
+        } else if (_gvn.type(ld)->higher_equal(toop)) {
+          // nothing to do: speculative info doesn't add anything
+        } else if (!too_many_traps(Deoptimization::Reason_speculate_class_check)) {
+          ld = speculate_type(ld, predicted_type);
+          assert(!stopped(), "");
+        }
+      } else {
+        assert(is_java_primitive(bt) || con.as_object()->is_null_object(), ""); // primitive constant or null
+        const Type* tcon = Type::make_from_constant(con);
+        const Type* tval = _gvn.type(ld);
+        const Type* tboth = tcon->join_speculative(tval);
+
+        if (tboth->empty()) {
+          // nothing to do: speculative info contradicts observations
+        } else if (tboth == tval) {
+          // nothing to do: already a constant
+        } else {
+          Node* c = makecon(tcon);
+
+          Node* chk = nullptr;
+          switch (bt) {
+            case T_BOOLEAN: // fall-through
+            case T_BYTE:    // fall-through
+            case T_SHORT:   // fall-through
+            case T_CHAR:    // fall-through
+            case T_INT:     chk = _gvn.transform(new CmpINode(ld, c)); break;
+            case T_FLOAT:   chk = _gvn.transform(new CmpFNode(ld, c)); break;
+            case T_DOUBLE:  chk = _gvn.transform(new CmpDNode(ld, c)); break;
+            case T_LONG:    chk = _gvn.transform(new CmpLNode(ld, c)); break;
+
+            case T_ARRAY:   // fall-through
+            case T_OBJECT:  chk = _gvn.transform(new CmpPNode(ld, c)); break;
+
+            default: ShouldNotReachHere();
+          }
+          // TODO: cover being_initialized case and check for default value before throwing the code away
+          Node* tst = _gvn.transform(new BoolNode(chk, BoolTest::eq));
+          { BuildCutout unless(this, tst, PROB_MAX);
+            uncommon_trap(Deoptimization::Reason_speculate_value_assert, Deoptimization::Action_make_not_entrant);
+          }
+//          ld = _gvn.transform(new CastPPNode(ld, tboth));
+          ld = c;
+        }
+      }
+      assert(!stopped(), "");
+      if (stopped()) {
+        return;
+      }
+    }
+  }
 
   // Adjust Java stack
   if (type2size[bt] == 1)

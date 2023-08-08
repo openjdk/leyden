@@ -1244,8 +1244,10 @@ void CompileBroker::compile_method_base(const methodHandle& method,
   guarantee(!method->is_abstract(), "cannot compile abstract methods");
   assert(method->method_holder()->is_instance_klass(),
          "sanity check");
-  assert(!method->method_holder()->is_not_initialized() || compile_reason == CompileTask::Reason_Preload,
-         "method holder must be initialized");
+  assert(!method->method_holder()->is_not_initialized()   || 
+         compile_reason == CompileTask::Reason_Preload    ||
+         compile_reason == CompileTask::Reason_Precompile ||
+         compile_reason == CompileTask::Reason_Recorded, "method holder must be initialized");
   assert(!method->is_method_handle_intrinsic(), "do not enqueue these guys");
 
   if (CIPrintRequests) {
@@ -1269,7 +1271,8 @@ void CompileBroker::compile_method_base(const methodHandle& method,
   // A request has been made for compilation.  Before we do any
   // real work, check to see if the method has been compiled
   // in the meantime with a definitive result.
-  if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation)) {
+  if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation) &&
+      (compile_reason != CompileTask::CompileReason::Reason_Recorded)) {
     return;
   }
 
@@ -1327,7 +1330,8 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     // We need to check again to see if the compilation has
     // completed.  A previous compilation may have registered
     // some result.
-    if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation)) {
+    if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation) &&
+        (compile_reason != CompileTask::CompileReason::Reason_Recorded)) {
       return;
     }
 
@@ -1420,6 +1424,20 @@ void CompileBroker::compile_method_base(const methodHandle& method,
                                requires_online_compilation, blocking);
   }
 
+  LogStreamHandle(Debug, compilation, training) log;
+  if (log.is_enabled()) {
+    MethodTrainingData*  mtd = TrainingData::lookup_mtd_for(method());
+    CompileTrainingData* ctd = (mtd != nullptr ? mtd->last_toplevel_compile(comp_level) : nullptr);
+
+    log.print("COMPILE %d %d", task->compile_id(), requires_online_compilation);
+    if (ctd != nullptr) {
+      log.print_raw(" CTD ");
+      ctd->print_on(&log, true);
+    } else {
+      log.print(" %s=null", (mtd == nullptr ? "mtd" : "ctd"));
+    }
+  }
+
   if (blocking) {
     wait_for_completion(task);
   }
@@ -1465,7 +1483,14 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
   assert(method->method_holder()->is_instance_klass(), "not an instance method");
   assert(osr_bci == InvocationEntryBci || (0 <= osr_bci && osr_bci < method->code_size()), "bci out of range");
   assert(!method->is_abstract() && (osr_bci == InvocationEntryBci || !method->is_native()), "cannot compile abstract/native methods");
-  assert(!method->method_holder()->is_not_initialized() || compile_reason == CompileTask::Reason_Preload, "method holder must be initialized");
+  assert(!method->method_holder()->is_not_initialized()   ||
+         compile_reason == CompileTask::Reason_Preload    ||
+         compile_reason == CompileTask::Reason_Precompile ||
+         compile_reason == CompileTask::Reason_Recorded, "method holder must be initialized");
+  guarantee(comp_level <= TieredStopAtLevel ||
+            compile_reason == CompileTask::Reason_Preload ||
+            compile_reason == CompileTask::Reason_Precompile ||
+            compile_reason == CompileTask::Reason_Recorded , "%d", comp_level);
   // return quickly if possible
 
   // lock, make sure that the compilation
@@ -1485,7 +1510,8 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     // standard compilation
     CompiledMethod* method_code = method->code();
     if (method_code != nullptr && method_code->is_nmethod()) {
-      if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation)) {
+      if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation) &&
+          (compile_reason != CompileTask::CompileReason::Reason_Recorded)) {
         return (nmethod*) method_code;
       }
     }
@@ -1580,8 +1606,10 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     if (!should_compile_new_jobs()) {
       return nullptr;
     }
-    bool is_blocking = !directive->BackgroundCompilationOption || ReplayCompiles;
-    compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
+    bool is_blocking = !directive->BackgroundCompilationOption || ReplayCompiles ||
+                       (!requires_online_compilation && (compile_reason == CompileTask::Reason_Precompile ||
+                                                         compile_reason == CompileTask::Reason_Recorded));
+	  compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
   }
 
   // return requested nmethod
@@ -1622,7 +1650,7 @@ bool CompileBroker::compilation_is_complete(const methodHandle& method,
       if (result == nullptr) {
         return false;
       }
-      if (online_only && result->is_sca()) {
+      if (online_only && (result->is_sca() || result->as_nmethod()->from_recorded_data())) {
         return false;
       }
       bool same_level = (comp_level == result->comp_level());
@@ -2062,6 +2090,32 @@ void CompileBroker::compiler_thread_loop() {
 
     CompilationPolicy::recompilation_step(RecompilationWorkUnitSize, thread);
 
+    if (ForceRecompilation && Universe::is_fully_initialized() && os::elapsedTime() >= DelayRecompilation) {
+      log_debug(recompile)("init_count = %d, elapsed_time=%.3f delay=%.3f",
+                           SystemDictionaryShared::compute_init_count(nullptr), os::elapsedTime(), DelayRecompilation);
+
+      ForceRecompilation = false; // FIXME: coordinate recompilation
+      log_info(recompile)("Recompilation started");
+
+      LogTarget(Trace, recompile) lt;
+      if (lt.is_enabled()) {
+        ResourceMark rm(thread);
+        LogStream ls(lt);
+        SystemDictionaryShared::print_init_count(&ls);
+      }
+
+      IntFlagSetting fs(PrecompileBarriers, 0); // produce barrier-free code for recompilation purposes
+      assert(!thread->has_pending_exception(), "");
+      int count = SystemDictionaryShared::force_compilation(true, thread);
+      assert(!thread->has_pending_exception(), "");
+      if (log_is_enabled(Info, cds, nmethod)) {
+        MutexLocker ml(Threads_lock);
+        CodeCache::arm_all_nmethods();
+      }
+
+      log_info(recompile)("Recompilation finished: %d methods recompiled", count);
+    }
+
     CompileTask* task = queue->get(thread);
 
     if (task == nullptr) {
@@ -2414,6 +2468,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
     TraceTime t1("compilation", &time);
     EventCompilation event;
 
+    bool install_code = true;
     if (comp == nullptr) {
       ci_env.record_method_not_compilable("no compiler");
     } else if (!ci_env.failing()) {
@@ -2423,7 +2478,10 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
           locker.wait();
         }
       }
-      comp->compile_method(&ci_env, target, osr_bci, true, directive);
+      if (StoreSharedCode && PreloadArchivedClasses < 2 && task->is_precompiled()) {
+        install_code = false; // not suitable in the current context
+      }
+      comp->compile_method(&ci_env, target, osr_bci, install_code, directive);
 
       /* Repeat compilation without installing code for profiling purposes */
       int repeat_compilation_count = directive->RepeatCompilationOption;
@@ -2437,7 +2495,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
 
     DirectivesStack::release(directive);
 
-    if (!ci_env.failing() && !task->is_success()) {
+    if (!ci_env.failing() && !task->is_success() && install_code) {
       assert(ci_env.failure_reason() != nullptr, "expect failure reason");
       assert(false, "compiler should always document failure: %s", ci_env.failure_reason());
       // The compiler elected, without comment, not to register a result.

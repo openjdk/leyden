@@ -1731,17 +1731,40 @@ Klass* SystemDictionary::find_constrained_instance_or_array_klass(
     if (t != T_OBJECT) {
       klass = Universe::typeArrayKlassObj(t);
     } else {
-      MutexLocker mu(current, SystemDictionary_lock);
-      klass = LoaderConstraintTable::find_constrained_klass(ss.as_symbol(), class_loader_data(class_loader));
+      // trusted loaders: system -> platform -> boot
+      if (klass == nullptr) {
+        if (SystemDictionary::is_platform_class_loader(class_loader())) {
+          klass = SystemDictionary::find_constrained_instance_or_array_klass(current, class_name, Handle()); // boot loader
+        } else if (SystemDictionary::is_system_class_loader(class_loader())) {
+          Handle platform_loader(current, SystemDictionary::java_platform_loader());
+          klass = SystemDictionary::find_constrained_instance_or_array_klass(current, class_name, platform_loader); // platform loader
+        }
+      }
+      if (klass == nullptr) {
+        MutexLocker mu(current, SystemDictionary_lock);
+        // Non-array classes are easy: simply check the constraint table.
+        klass = LoaderConstraintTable::find_constrained_klass(class_name, class_loader_data(class_loader));
+      }
     }
     // If element class already loaded, allocate array klass
     if (klass != nullptr) {
       klass = klass->array_klass_or_null(ndims);
     }
   } else {
-    MutexLocker mu(current, SystemDictionary_lock);
-    // Non-array classes are easy: simply check the constraint table.
-    klass = LoaderConstraintTable::find_constrained_klass(class_name, class_loader_data(class_loader));
+    // trusted loaders: system -> platform -> boot
+    if (klass == nullptr) {
+      if (SystemDictionary::is_platform_class_loader(class_loader())) {
+        klass = SystemDictionary::find_constrained_instance_or_array_klass(current, class_name, Handle()); // boot loader
+      } else if (SystemDictionary::is_system_class_loader(class_loader())) {
+        Handle platform_loader(current, SystemDictionary::java_platform_loader());
+        klass = SystemDictionary::find_constrained_instance_or_array_klass(current, class_name, platform_loader); // platform loader
+      }
+    }
+    if (klass == nullptr) {
+      MutexLocker mu(current, SystemDictionary_lock);
+      // Non-array classes are easy: simply check the constraint table.
+      klass = LoaderConstraintTable::find_constrained_klass(class_name, class_loader_data(class_loader));
+    }
   }
 
   return klass;

@@ -263,6 +263,9 @@ class nmethod : public CompiledMethod {
   // used by jvmti to track if an event has been posted for this nmethod.
   bool _load_reported;
 
+  bool _from_recorded_data;
+  bool _from_recorded_data_marked;
+
   // Protected by CompiledMethod_lock
   volatile signed char _state;         // {not_installed, in_use, not_used, not_entrant}
 
@@ -616,6 +619,12 @@ public:
 
   // jvmti support:
   void post_compiled_method_load_event(JvmtiThreadState* state = nullptr);
+
+  bool      from_recorded_data() const { return _from_recorded_data; }
+  void  set_from_recorded_data()       { _from_recorded_data = true; }
+
+  bool      from_recorded_data_marked() const { return _from_recorded_data_marked; }
+  void  set_from_recorded_data_marked()       { _from_recorded_data_marked = true; }
 
   // verify operations
   void verify();

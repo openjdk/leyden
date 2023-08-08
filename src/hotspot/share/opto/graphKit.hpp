@@ -407,6 +407,10 @@ class GraphKit : public Phase {
 
   void clinit_barrier(ciInstanceKlass* ik, ciMethod* context);
 
+  void clinit_barrier_precompiled(ciInstanceKlass* ik, ciMethod* context);
+
+  Node* speculate_type(Node* obj, ciKlass* k);
+
   // Check for unique class for receiver at call
   ciKlass* profile_has_unique_klass() {
     ciCallProfile profile = method()->call_profile_at_bci(bci());

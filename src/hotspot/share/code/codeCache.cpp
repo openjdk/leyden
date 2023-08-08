@@ -1548,20 +1548,16 @@ void CodeCache::print_internals() {
 
   int i = 0;
   FOR_ALL_ALLOCABLE_HEAPS(heap) {
-    if ((_nmethod_heaps->length() >= 1) && Verbose) {
-      tty->print_cr("-- %s --", (*heap)->name());
-    }
+    int heap_total = 0;
+    tty->print_cr("-- %s --", (*heap)->name());
     FOR_ALL_BLOBS(cb, *heap) {
       total++;
+      heap_total++;
       if (cb->is_nmethod()) {
         nmethod* nm = (nmethod*)cb;
 
-        if (Verbose && nm->method() != nullptr) {
-          ResourceMark rm;
-          char *method_name = nm->method()->name_and_sig_as_C_string();
-          tty->print("%s", method_name);
-          if(nm->is_not_entrant()) { tty->print_cr(" not-entrant"); }
-        }
+        tty->print("%4d: ", heap_total);
+        CompileTask::print(tty, nm, (nm->is_not_entrant() ? "non-entrant" : ""), true, true);
 
         nmethodCount++;
 
@@ -1721,6 +1717,26 @@ void CodeCache::print() {
   }
 
 #endif // !PRODUCT
+}
+
+void CodeCache::print_nmethods_on(outputStream* st) {
+  ResourceMark rm;
+  int i = 0;
+  FOR_ALL_ALLOCABLE_HEAPS(heap) {
+    st->print_cr("-- %s --", (*heap)->name());
+    FOR_ALL_BLOBS(cb, *heap) {
+      i++;
+      if (cb->is_nmethod()) {
+        nmethod* nm = (nmethod*)cb;
+        st->print("%4d: ", i);
+        CompileTask::print(st, nm, nullptr, true, false);
+
+        const char non_entrant_char = (nm->is_not_entrant()            ? 'N' : ' ');
+        const char marked_char      = (nm->from_recorded_data_marked() ? 'M' : ' ');
+        st->print_cr("  %c%c", non_entrant_char, marked_char);
+      }
+    }
+  }
 }
 
 void CodeCache::print_summary(outputStream* st, bool detailed) {

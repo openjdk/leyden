@@ -25,6 +25,7 @@
 #ifndef SHARE_CI_CIFIELD_HPP
 #define SHARE_CI_CIFIELD_HPP
 
+#include <classfile/systemDictionaryShared.hpp>
 #include "ci/ciClassList.hpp"
 #include "ci/ciConstant.hpp"
 #include "ci/ciFlags.hpp"
@@ -52,6 +53,7 @@ private:
   ciMethod*        _known_to_link_with_put;
   ciInstanceKlass* _known_to_link_with_get;
   ciConstant       _constant_value;
+  ciConstant       _initial_value;
 
   ciType* compute_type();
   ciType* compute_type_impl();
@@ -177,9 +179,12 @@ public:
 
   bool is_autobox_cache();
 
+  ciConstant archived_value();
+
   // Debugging output
-  void print();
+  void print_on(outputStream* st);
   void print_name_on(outputStream* st);
+  void print() { print_on(tty); }
 };
 
 #endif // SHARE_CI_CIFIELD_HPP

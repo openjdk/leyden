@@ -182,6 +182,13 @@ int BarrierSetNMethod::nmethod_stub_entry_barrier(address* return_address_ptr) {
     return 0;
   }
 
+  if (log_is_enabled(Info, cds, nmethod) && nm->from_recorded_data()) {
+    if (!nm->from_recorded_data_marked()) {
+      log_info(cds,nmethod)("ENTRY BARRIER: %d R", nm->compile_id());
+      nm->set_from_recorded_data_marked();
+    }
+  }
+
   assert(!nm->is_osr_method(), "Should not reach here");
   // Called upon first entry after being armed
   bool may_enter = bs_nm->nmethod_entry_barrier(nm);

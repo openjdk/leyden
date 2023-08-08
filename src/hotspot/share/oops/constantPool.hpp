@@ -691,6 +691,12 @@ class ConstantPool : public Metadata {
     resolve_string_constants_impl(h_this, CHECK);
   }
 
+  void resolve_klass_constants(TRAPS) {
+    constantPoolHandle h_this(THREAD, this);
+    resolve_string_constants_impl(h_this, CHECK);
+    resolve_klass_constants_impl(h_this, CHECK);
+  }
+
 #if INCLUDE_CDS
   // CDS support
   objArrayOop prepare_resolved_references_for_archiving() NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
@@ -842,6 +848,8 @@ class ConstantPool : public Metadata {
 
   // Resolve string constants (to prevent allocation during compilation)
   static void resolve_string_constants_impl(const constantPoolHandle& this_cp, TRAPS);
+
+  static void resolve_klass_constants_impl(const constantPoolHandle& this_cp, TRAPS);
 
   static oop resolve_constant_at_impl(const constantPoolHandle& this_cp, int index, int cache_index,
                                       bool* status_return, TRAPS);

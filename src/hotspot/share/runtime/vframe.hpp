@@ -297,6 +297,12 @@ class vframeStreamCommon : StackObj {
       assert( cb() != nullptr && cb()->is_compiled(), "usage");
       return (CompiledMethod*) cb();
   }
+  CompiledMethod*   nm_or_null() const {
+    if (cb() != nullptr && cb()->is_compiled()) {
+      return nm();
+    }
+    return nullptr;
+  }
 
   const RegisterMap* reg_map() { return &_reg_map; }
 

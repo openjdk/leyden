@@ -3025,6 +3025,40 @@ void GraphKit::clinit_barrier(ciInstanceKlass* ik, ciMethod* context) {
   }
 }
 
+void GraphKit::clinit_barrier_precompiled(ciInstanceKlass* ik, ciMethod* context) {
+  assert(C->needs_clinit_barrier_precompiled(ik, context), "");
+
+  LogStreamHandle(Trace, precompile) log;
+  if (log.is_enabled()) {
+    log.print("clinit_barrier_precompiled ");
+    ik->print_name_on(&log);
+    log.print(" in ");
+    context->print_name(&log);
+  }
+
+  Node* klass = makecon(TypeKlassPtr::make(ik, Type::trust_interfaces));
+
+  int init_state_off = in_bytes(InstanceKlass::init_state_offset());
+  Node* adr = basic_plus_adr(top(), klass, init_state_off);
+  Node* init_state = LoadNode::make(_gvn, nullptr, immutable_memory(), adr,
+                                    adr->bottom_type()->is_ptr(), TypeInt::BYTE,
+                                    T_BYTE, MemNode::unordered);
+  init_state = _gvn.transform(init_state);
+
+  Node* being_initialized_state = makecon(TypeInt::make(InstanceKlass::fully_initialized));
+
+  Node* chk = _gvn.transform(new CmpINode(being_initialized_state, init_state));
+  Node* tst = _gvn.transform(new BoolNode(chk, BoolTest::eq));
+
+  { BuildCutout unless(this, tst, PROB_MAX);
+    uncommon_trap(Deoptimization::Reason_uninitialized, Deoptimization::Action_none);
+  }
+  if (UseNewCode) {
+    insert_mem_bar(Op_MemBarCPUOrder);
+  }
+  C->set_has_clinit_barriers(true);
+}
+
 //------------------------maybe_cast_profiled_receiver-------------------------
 // If the profile has seen exactly one type, narrow to exactly that type.
 // Subsequent type checks will always fold up.

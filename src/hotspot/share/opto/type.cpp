@@ -5133,7 +5133,7 @@ void TypeAryPtr::dump2( Dict &d, uint depth, outputStream *st ) const {
   switch( _ptr ) {
   case Constant:
     st->print(" " INTPTR_FORMAT " ", p2i(const_oop()));
-    const_oop()->print(st);
+    const_oop()->print_on(st);
     break;
   case BotPTR:
     if (!WizardMode && !Verbose) {

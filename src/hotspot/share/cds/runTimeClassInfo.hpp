@@ -255,5 +255,9 @@ public:
 class RunTimeSharedDictionary : public OffsetCompactHashtable<
   Symbol*,
   const RunTimeClassInfo*,
-  RunTimeClassInfo::EQUALS> {};
+  RunTimeClassInfo::EQUALS> {
+
+public:
+  void print_on(outputStream* st);
+};
 #endif // SHARED_CDS_SHAREDCLASSINFO_HPP

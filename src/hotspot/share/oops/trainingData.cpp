@@ -200,7 +200,12 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
     mcs = Method::build_method_counters(Thread::current(), method());
   }
 
-  Key key(method());
+  KlassTrainingData* holder = KlassTrainingData::make(method->method_holder(), null_if_not_found);
+  assert(holder != nullptr || null_if_not_found, "");
+  if (holder == nullptr) {
+    return nullptr;
+  }
+  Key key(method->name(), method->signature(), holder);
   TrainingData* td = have_data()? lookup_archived_training_data(&key) : nullptr;
   if (td != nullptr) {
     mtd = td->as_MethodTrainingData();
@@ -220,7 +225,7 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
       return mtd;
     }
   }
-  assert(td == nullptr && mtd == nullptr, "Should return if have result");
+  assert(td == nullptr && mtd == nullptr && !null_if_not_found, "Should return if have result");
   KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder());
   {
     TrainingDataLocker l;
@@ -310,9 +315,12 @@ CompileTrainingData* CompileTrainingData::make(MethodTrainingData* this_method,
   }
   tdata->_next = (*insp);
   (*insp) = tdata;
-  if (top_method->_last_toplevel_compiles[level - 1] == nullptr || top_method->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
-    top_method->_last_toplevel_compiles[level - 1] = tdata;
+  if (top_method->_last_compiles[level - 1] == nullptr || top_method->_last_compiles[level - 1]->compile_id() < compile_id) {
+    top_method->_last_compiles[level - 1] = tdata;
     top_method->_highest_top_level = MAX2(top_method->_highest_top_level, level);
+  }
+  if (top_method->_first_compiles[level - 1] == nullptr || top_method->_first_compiles[level - 1]->compile_id() > compile_id) {
+    top_method->_first_compiles[level - 1] = tdata;
   }
   return tdata;
 }
@@ -320,14 +328,21 @@ CompileTrainingData* CompileTrainingData::make(MethodTrainingData* this_method,
 void CompileTrainingData::dec_init_deps_left(KlassTrainingData* ktd) {
   LogStreamHandle(Trace, training) log;
   if (log.is_enabled()) {
-    log.print("CTD "); print_on(&log); log.cr();
-    log.print("KTD "); ktd->print_on(&log); log.cr();
+    log.print("CTD "); print_on(&log);
+    log.print("; KTD "); ktd->print_on(&log);
   }
   assert(ktd!= nullptr && ktd->has_holder(), "");
   assert(_init_deps.contains(ktd), "");
   assert(_init_deps_left > 0, "");
 
-  Atomic::sub(&_init_deps_left, 1);
+  int v = Atomic::sub(&_init_deps_left, 1);
+
+  if (v == 0) {
+    LogStreamHandle(Info, training) log;
+    if (log.is_enabled()) {
+      log.print("CTD "); print_on(&log); log.cr();
+    }
+  }
 }
 
 void CompileTrainingData::print_on(outputStream* st, bool name_only) const {
@@ -977,6 +992,7 @@ KlassTrainingData* KlassTrainingData::make(const char* name, const char* loader_
 }
 
 KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_not_found) {
+  guarantee(holder != nullptr, "");
   Key key(holder);
   TrainingData* td = have_data() ? lookup_archived_training_data(&key) : nullptr;
   KlassTrainingData* ktd = nullptr;
@@ -1059,7 +1075,6 @@ void KlassTrainingData::init_holder(const InstanceKlass* klass) {
   }
 
   // reset state derived from any previous klass
-  _static_fields = nullptr;
   _fieldinit_count = 0;
   _clinit_is_done = false;
   _clinit_sequence_index = 0;
@@ -1551,6 +1566,19 @@ void TrainingData::print_archived_training_data_on(outputStream* st) {
   TrainingDataPrinter tdp(st);
   TrainingDataLocker::initialize();
   _archived_training_data_dictionary.iterate(&tdp);
+  if (_recompilation_schedule != nullptr && _recompilation_schedule->length() > 0) {
+    st->print_cr("Archived TrainingData Recompilation Schedule");
+    for (int i = 0; i < _recompilation_schedule->length(); i++) {
+      st->print("%4d: ", i);
+      MethodTrainingData* mtd = _recompilation_schedule->at(i);
+      if (mtd != nullptr) {
+        mtd->print_on(st);
+      } else {
+        st->print("nullptr");
+      }
+      st->cr();
+    }
+  }
 }
 
 void TrainingData::Key::metaspace_pointers_do(MetaspaceClosure *iter) {
@@ -1644,6 +1672,31 @@ TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {
   return nullptr;
 }
 
+KlassTrainingData* TrainingData::lookup_ktd_for(InstanceKlass* ik) {
+  if (TrainingData::have_data() && ik != nullptr && ik->is_loaded()) {
+    TrainingData::Key key(ik);
+    TrainingData* td = TrainingData::lookup_archived_training_data(&key);
+    if (td != nullptr && td->is_KlassTrainingData()) {
+      return td->as_KlassTrainingData();
+    }
+  }
+  return nullptr;
+}
+
+MethodTrainingData* TrainingData::lookup_mtd_for(Method* m) {
+  if (TrainingData::have_data() && m != nullptr) {
+    KlassTrainingData* holder_ktd = TrainingData::lookup_ktd_for(m->method_holder());
+    if (holder_ktd != nullptr) {
+      TrainingData::Key key(m->name(), m->signature(), holder_ktd);
+      TrainingData* td = TrainingData::lookup_archived_training_data(&key);
+      if (td != nullptr && td->is_MethodTrainingData()) {
+        return td->as_MethodTrainingData();
+      }
+    }
+  }
+  return nullptr;
+}
+
 template <typename T>
 void TrainingData::DepList<T>::metaspace_pointers_do(MetaspaceClosure* iter) {
   iter->push(&_deps);
@@ -1664,7 +1717,8 @@ void MethodTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
   iter->push((Method**)&_holder);
   iter->push(&_compile);
   for (int i = 0; i < CompLevel_count; i++) {
-    iter->push(&_last_toplevel_compiles[i]);
+    iter->push(&_first_compiles[i]);
+    iter->push(&_last_compiles[i]);
   }
   iter->push(&_final_profile);
   iter->push(&_final_counters);
@@ -1798,6 +1852,10 @@ void TrainingDataPrinter::do_value(const RunTimeMethodDataInfo* record) {
 }
 
 void TrainingDataPrinter::do_value(TrainingData* td) {
+  TrainingData::Key key(td->key()->name1(), td->key()->name2(), td->key()->holder());
+  assert(td == TrainingData::archived_training_data_dictionary()->lookup(td->key(), TrainingData::Key::cds_hash(td->key()), -1), "");
+  assert(td == TrainingData::archived_training_data_dictionary()->lookup(&key, TrainingData::Key::cds_hash(&key), -1), "");
+
   const char* type = (td->is_KlassTrainingData()   ? "K" :
                       td->is_MethodTrainingData()  ? "M" :
                       td->is_CompileTrainingData() ? "C" : "?");
@@ -1821,10 +1879,6 @@ void TrainingDataPrinter::do_value(TrainingData* td) {
   } else if (td->is_CompileTrainingData()) {
     // ?
   }
-
-  TrainingData::Key key(td->key()->name1(), td->key()->name2(), td->key()->holder());
-  assert(td == TrainingData::archived_training_data_dictionary()->lookup(td->key(), TrainingData::Key::cds_hash(td->key()), -1), "");
-  assert(td == TrainingData::archived_training_data_dictionary()->lookup(&key, TrainingData::Key::cds_hash(&key), -1), "");
 }
 
 

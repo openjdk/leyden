@@ -1391,7 +1391,7 @@ int MethodData::mileage_of(Method* method) {
 }
 
 bool MethodData::is_mature() const {
-  return CompilationPolicy::is_mature(_method);
+  return CompilationPolicy::is_mature((MethodData*)this);
 }
 
 // Translate a bci to its corresponding data index (di).

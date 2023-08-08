@@ -121,6 +121,7 @@ private:
   uint   _reloc_offset;// Relocations
   uint   _reloc_size;  // Max size of relocations per code section
   uint   _num_inlined_bytecodes;
+  uint   _flags;       // custom entry flags
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
@@ -134,8 +135,8 @@ public:
   SCAEntry(uint offset, uint size, uint name_offset, uint name_size,
            uint code_offset, uint code_size,
            uint reloc_offset, uint reloc_size,
-           Kind kind, uint id, uint comp_level = 0,
-           uint comp_id = 0, uint decomp = 0,
+           Kind kind, uint id, uint flags, 
+           uint comp_level = 0, uint comp_id = 0, uint decomp = 0,
            bool has_clinit_barriers = false,
            bool for_preload = false) {
     _next         = nullptr;
@@ -152,6 +153,7 @@ public:
     _reloc_offset = reloc_offset;
     _reloc_size   = reloc_size;
     _num_inlined_bytecodes = 0;
+    _flags        = flags;
 
     _comp_level   = comp_level;
     _comp_id      = comp_id;
@@ -186,6 +188,7 @@ public:
   uint reloc_size()   const { return _reloc_size; }
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
   void set_inlined_bytecodes(int bytes) { _num_inlined_bytecodes = bytes; }
+  uint flags()        const { return _flags; }
 
   uint comp_level()   const { return _comp_level; }
   uint comp_id()      const { return _comp_id; }
@@ -436,7 +439,8 @@ public:
                      bool for_preload,
                      bool has_unsafe_access,
                      bool has_wide_vectors,
-                     bool has_monitors);
+                     bool has_monitors,
+                     uint decompile_count);
 
   static void print_on(outputStream* st);
 };

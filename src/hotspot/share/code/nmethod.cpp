@@ -444,6 +444,8 @@ void nmethod::init_defaults() {
   _state                      = not_installed;
   _has_flushed_dependencies   = 0;
   _load_reported              = false; // jvmti state
+  _from_recorded_data         = false;
+  _from_recorded_data_marked  = false;
 
   _oops_do_mark_link       = nullptr;
   _osr_link                = nullptr;
@@ -1553,6 +1555,11 @@ void nmethod::post_compiled_method(CompileTask* task) {
   task->set_nm_content_size(content_size());
   task->set_nm_insts_size(insts_size());
   task->set_nm_total_size(total_size());
+
+  if (task->compile_reason() == CompileTask::Reason_Precompile ||
+      task->compile_reason() == CompileTask::Reason_Recorded) {
+    set_from_recorded_data();
+  }
 
   // task->is_sca() is true only for loaded cached code.
   // nmethod::_sca_entry is set for loaded and stored cached code

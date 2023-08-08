@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cds_globals.hpp"
 #include "ci/ciSymbols.hpp"
 #include "compiler/compileLog.hpp"
 #include "oops/objArrayKlass.hpp"
@@ -249,8 +250,8 @@ void Parse::do_new() {
 
   // Should throw an InstantiationError?
   if (klass->is_abstract() || klass->is_interface() ||
-      klass->name() == ciSymbols::java_lang_Class() ||
-      iter().is_unresolved_klass()) {
+      klass->name() == ciSymbols::java_lang_Class() /*||
+      iter().is_unresolved_klass()*/) {
     uncommon_trap(Deoptimization::Reason_unhandled,
                   Deoptimization::Action_none,
                   klass);
@@ -259,6 +260,12 @@ void Parse::do_new() {
 
   if (C->needs_clinit_barrier(klass, method())) {
     clinit_barrier(klass, method());
+    if (stopped())  return;
+  }
+
+  if ((PrecompileBarriers & 8) == 8 &&
+      C->needs_clinit_barrier_precompiled(klass, method())) {
+    clinit_barrier_precompiled(klass, method());
     if (stopped())  return;
   }
 

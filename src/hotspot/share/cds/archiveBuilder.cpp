@@ -917,7 +917,8 @@ class RelocateBufferToRequested : public BitMapClosure {
           *p += _buffer_to_requested_delta;
           // assert is in requested dynamic archive
         } else {
-          assert(_builder->is_in_mapped_static_archive(*p), "old pointer must point inside buffer space or mapped static archive");
+          assert(_builder->is_in_mapped_static_archive(*p), "old pointer must point inside buffer space or mapped static archive: " PTR_FORMAT " @ " PTR_FORMAT,
+                 p2i(*p), p2i(p));
           *p += _mapped_to_requested_static_archive_delta;
           assert(_builder->is_in_requested_static_archive(*p), "new pointer must point inside requested archive");
         }

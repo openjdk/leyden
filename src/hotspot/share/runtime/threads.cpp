@@ -864,6 +864,14 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     ShouldNotReachHere();
   }
 
+#if INCLUDE_CDS
+//  if (PreloadArchivedClasses > 0) {
+    assert(!HAS_PENDING_EXCEPTION, "");
+    SystemDictionaryShared::preload_archived_classes(THREAD);
+    assert(!HAS_PENDING_EXCEPTION, "");
+//  }
+#endif // INCLUDE_CDS
+
   return JNI_OK;
 }
 

@@ -162,6 +162,28 @@ int ClassListParser::parse(TRAPS) {
       // are loaded in order that the related data structures (klass and
       // cpCache) are located together.
       MetaspaceShared::try_link_class(THREAD, ik);
+
+      ik->array_klass(THREAD);
+      if (HAS_PENDING_EXCEPTION) {
+        if (PENDING_EXCEPTION->is_a(vmClasses::OutOfMemoryError_klass())) {
+          // If we have run out of memory, don't try to load the rest of the classes in
+          // the classlist. Throw an exception, which will terminate the dumping process.
+          return 0; // THROW
+        }
+
+        ResourceMark rm(THREAD);
+        char* ex_msg = (char*)"";
+        oop message = java_lang_Throwable::message(PENDING_EXCEPTION);
+        if (message != nullptr) {
+          ex_msg = java_lang_String::as_utf8_string(message);
+        }
+        log_warning(cds)("array class for %s: %s", PENDING_EXCEPTION->klass()->external_name(), ex_msg);
+        // We might have an invalid class name or an bad class. Warn about it
+        // and keep going to the next line.
+        CLEAR_PENDING_EXCEPTION;
+        log_warning(cds)("Preload Warning: Cannot find array class fo %s", _class_name);
+        continue;
+      }
     }
 
     class_count++;

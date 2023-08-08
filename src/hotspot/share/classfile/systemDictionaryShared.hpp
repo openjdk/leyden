@@ -35,6 +35,7 @@
 #include "classfile/packageEntry.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "oops/klass.hpp"
+#include "oops/oop.inline.hpp"
 #include "oops/oopHandle.hpp"
 #include "oops/trainingData.hpp"
 
@@ -139,6 +140,152 @@ class SharedClassLoadingMark {
   }
 };
 
+enum InitType : u1 {
+  class_init,
+  field_init,
+  invokedynamic,
+  invokehandle,
+  invalid
+};
+
+class InitInfo {
+  InitType  _type;
+  Symbol*   _name;
+  Metadata* _metadata;
+  Metadata* _metadata1;
+  int       _val;
+
+  union {
+    jint    _int;
+    jlong   _long;
+    jfloat  _float;
+    jdouble _double;
+  } _value;
+
+public:
+  InitInfo() : _type(invalid), _name(nullptr), _metadata(nullptr), _metadata1(nullptr) {
+    _value._long = 0;
+  }
+  InitInfo(InitType type, InstanceKlass* ik, int val) : _type(type), _name(nullptr), _metadata(ik), _metadata1(nullptr) {
+    assert(ik != nullptr, "");
+    _name = ik->name();
+    _val = val;
+    _value._long = 0;
+  }
+  InitInfo(InitType type, Method* m, int val) : _type(type), _name(nullptr), _metadata(m), _metadata1(nullptr) {
+    assert(m != nullptr, "");
+    _name = m->name();
+    _val = val;
+    _value._long = 0;
+  }
+  InitInfo(fieldDescriptor& fd)
+  : _type(field_init), _name(nullptr), _metadata(fd.field_holder()), _metadata1(nullptr), _val(fd.offset()) {
+    assert(fd.field_holder()->is_initialized(), "");
+    assert(fd.is_static() && fd.is_final(), "");
+    _name = fd.field_holder()->name();
+    switch (fd.field_type()) {
+      case T_BOOLEAN: _value._int    = fd.field_holder()->java_mirror()->  bool_field(fd.offset()); break;
+      case T_BYTE:    _value._int    = fd.field_holder()->java_mirror()->  byte_field(fd.offset()); break;
+      case T_CHAR:    _value._int    = fd.field_holder()->java_mirror()->  char_field(fd.offset()); break;
+      case T_SHORT:   _value._int    = fd.field_holder()->java_mirror()-> short_field(fd.offset()); break;
+      case T_INT:     _value._int    = fd.field_holder()->java_mirror()->   int_field(fd.offset()); break;
+      case T_FLOAT:   _value._float  = fd.field_holder()->java_mirror()-> float_field(fd.offset()); break;
+      case T_DOUBLE:  _value._double = fd.field_holder()->java_mirror()->double_field(fd.offset()); break;
+      case T_LONG:    _value._long   = fd.field_holder()->java_mirror()->  long_field(fd.offset()); break;
+
+      case T_OBJECT:  // fall-through
+      case T_ARRAY: {
+        oop value = fd.field_holder()->java_mirror()->obj_field(fd.offset());
+        if (value != nullptr) {
+          _metadata1 = value->klass();
+        }
+        break;
+      }
+
+      default: fatal("%s", type2name(fd.field_type()));
+    }
+  }
+
+  void metaspace_pointers_do(MetaspaceClosure* it) {
+    it->push(&_name);
+    it->push(&_metadata);
+    it->push(&_metadata1);
+  }
+
+  void init(InitInfo info) {
+    _type  = info._type;
+    _val   = info._val;
+    _value = info._value;
+    ArchiveBuilder::current()->write_pointer_in_buffer(&_name,      info.name());
+    ArchiveBuilder::current()->write_pointer_in_buffer(&_metadata,  info.metadata());
+    ArchiveBuilder::current()->write_pointer_in_buffer(&_metadata1, info.metadata1());
+  }
+
+  InitType        type() { return _type; }
+  Symbol*         name() { return _name; }
+  InstanceKlass* klass() {
+    assert(_type == invokedynamic || _type == class_init || _type == field_init, "");
+    if (_metadata != nullptr) {
+      assert(_metadata == nullptr || _metadata->is_klass(), "");
+      return InstanceKlass::cast((Klass*)_metadata);
+    }
+    return nullptr;
+  }
+  Method* method() {
+    assert(_type == invokehandle, "");
+    assert(_metadata == nullptr || _metadata->is_method(), "");
+    return (Method*)_metadata;
+  }
+  int            value() { return _val;  }
+
+  jint           value_as_jint()    const { return _value._int;    }
+  jfloat         value_as_jfloat()  const { return _value._float;  }
+  jdouble        value_as_jdouble() const { return _value._double; }
+  jlong          value_as_jlong()   const { return _value._long;   }
+
+  Metadata* metadata() {
+    return _metadata;
+  }
+  Metadata* metadata1() {
+    return _metadata1;
+  }
+  InstanceKlass* holder() {
+    switch (_type) {
+      case class_init:
+      case field_init:
+      case invokedynamic:
+        return klass();
+      case invokehandle:
+        if (method() == nullptr) {
+          return nullptr;
+        }
+        return method()->method_holder();
+
+      default: ShouldNotReachHere();
+    }
+    return nullptr;
+  }
+  InstanceKlass::ClassState init_state() {
+    assert(type() == class_init, "");
+    return (InstanceKlass::ClassState)value();
+  }
+  bool equals(InitInfo& that) {
+    return (type() == that.type()) &&
+           (metadata() == that.metadata()) &&
+           (metadata1() == that.metadata1()) &&
+           (name() == that.name()) &&
+           (value() == that.value());
+  }
+  void reset_metadata() {
+    _metadata = nullptr;
+  }
+  void reset_metadata1() {
+    _metadata1 = nullptr;
+  }
+
+  void print_on(outputStream* st);
+};
+
 class SystemDictionaryShared: public SystemDictionary {
   friend class ExcludeDumpTimeSharedClasses;
   friend class CleanupDumpTimeLambdaProxyClassTable;
@@ -148,16 +295,26 @@ class SystemDictionaryShared: public SystemDictionary {
     RunTimeSharedDictionary _unregistered_dictionary;
     LambdaProxyClassDictionary _lambda_proxy_class_dictionary;
     MethodDataInfoDictionary _method_info_dictionary;
-//    TrainingData::TrainingDataDictionary _training_data_dictionary;
+    Array<InitInfo>* _init_list;
 
     const RunTimeLambdaProxyClassInfo* lookup_lambda_proxy_class(LambdaProxyClassKey* key) {
       return _lambda_proxy_class_dictionary.lookup(key, key->hash(), 0);
     }
 
     const RunTimeMethodDataInfo* lookup_method_info(Method* m) {
-      MethodDataKey key(m);
-      return _method_info_dictionary.lookup(&key, key.hash(), 0);
+      if (MetaspaceObj::is_shared(m)) {
+        MethodDataKey key(m);
+        return _method_info_dictionary.lookup(&key, key.hash(), 0);
+      } else {
+        return nullptr;
+      }
     }
+
+    InstanceKlass::ClassState lookup_init_state(InstanceKlass* ik) const;
+    InitInfo* lookup_static_field_value(InstanceKlass* holder, int offset) const;
+    int compute_init_count(InstanceKlass* ik) const;
+
+    void print_init_count(outputStream* st) const;
 
     void print_on(const char* prefix, outputStream* st);
     void print_table_statistics(const char* prefix, outputStream* st);
@@ -177,6 +334,9 @@ private:
 
   static DumpTimeMethodInfoDictionary* _dumptime_method_info_dictionary;
   static DumpTimeMethodInfoDictionary* _cloned_dumptime_method_info_dictionary;
+
+  static GrowableArray<InitInfo>* _dumptime_init_list;
+  static GrowableArray<InitInfo>* _cloned_dumptime_init_list;
 
   static ArchiveInfo _static_archive;
   static ArchiveInfo _dynamic_archive;
@@ -208,6 +368,9 @@ private:
   static void cleanup_lambda_proxy_class_dictionary();
   static void cleanup_method_info_dictionary();
   static void reset_registered_lambda_proxy_class(InstanceKlass* ik);
+
+  static void cleanup_init_list();
+
   static bool is_registered_lambda_proxy_class(InstanceKlass* ik);
   static bool check_for_exclusion_impl(InstanceKlass* k);
   static void remove_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
@@ -237,6 +400,11 @@ public:
                                                TRAPS);
 
   static void preload_archived_classes(TRAPS);
+  static void preload_archived_classes(bool prelink, bool preinit,
+                                       bool preresolve_cp, bool preresolve_indy, bool preresolve_invokehandle,
+                                       TRAPS);
+
+  static bool force_compilation(bool recompile, TRAPS);
 
   static void allocate_shared_data_arrays(int size, TRAPS);
 
@@ -249,6 +417,12 @@ public:
   static void init_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static void handle_class_unloading(InstanceKlass* k) NOT_CDS_RETURN;
   static void init_dumptime_info(Method* m) NOT_CDS_RETURN;
+
+  static void record_init_info(InstanceKlass* k) NOT_CDS_RETURN;
+  static void record_init_info(InstanceKlass* k, int index) NOT_CDS_RETURN;
+  static void record_init_info(Method* m, int bci) NOT_CDS_RETURN;
+
+  static void record_static_field_value(fieldDescriptor& fd) NOT_CDS_RETURN;
 
   static Dictionary* boot_loader_dictionary() {
     return ClassLoaderData::the_null_class_loader_data()->dictionary();
@@ -349,6 +523,25 @@ public:
     }
     return nullptr;
   }
+
+
+  static InstanceKlass::ClassState lookup_init_state(InstanceKlass* ik) {
+    return _dynamic_archive.lookup_init_state(ik);
+  }
+
+  static InitInfo* lookup_static_field_value(InstanceKlass* holder, int offset) {
+    return _dynamic_archive.lookup_static_field_value(holder, offset);
+  }
+
+  static int compute_init_count(InstanceKlass* ik) {
+    return _dynamic_archive.compute_init_count(ik);
+  }
+
+  static void print_init_count(outputStream* st) {
+    _dynamic_archive.print_init_count(st);
+  }
+
+  static void print_init_list(outputStream* st, bool filter, InstanceKlass* value);
 
 #ifdef ASSERT
   // This object marks a critical period when writing the CDS archive. During this

@@ -236,7 +236,7 @@ bool ciObject::should_be_constant() {
 //
 // Implementation note: dispatch to the virtual print_impl behavior
 // for this ciObject.
-void ciObject::print(outputStream* st) {
+void ciObject::print_on(outputStream* st) {
   st->print("<%s", type_string());
   GUARDED_VM_ENTRY(print_impl(st);)
   st->print(" ident=%d address=" INTPTR_FORMAT ">", ident(), p2i(this));

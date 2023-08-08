@@ -59,10 +59,19 @@ ciType* ciInstance::java_mirror_type() {
 
 // ------------------------------------------------------------------
 // ciInstance::field_value_impl
-ciConstant ciInstance::field_value_impl(BasicType field_btype, int offset) {
+ciConstant ciInstance::field_value_impl(ciField* field, BasicType field_btype, int offset) {
   ciConstant value = check_constant_value_cache(offset, field_btype);
   if (value.is_valid()) {
     return value;
+  }
+  if (CURRENT_ENV->is_precompiled() && field->is_static() && (PrecompileBarriers & 16) == 16) {
+    LogStreamHandle(Trace, precompile) log;
+    if (log.is_enabled()) {
+      ResourceMark rm;
+      log.print("constant_value: %s: DISABLED: ", (field->is_static() ? "STATIC" : "INSTANCE"));
+      field->print_on(&log);
+    }
+    return ciConstant();
   }
   VM_ENTRY_MARK;
   oop obj = get_oop();
@@ -97,6 +106,16 @@ ciConstant ciInstance::field_value_impl(BasicType field_btype, int offset) {
     default:
       fatal("no field value: %s", type2name(field_btype));
   }
+  if (CURRENT_ENV->is_precompiled()) {
+    LogStreamHandle(Trace, precompile) log;
+    if (log.is_enabled()) {
+      ResourceMark rm;
+      log.print("constant_value: %s: ", (field->is_static() ? "STATIC" : "INSTANCE"));
+      field->print_on(&log);
+      log.print(" = ");
+      value.print_on(&log);
+    }
+  }
   add_to_constant_value_cache(offset, value);
   return value;
 }
@@ -109,7 +128,7 @@ ciConstant ciInstance::field_value(ciField* field) {
   assert(is_loaded(), "invalid access - must be loaded");
   assert(field->holder()->is_loaded(), "invalid access - holder must be loaded");
   assert(field->is_static() || klass()->is_subclass_of(field->holder()), "invalid access - must be subclass");
-  return field_value_impl(field->type()->basic_type(), field->offset_in_bytes());
+  return field_value_impl(field, field->type()->basic_type(), field->offset_in_bytes());
 }
 
 // ------------------------------------------------------------------

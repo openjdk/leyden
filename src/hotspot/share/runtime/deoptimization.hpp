@@ -113,6 +113,7 @@ class Deoptimization : AllStatic {
     Reason_speculate_class_check, // saw unexpected object class from type speculation
     Reason_speculate_null_check,  // saw unexpected null from type speculation
     Reason_speculate_null_assert, // saw unexpected null from type speculation
+    Reason_speculate_value_assert, // saw unexpected field value
     Reason_rtm_state_change,      // rtm state change detected
     Reason_unstable_if,           // a branch predicted always false was taken
     Reason_unstable_fused_if,     // fused two ifs that had each one untaken branch. One is now taken.
@@ -152,8 +153,8 @@ class Deoptimization : AllStatic {
 
   enum {
     _action_bits = 3,
-    _reason_bits = 5,
-    _debug_id_bits = 23,
+    _reason_bits = 6,
+    _debug_id_bits = 22,
     _action_shift = 0,
     _reason_shift = _action_shift+_action_bits,
     _debug_id_shift = _reason_shift+_reason_bits,

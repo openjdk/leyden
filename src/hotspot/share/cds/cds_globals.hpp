@@ -110,7 +110,38 @@
           "Archive resolved JVM_CONSTANT_Methodref and "                    \
           "JVM_CONSTANT_InterfaceMethodref in ConstantPool")                \
                                                                             \
-
+  product(int, PreloadArchivedClasses, 0, DIAGNOSTIC,                       \
+          "Preload classes from archives")                                  \
+           range(0, 2)                                                      \
+                                                                            \
+  product(int, Preresolve, 0, DIAGNOSTIC,                                   \
+          "Preload classes from archives")                                  \
+           range(0, 7)                                                      \
+                                                                            \
+  product(int, PrecompileBarriers, 0, DIAGNOSTIC,                           \
+          "Preload classes from archives")                                  \
+           range(0, 63)                                                     \
+                                                                            \
+  product(int, PrecompileLevel, 0, DIAGNOSTIC,                              \
+          "Precompile archived methods")                                    \
+           range(0, 4)                                                      \
+                                                                            \
+  product(bool, ForcePrecompileLevel, false, DIAGNOSTIC,                    \
+          "Precompile archived methods")                                    \
+                                                                            \
+  product(bool, ForcePrecompilation, false, DIAGNOSTIC,                     \
+          "Precompile all methods")                                         \
+                                                                            \
+  product(int, ForcePrecompilationLevel, 0, DIAGNOSTIC,                     \
+          "Precompile archived methods")                                    \
+           range(0, 4)                                                      \
+                                                                            \
+  product(bool, EnforceClassInitDependencies, false, DIAGNOSTIC,            \
+          "Enforce class initialization dependencies")                      \
+                                                                            \
+  product(bool, ForceClassInit, false, DIAGNOSTIC,                          \
+          "Force class initialization")                                     \
+                                                                            \
 // end of CDS_FLAGS
 
 DECLARE_FLAGS(CDS_FLAGS)

@@ -673,6 +673,16 @@ extern "C" bool dbg_is_good_oop(oopDesc* o) {
   return dbg_is_safe(o, -1) && dbg_is_safe(o->klass(), -1) && oopDesc::is_oop(o) && o->klass()->is_klass();
 }
 
+extern "C" JNIEXPORT void ci_print(ciKlass* k) {
+  Command c("ci_print");
+  k->print(tty);
+}
+
+extern "C" void printm(Metadata* m) {
+  Command c("printm");
+  m->print_on(tty);
+}
+
 //////////////////////////////////////////////////////////////////////////////
 // Test multiple STATIC_ASSERT forms in various scopes.
 

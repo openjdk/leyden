@@ -363,6 +363,9 @@ public:
   virtual void cleanup() = 0;
 
   static TrainingData* lookup_archived_training_data(const Key* k);
+
+  static KlassTrainingData*  lookup_ktd_for(InstanceKlass* ik);
+  static MethodTrainingData* lookup_mtd_for(Method* m);
 };
 
 
@@ -748,7 +751,8 @@ class MethodTrainingData : public TrainingData {
   KlassTrainingData* _klass;
   const Method* _holder;  // can be null
   CompileTrainingData* _compile;   // singly linked list, latest first
-  CompileTrainingData* _last_toplevel_compiles[CompLevel_count];
+  CompileTrainingData* _last_compiles[CompLevel_count];
+  CompileTrainingData* _first_compiles[CompLevel_count];
   int _highest_top_level;
   int _level_mask;  // bit-set of all possible levels
   bool _was_inlined;
@@ -769,7 +773,7 @@ class MethodTrainingData : public TrainingData {
     _holder = nullptr;
     _compile = nullptr;
     for (int i = 0; i < CompLevel_count; i++) {
-      _last_toplevel_compiles[i] = nullptr;
+      _last_compiles[i] = nullptr;
     }
     _highest_top_level = CompLevel_none;
     _level_mask = 0;
@@ -801,7 +805,27 @@ class MethodTrainingData : public TrainingData {
 
   CompileTrainingData* last_toplevel_compile(int level) const {
     if (level > CompLevel_none) {
-      return _last_toplevel_compiles[level - 1];
+      return _last_compiles[level - 1];
+    }
+    return nullptr;
+  }
+
+  CompileTrainingData* first_compile() const {
+    CompileTrainingData* ctd = nullptr;
+    for (int level = CompLevel_simple; level <= CompLevel_full_profile; level++) {
+      CompileTrainingData* ctd1 = _first_compiles[level-1];
+      if (ctd == nullptr) {
+        ctd = ctd1;
+      } else if ((ctd1 != nullptr) && ctd1->compile_id() < ctd->compile_id()) {
+        ctd = ctd1;
+      }
+    }
+    return ctd;
+  }
+
+  CompileTrainingData* first_compile(int level) const {
+    if (level > CompLevel_none) {
+      return _first_compiles[level - 1];
     }
     return nullptr;
   }

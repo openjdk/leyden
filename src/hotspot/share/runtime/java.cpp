@@ -309,6 +309,12 @@ void print_statistics() {
     CompileBroker::print_heapinfo(nullptr, "all", 4096); // details
   }
 
+  LogStreamHandle(Debug, codecache, nmethod) log;
+  if (log.is_enabled()) {
+    MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    CodeCache::print_nmethods_on(&log);
+  }
+
   if (PrintCodeCache2) {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
     CodeCache::print_internals();

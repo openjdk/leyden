@@ -39,6 +39,7 @@
 // The previous/original value is restored when leaving the scope.
 
 typedef AutoModifyRestore<bool> FlagSetting;
+typedef AutoModifyRestore<int>  IntFlagSetting;
 typedef AutoModifyRestore<uint> UIntFlagSetting;
 
 // Legacy use of FLAG_GUARD. Retained in the code to help identify use-cases

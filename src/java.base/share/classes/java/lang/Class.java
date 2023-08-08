@@ -4768,4 +4768,16 @@ public final class Class<T> implements java.io.Serializable,
     }
 
     private native int getClassAccessFlagsRaw0();
+
+    private void preinit() {
+        getEnumConstantsShared();
+        privateGetPublicMethods();
+        privateGetPublicFields();
+        privateGetDeclaredConstructors(false);
+        privateGetDeclaredConstructors(true);
+        privateGetDeclaredMethods(false);
+        privateGetDeclaredMethods(true);
+        privateGetDeclaredFields(false);
+        privateGetDeclaredFields(true);
+    }
 }

@@ -99,9 +99,9 @@ public:
   // [1] We don't use polymorphic pointers for MetaspaceObj's that are not subclasses
   //     of Metadata. I.e., we don't do this:
   //     class Klass {
-  //         MetaspaceObj *_obj;
-  //         Array<int>* foo() { return (Array<int>*)_obj; }
-  //         Symbol*     bar() { return (Symbol*)    _obj; }
+  //         MetaspaceObj *_name;
+  //         Array<int>* foo() { return (Array<int>*)_name; }
+  //         Symbol*     bar() { return (Symbol*)    _name; }
   //
   // [2] All Array<T> dimensions are statically declared.
   class Ref : public CHeapObj<mtMetaspace> {

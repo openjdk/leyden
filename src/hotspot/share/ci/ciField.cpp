@@ -23,8 +23,10 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cds_globals.hpp"
 #include "ci/ciField.hpp"
 #include "ci/ciInstanceKlass.hpp"
+#include "ci/ciNullObject.hpp"
 #include "ci/ciSymbols.hpp"
 #include "ci/ciUtilities.inline.hpp"
 #include "classfile/javaClasses.hpp"
@@ -300,6 +302,32 @@ void ciField::initialize_from(fieldDescriptor* fd) {
       _is_constant = false;
     }
   }
+
+  if (fd->has_initial_value()) {
+    switch (fd->field_type()) {
+      case T_BOOLEAN: // fall-through
+      case T_BYTE:    // fall-through
+      case T_CHAR:    // fall-through
+      case T_SHORT:   // fall-through
+      case T_INT:     _initial_value = ciConstant(fd->field_type(), fd->   int_initial_value()); break;
+      case T_FLOAT:   _initial_value = ciConstant(                  fd-> float_initial_value()); break;
+      case T_DOUBLE:  _initial_value = ciConstant(                  fd->double_initial_value()); break;
+      case T_LONG:    _initial_value = ciConstant(                  fd->  long_initial_value()); break;
+      case T_OBJECT: {
+        CompilerThread* THREAD = CompilerThread::current();
+        oop string = fd->string_initial_value(THREAD);
+        assert(string != nullptr || HAS_PENDING_EXCEPTION, "");
+        if (HAS_PENDING_EXCEPTION) {
+          CLEAR_PENDING_EXCEPTION;
+        } else {
+          _initial_value =  ciConstant(T_OBJECT, CURRENT_ENV->get_object(string));
+        }
+        break;
+      }
+
+      default: ShouldNotReachHere();
+    }
+  }
 }
 
 // ------------------------------------------------------------------
@@ -310,12 +338,19 @@ ciConstant ciField::constant_value() {
   if (!_holder->is_initialized()) {
     return ciConstant(); // Not initialized yet
   }
-  if (_constant_value.basic_type() == T_ILLEGAL) {
-    // Static fields are placed in mirror objects.
-    ciInstance* mirror = _holder->java_mirror();
-    _constant_value = mirror->field_value_impl(type()->basic_type(), offset_in_bytes());
+  if (!_constant_value.is_valid()) {
+    if (_initial_value.is_valid()) {
+      // FIXME: ensure initializers don't mess with final field
+      _constant_value = _initial_value;
+    } else {
+      // Static fields are placed in mirror objects.
+      ciInstance* mirror = _holder->java_mirror();
+      _constant_value = mirror->field_value(this);
+    }
+    assert(_constant_value == _initial_value || !_initial_value.is_valid(), "");
   }
-  if (FoldStableValues && is_stable() && _constant_value.is_null_or_zero()) {
+  if (FoldStableValues && is_stable() &&
+      _constant_value.is_valid() && _constant_value.is_null_or_zero()) {
     return ciConstant();
   }
   if (!SCArchive::allow_const_field(_constant_value)) {
@@ -331,6 +366,7 @@ ciConstant ciField::constant_value_of(ciObject* object) {
   assert(!is_static() && is_constant(), "only if field is non-static constant");
   assert(object->is_instance(), "must be instance");
   ciConstant field_value = object->as_instance()->field_value(this);
+  assert(field_value == _initial_value || !_initial_value.is_valid(), "");
   if (FoldStableValues && is_stable() && field_value.is_null_or_zero()) {
     return ciConstant();
   }
@@ -442,27 +478,61 @@ bool ciField::is_autobox_cache() {
             klass_name == ciSymbols::java_lang_Long_LongCache()));
 }
 
+ciConstant ciField::archived_value() {
+  if (holder()->is_loaded() && _offset > 0) {
+    VM_ENTRY_MARK;
+    InitInfo* info = SystemDictionaryShared::lookup_static_field_value(holder()->get_instanceKlass(), _offset);
+    if (info != nullptr) {
+      assert(info->type() == InitType::field_init, "");
+      switch (type()->basic_type()) { // FIXME: layout_type()?
+        case T_BOOLEAN: // fall-through
+        case T_BYTE:    // fall-through
+        case T_CHAR:    // fall-through
+        case T_SHORT:   // fall-through
+        case T_INT:     return ciConstant(type()->basic_type(), info->value_as_jint());
+        case T_FLOAT:   return ciConstant(info->value_as_jfloat());
+        case T_DOUBLE:  return ciConstant(info->value_as_jdouble());
+        case T_LONG:    return ciConstant(info->value_as_jlong());
+
+        case T_ARRAY:
+        case T_OBJECT: {
+          if (info->metadata1() != nullptr) {
+            assert(info->metadata1()->is_klass(), "");
+            ciKlass* k = CURRENT_ENV->get_klass((Klass*)info->metadata1());
+            return ciConstant(type()->basic_type(), k->java_mirror());
+          } else {
+            return ciConstant(type()->basic_type(), ciNullObject::make());
+          }
+        }
+
+        default: ShouldNotReachHere();
+      }
+    }
+  }
+  return ciConstant();
+}
 // ------------------------------------------------------------------
 // ciField::print
-void ciField::print() {
-  tty->print("<ciField name=");
-  _holder->print_name();
-  tty->print(".");
-  _name->print_symbol();
-  tty->print(" signature=");
-  _signature->print_symbol();
-  tty->print(" offset=%d type=", _offset);
-  if (_type != nullptr)
-    _type->print_name();
-  else
-    tty->print("(reference)");
-  tty->print(" flags=%04x", flags().as_int());
-  tty->print(" is_constant=%s", bool_to_str(_is_constant));
-  if (_is_constant && is_static()) {
-    tty->print(" constant_value=");
-    _constant_value.print();
+void ciField::print_on(outputStream* st) {
+  st->print("<ciField name=");
+  _holder->print_name_on(st);
+  st->print(".");
+  _name->print_symbol_on(st);
+  st->print(" signature=");
+  _signature->print_symbol_on(st);
+  st->print(" offset=%d type=", _offset);
+  if (_type != nullptr) {
+    _type->print_name_on(st);
+  } else {
+    st->print("(reference)");
   }
-  tty->print(">");
+  st->print(" flags=%04x", flags().as_int());
+  st->print(" is_constant=%s", bool_to_str(_is_constant));
+  if (_is_constant && is_static()) {
+    st->print(" constant_value=");
+    _constant_value.print_on(st);
+  }
+  st->print(">");
 }
 
 // ------------------------------------------------------------------

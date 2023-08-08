@@ -49,7 +49,7 @@ protected:
 
   void print_impl(outputStream* st);
 
-  ciConstant field_value_impl(BasicType field_btype, int offset);
+  ciConstant field_value_impl(ciField* field, BasicType field_btype, int offset);
 
 public:
   // If this object is a java mirror, return the corresponding type.

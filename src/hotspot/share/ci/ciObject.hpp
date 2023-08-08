@@ -184,8 +184,8 @@ public:
   }
 
   // Print debugging output about this ciObject.
-  void print(outputStream* st);
-  void print() { print(tty); }  // GDB cannot handle default arguments
+  void print_on(outputStream* st);
+  void print() { print_on(tty); }  // GDB cannot handle default arguments
 
   // Print debugging output about the oop this ciObject represents.
   void print_oop(outputStream* st = tty);

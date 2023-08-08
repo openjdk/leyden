@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cds_globals.hpp"
 #include "compiler/compileLog.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "memory/resourceArea.hpp"
@@ -1057,7 +1058,7 @@ void Parse::do_exits() {
       tty->print_cr("# ret phi");
       ret_phi->dump(2);
 #endif // ASSERT
-      assert(false, "Can't determine return type.");
+//      assert(false, "Can't determine return type."); // FIXME: unloaded class in argument
       C->record_method_not_compilable("Can't determine return type.");
       return;
     }
@@ -1146,6 +1147,15 @@ SafePointNode* Parse::create_entry_map() {
     GraphKit kit(_caller);
     if (!method()->is_static()) {
       kit.null_check_receiver_before_call(method());
+    } else if (env()->is_precompiled() && (PrecompileBarriers & 32) == 32 &&
+               C->needs_clinit_barrier_precompiled(method()->holder(), _caller->method())) {
+      assert(method()->is_static(), "");
+
+      ciMethod* declared_method = kit.method()->get_method_at_bci(kit.bci());
+      const int nargs = declared_method->arg_size();
+      kit.inc_sp(nargs);
+      kit.clinit_barrier_precompiled(method()->holder(), _caller->method());
+      kit.dec_sp(nargs);
     } else if (C->do_clinit_barriers() && C->needs_clinit_barrier(method()->holder(), _caller->method())) {
       ciMethod* declared_method = kit.method()->get_method_at_bci(kit.bci());
       const int nargs = declared_method->arg_size();

@@ -49,6 +49,7 @@
 #include "memory/universe.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/method.inline.hpp"
+#include "prims/jvmtiThreadState.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/globals_extension.hpp"
@@ -770,7 +771,10 @@ bool SCAFile::finish_write() {
     uint preload_entries_size = code_count * sizeof(uint);
     // _write_position should include code and strings
     uint code_alignment = code_count * DATA_ALIGNMENT; // We align_up code size when storing it.
-    uint total_size = _write_position + _load_size + header_size + code_alignment + search_size + preload_entries_size + align_up(entries_size, DATA_ALIGNMENT);
+    uint total_size = header_size +
+                      _write_position + _load_size + code_alignment +
+                      preload_entries_size + search_size +
+                      align_up(entries_size, DATA_ALIGNMENT);
 
     // Create ordered search table for entries [id, index];
     uint* search = NEW_C_HEAP_ARRAY(uint, search_count, mtCode);
@@ -1004,7 +1008,7 @@ bool SCAFile::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* 
   uint entry_size = archive->_write_position - entry_position;
   SCAEntry* entry = new(archive) SCAEntry(entry_position, entry_size, name_offset, name_size,
                                           code_offset, code_size, 0, 0,
-                                          SCAEntry::Stub, (uint32_t)id);
+                                          SCAEntry::Stub, (uint32_t)id, 0 /*flags*/);
   log_info(sca, stubs)("Wrote stub '%s' id:%d to shared code archive '%s'", name, (int)id, archive->_archive_path);
   return true;
 }
@@ -1728,7 +1732,7 @@ bool SCAFile::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
         case relocInfo::post_call_nop_type:
           break;
         case relocInfo::entry_guard_type:
-          break;
+          break; // FIXME
         default:
           fatal("relocation %d unimplemented", (int)iter.type());
           break;
@@ -1892,7 +1896,7 @@ if (UseNewCode3) {
   uint entry_size = archive->_write_position - entry_position;
   SCAEntry* entry = new(archive) SCAEntry(entry_position, entry_size, name_offset, name_size,
                                           code_offset, code_size, reloc_offset, reloc_size,
-                                          SCAEntry::Blob, (uint32_t)999);
+                                          SCAEntry::Blob, (uint32_t)999, 0 /*flags*/);
   log_info(sca, stubs)("Wrote stub '%s' to shared code archive '%s'", name, archive->_archive_path);
   return true;
 }
@@ -2603,7 +2607,7 @@ if (UseNewCode3) {
                        has_unsafe_access,
                        has_wide_vectors,
                        has_monitors,
-                       0, NoRTM,
+                       0, true, NoRTM,
                        (SCAEntry *)_entry);
   CompileTask* task = env->task();
   bool success = task->is_success();
@@ -2633,7 +2637,8 @@ SCAEntry* SCAFile::store_nmethod(const methodHandle& method,
                      bool for_preload,
                      bool has_unsafe_access,
                      bool has_wide_vectors,
-                     bool has_monitors) {
+                     bool has_monitors,
+                     uint decompile_count) {
   CompileTask* task = ciEnv::current()->task();
 
   if (entry_bci != InvocationEntryBci) {
@@ -2681,7 +2686,6 @@ if (UseNewCode3) {
 
   uint entry_position = archive->_write_position;
 
-  uint decomp = (method->method_data() == nullptr) ? 0 : method->method_data()->decompile_count();
   // Write name
   uint name_offset = 0;
   uint name_size   = 0;
@@ -2691,7 +2695,7 @@ if (UseNewCode3) {
     ResourceMark rm;
     const char* name   = method->name_and_sig_as_C_string();
     log_info(sca, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s) to shared code archive '%s'",
-                           task->compile_id(), task->comp_level(), name, comp_level, decomp,
+                           task->compile_id(), task->comp_level(), name, comp_level, decompile_count,
                            (has_clinit_barriers ? ", has clinit barriers" : ""), archive->_archive_path);
 
 if (UseNewCode) {
@@ -2834,9 +2838,17 @@ if (UseNewCode) {
   }
   uint entry_size = archive->_write_position - entry_position;
 
+  uint nm_flags = (ciEnv::current()->is_precompiled() ? 1 : 0); // TODO: record info about other assumptions (e.g., init barriers)
+
+  uint level = (uint)comp_level;
+//  if (comp_level == CompLevel_full_optimization) {
+//    level += nm_flags;
+//  } else {
+//    guarantee(nm_flags == 0, "");
+//  }
   SCAEntry* entry = new(archive) SCAEntry(entry_position, entry_size, name_offset, name_size,
                                  code_offset, code_size, reloc_offset, reloc_size,
-                                 SCAEntry::Code, hash, (uint)comp_level, (uint)comp_id, decomp,
+                                 SCAEntry::Code, hash, nm_flags, level, (uint)comp_id, decompile_count,
                                  has_clinit_barriers, archive->_for_preload);
   if (method_in_cds) {
     entry->set_method(m);
@@ -2872,8 +2884,8 @@ void SCAFile::print_on(outputStream* st) {
       int index = search_entries[2*i + 1];
       SCAEntry* entry = &(load_entries[index]);
 
-      st->print_cr("%4u: %4u: K%u L%u offset=%u decompile=%u size=%u code_size=%u%s%s%s%s",
-                i, index, entry->kind(), entry->comp_level(), entry->offset(),
+      st->print_cr("%4u: %4u: K%u L%u flags=%u offset=%u decompile=%u size=%u code_size=%u%s%s%s%s",
+                i, index, entry->kind(), entry->comp_level(), entry->flags(), entry->offset(),
                 entry->decompile(), entry->size(), entry->code_size(),
                 entry->has_clinit_barriers() ? " has_clinit_barriers" : "",
                 entry->for_preload()         ? " for_preload"         : "",
@@ -2948,7 +2960,10 @@ void SCAddressTable::init() {
 
   SET_ADDRESS(_extrs, SharedRuntime::complete_monitor_unlocking_C);
   SET_ADDRESS(_extrs, SharedRuntime::enable_stack_reserved_zone);
-
+#ifdef AMD64
+  SET_ADDRESS(_extrs, SharedRuntime::montgomery_multiply);
+  SET_ADDRESS(_extrs, SharedRuntime::montgomery_square);
+#endif // AMD64
   SET_ADDRESS(_extrs, SharedRuntime::d2f);
   SET_ADDRESS(_extrs, SharedRuntime::d2i);
   SET_ADDRESS(_extrs, SharedRuntime::d2l);
@@ -2976,6 +2991,8 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, os::javaTimeMillis);
   SET_ADDRESS(_extrs, os::javaTimeNanos);
 
+  SET_ADDRESS(_extrs, &JvmtiVTMSTransitionDisabler::_VTMS_notify_jvmti_events);
+  SET_ADDRESS(_extrs, StubRoutines::crc_table_addr());
 #ifndef PRODUCT
   SET_ADDRESS(_extrs, &SharedRuntime::_partial_subtype_ctr);
   SET_ADDRESS(_extrs, JavaThread::verify_cross_modify_fence_failure);
@@ -3086,7 +3103,6 @@ void SCAddressTable::init() {
   SET_ADDRESS(_stubs, StubRoutines::sha3_implCompressMB());
 
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32());
-  SET_ADDRESS(_stubs, StubRoutines::crc_table_addr());
 
   SET_ADDRESS(_stubs, StubRoutines::crc32c_table_addr());
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32C());
@@ -3127,6 +3143,10 @@ void SCAddressTable::init() {
   SET_ADDRESS(_stubs, StubRoutines::x86::double_sign_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::double_sign_flip());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_popcount_lut());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_float_sign_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_float_sign_flip());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_double_sign_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_double_sign_flip());
   // The iota indices are ordered by type B/S/I/L/F/D, and the offset between two types is 64.
   // See C2_MacroAssembler::load_iota_indices().
   for (int i = 0; i < 6; i++) {
@@ -3201,6 +3221,10 @@ void SCAddressTable::init_opto() {
   SET_ADDRESS(_C2_blobs, OptoRuntime::rethrow_stub());
   SET_ADDRESS(_C2_blobs, OptoRuntime::slow_arraycopy_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::register_finalizer_Java());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_start());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_end());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_mount());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_unmount());
 #endif
 
   assert(_C2_blobs_length <= _C2_blobs_max, "increase _C2_blobs_max to %d", _C2_blobs_length);

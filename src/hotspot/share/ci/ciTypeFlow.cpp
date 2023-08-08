@@ -770,7 +770,7 @@ void ciTypeFlow::StateVector::do_multianewarray(ciBytecodeStream* str) {
 void ciTypeFlow::StateVector::do_new(ciBytecodeStream* str) {
   bool will_link;
   ciKlass* klass = str->get_klass(will_link);
-  if (!will_link || str->is_unresolved_klass()) {
+  if (!will_link /*|| str->is_unresolved_klass()*/) { // FIXME
     trap(str, klass, str->get_klass_index());
   } else {
     push_object(klass);

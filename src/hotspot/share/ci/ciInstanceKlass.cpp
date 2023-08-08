@@ -27,8 +27,10 @@
 #include "ci/ciInstance.hpp"
 #include "ci/ciInstanceKlass.hpp"
 #include "ci/ciUtilities.inline.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/vmClasses.hpp"
+#include "compiler/compileTask.hpp"
 #include "memory/allocation.hpp"
 #include "memory/allocation.inline.hpp"
 #include "memory/resourceArea.hpp"
@@ -61,7 +63,7 @@ ciInstanceKlass::ciInstanceKlass(Klass* k) :
   _flags = ciFlags(access_flags);
   _has_finalizer = access_flags.has_finalizer();
   _has_subklass = flags().is_final() ? subklass_false : subklass_unknown;
-  _init_state = ik->init_state();
+  _init_state = compute_init_state(ik); // _init_state
   _has_nonstatic_fields = ik->has_nonstatic_fields();
   _has_nonstatic_concrete_methods = ik->has_nonstatic_concrete_methods();
   _is_hidden = ik->is_hidden();
@@ -145,8 +147,18 @@ ciInstanceKlass::ciInstanceKlass(ciSymbol* name,
 void ciInstanceKlass::compute_shared_init_state() {
   GUARDED_VM_ENTRY(
     InstanceKlass* ik = get_instanceKlass();
-    _init_state = ik->init_state();
+    _init_state = compute_init_state(ik);
   )
+}
+
+InstanceKlass::ClassState ciInstanceKlass::compute_init_state(InstanceKlass* ik) {
+  ASSERT_IN_VM;
+  ciEnv* env = CURRENT_ENV;
+  if (env != nullptr && env->is_precompiled()) {
+    return env->compute_init_state_for_precompiled(ik);
+  } else {
+    return ik->init_state();
+  }
 }
 
 // ------------------------------------------------------------------
@@ -337,11 +349,11 @@ void ciInstanceKlass::print_impl(outputStream* st) {
               bool_to_str(has_subklass()),
               layout_helper());
 
-    _flags.print_klass_flags();
+    _flags.print_klass_flags(st);
 
     if (_super) {
       st->print(" super=");
-      _super->print_name();
+      _super->print_name_on(st);
     }
     if (_java_mirror) {
       st->print(" mirror=PRESENT");
@@ -636,6 +648,9 @@ ciInstanceKlass* ciInstanceKlass::implementor() {
     }
     // Memoize this result.
     _implementor = impl;
+  }
+  if (impl != nullptr && !impl->is_loaded()) {
+    return nullptr;
   }
   return impl;
 }

@@ -311,6 +311,29 @@ ciMetadata* ciObjectFactory::get_metadata(Metadata* key) {
     }
   }
 
+  if (CURRENT_ENV->is_precompiled() && StoreSharedCode && PreloadArchivedClasses < 2) {
+    if (key->is_klass() && !MetaspaceObj::is_shared(key)) {
+      Klass* k = (Klass*)key;
+      if (k->is_instance_klass()) {
+        log_trace(precompile)("%d: unloaded: %s (%s)",
+                              CURRENT_ENV->compile_id(), k->external_name(),
+                              InstanceKlass::state2name(InstanceKlass::cast(k)->init_state()));
+        return ciEnv::_unloaded_ciinstance_klass;
+      } else if (k->is_objArray_klass()) {
+        Klass* bottom_elem = ObjArrayKlass::cast(k)->bottom_klass();
+        if (bottom_elem->is_instance_klass()) {
+          log_trace(cds, dynamic)("%d: unloaded: %s (%s)",
+                                  CURRENT_ENV->compile_id(), k->external_name(),
+                                  InstanceKlass::state2name(InstanceKlass::cast(bottom_elem)->init_state()));
+        } else {
+          log_trace(cds, dynamic)("%d: unloaded: %s",
+                                  CURRENT_ENV->compile_id(), k->external_name());
+        }
+        return ciEnv::_unloaded_ciobjarrayklass;
+      }
+    }
+  }
+
 #ifdef ASSERT
   if (CIObjectFactoryVerify) {
     Metadata* last = nullptr;
