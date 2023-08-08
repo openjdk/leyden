@@ -125,6 +125,7 @@ final class BasicComputedConstantTest {
 
             }
 
+            // Non-final fields
             int one,two,three;
 
             void isValid() {

@@ -97,12 +97,11 @@ public abstract sealed class AbstractComputedConstant<V, P>
     @Override
     public final V get() {
         // Try plain memory semantics first
-        // Todo: Review safe-publication properties
         V v = value;
         if (v != null) {
             return v;
         }
-        // ConstantUtil.Null does not have an internal state so,
+        // ConstantUtil.Null does not have an observed non-final internal state so,
         // we are allowed to use plain memory semantics here.
         if (auxiliary instanceof ConstantUtil.Null) {
             return null;
@@ -114,12 +113,11 @@ public abstract sealed class AbstractComputedConstant<V, P>
     @Override
     public final V orElse(V other) {
         // Try plain memory semantics first
-        // Todo: Review safe-publication properties
         V v = value;
         if (v != null) {
             return v;
         }
-        // ConstantUtil.Null does not have an internal state so,
+        // ConstantUtil.Null does not have an observed non-final internal state so,
         // we are allowed to use plain memory semantics here.
         if (auxiliary instanceof ConstantUtil.Null) {
             return null;
@@ -171,6 +169,8 @@ public abstract sealed class AbstractComputedConstant<V, P>
                 setAuxiliaryVolatile(ConstantUtil.NULL_SENTINEL);
             } else {
                 casValue(v);
+                // Insert a memory barrier for store/store operations
+                freeze();
                 setAuxiliaryVolatile(ConstantUtil.NON_NULL_SENTINEL);
             }
             return v;
@@ -209,6 +209,18 @@ public abstract sealed class AbstractComputedConstant<V, P>
             }
         };
         return toStringDescription() + v;
+    }
+
+    /**
+     * Performs a "freeze" operation, required to ensure safe publication under plain memory read semantics.
+     * <p>
+     * This inserts a memory barrier, thereby establishing a happens-before constraint.
+     * This prevents the reordering of store operations across the freeze boundary.
+     */
+    private static void freeze() {
+        // Issue a store fence, which is sufficient
+        // to provide protection against store/store reordering.
+        Unsafe.getUnsafe().storeFence();
     }
 
     // Accessors
