@@ -827,8 +827,8 @@ class PerfTraceTime : public StackObj {
     PerfLongCounter* _timerp;
 
   public:
-    inline PerfTraceTime(PerfLongCounter* timerp) : _timerp(timerp) {
-      if (!UsePerfData) return;
+    inline PerfTraceTime(PerfLongCounter* timerp, bool is_on = true) : _timerp(timerp) {
+      if (!UsePerfData || !is_on) return;
       _t.start();
     }
 
@@ -860,8 +860,8 @@ class PerfTraceTimedEvent : public PerfTraceTime {
     PerfLongCounter* _eventp;
 
   public:
-    inline PerfTraceTimedEvent(PerfLongCounter* timerp, PerfLongCounter* eventp): PerfTraceTime(timerp), _eventp(eventp) {
-      if (!UsePerfData) return;
+    inline PerfTraceTimedEvent(PerfLongCounter* timerp, PerfLongCounter* eventp, bool is_on = true): PerfTraceTime(timerp, is_on), _eventp(eventp) {
+      if (!UsePerfData || !is_on) return;
       _eventp->inc();
     }
 

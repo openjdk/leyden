@@ -517,6 +517,21 @@ class SharedRuntime: AllStatic {
 
   static address handle_unsafe_access(JavaThread* thread, address next_pc);
 
+ private:
+  static PerfCounter* _perf_resolve_opt_virtual_total_time;
+  static PerfCounter* _perf_resolve_virtual_total_time;
+  static PerfCounter* _perf_resolve_static_total_time;
+  static PerfCounter* _perf_handle_wrong_method_total_time;
+  static PerfCounter* _perf_ic_miss_total_time;
+ public:
+  static int _ic_miss_ctr;                       // total # of IC misses
+  static int _wrong_method_ctr;
+  static int _resolve_static_ctr;
+  static int _resolve_virtual_ctr;
+  static int _resolve_opt_virtual_ctr;
+
+  static void print_counters();
+
 #ifndef PRODUCT
 
   // Collect and print inline cache miss statistics
@@ -528,11 +543,6 @@ class SharedRuntime: AllStatic {
   static void trace_ic_miss(address at);
 
  public:
-  static int _ic_miss_ctr;                       // total # of IC misses
-  static int _wrong_method_ctr;
-  static int _resolve_static_ctr;
-  static int _resolve_virtual_ctr;
-  static int _resolve_opt_virtual_ctr;
   static int _implicit_null_throws;
   static int _implicit_div0_throws;
 

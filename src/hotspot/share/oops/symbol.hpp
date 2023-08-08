@@ -159,6 +159,9 @@ class Symbol : public MetaspaceObj {
     return ((unsigned)extract_hash(_hash_and_refcount) & 0xffff) |
            ((addr_bits ^ (length() << 8) ^ (( _body[0] << 8) | _body[1])) << 16);
   }
+  static unsigned identity_hash(const Symbol* symbol_or_null) {
+    return symbol_or_null == nullptr ? 0 : symbol_or_null->identity_hash();
+  }
 
   // Reference counting.  See comments above this class for when to use.
   int refcount() const { return extract_refcount(_hash_and_refcount); }
@@ -247,6 +250,19 @@ class Symbol : public MetaspaceObj {
   // Three-way compare for sorting; returns -1/0/1 if receiver is </==/> than arg
   // note that the ordering is not alfabetical
   inline int fast_compare(const Symbol* other) const;
+
+  // Perform a memcmp against the other block of bytes, up to the end
+  // of the shorter of the two.  If lengths differ but the bytes are
+  // the same, the shorter one compares lower.
+  int cmp(const Symbol* other) const {
+    return cmp((char*)other->base(), other->utf8_length());
+  }
+  int cmp(const char* str, int len) const {
+    int mylen = utf8_length();
+    int cmp = memcmp((char*)base(), str, mylen < len ? mylen : len);
+    // mylen - len cannot overflow because symbol length >= 0
+    return cmp != 0 ? cmp : mylen - len;
+  }
 
   // Returns receiver converted to null-terminated UTF-8 string; string is
   // allocated in resource area, or in the char buffer provided by caller.

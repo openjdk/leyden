@@ -374,6 +374,11 @@ class ConstantPoolCacheEntry {
     // When shifting flags as a 32-bit int, make sure we don't need an extra mask for tos_state:
     assert((((u4)-1 >> tos_state_shift) & ~tos_state_mask) == 0, "no need for tos_state mask");
   }
+
+  bool mark_and_relocate(ConstantPool* src_cp) NOT_CDS_RETURN_(false);
+private:
+  bool mark_and_relocate_method_entry(ConstantPool* src_cp) NOT_CDS_RETURN_(false);
+  bool mark_and_relocate_field_entry(ConstantPool* src_cp) NOT_CDS_RETURN_(false);
 };
 
 
@@ -452,7 +457,7 @@ class ConstantPoolCache: public MetaspaceObj {
   static ByteSize invokedynamic_entries_offset() { return byte_offset_of(ConstantPoolCache, _resolved_indy_entries); }
 
 #if INCLUDE_CDS
-  void remove_unshareable_info();
+  void remove_unshareable_info(const GrowableArray<bool>* keep_cpcache);
   void save_for_archive(TRAPS);
 #endif
 

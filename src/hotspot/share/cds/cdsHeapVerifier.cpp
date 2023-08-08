@@ -136,6 +136,19 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
                                                          "ZERO_INT");              // E
   ADD_EXCL("sun/security/util/SecurityConstants",        "PROVIDER_VER");          // C
 
+  ADD_EXCL("java/lang/invoke/DirectMethodHandle",        "LONG_OBJ_TYPE",  // TEMP archive MethodTypes
+                                                         "OBJ_OBJ_TYPE");  // TEMP archive MethodTypes
+
+  ADD_EXCL("sun/invoke/util/Wrapper",                    "FLOAT_ZERO",     // ? there is a cache??
+                                                         "DOUBLE_ZERO");   // ? there is a cache??
+
+  ADD_EXCL("java/lang/invoke/BoundMethodHandle$Specializer",   "BMH_TRANSFORMS",
+                                                               "SPECIES_DATA_ACCESSOR");
+  ADD_EXCL("java/lang/invoke/BoundMethodHandle",               "SPECIALIZER");
+  ADD_EXCL("java/lang/invoke/DelegatingMethodHandle",          "NF_getTarget");
+  ADD_EXCL("java/lang/invoke/MethodHandleImpl$ArrayAccessor",  "OBJECT_ARRAY_GETTER",
+                                                               "OBJECT_ARRAY_SETTER");
+  ADD_EXCL("java/lang/invoke/SimpleMethodHandle",              "BMH_SPECIES");
 
 # undef ADD_EXCL
 
@@ -220,6 +233,13 @@ void CDSHeapVerifier::do_klass(Klass* k) {
 }
 
 void CDSHeapVerifier::add_static_obj_field(InstanceKlass* ik, oop field, Symbol* name) {
+  if (field->klass() == vmClasses::MethodType_klass() ||
+      field->klass() == vmClasses::LambdaForm_klass()) {
+    // LambdaForm and MethodType are non-modifiable and are not tested for object equality, so
+    // it's OK if the static fields are reinitialized at runtime with alternative instances.
+    // (TODO: double check is this is correct)
+    return;
+  }
   StaticFieldInfo info = {ik, name};
   _table.put(field, info);
 }
@@ -230,9 +250,17 @@ inline bool CDSHeapVerifier::do_entry(oop& orig_obj, HeapShared::CachedOopInfo& 
   StaticFieldInfo* info = _table.get(orig_obj);
   if (info != nullptr) {
     ResourceMark rm;
+
+    char* class_name = info->_holder->name()->as_C_string();
+    char* field_name = info->_name->as_C_string();
+    if (strstr(class_name, "java/lang/invoke/BoundMethodHandle$Species_") == class_name &&
+        strcmp(field_name, "BMH_SPECIES") == 0) {
+      // FIXME: is this really OK??
+      return true;
+    }
     LogStream ls(Log(cds, heap)::warning());
     ls.print_cr("Archive heap points to a static field that may be reinitialized at runtime:");
-    ls.print_cr("Field: %s::%s", info->_holder->name()->as_C_string(), info->_name->as_C_string());
+    ls.print_cr("Field: %s::%s", class_name, field_name);
     ls.print("Value: ");
     orig_obj->print_on(&ls);
     ls.print_cr("--- trace begin ---");

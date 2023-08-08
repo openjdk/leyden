@@ -674,6 +674,10 @@ fileStream* defaultStream::open_file(const char* log_name) {
     return file;
   }
 
+  if (RecordTraining) {
+    vm_exit_during_initialization("cannot create log file for RecordTraining mode: %s", try_name);
+  }
+
   // Try again to open the file in the temp directory.
   delete file;
   // Note: This feature is for maintainer use only.  No need for L10N.
@@ -729,38 +733,41 @@ void defaultStream::start_log() {
              os::current_process_id(), (int64_t)time_ms);
     // Write VM version header immediately.
     xs->head("vm_version");
-    xs->head("name"); xs->text("%s", VM_Version::vm_name()); xs->cr();
+    xs->head("name");  // FIXME: should be an elem attr, not head/tail pair
+    xs->log_only()->print_cr("%s", VM_Version::vm_name());
     xs->tail("name");
-    xs->head("release"); xs->text("%s", VM_Version::vm_release()); xs->cr();
+    xs->head("release");
+    xs->log_only()->print_cr("%s", VM_Version::vm_release());
     xs->tail("release");
-    xs->head("info"); xs->text("%s", VM_Version::internal_vm_info_string()); xs->cr();
+    xs->head("info");
+    xs->log_only()->print_cr("%s", VM_Version::internal_vm_info_string());
     xs->tail("info");
     xs->tail("vm_version");
     // Record information about the command-line invocation.
     xs->head("vm_arguments");  // Cf. Arguments::print_on()
     if (Arguments::num_jvm_flags() > 0) {
       xs->head("flags");
-      Arguments::print_jvm_flags_on(xs->text());
+      Arguments::print_jvm_flags_on(xs->log_only());
       xs->tail("flags");
     }
     if (Arguments::num_jvm_args() > 0) {
       xs->head("args");
-      Arguments::print_jvm_args_on(xs->text());
+      Arguments::print_jvm_args_on(xs->log_only());
       xs->tail("args");
     }
     if (Arguments::java_command() != nullptr) {
-      xs->head("command"); xs->text()->print_cr("%s", Arguments::java_command());
+      xs->head("command"); xs->log_only()->print_cr("%s", Arguments::java_command());
       xs->tail("command");
     }
     if (Arguments::sun_java_launcher() != nullptr) {
-      xs->head("launcher"); xs->text()->print_cr("%s", Arguments::sun_java_launcher());
+      xs->head("launcher"); xs->log_only()->print_cr("%s", Arguments::sun_java_launcher());
       xs->tail("launcher");
     }
     if (Arguments::system_properties() !=  nullptr) {
       xs->head("properties");
       // Print it as a java-style property list.
       // System properties don't generally contain newlines, so don't bother with unparsing.
-      outputStream *text = xs->text();
+      outputStream *text = xs->log_only();
       for (SystemProperty* p = Arguments::system_properties(); p != nullptr; p = p->next()) {
         assert(p->key() != nullptr, "p->key() is null");
         if (p->readable()) {
@@ -779,6 +786,7 @@ void defaultStream::start_log() {
     xs->head("tty");
     // All further non-markup text gets copied to the tty:
     xs->_text = this;  // requires friend declaration!
+    // (And xtty->log_only() remains as a back door to the non-tty log file.)
 }
 
 // finish_log() is called during normal VM shutdown. finish_log_on_error() is

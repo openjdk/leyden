@@ -169,7 +169,7 @@ class NativeCall: public NativeInstruction {
   void  set_destination(address dest)       {
 #ifdef AMD64
     intptr_t disp = dest - return_address();
-    guarantee(disp == (intptr_t)(jint)disp, "must be 32-bit offset");
+    guarantee(disp == (intptr_t)(jint)disp, "must be 32-bit offset: " INTPTR_FORMAT ", dest: " INTPTR_FORMAT ", ret_pc: " INTPTR_FORMAT, disp, p2i(dest), p2i(return_address()));
 #endif // AMD64
     set_int_at(displacement_offset, dest - return_address());
   }

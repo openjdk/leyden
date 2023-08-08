@@ -106,7 +106,7 @@ public class TransformRelatedClassesAppCDS extends TransformRelatedClasses {
         String appJar = writeJar("app", testClasses);
 
         // create an archive
-        OutputAnalyzer out = TestCommon.dump(appJar, testClasses);
+        OutputAnalyzer out = TestCommon.dump(appJar, testClasses, "-XX:-PreloadSharedClasses");
         TestCommon.checkDump(out);
 
         // execute with archive
@@ -187,7 +187,7 @@ public class TransformRelatedClassesAppCDS extends TransformRelatedClasses {
                                      String agentJar, String customJar)
         throws Exception {
 
-        OutputAnalyzer out = TestCommon.dump(appJar, classList);
+        OutputAnalyzer out = TestCommon.dump(appJar, classList, "-XX:-PreloadSharedClasses");
         TestCommon.checkDump(out);
 
         String agentParam = "-javaagent:" + agentJar + "=" +

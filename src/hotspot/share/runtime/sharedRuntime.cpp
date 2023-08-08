@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/vmClasses.hpp"
@@ -65,6 +66,7 @@
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/jniHandles.inline.hpp"
+#include "runtime/perfData.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stackWatermarkSet.hpp"
 #include "runtime/stubRoutines.hpp"
@@ -72,6 +74,7 @@
 #include "runtime/vframe.inline.hpp"
 #include "runtime/vframeArray.hpp"
 #include "runtime/vm_version.hpp"
+#include "services/management.hpp"
 #include "utilities/copy.hpp"
 #include "utilities/dtrace.hpp"
 #include "utilities/events.hpp"
@@ -102,6 +105,12 @@ UncommonTrapBlob*   SharedRuntime::_uncommon_trap_blob;
 
 nmethod*            SharedRuntime::_cont_doYield_stub;
 
+PerfCounter* SharedRuntime::_perf_resolve_opt_virtual_total_time = nullptr;
+PerfCounter* SharedRuntime::_perf_resolve_virtual_total_time     = nullptr;
+PerfCounter* SharedRuntime::_perf_resolve_static_total_time      = nullptr;
+PerfCounter* SharedRuntime::_perf_handle_wrong_method_total_time = nullptr;
+PerfCounter* SharedRuntime::_perf_ic_miss_total_time             = nullptr;
+
 //----------------------------generate_stubs-----------------------------------
 void SharedRuntime::generate_stubs() {
   _wrong_method_blob                   = generate_resolve_blob(CAST_FROM_FN_PTR(address, SharedRuntime::handle_wrong_method),          "wrong_method_stub");
@@ -129,22 +138,54 @@ void SharedRuntime::generate_stubs() {
 #ifdef COMPILER2
   generate_uncommon_trap_blob();
 #endif // COMPILER2
+  if (UsePerfData) {
+    EXCEPTION_MARK;
+    NEWPERFTICKCOUNTER(_perf_resolve_opt_virtual_total_time, SUN_CI, "resovle_opt_virtual_call");
+    NEWPERFTICKCOUNTER(_perf_resolve_virtual_total_time,     SUN_CI, "resovle_virtual_call");
+    NEWPERFTICKCOUNTER(_perf_resolve_static_total_time,      SUN_CI, "resovle_static_call");
+    NEWPERFTICKCOUNTER(_perf_handle_wrong_method_total_time, SUN_CI, "handle_wrong_method");
+    NEWPERFTICKCOUNTER(_perf_ic_miss_total_time ,            SUN_CI, "ic_miss");
+    if (HAS_PENDING_EXCEPTION) {
+      vm_exit_during_initialization("SharedRuntime::generate_stubs() failed unexpectedly");
+    }
+  }
+}
+
+void SharedRuntime::print_counters() {
+  if (UsePerfData) {
+    LogStreamHandle(Info, init) log;
+    if (log.is_enabled()) {
+      log.print_cr("SharedRuntime:");
+      log.print_cr("  resolve_opt_virtual_call: %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->get_value()), _resolve_opt_virtual_ctr);
+      log.print_cr("  resolve_virtual_call:     %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_virtual_total_time->get_value()),     _resolve_virtual_ctr);
+      log.print_cr("  resolve_static_call:      %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_static_total_time->get_value()),      _resolve_static_ctr);
+      log.print_cr("  handle_wrong_method:      %5ldms / %5d events", Management::ticks_to_ms(_perf_handle_wrong_method_total_time->get_value()), _wrong_method_ctr);
+      log.print_cr("  ic_miss:                  %5ldms / %5d events", Management::ticks_to_ms(_perf_ic_miss_total_time->get_value()),             _ic_miss_ctr);
+
+      jlong total_ms = Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->get_value() +
+                                               _perf_resolve_virtual_total_time->get_value() +
+                                               _perf_resolve_static_total_time->get_value() +
+                                               _perf_handle_wrong_method_total_time->get_value() +
+                                               _perf_ic_miss_total_time->get_value());
+      log.print_cr("Total:                      %5ldms", total_ms);
+    }
+  }
 }
 
 #include <math.h>
 
 // Implementation of SharedRuntime
 
-#ifndef PRODUCT
 // For statistics
 int SharedRuntime::_ic_miss_ctr = 0;
 int SharedRuntime::_wrong_method_ctr = 0;
 int SharedRuntime::_resolve_static_ctr = 0;
 int SharedRuntime::_resolve_virtual_ctr = 0;
 int SharedRuntime::_resolve_opt_virtual_ctr = 0;
+
+#ifndef PRODUCT
 int SharedRuntime::_implicit_null_throws = 0;
 int SharedRuntime::_implicit_div0_throws = 0;
-
 int64_t SharedRuntime::_nof_normal_calls = 0;
 int64_t SharedRuntime::_nof_inlined_calls = 0;
 int64_t SharedRuntime::_nof_megamorphic_calls = 0;
@@ -1417,13 +1458,13 @@ methodHandle SharedRuntime::resolve_sub_helper(bool is_virtual, bool is_optimize
 
   assert(!caller_nm->is_unloading(), "It should not be unloading");
 
-#ifndef PRODUCT
   // tracing/debugging/statistics
   int *addr = (is_optimized) ? (&_resolve_opt_virtual_ctr) :
-                (is_virtual) ? (&_resolve_virtual_ctr) :
-                               (&_resolve_static_ctr);
+              (is_virtual) ? (&_resolve_virtual_ctr) :
+              (&_resolve_static_ctr);
   Atomic::inc(addr);
 
+#ifndef PRODUCT
   if (TraceCallFixup) {
     ResourceMark rm(current);
     tty->print("resolving %s%s (%s) call to",
@@ -1486,6 +1527,8 @@ methodHandle SharedRuntime::resolve_sub_helper(bool is_virtual, bool is_optimize
 
 // Inline caches exist only in compiled code
 JRT_BLOCK_ENTRY(address, SharedRuntime::handle_wrong_method_ic_miss(JavaThread* current))
+  PerfTraceTime timer(_perf_ic_miss_total_time);
+
 #ifdef ASSERT
   RegisterMap reg_map(current,
                       RegisterMap::UpdateMap::skip,
@@ -1511,6 +1554,8 @@ JRT_END
 
 // Handle call site that has been made non-entrant
 JRT_BLOCK_ENTRY(address, SharedRuntime::handle_wrong_method(JavaThread* current))
+  PerfTraceTime timer(_perf_handle_wrong_method_total_time);
+
   // 6243940 We might end up in here if the callee is deoptimized
   // as we race to call it.  We don't want to take a safepoint if
   // the caller was interpreted because the caller frame will look
@@ -1564,6 +1609,8 @@ JRT_END
 
 // Handle abstract method call
 JRT_BLOCK_ENTRY(address, SharedRuntime::handle_wrong_method_abstract(JavaThread* current))
+  PerfTraceTime timer(_perf_handle_wrong_method_total_time);
+
   // Verbose error message for AbstractMethodError.
   // Get the called method from the invoke bytecode.
   vframeStream vfst(current, true);
@@ -1599,6 +1646,8 @@ JRT_END
 
 // resolve a static call and patch code
 JRT_BLOCK_ENTRY(address, SharedRuntime::resolve_static_call_C(JavaThread* current ))
+  PerfTraceTime timer(_perf_resolve_static_total_time);
+
   methodHandle callee_method;
   bool enter_special = false;
   JRT_BLOCK
@@ -1637,6 +1686,8 @@ JRT_END
 
 // resolve virtual call and update inline cache to monomorphic
 JRT_BLOCK_ENTRY(address, SharedRuntime::resolve_virtual_call_C(JavaThread* current))
+  PerfTraceTime timer(_perf_resolve_virtual_total_time);
+
   methodHandle callee_method;
   JRT_BLOCK
     callee_method = SharedRuntime::resolve_helper(true, false, CHECK_NULL);
@@ -1651,6 +1702,8 @@ JRT_END
 // Resolve a virtual call that can be statically bound (e.g., always
 // monomorphic, so it has no inline cache).  Patch code to resolved target.
 JRT_BLOCK_ENTRY(address, SharedRuntime::resolve_opt_virtual_call_C(JavaThread* current))
+  PerfTraceTime timer(_perf_resolve_opt_virtual_total_time);
+
   methodHandle callee_method;
   JRT_BLOCK
     callee_method = SharedRuntime::resolve_helper(true, true, CHECK_NULL);
@@ -1779,9 +1832,9 @@ methodHandle SharedRuntime::handle_ic_miss_helper(TRAPS) {
 
   methodHandle callee_method(current, call_info.selected_method());
 
-#ifndef PRODUCT
   Atomic::inc(&_ic_miss_ctr);
 
+#ifndef PRODUCT
   // Statistics & Tracing
   if (TraceCallFixup) {
     ResourceMark rm(current);
@@ -1947,10 +2000,9 @@ methodHandle SharedRuntime::reresolve_call_site(TRAPS) {
 
   methodHandle callee_method = find_callee_method(CHECK_(methodHandle()));
 
-
-#ifndef PRODUCT
   Atomic::inc(&_wrong_method_ctr);
 
+#ifndef PRODUCT
   if (TraceCallFixup) {
     ResourceMark rm(current);
     tty->print("handle_wrong_method reresolving call to");
@@ -2893,6 +2945,9 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_ada
                                                            int total_args_passed,
                                                            BasicType* sig_bt,
                                                            bool allocate_code_blob) {
+  if (UsePerfData) {
+    ClassLoader::perf_method_adapters_count()->inc();
+  }
 
   // StubRoutines::_final_stubs_code is initialized after this function can be called. As a result,
   // VerifyAdapterCalls and VerifyAdapterSharing can fail if we re-use code that generated prior

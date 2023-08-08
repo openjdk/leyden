@@ -817,7 +817,7 @@ class CompileReplay : public StackObj {
     }
     replay_state = this;
     CompileBroker::compile_method(methodHandle(THREAD, method), entry_bci, comp_level,
-                                  methodHandle(), 0, CompileTask::Reason_Replay, THREAD);
+                                  methodHandle(), 0, true, CompileTask::Reason_Replay, THREAD);
     replay_state = nullptr;
   }
 

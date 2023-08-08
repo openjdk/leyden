@@ -25,6 +25,7 @@
 
 package java.lang.invoke;
 
+import jdk.internal.misc.CDS;
 import jdk.internal.perf.PerfCounter;
 import jdk.internal.vm.annotation.DontInline;
 import jdk.internal.vm.annotation.Hidden;
@@ -1156,8 +1157,23 @@ class LambdaForm {
             return super.hashCode();
         }
 
-        static final MethodType INVOKER_METHOD_TYPE =
-            MethodType.methodType(Object.class, MethodHandle.class, Object[].class);
+        static final MethodType INVOKER_METHOD_TYPE;
+        private static @Stable MethodType[] archivedObjects;
+
+        static {
+            CDS.initializeFromArchive(NamedFunction.class);
+            if (archivedObjects != null) {
+                INVOKER_METHOD_TYPE = archivedObjects[0];
+            } else {
+                INVOKER_METHOD_TYPE =
+                    MethodType.methodType(Object.class, MethodHandle.class, Object[].class);
+            }
+        }
+
+        static void dumpSharedArchive() {
+            archivedObjects = new MethodType[1];
+            archivedObjects[0] = INVOKER_METHOD_TYPE;
+        }
 
         private static MethodHandle computeInvoker(MethodTypeForm typeForm) {
             typeForm = typeForm.basicType().form();  // normalize to basic type

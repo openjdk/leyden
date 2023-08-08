@@ -130,6 +130,7 @@ public:
 
   // CDS
   void remove_unshareable_info();
+  void mark_and_relocate();
 
   // Offsets
   static ByteSize method_offset()                    { return byte_offset_of(ResolvedIndyEntry, _method);                    }

@@ -32,6 +32,7 @@ public class CDSOptions {
     public ArrayList<String> prefix = new ArrayList<String>();
     public ArrayList<String> suffix = new ArrayList<String>();
     public boolean useSystemArchive = false;
+    public boolean benchmarkMode = false;
     public String appJar;
     public String appJarDir;
 
@@ -93,6 +94,11 @@ public class CDSOptions {
 
     public CDSOptions setUseSystemArchive(boolean use) {
         this.useSystemArchive = use;
+        return this;
+    }
+
+    public CDSOptions setBenchmarkMode(boolean mode) {
+        this.benchmarkMode = mode;
         return this;
     }
 

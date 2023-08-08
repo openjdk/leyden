@@ -28,18 +28,63 @@
 #include "memory/allocation.inline.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/methodData.hpp"
-#include "oops/method.hpp"
+#include "oops/method.inline.hpp"
 #include "oops/oop.inline.hpp"
 #include "runtime/deoptimization.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/osThread.hpp"
 #include "runtime/vmOperations.hpp"
 #include "runtime/vmThread.hpp"
 #include "utilities/vmError.hpp"
 #include "utilities/xmlstream.hpp"
 
+// The XML stream is the contents of the LogFile (default hotspot_%p.log).
+// It is a superset of whatever might be displayed on the tty.
+// You can get to it by calls of the form xtty->...
+// Normal calls to tty->... just embed plain text among any markup
+// produced via the xtty API.
+// The xtty has sub-streams called xtty->text() and xtty->log_long().
+// These are ordinary output streams for writing unstructured text.
+// The format of this log file is both unstructured and constrained.
+//
+// Apart from possible race conditions, every line in the log file
+// is either an XML element (<tag ...>, or </tag>, or <tag .../>)
+// or is unstructured text.
+//
+// On any given line, if the first character is '<', then the last
+// character is '>' and the line consists of a single XML element,
+// which uses single quote '\'' to delimit any attribute values.
+// (The double-quote character '"' never appears, ever.)
+//
+// All other lines consist of unstructured text which is completely
+// free of the following characters: '<', '>', '&', '\'', '"'.  If
+// those characters are written to the tty (or to any other text
+// stream underlying the xtty), those characters, and no other
+// characters, are written as XML entities: "&lt;", "&gt;", "&amp;",
+// "&apos", "&quot".  There is no other use of the character '&'.
+//
+// The net effect is that you may select a range of tools to process
+// the marked-up logs, including XML parsers and simple line-oriented
+// Java or Unix tools.  The main concession you have to make to XML
+// is to convert the above five XML entities to single ASCII chars,
+// as you process attribute strings or unstructured text.
+//
+// It would be wise to ignore any XML tags that you do not recognize.
+// This can be done with grep, if you choose, because the log file
+// is line-structured.
+//
+// The log file collects the output from many contributing threads.
+// You should expect that an element of the form <writer thread='NNN'>
+// could appear almost anywhere, as the lines interleave.
+// It is straightforward to write a script to tease the log file
+// into thread-specific substreams.
+
 // Do not assert this condition if there's already another error reported.
 #define assert_if_no_error(cond, msg) \
   vmassert((cond) || VMError::is_error_reported(), msg)
+bool xmlStream::inside_attrs_or_error() {
+  return inside_attrs() || VMError::is_error_reported();
+}
 
 void xmlStream::initialize(outputStream* out) {
   _out = out;
@@ -47,6 +92,7 @@ void xmlStream::initialize(outputStream* out) {
   _markup_state = BODY;
   _text_init._outer_xmlStream = this;
   _text = &_text_init;
+  _log_only = _text;
 
 #ifdef ASSERT
   _element_depth = 0;
@@ -129,6 +175,15 @@ void xmlStream::text(const char* format, ...) {
   va_end(ap);
 }
 
+// ------------------------------------------------------------------
+// Outputs XML attribute, with quotes and special characters quoted.
+void xmlStream::attr(const char* attr, const char* format, ...) {
+  va_list ap;
+  va_start(ap, format);
+  va_attr(attr, format, ap);
+  va_end(ap);
+}
+
 #define BUFLEN 2*K   /* max size of output of individual print methods */
 
 // ------------------------------------------------------------------
@@ -138,6 +193,8 @@ void xmlStream::va_tag(bool push, const char* format, va_list ap) {
   size_t len;
   const char* kind = do_vsnprintf(buffer, BUFLEN, format, ap, false, len);
   see_tag(kind, push);
+  // make sure all opening and/or closing tags begin in the first column
+  if (out()->position() > 0)  print_raw("\n");
   print_raw("<");
   write(kind, len);
   _markup_state = (push ? HEAD : ELEM);
@@ -315,6 +372,8 @@ void xmlStream::end_head(const char* format, ...) {
 // Outputs "</kind>".
 void xmlStream::tail(const char* kind) {
   pop_tag(kind);
+  // make sure all opening and/or closing tags begin in the first column
+  if (out()->position() > 0)  print_raw("\n");
   print_raw("</");
   print_raw(kind);
   print_raw(">\n");
@@ -376,7 +435,7 @@ PRAGMA_DIAG_POP
 
 // Output a timestamp attribute.
 void xmlStream::stamp() {
-  assert_if_no_error(inside_attrs(), "stamp must be an attribute");
+  assert(inside_attrs_or_error(), "stamp must be an attribute");
   print_raw(" stamp='");
   out()->stamp();
   print_raw("'");
@@ -386,13 +445,25 @@ void xmlStream::stamp() {
 // ------------------------------------------------------------------
 // Output a method attribute, in the form " method='pkg/cls name sig'".
 // This is used only when there is no ciMethod available.
-void xmlStream::method(Method* method) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
+void xmlStream::method(Method* method, const char* pfx) {
+  assert(inside_attrs_or_error(), "printing attributes");
   if (method == nullptr)  return;
-  print_raw(" method='");
+  if (*pfx) {
+    print(" %smethod='", pfx);
+    method_text(method);
+    print_raw("'");
+    return;
+  }
+  print(" method='");
   method_text(method);
   print("' bytes='%d'", method->code_size());
   print(" count='%d'", method->invocation_count());
+  if (RecordTraining) {
+    // print stuff about this method's compilation history
+    print(" highest_comp_level='%d'", method->highest_comp_level());
+    CompiledMethod* cm = method->code();
+    if (cm != nullptr)  print(" last_compile_id='%d'", cm->compile_id());
+  }
   int bec = method->backedge_count();
   if (bec != 0)  print(" backedge_count='%d'", bec);
   print(" iicount='%d'", method->interpreter_invocation_count());
@@ -416,7 +487,7 @@ void xmlStream::method(Method* method) {
 
 void xmlStream::method_text(Method* method) {
   ResourceMark rm;
-  assert_if_no_error(inside_attrs(), "printing attributes");
+  assert(inside_attrs_or_error(), "printing attributes");
   if (method == nullptr)  return;
   text()->print("%s", method->method_holder()->external_name());
   print_raw(" ");  // " " is easier for tools to parse than "::"
@@ -429,38 +500,90 @@ void xmlStream::method_text(Method* method) {
 // ------------------------------------------------------------------
 // Output a klass attribute, in the form " klass='pkg/cls'".
 // This is used only when there is no ciKlass available.
-void xmlStream::klass(Klass* klass) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
+void xmlStream::klass(Klass* klass, const char* pfx) {
+  assert(inside_attrs_or_error(), "printing attributes");
   if (klass == nullptr) return;
-  print_raw(" klass='");
+  print(" %sklass='", pfx);
   klass_text(klass);
   print_raw("'");
+  if (klass->class_loader() != nullptr) {
+    loader(klass->class_loader(), pfx);
+  }
 }
 
 void xmlStream::klass_text(Klass* klass) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
+  assert(inside_attrs_or_error(), "printing attributes");
   if (klass == nullptr) return;
   //klass->print_short_name(log->out());
   klass->name()->print_symbol_on(out());
+  if (klass->is_hidden()) {
+    out()->print(" //hidden");
+    // FIXME:  maybe hash the contents of its classfile
+  }
 }
 
-void xmlStream::name(const Symbol* name) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
-  if (name == nullptr)  return;
-  print_raw(" name='");
-  name_text(name);
+void xmlStream::loader(oop cl, const char* pfx) {
+  assert(inside_attrs_or_error(), "printing attributes");
+  if (cl == nullptr) return;
+  print(" %sloader='", pfx);
+  loader_text(cl);
   print_raw("'");
 }
 
-void xmlStream::name_text(const Symbol* name) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
+void xmlStream::loader_text(oop cl) {
+  assert(inside_attrs_or_error(), "printing attributes");
+  if (cl == nullptr) return;
+  oop id = java_lang_ClassLoader::nameAndId(cl);
+  if (id != nullptr)  string_text(id);
+}
+
+void xmlStream::name(const Symbol* name, const char* pfx) {
+  assert(inside_attrs_or_error(), "printing attributes");
+  if (name == nullptr)  return;
+  print(" %sname='", pfx);
+  symbol_text(name);
+  print_raw("'");
+}
+
+void xmlStream::signature(const Symbol* sig, const char* pfx) {
+  assert(inside_attrs_or_error(), "printing attributes");
+  if (sig == nullptr)  return;
+  print(" %ssignature='", pfx);
+  symbol_text(sig);
+  print_raw("'");
+}
+
+void xmlStream::symbol_text(const Symbol* name) {
+  assert(inside_attrs_or_error(), "printing attributes");
   if (name == nullptr)  return;
   //name->print_short_name(text());
-  name->print_symbol_on(text());
+  //name->print_symbol_on(text());  // this has odd escapes in it (\\x%04x)
+  const char* base = (const char*) name->base();
+  int len = name->utf8_length();
+  log_only()->write(base, len);
+}
+
+void xmlStream::string_text(oop str) {
+  assert(inside_attrs_or_error(), "printing attributes");
+  if (str == nullptr)  return;
+  if (!java_lang_String::is_instance(str)) {
+    print("*** not a string*** ");
+    str->print_value_on(log_only());
+    return;
+  }
+  ResourceMark rm;
+  log_only()->print_raw(java_lang_String::as_utf8_string(str));
+}
+
+void xmlStream::thread(Thread* t, const char* pfx) {
+  assert(inside_attrs_or_error(), "printing attributes");
+  intx tid = t == nullptr ? os::current_thread_id() : t->osthread()->thread_id();
+  guarantee(tid == (t == nullptr ? Thread::current() : t)->osthread()->thread_id(), "");
+  print(" %sthread='" INTX_FORMAT "'", pfx, tid);
 }
 
 void xmlStream::object(const char* attr, Handle x) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
+  assert(inside_attrs_or_error(), "printing attributes");
   if (x == nullptr)  return;
   print_raw(" ");
   print_raw(attr);
@@ -470,14 +593,24 @@ void xmlStream::object(const char* attr, Handle x) {
 }
 
 void xmlStream::object_text(Handle x) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
-  if (x == nullptr)  return;
-  x->print_value_on(text());
+  assert(inside_attrs_or_error(), "printing attributes");
+  if (x.is_null())  return;
+  if (java_lang_ClassLoader::is_instance(x())) {
+    print_raw("loader:");
+    loader_text(x());
+    return;
+  }
+  if (java_lang_String::is_instance(x())) {
+    print_raw("string:");
+    string_text(x());
+    return;
+  }
+  x->print_value_on(log_only());
 }
 
 
 void xmlStream::object(const char* attr, Metadata* x) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
+  assert(inside_attrs_or_error(), "printing attributes");
   if (x == nullptr)  return;
   print_raw(" ");
   print_raw(attr);
@@ -487,7 +620,7 @@ void xmlStream::object(const char* attr, Metadata* x) {
 }
 
 void xmlStream::object_text(Metadata* x) {
-  assert_if_no_error(inside_attrs(), "printing attributes");
+  assert(inside_attrs_or_error(), "printing attributes");
   if (x == nullptr)  return;
   //x->print_value_on(text());
   if (x->is_method())

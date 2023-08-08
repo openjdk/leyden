@@ -317,18 +317,44 @@ void TypeStackSlotEntries::clean_weak_klass_links(bool always_clean) {
   for (int i = 0; i < _number_of_entries; i++) {
     intptr_t p = type(i);
     Klass* k = (Klass*)klass_part(p);
-    if (k != nullptr && (always_clean || !k->is_loader_alive())) {
-      set_type(i, with_status((Klass*)nullptr, p));
+    if (k != nullptr) {
+      if (!always_clean && k->is_instance_klass() && InstanceKlass::cast(k)->is_not_initialized()) {
+        continue; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
+      }
+      if (always_clean || !k->is_loader_alive()) {
+        set_type(i, with_status((Klass*)nullptr, p));
+      }
     }
+  }
+}
+
+void TypeStackSlotEntries::metaspace_pointers_do(MetaspaceClosure* it) {
+  for (int i = 0; i < _number_of_entries; i++) {
+    set_type(i, klass_part(type(i))); // reset tag; FIXME: properly handle tagged pointers
+    Klass** k = (Klass**)type_adr(i);
+    it->push(k);
+//    it->push_tagged(k);
   }
 }
 
 void ReturnTypeEntry::clean_weak_klass_links(bool always_clean) {
   intptr_t p = type();
   Klass* k = (Klass*)klass_part(p);
-  if (k != nullptr && (always_clean || !k->is_loader_alive())) {
-    set_type(with_status((Klass*)nullptr, p));
+  if (k != nullptr) {
+    if (!always_clean && k->is_instance_klass() && InstanceKlass::cast(k)->is_not_initialized()) {
+      return; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
+    }
+    if (always_clean || !k->is_loader_alive()) {
+      set_type(with_status((Klass*)nullptr, p));
+    }
   }
+}
+
+void ReturnTypeEntry::metaspace_pointers_do(MetaspaceClosure* it) {
+  Klass** k = (Klass**)type_adr(); // tagged
+  set_type(klass_part(type())); // reset tag; FIXME: properly handle tagged pointers
+  it->push(k);
+//  it->push_tagged(k);
 }
 
 bool TypeEntriesAtCall::return_profiling_enabled() {
@@ -406,9 +432,21 @@ void VirtualCallTypeData::print_data_on(outputStream* st, const char* extra) con
 void ReceiverTypeData::clean_weak_klass_links(bool always_clean) {
     for (uint row = 0; row < row_limit(); row++) {
     Klass* p = receiver(row);
-    if (p != nullptr && (always_clean || !p->is_loader_alive())) {
-      clear_row(row);
+    if (p != nullptr) {
+      if (!always_clean && p->is_instance_klass() && InstanceKlass::cast(p)->is_not_initialized()) {
+        continue; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
+      }
+      if (always_clean || !p->is_loader_alive()) {
+        clear_row(row);
+      }
     }
+  }
+}
+
+void ReceiverTypeData::metaspace_pointers_do(MetaspaceClosure *it) {
+  for (uint row = 0; row < row_limit(); row++) {
+    Klass** recv = (Klass**)intptr_at_adr(receiver_cell_index(row));
+    it->push(recv);
   }
 }
 
@@ -642,6 +680,11 @@ void ParametersTypeData::print_data_on(outputStream* st, const char* extra) cons
   tab(st);
   _parameters.print_data_on(st);
   st->cr();
+}
+
+void SpeculativeTrapData::metaspace_pointers_do(MetaspaceClosure* it) {
+  Method** m = (Method**)intptr_at_adr(speculative_trap_method);
+  it->push(m);
 }
 
 void SpeculativeTrapData::print_data_on(outputStream* st, const char* extra) const {
@@ -1221,10 +1264,10 @@ void MethodData::post_initialize(BytecodeStream* stream) {
 MethodData::MethodData(const methodHandle& method)
   : _method(method()),
     // Holds Compile_lock
-    _extra_data_lock(Mutex::safepoint-2, "MDOExtraData_lock"),
     _compiler_counters(),
     _parameters_type_data_di(parameters_uninitialized) {
-  initialize();
+    _extra_data_lock = new Mutex(Mutex::safepoint-2, "MDOExtraData_lock"),
+    initialize();
 }
 
 void MethodData::initialize() {
@@ -1463,7 +1506,7 @@ ProfileData* MethodData::bci_to_extra_data(int bci, Method* m, bool create_if_mi
   }
 
   if (create_if_missing && dp < end) {
-    MutexLocker ml(&_extra_data_lock);
+    MutexLocker ml(_extra_data_lock);
     // Check again now that we have the lock. Another thread may
     // have added extra data entries.
     ProfileData* result = bci_to_extra_data_helper(bci, m, dp, false);
@@ -1692,8 +1735,26 @@ bool MethodData::profile_parameters_for_method(const methodHandle& m) {
 }
 
 void MethodData::metaspace_pointers_do(MetaspaceClosure* it) {
-  log_trace(cds)("Iter(MethodData): %p", this);
+  log_trace(cds)("Iter(MethodData): %p for %p %s", this, _method, _method->name_and_sig_as_C_string());
   it->push(&_method);
+  if (_parameters_type_data_di != no_parameters) {
+    parameters_type_data()->metaspace_pointers_do(it);
+  }
+  for (ProfileData* data = first_data(); is_valid(data); data = next_data(data)) {
+    data->metaspace_pointers_do(it);
+  }
+  for (DataLayout* dp = extra_data_base();
+                   dp < extra_data_limit();
+                   dp = MethodData::next_extra(dp)) {
+    if (dp->tag() == DataLayout::speculative_trap_data_tag) {
+      ResourceMark rm;
+      SpeculativeTrapData* data = new SpeculativeTrapData(dp);
+      data->metaspace_pointers_do(it);
+    } else if (dp->tag() == DataLayout::no_tag ||
+               dp->tag() == DataLayout::arg_info_data_tag) {
+      break;
+    }
+  }
 }
 
 void MethodData::clean_extra_data_helper(DataLayout* dp, int shift, bool reset) {
@@ -1723,6 +1784,9 @@ class CleanExtraDataKlassClosure : public CleanExtraDataClosure {
 public:
   CleanExtraDataKlassClosure(bool always_clean) : _always_clean(always_clean) {}
   bool is_live(Method* m) {
+    if (!_always_clean && m->method_holder()->is_instance_klass() && InstanceKlass::cast(m->method_holder())->is_not_initialized()) {
+      return true; // TODO: treat as unloaded instead?
+    }
     return !(_always_clean) && m->method_holder()->is_loader_alive();
   }
 };
@@ -1841,3 +1905,13 @@ void MethodData::release_C_heap_structures() {
   FailedSpeculation::free_failed_speculations(get_failed_speculations_address());
 #endif
 }
+
+#if INCLUDE_CDS
+void MethodData::remove_unshareable_info() {
+  _extra_data_lock = nullptr;
+}
+
+void MethodData::restore_unshareable_info(TRAPS) {
+  _extra_data_lock = new Mutex(Mutex::safepoint-2, "MDOExtraData_lock");
+}
+#endif // INCLUDE_CDS

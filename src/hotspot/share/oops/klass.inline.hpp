@@ -64,6 +64,10 @@ inline oop Klass::class_loader() const {
   return class_loader_data()->class_loader();
 }
 
+inline Symbol* Klass::class_loader_name_and_id() const {
+  return class_loader_data()->name_and_id();
+}
+
 inline vtableEntry* Klass::start_of_vtable() const {
   return (vtableEntry*) ((address)this + in_bytes(vtable_start_offset()));
 }

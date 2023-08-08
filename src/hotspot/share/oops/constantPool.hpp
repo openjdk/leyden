@@ -108,7 +108,8 @@ class ConstantPool : public Metadata {
     _has_preresolution    = 1,       // Flags
     _on_stack             = 2,
     _is_shared            = 4,
-    _has_dynamic_constant = 8
+    _has_dynamic_constant = 8,
+    _is_for_method_handle_intrinsic = 16
   };
 
   u2              _flags;  // old fashioned bit twiddling
@@ -214,6 +215,9 @@ class ConstantPool : public Metadata {
 
   bool has_dynamic_constant() const       { return (_flags & _has_dynamic_constant) != 0; }
   void set_has_dynamic_constant()         { _flags |= _has_dynamic_constant; }
+
+  bool is_for_method_handle_intrinsic() const  { return (_flags & _is_for_method_handle_intrinsic) != 0; }
+  void set_is_for_method_handle_intrinsic()    { _flags |= _is_for_method_handle_intrinsic; }
 
   // Klass holding pool
   InstanceKlass* pool_holder() const      { return _pool_holder; }
@@ -691,7 +695,10 @@ class ConstantPool : public Metadata {
   // CDS support
   objArrayOop prepare_resolved_references_for_archiving() NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   void add_dumped_interned_strings() NOT_CDS_JAVA_HEAP_RETURN;
+  bool can_archive_invokehandle(ConstantPoolCacheEntry* cpce);
   bool maybe_archive_resolved_klass_at(int cp_index);
+  bool maybe_archive_resolved_fmi_ref_at(int cp_index, int cpc_index, int cp_tag);
+  void archive_entries();
   void remove_unshareable_info();
   void restore_unshareable_info(TRAPS);
 #endif

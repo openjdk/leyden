@@ -705,6 +705,11 @@ void JVMFlag::printFlags(outputStream* out, bool withComments, bool printRanges,
   // The last entry is the null entry.
   const size_t length = JVMFlag::numFlags - 1;
 
+  const char* tag = 0;
+  if (xtty_owns(out))
+    xtty->head("%s", tag = !Universe::is_fully_initialized()
+               ? "vm_flags_initial" : "vm_flags_final");
+
   // Print
   if (!printRanges) {
     out->print_cr("[Global flags]");
@@ -734,6 +739,8 @@ void JVMFlag::printFlags(outputStream* out, bool withComments, bool printRanges,
       }
     }
   }
+  if (xtty_owns(out))
+    xtty->tail(tag);
 }
 
 void JVMFlag::printError(bool verbose, const char* msg, ...) {

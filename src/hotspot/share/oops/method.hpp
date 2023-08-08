@@ -62,10 +62,12 @@ class LocalVariableTableElement;
 class AdapterHandlerEntry;
 class MethodData;
 class MethodCounters;
+class MethodTrainingData;
 class ConstMethod;
 class InlineTableSizes;
 class CompiledMethod;
 class InterpreterOopMap;
+class SCAEntry;
 
 class Method : public Metadata {
  friend class VMStructs;
@@ -104,6 +106,9 @@ class Method : public Metadata {
   CompiledMethod* volatile _code;                       // Points to the corresponding piece of native code
   volatile address           _from_interpreted_entry; // Cache of _code ? _adapter->i2c_entry() : _i2i_entry
 
+  CompiledMethod* _preload_code;  // preloaded SCA code
+  SCAEntry* _sca_entry;           // SCA entry for pre-loading code
+
   // Constructor
   Method(ConstMethod* xconst, AccessFlags access_flags, Symbol* name);
  public:
@@ -124,6 +129,7 @@ class Method : public Metadata {
 #if INCLUDE_CDS
   void remove_unshareable_info();
   void restore_unshareable_info(TRAPS);
+  static void restore_archived_method_handle_intrinsic(methodHandle m, TRAPS);
 #endif
 
   // accessors for instance variables
@@ -346,6 +352,24 @@ class Method : public Metadata {
 
   void set_method_data(MethodData* data);
 
+  MethodTrainingData* training_data_or_null() const {
+    MethodCounters* mcs = method_counters();
+    if (mcs == nullptr) {
+      return nullptr;
+    } else {
+      return mcs->method_training_data();
+    }
+  }
+
+  bool init_training_data(MethodTrainingData* tdata) {
+    MethodCounters* mcs = method_counters();
+    if (mcs == nullptr) {
+      return false;
+    } else {
+      return mcs->init_method_training_data(tdata);
+    }
+  }
+
   MethodCounters* method_counters() const {
     return _method_counters;
   }
@@ -394,7 +418,7 @@ class Method : public Metadata {
   bool was_never_executed()                     { return !was_executed_more_than(0);  }
 
   static void build_profiling_method_data(const methodHandle& method, TRAPS);
-
+  static bool install_training_method_data(const methodHandle& method);
   static MethodCounters* build_method_counters(Thread* current, Method* m);
 
   int interpreter_invocation_count()            { return invocation_count();          }
@@ -428,6 +452,16 @@ public:
   }
   void set_from_compiled_entry(address entry) {
     _from_compiled_entry =  entry;
+  }
+
+  void set_preload_code(CompiledMethod* code) {
+    _preload_code = code;
+  }
+  void set_sca_entry(SCAEntry* entry) {
+    _sca_entry = entry;
+  }
+  SCAEntry* sca_entry() const {
+    return _sca_entry;
   }
 
   address get_i2c_entry();
@@ -645,6 +679,7 @@ public:
   bool has_compiled_code() const;
 
   bool needs_clinit_barrier() const;
+  bool code_has_clinit_barriers() const;
 
   // sizing
   static int header_size()                       {

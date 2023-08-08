@@ -696,6 +696,8 @@ static void scan_value(enum OptionType type, char* line, int& total_bytes_read,
         }
       } else if (option == CompileCommand::TestOptionList) {
         // all values are ok
+      } else if (option == CompileCommand::TooManyTrapsAtBCI) {
+        // FIXME
       }
 #endif
       else {

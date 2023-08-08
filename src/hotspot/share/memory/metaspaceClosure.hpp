@@ -123,7 +123,7 @@ public:
     virtual ~Ref() {}
 
     address obj() const {
-      return *addr();
+      return address(intptr_t(*addr()) & ~0x3); // FIXME: just in case it is tagged
     }
 
     address* addr() const {

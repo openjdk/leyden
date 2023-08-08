@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/classListParser.hpp"
+#include "cds/classPrelinker.hpp"
 #include "cds/lambdaFormInvokers.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/unregisteredClasses.hpp"
@@ -36,7 +37,7 @@
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "interpreter/bytecode.hpp"
-#include "interpreter/bytecodeStream.hpp"
+#include "interpreter/interpreterRuntime.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "jimage.hpp"
 #include "jvm.h"
@@ -44,6 +45,7 @@
 #include "logging/logTag.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
+#include "oops/cpCache.inline.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/java.hpp"
@@ -51,6 +53,9 @@
 #include "utilities/defaultStream.hpp"
 #include "utilities/macros.hpp"
 
+const char* ClassListParser::LAMBDA_PROXY_TAG = "@lambda-proxy";
+const char* ClassListParser::LAMBDA_FORM_TAG  = "@lambda-form-invoker";
+const char* ClassListParser::CONSTANT_POOL_TAG  = "@cp";
 volatile Thread* ClassListParser::_parsing_thread = nullptr;
 ClassListParser* ClassListParser::_instance = nullptr;
 
@@ -106,7 +111,9 @@ int ClassListParser::parse(TRAPS) {
       // and will be processed later.
       continue;
     }
-
+    if (_constant_pool_line) {
+      continue;
+    }
     if (_parse_mode == _parse_lambda_forms_invokers_only) {
       continue;
     }
@@ -211,6 +218,7 @@ bool ClassListParser::parse_one_line() {
   _interfaces_specified = false;
   _indy_items->clear();
   _lambda_form_line = false;
+  _constant_pool_line = false;
 
   if (_line[0] == '@') {
     return parse_at_tags();
@@ -313,6 +321,11 @@ bool ClassListParser::parse_at_tags() {
     LambdaFormInvokers::append(os::strdup((const char*)(_line + offset), mtInternal));
     _lambda_form_line = true;
     return true;
+  } else if (strcmp(_token, CONSTANT_POOL_TAG) == 0) {
+    _token = _line + offset;
+    _constant_pool_line = true;
+    parse_constant_pool_tag();
+    return true;
   } else {
     error("Invalid @ tag at the beginning of line \"%s\" line #%d", _token, _line_no);
     return false;
@@ -410,9 +423,14 @@ void ClassListParser::print_actual_interfaces(InstanceKlass* ik) {
   jio_fprintf(defaultStream::error_stream(), "}\n");
 }
 
-void ClassListParser::error(const char* msg, ...) {
+void ClassListParser::print_diagnostic_info(outputStream* st, const char* msg, ...) {
   va_list ap;
   va_start(ap, msg);
+  print_diagnostic_info(st, msg, ap);
+  va_end(ap);
+}
+
+void ClassListParser::print_diagnostic_info(outputStream* st, const char* msg, va_list ap) {
   int error_index = _token - _line;
   if (error_index >= _line_len) {
     error_index = _line_len - 1;
@@ -421,31 +439,47 @@ void ClassListParser::error(const char* msg, ...) {
     error_index = 0;
   }
 
-  jio_fprintf(defaultStream::error_stream(),
-              "An error has occurred while processing class list file %s %d:%d.\n",
-              _classlist_file, _line_no, (error_index + 1));
-  jio_vfprintf(defaultStream::error_stream(), msg, ap);
+  st->print("An error has occurred while processing class list file %s %d:%d.\n",
+            _classlist_file, _line_no, (error_index + 1));
+  st->vprint(msg, ap);
 
   if (_line_len <= 0) {
-    jio_fprintf(defaultStream::error_stream(), "\n");
+    st->print("\n");
   } else {
-    jio_fprintf(defaultStream::error_stream(), ":\n");
+    st->print(":\n");
     for (int i=0; i<_line_len; i++) {
       char c = _line[i];
       if (c == '\0') {
-        jio_fprintf(defaultStream::error_stream(), "%s", " ");
+        st->print("%s", " ");
       } else {
-        jio_fprintf(defaultStream::error_stream(), "%c", c);
+        st->print("%c", c);
       }
     }
-    jio_fprintf(defaultStream::error_stream(), "\n");
+    st->print("\n");
     for (int i=0; i<error_index; i++) {
-      jio_fprintf(defaultStream::error_stream(), "%s", " ");
+      st->print("%s", " ");
     }
-    jio_fprintf(defaultStream::error_stream(), "^\n");
+    st->print("^\n");
   }
+}
 
+void ClassListParser::error(const char* msg, ...) {
+  va_list ap;
+  va_start(ap, msg);
+  LogTarget(Error, cds) lt;
+  LogStream ls(lt);
+  print_diagnostic_info(&ls, msg, ap);
   vm_exit_during_initialization("class list format error.", nullptr);
+  va_end(ap);
+}
+
+void ClassListParser::constant_pool_resolution_warning(const char* msg, ...) {
+  va_list ap;
+  va_start(ap, msg);
+  LogTarget(Warning, cds, resolve) lt;
+  LogStream ls(lt);
+  print_diagnostic_info(&ls, msg, ap);
+  ls.print("Your classlist may be out of sync with the JDK or the application.");
   va_end(ap);
 }
 
@@ -722,4 +756,96 @@ InstanceKlass* ClassListParser::lookup_interface_for_current_class(Symbol* inter
         interface_name->as_klass_external_name(), _class_name);
   ShouldNotReachHere();
   return nullptr;
+}
+
+InstanceKlass* ClassListParser::find_builtin_class_helper(JavaThread* current, Symbol* class_name_symbol, oop class_loader_oop) {
+  Handle class_loader(current, class_loader_oop);
+  Handle protection_domain;
+  return SystemDictionary::find_instance_klass(current, class_name_symbol, class_loader, protection_domain);
+}
+
+InstanceKlass* ClassListParser::find_builtin_class(JavaThread* current, const char* class_name) {
+  TempNewSymbol class_name_symbol = SymbolTable::new_symbol(class_name);
+  InstanceKlass* ik;
+
+  if ( (ik = find_builtin_class_helper(current, class_name_symbol, nullptr)) != nullptr
+    || (ik = find_builtin_class_helper(current, class_name_symbol, SystemDictionary::java_platform_loader())) != nullptr
+    || (ik = find_builtin_class_helper(current, class_name_symbol, SystemDictionary::java_system_loader())) != nullptr) {
+    return ik;
+  } else {
+    return nullptr;
+  }
+}
+
+void ClassListParser::parse_constant_pool_tag() {
+  if (_parse_mode == _parse_lambda_forms_invokers_only) {
+    return;
+  }
+
+  JavaThread* THREAD = JavaThread::current();
+  skip_whitespaces();
+  char* class_name = _token;
+  skip_non_whitespaces();
+  *_token = '\0';
+  _token ++;
+
+  InstanceKlass* ik = find_builtin_class(THREAD, class_name);
+  if (ik == nullptr) {
+    _token = class_name;
+    if (strstr(class_name, "/$Proxy") != nullptr ||
+        strstr(class_name, "MethodHandle$Species_") != nullptr) {
+      // ignore -- TODO: we should filter these out in classListWriter.cpp
+    } else {
+      constant_pool_resolution_warning("class %s is not (yet) loaded by one of the built-in loaders", class_name);
+    }
+    return;
+  }
+
+  ResourceMark rm(THREAD);
+  constantPoolHandle cp(THREAD, ik->constants());
+  GrowableArray<bool> preresolve_list(cp->length(), cp->length(), false);
+  bool preresolve_class = false;
+  bool preresolve_fmi = false;
+  bool preresolve_indy = false;
+  
+  while (*_token) {
+    int cp_index;
+    skip_whitespaces();
+    parse_uint(&cp_index);
+    if (cp_index < 1 || cp_index >= cp->length()) {
+      constant_pool_resolution_warning("Invalid constant pool index %d", cp_index);
+      return;
+    } else {
+      preresolve_list.at_put(cp_index, true);
+    }
+    switch (cp->tag_at(cp_index).value()) {
+    case JVM_CONSTANT_UnresolvedClass:
+      preresolve_class = true;
+      break;
+    case JVM_CONSTANT_UnresolvedClassInError:
+    case JVM_CONSTANT_Class:
+      // ignore
+    case JVM_CONSTANT_Fieldref:
+    case JVM_CONSTANT_Methodref:
+      preresolve_fmi = true;
+      break;
+    case JVM_CONSTANT_InvokeDynamic:
+      preresolve_indy = true;
+      break;
+    default:
+      constant_pool_resolution_warning("Unsupported constant pool index %d (type=%d)",
+                                       cp_index, cp->tag_at(cp_index).value());
+      return;
+    }
+  }
+
+  if (preresolve_class) {
+    ClassPrelinker::preresolve_class_cp_entries(THREAD, ik, &preresolve_list);
+  }
+  if (preresolve_fmi) {
+    ClassPrelinker::preresolve_field_and_method_cp_entries(THREAD, ik, &preresolve_list);
+  }
+  if (preresolve_indy) {
+    ClassPrelinker::preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
+  }
 }

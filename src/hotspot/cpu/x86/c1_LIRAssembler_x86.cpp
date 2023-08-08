@@ -33,6 +33,8 @@
 #include "c1/c1_ValueStack.hpp"
 #include "ci/ciArrayKlass.hpp"
 #include "ci/ciInstance.hpp"
+#include "ci/ciUtilities.hpp"
+#include "code/SCArchive.hpp"
 #include "compiler/oopMap.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/gc_globals.hpp"
@@ -51,24 +53,24 @@
 // fast versions of NegF/NegD and AbsF/AbsD.
 
 // Note: 'double' and 'long long' have 32-bits alignment on x86.
-static jlong* double_quadword(jlong *adr, jlong lo, jlong hi) {
+static address double_quadword(jlong *adr, jlong lo, jlong hi) {
   // Use the expression (adr)&(~0xF) to provide 128-bits aligned address
   // of 128-bits operands for SSE instructions.
   jlong *operand = (jlong*)(((intptr_t)adr) & ((intptr_t)(~0xF)));
   // Store the value to a 128-bits operand.
   operand[0] = lo;
   operand[1] = hi;
-  return operand;
+  return (address)operand;
 }
 
 // Buffer for 128-bits masks used by SSE instructions.
 static jlong fp_signmask_pool[(4+1)*2]; // 4*128bits(data) + 128bits(alignment)
 
 // Static initialization during VM startup.
-static jlong *float_signmask_pool  = double_quadword(&fp_signmask_pool[1*2],         CONST64(0x7FFFFFFF7FFFFFFF),         CONST64(0x7FFFFFFF7FFFFFFF));
-static jlong *double_signmask_pool = double_quadword(&fp_signmask_pool[2*2],         CONST64(0x7FFFFFFFFFFFFFFF),         CONST64(0x7FFFFFFFFFFFFFFF));
-static jlong *float_signflip_pool  = double_quadword(&fp_signmask_pool[3*2], (jlong)UCONST64(0x8000000080000000), (jlong)UCONST64(0x8000000080000000));
-static jlong *double_signflip_pool = double_quadword(&fp_signmask_pool[4*2], (jlong)UCONST64(0x8000000000000000), (jlong)UCONST64(0x8000000000000000));
+address LIR_Assembler::float_signmask_pool  = double_quadword(&fp_signmask_pool[1*2],         CONST64(0x7FFFFFFF7FFFFFFF),         CONST64(0x7FFFFFFF7FFFFFFF));
+address LIR_Assembler::double_signmask_pool = double_quadword(&fp_signmask_pool[2*2],         CONST64(0x7FFFFFFFFFFFFFFF),         CONST64(0x7FFFFFFFFFFFFFFF));
+address LIR_Assembler::float_signflip_pool  = double_quadword(&fp_signmask_pool[3*2], (jlong)UCONST64(0x8000000080000000), (jlong)UCONST64(0x8000000080000000));
+address LIR_Assembler::double_signflip_pool = double_quadword(&fp_signmask_pool[4*2], (jlong)UCONST64(0x8000000000000000), (jlong)UCONST64(0x8000000000000000));
 
 
 NEEDS_CLEANUP // remove this definitions ?
@@ -591,6 +593,13 @@ void LIR_Assembler::const2reg(LIR_Opr src, LIR_Opr dest, LIR_PatchCode patch_cod
 
     case T_LONG: {
       assert(patch_code == lir_patch_none, "no patching handled here");
+      if (SCArchive::is_on_for_write()) {
+        // SCA needs relocation info for card table base
+        address b = c->as_pointer();
+        if (b == ci_card_table_address_as<address>()) {
+          __ relocate(relocInfo::external_word_type);
+        }
+      }
 #ifdef _LP64
       __ movptr(dest->as_register_lo(), (intptr_t)c->as_jlong());
 #else
@@ -2434,7 +2443,7 @@ void LIR_Assembler::intrinsic_op(LIR_Code code, LIR_Opr value, LIR_Opr tmp, LIR_
             }
             assert(!tmp->is_valid(), "do not need temporary");
             __ andpd(dest->as_xmm_double_reg(),
-                     ExternalAddress((address)double_signmask_pool),
+                     ExternalAddress(LIR_Assembler::double_signmask_pool),
                      rscratch1);
           }
         }
@@ -3824,7 +3833,7 @@ void LIR_Assembler::negate(LIR_Opr left, LIR_Opr dest, LIR_Opr tmp) {
         __ movflt(dest->as_xmm_float_reg(), left->as_xmm_float_reg());
       }
       __ xorps(dest->as_xmm_float_reg(),
-               ExternalAddress((address)float_signflip_pool),
+               ExternalAddress(LIR_Assembler::float_signflip_pool),
                rscratch1);
     }
   } else if (dest->is_double_xmm()) {
@@ -3842,7 +3851,7 @@ void LIR_Assembler::negate(LIR_Opr left, LIR_Opr dest, LIR_Opr tmp) {
         __ movdbl(dest->as_xmm_double_reg(), left->as_xmm_double_reg());
       }
       __ xorpd(dest->as_xmm_double_reg(),
-               ExternalAddress((address)double_signflip_pool),
+               ExternalAddress(LIR_Assembler::double_signflip_pool),
                rscratch1);
     }
 #ifndef _LP64

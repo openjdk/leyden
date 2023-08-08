@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/resolutionErrors.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -638,6 +639,103 @@ void ConstantPoolCacheEntry::verify(outputStream* st) const {
   // not implemented yet
 }
 
+#if INCLUDE_CDS
+bool ConstantPoolCacheEntry::mark_and_relocate(ConstantPool* src_cp) {
+  if (is_method_entry()) {
+    return mark_and_relocate_method_entry(src_cp);
+  } else {
+    return mark_and_relocate_field_entry(src_cp);
+  }
+}
+
+bool ConstantPoolCacheEntry::mark_and_relocate_method_entry(ConstantPool* src_cp) {
+  assert(is_method_entry(), "sanity");
+
+  Bytecodes::Code invoke_code = bytecode_1();
+  if (invoke_code != (Bytecodes::Code)0) {
+    Metadata* f1 = f1_ord();
+    if (f1 != nullptr) {
+      ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_f1);
+      switch (invoke_code) {
+      case Bytecodes::_invokeinterface:
+        assert(0, "not implemented");
+        //assert(f1->is_klass(), "");
+        //ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_f2); // f2 is interface method
+        return false;
+      case Bytecodes::_invokestatic:
+        // For safety, we support invokestatic only for invoking methods in MethodHandle.
+        // FIXME -- further restrict it to linkToStatic(), etc?
+        assert(bytecode_2() == (Bytecodes::Code)0, "must be");
+        assert(f1->is_method(), "");
+        assert(f1_as_method()->method_holder()->name()->equals("java/lang/invoke/MethodHandle") ||
+               f1_as_method()->method_holder()->name()->equals("java/lang/invoke/MethodHandleNatives"), "sanity");
+        return true;
+      case Bytecodes::_invokespecial:
+        assert(f1->is_method(), "must be");
+        // Also need to work on bytecode_2() below.
+        break;
+      case Bytecodes::_invokehandle:
+        assert(bytecode_2() == (Bytecodes::Code)0, "must be");
+        assert(f1->is_method(), "");
+        return true;
+      default:
+        ShouldNotReachHere();
+        break;
+      }
+    }
+  }
+
+  // TODO test case: can invokespecial and invokevirtual share the same CP?
+  invoke_code = bytecode_2();
+  if (invoke_code != (Bytecodes::Code)0) {
+    assert(invoke_code == Bytecodes::_invokevirtual, "must be");
+    if (is_vfinal()) {
+      // f2 is vfinal method
+      ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_f2); // f2 is final method
+    } else {
+      // f2 is vtable index, no need to mark
+      if (DynamicDumpSharedSpaces) {
+        // InstanceKlass::methods() is has been resorted, so we need to
+        // update the vtable_index.
+        int holder_index = src_cp->uncached_klass_ref_index_at(constant_pool_index());
+        Klass* src_klass = src_cp->resolved_klass_at(holder_index);
+        Method* src_m = src_klass->method_at_vtable(f2_as_index());
+        if (!ArchiveBuilder::current()->is_in_mapped_static_archive(src_m->method_holder()) &&
+            !ArchiveBuilder::current()->is_in_mapped_static_archive(src_m)) {
+          Klass* buffered_klass = ArchiveBuilder::current()->get_buffered_addr(src_klass);
+          Method* buffered_m = ArchiveBuilder::current()->get_buffered_addr(src_m);
+          int vtable_index;
+          if (src_m->method_holder()->is_interface()) { // default or miranda method
+            assert(src_m->vtable_index() < 0, "must be");
+            assert(buffered_klass->is_instance_klass(), "must be");
+            vtable_index = InstanceKlass::cast(buffered_klass)->vtable_index_of_interface_method(buffered_m);
+            assert(vtable_index >= 0, "must be");
+          } else {
+            vtable_index = buffered_m->vtable_index();
+            assert(vtable_index >= 0, "must be");
+          }
+          if (_f2 != vtable_index) {
+            log_trace(cds, resolve)("vtable_index changed %d => %d", (int)_f2, vtable_index);
+            _f2 = vtable_index;
+          }
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+bool ConstantPoolCacheEntry::mark_and_relocate_field_entry(ConstantPool* src_cp) {
+  assert(is_field_entry(), "sanity");
+  assert(is_resolved(Bytecodes::_getfield), "only this is implemented for now");
+  Klass* klass = (Klass*)_f1;
+  assert(klass != NULL && klass->is_klass(), "must be");
+  ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_f1);
+  return true;
+}
+#endif
+
 // Implementation of ConstantPoolCache
 
 ConstantPoolCache* ConstantPoolCache::allocate(ClassLoaderData* loader_data,
@@ -695,8 +793,9 @@ void ConstantPoolCache::save_for_archive(TRAPS) {
   }
 }
 
-void ConstantPoolCache::remove_unshareable_info() {
+void ConstantPoolCache::remove_unshareable_info(const GrowableArray<bool>* keep_cpcache) {
   Arguments::assert_is_dumping_archive();
+  assert(keep_cpcache->length() == length(), "sanity");
   // <this> is the copy to be written into the archive. It's in the ArchiveBuilder's "buffer space".
   // However, this->_initial_entries was not copied/relocated by the ArchiveBuilder, so it's
   // still pointing to the array allocated inside save_for_archive().
@@ -705,13 +804,33 @@ void ConstantPoolCache::remove_unshareable_info() {
   for (int i=0; i<length(); i++) {
     // Restore each entry to the initial state -- just after Rewriter::make_constant_pool_cache()
     // has finished.
-    *entry_at(i) = _initial_entries->at(i);
+    if (!keep_cpcache->at(i)) {
+      *entry_at(i) = _initial_entries->at(i);
+    }
   }
   _initial_entries = nullptr;
 
   if (_resolved_indy_entries != nullptr) {
+    ConstantPool* cp = constant_pool();
     for (int i = 0; i < _resolved_indy_entries->length(); i++) {
-      resolved_indy_entry_at(i)->remove_unshareable_info();
+      ResolvedIndyEntry *rei = resolved_indy_entry_at(i);
+      int cp_index = rei->constant_pool_index();
+      if (rei->is_resolved() && ClassPrelinker::should_preresolve_invokedynamic(cp, cp_index)) {
+        if (log_is_enabled(Debug, cds, resolve)) {
+          ResourceMark rm;
+          int bsm = cp->bootstrap_method_ref_index_at(cp_index);
+          int bsm_ref = cp->method_handle_index_at(bsm);
+          Symbol* bsm_name = cp->uncached_name_ref_at(bsm_ref);
+          Symbol* bsm_signature = cp->uncached_signature_ref_at(bsm_ref);
+          Symbol* bsm_klass = cp->klass_name_at(cp->uncached_klass_ref_index_at(bsm_ref));
+          log_debug(cds, resolve)("archived indy   CP entry [%3d]: %s (%d) => %s.%s:%s", cp_index,
+                                  cp->pool_holder()->name()->as_C_string(), i,
+                                  bsm_klass->as_C_string(), bsm_name->as_C_string(), bsm_signature->as_C_string());
+        }
+        rei->mark_and_relocate();
+      } else {
+        rei->remove_unshareable_info();
+      }
     }
   }
 }

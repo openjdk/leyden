@@ -85,6 +85,19 @@ public final class ModuleLoaderMap {
 
         @Override
         public ClassLoader apply(String name) {
+            // IOI hack -- force these two modules (if they exist) to be
+            // loaded from the platform loader.
+            //
+            // Otherwise these two modules will be loaded by the app loader, but
+            // jdk.internal.vm.compiler (loaded by the platform loader) will resolve
+            // some classes in these two modules. This causes some complications with
+            // -XX:+PreloadSharedClasses.
+            if ("org.graalvm.sdk".equals(name)) {
+                return PLATFORM_CLASSLOADER;
+            }
+            if ("org.graalvm.truffle".equals(name)) {
+                return PLATFORM_CLASSLOADER;
+            }
             Integer loader = map.get(name);
             if (loader == APP_LOADER_INDEX) {
                 return APP_CLASSLOADER;

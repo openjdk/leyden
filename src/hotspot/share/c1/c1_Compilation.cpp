@@ -431,6 +431,8 @@ void Compilation::install_code(int frame_size) {
     exception_handler_table(),
     implicit_exception_table(),
     compiler(),
+    false, // has_clinit_barriers
+    false, // for_preload
     has_unsafe_access(),
     SharedRuntime::is_wide_vector(max_vector_size()),
     has_monitors(),

@@ -28,7 +28,6 @@
 #include "interpreter/bytecodes.hpp"
 #include "oops/metadata.hpp"
 #include "oops/method.hpp"
-#include "oops/oop.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/deoptimization.hpp"
 #include "runtime/mutex.hpp"
@@ -202,6 +201,9 @@ public:
   intptr_t cell_at(int index) const {
     return _cells[index];
   }
+  intptr_t* cell_at_adr(int index) const {
+    return const_cast<intptr_t*>(&_cells[index]);
+  }
 
   void set_flag_at(u1 flag_number) {
     _header._struct._flags |= (0x1 << flag_number);
@@ -320,6 +322,10 @@ protected:
     assert(0 <= index && index < cell_count(), "oob");
     return data()->cell_at(index);
   }
+  intptr_t* intptr_at_adr(int index) const {
+    assert(0 <= index && index < cell_count(), "oob");
+    return data()->cell_at_adr(index);
+  }
   void set_uint_at(int index, uint value) {
     set_intptr_at(index, (intptr_t) value);
   }
@@ -336,12 +342,6 @@ protected:
   }
   int int_at_unchecked(int index) const {
     return (int)data()->cell_at(index);
-  }
-  void set_oop_at(int index, oop value) {
-    set_intptr_at(index, cast_from_oop<intptr_t>(value));
-  }
-  oop oop_at(int index) const {
-    return cast_to_oop(intptr_at(index));
   }
 
   void set_flag_at(int flag_number) {
@@ -463,7 +463,10 @@ public:
   // GC support
   virtual void clean_weak_klass_links(bool always_clean) {}
 
-  // CI translation: ProfileData can represent both MethodDataOop data
+  // CDS support
+  virtual void metaspace_pointers_do(MetaspaceClosure* it) {}
+
+    // CI translation: ProfileData can represent both MethodDataOop data
   // as well as CIMethodData data. This function is provided for translating
   // an oop in a ProfileData to the ci equivalent. Generally speaking,
   // most ProfileData don't require any translation, so we provide the null
@@ -819,6 +822,11 @@ public:
     return _pd->intptr_at(type_offset_in_cells(i));
   }
 
+  intptr_t* type_adr(int i) const {
+    assert(i >= 0 && i < _number_of_entries, "oob");
+    return _pd->intptr_at_adr(type_offset_in_cells(i));
+  }
+
   // set type for entry i
   void set_type(int i, intptr_t k) {
     assert(i >= 0 && i < _number_of_entries, "oob");
@@ -839,6 +847,9 @@ public:
 
   // GC support
   void clean_weak_klass_links(bool always_clean);
+
+  // CDS support
+  virtual void metaspace_pointers_do(MetaspaceClosure* it);
 
   void print_data_on(outputStream* st) const;
 };
@@ -864,6 +875,10 @@ public:
     return _pd->intptr_at(_base_off);
   }
 
+  intptr_t* type_adr() const {
+    return _pd->intptr_at_adr(_base_off);
+  }
+
   void set_type(intptr_t k) {
     _pd->set_intptr_at(_base_off, k);
   }
@@ -882,6 +897,9 @@ public:
 
   // GC support
   void clean_weak_klass_links(bool always_clean);
+
+  // CDS support
+  virtual void metaspace_pointers_do(MetaspaceClosure* it);
 
   void print_data_on(outputStream* st) const;
 };
@@ -1074,6 +1092,16 @@ public:
     }
   }
 
+  // CDS support
+  virtual void metaspace_pointers_do(MetaspaceClosure* it) {
+    if (has_arguments()) {
+      _args.metaspace_pointers_do(it);
+    }
+    if (has_return()) {
+      _ret.metaspace_pointers_do(it);
+    }
+  }
+
   virtual void print_data_on(outputStream* st, const char* extra = nullptr) const;
 };
 
@@ -1212,6 +1240,9 @@ public:
 
   // GC support
   virtual void clean_weak_klass_links(bool always_clean);
+
+  // CDS support
+  virtual void metaspace_pointers_do(MetaspaceClosure* it);
 
   void print_receiver_data_on(outputStream* st) const;
   void print_data_on(outputStream* st, const char* extra = nullptr) const;
@@ -1375,6 +1406,17 @@ public:
     }
     if (has_return()) {
       _ret.clean_weak_klass_links(always_clean);
+    }
+  }
+
+  // CDS support
+  virtual void metaspace_pointers_do(MetaspaceClosure* it) {
+    ReceiverTypeData::metaspace_pointers_do(it);
+    if (has_arguments()) {
+      _args.metaspace_pointers_do(it);
+    }
+    if (has_return()) {
+      _ret.metaspace_pointers_do(it);
     }
   }
 
@@ -1560,10 +1602,6 @@ protected:
   int array_int_at(int index) const {
     int aindex = index + array_start_off_set;
     return int_at(aindex);
-  }
-  oop array_oop_at(int index) const {
-    int aindex = index + array_start_off_set;
-    return oop_at(aindex);
   }
   void array_set_int_at(int index, int value) {
     int aindex = index + array_start_off_set;
@@ -1777,6 +1815,11 @@ public:
     _parameters.clean_weak_klass_links(always_clean);
   }
 
+  // CDS support
+  virtual void metaspace_pointers_do(MetaspaceClosure* it) {
+    _parameters.metaspace_pointers_do(it);
+  }
+
   virtual void print_data_on(outputStream* st, const char* extra = nullptr) const;
 
   static ByteSize stack_slot_offset(int i) {
@@ -1846,6 +1889,9 @@ public:
   static ByteSize method_offset() {
     return cell_offset(speculative_trap_method);
   }
+
+  // CDS support
+  virtual void metaspace_pointers_do(MetaspaceClosure* it);
 
   virtual void print_data_on(outputStream* st, const char* extra = nullptr) const;
 };
@@ -1957,10 +2003,14 @@ private:
   // Cached hint for bci_to_dp and bci_to_data
   int _hint_di;
 
-  Mutex _extra_data_lock;
+  Mutex* _extra_data_lock; // FIXME: CDS support
 
   MethodData(const methodHandle& method);
 public:
+  MethodData() {
+    assert(DumpSharedSpaces || UseSharedSpaces, "only for CDS");
+  }
+
   static MethodData* allocate(ClassLoaderData* loader_data, const methodHandle& method, TRAPS);
 
   virtual bool is_methodData() const { return true; }
@@ -2258,6 +2308,11 @@ public:
   }
 #endif
 
+#if INCLUDE_CDS
+  void remove_unshareable_info();
+  void restore_unshareable_info(TRAPS);
+#endif
+
   void set_would_profile(bool p)              { _would_profile = p ? profile : no_profile; }
   bool would_profile() const                  { return _would_profile != no_profile; }
 
@@ -2478,7 +2533,7 @@ public:
 
   void clean_method_data(bool always_clean);
   void clean_weak_method_links();
-  Mutex* extra_data_lock() { return &_extra_data_lock; }
+  Mutex* extra_data_lock() { return _extra_data_lock; }
 };
 
 #endif // SHARE_OOPS_METHODDATA_HPP

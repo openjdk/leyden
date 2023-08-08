@@ -32,6 +32,7 @@
 #include "code/icBuffer.hpp"
 #include "code/nmethod.hpp"
 #include "code/pcDesc.hpp"
+#include "code/SCArchive.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
@@ -221,7 +222,7 @@ void CodeCache::initialize_heaps() {
 #endif
 #ifdef COMPILER2
   // C2 scratch buffers (see Compile::init_scratch_buffer_blob())
-  const int c2_count = CompilationPolicy::c2_count();
+  const int c2_count = CompilationPolicy::c2_count() + CompilationPolicy::c3_count();
   // Initial size of constant table (this may be increased if a compiled method needs more space)
   code_buffers_size += c2_count * C2Compiler::initial_code_buffer_size();
 #endif
@@ -1212,6 +1213,7 @@ void CodeCache::initialize() {
 
 void codeCache_init() {
   CodeCache::initialize();
+  SCArchive::initialize();
 }
 
 //------------------------------------------------------------------------------------------------

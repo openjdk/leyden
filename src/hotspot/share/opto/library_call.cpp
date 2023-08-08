@@ -69,7 +69,7 @@ CallGenerator* Compile::make_vm_intrinsic(ciMethod* m, bool is_virtual) {
     return nullptr;
   }
 
-  C2Compiler* compiler = (C2Compiler*)CompileBroker::compiler(CompLevel_full_optimization);
+  C2Compiler* compiler = (C2Compiler*)CompilerThread::current()->compiler();
   bool is_available = false;
 
   {

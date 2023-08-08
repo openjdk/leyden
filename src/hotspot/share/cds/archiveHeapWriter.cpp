@@ -26,6 +26,8 @@
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
+#include "cds/regeneratedClasses.hpp"
+#include "classfile/javaClasses.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "memory/iterator.inline.hpp"
 #include "memory/oopFactory.hpp"
@@ -87,11 +89,18 @@ void ArchiveHeapWriter::add_source_obj(oop src_obj) {
 
 void ArchiveHeapWriter::write(GrowableArrayCHeap<oop, mtClassShared>* roots,
                               ArchiveHeapInfo* heap_info) {
+  ResourceMark rm;
+  GrowableArray<size_t> permobj_seg_offsets;
   assert(HeapShared::can_write(), "sanity");
   allocate_buffer();
-  copy_source_objs_to_buffer(roots);
+  int num_permobj = copy_source_objs_to_buffer(roots, &permobj_seg_offsets);
   set_requested_address(heap_info);
-  relocate_embedded_oops(roots, heap_info);
+  relocate_embedded_oops(roots, heap_info, &permobj_seg_offsets, num_permobj);
+  if (UseCompressedOops) {
+    add_permobj_segments_to_roots<narrowOop>(roots, heap_info, &permobj_seg_offsets);
+  } else {
+    add_permobj_segments_to_roots<oop>(roots, heap_info, &permobj_seg_offsets);
+  }
 }
 
 bool ArchiveHeapWriter::is_too_large_to_archive(oop o) {
@@ -174,13 +183,17 @@ void ArchiveHeapWriter::ensure_buffer_space(size_t min_bytes) {
   _buffer->at_grow(to_array_index(min_bytes));
 }
 
-void ArchiveHeapWriter::copy_roots_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots) {
+size_t ArchiveHeapWriter::create_objarray_in_buffer(GrowableArrayCHeap<oop, mtClassShared>* input,
+                                                    int from,         // copy from this index in input
+                                                    int num_elms,     // copy this number of elements from input
+                                                    int extra_length, // add extra elements at the end of the copy
+                                                    size_t& objarray_word_size) {
   Klass* k = Universe::objectArrayKlassObj(); // already relocated to point to archived klass
-  int length = roots->length();
-  _heap_roots_word_size = objArrayOopDesc::object_size(length);
-  size_t byte_size = _heap_roots_word_size * HeapWordSize;
+  int length = num_elms + extra_length;
+  objarray_word_size = objArrayOopDesc::object_size(length);
+  size_t byte_size = objarray_word_size * HeapWordSize;
   if (byte_size >= MIN_GC_REGION_ALIGNMENT) {
-    log_error(cds, heap)("roots array is too large. Please reduce the number of classes");
+    log_error(cds, heap)("input array is too large. Please reduce the number of classes");
     vm_exit(1);
   }
 
@@ -202,9 +215,9 @@ void ArchiveHeapWriter::copy_roots_to_buffer(GrowableArrayCHeap<oop, mtClassShar
   }
 
   objArrayOop arrayOop = objArrayOop(cast_to_oop(mem));
-  for (int i = 0; i < length; i++) {
+  for (int i = 0; i < num_elms; i++) {
     // Do not use arrayOop->obj_at_put(i, o) as arrayOop is outside of the real heap!
-    oop o = roots->at(i);
+    oop o = input->at(i + from);
     if (UseCompressedOops) {
       * arrayOop->obj_at_addr<narrowOop>(i) = CompressedOops::encode(o);
     } else {
@@ -213,11 +226,17 @@ void ArchiveHeapWriter::copy_roots_to_buffer(GrowableArrayCHeap<oop, mtClassShar
   }
   log_info(cds, heap)("archived obj roots[%d] = " SIZE_FORMAT " bytes, klass = %p, obj = %p", length, byte_size, k, mem);
 
-  _heap_roots_bottom_offset = _buffer_used;
+  size_t roots_bottom_offset = _buffer_used;
   _buffer_used = new_used;
+
+  return roots_bottom_offset;
 }
 
-void ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots) {
+GrowableArrayCHeap<oop, mtClassShared>* permobj = nullptr;
+int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots,
+                                                  GrowableArray<size_t>* permobj_seg_offsets) {
+  // Copy the contents of all the archived objects in _source_objs into the output buffer.
+  GrowableArrayCHeap<oop, mtClassShared>* permobjs = new GrowableArrayCHeap<oop, mtClassShared>();
   for (int i = 0; i < _source_objs->length(); i++) {
     oop src_obj = _source_objs->at(i);
     HeapShared::CachedOopInfo* info = HeapShared::archived_object_cache()->get(src_obj);
@@ -226,12 +245,29 @@ void ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtCla
     info->set_buffer_offset(buffer_offset);
 
     _buffer_offset_to_source_obj_table->put(buffer_offset, src_obj);
+    permobjs->append(src_obj);
   }
 
-  copy_roots_to_buffer(roots);
+  // Create HeapShared::roots() in the output buffer. Reserve some extra slots at the end of it
+  // for the permobj_segments
+  int permobj_segments = (permobjs->length() + PERMOBJ_SEGMENT_MAX_LENGTH - 1) / PERMOBJ_SEGMENT_MAX_LENGTH;
+  _heap_roots_bottom_offset = create_objarray_in_buffer(roots, 0, roots->length(), permobj_segments, _heap_roots_word_size);
 
-  log_info(cds)("Size of heap region = " SIZE_FORMAT " bytes, %d objects, %d roots",
-                _buffer_used, _source_objs->length() + 1, roots->length());
+  // Create the permobj_segments in the output buffer.
+  for (int from = 0; from < permobjs->length(); from += PERMOBJ_SEGMENT_MAX_LENGTH) {
+    int num_elems = MIN2(PERMOBJ_SEGMENT_MAX_LENGTH, permobjs->length() - from);
+    size_t dummy;
+    size_t permobj_seg_bottom_offset = create_objarray_in_buffer(permobjs, from, num_elems, 0, dummy);
+    permobj_seg_offsets->append(permobj_seg_bottom_offset);
+  }
+
+  log_info(cds)("Size of heap region = " SIZE_FORMAT " bytes, %d objects, %d roots, %d permobjs in %d segments",
+                _buffer_used, _source_objs->length() + 2, roots->length(), permobjs->length(), permobj_segments);
+  assert(permobj_seg_offsets->length() == permobj_segments, "sanity");
+  HeapShared::set_permobj_segments(permobj_segments);
+  int n = permobjs->length();
+  delete permobjs;
+  return n;
 }
 
 size_t ArchiveHeapWriter::filler_array_byte_size(int length) {
@@ -393,7 +429,11 @@ oop ArchiveHeapWriter::load_oop_from_buffer(narrowOop* buffered_addr) {
 
 template <typename T> void ArchiveHeapWriter::relocate_field_in_buffer(T* field_addr_in_buffer, CHeapBitMap* oopmap) {
   oop source_referent = load_source_oop_from_buffer<T>(field_addr_in_buffer);
-  if (!CompressedOops::is_null(source_referent)) {
+  if (source_referent != nullptr) {
+    if (java_lang_Class::is_instance(source_referent)) {
+      source_referent = HeapShared::scratch_java_mirror(source_referent);
+      assert(source_referent != nullptr, "must be");
+    }
     oop request_referent = source_obj_to_requested_obj(source_referent);
     store_requested_oop_in_buffer<T>(field_addr_in_buffer, request_referent);
     mark_oop_pointer<T>(field_addr_in_buffer, oopmap);
@@ -439,9 +479,9 @@ void ArchiveHeapWriter::update_header_for_requested_obj(oop requested_obj, oop s
 }
 
 // Relocate an element in the buffered copy of HeapShared::roots()
-template <typename T> void ArchiveHeapWriter::relocate_root_at(oop requested_roots, int index, CHeapBitMap* oopmap) {
+template <typename T> void ArchiveHeapWriter::relocate_root_at(oop requested_roots, address buffered_roots_addr, int index, CHeapBitMap* oopmap) {
   size_t offset = (size_t)((objArrayOop)requested_roots)->obj_at_offset<T>(index);
-  relocate_field_in_buffer<T>((T*)(buffered_heap_roots_addr() + offset), oopmap);
+  relocate_field_in_buffer<T>((T*)(buffered_roots_addr + offset), oopmap);
 }
 
 class ArchiveHeapWriter::EmbeddedOopRelocator: public BasicOopIterateClosure {
@@ -465,7 +505,9 @@ private:
 
 // Update all oop fields embedded in the buffered objects
 void ArchiveHeapWriter::relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassShared>* roots,
-                                               ArchiveHeapInfo* heap_info) {
+                                               ArchiveHeapInfo* heap_info,
+                                               GrowableArray<size_t>* permobj_seg_offsets,
+                                               int num_permobjs) {
   size_t oopmap_unit = (UseCompressedOops ? sizeof(narrowOop) : sizeof(oop));
   size_t heap_region_byte_size = _buffer_used;
   heap_info->oopmap()->resize(heap_region_byte_size   / oopmap_unit);
@@ -479,20 +521,56 @@ void ArchiveHeapWriter::relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassSh
   };
   HeapShared::archived_object_cache()->iterate_all(iterator);
 
-  // Relocate HeapShared::roots(), which is created in copy_roots_to_buffer() and
+  // Relocate HeapShared::roots(), which is created in create_objarray_in_buffer() and
   // doesn't have a corresponding src_obj, so we can't use EmbeddedOopRelocator on it.
   oop requested_roots = requested_obj_from_buffer_offset(_heap_roots_bottom_offset);
   update_header_for_requested_obj(requested_roots, nullptr, Universe::objectArrayKlassObj());
   int length = roots != nullptr ? roots->length() : 0;
   for (int i = 0; i < length; i++) {
     if (UseCompressedOops) {
-      relocate_root_at<narrowOop>(requested_roots, i, heap_info->oopmap());
+      relocate_root_at<narrowOop>(requested_roots, buffered_heap_roots_addr(), i, heap_info->oopmap());
     } else {
-      relocate_root_at<oop>(requested_roots, i, heap_info->oopmap());
+      relocate_root_at<oop>(requested_roots, buffered_heap_roots_addr(), i, heap_info->oopmap());
     }
   }
 
+  int num_permobjs_relocated = 0;
+  for (int i = 0; i < permobj_seg_offsets->length(); i++) {
+    int length = MIN2(PERMOBJ_SEGMENT_MAX_LENGTH, num_permobjs - num_permobjs_relocated);
+    // Relocate each of the segments. They were created in create_objarray_in_buffer() and
+    // don't have a corresponding src_obj, so we can't use EmbeddedOopRelocator.
+    size_t permobj_seg_bottom_offset = permobj_seg_offsets->at(i);
+    oop requested_permobj_seg = requested_obj_from_buffer_offset(permobj_seg_bottom_offset);
+    update_header_for_requested_obj(requested_permobj_seg, nullptr, Universe::objectArrayKlassObj());
+    for (int i = 0; i < length; i++) {
+      address buffered_addr = offset_to_buffered_address<address>(permobj_seg_bottom_offset);
+      if (UseCompressedOops) {
+        relocate_root_at<narrowOop>(requested_permobj_seg, buffered_addr, i, heap_info->oopmap());
+      } else {
+        relocate_root_at<oop>(requested_permobj_seg, buffered_addr, i, heap_info->oopmap());
+      }
+    }
+    num_permobjs_relocated += length;
+  }
+
   compute_ptrmap(heap_info);
+}
+
+// Put the permobj_segments in the extra space that we have reserved at the end of the HeapShared::roots() array.
+template <typename T> void ArchiveHeapWriter::add_permobj_segments_to_roots(GrowableArrayCHeap<oop, mtClassShared>* roots,
+                                                                            ArchiveHeapInfo* heap_info,
+                                                                            GrowableArray<size_t>* permobj_seg_offsets) {
+  for (int i = 0; i <  permobj_seg_offsets->length(); i++) {
+    size_t permobj_seg_bottom_offset = permobj_seg_offsets->at(i);
+    oop requested_roots = requested_obj_from_buffer_offset(_heap_roots_bottom_offset);
+    oop requested_permobj_seg = requested_obj_from_buffer_offset(permobj_seg_bottom_offset);
+    int permobj_index = roots->length() + i;
+
+    size_t offset = (size_t)((objArrayOop)requested_roots)->obj_at_offset<T>(permobj_index);
+    T* addr = (T*)(buffered_heap_roots_addr() + offset);
+    store_requested_oop_in_buffer<T>(addr, requested_permobj_seg);
+    mark_oop_pointer<T>(addr, heap_info->oopmap());
+  }
 }
 
 void ArchiveHeapWriter::mark_native_pointer(oop src_obj, int field_offset) {
@@ -534,6 +612,10 @@ void ArchiveHeapWriter::compute_ptrmap(ArchiveHeapInfo* heap_info) {
     Metadata** buffered_field_addr = requested_addr_to_buffered_addr(requested_field_addr);
     Metadata* native_ptr = *buffered_field_addr;
     assert(native_ptr != nullptr, "sanity");
+
+    if (RegeneratedClasses::has_been_regenerated((address)native_ptr)) {
+      native_ptr = (Metadata*)RegeneratedClasses::get_regenerated_object((address)native_ptr);
+    }
 
     address buffered_native_ptr = ArchiveBuilder::current()->get_buffered_addr((address)native_ptr);
     address requested_native_ptr = ArchiveBuilder::current()->to_requested(buffered_native_ptr);

@@ -909,7 +909,7 @@ void MachPrologNode::emit(CodeBuffer &cbuf, PhaseRegAlloc *ra_) const {
 
   if (C->clinit_barrier_on_entry()) {
     assert(VM_Version::supports_fast_class_init_checks(), "sanity");
-    assert(!C->method()->holder()->is_not_initialized(), "initialization should have been started");
+    assert(!C->method()->holder()->is_not_initialized() || C->do_clinit_barriers(), "initialization should have been started");
 
     Label L_skip_barrier;
     Register klass = rscratch1;
@@ -2154,7 +2154,12 @@ encode %{
   enc_class Java_To_Runtime(method meth) %{
     // No relocation needed
     MacroAssembler _masm(&cbuf);
-    __ mov64(r10, (int64_t) $meth$$method);
+    if (LoadSharedCode || StoreSharedCode) {
+      // Created runtime_call_type relocation
+      __ lea(r10, RuntimeAddress((address)$meth$$method));
+    } else {
+      __ mov64(r10, (int64_t) $meth$$method);
+    }
     __ call(r10);
     __ post_call_nop();
   %}

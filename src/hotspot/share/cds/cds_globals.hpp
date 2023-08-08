@@ -95,6 +95,22 @@
            "(2) always map at preferred address, and if unsuccessful, "     \
            "do not map the archive")                                        \
            range(0, 2)                                                      \
+                                                                            \
+  product(bool, PreloadSharedClasses, true,                                 \
+          "Load all shared classes for the boot/platform/app loaders "      \
+          "immediately at VM start-up")                                     \
+                                                                            \
+  product(bool, ArchiveFieldReferences, true,                               \
+          "Archive resolved JVM_CONSTANT_Fieldref in ConstantPool")         \
+                                                                            \
+  product(bool, ArchiveInvokeDynamic, false,                                \
+          "Archive resolved JVM_CONSTANT_InvokeDynamic in ConstantPool")    \
+                                                                            \
+  product(bool, ArchiveMethodReferences, true,                              \
+          "Archive resolved JVM_CONSTANT_Methodref and "                    \
+          "JVM_CONSTANT_InterfaceMethodref in ConstantPool")                \
+                                                                            \
+
 // end of CDS_FLAGS
 
 DECLARE_FLAGS(CDS_FLAGS)

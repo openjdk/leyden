@@ -216,12 +216,15 @@ public:
   virtual bool  is_in_use() const = 0;
   virtual int   comp_level() const = 0;
   virtual int   compile_id() const = 0;
+  virtual bool  is_sca() const = 0;
+  virtual bool  preloaded() const = 0;
+  virtual bool  has_clinit_barriers() const = 0;
 
   virtual address verified_entry_point() const = 0;
   virtual void log_identity(xmlStream* log) const = 0;
   virtual void log_state_change() const = 0;
   virtual bool make_not_used() = 0;
-  virtual bool make_not_entrant() = 0;
+  virtual bool make_not_entrant(bool make_not_entrant = true) = 0;
   virtual bool make_entrant() = 0;
   virtual address entry_point() const = 0;
   virtual bool is_osr_method() const = 0;

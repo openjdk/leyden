@@ -95,6 +95,8 @@ class ciMethod : public ciMetadata {
   bool _has_reserved_stack_access;
   bool _is_overpass;
 
+  GrowableArray<int>* _has_trap_at_bci;
+
   // Lazy fields, filled in on demand
   address              _code;
   ciExceptionHandler** _exception_handlers;
@@ -117,7 +119,7 @@ class ciMethod : public ciMetadata {
 
   void load_code();
 
-  bool ensure_method_data(const methodHandle& h_m);
+  bool ensure_method_data(const methodHandle& h_m, bool training_data_only);
 
   void code_at_put(int bci, Bytecodes::Code code) {
     Bytecodes::check(code);
@@ -313,7 +315,7 @@ class ciMethod : public ciMetadata {
   bool has_unloaded_classes_in_signature();
   bool is_klass_loaded(int refinfo_index, Bytecodes::Code bc, bool must_be_resolved) const;
   bool check_call(int refinfo_index, bool is_static) const;
-  bool ensure_method_data();  // make sure it exists in the VM also
+  bool ensure_method_data(bool training_data_only = false);  // make sure it exists in the VM also
   MethodCounters* ensure_method_counters();
 
   int inline_instructions_size();
@@ -381,6 +383,10 @@ class ciMethod : public ciMetadata {
   void print_short_name(outputStream* st = tty);
 
   static bool is_consistent_info(ciMethod* declared_method, ciMethod* resolved_method);
+  bool has_trap_at(int bci) {
+    return _has_trap_at_bci != nullptr &&
+           _has_trap_at_bci->contains(bci);
+  }
 };
 
 #endif // SHARE_CI_CIMETHOD_HPP

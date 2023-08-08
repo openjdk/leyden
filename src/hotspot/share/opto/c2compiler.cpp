@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "classfile/vmClasses.hpp"
+#include "code/SCArchive.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "jfr/support/jfrIntrinsics.hpp"
@@ -52,8 +53,13 @@ const char* C2Compiler::retry_no_locks_coarsening() {
 const char* C2Compiler::retry_no_iterative_escape_analysis() {
   return "retry without iterative escape analysis";
 }
+// Corresponding code was removed by 8222446.
 const char* C2Compiler::retry_class_loading_during_parsing() {
   return "retry class loading during parsing";
+}
+
+const char* C2Compiler::retry_no_clinit_barriers() {
+  return "retry without class initialization barriers";
 }
 
 void compiler_stubs_init(bool in_compiler_thread);
@@ -84,7 +90,11 @@ bool C2Compiler::init_c2_runtime() {
   CompilerThread* thread = CompilerThread::current();
 
   HandleMark handle_mark(thread);
-  return OptoRuntime::generate(thread->env());
+  bool success = OptoRuntime::generate(thread->env());
+  if (success) {
+    SCAFile::init_opto_table();
+  }
+  return success;
 }
 
 void C2Compiler::initialize() {
@@ -105,16 +115,34 @@ void C2Compiler::initialize() {
 
 void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, bool install_code, DirectiveSet* directive) {
   assert(is_initialized(), "Compiler thread must be initialized");
-
+  CompileTask* task = env->task();
+  if (install_code && task->is_sca()) {
+    bool success = SCAFile::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
+    if (success) {
+      assert(task->is_success(), "sanity");
+      return;
+    }
+    if (!task->preload()) { // Do not mark entry if pre-loading failed - it can pass normal load
+      SCArchive::invalidate(task->sca_entry()); // mark sca_entry as not entrant
+    }
+    if (SCArchive::is_SC_load_tread_on()) {
+      env->record_failure("Failed to load cached code");
+      // Bail out if failed to load cached code in SC thread
+      return;
+    }
+    task->clear_sca();
+  }
   bool subsume_loads = SubsumeLoads;
   bool do_escape_analysis = DoEscapeAnalysis;
   bool do_iterative_escape_analysis = DoEscapeAnalysis;
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
+  bool for_preload = SCArchive::gen_preload_code(target, entry_bci);
 
   while (!env->failing()) {
     // Attempt to compile while subsuming loads into machine instructions.
-    Options options(subsume_loads, do_escape_analysis, do_iterative_escape_analysis, eliminate_boxing, do_locks_coarsening, install_code);
+    Options options(subsume_loads, do_escape_analysis, do_iterative_escape_analysis, eliminate_boxing,
+                    do_locks_coarsening, for_preload, install_code);
     Compile C(env, target, entry_bci, options, directive);
 
     // Check result and retry if appropriate.
@@ -145,6 +173,11 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
         assert(do_locks_coarsening, "must make progress");
         do_locks_coarsening = false;
         env->report_failure(C.failure_reason());
+        continue;  // retry
+      }
+      if (C.failure_reason_is(retry_no_clinit_barriers())) {
+        assert(for_preload, "must make progress");
+        for_preload = false;
         continue;  // retry
       }
       if (C.has_boxed_value()) {

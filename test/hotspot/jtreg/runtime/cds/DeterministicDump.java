@@ -82,6 +82,9 @@ public class DeterministicDump {
         CDSOptions opts = (new CDSOptions())
             .addPrefix("-Xlog:cds=debug")
             .addPrefix("-Xlog:cds+map=trace:file=" + mapName + ":none:filesize=0")
+            .addPrefix("-XX:-PreloadSharedClasses")
+            .addPrefix("-XX:-ArchiveFieldReferences")
+            .addPrefix("-XX:-ArchiveMethodReferences")
             .setArchiveName(archiveName)
             .addSuffix(args)
             .addSuffix(more);

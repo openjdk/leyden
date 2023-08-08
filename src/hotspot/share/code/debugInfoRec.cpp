@@ -144,6 +144,28 @@ DebugInformationRecorder::DebugInformationRecorder(OopRecorder* oop_recorder)
   debug_only(_recording_state = rs_null);
 }
 
+DebugInformationRecorder::DebugInformationRecorder(OopRecorder* oop_recorder, int data_size, int pcs_length)
+  : _recording_non_safepoints(compute_recording_non_safepoints())
+{
+  _pcs_size   = _pcs_length = pcs_length;
+  _pcs        = NEW_RESOURCE_ARRAY(PcDesc, _pcs_size);
+
+  _prev_safepoint_pc = PcDesc::lower_offset_limit;
+
+  _stream = new DebugInfoWriteStream(this, data_size);
+  // make sure that there is no stream_decode_offset that is zero
+  _stream->write_byte((jbyte)0xFF);
+
+  // make sure that we can distinguish the value "serialized_null" from offsets
+  assert(_stream->position() > serialized_null, "sanity");
+
+  _oop_recorder = oop_recorder;
+
+  _all_chunks = nullptr;
+  _next_chunk = _next_chunk_limit = nullptr;
+
+  debug_only(_recording_state = rs_null);
+}
 
 void DebugInformationRecorder::add_oopmap(int pc_offset, OopMap* map) {
   // !!!!! Preserve old style handling of oopmaps for now

@@ -497,6 +497,7 @@ class Parse : public GraphKit {
   Node* array_addressing(BasicType type, int vals, const Type*& elemtype);
 
   void clinit_deopt();
+  void clinit_barrier_on_inline();
 
   void rtm_deopt();
 

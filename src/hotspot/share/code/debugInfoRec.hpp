@@ -79,6 +79,7 @@ class DebugInformationRecorder: public ResourceObj {
  public:
   // constructor
   DebugInformationRecorder(OopRecorder* oop_recorder);
+  DebugInformationRecorder(OopRecorder* oop_recorder, int data_size, int pcs_length);
 
   // adds an oopmap at a specific offset
   void add_oopmap(int pc_offset, OopMap* map);

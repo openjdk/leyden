@@ -41,6 +41,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import jdk.test.lib.helpers.ClassFileInstaller;
+import jdk.test.lib.process.OutputAnalyzer;
 
 public class ParallelLoadAndTransformTest {
 
@@ -50,9 +51,12 @@ public class ParallelLoadAndTransformTest {
                             getClassList(true));
         String agentJar = prepareAgent();
 
-        TestCommon.test(appJar, getClassList(false),
+        TestCommon.testDump(appJar, getClassList(false), "-XX:-PreloadSharedClasses");
+
+        OutputAnalyzer output = TestCommon.exec(appJar,
                         "-javaagent:" + agentJar + "=ParallelClassTr.*",
                         prop, "ParallelLoad");
+        TestCommon.checkExec(output);
     }
 
 

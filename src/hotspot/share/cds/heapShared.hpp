@@ -158,12 +158,14 @@ public:
   static bool is_subgraph_root_class(InstanceKlass* ik);
 
   // Scratch objects for archiving Klass::java_mirror()
-  static oop scratch_java_mirror(BasicType t) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
-  static oop scratch_java_mirror(Klass* k)    NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
+  static oop scratch_java_mirror(BasicType t)     NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
+  static oop scratch_java_mirror(Klass* k)        NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
+  static oop scratch_java_mirror(oop java_mirror) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 
 private:
 #if INCLUDE_CDS_JAVA_HEAP
   static bool _disable_writing;
+  static bool _box_classes_inited;
   static DumpedInternedStrings *_dumped_interned_strings;
 
   // statistics
@@ -197,9 +199,6 @@ public:
   };
 
 private:
-  static void check_enum_obj(int level, KlassSubGraphInfo* subgraph_info,
-                             oop orig_obj);
-
   typedef ResourceHashtable<oop, CachedOopInfo,
       36137, // prime number
       AnyObj::C_HEAP,
@@ -278,7 +277,10 @@ private:
   static KlassSubGraphInfo* _default_subgraph_info;
 
   static GrowableArrayCHeap<oop, mtClassShared>* _pending_roots;
+  static GrowableArrayCHeap<oop, mtClassShared>* _trace; // for debugging unarchivable objects
+  static GrowableArrayCHeap<const char*, mtClassShared>* _context; // for debugging unarchivable objects
   static OopHandle _roots;
+  static int _permobj_segments;
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
   static KlassToOopHandleTable* _scratch_java_mirror_table;
 
@@ -291,6 +293,9 @@ private:
     delete _seen_objects_table;
     _seen_objects_table = nullptr;
   }
+
+  class ArchivingObjectMark;
+  class ContextMark;
 
   // Statistics (for one round of start_recording_subgraph ... done_recording_subgraph)
   static int _num_new_walked_objs;
@@ -311,7 +316,7 @@ private:
   static bool has_been_seen_during_subgraph_recording(oop obj);
   static void set_has_been_seen_during_subgraph_recording(oop obj);
   static bool archive_object(oop obj);
-
+  static void copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop m);
   static void copy_interned_strings();
   static void copy_roots();
 
@@ -320,6 +325,7 @@ private:
   static void clear_archived_roots_of(Klass* k);
   static const ArchivedKlassSubGraphInfoRecord*
                resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAPS);
+  static void resolve_or_init(const char* klass_name, bool do_init, TRAPS);
   static void resolve_or_init(Klass* k, bool do_init, TRAPS);
   static void init_archived_fields_for(Klass* k, const ArchivedKlassSubGraphInfoRecord* record);
 
@@ -334,8 +340,10 @@ private:
   static void fill_failed_loaded_region();
   static void mark_native_pointers(oop orig_obj);
   static bool has_been_archived(oop orig_obj);
+  static bool can_mirror_be_used_in_subgraph(oop orig_java_mirror);
   static void archive_java_mirrors();
   static void archive_strings();
+  static void exit_on_error();
  public:
   static void reset_archived_object_states(TRAPS);
   static void create_archived_object_cache() {
@@ -389,12 +397,13 @@ private:
 
   // Run-time only
   static void clear_root(int index);
-
+  static void set_permobj_segments(int n) { _permobj_segments = n; }
   static void setup_test_class(const char* test_class_name) PRODUCT_RETURN;
 #endif // INCLUDE_CDS_JAVA_HEAP
 
  public:
   static void init_scratch_objects(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
+  static void init_box_classes(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static bool is_heap_region(int idx) {
     CDS_JAVA_HEAP_ONLY(return (idx == MetaspaceShared::hp);)
     NOT_CDS_JAVA_HEAP_RETURN_(false);
@@ -407,7 +416,6 @@ private:
   static void write_subgraph_info_table() NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize_root(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize_tables(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
-  static bool initialize_enum_klass(InstanceKlass* k, TRAPS) NOT_CDS_JAVA_HEAP_RETURN_(false);
 
   // Returns the address of a heap object when it's mapped at the
   // runtime requested address. See comments in archiveBuilder.hpp.
@@ -416,6 +424,21 @@ private:
     return cast_to_oop(to_requested_address(cast_from_oop<address>(dumptime_oop)));
   }
   static bool is_a_test_class_in_unnamed_module(Klass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
+  static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
+  static void initialize_java_lang_invoke(TRAPS);
+
+  // Interface for AOT
+  static int get_archived_oop_index(oop obj); // AOT-compile time only: get a stable index for an archived object.
+                                              // Returns 0 if obj is not archived.
+  static oop get_archived_oop(int index);     // Runtime only: get back the same object for an index returned by
+                                              // get_archived_oop_index().
+
+  static bool is_lambda_form_klass(InstanceKlass* ik);
+  static bool is_lambda_proxy_klass(InstanceKlass* ik);
+  static bool is_archived_hidden_klass(InstanceKlass* ik) {
+    return is_lambda_form_klass(ik) || is_lambda_proxy_klass(ik);
+  }
 };
 
 #if INCLUDE_CDS_JAVA_HEAP

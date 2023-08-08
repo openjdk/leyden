@@ -70,6 +70,7 @@ class xmlStream : public outputStream {
   julong        _last_flush;     // last position of flush
   MarkupState   _markup_state;   // where in the elem/head/tail dance
   outputStream* _text;           // text stream
+  outputStream* _log_only;       // like text, except does not copy to the tty
   xmlTextStream _text_init;
 
   // for subclasses
@@ -101,6 +102,7 @@ class xmlStream : public outputStream {
 
   // text output
   bool inside_attrs() { return _markup_state != BODY; }
+  bool inside_attrs_or_error();
 
   // flushing
   virtual void flush();  // flushes out, sets _last_flush = count()
@@ -135,20 +137,41 @@ class xmlStream : public outputStream {
     text()->vprint(format, ap);
   }
 
+  // write attr with formatted contents
+  void          attr(const char* attr, const char* format, ...) ATTRIBUTE_PRINTF(3, 4);
+  void       va_attr(const char* attr, const char* format, va_list ap) ATTRIBUTE_PRINTF(3, 0) {
+    print_raw(" ");
+    print_raw(attr);
+    print_raw("='");
+    va_text(format, ap);
+    print_raw("='");
+  }
+
+  outputStream* log_only() { return _log_only; }
+  // report if a given random stream is really part of this XML stream
+  bool owns(outputStream* st) {
+    return st == this || st == _text || st == _log_only || st == _out;
+  }
+
   // commonly used XML attributes
   void          stamp();                 // stamp='1.234'
-  void          method(Method* m);       // method='k n s' ...
-  void          klass(Klass* k);         // klass='name'
-  void          name(const Symbol* s);   // name='name'
+  void          method(Method* m, const char* pfx=""); // method='k n s' ...
+  void          klass(Klass* k, const char* pfx="");   // klass='name'
+  void          loader(oop cl, const char* pfx="");   // loader='...'
+  void          name(const Symbol* s, const char* pfx="");   // name='n'
+  void          signature(const Symbol* s, const char* pfx="");   // signature='...'
   void          object(const char* attr, Metadata* val);
   void          object(const char* attr, Handle val);
+  void          thread(Thread* t = nullptr, const char* pfx=""); // thread='NNN'
 
   // print the text alone (sans ''):
   void          method_text(Method* m);
-  void          klass_text(Klass* k);         // klass='name'
-  void          name_text(const Symbol* s);   // name='name'
+  void          klass_text(Klass* k);         // java.lang.String
+  void          symbol_text(const Symbol* s);   // (utf8 bytes)...
+  void          loader_text(oop cl);
   void          object_text(Metadata* x);
   void          object_text(Handle x);
+  void          string_text(oop str);
 
   /*  Example uses:
 
@@ -181,6 +204,10 @@ class xmlStream : public outputStream {
 
 // Standard log file, null if no logging is happening.
 extern xmlStream* xtty;
+
+static inline bool xtty_owns(outputStream* st) {
+  return xtty != nullptr && xtty->owns(st);
+}
 
 // Note:  If ::xtty != nullptr, ::tty == ::xtty->text().
 

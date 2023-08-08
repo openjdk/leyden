@@ -3373,9 +3373,9 @@ void C2_MacroAssembler::arrays_hashcode(Register ary1, Register cnt1, Register r
   // release bound
 
   // vresult *= IntVector.fromArray(I256, power_of_31_backwards, 1);
+  lea(tmp2, ExternalAddress(StubRoutines::x86::arrays_hashcode_powers_of_31() + (0 * sizeof(jint))));
   for (int idx = 0; idx < 4; idx++) {
-    lea(tmp2, ExternalAddress(StubRoutines::x86::arrays_hashcode_powers_of_31() + ((8 * idx + 1) * sizeof(jint))));
-    arrays_hashcode_elvload(vcoef[idx], Address(tmp2, 0), T_INT);
+    arrays_hashcode_elvload(vcoef[idx], Address(tmp2, (int)((8 * idx + 1) * sizeof(jint))), T_INT);
     vpmulld(vresult[idx], vresult[idx], vcoef[idx], Assembler::AVX_256bit);
   }
   // result += vresult.reduceLanes(ADD);

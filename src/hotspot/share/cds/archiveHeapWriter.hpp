@@ -58,6 +58,7 @@ public:
 
 #if INCLUDE_CDS_JAVA_HEAP
 class ArchiveHeapWriter : AllStatic {
+  friend class HeapShared;
   class EmbeddedOopRelocator;
   struct NativePointerInfo {
     oop _src_obj;
@@ -143,8 +144,11 @@ class ArchiveHeapWriter : AllStatic {
     return buffered_addr - buffer_bottom();
   }
 
-  static void copy_roots_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots);
-  static void copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots);
+  static size_t create_objarray_in_buffer(GrowableArrayCHeap<oop, mtClassShared>* input, int from,
+                                          int num_elms, int extra_length, size_t& objarray_word_size);
+  static int copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots, GrowableArray<size_t>* permobj_seg_offsets);
+  template <typename T> static void add_permobj_segments_to_roots(GrowableArrayCHeap<oop, mtClassShared>* roots,
+                                                                  ArchiveHeapInfo* info, GrowableArray<size_t>* permobj_seg_offsets);
   static size_t copy_one_source_obj_to_buffer(oop src_obj);
 
   static void maybe_fill_gc_region_gap(size_t required_byte_size);
@@ -153,7 +157,8 @@ class ArchiveHeapWriter : AllStatic {
   static void init_filler_array_at_buffer_top(int array_length, size_t fill_bytes);
 
   static void set_requested_address(ArchiveHeapInfo* info);
-  static void relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassShared>* roots, ArchiveHeapInfo* info);
+  static void relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassShared>* roots, ArchiveHeapInfo* info,
+                                     GrowableArray<size_t>* permobj_seg_offsets, int num_permobj);
   static void compute_ptrmap(ArchiveHeapInfo *info);
   static bool is_in_requested_range(oop o);
   static oop requested_obj_from_buffer_offset(size_t offset);
@@ -169,9 +174,23 @@ class ArchiveHeapWriter : AllStatic {
   template <typename T> static T* requested_addr_to_buffered_addr(T* p);
   template <typename T> static void relocate_field_in_buffer(T* field_addr_in_buffer, CHeapBitMap* oopmap);
   template <typename T> static void mark_oop_pointer(T* buffered_addr, CHeapBitMap* oopmap);
-  template <typename T> static void relocate_root_at(oop requested_roots, int index, CHeapBitMap* oopmap);
+  template <typename T> static void relocate_root_at(oop requested_roots, address buffered_roots_addr, int index, CHeapBitMap* oopmap);
 
   static void update_header_for_requested_obj(oop requested_obj, oop src_obj, Klass* src_klass);
+
+  // "Permanent Objects"
+  //
+  // These objects are guaranteed to be in the heap at runtime. The AOT can use
+  // HeapShared::get_archived_object_permanent_index() and HeapShared::get_archived_object() to
+  // inline these objects into the AOT cache.
+  //
+  // Currently all archived objects are "permanent". We may want to narrow the scope ....
+  //
+  // The permobjs are divided into multiple segments, each containing 64K elements (or 4096 in debug builds).
+  // This is to avoid overflowing MIN_GC_REGION_ALIGNMENT.
+  static constexpr int PERMOBJ_SEGMENT_MAX_SHIFT  = DEBUG_ONLY(12) NOT_DEBUG(16);
+  static constexpr int PERMOBJ_SEGMENT_MAX_LENGTH = 1 << PERMOBJ_SEGMENT_MAX_SHIFT;
+  static constexpr int PERMOBJ_SEGMENT_MAX_MASK   = PERMOBJ_SEGMENT_MAX_LENGTH - 1;
 public:
   static void init() NOT_CDS_JAVA_HEAP_RETURN;
   static void add_source_obj(oop src_obj);

@@ -646,11 +646,11 @@ class RelocIterator : public StackObj {
   bool   addr_in_const()      const;
 
   address section_start(int n) const {
-    assert(_section_start[n], "must be initialized");
+    assert(_section_start[n], "section %d must be initialized", n);
     return _section_start[n];
   }
   address section_end(int n) const {
-    assert(_section_end[n], "must be initialized");
+    assert(_section_end[n], "section %d must be initialized", n);
     return _section_end[n];
   }
 
@@ -1311,6 +1311,25 @@ class trampoline_stub_Relocation : public Relocation {
 
   void pack_data_to(CodeSection * dest) override;
   void unpack_data() override;
+#if defined(AARCH64)
+  address    pd_destination     ();
+  void       pd_set_destination (address x);
+#endif
+  address  destination() {
+#if defined(AARCH64)
+    return pd_destination();
+#else
+    fatal("trampoline_stub_Relocation::destination() unimplemented");
+    return (address)-1;
+#endif
+  }
+  void     set_destination(address x) {
+#if defined(AARCH64)
+    pd_set_destination(x);
+#else
+    fatal("trampoline_stub_Relocation::set_destination() unimplemented");
+#endif
+  }
 
   // Find the trampoline stub for a call.
   static address get_trampoline_for(address call, nmethod* code);
@@ -1355,6 +1374,7 @@ class external_word_Relocation : public DataRelocation {
   // in the code stream.  See external_word_Relocation::target().
   void pack_data_to(CodeSection* dest) override;
   void unpack_data() override;
+  short* pack_data_to(short* p); // Pack address into buffer
 
   void fix_relocation_after_move(const CodeBuffer* src, CodeBuffer* dest) override;
   address  target();        // if _target==nullptr, fetch addr from code stream

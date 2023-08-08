@@ -25,6 +25,7 @@
 
 package java.lang.invoke;
 
+import jdk.internal.misc.CDS;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.Stable;
@@ -869,9 +870,26 @@ sealed class DirectMethodHandle extends MethodHandle {
         return nf;
     }
 
-    private static final MethodType OBJ_OBJ_TYPE = MethodType.methodType(Object.class, Object.class);
+    private static final MethodType OBJ_OBJ_TYPE;
+    private static final MethodType LONG_OBJ_TYPE;
+    private static @Stable MethodType[] archivedObjects;
 
-    private static final MethodType LONG_OBJ_TYPE = MethodType.methodType(long.class, Object.class);
+    static {
+        CDS.initializeFromArchive(DirectMethodHandle.class);
+        if (archivedObjects != null) {
+            OBJ_OBJ_TYPE = archivedObjects[0];
+            LONG_OBJ_TYPE = archivedObjects[1];
+        } else {
+            OBJ_OBJ_TYPE = MethodType.methodType(Object.class, Object.class);
+            LONG_OBJ_TYPE = MethodType.methodType(long.class, Object.class);
+        }
+    }
+
+    static void dumpSharedArchive() {
+        archivedObjects = new MethodType[2];
+        archivedObjects[0] = OBJ_OBJ_TYPE;
+        archivedObjects[1] = LONG_OBJ_TYPE;
+    }
 
     private static NamedFunction createFunction(byte func) {
         try {

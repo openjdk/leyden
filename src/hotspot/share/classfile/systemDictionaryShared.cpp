@@ -30,9 +30,12 @@
 #include "cds/classListWriter.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
+#include "cds/heapShared.hpp"
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/dumpTimeClassInfo.inline.hpp"
+#include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/metaspaceShared.hpp"
+#include "cds/methodDataDictionary.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.hpp"
@@ -60,6 +63,8 @@
 #include "memory/universe.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
+#include "oops/methodData.hpp"
+#include "oops/trainingData.hpp"
 #include "oops/objArrayKlass.hpp"
 #include "oops/objArrayOop.inline.hpp"
 #include "oops/oop.inline.hpp"
@@ -78,6 +83,14 @@ SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_dynamic_archive;
 
 DumpTimeSharedClassTable* SystemDictionaryShared::_dumptime_table = nullptr;
 DumpTimeLambdaProxyClassDictionary* SystemDictionaryShared::_dumptime_lambda_proxy_class_dictionary = nullptr;
+
+DumpTimeMethodInfoDictionary* SystemDictionaryShared::_dumptime_method_info_dictionary = nullptr;
+DumpTimeMethodInfoDictionary* SystemDictionaryShared::_cloned_dumptime_method_info_dictionary = nullptr;
+static Array<InstanceKlass*>* _archived_lambda_form_classes = nullptr;
+static Array<InstanceKlass*>* _archived_lambda_proxy_classes_boot = nullptr;
+static Array<InstanceKlass*>* _archived_lambda_proxy_classes_boot2 = nullptr;
+static Array<InstanceKlass*>* _archived_lambda_proxy_classes_platform = nullptr;
+static Array<InstanceKlass*>* _archived_lambda_proxy_classes_app = nullptr;
 
 // Used by NoClassLoadingMark
 DEBUG_ONLY(bool SystemDictionaryShared::_class_loading_may_happen = true;)
@@ -308,9 +321,12 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
   }
 
   if (k->is_hidden() && !is_registered_lambda_proxy_class(k)) {
-    ResourceMark rm;
-    log_debug(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
-    return true;
+    if (ArchiveInvokeDynamic && HeapShared::is_archived_hidden_klass(k)) {
+      // Allow Lambda Proxy and LambdaForm classes, for ArchiveInvokeDynamic only
+    } else {
+      log_debug(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
+      return true;
+    }
   }
 
   InstanceKlass* super = k->java_super();
@@ -501,6 +517,7 @@ void SystemDictionaryShared::initialize() {
     _dumptime_table = new (mtClass) DumpTimeSharedClassTable;
     _dumptime_lambda_proxy_class_dictionary =
                       new (mtClass) DumpTimeLambdaProxyClassDictionary;
+    _dumptime_method_info_dictionary = new (mtClass) DumpTimeMethodInfoDictionary;
   }
 }
 
@@ -541,6 +558,23 @@ void SystemDictionaryShared::handle_class_unloading(InstanceKlass* klass) {
   }
 }
 
+void SystemDictionaryShared::init_dumptime_info(Method* m) {
+  Arguments::assert_is_dumping_archive();
+  assert_lock_strong(DumpTimeTable_lock);
+
+  if (m->method_data() != nullptr || m->method_counters() != nullptr) {
+    const MethodDataKey key(m);
+    const DumpTimeMethodDataInfo info(m->method_data(), m->method_counters());
+
+    bool created;
+    _dumptime_method_info_dictionary->put_if_absent(key, info, &created);
+    assert(created, "");
+    if (created) {
+      ++_dumptime_method_info_dictionary->_count;
+    }
+  }
+}
+
 // Check if a class or any of its supertypes has been redefined.
 bool SystemDictionaryShared::has_been_redefined(InstanceKlass* k) {
   if (k->has_been_redefined()) {
@@ -569,6 +603,9 @@ void SystemDictionaryShared::validate_before_archiving(InstanceKlass* k) {
   guarantee(!info->is_excluded(), "Should not attempt to archive excluded class %s", name);
   if (is_builtin(k)) {
     if (k->is_hidden()) {
+      if (ArchiveInvokeDynamic) { // FIXME -- clean up
+        return;
+      }
       assert(is_registered_lambda_proxy_class(k), "unexpected hidden class %s", name);
     }
     guarantee(!k->is_shared_unregistered_class(),
@@ -641,6 +678,10 @@ void SystemDictionaryShared::check_excluded_classes() {
   _dumptime_table->update_counts();
 
   cleanup_lambda_proxy_class_dictionary();
+
+  cleanup_method_info_dictionary();
+
+  TrainingData::cleanup_training_data();
 }
 
 bool SystemDictionaryShared::is_excluded_class(InstanceKlass* k) {
@@ -667,7 +708,10 @@ void SystemDictionaryShared::set_excluded(InstanceKlass* k) {
 void SystemDictionaryShared::set_class_has_failed_verification(InstanceKlass* ik) {
   Arguments::assert_is_dumping_archive();
   DumpTimeClassInfo* p = get_info(ik);
-  p->set_failed_verification();
+  if (p != nullptr) {
+    // TEMP: work around JDK-8312427
+    p->set_failed_verification();
+  }
 }
 
 bool SystemDictionaryShared::has_class_failed_verification(InstanceKlass* ik) {
@@ -693,11 +737,22 @@ void SystemDictionaryShared::dumptime_classes_do(class MetaspaceClosure* it) {
     }
   };
   _dumptime_lambda_proxy_class_dictionary->iterate_all(do_lambda);
+
+  auto do_method_info = [&] (MethodDataKey& key, DumpTimeMethodDataInfo& info) {
+    info.metaspace_pointers_do(it);
+    key.metaspace_pointers_do(it);
+  };
+  _dumptime_method_info_dictionary->iterate_all(do_method_info);
 }
 
 bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbol* name,
          Symbol* from_name, bool from_field_is_protected, bool from_is_array, bool from_is_object) {
   Arguments::assert_is_dumping_archive();
+  if (DynamicDumpSharedSpaces && k->is_shared()) {
+    // k is a new class in the static archive, but one of its supertypes is an old class, so k wasn't
+    // verified during dump time. No need to record constraints as k won't be included in the dynamic archive.
+    return false;
+  }
   DumpTimeClassInfo* info = get_info(k);
   info->add_verification_constraint(k, name, from_name, from_field_is_protected,
                                     from_is_array, from_is_object);
@@ -747,6 +802,10 @@ void SystemDictionaryShared::add_lambda_proxy_class(InstanceKlass* caller_ik,
                                                     Method* member_method,
                                                     Symbol* instantiated_method_type,
                                                     TRAPS) {
+  if (DumpSharedSpaces && ArchiveInvokeDynamic) {
+    // The proxy classes will be accessible through the archived CP entries.
+    return;
+  }
 
   assert(caller_ik->class_loader() == lambda_ik->class_loader(), "mismatched class loader");
   assert(caller_ik->class_loader_data() == lambda_ik->class_loader_data(), "mismatched class loader data");
@@ -787,10 +846,8 @@ InstanceKlass* SystemDictionaryShared::get_shared_lambda_proxy_class(InstanceKla
   MutexLocker ml(CDSLambda_lock, Mutex::_no_safepoint_check_flag);
   LambdaProxyClassKey key(caller_ik, invoked_name, invoked_type,
                           method_type, member_method, instantiated_method_type);
-  const RunTimeLambdaProxyClassInfo* info = _static_archive.lookup_lambda_proxy_class(&key);
-  if (info == nullptr) {
-    info = _dynamic_archive.lookup_lambda_proxy_class(&key);
-  }
+  guarantee(_static_archive.lookup_lambda_proxy_class(&key) == nullptr, "");
+  const RunTimeLambdaProxyClassInfo* info = _dynamic_archive.lookup_lambda_proxy_class(&key);
   InstanceKlass* proxy_klass = nullptr;
   if (info != nullptr) {
     InstanceKlass* curr_klass = info->proxy_klass_head();
@@ -808,7 +865,7 @@ InstanceKlass* SystemDictionaryShared::get_shared_lambda_proxy_class(InstanceKla
       proxy_klass->clear_lambda_proxy_is_available();
       if (log_is_enabled(Debug, cds)) {
         ResourceMark rm;
-        log_debug(cds)("Loaded lambda proxy: %s ", proxy_klass->external_name());
+        log_debug(cds)("Loaded lambda proxy: " PTR_FORMAT " %s ", p2i(proxy_klass), proxy_klass->external_name());
       }
     } else {
       if (log_is_enabled(Debug, cds)) {
@@ -1112,6 +1169,11 @@ size_t SystemDictionaryShared::estimate_size_for_archive() {
       (bytesize * _dumptime_lambda_proxy_class_dictionary->_count) +
       CompactHashtableWriter::estimate_size(_dumptime_lambda_proxy_class_dictionary->_count);
 
+  size_t method_info_byte_size = align_up(sizeof(RunTimeMethodDataInfo), SharedSpaceObjectAlignment);
+  total_size +=
+      (method_info_byte_size * _dumptime_method_info_dictionary->_count) +
+      CompactHashtableWriter::estimate_size(_dumptime_method_info_dictionary->_count);
+
   return total_size;
 }
 
@@ -1229,6 +1291,40 @@ void SystemDictionaryShared::write_lambda_proxy_class_dictionary(LambdaProxyClas
   writer.dump(dictionary, "lambda proxy class dictionary");
 }
 
+class CopyMethodDataInfoToArchive : StackObj {
+  CompactHashtableWriter* _writer;
+  ArchiveBuilder* _builder;
+public:
+  CopyMethodDataInfoToArchive(CompactHashtableWriter* writer)
+      : _writer(writer), _builder(ArchiveBuilder::current()) {}
+
+  bool do_entry(MethodDataKey& key, DumpTimeMethodDataInfo& info) {
+    Method* holder = key.method();
+    log_info(cds,dynamic)("Archiving method info for %s", holder->external_name());
+
+    size_t byte_size = sizeof(RunTimeMethodDataInfo);
+    RunTimeMethodDataInfo* record = (RunTimeMethodDataInfo*)ArchiveBuilder::ro_region_alloc(byte_size);
+
+    DumpTimeMethodDataInfo data(info.method_data(), info.method_counters());
+    record->init(key, data);
+
+    uint hash = SystemDictionaryShared::hash_for_shared_dictionary((address)holder);
+    u4 delta = _builder->buffer_to_offset_u4((address)record);
+    _writer->add(hash, delta);
+
+    return true;
+  }
+};
+
+void SystemDictionaryShared::write_method_info_dictionary(MethodDataInfoDictionary* dictionary) {
+  CompactHashtableStats stats;
+  dictionary->reset();
+  CompactHashtableWriter writer(_dumptime_method_info_dictionary->_count, &stats);
+  CopyMethodDataInfoToArchive copy(&writer);
+  _dumptime_method_info_dictionary->iterate(&copy);
+  writer.dump(dictionary, "method info dictionary");
+}
+
 void SystemDictionaryShared::write_dictionary(RunTimeSharedDictionary* dictionary,
                                               bool is_builtin) {
   CompactHashtableStats stats;
@@ -1247,11 +1343,43 @@ void SystemDictionaryShared::write_to_archive(bool is_static_archive) {
   write_dictionary(&archive->_unregistered_dictionary, false);
 
   write_lambda_proxy_class_dictionary(&archive->_lambda_proxy_class_dictionary);
+
+  write_method_info_dictionary(&archive->_method_info_dictionary);
 }
 
 void SystemDictionaryShared::adjust_lambda_proxy_class_dictionary() {
   AdjustLambdaProxyClassInfo adjuster;
   _dumptime_lambda_proxy_class_dictionary->iterate(&adjuster);
+}
+
+class AdjustMethodInfo : StackObj {
+public:
+  AdjustMethodInfo() {}
+  bool do_entry(MethodDataKey& key, DumpTimeMethodDataInfo& info) {
+    // TODO: is it possible for the data to become stale/invalid?
+    MethodData*     md = info.method_data();
+    MethodCounters* mc = info.method_counters();
+    if (md != nullptr) {
+      md = ArchiveBuilder::current()->get_buffered_addr(md);
+    }
+    if (mc != nullptr) {
+      mc = ArchiveBuilder::current()->get_buffered_addr(mc);
+    }
+    assert(ArchiveBuilder::current()->is_in_buffer_space(md) || md == nullptr, "must be");
+    assert(ArchiveBuilder::current()->is_in_buffer_space(mc) || mc == nullptr, "must be");
+    if (md != nullptr) {
+      md->remove_unshareable_info();
+    }
+    if (mc != nullptr) {
+      mc->remove_unshareable_info();
+    }
+    return true;
+  }
+};
+
+void SystemDictionaryShared::adjust_method_info_dictionary() {
+  AdjustMethodInfo adjuster;
+  _dumptime_method_info_dictionary->iterate(&adjuster);
 }
 
 void SystemDictionaryShared::serialize_dictionary_headers(SerializeClosure* soc,
@@ -1261,12 +1389,18 @@ void SystemDictionaryShared::serialize_dictionary_headers(SerializeClosure* soc,
   archive->_builtin_dictionary.serialize_header(soc);
   archive->_unregistered_dictionary.serialize_header(soc);
   archive->_lambda_proxy_class_dictionary.serialize_header(soc);
+  archive->_method_info_dictionary.serialize_header(soc);
 }
 
 void SystemDictionaryShared::serialize_vm_classes(SerializeClosure* soc) {
   for (auto id : EnumRange<vmClassID>{}) {
     soc->do_ptr(vmClasses::klass_addr_at(id));
   }
+  soc->do_ptr((void**)&_archived_lambda_form_classes);
+  soc->do_ptr((void**)&_archived_lambda_proxy_classes_boot);
+  soc->do_ptr((void**)&_archived_lambda_proxy_classes_boot2);
+  soc->do_ptr((void**)&_archived_lambda_proxy_classes_platform);
+  soc->do_ptr((void**)&_archived_lambda_proxy_classes_app);
 }
 
 const RunTimeClassInfo*
@@ -1281,10 +1415,7 @@ SystemDictionaryShared::find_record(RunTimeSharedDictionary* static_dict, RunTim
   if (DynamicArchive::is_mapped()) {
     // Use the regenerated holder classes in the dynamic archive as they
     // have more methods than those in the base archive.
-    if (name == vmSymbols::java_lang_invoke_Invokers_Holder() ||
-        name == vmSymbols::java_lang_invoke_DirectMethodHandle_Holder() ||
-        name == vmSymbols::java_lang_invoke_LambdaForm_Holder() ||
-        name == vmSymbols::java_lang_invoke_DelegatingMethodHandle_Holder()) {
+    if (LambdaFormInvokers::may_be_regenerated_class(name)) {
       record = dynamic_dict->lookup(name, hash, 0);
       if (record != nullptr) {
         return record;
@@ -1329,7 +1460,7 @@ void SystemDictionaryShared::update_shared_entry(InstanceKlass* k, int id) {
   info->_id = id;
 }
 
-const char* class_loader_name_for_shared(Klass* k) {
+const char* SystemDictionaryShared::class_loader_name_for_shared(Klass* k) {
   assert(k != nullptr, "Sanity");
   assert(k->is_shared(), "Must be");
   assert(k->is_instance_klass(), "Must be");
@@ -1356,7 +1487,7 @@ public:
   void do_value(const RunTimeClassInfo* record) {
     ResourceMark rm;
     _st->print_cr("%4d: %s %s", _index++, record->_klass->external_name(),
-        class_loader_name_for_shared(record->_klass));
+        SystemDictionaryShared::class_loader_name_for_shared(record->_klass));
     if (record->_klass->array_klasses() != nullptr) {
       record->_klass->array_klasses()->cds_print_value_on(_st);
       _st->cr();
@@ -1377,9 +1508,51 @@ public:
       Klass* k = record->proxy_klass_head();
       while (k != nullptr) {
         _st->print_cr("%4d: %s %s", _index++, k->external_name(),
-                      class_loader_name_for_shared(k));
+                      SystemDictionaryShared::class_loader_name_for_shared(k));
         k = k->next_link();
       }
+    }
+  }
+};
+
+class SharedMethodInfoDictionaryPrinter : StackObj {
+  outputStream* _st;
+  int _index;
+
+private:
+  static const char* tag(void* p) {
+    if (p == nullptr) {
+      return "   ";
+    } else if (MetaspaceShared::is_shared_dynamic(p)) {
+      return "<D>";
+    } else if (MetaspaceShared::is_in_shared_metaspace(p)) {
+      return "<S>";
+    } else {
+      return "???";
+    }
+  }
+public:
+  SharedMethodInfoDictionaryPrinter(outputStream* st) : _st(st), _index(0) {}
+
+  void do_value(const RunTimeMethodDataInfo* record) {
+    ResourceMark rm;
+    Method*         m  = record->method();
+    MethodCounters* mc = record->method_counters();
+    MethodData*     md = record->method_data();
+
+    _st->print_cr("%4d: %s" PTR_FORMAT " %s" PTR_FORMAT " %s" PTR_FORMAT " %s", _index++,
+                  tag(m), p2i(m),
+                  tag(mc), p2i(mc),
+                  tag(md), p2i(md),
+                  m->external_name());
+    if (Verbose) {
+      if (mc != nullptr) {
+        mc->print_on(_st);
+      }
+      if (md != nullptr) {
+        md->print_on(_st);
+      }
+      _st->cr();
     }
   }
 };
@@ -1397,6 +1570,15 @@ void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
     SharedLambdaDictionaryPrinter ldp(st, p.index());
     _lambda_proxy_class_dictionary.iterate(&ldp);
   }
+  if (!_method_info_dictionary.empty()) {
+    st->print_cr("%sShared MethodData Dictionary", prefix);
+    SharedMethodInfoDictionaryPrinter mdp(st);
+    _method_info_dictionary.iterate(&mdp);
+  }
+  st->print_cr("%sTraining Data", prefix);
+  TrainingDataPrinter tdp(st);
+  _builtin_dictionary.iterate(&tdp);
+  _method_info_dictionary.iterate(&tdp);
 }
 
 void SystemDictionaryShared::ArchiveInfo::print_table_statistics(const char* prefix,
@@ -1405,6 +1587,7 @@ void SystemDictionaryShared::ArchiveInfo::print_table_statistics(const char* pre
   _builtin_dictionary.print_table_statistics(st, "Builtin Shared Dictionary");
   _unregistered_dictionary.print_table_statistics(st, "Unregistered Shared Dictionary");
   _lambda_proxy_class_dictionary.print_table_statistics(st, "Lambda Shared Dictionary");
+  _method_info_dictionary.print_table_statistics(st, "MethodData Dictionary");
 }
 
 void SystemDictionaryShared::print_shared_archive(outputStream* st, bool is_static) {
@@ -1469,4 +1652,160 @@ void SystemDictionaryShared::cleanup_lambda_proxy_class_dictionary() {
   assert_lock_strong(DumpTimeTable_lock);
   CleanupDumpTimeLambdaProxyClassTable cleanup_proxy_classes;
   _dumptime_lambda_proxy_class_dictionary->unlink(&cleanup_proxy_classes);
+}
+
+class CleanupDumpTimeMethodInfoTable : StackObj {
+public:
+  bool do_entry(MethodDataKey& key, DumpTimeMethodDataInfo& info) {
+    assert_lock_strong(DumpTimeTable_lock);
+    assert(MetaspaceShared::is_in_shared_metaspace(key.method()), "");
+    InstanceKlass* holder = key.method()->method_holder();
+    bool is_excluded = SystemDictionaryShared::check_for_exclusion(holder, nullptr);
+    return is_excluded;
+  }
+};
+
+void SystemDictionaryShared::cleanup_method_info_dictionary() {
+  assert_lock_strong(DumpTimeTable_lock);
+
+  CleanupDumpTimeMethodInfoTable cleanup_method_info;
+  _dumptime_method_info_dictionary->unlink(&cleanup_method_info);
+}
+
+
+static Array<InstanceKlass*>* copy_klass_array(GrowableArray<InstanceKlass*>* src) {
+  Array<InstanceKlass*>* dst = ArchiveBuilder::new_ro_array<InstanceKlass*>(src->length());
+  for (int i = 0; i < src->length(); i++) {
+    ArchiveBuilder::current()->write_pointer_in_buffer(dst->adr_at(i), src->at(i));
+  }
+  return dst;
+}
+
+void SystemDictionaryShared::record_archived_lambda_form_classes() {
+  if (!ArchiveInvokeDynamic && !DumpSharedSpaces) {
+    return;
+  }
+
+  GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
+  GrowableArray<InstanceKlass*> lf_list;
+  GrowableArray<InstanceKlass*> proxy_list_boot;
+  GrowableArray<InstanceKlass*> proxy_list_boot2;
+  GrowableArray<InstanceKlass*> proxy_list_platform;
+  GrowableArray<InstanceKlass*> proxy_list_app;
+
+  for (int i = 0; i < klasses->length(); i++) {
+    Klass* k = klasses->at(i);
+    //assert(ArchiveBuilder::current()->is_in_buffer_space(k), "must be");
+    if (k->is_instance_klass()) {
+      InstanceKlass* ik = InstanceKlass::cast(k);
+      if (HeapShared::is_lambda_form_klass(ik)) {
+        assert(ArchiveInvokeDynamic, "lambda form classes are archived only if ArchiveInvokeDynamic is true");
+        lf_list.append(ik);
+      } else if (HeapShared::is_lambda_proxy_klass(ik)) {
+        assert(ArchiveInvokeDynamic, "lambda proxy classes are archived only if ArchiveInvokeDynamic is true");
+        oop loader = ik->class_loader();
+        s2 classloader_type;
+
+        if (loader == nullptr) {
+          classloader_type = ClassLoader::BOOT_LOADER;
+          if (ik->module() == ModuleEntryTable::javabase_moduleEntry()) {
+            proxy_list_boot.append(ik);
+          } else {
+            proxy_list_boot2.append(ik);
+          }
+        } else if (SystemDictionary::is_platform_class_loader(loader)) {
+          classloader_type = ClassLoader::PLATFORM_LOADER;
+          proxy_list_platform.append(ik);        
+        } else if (SystemDictionary::is_system_class_loader(loader)) {
+          classloader_type = ClassLoader::APP_LOADER;
+          proxy_list_app.append(ik);        
+        } else {
+          guarantee(0, "ArchiveInvokeDynamic not supported for custom class loaders!");
+          classloader_type = ClassLoader::OTHER;
+        }
+
+        if (classloader_type != ClassLoader::OTHER) {
+          InstanceKlass* buffered_ik = ArchiveBuilder::current()->get_buffered_addr(ik);
+          buffered_ik->set_shared_class_loader_type(classloader_type);
+
+          InstanceKlass* nest_host = ik->nest_host_not_null();
+          buffered_ik->set_shared_classpath_index(nest_host->shared_classpath_index()); // HACK!
+        }
+      }
+    }
+  }
+
+  _archived_lambda_form_classes           = copy_klass_array(&lf_list);
+  _archived_lambda_proxy_classes_boot     = copy_klass_array(&proxy_list_boot);
+  _archived_lambda_proxy_classes_boot2    = copy_klass_array(&proxy_list_boot2);
+  _archived_lambda_proxy_classes_platform = copy_klass_array(&proxy_list_platform);
+  _archived_lambda_proxy_classes_app      = copy_klass_array(&proxy_list_app);
+}
+
+void SystemDictionaryShared::init_archived_lambda_form_classes(TRAPS) {
+  if (_archived_lambda_form_classes == nullptr) {
+    return;
+  }
+
+  for (int i = 0; i < _archived_lambda_form_classes->length(); i++) {
+    InstanceKlass* ik = _archived_lambda_form_classes->at(i);
+    init_archived_hidden_class(Handle(), ik, "lambda form", CHECK);
+  }
+}
+
+void SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle class_loader, TRAPS) {
+  static Array<InstanceKlass*>* classes;
+  const char* name;
+  if (class_loader() == nullptr) {
+    if (!ModuleEntryTable::javabase_defined()) {
+      classes = _archived_lambda_proxy_classes_boot;
+      name = "boot";
+    } else {
+      classes = _archived_lambda_proxy_classes_boot2;
+      name = "boot2";
+    }
+  } else if (SystemDictionary::is_platform_class_loader(class_loader())) {
+    name = "platform";
+    classes = _archived_lambda_proxy_classes_platform;
+  } else {
+    assert(SystemDictionary::is_system_class_loader(class_loader()), "must be");
+    name = "app";
+    classes = _archived_lambda_proxy_classes_app;
+  }
+
+  if (classes != nullptr) {
+    log_info(cds)("init_archived_lambda_proxy_classes %s: %d", name, classes->length());
+    for (int i = 0; i < classes->length(); i++) {
+      InstanceKlass* ik = classes->at(i);
+      init_archived_hidden_class(class_loader, ik, "lambda proxy", CHECK);
+    }
+  }
+}
+
+
+void SystemDictionaryShared::init_archived_hidden_class(Handle class_loader,
+                                                        InstanceKlass* ik, const char* which, TRAPS) {
+  if (log_is_enabled(Debug, cds, heap)) {
+    ResourceMark rm;
+    log_debug(cds, heap)("Init archived %s class: %s ", which, ik->external_name());
+  }
+
+  assert(ik->super() == vmClasses::Object_klass(), "must be");
+  //assert(ik->local_interfaces()->length() == 0, "must be");
+
+  ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(class_loader());
+  if (class_loader() == nullptr) {
+    ik->restore_unshareable_info(loader_data, Handle(), NULL, CHECK);
+  } else {
+      PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
+      Handle protection_domain =
+        CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK);
+      ik->restore_unshareable_info(loader_data, protection_domain, pkg_entry, CHECK);
+  }
+  SystemDictionary::load_shared_class_misc(ik, loader_data);
+  ik->add_to_hierarchy(THREAD);
+
+  assert(ik->is_loaded(), "Must be in at least loaded state");
+  ik->link_class(CHECK);
+  ik->initialize(CHECK); // quick-init that doesn't go through <clinit>
 }

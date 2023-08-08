@@ -25,13 +25,18 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/classPrelinker.hpp"
+#include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
+#include "cds/methodProfiler.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/javaThreadStatus.hpp"
 #include "classfile/systemDictionary.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/SCArchive.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"
 #include "compiler/compilerThread.hpp"
@@ -316,6 +321,32 @@ static void call_initPhase2(TRAPS) {
   }
 
   universe_post_module_init();
+
+  // Preload all boot classes outside of java.base module
+  ClassPrelinker::runtime_preload(THREAD, Handle());
+  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(), CHECK); // FIXME we can't allow exceptions!
+  if (MetaspaceShared::use_full_module_graph() && UseSharedSpaces) {
+    // SystemDictionary::java_{platform,system}_loader are already assigned. We can spin
+    // this up a little quicker.
+    assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
+    assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
+#if 1
+    ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, SystemDictionary::java_platform_loader()));
+    ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, SystemDictionary::java_system_loader()));
+#else
+    {
+      Handle h(Handle(THREAD, SystemDictionary::java_platform_loader()));
+      ClassPrelinker::runtime_preload(THREAD, h);
+      SystemDictionaryShared::init_archived_lambda_proxy_classes(h, CHECK);
+    }
+
+    {
+      Handle h(Handle(THREAD, SystemDictionary::java_system_loader()));
+      ClassPrelinker::runtime_preload(THREAD, h);
+      SystemDictionaryShared::init_archived_lambda_proxy_classes(h, CHECK);
+    }
+#endif
+  }
 }
 
 // Phase 3. final setup - set security manager, system class loader and TCCL
@@ -348,6 +379,8 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   Universe::set_main_thread_group(thread_group());
   initialize_class(vmSymbols::java_lang_Thread(), CHECK);
   create_initial_thread(thread_group, main_thread, CHECK);
+
+  HeapShared::init_box_classes(CHECK);
 
   // The VM creates objects of this class.
   initialize_class(vmSymbols::java_lang_Module(), CHECK);
@@ -404,6 +437,10 @@ void Threads::initialize_jsr292_core_classes(TRAPS) {
   initialize_class(vmSymbols::java_lang_invoke_ResolvedMethodName(), CHECK);
   initialize_class(vmSymbols::java_lang_invoke_MemberName(), CHECK);
   initialize_class(vmSymbols::java_lang_invoke_MethodHandleNatives(), CHECK);
+
+  if (UseSharedSpaces) {
+    HeapShared::initialize_java_lang_invoke(CHECK);
+  }
 }
 
 jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
@@ -552,6 +589,9 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     *canTryAgain = false; // don't let caller call JNI_CreateJavaVM again
     return status;
   }
+  if (xtty != nullptr)
+    xtty->elem("vm_main_thread thread='" UINTX_FORMAT "'",
+               (uintx) main_thread->osthread()->thread_id());
 
   // Add main_thread to threads list to finish barrier setup with
   // on_thread_attach.  Should be before starting to build Java objects in
@@ -685,6 +725,9 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Start the monitor deflation thread:
   MonitorDeflationThread::initialize();
 
+  // Start the method sampler
+  MethodProfiler::initialize();
+
   // initialize compiler(s)
 #if defined(COMPILER1) || COMPILER2_OR_JVMCI
 #if INCLUDE_JVMCI
@@ -753,6 +796,11 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     JVMCI::initialize_compiler(CHECK_JNI_ERR);
     CompileBroker::compilation_init_phase2();
   }
+#endif
+
+#if defined(COMPILER2)
+  // Pre-load cached compiled methods
+  SCArchive::preload_code(THREAD);
 #endif
 
   // Always call even when there are not JVMTI environments yet, since environments

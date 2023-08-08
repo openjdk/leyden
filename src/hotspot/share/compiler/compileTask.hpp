@@ -31,7 +31,9 @@
 #include "memory/allocation.hpp"
 #include "utilities/xmlstream.hpp"
 
+class CompileTrainingData;
 class DirectiveSet;
+class SCAEntry;
 
 JVMCI_ONLY(class JVMCICompileState;)
 
@@ -56,6 +58,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
       Reason_Whitebox,         // Whitebox API
       Reason_MustBeCompiled,   // Used for -Xcomp or AlwaysCompileLoopMethods (see CompilationPolicy::must_be_compiled())
       Reason_Bootstrap,        // JVMCI bootstrap
+      Reason_Preload,          // pre-load SC code
       Reason_Count
   };
 
@@ -68,7 +71,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
       "replay",
       "whitebox",
       "must_be_compiled",
-      "bootstrap"
+      "bootstrap",
+      "preload"
     };
     return reason_names[compile_reason];
   }
@@ -82,11 +86,14 @@ class CompileTask : public CHeapObj<mtCompiler> {
   int                  _osr_bci;
   bool                 _is_complete;
   bool                 _is_success;
+  bool                 _requires_online_compilation;
   bool                 _is_blocking;
   CodeSection::csize_t _nm_content_size;
   CodeSection::csize_t _nm_total_size;
   CodeSection::csize_t _nm_insts_size;
   DirectiveSet*  _directive;
+  AbstractCompiler*    _compiler;
+  SCAEntry*            _sca_entry;
 #if INCLUDE_JVMCI
   bool                 _has_waiter;
   // Compilation state for a blocking JVMCI compilation
@@ -106,6 +113,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   const char*          _failure_reason;
   // Specifies if _failure_reason is on the C heap.
   bool                 _failure_reason_on_C_heap;
+  CompileTrainingData* _training_data;
 
  public:
   CompileTask() : _failure_reason(nullptr), _failure_reason_on_C_heap(false) {
@@ -115,25 +123,31 @@ class CompileTask : public CHeapObj<mtCompiler> {
 
   void initialize(int compile_id, const methodHandle& method, int osr_bci, int comp_level,
                   const methodHandle& hot_method, int hot_count,
-                  CompileTask::CompileReason compile_reason, bool is_blocking);
+                  CompileTask::CompileReason compile_reason, bool requires_online_compilation, bool is_blocking);
 
   static CompileTask* allocate();
   static void         free(CompileTask* task);
 
-  int          compile_id() const                { return _compile_id; }
-  Method*      method() const                    { return _method; }
-  Method*      hot_method() const                { return _hot_method; }
-  int          osr_bci() const                   { return _osr_bci; }
-  bool         is_complete() const               { return _is_complete; }
-  bool         is_blocking() const               { return _is_blocking; }
-  bool         is_success() const                { return _is_success; }
-  DirectiveSet* directive() const                { return _directive; }
+  int          compile_id() const                   { return _compile_id; }
+  Method*      method() const                       { return _method; }
+  Method*      hot_method() const                   { return _hot_method; }
+  int          osr_bci() const                      { return _osr_bci; }
+  bool         is_complete() const                  { return _is_complete; }
+  bool         is_blocking() const                  { return _is_blocking; }
+  bool         is_success() const                   { return _is_success; }
+  bool         is_sca() const                       { return _sca_entry != nullptr; }
+  void         clear_sca()                          { _sca_entry = nullptr; }
+  SCAEntry*    sca_entry()                          { return _sca_entry; }
+  bool         requires_online_compilation() const  { return _requires_online_compilation; }
+  DirectiveSet* directive() const                   { return _directive; }
+  CompileReason compile_reason() const              { return _compile_reason; }
   CodeSection::csize_t nm_content_size() { return _nm_content_size; }
   void         set_nm_content_size(CodeSection::csize_t size) { _nm_content_size = size; }
   CodeSection::csize_t nm_insts_size() { return _nm_insts_size; }
   void         set_nm_insts_size(CodeSection::csize_t size) { _nm_insts_size = size; }
   CodeSection::csize_t nm_total_size() { return _nm_total_size; }
   void         set_nm_total_size(CodeSection::csize_t size) { _nm_total_size = size; }
+  bool         preload() const                   { return (_compile_reason == Reason_Preload); }
   bool         can_become_stale() const          {
     switch (_compile_reason) {
       case Reason_BackedgeCount:
@@ -188,6 +202,9 @@ class CompileTask : public CHeapObj<mtCompiler> {
   void         set_is_free(bool val)             { _is_free = val; }
   bool         is_unloaded() const;
 
+  CompileTrainingData* training_data() const     { return _training_data; }
+  void set_training_data(CompileTrainingData*td) { _training_data = td; }
+
   // RedefineClasses support
   void         metadata_do(MetadataClosure* f);
   void         mark_on_stack();
@@ -195,6 +212,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
 private:
   static void  print_impl(outputStream* st, Method* method, int compile_id, int comp_level,
                                       bool is_osr_method = false, int osr_bci = -1, bool is_blocking = false,
+                                      bool is_sca = false, bool is_preload = false,
+                                      const char* compiler_name = nullptr,
                                       const char* msg = nullptr, bool short_form = false, bool cr = true,
                                       jlong time_queued = 0, jlong time_started = 0);
 
@@ -204,7 +223,8 @@ public:
   static void  print(outputStream* st, const nmethod* nm, const char* msg = nullptr, bool short_form = false, bool cr = true) {
     print_impl(st, nm->method(), nm->compile_id(), nm->comp_level(),
                            nm->is_osr_method(), nm->is_osr_method() ? nm->osr_entry_bci() : -1, /*is_blocking*/ false,
-                           msg, short_form, cr);
+                           nm->sca_entry() != nullptr, nm->preloaded(),
+                           nm->compiler_name(), msg, short_form, cr);
   }
   static void  print_ul(const nmethod* nm, const char* msg = nullptr);
 

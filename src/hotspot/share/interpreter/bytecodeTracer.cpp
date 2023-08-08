@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/heapShared.hpp"
 #include "classfile/classPrinter.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "interpreter/bytecodeHistogram.hpp"
@@ -436,6 +437,11 @@ void BytecodePrinter::print_dynamic(int orig_i, int bsm_cpindex, constantTag tag
     ResolvedIndyEntry* indy_entry = constants->resolved_indy_entry_at(indy_index);
     st->print("  ResolvedIndyEntry: ");
     indy_entry->print_on(st);
+    if (indy_entry->has_appendix()) {
+      oop apx = constants->resolved_reference_from_indy(indy_index);
+      int perm_index = HeapShared::get_archived_object_permanent_index(apx);
+      st->print_cr(" - appendix = " INTPTR_FORMAT ", CDS perm index = %d", p2i(apx), perm_index);
+    }
   } else {
     // TODO: print info for tag.is_dynamic_constant()
   }

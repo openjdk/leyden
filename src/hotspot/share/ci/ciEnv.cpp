@@ -40,6 +40,7 @@
 #include "classfile/vmSymbols.hpp"
 #include "code/codeCache.hpp"
 #include "code/scopeDesc.hpp"
+#include "code/SCArchive.hpp"
 #include "compiler/compilationLog.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
@@ -66,9 +67,11 @@
 #include "oops/oop.inline.hpp"
 #include "oops/resolvedIndyEntry.hpp"
 #include "oops/symbolHandle.hpp"
+#include "oops/trainingData.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "prims/methodHandles.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
+#include "runtime/flags/flagSetting.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/init.hpp"
 #include "runtime/javaThread.hpp"
@@ -171,6 +174,8 @@ ciEnv::ciEnv(CompileTask* task)
   _jvmti_can_access_local_variables = false;
   _jvmti_can_post_on_exceptions = false;
   _jvmti_can_pop_frame = false;
+
+  _sca_clinit_barriers_entry = nullptr;
 
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
@@ -292,6 +297,8 @@ ciEnv::ciEnv(Arena* arena) : _ciEnv_arena(mtCompiler) {
   _jvmti_can_access_local_variables = false;
   _jvmti_can_post_on_exceptions = false;
   _jvmti_can_pop_frame = false;
+
+  _sca_clinit_barriers_entry = nullptr;
 
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
@@ -1033,22 +1040,27 @@ void ciEnv::register_method(ciMethod* target,
                             ExceptionHandlerTable* handler_table,
                             ImplicitExceptionTable* inc_table,
                             AbstractCompiler* compiler,
+                            bool has_clinit_barriers,
+                            bool for_preload,
                             bool has_unsafe_access,
                             bool has_wide_vectors,
                             bool has_monitors,
                             int immediate_oops_patched,
-                            RTMState  rtm_state) {
+                            RTMState  rtm_state,
+                            SCAEntry* sca_entry) {
   VM_ENTRY_MARK;
   nmethod* nm = nullptr;
   {
     methodHandle method(THREAD, target->get_Method());
+    bool preload = task()->preload(); // Code is preloaded before Java method execution
 
     // We require method counters to store some method state (max compilation levels) required by the compilation policy.
-    if (method->get_method_counters(THREAD) == nullptr) {
+    if (!preload && method->get_method_counters(THREAD) == nullptr) {
       record_failure("can't create method counters");
       // All buffers in the CodeBuffer are allocated in the CodeCache.
       // If the code buffer is created on each compile attempt
       // as in C2, then it must be freed.
+      // But keep shared code.
       code_buffer->free_blob();
       return;
     }
@@ -1065,6 +1077,12 @@ void ciEnv::register_method(ciMethod* target,
     MutexLocker ml(Compile_lock);
     NoSafepointVerifier nsv;
 
+    if (sca_entry != nullptr && sca_entry->not_entrant()) {
+      // This shared code was marked invalid while it was loaded
+      code_buffer->free_blob();
+      return;
+    }
+
     // Change in Jvmti state may invalidate compilation.
     if (!failing() && jvmti_state_changed()) {
       record_failure("Jvmti state change invalidated dependencies");
@@ -1077,12 +1095,12 @@ void ciEnv::register_method(ciMethod* target,
       record_failure("DTrace flags change invalidated dependencies");
     }
 
-    if (!failing() && target->needs_clinit_barrier() &&
+    if (!preload && !failing() && target->needs_clinit_barrier() &&
         target->holder()->is_in_error_state()) {
       record_failure("method holder is in error state");
     }
 
-    if (!failing()) {
+    if (!failing() && (sca_entry == nullptr)) {
       if (log() != nullptr) {
         // Log the dependencies which this compilation declares.
         dependencies()->log_all_dependencies();
@@ -1090,8 +1108,9 @@ void ciEnv::register_method(ciMethod* target,
 
       // Encode the dependencies now, so we can check them right away.
       dependencies()->encode_content_bytes();
-
-      // Check for {class loads, evolution, breakpoints, ...} during compilation
+    }
+    // Check for {class loads, evolution, breakpoints, ...} during compilation
+    if (!preload) {
       validate_compile_task_dependencies(target);
     }
 #if INCLUDE_RTM_OPT
@@ -1120,6 +1139,35 @@ void ciEnv::register_method(ciMethod* target,
     assert(offsets->value(CodeOffsets::Deopt) != -1, "must have deopt entry");
     assert(offsets->value(CodeOffsets::Exceptions) != -1, "must have exception entry");
 
+    if (rtm_state == NoRTM && sca_entry == nullptr) {
+      sca_entry = SCAFile::store_nmethod(method,
+                             compile_id(),
+                             entry_bci,
+                             offsets,
+                             orig_pc_offset,
+                             debug_info(), dependencies(), code_buffer,
+                             frame_words, oop_map_set,
+                             handler_table, inc_table,
+                             compiler,
+                             CompLevel(task()->comp_level()),
+                             has_clinit_barriers,
+                             for_preload,
+                             has_unsafe_access,
+                             has_wide_vectors,
+                             has_monitors);
+      if (sca_entry != nullptr) {
+        sca_entry->set_inlined_bytecodes(num_inlined_bytecodes());
+        if (has_clinit_barriers) {
+          set_sca_clinit_barriers_entry(sca_entry); // Record it
+          // Build second version of code without class initialization barriers
+          code_buffer->free_blob();
+          return;
+        } else if (!for_preload) {
+          SCAEntry* previous_entry = sca_clinit_barriers_entry();
+          sca_entry->set_next(previous_entry); // Link it for case of deoptimization
+        }
+      }
+    }
     nm =  nmethod::new_nmethod(method,
                                compile_id(),
                                entry_bci,
@@ -1128,7 +1176,8 @@ void ciEnv::register_method(ciMethod* target,
                                debug_info(), dependencies(), code_buffer,
                                frame_words, oop_map_set,
                                handler_table, inc_table,
-                               compiler, CompLevel(task()->comp_level()));
+                               compiler, CompLevel(task()->comp_level()),
+                               sca_entry);
 
     // Free codeBlobs
     code_buffer->free_blob();
@@ -1160,21 +1209,29 @@ void ciEnv::register_method(ciMethod* target,
         if (lt.is_enabled()) {
           ResourceMark rm;
           char *method_name = method->name_and_sig_as_C_string();
-          lt.print("Installing method (%d) %s ",
-                    task()->comp_level(), method_name);
+          lt.print("Installing method (L%d) %s id=%d sca=%s%s%u",
+                    task()->comp_level(), method_name, compile_id(),
+                    task()->is_sca() ? "A" : "", preload ? "P" : "",
+                    (sca_entry != nullptr ? sca_entry->offset() : 0));
         }
         // Allow the code to be executed
         MutexLocker ml(CompiledMethod_lock, Mutex::_no_safepoint_check_flag);
         if (nm->make_in_use()) {
-          method->set_code(method, nm);
+          if (preload) {
+            method->set_preload_code(nm);
+          } else {
+            method->set_code(method, nm);
+          }
         }
       } else {
         LogTarget(Info, nmethod, install) lt;
         if (lt.is_enabled()) {
           ResourceMark rm;
           char *method_name = method->name_and_sig_as_C_string();
-          lt.print("Installing osr method (%d) %s @ %d",
-                    task()->comp_level(), method_name, entry_bci);
+          lt.print("Installing osr method (L%d) %s @ %d id=%u sca=%s%u",
+                   task()->comp_level(), method_name, entry_bci, compile_id(),
+                   task()->is_sca() ? "A" : "",
+                   (sca_entry != nullptr ? sca_entry->offset() : 0));
         }
         MutexLocker ml(CompiledMethod_lock, Mutex::_no_safepoint_check_flag);
         if (nm->make_in_use()) {
@@ -1222,6 +1279,13 @@ int ciEnv::compile_id() {
 // ciEnv::notice_inlined_method()
 void ciEnv::notice_inlined_method(ciMethod* method) {
   _num_inlined_bytecodes += method->code_size_for_inlining();
+  CompileTrainingData* tdata = task()->training_data();
+  if (tdata != nullptr) {
+    GUARDED_VM_ENTRY({
+      methodHandle mh(Thread::current(), method->get_Method());
+      tdata->notice_inlined_method(task(), mh);
+    });
+  }
 }
 
 // ------------------------------------------------------------------

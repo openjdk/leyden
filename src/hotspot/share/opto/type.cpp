@@ -88,7 +88,7 @@ const Type::TypeInfo Type::_type_info[Type::lastype] = {
   { Bad,             T_ILLEGAL,    "vectorz:",      false, Op_VecZ,              relocInfo::none          },  // VectorZ
 #endif
   { Bad,             T_ADDRESS,    "anyptr:",       false, Op_RegP,              relocInfo::none          },  // AnyPtr
-  { Bad,             T_ADDRESS,    "rawptr:",       false, Op_RegP,              relocInfo::none          },  // RawPtr
+  { Bad,             T_ADDRESS,    "rawptr:",       false, Op_RegP,              relocInfo::external_word_type },  // RawPtr
   { Bad,             T_OBJECT,     "oop:",          true,  Op_RegP,              relocInfo::oop_type      },  // OopPtr
   { Bad,             T_OBJECT,     "inst:",         true,  Op_RegP,              relocInfo::oop_type      },  // InstPtr
   { Bad,             T_OBJECT,     "ary:",          true,  Op_RegP,              relocInfo::oop_type      },  // AryPtr
@@ -4515,7 +4515,7 @@ void TypeInstPtr::dump2(Dict &d, uint depth, outputStream* st) const {
       ResourceMark rm;
       stringStream ss;
 
-      st->print(" ");
+      st->print(" " INTPTR_FORMAT, p2i(const_oop()));
       const_oop()->print_oop(&ss);
       // 'const_oop->print_oop()' may emit newlines('\n') into ss.
       // suppress newlines from it so -XX:+Verbose -XX:+PrintIdeal dumps one-liner for each node.
@@ -5132,6 +5132,7 @@ void TypeAryPtr::dump2( Dict &d, uint depth, outputStream *st ) const {
 
   switch( _ptr ) {
   case Constant:
+    st->print(" " INTPTR_FORMAT " ", p2i(const_oop()));
     const_oop()->print(st);
     break;
   case BotPTR:

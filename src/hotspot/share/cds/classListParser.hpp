@@ -25,13 +25,11 @@
 #ifndef SHARE_CDS_CLASSLISTPARSER_HPP
 #define SHARE_CDS_CLASSLISTPARSER_HPP
 
+#include "interpreter/bytecodes.hpp"
 #include "utilities/exceptions.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/growableArray.hpp"
 #include "utilities/resizeableResourceHash.hpp"
-
-#define LAMBDA_PROXY_TAG "@lambda-proxy"
-#define LAMBDA_FORM_TAG  "@lambda-form-invoker"
 
 class constantPoolHandle;
 class Thread;
@@ -67,6 +65,9 @@ public:
 };
 
 class ClassListParser : public StackObj {
+  static const char* LAMBDA_PROXY_TAG;
+  static const char* LAMBDA_FORM_TAG;
+  static const char* CONSTANT_POOL_TAG;
 public:
   enum ParseMode {
     _parse_all,
@@ -85,7 +86,7 @@ private:
     // Theoretically Java class names could be 65535 bytes in length. Also, an input line
     // could have a very long path name up to JVM_MAXPATHLEN bytes in length. In reality,
     // 4K bytes is more than enough.
-    _max_allowed_line_len = 4096,
+    _max_allowed_line_len = 65536, // WAS 4096,
     _line_buf_extra       = 10, // for detecting input too long
     _line_buf_size        = _max_allowed_line_len + _line_buf_extra
   };
@@ -114,6 +115,7 @@ private:
   bool                _interfaces_specified;
   const char*         _source;
   bool                _lambda_form_line;
+  bool                _constant_pool_line;
   ParseMode           _parse_mode;
 
   bool parse_int_option(const char* option_name, int* value);
@@ -127,13 +129,21 @@ private:
   void print_actual_interfaces(InstanceKlass *ik);
   bool is_matching_cp_entry(const constantPoolHandle &pool, int cp_index, TRAPS);
 
+  InstanceKlass* find_builtin_class_helper(JavaThread* current, Symbol* class_name_symbol, oop class_loader_oop);
+  InstanceKlass* find_builtin_class(JavaThread* current, const char* class_name);
+
   void resolve_indy(JavaThread* current, Symbol* class_name_symbol);
   void resolve_indy_impl(Symbol* class_name_symbol, TRAPS);
   bool parse_one_line();
   Klass* load_current_class(Symbol* class_name_symbol, TRAPS);
+  void parse_constant_pool_tag();
 
   ClassListParser(const char* file, ParseMode _parse_mode);
   ~ClassListParser();
+  void print_diagnostic_info(outputStream* st, const char* msg, va_list ap) ATTRIBUTE_PRINTF(3, 0);
+  void print_diagnostic_info(outputStream* st, const char* msg, ...) ATTRIBUTE_PRINTF(3, 0);
+  void constant_pool_resolution_warning(const char* msg, ...) ATTRIBUTE_PRINTF(2, 0);
+  void error(const char* msg, ...) ATTRIBUTE_PRINTF(2, 0);
 
 public:
   static int parse_classlist(const char* classlist_path, ParseMode parse_mode, TRAPS) {
@@ -147,13 +157,18 @@ public:
     assert(_instance != nullptr, "must be");
     return _instance;
   }
+  static const char* lambda_proxy_tag() {
+    return LAMBDA_PROXY_TAG;
+  }
+  static const char* lambda_form_tag() {
+    return LAMBDA_FORM_TAG;
+  }
 
   int parse(TRAPS);
   void split_tokens_by_whitespace(int offset);
   int split_at_tag_from_line();
   bool parse_at_tags();
   char* _token;
-  void error(const char* msg, ...);
   void parse_int(int* value);
   void parse_uint(int* value);
   bool try_parse_uint(int* value);

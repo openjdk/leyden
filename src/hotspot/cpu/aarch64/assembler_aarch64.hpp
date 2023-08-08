@@ -228,7 +228,7 @@ public:
   static void spatch(address a, int msb, int lsb, int64_t val) {
     int nbits = msb - lsb + 1;
     int64_t chk = val >> (nbits - 1);
-    guarantee (chk == -1 || chk == 0, "Field too big for insn at " INTPTR_FORMAT, p2i(a));
+    guarantee (chk == -1 || chk == 0, "Field " INT64_FORMAT_X_0 " too big (nbits: %d) for insn at " INTPTR_FORMAT, val, nbits, p2i(a));
     unsigned uval = val;
     unsigned mask = checked_cast<unsigned>(right_n_bits(nbits));
     uval &= mask;
@@ -261,7 +261,7 @@ public:
   void sf(int64_t val, int msb, int lsb) {
     int nbits = msb - lsb + 1;
     int64_t chk = val >> (nbits - 1);
-    guarantee (chk == -1 || chk == 0, "Field too big for insn");
+    guarantee (chk == -1 || chk == 0, "Field " INT64_FORMAT_X_0 " too big (nbits: %d) for insn", val, nbits);
     unsigned uval = val;
     unsigned mask = checked_cast<unsigned>(right_n_bits(nbits));
     uval &= mask;

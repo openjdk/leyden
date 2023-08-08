@@ -26,10 +26,12 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveUtils.hpp"
+#include "cds/classPrelinker.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
+#include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -44,6 +46,7 @@
 #include "oops/objArrayKlass.hpp"
 #include "oops/objArrayOop.inline.hpp"
 #include "oops/oopHandle.inline.hpp"
+#include "oops/trainingData.hpp"
 #include "runtime/arguments.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/javaThread.hpp"
@@ -298,8 +301,13 @@ size_t ArchiveBuilder::estimate_archive_size() {
   // size of the symbol table and two dictionaries, plus the RunTimeClassInfo's
   size_t symbol_table_est = SymbolTable::estimate_size_for_archive();
   size_t dictionary_est = SystemDictionaryShared::estimate_size_for_archive();
-  _estimated_hashtable_bytes = symbol_table_est + dictionary_est;
+  size_t training_data_est = TrainingData::estimate_size_for_archive();
+  _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est;
 
+  if (DynamicDumpSharedSpaces) {
+    // Some extra space for traning data. Be generous. Unused areas will be trimmed from the archive file.
+    _estimated_hashtable_bytes += 200 * 1024 * 1024;
+  }
   size_t total = 0;
 
   total += _estimated_metaspaceobj_bytes;
@@ -414,6 +422,10 @@ bool ArchiveBuilder::gather_one_source_obj(MetaspaceClosure::Ref* ref, bool read
     return false;
   }
   remember_embedded_pointer_in_enclosing_obj(ref);
+  if (RegeneratedClasses::has_been_regenerated(src_obj)) {
+    // No need to copy it. We will later relocate it to point to the regenerated klass/method.
+    return false;
+  }
 
   FollowMode follow_mode = get_follow_mode(ref);
   SourceObjInfo src_info(ref, read_only, follow_mode);
@@ -424,6 +436,14 @@ bool ArchiveBuilder::gather_one_source_obj(MetaspaceClosure::Ref* ref, bool read
       log_info(cds, hashtables)("Expanded _src_obj_table table to %d", _src_obj_table.table_size());
     }
   }
+
+#ifdef ASSERT
+  if (ref->msotype() == MetaspaceObj::MethodType) {
+    Method* m = (Method*)ref->obj();
+    assert(!RegeneratedClasses::has_been_regenerated((address)m->method_holder()),
+           "Should not archive methods in a class that has been regenerated");
+  }
+#endif
 
   assert(p->read_only() == src_info.read_only(), "must be");
 
@@ -437,6 +457,17 @@ bool ArchiveBuilder::gather_one_source_obj(MetaspaceClosure::Ref* ref, bool read
   } else {
     return false;
   }
+}
+
+void ArchiveBuilder::record_regenerated_object(address orig_src_obj, address regen_src_obj) {
+  // Record the fact that orig_src_obj has been replaced by regen_src_obj. All calls to get_buffered_addr(orig_src_obj)
+  // should return the same value as get_buffered_addr(regen_src_obj).
+  SourceObjInfo* p = _src_obj_table.get(regen_src_obj);
+  assert(p != nullptr, "regenerated object should always be dumped");
+  SourceObjInfo src_info(orig_src_obj, p->buffered_addr());
+  bool created;
+  _src_obj_table.put_if_absent(orig_src_obj, src_info, &created);
+  assert(created, "We shouldn't have archived the original copy of an regenerated object");
 }
 
 // Remember that we have a pointer inside ref->enclosing_obj() that points to ref->obj()
@@ -512,8 +543,11 @@ ArchiveBuilder::FollowMode ArchiveBuilder::get_follow_mode(MetaspaceClosure::Ref
     // Don't dump existing shared metadata again.
     return point_to_it;
   } else if (ref->msotype() == MetaspaceObj::MethodDataType ||
-             ref->msotype() == MetaspaceObj::MethodCountersType) {
-    return set_to_null;
+             ref->msotype() == MetaspaceObj::MethodCountersType ||
+             ref->msotype() == MetaspaceObj::KlassTrainingDataType ||
+             ref->msotype() == MetaspaceObj::MethodTrainingDataType ||
+             ref->msotype() == MetaspaceObj::CompileTrainingDataType) {
+      return (TrainingData::need_data() && TrainingData::use_cds()) ? make_a_copy : set_to_null;
   } else {
     if (ref->msotype() == MetaspaceObj::ClassType) {
       Klass* klass = (Klass*)ref->obj();
@@ -583,6 +617,8 @@ void ArchiveBuilder::dump_ro_metadata() {
     alloc_stats()->record_modules(ro_region()->top() - start, /*read_only*/true);
   }
 #endif
+
+  RegeneratedClasses::record_regenerated_objects();
 }
 
 void ArchiveBuilder::make_shallow_copies(DumpRegion *dump_region,
@@ -637,7 +673,7 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
   _alloc_stats.record(src_info->msotype(), int(newtop - oldtop), src_info->read_only());
 }
 
-// This is used by code that hand-assemble data structures, such as the LambdaProxyClassKey, that are
+// This is used by code that hand-assembles data structures, such as the LambdaProxyClassKey, that are
 // not handled by MetaspaceClosure.
 void ArchiveBuilder::write_pointer_in_buffer(address* ptr_location, address src_addr) {
   assert(is_in_buffer_space(ptr_location), "must be");
@@ -650,9 +686,18 @@ void ArchiveBuilder::write_pointer_in_buffer(address* ptr_location, address src_
   }
 }
 
+void ArchiveBuilder::mark_and_relocate_to_buffered_addr(address* ptr_location) {
+  assert(*ptr_location != nullptr, "sanity");
+  if (!is_in_mapped_static_archive(*ptr_location)) {
+    *ptr_location = get_buffered_addr(*ptr_location);
+  }
+  ArchivePtrMarker::mark_pointer(ptr_location);
+}
+
 address ArchiveBuilder::get_buffered_addr(address src_addr) const {
   SourceObjInfo* p = _src_obj_table.get(src_addr);
-  assert(p != nullptr, "must be");
+  assert(p != nullptr, "src_addr " INTPTR_FORMAT " is used but has not been archived",
+         p2i(src_addr));
 
   return p->buffered_addr();
 }
@@ -688,6 +733,14 @@ void ArchiveBuilder::make_klasses_shareable() {
   int num_type_array_klasses = 0;
 
   for (int i = 0; i < klasses()->length(); i++) {
+    // This needs to be done before the next loop, which returns all classes to unlinked state.
+    Klass* k = get_buffered_addr(klasses()->at(i));
+    if (k->is_instance_klass()) {
+      InstanceKlass::cast(k)->constants()->archive_entries();
+    }
+  }
+
+  for (int i = 0; i < klasses()->length(); i++) {
     const char* type;
     const char* unlinked = "";
     const char* hidden = "";
@@ -711,7 +764,22 @@ void ArchiveBuilder::make_klasses_shareable() {
         // For static dump, class loader type are already set.
         ik->assign_class_loader_type();
       }
-      if (ik->is_shared_boot_class()) {
+      if (ik->is_hidden()) {
+        oop loader = k->class_loader();
+        if (loader == nullptr) {
+          type = "boot";
+          num_boot_klasses ++;
+        } else if (loader == SystemDictionary::java_platform_loader()) {
+          type = "plat";
+          num_platform_klasses ++;
+        } else if (loader == SystemDictionary::java_system_loader()) {
+          type = "app";
+          num_app_klasses ++;
+        } else {
+          type = "bad";
+          assert(0, "shouldn't happen");
+        }
+      } else if (ik->is_shared_boot_class()) {
         type = "boot";
         num_boot_klasses ++;
       } else if (ik->is_shared_platform_class()) {
@@ -754,6 +822,7 @@ void ArchiveBuilder::make_klasses_shareable() {
   log_info(cds)("Number of classes %d", num_instance_klasses + num_obj_array_klasses + num_type_array_klasses);
   log_info(cds)("    instance classes   = %5d", num_instance_klasses);
   log_info(cds)("      boot             = %5d", num_boot_klasses);
+  log_info(cds)("       vm              = %5d", ClassPrelinker::num_vm_klasses());
   log_info(cds)("      app              = %5d", num_app_klasses);
   log_info(cds)("      platform         = %5d", num_platform_klasses);
   log_info(cds)("      unregistered     = %5d", num_unregistered_klasses);

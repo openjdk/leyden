@@ -159,24 +159,27 @@ class CompileBroker: AllStatic {
   static volatile jint _should_compile_new_jobs;
 
   // The installed compiler(s)
-  static AbstractCompiler* _compilers[2];
+  static AbstractCompiler* _compilers[3];
 
   // The maximum numbers of compiler threads to be determined during startup.
-  static int _c1_count, _c2_count;
+  static int _c1_count, _c2_count, _c3_count, _sc_count;
 
   // An array of compiler thread Java objects
-  static jobject *_compiler1_objects, *_compiler2_objects;
+  static jobject *_compiler1_objects, *_compiler2_objects, *_compiler3_objects, *_sc_objects;
 
   // An array of compiler logs
-  static CompileLog **_compiler1_logs, **_compiler2_logs;
+  static CompileLog **_compiler1_logs, **_compiler2_logs, **_compiler3_logs, **_sc_logs;
 
   // These counters are used for assigning id's to each compilation
   static volatile jint _compilation_id;
   static volatile jint _osr_compilation_id;
   static volatile jint _native_compilation_id;
 
+  static CompileQueue* _c3_compile_queue;
   static CompileQueue* _c2_compile_queue;
   static CompileQueue* _c1_compile_queue;
+  static CompileQueue* _sc1_compile_queue;
+  static CompileQueue* _sc2_compile_queue;
 
   // performance counters
   static PerfCounter* _perf_total_compilation;
@@ -224,6 +227,8 @@ class CompileBroker: AllStatic {
   static jlong _peak_compilation_time;
 
   static CompilerStatistics _stats_per_level[];
+  static CompilerStatistics _sca_stats;
+  static CompilerStatistics _sca_stats_per_level[];
 
   static volatile int _print_compilation_warning;
 
@@ -246,6 +251,7 @@ class CompileBroker: AllStatic {
                                           const methodHandle& hot_method,
                                           int                 hot_count,
                                           CompileTask::CompileReason compile_reason,
+                                          bool                requires_online_compilation,
                                           bool                blocking);
   static void wait_for_completion(CompileTask* task);
 #if INCLUDE_JVMCI
@@ -265,6 +271,7 @@ class CompileBroker: AllStatic {
                                   const methodHandle& hot_method,
                                   int hot_count,
                                   CompileTask::CompileReason compile_reason,
+                                  bool requires_online_compilation,
                                   bool blocking,
                                   Thread* thread);
 
@@ -284,7 +291,7 @@ public:
     return nullptr;
   }
 
-  static bool compilation_is_complete(const methodHandle& method, int osr_bci, int comp_level);
+  static bool compilation_is_complete(const methodHandle& method, int osr_bci, int comp_level, bool online_only = false);
   static bool compilation_is_in_queue(const methodHandle& method);
   static void print_compile_queues(outputStream* st);
   static int queue_size(int comp_level) {
@@ -299,6 +306,7 @@ public:
                                  int comp_level,
                                  const methodHandle& hot_method,
                                  int hot_count,
+                                 bool requires_online_compilation,
                                  CompileTask::CompileReason compile_reason,
                                  TRAPS);
 
@@ -307,6 +315,7 @@ public:
                                    int comp_level,
                                    const methodHandle& hot_method,
                                    int hot_count,
+                                   bool requires_online_compilation,
                                    CompileTask::CompileReason compile_reason,
                                    DirectiveSet* directive,
                                    TRAPS);
@@ -390,8 +399,21 @@ public:
     return _compiler2_objects[idx];
   }
 
+  static jobject compiler3_object(int idx) {
+    assert(_compiler3_objects != nullptr, "must be initialized");
+    assert(idx < _c3_count, "oob");
+    return _compiler3_objects[idx];
+  }
+
+  static jobject sc_object(int idx) {
+    assert(_sc_objects != nullptr, "must be initialized");
+    assert(idx < _sc_count, "oob");
+    return _sc_objects[idx];
+  }
+
   static AbstractCompiler* compiler1() { return _compilers[0]; }
   static AbstractCompiler* compiler2() { return _compilers[1]; }
+  static AbstractCompiler* compiler3() { return _compilers[2]; }
 
   static bool can_remove(CompilerThread *ct, bool do_it);
 

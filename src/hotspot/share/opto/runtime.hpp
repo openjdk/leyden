@@ -113,7 +113,7 @@ typedef const TypeFunc*(*TypeFunc_generator)();
 
 class OptoRuntime : public AllStatic {
   friend class Matcher;  // allow access to stub names
-
+  friend class SCAddressTable;
  private:
   // define stubs
   static address generate_stub(ciEnv* ci_env, TypeFunc_generator gen, address C_function, const char* name, int is_fancy_jump, bool pass_tls, bool return_pc);

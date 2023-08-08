@@ -84,12 +84,17 @@ class HandlerTableEntry {
 
 class nmethod;
 class ExceptionHandlerTable {
+  friend class SCAFile;
+  friend class SCAReader;
+
  private:
   HandlerTableEntry* _table;    // the table
   int                _length;   // the current length of the table
   int                _size;     // the number of allocated entries
   ReallocMark        _nesting;  // assertion check for reallocations
 
+  int length() const { return _length; }
+  void set_length(int length) { _length = length; }
  public:
   // add the entry & grow the table if needed
   void add_entry(HandlerTableEntry entry);
@@ -114,6 +119,7 @@ class ExceptionHandlerTable {
     GrowableArray<intptr_t>* handler_pcos  // pc offsets for the compiled handlers
   );
 
+  HandlerTableEntry* table() const { return _table; }
   // nmethod support
   int  size_in_bytes() const { return align_up(_length * (int)sizeof(HandlerTableEntry), oopSize); }
   void copy_to(CompiledMethod* nm);
@@ -141,11 +147,16 @@ class ExceptionHandlerTable {
 typedef  uint              implicit_null_entry;
 
 class ImplicitExceptionTable {
+  friend class SCAFile;
+  friend class SCAReader;
+ private:
   uint _size;
   uint _len;
   implicit_null_entry *_data;
   implicit_null_entry *adr( uint idx ) const { return &_data[2*idx]; }
   ReallocMark          _nesting;  // assertion check for reallocations
+
+  void set_len(int length) { _len = length; }
 
 public:
   ImplicitExceptionTable( ) :  _size(0), _len(0), _data(0) { }
@@ -168,6 +179,8 @@ public:
   uint continuation_offset( uint exec_off ) const;
 
   uint len() const { return _len; }
+  
+  implicit_null_entry* data() const { return _data; }
 
   uint get_exec_offset(uint i) { assert(i < _len, "oob"); return *adr(i); }
   uint get_cont_offset(uint i) { assert(i < _len, "oob"); return *(adr(i) + 1); }

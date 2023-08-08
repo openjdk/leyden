@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "asm/macroAssembler.inline.hpp"
+#include "code/SCArchive.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/cardTable.hpp"
 #include "gc/shared/cardTableBarrierSet.hpp"
@@ -47,7 +48,7 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
   BarrierSet *bs = BarrierSet::barrier_set();
   CardTableBarrierSet* ctbs = barrier_set_cast<CardTableBarrierSet>(bs);
   CardTable* ct = ctbs->card_table();
-  intptr_t disp = (intptr_t) ct->byte_map_base();
+  intptr_t byte_map_base = (intptr_t) ct->byte_map_base();
 
   Label L_loop, L_done;
   const Register end = count;
@@ -64,7 +65,12 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
   __ shrptr(end, CardTable::card_shift());
   __ subptr(end, addr); // end --> cards count
 
-  __ mov64(tmp, disp);
+  if (SCArchive::is_on_for_write()) {
+    // SCA needs relocation info for this address
+    __ lea(tmp, ExternalAddress((address)byte_map_base));
+  } else {
+    __ mov64(tmp, byte_map_base);
+  }
   __ addptr(addr, tmp);
 __ BIND(L_loop);
   __ movb(Address(addr, count, Address::times_1), 0);
@@ -76,7 +82,7 @@ __ BIND(L_loop);
   __ shrptr(end,   CardTable::card_shift());
   __ subptr(end, addr); // end --> count
 __ BIND(L_loop);
-  Address cardtable(addr, count, Address::times_1, disp);
+  Address cardtable(addr, count, Address::times_1, byte_map_base);
   __ movb(cardtable, 0);
   __ decrement(count);
   __ jcc(Assembler::greaterEqual, L_loop);
@@ -103,6 +109,12 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   // never need to be relocated. On 64bit however the value may be too
   // large for a 32bit displacement.
   intptr_t byte_map_base = (intptr_t)ct->byte_map_base();
+  if (SCArchive::is_on_for_write()) {
+    // SCA needs relocation info for this address
+    ExternalAddress cardtable((address)byte_map_base);
+    Address index(noreg, obj, Address::times_1);
+    card_addr = __ as_Address(ArrayAddress(cardtable, index), rscratch1);
+  } else
   if (__ is_simm32(byte_map_base)) {
     card_addr = Address(noreg, obj, Address::times_1, byte_map_base);
   } else {

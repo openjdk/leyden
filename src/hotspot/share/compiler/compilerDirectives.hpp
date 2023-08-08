@@ -52,7 +52,8 @@
     cflags(CompilerDirectivesIgnoreCompileCommands, bool, CompilerDirectivesIgnoreCompileCommands, Unknown) \
     cflags(DisableIntrinsic,        ccstrlist, DisableIntrinsic, DisableIntrinsic) \
     cflags(ControlIntrinsic,        ccstrlist, ControlIntrinsic, ControlIntrinsic) \
-    cflags(RepeatCompilation,       intx, RepeatCompilation, RepeatCompilation)
+    cflags(RepeatCompilation,       intx, RepeatCompilation, RepeatCompilation) \
+    cflags(TooManyTrapsAtBCI,       ccstrlist, "", TooManyTrapsAtBCI) \
 
 #ifdef COMPILER1
   #define compilerdirectives_c1_flags(cflags)

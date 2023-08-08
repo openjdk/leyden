@@ -270,6 +270,13 @@
           "Maximum rate sampling interval (in milliseconds)")               \
           range(0, max_intx)                                                \
                                                                             \
+  product(double, Tier2DelayFactor, 250.0, DIAGNOSTIC,                      \
+          "Delay profiling of methods that were observed to be cold")       \
+                                                                            \
+  product(bool, SkipTier2IfPossible, false, DIAGNOSTIC,                     \
+          "Compile at tier 4 instead of tier 2 in training replay "         \
+          "mode if posssible")                                              \
+                                                                            \
   product(ccstr, CompilationMode, "default",                                \
           "Compilation modes: "                                             \
           "default: normal tiered compilation; "                            \
@@ -379,7 +386,60 @@
           "Don't compile methods larger than this if "                      \
           "+DontCompileHugeMethods")                                        \
                                                                             \
-
+  product(bool, UseC2asC3, false,                                           \
+          "Use C2 as 3rd compiler when JVMCI compiler is used")             \
+                                                                            \
+  product(bool, StoreSharedCode, false,                                     \
+          "Store compiled code")                                            \
+                                                                            \
+  product(bool, LoadSharedCode, false,                                      \
+          "Load compiled code")                                             \
+                                                                            \
+  product(bool, UseMetadataPointers, true,                                  \
+          "Store Metadata pointers in Relocation Info for cached code")     \
+                                                                            \
+  product(bool, UseCodeLoadThread, true,                                    \
+          "Use separate thread for cached code load")                       \
+                                                                            \
+  product(bool, StorePreloadCode, false,                                    \
+          "Generate shared code for preload before method execution, "      \
+          "generate class initialization checks in code")                   \
+                                                                            \
+  product(bool, PreloadSharedCode, false,                                   \
+          "Preload compiled code before method execution")                  \
+                                                                            \
+  product(uint, SCPreloadStart, 0,                                          \
+          "The id of the first shared code pre-load to permit")             \
+                                                                            \
+  product(uint, SCPreloadStop, max_jint,                                    \
+          "The id of the last shared code pre-load to permit")              \
+                                                                            \
+  product(ccstrlist, SCPreloadExclude, "",                                  \
+          "Exlcude preloading code for specified method")                   \
+                                                                            \
+  product(ccstr, SharedCodeArchive, "code.jsa",                             \
+          "File with compiled code")                                        \
+                                                                            \
+  product(uint, ReservedSharedCodeSize, 10*M,                               \
+          "Buffer size in bytes for storing shared code")                   \
+                                                                            \
+  product(bool, VerifySharedCode, false, DIAGNOSTIC,                        \
+          "Load compiled code but not publish")                             \
+                                                                            \
+  product(int, RecompilationLoadAverageThreshold, 5,                        \
+          "Queues load avergage after while recompilations are allowed")    \
+                                                                            \
+  product(int, RecompilationWorkUnitSize, 5,                                \
+          "Queues load avergage after while recompilations are allowed")    \
+                                                                            \
+  product(bool, UseRecompilation, false,                                    \
+          "Recompile methods for peak performance")                         \
+                                                                            \
+  product(bool, ForceRecompilation, false,                                  \
+          "Testing mode for recompilation")                                 \
+                                                                            \
+  product(double, DelayRecompilation, 0.0,                                  \
+          "Delay recompilation for given number of seconds")                \
 // end of COMPILER_FLAGS
 
 DECLARE_FLAGS(COMPILER_FLAGS)

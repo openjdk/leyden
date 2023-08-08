@@ -25,13 +25,16 @@
 #include "precompiled.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
+#include "classfile/systemDictionary.hpp"
 #include "code/icBuffer.hpp"
+#include "code/SCArchive.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/gcHeapSummary.hpp"
 #include "interpreter/bytecodes.hpp"
 #include "logging/logAsyncWriter.hpp"
 #include "memory/universe.hpp"
+#include "oops/trainingData.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "prims/methodHandles.hpp"
 #include "prims/downcallLinker.hpp"
@@ -47,6 +50,7 @@
 #include "sanitizers/leak.hpp"
 #include "services/memTracker.hpp"
 #include "utilities/macros.hpp"
+#include "utilities/xmlstream.hpp"
 #if INCLUDE_JVMCI
 #include "jvmci/jvmci.hpp"
 #endif
@@ -133,7 +137,7 @@ jint init_globals() {
     LSAN_REGISTER_ROOT_REGION(summary.start(), summary.reserved_size());
   }
 #endif // LEAK_SANITIZER
-
+  SCArchive::init2();        // depends on universe_init
   AsyncLogWriter::initialize();
   gc_barrier_stubs_init();   // depends on universe_init, must be before interpreter_init
   continuations_init();      // must precede continuation stub generation
@@ -173,17 +177,24 @@ jint init_globals2() {
   }
 #endif
 
+  if (TrainingData::have_data() || TrainingData::need_data()) {
+    TrainingData::initialize();
+  }
+
   if (!universe_post_init()) {
     return JNI_ERR;
   }
   compiler_stubs_init(false /* in_compiler_thread */); // compiler's intrinsics stubs
   final_stubs_init();    // final StubRoutines stubs
   MethodHandles::generate_adapters();
+  SystemDictionary::restore_archived_method_handle_intrinsics();
 
   // All the flags that get adjusted by VM_Version_init and os::init_2
   // have been set so dump the flags now.
   if (PrintFlagsFinal || PrintFlagsRanges) {
     JVMFlag::printFlags(tty, false, PrintFlagsRanges);
+  } else if (RecordTraining && xtty != nullptr) {
+    JVMFlag::printFlags(xtty->log_only(), false, PrintFlagsRanges);
   }
 
   return JNI_OK;

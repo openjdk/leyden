@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/classPrelinker.hpp"
 #include "ci/ciCallProfile.hpp"
 #include "ci/ciExceptionHandler.hpp"
 #include "ci/ciInstanceKlass.hpp"
@@ -34,6 +35,7 @@
 #include "ci/ciReplay.hpp"
 #include "ci/ciSymbols.hpp"
 #include "ci/ciUtilities.inline.hpp"
+#include "compiler/compileTask.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/methodLiveness.hpp"
@@ -157,6 +159,22 @@ ciMethod::ciMethod(const methodHandle& h_m, ciInstanceKlass* holder) :
   if (ReplayCompiles) {
     ciReplay::initialize(this);
   }
+  DirectiveSet* directives = DirectivesStack::getMatchingDirective(h_m, CURRENT_ENV->task()->compiler());
+  ccstrlist bci_list = directives->TooManyTrapsAtBCIOption;
+  int len = strlen(bci_list);
+  Arena* arena = CURRENT_ENV->arena();
+  _has_trap_at_bci = new (arena) GrowableArray<int>(arena, 2, 0, 0);
+  for (int i = 0; i < len; i++) {
+    int v = -1;
+    int read;
+    if (sscanf(bci_list + i, "%i%n", &v, &read) != 1) {
+      warning("wrong format for TooManyTrapsAtBCI option: \"%s\"", bci_list);
+      break;
+    }
+    assert(v >= 0 && v < (1<<16), "%i", v);
+    _has_trap_at_bci->append_if_missing(v);
+    i += read;
+  }
 }
 
 
@@ -177,6 +195,7 @@ ciMethod::ciMethod(ciInstanceKlass* holder,
   _inline_instructions_size(-1),
   _can_be_statically_bound(false),
   _can_omit_stack_trace(true),
+  _has_trap_at_bci(        nullptr),
   _liveness(               nullptr)
 #if defined(COMPILER2)
   ,
@@ -978,15 +997,19 @@ bool ciMethod::has_member_arg() const {
 //
 // Generate new MethodData* objects at compile time.
 // Return true if allocation was successful or no MDO is required.
-bool ciMethod::ensure_method_data(const methodHandle& h_m) {
+bool ciMethod::ensure_method_data(const methodHandle& h_m, bool training_data_only) {
   EXCEPTION_CONTEXT;
   if (is_native() || is_abstract() || h_m()->is_accessor()) {
     return true;
   }
   if (h_m()->method_data() == nullptr) {
-    Method::build_profiling_method_data(h_m, THREAD);
-    if (HAS_PENDING_EXCEPTION) {
-      CLEAR_PENDING_EXCEPTION;
+    if (training_data_only) {
+      Method::install_training_method_data(h_m);
+    } else {
+      Method::build_profiling_method_data(h_m, THREAD);
+      if (HAS_PENDING_EXCEPTION) {
+        CLEAR_PENDING_EXCEPTION;
+      }
     }
   }
   if (h_m()->method_data() != nullptr) {
@@ -999,12 +1022,12 @@ bool ciMethod::ensure_method_data(const methodHandle& h_m) {
 }
 
 // public, retroactive version
-bool ciMethod::ensure_method_data() {
+bool ciMethod::ensure_method_data(bool training_data_only) {
   bool result = true;
   if (_method_data == nullptr || _method_data->is_empty()) {
     GUARDED_VM_ENTRY({
       methodHandle mh(Thread::current(), get_Method());
-      result = ensure_method_data(mh);
+      result = ensure_method_data(mh, training_data_only);
     });
   }
   return result;
@@ -1085,6 +1108,13 @@ bool ciMethod::can_be_compiled() {
   if (is_c1_compile(env->comp_level())) {
     return _is_c1_compilable;
   }
+
+#if INCLUDE_JVMCI
+  if (EnableJVMCI && UseJVMCICompiler &&
+      env->comp_level() == CompLevel_full_optimization && !ClassPrelinker::class_preloading_finished()) {
+    return false;
+  }
+#endif
   return _is_c2_compilable;
 }
 
@@ -1127,7 +1157,7 @@ int ciMethod::inline_instructions_size() {
   if (_inline_instructions_size == -1) {
     GUARDED_VM_ENTRY(
       CompiledMethod* code = get_Method()->code();
-      if (code != nullptr && (code->comp_level() == CompLevel_full_optimization)) {
+      if (code != nullptr && !code->is_sca() && code->comp_level() == CompLevel_full_optimization) {
         int isize = code->insts_end() - code->verified_entry_point() - code->skipped_instructions_size();
         _inline_instructions_size = isize > 0 ? isize : 0;
       } else {

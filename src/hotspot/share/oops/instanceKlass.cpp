@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveUtils.hpp"
+#include "cds/cdsEnumKlass.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -70,6 +71,7 @@
 #include "oops/oop.inline.hpp"
 #include "oops/recordComponent.hpp"
 #include "oops/symbol.hpp"
+#include "oops/trainingData.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "prims/jvmtiRedefineClasses.hpp"
 #include "prims/jvmtiThreadState.hpp"
@@ -512,7 +514,8 @@ InstanceKlass::InstanceKlass(const ClassFileParser& parser, KlassKind kind, Refe
   _init_state(allocated),
   _reference_type(reference_type),
   _init_monitor(create_init_monitor("InstanceKlassInitMonitor_lock")),
-  _init_thread(nullptr)
+  _init_thread(nullptr),
+  _training_data(nullptr)
 {
   set_vtable_length(parser.vtable_size());
   set_access_flags(parser.access_flags());
@@ -949,6 +952,8 @@ void InstanceKlass::rewrite_class(TRAPS) {
 // This is outside is_rewritten flag. In case of an exception, it can be
 // executed more than once.
 void InstanceKlass::link_methods(TRAPS) {
+  PerfTraceTime timer(ClassLoader::perf_ik_link_methods_time());
+
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {
     methodHandle m(THREAD, methods()->at(i));
@@ -959,7 +964,7 @@ void InstanceKlass::link_methods(TRAPS) {
 }
 
 // Eagerly initialize superinterfaces that declare default methods (concrete instance: any access)
-void InstanceKlass::initialize_super_interfaces(TRAPS) {
+void InstanceKlass::initialize_super_interfaces(Klass* requester, TRAPS) {
   assert (has_nonstatic_concrete_methods(), "caller should have checked this");
   for (int i = 0; i < local_interfaces()->length(); ++i) {
     InstanceKlass* ik = local_interfaces()->at(i);
@@ -968,11 +973,18 @@ void InstanceKlass::initialize_super_interfaces(TRAPS) {
     // has_nonstatic_concrete_methods drives searching superinterfaces since it
     // means has_nonstatic_concrete_methods in its superinterface hierarchy
     if (ik->has_nonstatic_concrete_methods()) {
-      ik->initialize_super_interfaces(CHECK);
+      ik->initialize_super_interfaces(requester, CHECK);
     }
 
     // Only initialize() interfaces that "declare" concrete methods.
     if (ik->should_be_initialized() && ik->declares_nonstatic_concrete_methods()) {
+      if (RecordTraining && requester != nullptr) {
+        ik->record_initialization_touch("super", nullptr, nullptr, requester,
+                                        nullptr, THREAD);
+        if (HAS_PENDING_EXCEPTION) {
+          CLEAR_PENDING_EXCEPTION;  // could not allocate training data
+        }
+      }
       ik->initialize(CHECK);
     }
   }
@@ -1040,6 +1052,20 @@ void InstanceKlass::initialize_impl(TRAPS) {
 
   JavaThread* jt = THREAD;
 
+  if (ForceProfiling) {
+    // Preallocate MDOs.
+    for (int i = 0; i < methods()->length(); i++) {
+      assert(!HAS_PENDING_EXCEPTION, "");
+      methodHandle m(THREAD, methods()->at(i));
+      Method::build_profiling_method_data(m, THREAD);
+      if (HAS_PENDING_EXCEPTION) {
+        ResourceMark rm;
+        log_warning(cds)("MDO preallocation failed for %s", external_name());
+        CLEAR_PENDING_EXCEPTION;
+        break;
+      }
+    }
+  }
   // refer to the JVM book page 47 for description of steps
   // Step 1
   {
@@ -1098,6 +1124,15 @@ void InstanceKlass::initialize_impl(TRAPS) {
   if (!is_interface()) {
     Klass* super_klass = super();
     if (super_klass != nullptr && super_klass->should_be_initialized()) {
+      // do not bother to report touches from an untouched subclass
+      if (RecordTraining && has_initialization_touch()) {
+        InstanceKlass::cast(super_klass)
+          ->record_initialization_touch("super", nullptr, nullptr, this,
+                                        nullptr, THREAD);
+        if (HAS_PENDING_EXCEPTION) {
+          CLEAR_PENDING_EXCEPTION;  // could not allocate training data
+        }
+      }
       super_klass->initialize(THREAD);
     }
     // If C implements any interface that declares a non-static, concrete method,
@@ -1105,7 +1140,9 @@ void InstanceKlass::initialize_impl(TRAPS) {
     // Only need to recurse if has_nonstatic_concrete_methods which includes declaring and
     // having a superinterface that declares, non-static, concrete methods
     if (!HAS_PENDING_EXCEPTION && has_nonstatic_concrete_methods()) {
-      initialize_super_interfaces(THREAD);
+      // do not bother to report touches from an untouched implementer
+      Klass* requester = has_initialization_touch() ? this : nullptr;
+      initialize_super_interfaces(requester, THREAD);
     }
 
     // If any exceptions, complete abruptly, throwing the same exception as above.
@@ -1179,6 +1216,35 @@ void InstanceKlass::initialize_impl(TRAPS) {
     }
   }
   DTRACE_CLASSINIT_PROBE_WAIT(end, -1, wait);
+
+  if (TrainingData::have_data()) {
+    KlassTrainingData* ktd = KlassTrainingData::find(this);
+    if (ktd != nullptr) {
+      guarantee(ktd->has_holder(), "");
+      ktd->notice_fully_initialized();
+
+      ResourceMark rm;
+      GrowableArray<CompileTrainingData*> ctds;
+      ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
+        if (ctd->init_deps_left() == 0) {
+          ctds.append(ctd);
+        }
+      });
+
+      for (int i = 0; i < ctds.length(); i++) {
+        MethodTrainingData* mtd = ctds.at(i)->top_method();
+        if (mtd->has_holder()) {
+          const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
+          CompilationPolicy::compile_if_required(mh, THREAD);
+        }
+      }
+    }
+    int len = methods()->length();
+    for (int i = 0; i < len; i++) {
+      const methodHandle mh(THREAD, methods()->at(i));
+      CompilationPolicy::compile_if_required_after_init(mh, THREAD);
+    }
+  }
 }
 
 
@@ -1439,7 +1505,9 @@ instanceOop InstanceKlass::allocate_instance(TRAPS) {
   return i;
 }
 
-instanceOop InstanceKlass::allocate_instance(oop java_class, TRAPS) {
+instanceOop InstanceKlass::allocate_instance(oop java_class,
+                                             const char* who,
+                                             TRAPS) {
   Klass* k = java_lang_Class::as_Klass(java_class);
   if (k == nullptr) {
     ResourceMark rm(THREAD);
@@ -1447,6 +1515,9 @@ instanceOop InstanceKlass::allocate_instance(oop java_class, TRAPS) {
   }
   InstanceKlass* ik = cast(k);
   ik->check_valid_for_instantiation(false, CHECK_NULL);
+  if (RecordTraining) {
+    ik->record_initialization_touch("new", nullptr, nullptr, nullptr, who, CHECK_NULL);
+  }
   ik->initialize(CHECK_NULL);
   return ik->allocate_instance(THREAD);
 }
@@ -1531,10 +1602,13 @@ void InstanceKlass::call_class_initializer(TRAPS) {
   // This is needed to ensure the consistency of the archived heap objects.
   if (has_archived_enum_objs()) {
     assert(is_shared(), "must be");
-    bool initialized = HeapShared::initialize_enum_klass(this, CHECK);
+    bool initialized = CDSEnumKlass::initialize_enum_klass(this, CHECK);
     if (initialized) {
       return;
     }
+  } else if (is_shared() && is_hidden() && name()->starts_with("java/lang/invoke/LambdaForm$")) {
+    oop mirror = java_mirror();
+    return;
   }
 #endif
 
@@ -1551,10 +1625,61 @@ void InstanceKlass::call_class_initializer(TRAPS) {
   if (h_method() != nullptr) {
     JavaCallArguments args; // No arguments
     JavaValue result(T_VOID);
-    JavaCalls::call(&result, h_method, &args, CHECK); // Static call (no args)
+    KlassTrainingData* tdata = nullptr;
+    if (RecordTraining) {
+      tdata = alloc_training_data(CHECK);
+      if (HAS_PENDING_EXCEPTION) {
+        CLEAR_PENDING_EXCEPTION;  // could not allocate training data
+      }
+    }
+    InstanceKlass* outer = NULL;
+    if (tdata != nullptr) {
+      outer = THREAD->set_class_being_initialized(this);
+      tdata->record_initialization_start();
+    }
+    JavaCalls::call(&result, h_method, &args, THREAD); // Static call (no args)
+    if (tdata != nullptr) {
+      tdata->record_initialization_end();
+      THREAD->set_class_being_initialized(outer);
+    }
   }
 }
 
+void InstanceKlass::record_initialization_touch(const char* reason,
+                                                Symbol* name,
+                                                Symbol* sig,
+                                                Klass* requesting_klass,
+                                                const char* context,
+                                                TRAPS) {
+  if (requesting_klass == this) {
+    return;  // self-initialization is never interesting
+  }
+  if (is_initialized() && !has_initialization_touch()) {
+    // initialized by some hardwired JVM logic; not interesting
+    return;
+  }
+  KlassTrainingData* tdata = alloc_training_data(CHECK);
+  if (tdata == nullptr)  return;
+  tdata->record_initialization_touch(reason, name, sig,
+                                     requesting_klass, context, THREAD);
+}
+
+
+bool InstanceKlass::has_initialization_touch() const {
+  KlassTrainingData* tdata = training_data_or_null();
+  if (tdata == nullptr)  return false;
+  return tdata->has_initialization_touch();
+}
+
+KlassTrainingData* InstanceKlass::alloc_training_data(TRAPS) {
+  guarantee(RecordTraining || ReplayTraining, "caller resp.");
+  KlassTrainingData* tdata = training_data_or_null();
+  if (tdata == nullptr) {
+    tdata = KlassTrainingData::make(this);
+    assert(tdata == training_data_or_null(), "");
+  }
+  return tdata;
+}
 
 void InstanceKlass::mask_for(const methodHandle& method, int bci,
   InterpreterOopMap* entry_for) {
@@ -2529,6 +2654,7 @@ void InstanceKlass::metaspace_pointers_do(MetaspaceClosure* it) {
     }
   }
 
+  it->push(&_nest_host);
   it->push(&_nest_members);
   it->push(&_permitted_subclasses);
   it->push(&_record_components);
@@ -2590,12 +2716,17 @@ void InstanceKlass::remove_unshareable_info() {
   _methods_jmethod_ids = nullptr;
   _jni_ids = nullptr;
   _oop_map_cache = nullptr;
-  // clear _nest_host to ensure re-load at runtime
-  _nest_host = nullptr;
+  if (DumpSharedSpaces && ArchiveInvokeDynamic && HeapShared::is_lambda_proxy_klass(this)) {
+    // keep _nest_host
+  } else {
+    // clear _nest_host to ensure re-load at runtime
+    _nest_host = nullptr;
+  }
   init_shared_package_entry();
   _dep_context_last_cleaned = 0;
   _init_monitor = nullptr;
 
+  _training_data = nullptr;
   remove_unshareable_flags();
 }
 
@@ -2689,7 +2820,7 @@ void InstanceKlass::restore_unshareable_info(ClassLoaderData* loader_data, Handl
      MutexLocker ml(MultiArray_lock);
     // Array classes have null protection domain.
     // --> see ArrayKlass::complete_create_array_klass()
-    array_klasses()->restore_unshareable_info(ClassLoaderData::the_null_class_loader_data(), Handle(), CHECK);
+    array_klasses()->restore_unshareable_info(loader_data, Handle(), CHECK);
   }
 
   // Initialize @ValueBased class annotation
@@ -2699,6 +2830,10 @@ void InstanceKlass::restore_unshareable_info(ClassLoaderData* loader_data, Handl
 
   // restore the monitor
   _init_monitor = create_init_monitor("InstanceKlassInitMonitorRestored_lock");
+
+  if (_training_data != nullptr) {
+    _training_data->restore_unshareable_info(CHECK);
+  }
 }
 
 // Check if a class or any of its supertypes has a version older than 50.

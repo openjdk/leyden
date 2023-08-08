@@ -83,6 +83,8 @@ CallGenerator* Compile::call_generator(ciMethod* callee, int vtable_index, bool 
                                        (orig_callee->intrinsic_id() == vmIntrinsics::_linkToVirtual) ||
                                        (orig_callee->intrinsic_id() == vmIntrinsics::_linkToInterface);
 
+  callee->ensure_method_data(true);
+
   // Dtrace currently doesn't work unless all calls are vanilla
   if (env()->dtrace_method_probes()) {
     allow_inline = false;

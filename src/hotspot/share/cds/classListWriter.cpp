@@ -25,12 +25,15 @@
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/classListWriter.hpp"
+#include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderData.hpp"
+#include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/moduleEntry.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "memory/resourceArea.hpp"
+#include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "runtime/mutexLocker.hpp"
 
@@ -125,9 +128,15 @@ void ClassListWriter::write_to_stream(const InstanceKlass* k, outputStream* stre
     }
   }
 
-  // filter out java/lang/invoke/BoundMethodHandle$Species...
-  if (cfs != nullptr && cfs->source() != nullptr && strcmp(cfs->source(), "_ClassSpecializer_generateConcreteSpeciesCode") == 0) {
-    return;
+  if (cfs != nullptr && cfs->source() != nullptr) {
+    if (strcmp(cfs->source(), "_ClassSpecializer_generateConcreteSpeciesCode") == 0) {
+      return;
+    }
+
+    if (strncmp(cfs->source(), "__", 2) == 0) {
+      // generated class: __dynamic_proxy__, __JVM_LookupDefineClass__, etc
+      return;
+    }
   }
 
   {
@@ -187,5 +196,112 @@ void ClassListWriter::write_to_stream(const InstanceKlass* k, outputStream* stre
 void ClassListWriter::delete_classlist() {
   if (_classlist_file != nullptr) {
     delete _classlist_file;
+  }
+}
+
+class ClassListWriter::WriteResolveConstantsCLDClosure : public CLDClosure {
+public:
+  void do_cld(ClassLoaderData* cld) {
+    for (Klass* klass = cld->klasses(); klass != nullptr; klass = klass->next_link()) {
+      if (klass->is_instance_klass()) {
+        write_resolved_constants_for(InstanceKlass::cast(klass));
+      }
+    }
+  }
+};
+
+
+void ClassListWriter::write_resolved_constants() {
+  if (!is_enabled()) {
+    return;
+  }
+  MutexLocker lock(ClassLoaderDataGraph_lock);
+  MutexLocker lock2(ClassListFile_lock, Mutex::_no_safepoint_check_flag);
+
+  WriteResolveConstantsCLDClosure closure;
+  ClassLoaderDataGraph::loaded_cld_do(&closure);
+}
+
+void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
+  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) ||
+      ik->is_hidden()) {
+    return;
+  }
+  //if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
+  //  return;
+  //}
+  if (!has_id(ik)) {
+    return;
+  }
+
+  ResourceMark rm;
+  ConstantPool* cp = ik->constants();
+  GrowableArray<bool> list(cp->length(), cp->length(), false);
+  int fmi_cpcache_index = 0; // cpcache index for Fieldref/Methodref/InterfaceMethodref
+
+  for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is unused
+    switch (cp->tag_at(cp_index).value()) {
+    case JVM_CONSTANT_Class:
+      {
+        Klass* k = cp->resolved_klass_at(cp_index);
+        if (k->is_instance_klass()) {
+          list.at_put(cp_index, true);
+        }
+      }
+      break;
+    case JVM_CONSTANT_Fieldref:
+      if (cp->cache() != nullptr) {
+        ConstantPoolCacheEntry* cpce = cp->cache()->entry_at(fmi_cpcache_index);
+        if (cpce->is_resolved(Bytecodes::_getfield) ||
+            cpce->is_resolved(Bytecodes::_putfield)) {
+          list.at_put(cp_index, true);
+        }
+      }
+      fmi_cpcache_index++;
+      break;
+    case JVM_CONSTANT_Methodref:
+      if (cp->cache() != nullptr) {
+        ConstantPoolCacheEntry* cpce = cp->cache()->entry_at(fmi_cpcache_index);
+        if (cpce->is_resolved(Bytecodes::_invokevirtual) ||
+            cpce->is_resolved(Bytecodes::_invokespecial)) {
+          list.at_put(cp_index, true);
+        }
+        if (cpce->is_resolved(Bytecodes::_invokehandle)) {
+          list.at_put(cp_index, true); /// TODO Can invokehandle trigger <clinit>??
+        }
+        if (cpce->is_resolved(Bytecodes::_invokestatic)) {
+          list.at_put(cp_index, true); /// TODO Can invokehandle trigger <clinit>??
+        }
+      }
+      fmi_cpcache_index++;
+      break;
+    case JVM_CONSTANT_InterfaceMethodref:
+      fmi_cpcache_index++;
+      break;
+    }
+  }
+
+  if (cp->cache() != nullptr) {
+    Array<ResolvedIndyEntry>* indy_entries = cp->cache()->resolved_indy_entries();
+    if (indy_entries != nullptr) {
+      for (int i = 0; i < indy_entries->length(); i++) {
+        ResolvedIndyEntry* rie = indy_entries->adr_at(i);
+        int cp_index = rie->constant_pool_index();
+        if (rie->is_resolved()) {
+          list.at_put(cp_index, true);
+        }
+      }
+    }
+  }
+
+  if (list.length() > 0) {
+    outputStream* stream = _classlist_file;
+    stream->print("@cp %s", ik->name()->as_C_string());
+    for (int i = 0; i < list.length(); i++) {
+      if (list.at(i)) {
+        stream->print(" %d", i);
+      }
+    }
+    stream->cr();
   }
 }

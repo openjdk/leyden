@@ -242,7 +242,8 @@ class LinkResolver: AllStatic {
                                                  Klass* resolved_klass,
                                                  Handle recv,
                                                  Klass* recv_klass,
-                                                 bool check_null_and_abstract, TRAPS);
+                                                 bool check_null_and_abstract,
+                                                 bool need_selected_method, TRAPS);
   static void runtime_resolve_interface_method  (CallInfo& result,
                                                  const methodHandle& resolved_method,
                                                  Klass* resolved_klass,
@@ -308,6 +309,7 @@ class LinkResolver: AllStatic {
   static void resolve_virtual_call  (CallInfo& result, Handle recv, Klass* recv_klass,
                                      const LinkInfo& link_info,
                                      bool check_null_and_abstract, TRAPS);
+  static void cds_resolve_virtual_call(CallInfo& result, const LinkInfo& link_info, TRAPS);
   static void resolve_interface_call(CallInfo& result, Handle recv, Klass* recv_klass,
                                      const LinkInfo& link_info,
                                      bool check_null_and_abstract, TRAPS);

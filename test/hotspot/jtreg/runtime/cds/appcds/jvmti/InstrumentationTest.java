@@ -135,7 +135,7 @@ public class InstrumentationTest {
             "InstrumentationApp$Coo  id: 2 super: 0 interfaces: 1 source: " + custJar,
         };
         String[] sharedClassesWithV2 = TestCommon.concat(v2Classes, sharedClasses);
-        OutputAnalyzer out = TestCommon.dump(appJar, sharedClassesWithV2, bootCP);
+        OutputAnalyzer out = TestCommon.dump(appJar, sharedClassesWithV2, "-XX:-PreloadSharedClasses", bootCP);
         if (out.getExitValue() != 0) {
             System.out.println("Redumping with AppCDSv2 disabled");
                 TestCommon.testDump(appJar, sharedClasses, bootCP);

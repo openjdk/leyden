@@ -38,6 +38,7 @@
 
 class CompileTask;
 class OopMapSet;
+class SCAEntry;
 
 // ciEnv
 //
@@ -379,11 +380,14 @@ public:
                        ExceptionHandlerTable*    handler_table,
                        ImplicitExceptionTable*   inc_table,
                        AbstractCompiler*         compiler,
+                       bool                      has_clinit_barriers,
+                       bool                      for_preload,
                        bool                      has_unsafe_access,
                        bool                      has_wide_vectors,
                        bool                      has_monitors,
                        int                       immediate_oops_patched,
-                       RTMState                  rtm_state = NoRTM);
+                       RTMState                  rtm_state = NoRTM,
+                       SCAEntry*                 entry = nullptr);
 
   // Access to certain well known ciObjects.
 #define VM_CLASS_FUNC(name, ignore_s) \
@@ -465,6 +469,13 @@ public:
 
   // RedefineClasses support
   void metadata_do(MetadataClosure* f) { _factory->metadata_do(f); }
+
+private:
+  SCAEntry* _sca_clinit_barriers_entry;
+
+public:
+  void  set_sca_clinit_barriers_entry(SCAEntry* entry) { _sca_clinit_barriers_entry = entry; }
+  SCAEntry* sca_clinit_barriers_entry()          const { return _sca_clinit_barriers_entry; }
 
   // Replay support
 private:

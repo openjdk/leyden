@@ -535,6 +535,9 @@ void CodeBuffer::finalize_oop_references(const methodHandle& mh) {
             if (m->is_methodData()) {
               m = ((MethodData*)m)->method();
             }
+            if (m->is_methodCounters()) {
+              m = ((MethodCounters*)m)->method();
+            }
             if (m->is_method()) {
               m = ((Method*)m)->method_holder();
             }
@@ -558,6 +561,9 @@ void CodeBuffer::finalize_oop_references(const methodHandle& mh) {
       if (oop_recorder()->is_real(m)) {
         if (m->is_methodData()) {
           m = ((MethodData*)m)->method();
+        }
+        if (m->is_methodCounters()) {
+          m = ((MethodCounters*)m)->method();
         }
         if (m->is_method()) {
           m = ((Method*)m)->method_holder();
@@ -999,14 +1005,14 @@ void CodeBuffer::log_section_sizes(const char* name) {
   if (xtty != nullptr) {
     ttyLocker ttyl;
     // log info about buffer usage
-    xtty->print_cr("<blob name='%s' total_size='%d'>", name, _total_size);
+    xtty->head("blob name='%s' total_size='%d'", name, _total_size);
     for (int n = (int) CodeBuffer::SECT_FIRST; n < (int) CodeBuffer::SECT_LIMIT; n++) {
       CodeSection* sect = code_section(n);
       if (!sect->is_allocated() || sect->is_empty())  continue;
-      xtty->print_cr("<sect index='%d' capacity='%d' size='%d' remaining='%d'/>",
-                     n, sect->capacity(), sect->size(), sect->remaining());
+      xtty->elem("sect index='%d' capacity='%d' size='%d' remaining='%d'",
+                 n, sect->capacity(), sect->size(), sect->remaining());
     }
-    xtty->print_cr("</blob>");
+    xtty->tail("blob");
   }
 }
 
@@ -1066,7 +1072,7 @@ void CodeBuffer::print() {
     return;
   }
 
-  tty->print_cr("CodeBuffer:");
+  tty->print_cr("CodeBuffer:%s", name());
   for (int n = 0; n < (int)SECT_LIMIT; n++) {
     // print each section
     CodeSection* cs = code_section(n);

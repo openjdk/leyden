@@ -24,13 +24,17 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/classListWriter.hpp"
 #include "cds/dynamicArchive.hpp"
+#include "cds/methodProfiler.hpp"
+#include "classfile/classLoader.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "code/codeCache.hpp"
+#include "code/SCArchive.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerOracle.hpp"
 #include "gc/shared/collectedHeap.hpp"
@@ -54,11 +58,13 @@
 #include "oops/objArrayOop.hpp"
 #include "oops/oop.inline.hpp"
 #include "oops/symbol.hpp"
+#include "oops/trainingData.hpp"
 #include "prims/jvmtiAgentList.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/continuation.hpp"
 #include "runtime/deoptimization.hpp"
 #include "runtime/flags/flagSetting.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/init.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
@@ -226,6 +232,9 @@ void print_bytecode_count() {
 
 // General statistics printing (profiling ...)
 void print_statistics() {
+  if (ReplayTraining && PrintTrainingInfo) {
+    TrainingData::print_archived_training_data_on(tty);
+  }
   if (CITime) {
     CompileBroker::print_times();
   }
@@ -333,11 +342,19 @@ void print_statistics() {
   }
 
   ThreadsSMRSupport::log_statistics();
+
+  if (UsePerfData) {
+    SharedRuntime::print_counters();
+    ClassLoader::print_counters();
+  }
 }
 
 #else // PRODUCT MODE STATISTICS
 
 void print_statistics() {
+  if (ReplayTraining && PrintTrainingInfo) {
+    TrainingData::print_archived_training_data_on(tty);
+  }
 
   if (PrintMethodData) {
     print_method_profiling_data();
@@ -381,6 +398,11 @@ void print_statistics() {
   }
 
   ThreadsSMRSupport::log_statistics();
+
+  if (UsePerfData) {
+    SharedRuntime::print_counters();
+    ClassLoader::print_counters();
+  }
 }
 
 #endif
@@ -440,13 +462,15 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 #endif
 
+  MethodProfiler::process_method_hotness();
+
 #if INCLUDE_CDS
+  ClassListWriter::write_resolved_constants();
   // Dynamic CDS dumping must happen whilst we can still reliably
   // run Java code.
   DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
   assert(!thread->has_pending_exception(), "must be");
 #endif
-
 
   // Actual shutdown logic begins here.
 
@@ -455,6 +479,8 @@ void before_exit(JavaThread* thread, bool halt) {
     JVMCI::shutdown(thread);
   }
 #endif
+
+  SCArchive::close(); // Write final data and close archive
 
   // Hang forever on exit if we're reporting an error.
   if (ShowMessageBoxOnError && VMError::is_error_reported()) {
@@ -517,6 +543,10 @@ void before_exit(JavaThread* thread, bool halt) {
   // Terminate the signal thread
   // Note: we don't wait until it actually dies.
   os::terminate_signal_thread();
+
+  if (TrainingData::need_data() && TrainingData::use_xml()) {
+    TrainingData::store_results();
+  }
 
   print_statistics();
   Universe::heap()->print_tracing_info();

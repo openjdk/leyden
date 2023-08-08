@@ -142,6 +142,10 @@ private:
         _buffered_addr = nullptr;
       }
     }
+    SourceObjInfo(address src, address buf) {
+      _source_addr = src;
+      _buffered_addr = buf;
+    }
 
     bool should_copy() const { return _follow_mode == make_a_copy; }
     void set_buffered_addr(address addr)  {
@@ -368,6 +372,7 @@ public:
   void dump_rw_metadata();
   void dump_ro_metadata();
   void relocate_metaspaceobj_embedded_pointers();
+  void record_regenerated_object(address orig_src_obj, address regen_src_obj);
   void make_klasses_shareable();
   void relocate_to_requested();
   void write_archive(FileMapInfo* mapinfo, ArchiveHeapInfo* heap_info);
@@ -377,6 +382,11 @@ public:
   void write_pointer_in_buffer(address* ptr_location, address src_addr);
   template <typename T> void write_pointer_in_buffer(T* ptr_location, T src_addr) {
     write_pointer_in_buffer((address*)ptr_location, (address)src_addr);
+  }
+
+  void mark_and_relocate_to_buffered_addr(address* ptr_location);
+  template <typename T> void mark_and_relocate_to_buffered_addr(T ptr_location) {
+    mark_and_relocate_to_buffered_addr((address*)ptr_location);
   }
 
   address get_buffered_addr(address src_addr) const;

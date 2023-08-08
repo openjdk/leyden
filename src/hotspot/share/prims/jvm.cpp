@@ -3589,8 +3589,8 @@ JVM_ENTRY(void, JVM_RegisterLambdaProxyClassForArchiving(JNIEnv* env,
                                               jobject dynamicMethodType,
                                               jclass lambdaProxyClass))
 #if INCLUDE_CDS
-  if (!Arguments::is_dumping_archive()) {
-    return;
+  if (!DynamicDumpSharedSpaces) {
+    return; // FIXME: record lambda proxy classes only for dynamic archive to avoid duplication
   }
 
   Klass* caller_k = java_lang_Class::as_Klass(JNIHandles::resolve(caller));
@@ -3728,7 +3728,7 @@ JVM_ENTRY(void, JVM_LogLambdaFormInvoker(JNIEnv *env, jstring line))
     }
     if (ClassListWriter::is_enabled()) {
       ClassListWriter w;
-      w.stream()->print_cr("%s %s", LAMBDA_FORM_TAG, c_line);
+      w.stream()->print_cr("%s %s", ClassListParser::lambda_form_tag(), c_line);
     }
   }
 #endif // INCLUDE_CDS

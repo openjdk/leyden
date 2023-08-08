@@ -32,8 +32,10 @@
 #include "utilities/macros.hpp"
 
 class FileMapInfo;
+class Method;
 class outputStream;
 
+template<class E> class Array;
 template<class E> class GrowableArray;
 
 enum MapArchiveResult {
@@ -54,6 +56,7 @@ class MetaspaceShared : AllStatic {
   static char* _requested_base_address;
   static bool _use_optimized_module_handling;
   static bool _use_full_module_graph;
+  static Array<Method*>* _archived_method_handle_intrinsics;
  public:
   enum {
     // core archive spaces
@@ -106,6 +109,9 @@ public:
   static void unrecoverable_writing_error(const char* message = nullptr);
   static void exit_after_static_dump();
 
+  static void make_method_handle_intrinsics_shareable() NOT_CDS_RETURN;
+  static void write_method_handle_intrinsics() NOT_CDS_RETURN;
+  static Array<Method*>* archived_method_handle_intrinsics() { return _archived_method_handle_intrinsics; }
   static void serialize(SerializeClosure* sc) NOT_CDS_RETURN;
 
   // JVM/TI RedefineClasses() support:
@@ -120,7 +126,6 @@ public:
 
   static bool try_link_class(JavaThread* current, InstanceKlass* ik);
   static void link_shared_classes(bool jcmd_request, TRAPS) NOT_CDS_RETURN;
-  static bool link_class_for_cds(InstanceKlass* ik, TRAPS) NOT_CDS_RETURN_(false);
   static bool may_be_eagerly_linked(InstanceKlass* ik) NOT_CDS_RETURN_(false);
 
 #if INCLUDE_CDS

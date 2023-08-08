@@ -33,6 +33,7 @@ class DirectiveSet;
 class DebugInformationRecorder;
 class JvmtiThreadState;
 class OopIterateClosure;
+class SCAEntry;
 
 // nmethods (native methods) are the compiled code versions of Java methods.
 //
@@ -73,6 +74,9 @@ class nmethod : public CompiledMethod {
  private:
 
   uint64_t  _gc_epoch;
+
+  // Profiling counter used to figure out the hottest nmethods to record into CDS
+  volatile uint64_t _method_profiling_count;
 
   // To support simple linked-list chaining of nmethods:
   nmethod*  _osr_link;         // from InstanceKlass::osr_nmethods_head
@@ -235,6 +239,8 @@ class nmethod : public CompiledMethod {
   RTMState _rtm_state;
 #endif
 
+  SCAEntry* _sca_entry;
+
   // These are used for compiled synchronized native methods to
   // locate the owner and stack slot for the BasicLock. They are
   // needed because there is no debug information for compiled native
@@ -291,6 +297,7 @@ class nmethod : public CompiledMethod {
           ImplicitExceptionTable* nul_chk_table,
           AbstractCompiler* compiler,
           CompLevel comp_level
+          , SCAEntry* sca_entry
 #if INCLUDE_JVMCI
           , char* speculations = nullptr,
           int speculations_len = 0,
@@ -342,6 +349,7 @@ class nmethod : public CompiledMethod {
                               ImplicitExceptionTable* nul_chk_table,
                               AbstractCompiler* compiler,
                               CompLevel comp_level
+                              , SCAEntry* sca_entry
 #if INCLUDE_JVMCI
                               , char* speculations = nullptr,
                               int speculations_len = 0,
@@ -444,6 +452,9 @@ class nmethod : public CompiledMethod {
   nmethod* unlinked_next() const                  { return _unlinked_next; }
   void set_unlinked_next(nmethod* next)           { _unlinked_next = next; }
 
+  void inc_method_profiling_count();
+  uint64_t method_profiling_count();
+
 #if INCLUDE_RTM_OPT
   // rtm state accessing and manipulating
   RTMState  rtm_state() const                     { return _rtm_state; }
@@ -457,8 +468,8 @@ class nmethod : public CompiledMethod {
   // alive.  It is used when an uncommon trap happens.  Returns true
   // if this thread changed the state of the nmethod or false if
   // another thread performed the transition.
-  bool  make_not_entrant();
-  bool  make_not_used()    { return make_not_entrant(); }
+  bool  make_not_entrant(bool make_not_entrant = true);
+  bool  make_not_used() { return make_not_entrant(false); }
 
   int get_state() const {
     return _state;
@@ -594,6 +605,11 @@ public:
   void copy_scopes_data(address buffer, int size);
 
   int orig_pc_offset() { return _orig_pc_offset; }
+
+  SCAEntry* sca_entry() const { return _sca_entry; }
+  bool is_sca() const { return sca_entry() != nullptr; }
+  bool preloaded() const;
+  bool has_clinit_barriers() const;
 
   // Post successful compilation
   void post_compiled_method(CompileTask* task);

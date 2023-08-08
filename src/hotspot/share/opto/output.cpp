@@ -3264,7 +3264,7 @@ void PhaseOutput::install() {
   } else {
     install_code(C->method(),
                  C->entry_bci(),
-                 CompileBroker::compiler2(),
+                 CompilerThread::current()->compiler(),
                  C->has_unsafe_access(),
                  SharedRuntime::is_wide_vector(C->max_vector_size()),
                  C->rtm_state());
@@ -3305,6 +3305,8 @@ void PhaseOutput::install_code(ciMethod*         target,
                                      &_handler_table,
                                      inc_table(),
                                      compiler,
+                                     C->has_clinit_barriers(),
+                                     C->for_preload(),
                                      has_unsafe_access,
                                      SharedRuntime::is_wide_vector(C->max_vector_size()),
                                      C->has_monitors(),
@@ -3313,6 +3315,11 @@ void PhaseOutput::install_code(ciMethod*         target,
 
     if (C->log() != nullptr) { // Print code cache state into compiler log
       C->log()->code_cache_state();
+    }
+    if (C->has_clinit_barriers()) {
+      assert(C->for_preload(), "sanity");
+      // Build second version of code without class initialization barriers
+      C->record_failure(C2Compiler::retry_no_clinit_barriers());
     }
   }
 }

@@ -1294,6 +1294,12 @@ float Parse::dynamic_branch_prediction(float &cnt, BoolTest::mask btest, Node* t
     if (prob_str == nullptr) {
       jio_snprintf(prob_str_buf, sizeof(prob_str_buf), "%20.2f", prob);
       prob_str = prob_str_buf;
+      // The %20.2f adds many spaces to the string, to avoid some
+      // picky overflow warning as noted in 8211929.  But, 20 is the
+      // *minimum* width, not *maximum*, so it's not clear how this
+      // helps prevent overflow.  Looks like we were forced to work
+      // around a bug in gcc.  In any case, strip the blanks.
+      while (*prob_str == ' ')  ++prob_str;
     }
     C->log()->elem("branch target_bci='%d' taken='%d' not_taken='%d' cnt='%f' prob='%s'",
                    iter().get_dest(), taken, not_taken, cnt, prob_str);

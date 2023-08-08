@@ -122,7 +122,8 @@ public:
       _proxy_klasses = new (mtClassShared) GrowableArray<InstanceKlass*>(5, mtClassShared);
     }
     assert(_proxy_klasses != nullptr, "sanity");
-    _proxy_klasses->append(proxy_klass);
+    // Try to preserve the order. get_shared_lambda_proxy_class returns shared classes in reverse order.
+    _proxy_klasses->insert_before(0, proxy_klass);
   }
 
   void metaspace_pointers_do(MetaspaceClosure* it) {

@@ -53,6 +53,11 @@
 
 public:
 
+  static address  float_signmask_pool;
+  static address double_signmask_pool;
+  static address  float_signflip_pool;
+  static address double_signflip_pool;
+
   void store_parameter(Register r,  int offset_from_esp_in_words);
   void store_parameter(jint c,      int offset_from_esp_in_words);
   void store_parameter(jobject c,   int offset_from_esp_in_words);

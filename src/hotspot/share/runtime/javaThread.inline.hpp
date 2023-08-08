@@ -239,4 +239,16 @@ inline InstanceKlass* JavaThread::class_to_be_initialized() const {
   return _class_to_be_initialized;
 }
 
+inline InstanceKlass* JavaThread::set_class_being_initialized(InstanceKlass* k) {
+  assert(this == Thread::current(), "Only the current thread can set this field");
+  InstanceKlass* prev = _class_being_initialized;
+  _class_being_initialized = k;
+  return prev;
+}
+
+inline InstanceKlass* JavaThread::class_being_initialized() const {
+  assert(this == Thread::current(), "Only the current thread can get this field");
+  return _class_being_initialized;
+}
+
 #endif // SHARE_RUNTIME_JAVATHREAD_INLINE_HPP
