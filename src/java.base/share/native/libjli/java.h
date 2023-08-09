@@ -73,7 +73,7 @@
 #define SPLASH_JAR_ENV_ENTRY "_JAVA_SPLASH_JAR"
 #define JDK_JAVA_OPTIONS "JDK_JAVA_OPTIONS"
 
-jboolean JLI_IsStaticJDK();
+JNIEXPORT jboolean JLI_IsStaticJDK();
 void JLI_SetStaticJDK();
 // FIXME: Add non-unix implementation.
 void* JLI_Lookup_Set_Static_JDK();

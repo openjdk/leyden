@@ -118,7 +118,8 @@ AWT_OnLoad(JavaVM *vm, void *reserved)
     jvm = vm;
 
     // IsStaticJDK is defined by libjli. Check if it is statically linked.
-    jboolean isStaticJDK = (dlsym(NULL, "IsStaticJDK") != NULL);
+    IsStaticJDK = (JLI_IsStaticJDK_t)dlsym(RTLD_DEFAULT, "JLI_IsStaticJDK");
+    jboolean isStaticJDK = (IsStaticJDK != NULL) && (IsStaticJDK)();
     if (!isStaticJDK) {
         /* Get address of this library and the directory containing it. */
         dladdr((void *)AWT_OnLoad, &dlinfo);
