@@ -129,7 +129,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
     @Override
     public final <X extends Throwable> V orElseThrow(Supplier<? extends X> exceptionSupplier) throws X {
         V v = orElse(null);
-        if (v == null) {
+        if (auxiliaryVolatile() instanceof ConstantUtil.BindError) {
             throw exceptionSupplier.get();
         }
         return v;
@@ -150,9 +150,10 @@ public abstract sealed class AbstractComputedConstant<V, P>
         return switch (aux) {
             case ConstantUtil.Null __ -> null;
             case ConstantUtil.Binding __ ->
-                    throw new StackOverflowError("Circular provider detected: " + toStringDescription());
-            case ConstantUtil.BindError __ ->
-                    throw new NoSuchElementException("A previous provider threw an exception: "+toStringDescription());
+                    throw new StackOverflowError(toStringDescription() + ": Circular provider detected");
+            case ConstantUtil.BindError __ when rethrow ->
+                    throw new NoSuchElementException(toStringDescription() + ": A previous provider threw an exception");
+            case ConstantUtil.BindError __ -> other;
             default -> {
                 @SuppressWarnings("unchecked")
                 P provider = (P) aux;

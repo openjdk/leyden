@@ -157,7 +157,7 @@ final class BasicComputedConstantTest {
     }
 
     @Test
-    void testToString() throws InterruptedException {
+    void testToString() {
         var c0 = ComputedConstant.of(() -> 0);
         var c1 = ComputedConstant.of(() -> 1);
 
@@ -191,6 +191,34 @@ final class BasicComputedConstantTest {
         });
     }
 
+    @Test
+    void testOrElse() {
+        ComputedConstant<Integer> c = ComputedConstant.of(() -> {
+            throw new UnsupportedOperationException();
+        });
+
+        int actual = c.orElse(42);
+        assertEquals(42, actual);
+        // Try again
+        assertEquals(42, c.orElse(42));
+    }
+
+
+    @Test
+    void testOrElseThrow() {
+        ComputedConstant<Integer> c = ComputedConstant.of(() -> {
+            throw new UnsupportedOperationException();
+        });
+
+        assertThrows(ArithmeticException.class, () -> {
+            c.orElseThrow(ArithmeticException::new);
+        });
+        // Try again
+        assertThrows(ArithmeticException.class, () -> {
+            c.orElseThrow(ArithmeticException::new);
+        });
+
+    }
 
     private static void join(Collection<Thread> threads) {
         for (var t : threads) {
