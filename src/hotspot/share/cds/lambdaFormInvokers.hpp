@@ -32,6 +32,7 @@
 class ClassFileStream;
 template <class T>
 class Array;
+class SerializeClosure;
 
 class LambdaFormInvokers : public AllStatic {
  private:

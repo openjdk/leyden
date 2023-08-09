@@ -38,6 +38,7 @@ class ConstantPool;
 class constantPoolHandle;
 class InstanceKlass;
 class Klass;
+class SerializeClosure;
 
 template <typename T> class Array;
 template <typename T> class GrowableArray;

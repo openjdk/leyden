@@ -250,6 +250,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
       }
       break;
     case JVM_CONSTANT_Fieldref:
+#if 0 // FIXME-PRE-RESOLVE-FIELD-REF
       if (cp->cache() != nullptr) {
         ConstantPoolCacheEntry* cpce = cp->cache()->entry_at(fmi_cpcache_index);
         if (cpce->is_resolved(Bytecodes::_getfield) ||
@@ -258,6 +259,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
         }
       }
       fmi_cpcache_index++;
+#endif
       break;
     case JVM_CONSTANT_Methodref:
       if (cp->cache() != nullptr) {
