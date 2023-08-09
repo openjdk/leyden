@@ -555,7 +555,8 @@ void LIR_Assembler::const2reg(LIR_Opr src, LIR_Opr dest, LIR_PatchCode patch_cod
         // SCA needs relocation info for card table base
         address b = c->as_pointer();
         if (b == ci_card_table_address_as<address>()) {
-          __ relocate(relocInfo::external_word_type);
+          __ lea(dest->as_register_lo(), ExternalAddress(b));
+          break;
         }
       }
       __ mov(dest->as_register_lo(), (intptr_t)c->as_jlong());

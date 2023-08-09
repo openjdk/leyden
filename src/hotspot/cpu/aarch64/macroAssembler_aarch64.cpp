@@ -29,6 +29,7 @@
 #include "asm/assembler.hpp"
 #include "asm/assembler.inline.hpp"
 #include "ci/ciEnv.hpp"
+#include "ci/ciUtilities.hpp"
 #include "code/SCArchive.hpp"
 #include "compiler/compileTask.hpp"
 #include "compiler/disassembler.hpp"
@@ -1429,9 +1430,10 @@ void MacroAssembler::check_klass_subtype_slow_path(Register sub_klass,
 #ifndef PRODUCT
   if (SCArchive::is_on_for_write()) {
     // SCA needs relocation info for this
-    relocate(relocInfo::external_word_type);
+    lea(rscratch2, ExternalAddress((address)&SharedRuntime::_partial_subtype_ctr));
+  } else {
+    mov(rscratch2, (address)&SharedRuntime::_partial_subtype_ctr);
   }
-  mov(rscratch2, (address)&SharedRuntime::_partial_subtype_ctr);
   Address pst_counter_addr(rscratch2);
   ldr(rscratch1, pst_counter_addr);
   add(rscratch1, rscratch1, 1);
@@ -2646,7 +2648,7 @@ void MacroAssembler::subw(Register Rd, Register Rn, RegisterOrConstant decrement
 void MacroAssembler::reinit_heapbase()
 {
   if (UseCompressedOops) {
-    if (Universe::is_fully_initialized()) {
+    if (Universe::is_fully_initialized() && !SCArchive::is_on_for_write()) {
       mov(rheapbase, CompressedOops::ptrs_base());
     } else {
       lea(rheapbase, ExternalAddress(CompressedOops::ptrs_base_addr()));
@@ -4921,9 +4923,10 @@ void MacroAssembler::load_byte_map_base(Register reg) {
   // even be negative. It is thus materialised as a constant.
   if (SCArchive::is_on_for_write()) {
     // SCA needs relocation info for card table base
-    relocate(relocInfo::external_word_type);
+    lea(reg, ExternalAddress(reinterpret_cast<address>(byte_map_base)));
+  } else {
+    mov(reg, (uint64_t)byte_map_base);
   }
-  mov(reg, (uint64_t)byte_map_base);
 }
 
 void MacroAssembler::build_frame(int framesize) {

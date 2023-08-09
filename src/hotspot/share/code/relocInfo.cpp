@@ -23,10 +23,12 @@
  */
 
 #include "precompiled.hpp"
+#include "ci/ciUtilities.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/nmethod.hpp"
 #include "code/relocInfo.hpp"
+#include "code/SCArchive.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "oops/compressedOops.inline.hpp"
@@ -780,6 +782,14 @@ void external_word_Relocation::fix_relocation_after_move(const CodeBuffer* src, 
   // If target is nullptr, this is  an absolute embedded reference to an external
   // location, which means  there is nothing to fix here.  In either case, the
   // resulting target should be an "external" address.
+#ifdef ASSERT
+  if (SCArchive::is_on()) {
+    // SCA needs relocation info for card table base which may point to CodeCache
+    if (target() == ci_card_table_address_as<address>()) {
+      return;
+    }
+  }
+#endif
   postcond(src->section_index_of(target()) == CodeBuffer::SECT_NONE);
   postcond(dest->section_index_of(target()) == CodeBuffer::SECT_NONE);
 }
