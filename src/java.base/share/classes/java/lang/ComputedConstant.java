@@ -291,7 +291,6 @@ public sealed interface ComputedConstant<V>
      * the binding completes (successfully or not).  Otherwise, this method is guaranteed to be lock-free.
      *
      * @param other to use if no value neither is bound nor can be bound (can be null)
-     * @throws NoSuchElementException if a value cannot be bound
      * @throws StackOverflowError     if a circular dependency is detected (i.e. the provider calls itself
      *                                directly or indirectly in the same thread).
      * @throws Error                  if the provider throws an Error
