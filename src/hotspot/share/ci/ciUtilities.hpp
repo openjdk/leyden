@@ -56,4 +56,6 @@ template <typename T> T ci_card_table_address_as() {
   return reinterpret_cast<T>(ci_card_table_address());
 }
 
+bool is_card_table_address(address adr);
+
 #endif // SHARE_CI_CIUTILITIES_HPP

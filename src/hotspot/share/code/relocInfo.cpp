@@ -785,7 +785,7 @@ void external_word_Relocation::fix_relocation_after_move(const CodeBuffer* src, 
 #ifdef ASSERT
   if (SCArchive::is_on()) {
     // SCA needs relocation info for card table base which may point to CodeCache
-    if (target() == ci_card_table_address_as<address>()) {
+    if (is_card_table_address(target())) {
       return;
     }
   }

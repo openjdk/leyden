@@ -66,6 +66,7 @@
 #include "c1/c1_LIRAssembler.hpp"
 #include "gc/shared/c1/barrierSetC1.hpp"
 #include "gc/g1/c1/g1BarrierSetC1.hpp"
+#include "gc/z/c1/zBarrierSetC1.hpp"
 #endif
 #ifdef COMPILER2
 #include "opto/runtime.hpp"
@@ -132,11 +133,14 @@ void SCArchive::initialize() {
 
 void SCArchive::init2() {
   // After Universe initialized
-  address byte_map_base = ci_card_table_address_as<address>();
-  if (is_on_for_write() && !external_word_Relocation::can_be_relocated(byte_map_base)) {
-    // Bail out since we can't encode card table base address with relocation
-    log_warning(sca, init)("Can't create shared code archive because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
-    close();
+  BarrierSet* bs = BarrierSet::barrier_set();
+  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
+    address byte_map_base = ci_card_table_address_as<address>();
+    if (is_on_for_write() && !external_word_Relocation::can_be_relocated(byte_map_base)) {
+      // Bail out since we can't encode card table base address with relocation
+      log_warning(sca, init)("Can't create shared code archive because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
+      close();
+    }
   }
 }
 
@@ -2969,7 +2973,10 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, SharedRuntime::lmul);
   SET_ADDRESS(_extrs, SharedRuntime::lrem);
 
-  SET_ADDRESS(_extrs, ci_card_table_address_as<address>());
+  BarrierSet* bs = BarrierSet::barrier_set(); 
+  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
+    SET_ADDRESS(_extrs, ci_card_table_address_as<address>());
+  }
   SET_ADDRESS(_extrs, ThreadIdentifier::unsafe_offset());
   SET_ADDRESS(_extrs, Thread::current);
 
@@ -3234,6 +3241,15 @@ void SCAddressTable::init_c1() {
     SET_ADDRESS(_C1_blobs, entry);
   }
 #endif // INCLUDE_G1GC
+#if INCLUDE_ZGC
+  if (UseZGC) {
+    ZBarrierSetC1* bs = (ZBarrierSetC1*)BarrierSet::barrier_set()->barrier_set_c1();
+    SET_ADDRESS(_C1_blobs, bs->_load_barrier_on_oop_field_preloaded_runtime_stub);
+    SET_ADDRESS(_C1_blobs, bs->_load_barrier_on_weak_oop_field_preloaded_runtime_stub);
+    SET_ADDRESS(_C1_blobs, bs->_store_barrier_on_oop_field_with_healing);
+    SET_ADDRESS(_C1_blobs, bs->_store_barrier_on_oop_field_without_healing);
+  }
+#endif // INCLUDE_ZGC
 #endif // COMPILER1
 
   assert(_C1_blobs_length <= _C1_blobs_max, "increase _C1_blobs_max to %d", _C1_blobs_length);

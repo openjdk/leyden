@@ -593,14 +593,15 @@ void LIR_Assembler::const2reg(LIR_Opr src, LIR_Opr dest, LIR_PatchCode patch_cod
 
     case T_LONG: {
       assert(patch_code == lir_patch_none, "no patching handled here");
+#ifdef _LP64
       if (SCArchive::is_on_for_write()) {
         // SCA needs relocation info for card table base
         address b = c->as_pointer();
-        if (b == ci_card_table_address_as<address>()) {
-          __ relocate(relocInfo::external_word_type);
+        if (is_card_table_address(b)) {
+          __ lea(dest->as_register_lo(), ExternalAddress(b));
+          break;
         }
       }
-#ifdef _LP64
       __ movptr(dest->as_register_lo(), (intptr_t)c->as_jlong());
 #else
       __ movptr(dest->as_register_lo(), c->as_jint_lo());
