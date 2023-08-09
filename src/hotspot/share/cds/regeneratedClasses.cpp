@@ -31,10 +31,12 @@
 #include "oops/oopHandle.inline.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "runtime/thread.hpp"
+#include "utilities/growableArray.hpp"
+#include "utilities/resourceHash.hpp"
 
-RegeneratedClasses::AddrToAddrTable* RegeneratedClasses::_original_objs = nullptr;
-RegeneratedClasses::AddrToAddrTable* RegeneratedClasses::_renegerated_objs = nullptr;
-GrowableArrayCHeap<OopHandle, mtClassShared>* RegeneratedClasses::_regenerated_mirrors = nullptr;
+using RegeneratedObjTable = ResourceHashtable<address, address, 15889, AnyObj::C_HEAP, mtClassShared>;
+static RegeneratedObjTable* _renegerated_objs = nullptr; // InstanceKlass* and Method*
+static GrowableArrayCHeap<OopHandle, mtClassShared>* _regenerated_mirrors = nullptr;
 
 // The regenerated Klass is not added to any class loader, so we need
 // to keep its java_mirror alive to avoid class unloading.
@@ -46,23 +48,20 @@ void RegeneratedClasses::add_class(InstanceKlass* orig_klass, InstanceKlass* reg
   _regenerated_mirrors->append(OopHandle(Universe::vm_global(), regen_klass->java_mirror()));
 
   if (_renegerated_objs == nullptr) {
-    _renegerated_objs = new (mtClass)AddrToAddrTable();
-    _original_objs = new (mtClass)AddrToAddrTable();
+    _renegerated_objs = new (mtClass)RegeneratedObjTable();
   }
 
   _renegerated_objs->put((address)orig_klass, (address)regen_klass);
-  _original_objs->put((address)regen_klass, (address)orig_klass);
   Array<Method*>* methods = orig_klass->methods();
   for (int i = 0; i < methods->length(); i++) {
     Method* orig_m = methods->at(i);
     Method* regen_m = regen_klass->find_method(orig_m->name(), orig_m->signature());
     if (regen_m == nullptr) {
       ResourceMark rm;
-      log_info(cds, lambda)("Method in original class is missing from regenerated class: " INTPTR_FORMAT " %s",
-                            p2i(orig_m), orig_m->external_name());
+      log_warning(cds)("Method in original class is missing from regenerated class: " INTPTR_FORMAT " %s",
+                       p2i(orig_m), orig_m->external_name());
     } else {
       _renegerated_objs->put((address)orig_m, (address)regen_m);
-      _original_objs->put((address)regen_m, (address)orig_m);
     }
   }
 }
@@ -83,14 +82,19 @@ address RegeneratedClasses::get_regenerated_object(address orig_obj) {
 }
 
 bool RegeneratedClasses::is_a_regenerated_object(address obj) {
+#if 0
   if (_original_objs == nullptr) {
     return false;
   } else {
     return _original_objs->get(obj) != nullptr;
   }
+#else
+  return false; // FIXME-MERGE
+#endif
 }
 
 void RegeneratedClasses::record_regenerated_objects() {
+  assert_locked_or_safepoint(DumpTimeTable_lock);
   if (_renegerated_objs != nullptr) {
     auto doit = [&] (address orig_obj, address regen_obj) {
       ArchiveBuilder::current()->record_regenerated_object(orig_obj, regen_obj);

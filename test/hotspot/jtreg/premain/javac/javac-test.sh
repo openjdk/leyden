@@ -33,7 +33,7 @@
 #       (STEP 4 of 4) Run with javac-dynamic.jsa and generate AOT code (skipped)
 #       (STEP 5 of 5) Final production run: with javac-dynamic.jsa and load AOT code (skipped)
 #
-#  bash javac-test.sh -n $JAVA
+#  bash javac-test.sh $JAVA
 #    This runs all the above 5 steps
 #======================================================================
 

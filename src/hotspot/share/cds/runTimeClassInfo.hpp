@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef SHARED_CDS_SHAREDCLASSINFO_HPP
-#define SHARED_CDS_SHAREDCLASSINFO_HPP
+#ifndef SHARE_CDS_RUNTIMECLASSINFO_HPP
+#define SHARE_CDS_RUNTIMECLASSINFO_HPP
 
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.hpp"

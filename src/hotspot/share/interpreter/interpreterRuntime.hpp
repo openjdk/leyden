@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -93,10 +93,8 @@ class InterpreterRuntime: AllStatic {
   static void resolve_from_cache(JavaThread* current, Bytecodes::Code bytecode);
 
   // Used by ClassListParser.
-  static void resolve_get_put(Bytecodes::Code bytecode, int raw_index,
-                              methodHandle& m,
-                              constantPoolHandle& pool,
-                              ConstantPoolCacheEntry* cp_cache_entry, TRAPS);
+  static void resolve_get_put(Bytecodes::Code bytecode, int field_index,
+                              methodHandle& m, constantPoolHandle& pool, TRAPS);
   static void cds_resolve_invoke(Bytecodes::Code bytecode, int raw_index,
                                  methodHandle& m,
                                  constantPoolHandle& pool,
@@ -138,9 +136,9 @@ class InterpreterRuntime: AllStatic {
 
   // Debugger support
   static void post_field_access(JavaThread* current, oopDesc* obj,
-    ConstantPoolCacheEntry *cp_entry);
+    ResolvedFieldEntry* entry);
   static void post_field_modification(JavaThread* current, oopDesc* obj,
-    ConstantPoolCacheEntry *cp_entry, jvalue *value);
+    ResolvedFieldEntry* entry, jvalue *value);
   static void post_method_entry(JavaThread* current);
   static void post_method_exit (JavaThread* current);
   static int  interpreter_contains(address pc);

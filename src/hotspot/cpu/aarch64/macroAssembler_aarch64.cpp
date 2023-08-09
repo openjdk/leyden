@@ -29,6 +29,7 @@
 #include "asm/assembler.hpp"
 #include "asm/assembler.inline.hpp"
 #include "ci/ciEnv.hpp"
+#include "ci/ciUtilities.hpp"
 #include "code/SCArchive.hpp"
 #include "compiler/compileTask.hpp"
 #include "compiler/disassembler.hpp"
@@ -46,6 +47,7 @@
 #include "memory/universe.hpp"
 #include "nativeInst_aarch64.hpp"
 #include "oops/accessDecorators.hpp"
+#include "oops/compressedKlass.inline.hpp"
 #include "oops/compressedOops.inline.hpp"
 #include "oops/klass.inline.hpp"
 #include "runtime/continuation.hpp"
@@ -1043,7 +1045,7 @@ void MacroAssembler::call_VM(Register oop_result,
                              Register arg_1,
                              Register arg_2,
                              bool check_exceptions) {
-  assert(arg_1 != c_rarg2, "smashed arg");
+  assert_different_registers(arg_1, c_rarg2);
   pass_arg2(this, arg_2);
   pass_arg1(this, arg_1);
   call_VM_helper(oop_result, entry_point, 2, check_exceptions);
@@ -1055,11 +1057,10 @@ void MacroAssembler::call_VM(Register oop_result,
                              Register arg_2,
                              Register arg_3,
                              bool check_exceptions) {
-  assert(arg_1 != c_rarg3, "smashed arg");
-  assert(arg_2 != c_rarg3, "smashed arg");
+  assert_different_registers(arg_1, c_rarg2, c_rarg3);
+  assert_different_registers(arg_2, c_rarg3);
   pass_arg3(this, arg_3);
 
-  assert(arg_1 != c_rarg2, "smashed arg");
   pass_arg2(this, arg_2);
 
   pass_arg1(this, arg_1);
@@ -1090,7 +1091,7 @@ void MacroAssembler::call_VM(Register oop_result,
                              Register arg_2,
                              bool check_exceptions) {
 
-  assert(arg_1 != c_rarg2, "smashed arg");
+  assert_different_registers(arg_1, c_rarg2);
   pass_arg2(this, arg_2);
   pass_arg1(this, arg_1);
   call_VM(oop_result, last_java_sp, entry_point, 2, check_exceptions);
@@ -1103,10 +1104,9 @@ void MacroAssembler::call_VM(Register oop_result,
                              Register arg_2,
                              Register arg_3,
                              bool check_exceptions) {
-  assert(arg_1 != c_rarg3, "smashed arg");
-  assert(arg_2 != c_rarg3, "smashed arg");
+  assert_different_registers(arg_1, c_rarg2, c_rarg3);
+  assert_different_registers(arg_2, c_rarg3);
   pass_arg3(this, arg_3);
-  assert(arg_1 != c_rarg2, "smashed arg");
   pass_arg2(this, arg_2);
   pass_arg1(this, arg_1);
   call_VM(oop_result, last_java_sp, entry_point, 3, check_exceptions);
@@ -1430,9 +1430,10 @@ void MacroAssembler::check_klass_subtype_slow_path(Register sub_klass,
 #ifndef PRODUCT
   if (SCArchive::is_on_for_write()) {
     // SCA needs relocation info for this
-    relocate(relocInfo::external_word_type);
+    lea(rscratch2, ExternalAddress((address)&SharedRuntime::_partial_subtype_ctr));
+  } else {
+    mov(rscratch2, (address)&SharedRuntime::_partial_subtype_ctr);
   }
-  mov(rscratch2, (address)&SharedRuntime::_partial_subtype_ctr);
   Address pst_counter_addr(rscratch2);
   ldr(rscratch1, pst_counter_addr);
   add(rscratch1, rscratch1, 1);
@@ -1614,6 +1615,7 @@ void MacroAssembler::call_VM_leaf(address entry_point, Register arg_0) {
 }
 
 void MacroAssembler::call_VM_leaf(address entry_point, Register arg_0, Register arg_1) {
+  assert_different_registers(arg_1, c_rarg0);
   pass_arg0(this, arg_0);
   pass_arg1(this, arg_1);
   call_VM_leaf_base(entry_point, 2);
@@ -1621,6 +1623,8 @@ void MacroAssembler::call_VM_leaf(address entry_point, Register arg_0, Register 
 
 void MacroAssembler::call_VM_leaf(address entry_point, Register arg_0,
                                   Register arg_1, Register arg_2) {
+  assert_different_registers(arg_1, c_rarg0);
+  assert_different_registers(arg_2, c_rarg0, c_rarg1);
   pass_arg0(this, arg_0);
   pass_arg1(this, arg_1);
   pass_arg2(this, arg_2);
@@ -1634,31 +1638,27 @@ void MacroAssembler::super_call_VM_leaf(address entry_point, Register arg_0) {
 
 void MacroAssembler::super_call_VM_leaf(address entry_point, Register arg_0, Register arg_1) {
 
-  assert(arg_0 != c_rarg1, "smashed arg");
+  assert_different_registers(arg_0, c_rarg1);
   pass_arg1(this, arg_1);
   pass_arg0(this, arg_0);
   MacroAssembler::call_VM_leaf_base(entry_point, 2);
 }
 
 void MacroAssembler::super_call_VM_leaf(address entry_point, Register arg_0, Register arg_1, Register arg_2) {
-  assert(arg_0 != c_rarg2, "smashed arg");
-  assert(arg_1 != c_rarg2, "smashed arg");
+  assert_different_registers(arg_0, c_rarg1, c_rarg2);
+  assert_different_registers(arg_1, c_rarg2);
   pass_arg2(this, arg_2);
-  assert(arg_0 != c_rarg1, "smashed arg");
   pass_arg1(this, arg_1);
   pass_arg0(this, arg_0);
   MacroAssembler::call_VM_leaf_base(entry_point, 3);
 }
 
 void MacroAssembler::super_call_VM_leaf(address entry_point, Register arg_0, Register arg_1, Register arg_2, Register arg_3) {
-  assert(arg_0 != c_rarg3, "smashed arg");
-  assert(arg_1 != c_rarg3, "smashed arg");
-  assert(arg_2 != c_rarg3, "smashed arg");
+  assert_different_registers(arg_0, c_rarg1, c_rarg2, c_rarg3);
+  assert_different_registers(arg_1, c_rarg2, c_rarg3);
+  assert_different_registers(arg_2, c_rarg3);
   pass_arg3(this, arg_3);
-  assert(arg_0 != c_rarg2, "smashed arg");
-  assert(arg_1 != c_rarg2, "smashed arg");
   pass_arg2(this, arg_2);
-  assert(arg_0 != c_rarg1, "smashed arg");
   pass_arg1(this, arg_1);
   pass_arg0(this, arg_0);
   MacroAssembler::call_VM_leaf_base(entry_point, 4);
@@ -2648,7 +2648,7 @@ void MacroAssembler::subw(Register Rd, Register Rn, RegisterOrConstant decrement
 void MacroAssembler::reinit_heapbase()
 {
   if (UseCompressedOops) {
-    if (Universe::is_fully_initialized()) {
+    if (Universe::is_fully_initialized() && !SCArchive::is_on_for_write()) {
       mov(rheapbase, CompressedOops::ptrs_base());
     } else {
       lea(rheapbase, ExternalAddress(CompressedOops::ptrs_base_addr()));
@@ -4923,9 +4923,10 @@ void MacroAssembler::load_byte_map_base(Register reg) {
   // even be negative. It is thus materialised as a constant.
   if (SCArchive::is_on_for_write()) {
     // SCA needs relocation info for card table base
-    relocate(relocInfo::external_word_type);
+    lea(reg, ExternalAddress(reinterpret_cast<address>(byte_map_base)));
+  } else {
+    mov(reg, (uint64_t)byte_map_base);
   }
-  mov(reg, (uint64_t)byte_map_base);
 }
 
 void MacroAssembler::build_frame(int framesize) {

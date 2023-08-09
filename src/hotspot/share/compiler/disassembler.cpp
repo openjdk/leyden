@@ -606,9 +606,7 @@ void decode_env::print_address(address adr) {
       return;
     }
 
-    BarrierSet* bs = BarrierSet::barrier_set();
-    if (bs->is_a(BarrierSet::CardTableBarrierSet) &&
-        adr == ci_card_table_address_as<address>()) {
+    if (is_card_table_address(adr)) {
       st->print("word_map_base");
       if (WizardMode) st->print(" " INTPTR_FORMAT, p2i(adr));
       return;

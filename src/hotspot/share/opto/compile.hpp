@@ -135,7 +135,7 @@ class NodeCloneInfo {
   NodeCloneInfo(uint64_t idx_clone_orig) : _idx_clone_orig(idx_clone_orig) {}
   NodeCloneInfo(node_idx_t x, int g) : _idx_clone_orig(0) { set(x, g); }
 
-  void dump() const;
+  void dump_on(outputStream* st) const;
 };
 
 class CloneMap {
@@ -158,7 +158,7 @@ class CloneMap {
   int max_gen()                   const;
   void clone(Node* old, Node* nnn, int gen);
   void verify_insert_and_clone(Node* old, Node* nnn, int gen);
-  void dump(node_idx_t key)       const;
+  void dump(node_idx_t key, outputStream* st) const;
 
   int  clone_idx() const                         { return _clone_idx; }
   void set_clone_idx(int x)                      { _clone_idx = x; }
@@ -176,6 +176,7 @@ class Options {
   const bool _subsume_loads;         // Load can be matched as part of a larger op.
   const bool _do_escape_analysis;    // Do escape analysis.
   const bool _do_iterative_escape_analysis;  // Do iterative escape analysis.
+  const bool _do_reduce_allocation_merges;  // Do try to reduce allocation merges.
   const bool _eliminate_boxing;      // Do boxing elimination.
   const bool _do_locks_coarsening;   // Do locks coarsening
   const bool _for_preload;           // Generate code for preload (before Java method execution), do class init barriers
@@ -183,11 +184,13 @@ class Options {
  public:
   Options(bool subsume_loads, bool do_escape_analysis,
           bool do_iterative_escape_analysis,
+          bool do_reduce_allocation_merges,
           bool eliminate_boxing, bool do_locks_coarsening,
           bool for_preload, bool install_code) :
           _subsume_loads(subsume_loads),
           _do_escape_analysis(do_escape_analysis),
           _do_iterative_escape_analysis(do_iterative_escape_analysis),
+          _do_reduce_allocation_merges(do_reduce_allocation_merges),
           _eliminate_boxing(eliminate_boxing),
           _do_locks_coarsening(do_locks_coarsening),
           _for_preload(for_preload),
@@ -199,6 +202,7 @@ class Options {
        /* subsume_loads = */ true,
        /* do_escape_analysis = */ false,
        /* do_iterative_escape_analysis = */ false,
+       /* do_reduce_allocation_merges = */ false,
        /* eliminate_boxing = */ false,
        /* do_lock_coarsening = */ false,
        /* for_preload = */ false,
@@ -227,7 +231,7 @@ class Compile : public Phase {
   // (The time collection itself is always conditionalized on CITime.)
   class TracePhase : public TraceTime {
    private:
-    Compile*    C;
+    Compile*    _compile;
     CompileLog* _log;
     const char* _phase_name;
     bool _dolog;
@@ -569,6 +573,7 @@ private:
   /** Do escape analysis. */
   bool              do_escape_analysis() const  { return _options._do_escape_analysis; }
   bool              do_iterative_escape_analysis() const  { return _options._do_iterative_escape_analysis; }
+  bool              do_reduce_allocation_merges() const  { return _options._do_reduce_allocation_merges; }
   /** Do boxing elimination. */
   bool              eliminate_boxing() const    { return _options._eliminate_boxing; }
   /** Do aggressive boxing elimination. */

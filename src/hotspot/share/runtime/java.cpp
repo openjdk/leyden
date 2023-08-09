@@ -76,6 +76,7 @@
 #include "runtime/task.hpp"
 #include "runtime/threads.hpp"
 #include "runtime/timer.hpp"
+#include "runtime/trimNativeHeap.hpp"
 #include "runtime/vmOperations.hpp"
 #include "runtime/vmThread.hpp"
 #include "runtime/vm_version.hpp"
@@ -503,13 +504,13 @@ void before_exit(JavaThread* thread, bool halt) {
 
   // Stop the WatcherThread. We do this before disenrolling various
   // PeriodicTasks to reduce the likelihood of races.
-  if (PeriodicTask::num_tasks() > 0) {
-    WatcherThread::stop();
-  }
+  WatcherThread::stop();
 
   // shut down the StatSampler task
   StatSampler::disengage();
   StatSampler::destroy();
+
+  NativeHeapTrimmer::cleanup();
 
   // Stop concurrent GC threads
   Universe::heap()->stop();

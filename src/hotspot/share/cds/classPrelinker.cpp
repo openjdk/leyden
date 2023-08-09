@@ -367,8 +367,8 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
           break;
         }
         // fall-through
-      case Bytecodes::_getfield:
-      case Bytecodes::_putfield:
+      case Bytecodes::_getfield: break; // FIXME-PRE-RESOLVE-FIELD-REF
+      case Bytecodes::_putfield: break; // FIXME-PRE-RESOLVE-FIELD-REF
       case Bytecodes::_invokespecial:
     //case Bytecodes::_invokevirtual: This fails with test/hotspot/jtreg/premain/jmh/run.sh
       case Bytecodes::_invokestatic:
@@ -419,8 +419,9 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   switch (bc) {
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
-    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, cp_cache_entry, CHECK);
-    ref_kind = "field ";
+    //FIXME-PRE-RESOLVE-FIELD-REF
+    //InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, CHECK);
+    //ref_kind = "field ";
     break;
   case Bytecodes::_invokevirtual:
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, cp_cache_entry, CHECK);
