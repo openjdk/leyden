@@ -1461,7 +1461,6 @@ bool SCAReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
           //address destination = iter.reloc()->value();
           break;
         case relocInfo::external_word_type: {
-          iter.reloc()->fix_relocation_after_move(orig_buffer, buffer);
           address target = _archive->address_for_id(reloc_data[j]);
           int data_len = iter.datalen();
           if (data_len > 0) {
@@ -1480,6 +1479,7 @@ bool SCAReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
           }
           external_word_Relocation* reloc = (external_word_Relocation*)iter.reloc();
           reloc->set_value(target); // Patch address in the code
+          iter.reloc()->fix_relocation_after_move(orig_buffer, buffer);
           break;
         }
         case relocInfo::internal_word_type:
