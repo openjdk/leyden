@@ -74,7 +74,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
       "whitebox",
       "must_be_compiled",
       "bootstrap",
-      "preload"
+      "preload",
       "precompile",
       "recorded",
     };
