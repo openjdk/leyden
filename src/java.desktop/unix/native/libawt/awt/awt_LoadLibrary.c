@@ -98,6 +98,9 @@ JNIEXPORT jboolean JNICALL AWTIsHeadless() {
   #define HEADLESS_PATH "/libawt_headless.so"
 #endif
 
+typedef jboolean (*JLI_IsStaticJDK_t)();
+static JLI_IsStaticJDK_t IsStaticJDK = NULL;
+
 jint
 AWT_OnLoad(JavaVM *vm, void *reserved)
 {
