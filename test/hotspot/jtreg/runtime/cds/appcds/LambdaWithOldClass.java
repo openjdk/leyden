@@ -68,7 +68,8 @@ public class LambdaWithOldClass {
             .addSuffix(mainClass);
         OutputAnalyzer output = CDSTestUtils.runWithArchive(runOpts);
         output.shouldContain("[class,load] LambdaWithOldClassApp source: shared objects file")
-              .shouldMatch(".class.load. LambdaWithOldClassApp[$][$]Lambda.*/0x.*source:.*shared objects file")
+          // FIXME:leyden-premain : we disabled archived Lambda proxy classes due to JDK-8307468
+          //  .shouldMatch(".class.load. LambdaWithOldClassApp[$][$]Lambda.*/0x.*source:.*shared objects file")
               .shouldHaveExitValue(0);
     }
 }

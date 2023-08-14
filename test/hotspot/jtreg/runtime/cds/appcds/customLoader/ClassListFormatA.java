@@ -103,6 +103,9 @@ public class ClassListFormatA extends ClassListFormatBase {
                 "CustomInterface2_ib id: 4 super: 1 source: " + customJarPath + "\t\t\r" ,
                 "CustomLoadee2 id: 5 super: 1 interfaces: 3 4 source: " + customJarPath      // preceding spaces
             ));
+        /*
+
+          FIXME:leyden-premain : these test cases are disabled because ClassListParser can handle much longer lines now
 
         int _max_allowed_line = 4096; // Must match ClassListParser::_max_allowed_line in C code.
         int _line_buf_extra = 10;     // Must match ClassListParser::_line_buf_extra in C code.
@@ -128,5 +131,7 @@ public class ClassListFormatA extends ClassListFormatBase {
                 sbuf.toString()
             ),
             "input line too long (must be no longer than " + _max_allowed_line + " chars");
+
+        */
     }
 }

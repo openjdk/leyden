@@ -1106,6 +1106,8 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
       oop source_oop = ArchiveHeapWriter::buffered_addr_to_source_obj(start);
       address requested_start = ArchiveHeapWriter::buffered_addr_to_requested_addr(start);
       st.print(PTR_FORMAT ": @@ Object ", p2i(requested_start));
+      int permobj_segment = -1;
+      int permobj_segment_length = -1;
 
       if (source_oop != nullptr) {
         // This is a regular oop that got archived.
@@ -1120,6 +1122,8 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
       } else if ((byte_size = ArchiveHeapWriter::get_filler_size_at(start)) > 0) {
         // We have a filler oop, which also does not exist in BufferOffsetToSourceObjectTable.
         st.print_cr("filler " SIZE_FORMAT " bytes", byte_size);
+      } else if ((permobj_segment = ArchiveHeapWriter::get_permobj_segment_at(start, &byte_size, &permobj_segment_length)) >= 0) {
+        st.print_cr("permobj_%d[%d] %zu bytes", permobj_segment, permobj_segment_length, byte_size);
       } else {
         ShouldNotReachHere();
       }
@@ -1131,6 +1135,8 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
         log_oop_details(heap_info, source_oop);
       } else if (start == ArchiveHeapWriter::buffered_heap_roots_addr()) {
         log_heap_roots();
+      } else if (permobj_segment >= 0) {
+        log_permobj_segment(permobj_segment, permobj_segment_length);
       }
       start = oop_end;
     }
@@ -1228,6 +1234,17 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
       }
     }
   }
+
+  static void log_permobj_segment(int permobj_segment, int permobj_segment_length) {
+    LogStreamHandle(Trace, cds, map, oops) st;
+    if (st.is_enabled()) {
+      for (int i = 0; i < permobj_segment_length; i++) {
+        st.print("permobj_%d[%4d]: ", permobj_segment, i);
+        print_oop_with_requested_addr_cr(&st, ArchiveHeapWriter::get_permobj_source_addr(permobj_segment, i));
+      }
+    }
+  }
+
 
   // The output looks like this. The first number is the requested address. The second number is
   // the narrowOop version of the requested address.

@@ -426,15 +426,15 @@ private:
   static void serialize_tables(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
 
   static bool is_a_test_class_in_unnamed_module(Klass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
-  static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
-  static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
-  static void initialize_java_lang_invoke(TRAPS);
 
-  // Interface for AOT
-  static int get_archived_oop_index(oop obj); // AOT-compile time only: get a stable index for an archived object.
-                                              // Returns 0 if obj is not archived.
-  static oop get_archived_oop(int index);     // Runtime only: get back the same object for an index returned by
-                                              // get_archived_oop_index().
+  // AOT-compile time only: get a stable index for an archived object.
+  // Returns 0 if obj is not archived.
+  static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
+  // Runtime only: get back the same object for an index returned by
+  // get_archived_object_permanent_index().
+  static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
+
+  static void initialize_java_lang_invoke(TRAPS);
 
   static bool is_lambda_form_klass(InstanceKlass* ik);
   static bool is_lambda_proxy_klass(InstanceKlass* ik);

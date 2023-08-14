@@ -245,6 +245,8 @@ public:
     return _heap_roots_word_size;
   }
   static size_t get_filler_size_at(address buffered_addr);
+  static int get_permobj_segment_at(address buffered_addr, size_t* byte_size, int* permobj_segment_length);
+  static oop get_permobj_source_addr(int permobj_segment, int index);
 
   static void mark_native_pointer(oop src_obj, int offset);
   static bool is_marked_as_native_pointer(ArchiveHeapInfo* heap_info, oop src_obj, int field_offset);

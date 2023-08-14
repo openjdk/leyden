@@ -63,6 +63,10 @@ address ArchiveHeapWriter::_requested_top;
 GrowableArrayCHeap<ArchiveHeapWriter::NativePointerInfo, mtClassShared>* ArchiveHeapWriter::_native_pointers;
 GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_source_objs;
 
+static GrowableArrayCHeap<address, mtClassShared> *_permobj_seg_buffered_addrs = nullptr;
+static GrowableArrayCHeap<size_t, mtClassShared> *_permobj_seg_bytesizes = nullptr;
+static GrowableArrayCHeap<int, mtClassShared> *_permobj_seg_lengths = nullptr;
+
 ArchiveHeapWriter::BufferOffsetToSourceObjectTable*
   ArchiveHeapWriter::_buffer_offset_to_source_obj_table = nullptr;
 
@@ -84,6 +88,9 @@ void ArchiveHeapWriter::init() {
 
     _native_pointers = new GrowableArrayCHeap<NativePointerInfo, mtClassShared>(2048);
     _source_objs = new GrowableArrayCHeap<oop, mtClassShared>(10000);
+    _permobj_seg_buffered_addrs = new GrowableArrayCHeap<address, mtClassShared>(5);
+    _permobj_seg_bytesizes = new GrowableArrayCHeap<size_t, mtClassShared>(5);
+    _permobj_seg_lengths = new GrowableArrayCHeap<int, mtClassShared>(5);
 
     guarantee(UseG1GC, "implementation limitation");
     guarantee(MIN_GC_REGION_ALIGNMENT <= /*G1*/HeapRegion::min_region_size_in_words() * HeapWordSize, "must be");
@@ -239,7 +246,6 @@ size_t ArchiveHeapWriter::create_objarray_in_buffer(GrowableArrayCHeap<oop, mtCl
   return roots_bottom_offset;
 }
 
-GrowableArrayCHeap<oop, mtClassShared>* permobj = nullptr;
 int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots,
                                                   GrowableArray<size_t>* permobj_seg_offsets) {
   // Copy the contents of all the archived objects in _source_objs into the output buffer.
@@ -263,9 +269,12 @@ int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClas
   // Create the permobj_segments in the output buffer.
   for (int from = 0; from < permobjs->length(); from += PERMOBJ_SEGMENT_MAX_LENGTH) {
     int num_elems = MIN2(PERMOBJ_SEGMENT_MAX_LENGTH, permobjs->length() - from);
-    size_t dummy;
-    size_t permobj_seg_bottom_offset = create_objarray_in_buffer(permobjs, from, num_elems, 0, dummy);
+    size_t word_size;
+    size_t permobj_seg_bottom_offset = create_objarray_in_buffer(permobjs, from, num_elems, 0, word_size);
     permobj_seg_offsets->append(permobj_seg_bottom_offset);
+    _permobj_seg_buffered_addrs->append(offset_to_buffered_address<address>(permobj_seg_bottom_offset));
+    _permobj_seg_bytesizes->append(word_size * HeapWordSize);
+    _permobj_seg_lengths->append(num_elems);
   }
 
   log_info(cds)("Size of heap region = " SIZE_FORMAT " bytes, %d objects, %d roots, %d permobjs in %d segments",
@@ -598,6 +607,26 @@ template <typename T> void ArchiveHeapWriter::add_permobj_segments_to_roots(Grow
     store_requested_oop_in_buffer<T>(addr, requested_permobj_seg);
     mark_oop_pointer<T>(addr, heap_info->oopmap());
   }
+}
+
+// If the buffered_addr is one of the permobj segments, returns the size information about this segment.
+int ArchiveHeapWriter::get_permobj_segment_at(address buffered_addr, size_t* byte_size, int* permobj_segment_length) {
+  for (int i = 0; i < _permobj_seg_buffered_addrs->length(); i++) {
+    if (buffered_addr == _permobj_seg_buffered_addrs->at(i)) {
+      *byte_size = _permobj_seg_bytesizes->at(i);
+      *permobj_segment_length = _permobj_seg_lengths->at(i);
+      return i;
+    }
+  }
+  return -1;
+}
+
+oop ArchiveHeapWriter::get_permobj_source_addr(int permobj_segment, int index) {
+  for (int i = 0; i < permobj_segment; i++) {
+    index += _permobj_seg_lengths->at(i);
+  }
+
+  return _source_objs->at(index);
 }
 
 void ArchiveHeapWriter::mark_native_pointer(oop src_obj, int field_offset) {

@@ -2025,18 +2025,6 @@ ResourceBitMap HeapShared::calculate_oopmap(MemRegion region) {
 
 #endif // !PRODUCT
 
-int HeapShared::get_archived_oop_index(oop obj) {
-  assert(obj != nullptr, "sanity");
-  // FIXME - think about how this would work with AOT during -Xshare:dump
-  assert(UseSharedSpaces, "currently only works when AOT runs with at least the static archive mapped");
-  return 0;
-}
-
-oop HeapShared::get_archived_oop(int index) {
-  return nullptr;
-}
-
-
 void HeapShared::count_allocation(size_t size) {
   _total_obj_count ++;
   _total_obj_size += size;
