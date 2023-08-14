@@ -2920,7 +2920,7 @@ void SCAReader::print_on(outputStream* st) {
 #define _stubs_max 120
 #define _blobs_max 80
 #define _shared_blobs_max 16
-#define _C2_blobs_max 16
+#define _C2_blobs_max 20
 #define _C1_blobs_max (_blobs_max - _shared_blobs_max - _C2_blobs_max)
 #define _all_max 280
 
