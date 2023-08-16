@@ -52,6 +52,7 @@ import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.module.Modules;
 import jdk.internal.misc.VM;
+import jdk.internal.misc.CDS;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.loader.ClassLoaderValue;
@@ -485,8 +486,24 @@ public class Proxy implements java.io.Serializable {
     private static final class ProxyBuilder {
         private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
 
+        private static String temp_makeProxyClassNamePrefix() {
+            // IOI-FIXME: (temp) work around problems where the leyden-premain code finds two
+            // classes named "jdk.proxy2.$Proxy8"
+            // A proper fix in CDS is needed.
+            if (CDS.isDumpingArchive()) {
+                if (CDS.isSharingEnabled()) {
+                    return "$Proxy0100"; // CDS dynamic dump
+                } else {
+                    return "$Proxy0010"; // CDS static dump
+                }
+            } else {
+                return "$Proxy";
+            }
+        }
+
         // prefix for all proxy class names
-        private static final String proxyClassNamePrefix = "$Proxy";
+        private static final String proxyClassNamePrefix = temp_makeProxyClassNamePrefix();
+
 
         // next number to use for generation of unique proxy class names
         private static final AtomicLong nextUniqueNumber = new AtomicLong();
