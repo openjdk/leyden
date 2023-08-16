@@ -28,7 +28,7 @@
 if test ! -f Simple.jar || test Simple.java -nt Simple.jar; then
     rm -rf tmpclasses
     mkdir -p tmpclasses
-    javac -d tmpclasses Simple.java || exir
+    javac -d tmpclasses Simple.java || exit
     jar cf Simple.jar -C tmpclasses . || exit
     rm -rf tmpclasses
 fi
