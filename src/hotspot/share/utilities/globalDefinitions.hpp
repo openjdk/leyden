@@ -1009,6 +1009,10 @@ enum JavaThreadState {
   _thread_max_state         = 12  // maximum thread state+1 - used for statistics allocation
 };
 
+// Redefine Thread as BaseThread to avoid duplicate symbol issues for
+// JDK static builds. See runtime/thread.hpp for Thread class.
+#define Thread HotspotBaseThread
+
 enum LockingMode {
   // Use only heavy monitors for locking
   LM_MONITOR     = 0,
