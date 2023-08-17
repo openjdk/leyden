@@ -1192,7 +1192,7 @@ void ciEnv::register_method(ciMethod* target,
 #endif
 
       if (entry_bci == InvocationEntryBci) {
-        if (TieredCompilation) {
+        if (TieredCompilation || SCArchive::is_on_for_read()) {
           // If there is an old version we're done with it
           CompiledMethod* old = method->code();
           if (TraceMethodReplacement && old != nullptr) {
@@ -1219,7 +1219,8 @@ void ciEnv::register_method(ciMethod* target,
         if (nm->make_in_use()) {
           if (preload) {
             method->set_preload_code(nm);
-          } else {
+          }
+          if (!preload || target->holder()->is_linked()) {
             method->set_code(method, nm);
           }
         }
