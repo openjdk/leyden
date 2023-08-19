@@ -1396,12 +1396,14 @@ char* ClassLoader::lookup_vm_options() {
 
   if (Arguments::hermetic_jdk_image_path() != NULL) {
     JImage_file = (*JImageOpen)(Arguments::hermetic_jdk_image_path(),
-                                Arguments::hermetic_jdk_jimage_offset(), &error);
+                                Arguments::hermetic_jdk_jimage_offset(),
+                                Arguments::hermetic_jdk_jimage_size(),
+                                &error);
   } else {
     char modules_path[JVM_MAXPATHLEN];
     const char* fileSep = os::file_separator();
     jio_snprintf(modules_path, JVM_MAXPATHLEN, "%s%slib%smodules", Arguments::get_java_home(), fileSep, fileSep);
-    JImage_file =(*JImageOpen)(modules_path, 0, &error);
+    JImage_file =(*JImageOpen)(modules_path, 0, 0, &error);
   }
   
   if (JImage_file == nullptr) {

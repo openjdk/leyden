@@ -64,10 +64,12 @@ extern "C" DEF_STATIC_JNI_OnLoad
  *   ...
  */
 extern "C" JNIEXPORT JImageFile*
-JIMAGE_Open(const char *name, long image_start_offset, jint* error) {
+JIMAGE_Open(const char *name, long image_start_offset,
+            size_t image_size, jint* error) {
     // TODO - return a meaningful error code
     *error = 0;
-    ImageFileReader* jfile = ImageFileReader::open(name, image_start_offset);
+    ImageFileReader* jfile = ImageFileReader::open(name, image_start_offset,
+                                                   image_size);
     return (JImageFile*) jfile;
 }
 

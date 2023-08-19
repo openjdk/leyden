@@ -276,6 +276,7 @@ ImageFileReader* ImageFileReader::find_image(const char* name) {
 // Open an image file, reuse structure if file already open.
 ImageFileReader* ImageFileReader::open(const char* name,
                                        long image_start_offset,
+                                       size_t image_size,
                                        bool big_endian) {
     ImageFileReader* reader = find_image(name);
     if (reader != NULL) {
@@ -283,7 +284,8 @@ ImageFileReader* ImageFileReader::open(const char* name,
     }
 
     // Need a new image reader.
-    reader = new ImageFileReader(name, image_start_offset, big_endian);
+    reader = new ImageFileReader(name, image_start_offset,
+                                 image_size, big_endian);
     if (reader == NULL || !reader->open()) {
         // Failed to open.
         delete reader;
@@ -344,6 +346,7 @@ ImageFileReader* ImageFileReader::id_to_reader(u8 id) {
 // Constructor initializes to a closed state.
 ImageFileReader::ImageFileReader(const char* name,
                                  long image_start_offset,
+                                 size_t image_size,
                                  bool big_endian) :
     _module_data(NULL) {
     // Copy the image file name.
@@ -354,6 +357,7 @@ ImageFileReader::ImageFileReader(const char* name,
     // Initialize for a closed file.
     _fd = -1;
     _image_start = image_start_offset;
+    _image_size = image_size;
     _endian = Endian::get_handler(big_endian);
     _index_data = NULL;
 }

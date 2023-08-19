@@ -94,6 +94,7 @@ bool   Arguments::_sun_java_launcher_is_altjvm  = false;
 
 const char* Arguments::_hermetic_jdk_image_path = NULL;
 julong      Arguments::_hermetic_jdk_jimage_offset = 0;
+size_t      Arguments::_hermetic_jdk_jimage_size = 0;
 
 // These parameters are reset in method parse_vm_init_args()
 bool   Arguments::_AlwaysCompileLoopMethods     = AlwaysCompileLoopMethods;
@@ -365,30 +366,69 @@ void Arguments::process_sun_java_launcher_and_hermetic_options(
       // JDK files are packaged within a self-contained executable image file.
       //
       // The option contains the path to the image file followed by the start
-      // offset of the JDK runtime image within the file:
+      // offset and size of the JDK runtime image within the file:
       //
-      // -XX:UseHermeticJDK:<executable_image_file_path>,<jdk_runtime_image_start_offset>
+      // -XX:UseHermeticJDK:<executable_image_file_path>,<jdk_runtime_image_start_offset>,<jimage_size>
       //
       // This must be done before os::set_boot_path because os::set_boot_path
       // uses "modules" jimage path.
-      const char* p = strchr(tail, ',');
-      if (p == NULL) {
+      const char* end_of_path_ptr = strchr(tail, ',');
+      const char* end_of_jimage_offset_ptr = NULL;
+      if (end_of_path_ptr != NULL) {
+        end_of_jimage_offset_ptr = strchr(end_of_path_ptr + 1, ',');
+      }
+      // TODO(jiangli): Enable the check for end_of_jimage_offset_ptr after
+      //                the the launcher support for hermetic packaged jimage's
+      //                size is released.
+      if (end_of_path_ptr == NULL /*|| end_of_jimage_offset_ptr == NULL*/) {
         vm_exit_during_initialization(
-          "Syntax error, expecting -XX:UseHermeticJDK=<executable_image_path>,<modules_data_offset>",
+          "Syntax error, expecting -XX:UseHermeticJDK=<executable_image_path>,"
+          "<modules_data_offset>,<modules_size>",
           tail);
       }
 
-      int len = p - tail;
+      // Get the file path.
+      int len = end_of_path_ptr - tail;
       char* s =  AllocateHeap(len + 1, mtInternal);
       assert(s != NULL, "Unable to allocate space");
       strncpy(s, tail, len);
       s[len] = '\0';
       _hermetic_jdk_image_path = s;
 
-      p ++; // skip ','
-      if (!atojulong(p, &_hermetic_jdk_jimage_offset)) {
+      // Get the start offset of JAR file embedded jimage.
+      end_of_path_ptr ++; // skip ','
+#define JIMAGE_OFFSET_BUF_LEN 50   /* use a large enough size */
+      char jimage_offset[JIMAGE_OFFSET_BUF_LEN];
+      // TODO(jiangli): Remove the end_of_jimage_offset_ptr check below after
+      //                launcher supports hermetic packaged jimage's size.
+      if (end_of_jimage_offset_ptr != NULL) {
+        len = end_of_jimage_offset_ptr - end_of_path_ptr;
+        if (len >= JIMAGE_OFFSET_BUF_LEN) {
+          vm_exit_during_initialization(
+            "Jimage offset len exceeds jimage_offset buffer size");
+        }
+        strncpy(jimage_offset, end_of_path_ptr, len);
+        jimage_offset[len] = '\0';
+      }
+      // TODO(jiangli): Change to use jimage_offset without the check after
+      //                launcher supports hermetic packaged jimage's size.
+      if (!atojulong(end_of_jimage_offset_ptr == NULL ? end_of_path_ptr : jimage_offset,
+                     &_hermetic_jdk_jimage_offset)) {
         vm_exit_during_initialization(
-          "Cannot parse hermetic JDK embedded jimage offset", p);
+          "Cannot parse hermetic JDK embedded jimage offset", jimage_offset);
+      }
+
+      // Get the jimage size.
+      // TODO(jiangli): Remove the end_of_jimage_offset_ptr check and else case
+      //                after launcher supports hermetic packaged jimage's size.
+      if (end_of_jimage_offset_ptr != NULL) {
+        end_of_jimage_offset_ptr ++; // skip ','
+        if (!atojulong(end_of_jimage_offset_ptr, &_hermetic_jdk_jimage_size)) {
+          vm_exit_during_initialization(
+            "Cannot parse hermetic JDK embedded jimage size", end_of_jimage_offset_ptr);
+        }
+      } else {
+        _hermetic_jdk_jimage_size = 0;
       }
       continue;
     }

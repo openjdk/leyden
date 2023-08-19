@@ -240,9 +240,10 @@ class Arguments : AllStatic {
   // was this VM created via the -XXaltjvm=<path> option
   static bool   _sun_java_launcher_is_altjvm;
 
-  // values from -XX:UseHermeticJDK=<deploy_jar_path>,<jimage_start_offset>
+  // values from -XX:UseHermeticJDK=<hermetic_jar_path>,<jimage_start_offset>,<jimage_size>
   static const char* _hermetic_jdk_image_path;
   static julong _hermetic_jdk_jimage_offset;
+  static size_t _hermetic_jdk_jimage_size;
 
   // for legacy gc options (-verbose:gc and -Xloggc:)
   static LegacyGCLogging _legacyGCLogging;
@@ -441,16 +442,21 @@ class Arguments : AllStatic {
   static bool sun_java_launcher_is_altjvm();
 
   // Hermetic JDK image path from
-  // -XX:UseHermeticJDK=<deploy_jar_path>,<jimage_start_offset>.
+  // -XX:UseHermeticJDK=<hermetic_jar_path>,<jimage_start_offset>,<jimage_size>.
   static const char* hermetic_jdk_image_path() {
     return _hermetic_jdk_image_path;
   }
   // Hermetic JDK embedded jimage offset from
-  // -XX:UseHermeticJDK=<deploy_jar_path>,<jimage_start_offset>.
+  // -XX:UseHermeticJDK=<hermetic_jar_path>,<jimage_start_offset>,<jimage_size>.
   static julong hermetic_jdk_jimage_offset() {
     assert(is_aligned(_hermetic_jdk_jimage_offset, os::vm_page_size()),
            "must be page aligned");
     return _hermetic_jdk_jimage_offset;
+  }
+  // Hermetic JDK embedded jimage size from
+  // -XX:UseHermeticJDK=<hermetic_jar_path>,<jimage_start_offset>,<jimage_size>.
+  static size_t hermetic_jdk_jimage_size() {
+    return _hermetic_jdk_jimage_size;
   }
 
   // abort, exit, vfprintf hooks
