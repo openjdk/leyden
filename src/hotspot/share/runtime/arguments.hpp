@@ -240,6 +240,10 @@ class Arguments : AllStatic {
   // was this VM created via the -XXaltjvm=<path> option
   static bool   _sun_java_launcher_is_altjvm;
 
+  // values from -XX:UseHermeticJDK=<deploy_jar_path>,<jimage_start_offset>
+  static const char* _hermetic_jdk_image_path;
+  static julong _hermetic_jdk_jimage_offset;
+
   // for legacy gc options (-verbose:gc and -Xloggc:)
   static LegacyGCLogging _legacyGCLogging;
 
@@ -436,6 +440,19 @@ class Arguments : AllStatic {
   // -Dsun.java.launcher.is_altjvm
   static bool sun_java_launcher_is_altjvm();
 
+  // Hermetic JDK image path from
+  // -XX:UseHermeticJDK=<deploy_jar_path>,<jimage_start_offset>.
+  static const char* hermetic_jdk_image_path() {
+    return _hermetic_jdk_image_path;
+  }
+  // Hermetic JDK embedded jimage offset from
+  // -XX:UseHermeticJDK=<deploy_jar_path>,<jimage_start_offset>.
+  static julong hermetic_jdk_jimage_offset() {
+    assert(is_aligned(_hermetic_jdk_jimage_offset, os::vm_page_size()),
+           "must be page aligned");
+    return _hermetic_jdk_jimage_offset;
+  }
+
   // abort, exit, vfprintf hooks
   static abort_hook_t    abort_hook()       { return _abort_hook; }
   static exit_hook_t     exit_hook()        { return _exit_hook; }
@@ -445,7 +462,7 @@ class Arguments : AllStatic {
   static const char* GetSharedDynamicArchivePath() { return SharedDynamicArchivePath; }
   static size_t default_SharedBaseAddress() { return _default_SharedBaseAddress; }
   // Java launcher properties
-  static void process_sun_java_launcher_properties(JavaVMInitArgs* args);
+  static void process_sun_java_launcher_and_hermetic_options(JavaVMInitArgs* args);
 
   // System properties
   static void init_system_properties();

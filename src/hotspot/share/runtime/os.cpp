@@ -1415,16 +1415,25 @@ bool os::set_boot_path(char fileSep, char pathSep) {
 
   struct stat st;
 
-  // modular image if "modules" jimage exists
-  char* jimage = format_boot_path("%/lib/" MODULES_IMAGE_NAME, home, home_len, fileSep, pathSep);
+  // Set the modular image if a self-contained executable or "modules" jimage
+  // file exists. If it is a self-contained executable, the "modules" jimage
+  // is embedded within the executable. Otherwise, the "modules' jimage is
+  // the <jdk>/lib/modules.
+  const char* jimage = Arguments::hermetic_jdk_image_path() == NULL ?
+    format_boot_path("%/lib/" MODULES_IMAGE_NAME, home, home_len, fileSep, pathSep) :
+    Arguments::hermetic_jdk_image_path();
   if (jimage == nullptr) return false;
   bool has_jimage = (os::stat(jimage, &st) == 0);
   if (has_jimage) {
     Arguments::set_boot_class_path(jimage, true);
-    FREE_C_HEAP_ARRAY(char, jimage);
+    if (jimage != Arguments::hermetic_jdk_image_path()) {
+      FREE_C_HEAP_ARRAY(char, jimage);
+    }
     return true;
   }
-  FREE_C_HEAP_ARRAY(char, jimage);
+  if (jimage != Arguments::hermetic_jdk_image_path()) {
+    FREE_C_HEAP_ARRAY(char, jimage);
+  }
 
   // check if developer build with exploded modules
   char* base_classes = format_boot_path("%/modules/" JAVA_BASE_NAME, home, home_len, fileSep, pathSep);

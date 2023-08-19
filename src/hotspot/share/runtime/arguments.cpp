@@ -92,6 +92,9 @@ const char*  Arguments::_java_vendor_url_bug    = nullptr;
 const char*  Arguments::_sun_java_launcher      = DEFAULT_JAVA_LAUNCHER;
 bool   Arguments::_sun_java_launcher_is_altjvm  = false;
 
+const char* Arguments::_hermetic_jdk_image_path = NULL;
+julong      Arguments::_hermetic_jdk_jimage_offset = 0;
+
 // These parameters are reset in method parse_vm_init_args()
 bool   Arguments::_AlwaysCompileLoopMethods     = AlwaysCompileLoopMethods;
 bool   Arguments::_UseOnStackReplacement        = UseOnStackReplacement;
@@ -338,7 +341,8 @@ bool Arguments::is_internal_module_property(const char* property) {
 }
 
 // Process java launcher properties.
-void Arguments::process_sun_java_launcher_properties(JavaVMInitArgs* args) {
+void Arguments::process_sun_java_launcher_and_hermetic_options(
+          JavaVMInitArgs* args) {
   // See if sun.java.launcher or sun.java.launcher.is_altjvm is defined.
   // Must do this before setting up other system properties,
   // as some of them may depend on launcher type.
@@ -353,6 +357,38 @@ void Arguments::process_sun_java_launcher_properties(JavaVMInitArgs* args) {
     if (match_option(option, "-Dsun.java.launcher.is_altjvm=", &tail)) {
       if (strcmp(tail, "true") == 0) {
         _sun_java_launcher_is_altjvm = true;
+      }
+      continue;
+    }
+    if (match_option(option, "-XX:UseHermeticJDK=", &tail)) {
+      // Process -XX:UseHermeticJDK option for hermetic JDK. The runtime needed
+      // JDK files are packaged within a self-contained executable image file.
+      //
+      // The option contains the path to the image file followed by the start
+      // offset of the JDK runtime image within the file:
+      //
+      // -XX:UseHermeticJDK:<executable_image_file_path>,<jdk_runtime_image_start_offset>
+      //
+      // This must be done before os::set_boot_path because os::set_boot_path
+      // uses "modules" jimage path.
+      const char* p = strchr(tail, ',');
+      if (p == NULL) {
+        vm_exit_during_initialization(
+          "Syntax error, expecting -XX:UseHermeticJDK=<executable_image_path>,<modules_data_offset>",
+          tail);
+      }
+
+      int len = p - tail;
+      char* s =  AllocateHeap(len + 1, mtInternal);
+      assert(s != NULL, "Unable to allocate space");
+      strncpy(s, tail, len);
+      s[len] = '\0';
+      _hermetic_jdk_image_path = s;
+
+      p ++; // skip ','
+      if (!atojulong(p, &_hermetic_jdk_jimage_offset)) {
+        vm_exit_during_initialization(
+          "Cannot parse hermetic JDK embedded jimage offset", p);
       }
       continue;
     }
@@ -2870,6 +2906,8 @@ jint Arguments::parse_each_vm_init_arg(const JavaVMInitArgs* args, bool* patch_m
     } else if (match_jfr_option(&option)) {
       return JNI_EINVAL;
 #endif
+    } else if (match_option(option, "-XX:UseHermeticJDK=", &tail)) {
+      // Processed by process_sun_java_launcher_and_hermetic_options().
     } else if (match_option(option, "-XX:", &tail)) { // -XX:xxxx
       // Skip -XX:Flags= and -XX:VMOptionsFile= since those cases have
       // already been handled

@@ -422,8 +422,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Initialize the output stream module
   ostream_init();
 
-  // Process java launcher properties.
-  Arguments::process_sun_java_launcher_properties(args);
+  // Process java launcher properties and hermetic JDK options.
+  Arguments::process_sun_java_launcher_and_hermetic_options(args);
 
   // Initialize the os module
   os::init();

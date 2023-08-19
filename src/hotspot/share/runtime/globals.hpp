@@ -318,6 +318,10 @@ const int ObjectAlignmentInBytes = 8;
   product(bool, InlineUnsafeOps, true, DIAGNOSTIC,                          \
           "Inline memory ops (native methods) from Unsafe")                 \
                                                                             \
+  product(ccstr, UseHermeticJDK, NULL,                                      \
+          "Use Hermetic JDK packaged within a self-contained executable "   \
+          "image.")                                                         \
+                                                                            \
   product(bool, UseAESIntrinsics, false, DIAGNOSTIC,                        \
           "Use intrinsics for AES versions of crypto")                      \
                                                                             \

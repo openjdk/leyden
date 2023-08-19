@@ -419,6 +419,13 @@ private:
     char* _name;         // Name of image
     s4 _use;             // Use count
     int _fd;             // File descriptor
+    long _image_start;   // The start of the image data in the file. When the
+                         // runtime image is embedded within another file (such
+                         // as in a self-contained executable file)
+                         // _image_start can be non-zero, and is the actual
+                         // file offset where the image starts. If the runtime
+                         // image is within its own file, then _image_start is
+                         // 0.
     Endian* _endian;     // Endian handler
     u8 _file_size;       // File size in bytes
     ImageHeader _header; // Image header
@@ -430,7 +437,7 @@ private:
     u1* _string_bytes;   // String table
     ImageModuleData *_module_data;       // The ImageModuleData for this image
 
-    ImageFileReader(const char* name, bool big_endian);
+    ImageFileReader(const char* name, long image_start_offset, bool big_endian);
     ~ImageFileReader();
 
     // Compute number of bytes in image file index.
@@ -455,7 +462,8 @@ public:
     static ImageFileReader* find_image(const char* name);
 
     // Open an image file, reuse structure if file already open.
-    static ImageFileReader* open(const char* name, bool big_endian = Endian::is_big_endian());
+    static ImageFileReader* open(const char* name, long image_start_offset,
+                                 bool big_endian = Endian::is_big_endian());
 
     // Close an image file if the file is not in use elsewhere.
     static void close(ImageFileReader *reader);
