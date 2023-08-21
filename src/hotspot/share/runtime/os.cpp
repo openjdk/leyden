@@ -504,7 +504,7 @@ static void* _native_java_library = nullptr;
 
 void* os::native_java_library() {
   if (_native_java_library == nullptr) {
-    if (is_static_jdk()) {
+    if (JVM_IsStaticJDK()) {
       _native_java_library = get_default_process_handle();
       return _native_java_library;
     }

@@ -2413,10 +2413,10 @@ static SetStaticJDK_t SetStaticJDK = NULL;
 
 // This is called by launcher code before explicitly loading and creating the
 // VM. We determine if the current execution uses a static JDK binary by
-// checking if set_static_jdk symbol exists. set_static_jdk is defined in
+// checking if JVM_SetStaticJDK symbol exists. JVM_SetStaticJDK is defined in
 // hotspot libjvm. The look up returns the symbol address if the VM code is
 // statically linked with JDK natives. Otherwise, symbol lookup for
-// 'set_static_jdk' should return NULL if JDK and hotspot dynamic libraries are
+// 'JVM_SetStaticJDK' should return NULL if JDK and hotspot dynamic libraries are
 // used.
 //
 // Using weak symbol would be easier to determine static JDK. However, weak
@@ -2425,7 +2425,7 @@ void JLI_SetStaticJDK() {
     assert(SetStaticJDK == NULL);
     assert(exectype == JLI_UnknownBuild);
 
-    SetStaticJDK = (SetStaticJDK_t)dlsym(RTLD_DEFAULT, "set_static_jdk");
+    SetStaticJDK = (SetStaticJDK_t)dlsym(RTLD_DEFAULT, "JVM_SetStaticJDK");
     if (SetStaticJDK != NULL) {
         exectype = JLI_StaticBuild;
         (SetStaticJDK)();
@@ -2434,7 +2434,7 @@ void JLI_SetStaticJDK() {
     }
 }
 
-// set_static_jdk is defined in libjvm.
+// JVM_SetStaticJDK is defined in libjvm.
 jboolean JLI_IsStaticJDK() {
     assert(exectype != JLI_UnknownBuild);
     return exectype == JLI_StaticBuild;

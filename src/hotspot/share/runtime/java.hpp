@@ -165,6 +165,7 @@ class JDK_Version {
 
 };
 
-extern bool is_static_jdk();
+extern bool JVM_IsStaticJDK();
+extern "C" JNIEXPORT void JVM_SetStaticJDK();
 
 #endif // SHARE_RUNTIME_JAVA_HPP

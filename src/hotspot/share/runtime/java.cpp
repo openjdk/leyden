@@ -747,11 +747,10 @@ void JDK_Version::to_string(char* buffer, size_t buflen) const {
 }
 
 static bool is_static = false;
-bool is_static_jdk() {
+bool JVM_IsStaticJDK() {
   return is_static;
 }
 
-// Called from libjli.
-extern "C" JNIEXPORT void set_static_jdk() {
+void JVM_SetStaticJDK() {
   is_static = true;
 }
