@@ -230,4 +230,8 @@ JVM_EnsureMaterializedForStackWalk_func
 JVM_FindScopedValueBindings
 JVM_ScopedValueCache
 JVM_SetScopedValueCache
+
+
+# Hermetic Java runtime and static JDK
+JVM_SetStaticJDK
 #
