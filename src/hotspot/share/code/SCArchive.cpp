@@ -3020,6 +3020,7 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, SharedRuntime::ldiv);
   SET_ADDRESS(_extrs, SharedRuntime::lmul);
   SET_ADDRESS(_extrs, SharedRuntime::lrem);
+  SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);
 
   BarrierSet* bs = BarrierSet::barrier_set(); 
   if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
