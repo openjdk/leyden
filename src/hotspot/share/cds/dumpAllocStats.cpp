@@ -111,4 +111,7 @@ void DumpAllocStats::print_stats(int ro_all, int rw_all) {
   msg.info("Method CP entries = %6d, archived = %6d (%5.1f%%)",
            _num_method_cp_entries, _num_method_cp_entries_archived,
            percent_of(_num_method_cp_entries_archived, _num_method_cp_entries));
+  msg.info("Indy   CP entries = %6d, archived = %6d (%5.1f%%)",
+           _num_indy_cp_entries, _num_indy_cp_entries_archived,
+           percent_of(_num_indy_cp_entries_archived, _num_indy_cp_entries));
 }

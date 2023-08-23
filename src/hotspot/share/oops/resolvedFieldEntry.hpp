@@ -131,6 +131,7 @@ public:
 
   // CDS
   void remove_unshareable_info();
+  void mark_and_relocate();
 
   // Offsets
   static ByteSize field_holder_offset() { return byte_offset_of(ResolvedFieldEntry, _field_holder); }

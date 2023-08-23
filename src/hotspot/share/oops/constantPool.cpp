@@ -435,6 +435,9 @@ void ConstantPool::remove_unshareable_info() {
 }
 
 void ConstantPool::archive_entries() {
+  // Note: Indy and Field entries are archived in ConstantPoolCache::remove_unshareable_info()
+  // -- FIXME: Why is this not done as part of the regular remove_unshareable_info()??
+  // -- FIXME: Is it because of the _pool_holder->is_linked()??
   if (pool_holder()->name()->starts_with("java/lang/invoke/LambdaForm$MH")) {
     // TODO -- hidden class ...
   } else if (!_pool_holder->is_linked() && !_pool_holder->verified_at_dump_time()) {
@@ -443,7 +446,7 @@ void ConstantPool::archive_entries() {
   ResourceMark rm;
   GrowableArray<bool> keep_cpcache(cache()->length(), cache()->length(), false);
   bool archived = false;
-  int fmi_cpcache_index = 0; // cpcache index for Fieldref/Methodref/InterfaceMethodref
+  int method_cpcache_index = 0; // cpcache index for Methodref/InterfaceMethodref
   for (int cp_index = 1; cp_index < length(); cp_index++) { // cp_index 0 is unused
     int cp_tag = tag_at(cp_index).value();
     switch (cp_tag) {
@@ -467,17 +470,9 @@ void ConstantPool::archive_entries() {
       archived = maybe_archive_resolved_klass_at(cp_index);
       ArchiveBuilder::alloc_stats()->record_klass_cp_entry(archived);
       break;
-    case JVM_CONSTANT_Fieldref:
-      if (ArchiveFieldReferences && 0) {// FIXME-PRE-RESOLVE-FIELD-REF
-        archived = maybe_archive_resolved_fmi_ref_at(cp_index, fmi_cpcache_index, cp_tag);
-      } else {
-        archived = false;
-      }
-      ArchiveBuilder::alloc_stats()->record_field_cp_entry(archived);
-      break;
     case JVM_CONSTANT_Methodref:
       if (ArchiveMethodReferences) {
-        archived = maybe_archive_resolved_fmi_ref_at(cp_index, fmi_cpcache_index, cp_tag);
+        archived = maybe_archive_resolved_method_ref_at(cp_index, method_cpcache_index, cp_tag);
       } else {
         archived = false;
       }
@@ -491,13 +486,12 @@ void ConstantPool::archive_entries() {
       break;
     }
 
-    // The cpcache indices for the F/M/I entries are allocated sequentially by
+    // The cpcache indices for the method entries are allocated sequentially by
     // Rewriter::compute_index_maps().
     switch (tag_at(cp_index).value()) {
-    //case JVM_CONSTANT_Fieldref:// FIXME-PRE-RESOLVE-FIELD-REF
     case JVM_CONSTANT_Methodref:
     case JVM_CONSTANT_InterfaceMethodref:
-      keep_cpcache.at_put(fmi_cpcache_index++, archived);
+      keep_cpcache.at_put(method_cpcache_index++, archived);
       break;
     default:
       break;
@@ -594,7 +588,7 @@ bool ConstantPool::can_archive_invokehandle(ConstantPoolCacheEntry* cpce) {
   return true;
 }
 
-bool ConstantPool::maybe_archive_resolved_fmi_ref_at(int cp_index, int cpc_index, int cp_tag) {
+bool ConstantPool::maybe_archive_resolved_method_ref_at(int cp_index, int cpc_index, int cp_tag) {
   if (pool_holder()->is_hidden()) { // Not sure how to handle this yet ...
     if (pool_holder()->name()->starts_with("java/lang/invoke/LambdaForm$")) {
       // Hmmm, walking on thin ice here, but maybe we are OK :-)
@@ -604,31 +598,19 @@ bool ConstantPool::maybe_archive_resolved_fmi_ref_at(int cp_index, int cpc_index
   }
 
   ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
-  if (cp_tag == JVM_CONSTANT_Fieldref) {
-    if (!ClassPrelinker::can_archive_resolved_field(src_cp, cp_index)) {
-      return false;
-    }
-  } else {
-    if (!ClassPrelinker::can_archive_resolved_method(src_cp, cp_index)) {
-      return false;
-    }
+  if (!ClassPrelinker::can_archive_resolved_method(src_cp, cp_index)) {
+    return false;
   }
 
   int klass_cp_index = uncached_klass_ref_index_at(cp_index);
   Klass* resolved_klass = resolved_klass_at(klass_cp_index);
   if (!resolved_klass->is_instance_klass()) {
-    // FIXME: is it value to have a non-instance klass in FMI refs?
+    // FIXME: is it value to have a non-instance klass in method refs?
     return false;
   }
   ConstantPoolCacheEntry* cpce = cache()->entry_at(cpc_index);
   const char* is_static = "";
   switch (cp_tag) {
-  case JVM_CONSTANT_Fieldref:
-    if (!cpce->is_resolved(Bytecodes::_getfield)) {
-      // FIXME -- should we automatically marked both getfield/putfield as resolved?
-      return false;
-    }
-    break;
   case JVM_CONSTANT_Methodref:
     if (cpce->is_resolved(Bytecodes::_invokehandle)) {
       if (!ArchiveInvokeDynamic) {
@@ -675,8 +657,7 @@ bool ConstantPool::maybe_archive_resolved_fmi_ref_at(int cp_index, int cpc_index
     ResourceMark rm;
     Symbol* name = uncached_name_ref_at(cp_index);
     Symbol* signature = uncached_signature_ref_at(cp_index);
-    const char* type = (cp_tag == JVM_CONSTANT_Fieldref) ? "field " : "method";
-    log_debug(cds, resolve)("archived %s CP entry [%3d]: %s => %s.%s:%s%s", type, cp_index,
+    log_debug(cds, resolve)("archived method CP entry [%3d]: %s => %s.%s:%s%s", cp_index,
                             pool_holder()->name()->as_C_string(), resolved_klass->name()->as_C_string(),
                             name->as_C_string(), signature->as_C_string(), is_static);
   }

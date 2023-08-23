@@ -1,3 +1,3 @@
 clean:
-	rm -f *.jsa *.jsa-sc *.log* *.classlist *~
+	rm -rf *.jsa *.jsa-sc *.log* *.classlist *~ xml
 

@@ -100,8 +100,9 @@ class ClassPrelinker :  AllStatic {
   static Array<InstanceKlass*>* record_initiated_klasses(ClassesTable* table);
   static void runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS);
   static void jvmti_agent_error(InstanceKlass* expected, InstanceKlass* actual, const char* type);
-  static Klass* get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, int cp_index);
 
+  // fmi = FieldRef/MethodRef/InterfaceMethodRef
+  static Klass* get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, int cp_index);
   static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
 public:

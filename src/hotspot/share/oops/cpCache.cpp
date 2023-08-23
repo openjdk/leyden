@@ -642,14 +642,6 @@ void ConstantPoolCacheEntry::verify(outputStream* st) const {
 
 #if INCLUDE_CDS
 bool ConstantPoolCacheEntry::mark_and_relocate(ConstantPool* src_cp) {
-  if (is_method_entry()) {
-    return mark_and_relocate_method_entry(src_cp);
-  } else {
-    return mark_and_relocate_field_entry(src_cp);
-  }
-}
-
-bool ConstantPoolCacheEntry::mark_and_relocate_method_entry(ConstantPool* src_cp) {
   assert(is_method_entry(), "sanity");
 
   Bytecodes::Code invoke_code = bytecode_1();
@@ -724,15 +716,6 @@ bool ConstantPoolCacheEntry::mark_and_relocate_method_entry(ConstantPool* src_cp
     }
   }
 
-  return true;
-}
-
-bool ConstantPoolCacheEntry::mark_and_relocate_field_entry(ConstantPool* src_cp) {
-  assert(is_field_entry(), "sanity");
-  assert(is_resolved(Bytecodes::_getfield), "only this is implemented for now");
-  Klass* klass = (Klass*)_f1;
-  assert(klass != NULL && klass->is_klass(), "must be");
-  ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_f1);
   return true;
 }
 #endif
@@ -818,11 +801,14 @@ void ConstantPoolCache::remove_unshareable_info(const GrowableArray<bool>* keep_
   }
   _initial_entries = nullptr;
 
+  ConstantPool* cp = constant_pool();
+  ConstantPool* src_cp =  ArchiveBuilder::current()->get_source_addr(cp);
+
   if (_resolved_indy_entries != nullptr) {
-    ConstantPool* cp = constant_pool();
     for (int i = 0; i < _resolved_indy_entries->length(); i++) {
       ResolvedIndyEntry *rei = resolved_indy_entry_at(i);
       int cp_index = rei->constant_pool_index();
+      bool archived = false;
       if (rei->is_resolved() && ClassPrelinker::should_preresolve_invokedynamic(cp, cp_index)) {
         if (log_is_enabled(Debug, cds, resolve)) {
           ResourceMark rm;
@@ -836,14 +822,36 @@ void ConstantPoolCache::remove_unshareable_info(const GrowableArray<bool>* keep_
                                   bsm_klass->as_C_string(), bsm_name->as_C_string(), bsm_signature->as_C_string());
         }
         rei->mark_and_relocate();
+        archived = true;
       } else {
         rei->remove_unshareable_info();
       }
+      ArchiveBuilder::alloc_stats()->record_indy_cp_entry(archived);
     }
   }
+
   if (_resolved_field_entries != nullptr) {
     for (int i = 0; i < _resolved_field_entries->length(); i++) {
-      resolved_field_entry_at(i)->remove_unshareable_info();
+      ResolvedFieldEntry *rfi = resolved_field_entry_at(i);
+      int cp_index = rfi->constant_pool_index();
+      bool archived = false;
+      if (rfi->is_resolved(Bytecodes::_getfield) && ClassPrelinker::can_archive_resolved_field(src_cp, cp_index)) {
+        if (log_is_enabled(Debug, cds, resolve)) {
+          ResourceMark rm;
+          int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
+          Klass* resolved_klass = cp->resolved_klass_at(klass_cp_index);
+          Symbol* name = cp->uncached_name_ref_at(cp_index);
+          Symbol* signature = cp->uncached_signature_ref_at(cp_index);
+          log_debug(cds, resolve)("archived field  CP entry [%3d]: %s => %s.%s:%s", cp_index,
+                                  cp->pool_holder()->name()->as_C_string(), resolved_klass->name()->as_C_string(),
+                                  name->as_C_string(), signature->as_C_string());
+        }
+        rfi->mark_and_relocate();
+        archived = true;
+      } else {
+        rfi->remove_unshareable_info();
+      }
+      ArchiveBuilder::alloc_stats()->record_field_cp_entry(archived);
     }
   }
 }

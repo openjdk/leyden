@@ -263,18 +263,20 @@ void ClassPrelinker::dumptime_resolve_constants(InstanceKlass* ik, TRAPS) {
   // However, we want to aggressively resolve all klass/field/method constants for
   // LambdaForm Invoker Holder classes, Lambda Proxy classes, and LambdaForm classes,
   // so that the compiler can inline through them.
-  bool eager_resolve = false;
+  if (SystemDictionaryShared::is_builtin_loader(ik->class_loader_data())) {
+    bool eager_resolve = false;
 
-  if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
-    eager_resolve = true;
-  }
-  if (ik->is_hidden() && HeapShared::is_archived_hidden_klass(ik)) {
-    eager_resolve = true;
-  }
+    if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
+      eager_resolve = true;
+    }
+    if (ik->is_hidden() && HeapShared::is_archived_hidden_klass(ik)) {
+      eager_resolve = true;
+    }
 
-  if (eager_resolve) {
-    preresolve_class_cp_entries(THREAD, ik, nullptr);
-    preresolve_field_and_method_cp_entries(THREAD, ik, nullptr);
+    if (eager_resolve) {
+      preresolve_class_cp_entries(THREAD, ik, nullptr);
+      preresolve_field_and_method_cp_entries(THREAD, ik, nullptr);
+    }
   }
 }
 
@@ -288,17 +290,19 @@ Klass* ClassPrelinker::find_loaded_class(JavaThread* current, oop class_loader, 
   if (k != nullptr) {
     return k;
   }
-  if (class_loader == SystemDictionary::java_system_loader()) {
+  if (h_loader() == SystemDictionary::java_system_loader()) {
     return find_loaded_class(current, SystemDictionary::java_platform_loader(), name);
-  } else if (class_loader == SystemDictionary::java_platform_loader()) {
+  } else if (h_loader() == SystemDictionary::java_platform_loader()) {
     return find_loaded_class(current, nullptr, name);
   } else {
-    assert(class_loader == nullptr, "This function only works for boot/platform/app loaders");
+    assert(h_loader() == nullptr, "This function only works for boot/platform/app loaders %p %p %p",
+           cast_from_oop<address>(h_loader()),
+           cast_from_oop<address>(SystemDictionary::java_system_loader()),
+           cast_from_oop<address>(SystemDictionary::java_platform_loader()));
   }
 
   return nullptr;
 }
-
 
 Klass* ClassPrelinker::find_loaded_class(JavaThread* current, ConstantPool* cp, int class_cp_index) {
   Symbol* name = cp->klass_name_at(class_cp_index);
@@ -362,16 +366,21 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
       bcs.next();
       Bytecodes::Code bc = bcs.raw_code();
       switch (bc) {
+      case Bytecodes::_getfield:
+      case Bytecodes::_putfield:
+        maybe_resolve_fmi_ref(ik, m, bc, bcs.get_index_u2(), preresolve_list, THREAD);
+        if (HAS_PENDING_EXCEPTION) {
+          CLEAR_PENDING_EXCEPTION; // just ignore
+        }
+        break;
       case Bytecodes::_invokehandle:
         if (!ArchiveInvokeDynamic) {
           break;
         }
         // fall-through
-      case Bytecodes::_getfield: break; // FIXME-PRE-RESOLVE-FIELD-REF
-      case Bytecodes::_putfield: break; // FIXME-PRE-RESOLVE-FIELD-REF
       case Bytecodes::_invokespecial:
-    //case Bytecodes::_invokevirtual: This fails with test/hotspot/jtreg/premain/jmh/run.sh
-      case Bytecodes::_invokestatic:
+    //case Bytecodes::_invokevirtual: FIXME - This fails with test/hotspot/jtreg/premain/jmh/run.sh
+      case Bytecodes::_invokestatic: // This is only for a few specific cases.
         maybe_resolve_fmi_ref(ik, m, bc, bcs.get_index_u2_cpcache(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION; // just ignore
@@ -389,12 +398,24 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   methodHandle mh(THREAD, m);
   constantPoolHandle cp(THREAD, ik->constants());
   HandleMark hm(THREAD);
-  int cpc_index = cp->decode_cpcache_index(raw_index);
-  ConstantPoolCacheEntry* cp_cache_entry = cp->cache()->entry_at(cpc_index);
-  if (cp_cache_entry->is_resolved(bc)) {
-    return;
+  int cp_index;
+  ConstantPoolCacheEntry* cp_cache_entry = nullptr;
+
+  if (bc == Bytecodes::_invokehandle ||
+      bc == Bytecodes::_invokestatic ||
+      bc == Bytecodes::_invokespecial ||
+      bc == Bytecodes::_invokevirtual) {
+    int cpc_index = cp->decode_cpcache_index(raw_index);
+    cp_cache_entry = cp->cache()->entry_at(cpc_index);
+    if (cp_cache_entry->is_resolved(bc)) {
+      return;
+    }
+    cp_index = cp_cache_entry->constant_pool_index();
+  } else {
+    assert(bc == Bytecodes::_getfield || bc == Bytecodes::_putfield, "must be");
+    cp_index = cp->cache()->resolved_field_entry_at(raw_index)->constant_pool_index();
   }
-  int cp_index = cp_cache_entry->constant_pool_index();
+
   if (preresolve_list != nullptr && preresolve_list->at(cp_index) == false) {
     // This field wasn't resolved during the trial run. Don't attempt to resolve it. Otherwise
     // the compiler may generate less efficient code.
@@ -419,9 +440,8 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   switch (bc) {
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
-    //FIXME-PRE-RESOLVE-FIELD-REF
-    //InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, CHECK);
-    //ref_kind = "field ";
+    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, CHECK);
+    ref_kind = "field ";
     break;
   case Bytecodes::_invokevirtual:
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, cp_cache_entry, CHECK);

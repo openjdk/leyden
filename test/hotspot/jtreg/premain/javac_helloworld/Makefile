@@ -1,4 +1,4 @@
 clean:
-	rm -f *.jsa *.jsa-sc *.log* *.classlist *~ Simple.jar tmpclasses HelloWorld.class
+	rm -rf *.jsa *.jsa-sc *.log* *.classlist *~ Simple.jar tmpclasses HelloWorld.class logs report.csv
 
 
