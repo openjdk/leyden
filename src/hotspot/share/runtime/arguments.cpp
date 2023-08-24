@@ -423,7 +423,7 @@ void Arguments::process_sun_java_launcher_and_hermetic_options(
       //                after launcher supports hermetic packaged jimage's size.
       if (end_of_jimage_offset_ptr != NULL) {
         end_of_jimage_offset_ptr ++; // skip ','
-        if (!atojulong(end_of_jimage_offset_ptr, &_hermetic_jdk_jimage_size)) {
+        if (!atojulong(end_of_jimage_offset_ptr, (julong*)&_hermetic_jdk_jimage_size)) {
           vm_exit_during_initialization(
             "Cannot parse hermetic JDK embedded jimage size", end_of_jimage_offset_ptr);
         }
