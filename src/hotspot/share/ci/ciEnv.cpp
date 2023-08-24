@@ -1224,7 +1224,7 @@ void ciEnv::register_method(ciMethod* target,
 #endif
 
       if (entry_bci == InvocationEntryBci) {
-        if (TieredCompilation) {
+        if (TieredCompilation || SCArchive::is_on_for_read()) {
           // If there is an old version we're done with it
           CompiledMethod* old = method->code();
           if (TraceMethodReplacement && old != nullptr) {
@@ -1251,7 +1251,8 @@ void ciEnv::register_method(ciMethod* target,
         if (nm->make_in_use()) {
           if (preload) {
             method->set_preload_code(nm);
-          } else {
+          }
+          if (!preload || target->holder()->is_linked()) {
             method->set_code(method, nm);
           }
         }
@@ -1806,6 +1807,7 @@ void ciEnv::dump_replay_data(int compile_id) {
         tty->print_cr("# Compiler replay data is saved as: %s", buffer);
       } else {
         tty->print_cr("# Can't open file to dump replay data.");
+        close(fd);
       }
     }
   }
@@ -1830,6 +1832,7 @@ void ciEnv::dump_inline_data(int compile_id) {
         tty->print_cr("%s", buffer);
       } else {
         tty->print_cr("# Can't open file to dump inline data.");
+        close(fd);
       }
     }
   }

@@ -534,7 +534,7 @@ uint SCAFile::write_bytes(const void* buffer, uint nbytes) {
 }
 
 void SCAEntry::print(outputStream* st) const {
-  st->print_cr(" SCA entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s]", p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id, _decompile, (_not_entrant? "not_entrant" : "entrant"), (_has_clinit_barriers ? ", has clinit barriers" : (_for_preload ? ", preload ready" : "")));
+  st->print_cr(" SCA entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s]", p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id, _decompile, (_not_entrant? "not_entrant" : "entrant"), (_preloaded ? ", preloaded" : ""), (_has_clinit_barriers ? ", has clinit barriers" : (_for_preload ? ", preload ready" : "")));
 }
 
 void* SCAEntry::operator new(size_t x, SCAFile* sca) {
@@ -546,6 +546,9 @@ static uint exclude_count = 0;
 static char* exclude_line = nullptr;
 
 bool skip_preload(Method* m) {
+  if (!m->method_holder()->is_loaded()) {
+    return true;
+  }
   const char* line = SCPreloadExclude;
   if (exclude_line == nullptr && line != nullptr && line[0] != '\0') {
     exclude_line = os::strdup(line);
@@ -1034,6 +1037,12 @@ Klass* SCAReader::read_klass(const methodHandle& comp_method, bool shared) {
     }
     assert(k->is_klass(), "sanity");
     ResourceMark rm;
+    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_loaded()) {
+      set_lookup_failed();
+      log_warning(sca)("%d (L%d): Lookup failed for klass %s: not loaded",
+                       compile_id(), comp_level(), k->external_name());
+      return nullptr;
+    } else
     // Allow not initialized klass which was uninitialized during code caching or for preload
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (not_init != 1) && !_preload) {
       set_lookup_failed();
@@ -1107,6 +1116,10 @@ Method* SCAReader::read_method(const methodHandle& comp_method, bool shared) {
     } else if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
       set_lookup_failed();
       log_warning(sca)("%d (L%d): Lookup failed for holder %s: not in CDS", compile_id(), comp_level(), k->external_name());
+      return nullptr;
+    } else if (!InstanceKlass::cast(k)->is_loaded()) {
+      set_lookup_failed();
+      log_warning(sca)("%d (L%d): Lookup failed for holder %s: not loaded", compile_id(), comp_level(), k->external_name());
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_linked() && !_preload) {
       set_lookup_failed();
@@ -1195,9 +1208,21 @@ bool SCAFile::write_klass(Klass* klass) {
     set_lookup_failed();
     return false;
   }
+  int not_init = 0;
+  if (klass->is_instance_klass()) {
+    InstanceKlass* ik = InstanceKlass::cast(klass);
+    ClassLoaderData* cld = ik->class_loader_data();
+    if (!cld->is_builtin_class_loader_data()) {
+      set_lookup_failed();
+      return false;
+    }
+    if (_for_preload && (!ik->is_shared() || ik->is_shared_unregistered_class())) {
+      _for_preload = false;
+    }
+    not_init = !ik->is_initialized() ? 1 : 0;
+  }
   ResourceMark rm;
-  int not_init = klass->is_instance_klass() && !InstanceKlass::cast(klass)->is_initialized() ? 1 : 0;
-  if (_use_meta_ptrs && MetaspaceShared::is_in_shared_metaspace((address)klass)) {
+  if (_for_preload && _use_meta_ptrs && MetaspaceShared::is_in_shared_metaspace((address)klass)) {
     DataKind kind = DataKind::Klass_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
@@ -1270,8 +1295,20 @@ bool SCAFile::write_method(Method* method) {
     set_lookup_failed();
     return false;
   }
+  Klass* klass = method->method_holder();
+  if (klass->is_instance_klass()) {
+    InstanceKlass* ik = InstanceKlass::cast(klass);
+    ClassLoaderData* cld = ik->class_loader_data();
+    if (!cld->is_builtin_class_loader_data()) {
+      set_lookup_failed();
+      return false;
+    }
+    if (_for_preload && (!ik->is_shared() || ik->is_shared_unregistered_class())) {
+      _for_preload = false;
+    }
+  }
   ResourceMark rm;
-  if (_use_meta_ptrs && MetaspaceShared::is_in_shared_metaspace((address)method)) {
+  if (_for_preload && _use_meta_ptrs && MetaspaceShared::is_in_shared_metaspace((address)method)) {
     DataKind kind = DataKind::Method_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
@@ -1312,7 +1349,6 @@ bool SCAFile::write_method(Method* method) {
   dest[total_length - 1] = '\0';
 
 if (UseNewCode) {
-  Klass* klass = method->method_holder();
   oop loader = klass->class_loader();
   oop domain = klass->protection_domain();
   tty->print("Holder %s loader: ", dest);
@@ -2679,6 +2715,19 @@ if (UseNewCode3) {
   assert(!has_clinit_barriers || archive->_gen_preload_code, "sanity");
   Method* m = method();
   bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)m);
+  InstanceKlass* holder = m->method_holder();
+  bool klass_in_cds = holder->is_shared() && !holder->is_shared_unregistered_class();
+  bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
+  if (!builtin_loader) {
+    ResourceMark rm;
+    log_info(sca, nmethod)("%d (L%d): Skip method '%s' loaded by custom class loader %s", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string(), holder->class_loader_data()->loader_name());
+    return nullptr;
+  }
+  if (for_preload && !(method_in_cds && klass_in_cds)) {
+    ResourceMark rm;
+    log_info(sca, nmethod)("%d (L%d): Skip method '%s' for preload: not in CDS", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string());
+    return nullptr;
+  }
   assert(!for_preload || method_in_cds, "sanity");
   archive->_for_preload = for_preload;
 
@@ -2703,11 +2752,10 @@ if (UseNewCode3) {
                            (has_clinit_barriers ? ", has clinit barriers" : ""), archive->_archive_path);
 
 if (UseNewCode) {
-  Klass* klass = method->method_holder();
-  oop loader = klass->class_loader();
-  oop domain = klass->protection_domain();
+  oop loader = holder->class_loader();
+  oop domain = holder->protection_domain();
   tty->print("Holder: ");
-  klass->print_value_on(tty);
+  holder->print_value_on(tty);
   tty->print(" loader: ");
   if (loader == nullptr) {
     tty->print("nullptr");
@@ -2987,6 +3035,7 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, SharedRuntime::ldiv);
   SET_ADDRESS(_extrs, SharedRuntime::lmul);
   SET_ADDRESS(_extrs, SharedRuntime::lrem);
+  SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);
 
   BarrierSet* bs = BarrierSet::barrier_set(); 
   if (bs->is_a(BarrierSet::CardTableBarrierSet)) {

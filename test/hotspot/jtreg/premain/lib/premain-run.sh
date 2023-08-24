@@ -70,9 +70,15 @@ function do_test () {
 do_test "(STEP 1 of 5) Dump classlist" \
         $JAVA -Xshare:off -XX:DumpLoadedClassList=$APP.classlist $CMDLINE
 
+if test "$JAR" != ""; then
+    DUMP_CP="-cp"
+else
+    DUMP_CP=
+fi
+
 do_test "(STEP 2 of 5) Create Static $APP-static.jsa" \
-    $JAVA -Xshare:dump -XX:SharedArchiveFile=$APP-static.jsa -XX:SharedClassListFile=$APP.classlist -cp $JAR \
-    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=$APP-static.dump.log::filesize=0
+    $JAVA -Xshare:dump -XX:SharedArchiveFile=$APP-static.jsa -XX:SharedClassListFile=$APP.classlist $DUMP_CP $JAR \
+    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=$APP-static.dump.log::filesize=0 $DUMP_EXTRA_ARGS
 
 if false; then
     do_test "Run with $APP-static.jsa" \

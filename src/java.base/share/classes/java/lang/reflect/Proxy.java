@@ -52,6 +52,7 @@ import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.module.Modules;
 import jdk.internal.misc.VM;
+import jdk.internal.misc.CDS;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.loader.ClassLoaderValue;
@@ -292,7 +293,6 @@ import static java.lang.module.ModuleDescriptor.Modifier.SYNTHETIC;
  * @author      Peter Jones
  * @see         InvocationHandler
  * @since       1.3
- * @revised 9
  */
 public class Proxy implements java.io.Serializable {
     @java.io.Serial
@@ -382,7 +382,6 @@ public class Proxy implements java.io.Serializable {
      *      to create a proxy instance instead.
      *
      * @see <a href="#membership">Package and Module Membership of Proxy Class</a>
-     * @revised 9
      */
     @Deprecated
     @CallerSensitive
@@ -485,8 +484,24 @@ public class Proxy implements java.io.Serializable {
     private static final class ProxyBuilder {
         private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
 
+        private static String temp_makeProxyClassNamePrefix() {
+            // IOI-FIXME: (temp) work around problems where the leyden-premain code finds two
+            // classes named "jdk.proxy2.$Proxy8"
+            // A proper fix in CDS is needed.
+            if (CDS.isDumpingArchive()) {
+                if (CDS.isSharingEnabled()) {
+                    return "$Proxy0100"; // CDS dynamic dump
+                } else {
+                    return "$Proxy0010"; // CDS static dump
+                }
+            } else {
+                return "$Proxy";
+            }
+        }
+
         // prefix for all proxy class names
-        private static final String proxyClassNamePrefix = "$Proxy";
+        private static final String proxyClassNamePrefix = temp_makeProxyClassNamePrefix();
+
 
         // next number to use for generation of unique proxy class names
         private static final AtomicLong nextUniqueNumber = new AtomicLong();
@@ -1015,7 +1030,6 @@ public class Proxy implements java.io.Serializable {
      *          {@code null}
      *
      * @see <a href="#membership">Package and Module Membership of Proxy Class</a>
-     * @revised 9
      */
     @CallerSensitive
     public static Object newProxyInstance(ClassLoader loader,
@@ -1100,8 +1114,6 @@ public class Proxy implements java.io.Serializable {
      * @return  {@code true} if the class is a proxy class and
      *          {@code false} otherwise
      * @throws  NullPointerException if {@code cl} is {@code null}
-     *
-     * @revised 9
      */
     public static boolean isProxyClass(Class<?> cl) {
         return Proxy.class.isAssignableFrom(cl) && ProxyBuilder.isProxyClass(cl);
