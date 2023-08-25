@@ -83,7 +83,8 @@ void CompilationPolicy::sample_load_average() {
 }
 
 bool CompilationPolicy::have_recompilation_work() {
-  if (UseRecompilation && TrainingData::have_data() && TrainingData::recompilation_schedule()->length() > 0 && !_recompilation_done) {
+  if (UseRecompilation && TrainingData::have_data() && TrainingData::have_recompilation_schedule() &&
+                          TrainingData::recompilation_schedule()->length() > 0 && !_recompilation_done) {
     if (_load_average.value() <= RecompilationLoadAverageThreshold) {
       return true;
     }
