@@ -1891,9 +1891,9 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       log_trace(precompile)("%d: fully_initialized: %s", task()->compile_id(), ik->external_name());
       return InstanceKlass::ClassState::fully_initialized;
     } else if (MetaspaceObj::is_shared(ik)) {
-      guarantee(ik->is_linked(), "");
-      log_trace(precompile)("%d: linked: %s", task()->compile_id(), ik->external_name());
-      return InstanceKlass::ClassState::linked; // not yet initialized
+      guarantee(ik->is_loaded(), ""); // FIXME: assumes pre-loading by CDS; ik->is_linked() requires pre-linking
+      log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+      return ik->init_state(); // not yet initialized
     } else {
       // Not present in the archive.
       fatal("unloaded: %s", ik->external_name());
