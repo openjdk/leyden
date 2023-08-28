@@ -4035,6 +4035,23 @@ void InstanceKlass::print_class_load_helper(ClassLoaderData* loader_data,
     }
   }
 
+  info_stream.print(" loader:");
+  if (is_shared()) {
+    info_stream.print(" %s", SystemDictionaryShared::class_loader_name_for_shared((Klass*)this));
+  } else if (loader_data == ClassLoaderData::the_null_class_loader_data()) {
+    info_stream.print(" boot_loader");
+  } else {
+    oop class_loader = loader_data->class_loader();
+    if (class_loader != nullptr) {
+      info_stream.print(" %s", class_loader->klass()->external_name());
+      oop cl_name_and_id = java_lang_ClassLoader::nameAndId(class_loader);
+      if (cl_name_and_id != nullptr) {
+        info_stream.print(" %s", java_lang_String::as_utf8_string(cl_name_and_id));
+      }
+    } else {
+      info_stream.print(" null");
+    }
+  }
   msg.info("%s", info_stream.as_string());
 
   if (log_is_enabled(Debug, class, load)) {

@@ -472,14 +472,46 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
 
   Array<ResolvedIndyEntry>* indy_entries = cp->cache()->resolved_indy_entries();
   for (int i = 0; i < indy_entries->length(); i++) {
+    ResourceMark rm;
+    LogStreamHandle(Info, cds, resolve) log;
     ResolvedIndyEntry* rie = indy_entries->adr_at(i);
     int cp_index = rie->constant_pool_index();
-    if (preresolve_list->at(cp_index) == true && !rie->is_resolved() && 
-        should_preresolve_invokedynamic(cp(), cp_index)) {
-      InterpreterRuntime::cds_resolve_invokedynamic(ConstantPool::encode_invokedynamic_index(i), cp, THREAD);
-      if (HAS_PENDING_EXCEPTION) {
-        CLEAR_PENDING_EXCEPTION; // just ignore
+    if (log.is_enabled()) {
+      log.print("indy %s @ %d: ", ik->external_name(), cp_index);
+    }
+    if (preresolve_list->at(cp_index) == true) {
+      if (!rie->is_resolved()) {
+        if (should_preresolve_invokedynamic(cp(), cp_index)) {
+          InterpreterRuntime::cds_resolve_invokedynamic(ConstantPool::encode_invokedynamic_index(i), cp, THREAD);
+          if (HAS_PENDING_EXCEPTION) {
+            if (log.is_enabled()) {
+              log.print("FAILURE: ");
+              PENDING_EXCEPTION->print_on(&log);
+            }
+            CLEAR_PENDING_EXCEPTION; // just ignore
+          } else {
+            guarantee(rie->is_resolved(), "");
+            if (log.is_enabled()) {
+              log.print("SUCCESS");
+            }
+          }
+        } else {
+          if (log.is_enabled()) {
+            log.print("not allowed");
+          }
+        }
+      } else {
+        if (log.is_enabled()) {
+          log.print("already resolved");
+        }
       }
+    } else {
+      if (log.is_enabled()) {
+        log.print("disabled");
+      }
+    }
+    if (log.is_enabled()) {
+      log.cr();
     }
   }
 }
@@ -508,6 +540,16 @@ bool ClassPrelinker::should_preresolve_invokedynamic(ConstantPool* cp, int cp_in
        (bsm_name->equals("altMetafactory") && bsm_signature->equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;")))) {
     // Support only string concact for now
     return true;
+  }
+
+  LogStreamHandle(Info, cds, resolve) log;
+  if (log.is_enabled()) {
+    ResourceMark rm;
+    log.print("UNKNOWN_BSM: ");
+    bsm_klass->print_on(&log);
+    log.print("::");
+    bsm_name->print_on(&log);
+    bsm_signature->print_on(&log);
   }
 
   return false;
