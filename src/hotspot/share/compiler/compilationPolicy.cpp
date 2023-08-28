@@ -83,13 +83,9 @@ void CompilationPolicy::sample_load_average() {
 }
 
 bool CompilationPolicy::have_recompilation_work() {
-  if (UseRecompilation && TrainingData::have_data()) {
-    double load_avg = _load_average.value();
-    bool is_done = _recompilation_done;
-    log_debug(recompile)("load_avg=%.3f done=%d schedule_len=%d", load_avg, is_done, TrainingData::recompilation_schedule()->length());
-    if (!_recompilation_done &&
-       (TrainingData::recompilation_schedule()->length() > 0 /*|| ForceRecompilation*/) &&
-       (load_avg <= RecompilationLoadAverageThreshold)) {
+  if (UseRecompilation && TrainingData::have_data() && TrainingData::have_recompilation_schedule() &&
+                          TrainingData::recompilation_schedule()->length() > 0 && !_recompilation_done) {
+    if (_load_average.value() <= RecompilationLoadAverageThreshold) {
       return true;
     }
   }

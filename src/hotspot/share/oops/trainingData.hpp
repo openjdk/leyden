@@ -255,6 +255,7 @@ public:
 
   static TrainingDataSet* training_data_set() { return &_training_data_set; }
   static TrainingDataDictionary* archived_training_data_dictionary() { return &_archived_training_data_dictionary; }
+  static bool have_recompilation_schedule() { return _recompilation_schedule != nullptr; }
   static Array<MethodTrainingData*>* recompilation_schedule() { return _recompilation_schedule; }
   static volatile bool* recompilation_status() { return _recompilation_status; }
 

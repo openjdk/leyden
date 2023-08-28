@@ -703,7 +703,7 @@ class ConstantPool : public Metadata {
   void add_dumped_interned_strings() NOT_CDS_JAVA_HEAP_RETURN;
   bool can_archive_invokehandle(ConstantPoolCacheEntry* cpce);
   bool maybe_archive_resolved_klass_at(int cp_index);
-  bool maybe_archive_resolved_fmi_ref_at(int cp_index, int cpc_index, int cp_tag);
+  bool maybe_archive_resolved_method_ref_at(int cp_index, int cpc_index, int cp_tag);
   void archive_entries();
   void remove_unshareable_info();
   void restore_unshareable_info(TRAPS);

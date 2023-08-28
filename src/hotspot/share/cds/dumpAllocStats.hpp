@@ -67,6 +67,8 @@ public:
 
   int _num_field_cp_entries;
   int _num_field_cp_entries_archived;
+  int _num_indy_cp_entries;
+  int _num_indy_cp_entries_archived;
   int _num_klass_cp_entries;
   int _num_klass_cp_entries_archived;
   int _num_method_cp_entries;
@@ -80,6 +82,8 @@ public:
     memset(_bytes,  0, sizeof(_bytes));
     _num_field_cp_entries = 0;
     _num_field_cp_entries_archived = 0;
+    _num_indy_cp_entries = 0;
+    _num_indy_cp_entries_archived = 0;
     _num_klass_cp_entries = 0;
     _num_klass_cp_entries_archived = 0;
     _num_method_cp_entries = 0;
@@ -113,6 +117,11 @@ public:
   void record_field_cp_entry(bool archived) {
     _num_field_cp_entries ++;
     _num_field_cp_entries_archived += archived ? 1 : 0;
+  }
+
+  void record_indy_cp_entry(bool archived) {
+    _num_indy_cp_entries ++;
+    _num_indy_cp_entries_archived += archived ? 1 : 0;
   }
 
   void record_klass_cp_entry(bool archived) {

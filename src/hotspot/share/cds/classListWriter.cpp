@@ -237,7 +237,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
   ResourceMark rm;
   ConstantPool* cp = ik->constants();
   GrowableArray<bool> list(cp->length(), cp->length(), false);
-  int fmi_cpcache_index = 0; // cpcache index for Fieldref/Methodref/InterfaceMethodref
+  int methodref_cpcache_index = 0; // cpcache index for Methodref/InterfaceMethodref
 
   for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is unused
     switch (cp->tag_at(cp_index).value()) {
@@ -249,21 +249,9 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
         }
       }
       break;
-    case JVM_CONSTANT_Fieldref:
-#if 0 // FIXME-PRE-RESOLVE-FIELD-REF
-      if (cp->cache() != nullptr) {
-        ConstantPoolCacheEntry* cpce = cp->cache()->entry_at(fmi_cpcache_index);
-        if (cpce->is_resolved(Bytecodes::_getfield) ||
-            cpce->is_resolved(Bytecodes::_putfield)) {
-          list.at_put(cp_index, true);
-        }
-      }
-      fmi_cpcache_index++;
-#endif
-      break;
     case JVM_CONSTANT_Methodref:
       if (cp->cache() != nullptr) {
-        ConstantPoolCacheEntry* cpce = cp->cache()->entry_at(fmi_cpcache_index);
+        ConstantPoolCacheEntry* cpce = cp->cache()->entry_at(methodref_cpcache_index);
         if (cpce->is_resolved(Bytecodes::_invokevirtual) ||
             cpce->is_resolved(Bytecodes::_invokespecial)) {
           list.at_put(cp_index, true);
@@ -275,10 +263,10 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
           list.at_put(cp_index, true); /// TODO Can invokehandle trigger <clinit>??
         }
       }
-      fmi_cpcache_index++;
+      methodref_cpcache_index++;
       break;
     case JVM_CONSTANT_InterfaceMethodref:
-      fmi_cpcache_index++;
+      methodref_cpcache_index++;
       break;
     }
   }
@@ -291,6 +279,18 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
         int cp_index = rie->constant_pool_index();
         if (rie->is_resolved()) {
           list.at_put(cp_index, true);
+        }
+      }
+    }
+
+    Array<ResolvedFieldEntry>* field_entries = cp->cache()->resolved_field_entries();
+    if (field_entries != nullptr) {
+      for (int i = 0; i < field_entries->length(); i++) {
+        ResolvedFieldEntry* rfe = field_entries->adr_at(i);
+        int cp_index = rfe->constant_pool_index();
+        if (rfe->is_resolved(Bytecodes::_getfield) ||
+            rfe->is_resolved(Bytecodes::_putfield)) {
+          list.at_put(rfe->constant_pool_index(), true);
         }
       }
     }
