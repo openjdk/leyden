@@ -635,17 +635,29 @@ void FileMapInfo::update_jar_manifest(ClassPathEntry *cpe, SharedClassPathEntry*
 char* FileMapInfo::skip_first_path_entry(const char* path) {
   size_t path_sep_len = strlen(os::path_separator());
   char* p = strstr((char*)path, os::path_separator());
+  debug_only(const char* err_str = "first entry must be the modules image");
   if (p != nullptr) {
     debug_only( {
-      size_t image_name_len = strlen(MODULES_IMAGE_NAME);
-      assert(strncmp(p - image_name_len, MODULES_IMAGE_NAME, image_name_len) == 0,
-             "first entry must be the modules image");
+      if (Arguments::hermetic_jdk_image_path() != NULL) {
+        size_t image_name_len = strlen(Arguments::hermetic_jdk_image_path());
+        assert(strncmp(p - image_name_len, Arguments::hermetic_jdk_image_path(),
+                       image_name_len) == 0, "%s", err_str);
+      } else {
+        size_t image_name_len = strlen(MODULES_IMAGE_NAME);
+        assert(strncmp(p - image_name_len, MODULES_IMAGE_NAME,
+               image_name_len) == 0, "%s", err_str);
+      }
     } );
     p += path_sep_len;
   } else {
     debug_only( {
-      assert(ClassLoader::string_ends_with(path, MODULES_IMAGE_NAME),
-             "first entry must be the modules image");
+      if (Arguments::hermetic_jdk_image_path() != NULL) {
+        assert(ClassLoader::string_ends_with(
+                 path, Arguments::hermetic_jdk_image_path()), "%s", err_str);
+      } else {
+        assert(ClassLoader::string_ends_with(path, MODULES_IMAGE_NAME),
+               "%s", err_str);
+      }
     } );
   }
   return p;
