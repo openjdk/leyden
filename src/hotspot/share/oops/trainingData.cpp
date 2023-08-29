@@ -200,7 +200,12 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
     mcs = Method::build_method_counters(Thread::current(), method());
   }
 
-  Key key(method());
+  KlassTrainingData* holder = KlassTrainingData::make(method->method_holder(), null_if_not_found);
+  assert(holder != nullptr || null_if_not_found, "");
+  if (holder == nullptr) {
+    return nullptr;
+  }
+  Key key(method->name(), method->signature(), holder);
   TrainingData* td = have_data()? lookup_archived_training_data(&key) : nullptr;
   if (td != nullptr) {
     mtd = td->as_MethodTrainingData();
@@ -220,7 +225,7 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
       return mtd;
     }
   }
-  assert(td == nullptr && mtd == nullptr, "Should return if have result");
+  assert(td == nullptr && mtd == nullptr && !null_if_not_found, "Should return if have result");
   KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder());
   {
     TrainingDataLocker l;
