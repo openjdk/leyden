@@ -285,14 +285,15 @@ void MethodMatcher::parse_method_pattern(char*& line, const char*& error_msg, Me
     // method_name points to an option type or option name because the method name is not specified by users.
     // In very rare case, the method name happens to be same as option type/name, so look ahead to make sure
     // it doesn't show up again.
-    if ((OptionType::Unknown != CompilerOracle::parse_option_type(method_name) ||
-        CompileCommand::Unknown != CompilerOracle::parse_option_name(method_name)) &&
-        *(line + bytes_read) != '\0' &&
-        strstr(line + bytes_read, method_name) == nullptr) {
-      error_msg = "Did not specify any method name";
-      method_name[0] = '\0';
-      return;
-    }
+    // !!! FIXME !!! rejects TooManyTrapsAtBCI,CLS::print()V,199 command
+//    if ((OptionType::Unknown != CompilerOracle::parse_option_type(method_name) ||
+//        CompileCommand::Unknown != CompilerOracle::parse_option_name(method_name)) &&
+//        *(line + bytes_read) != '\0' &&
+//        strstr(line + bytes_read, method_name) == nullptr) {
+//      error_msg = "Did not specify any method name";
+//      method_name[0] = '\0';
+//      return;
+//    }
 
     if ((strchr(class_name, JVM_SIGNATURE_SPECIAL) != nullptr) ||
         (strchr(class_name, JVM_SIGNATURE_ENDSPECIAL) != nullptr)) {

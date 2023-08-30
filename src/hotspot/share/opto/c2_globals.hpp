@@ -724,6 +724,9 @@
   product(bool, UseTypeSpeculation, true,                                   \
           "Speculatively propagate types from profiles")                    \
                                                                             \
+  product(bool, UseFieldValueSpeculation, false,                            \
+          "Field value profiling")                                          \
+                                                                            \
   product(bool, UseInlineDepthForSpeculativeTypes, true, DIAGNOSTIC,        \
           "Carry inline depth of profile point with speculative type "      \
           "and give priority to profiling from lower inline depth")         \

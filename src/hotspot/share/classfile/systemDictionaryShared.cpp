@@ -2540,12 +2540,12 @@ bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
   for (int i = 0; i < comp._methods.length(); i++) {
     methodHandle mh(THREAD, comp._methods.at(i));
     int cid = compile_id(mh, CompLevel_full_optimization);
+    CompLevel comp_level = MIN2(CompLevel_full_optimization, (CompLevel)PrecompileLevel);
 
     if (mh->method_holder()->is_initialized() ||
         (!preinit && mh->method_holder()->is_linked())) {
       assert(!HAS_PENDING_EXCEPTION, "");
 
-      CompLevel comp_level = MIN2(CompLevel_full_optimization, (CompLevel)PrecompileLevel);
       if (cid == 0 && !ForcePrecompileLevel) {
         cid = compile_id(mh);
         comp_level = MIN2(CompLevel_limited_profile, (CompLevel)PrecompileLevel);
@@ -2553,7 +2553,7 @@ bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
 
       bool compile = (cid > 0 && !DirectivesStack::getMatchingDirective(mh, nullptr)->DontPrecompileOption) || ForcePrecompilation;
       if (compile) {
-        log_trace(cds,dynamic)("Precompile %d %s at level %d", cid, mh->name_and_sig_as_C_string(), PrecompileLevel);
+        log_trace(cds,dynamic)("Precompile %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
         ++count;
         if (!recompile) {
           MutexLocker ml(Compile_lock);
@@ -2566,12 +2566,12 @@ bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
         }
         CompileBroker::compile_method(mh, InvocationEntryBci, comp_level, methodHandle(), 0, requires_online_comp, comp_reason, THREAD);
         if (mh->code() == nullptr) {
-          log_trace(cds,dynamic)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), PrecompileLevel);
+          log_trace(cds,dynamic)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
         }
       } else if (//!recompile && // TODO: any sense NOT to recompile?
                  /*!DirectivesStack::getMatchingDirective(mh, nullptr)->DontPrecompileOption &&*/
-                 DirectivesStack::getMatchingDirective(mh, nullptr)->PrecompileRecordedOption) {
-        log_trace(cds,dynamic)("Precompile (forced) %d %s at level %d", cid, mh->name_and_sig_as_C_string(), PrecompileLevel);
+                 (comp_level = (CompLevel)DirectivesStack::getMatchingDirective(mh, nullptr)->PrecompileRecordedOption) > 0) {
+        log_trace(cds,dynamic)("Precompile (forced) %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
         ++count;
         if (!recompile) {
           MutexLocker ml(Compile_lock);
@@ -2582,9 +2582,9 @@ bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
           }
           assert(mh->code() == nullptr, "");
         }
-        CompileBroker::compile_method(mh, InvocationEntryBci, PrecompileLevel, methodHandle(), 0, requires_online_comp, comp_reason, THREAD);
+        CompileBroker::compile_method(mh, InvocationEntryBci, comp_level, methodHandle(), 0, requires_online_comp, comp_reason, THREAD);
         if (mh->code() == nullptr) {
-          log_trace(cds,dynamic)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), PrecompileLevel);
+          log_trace(cds,dynamic)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
         }
       }
     } else {
@@ -2592,7 +2592,7 @@ bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
                              InstanceKlass::state2name(mh->method_holder()->init_state()),
                              cid,
                              p2i(mh()), p2i(mh->method_holder()),
-                             mh->name_and_sig_as_C_string(), PrecompileLevel);
+                             mh->name_and_sig_as_C_string(), comp_level);
     }
     assert(!HAS_PENDING_EXCEPTION, "");
   }

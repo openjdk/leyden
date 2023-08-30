@@ -208,29 +208,14 @@ void Parse::do_get_xxx(Node* obj, ciField* field, bool is_field) {
 
   Node* ld = access_load_at(obj, adr, adr_type, type, bt, decorators);
 
-  if (CURRENT_ENV->is_precompiled() && is_obj && strcmp(field_klass->name(), "jdk/vm/ci/meta/SpeculationLog$Speculation") == 0) {
-    LogStreamHandle(Debug, precompile) log;
-    if (log.is_enabled()) {
-      log.print("getstatic: must_be_not_null ");
-      field->print_on(&log);
-    }
-    ld = must_be_not_null(ld, true);
-  } else {
-    log_trace(precompile)("getstatic: %s", field_klass->name());
-  }
+  log_trace(precompile)("getstatic: %s", field_klass->name());
 
-  if (UseNewCode && CURRENT_ENV->is_precompiled() && field->is_static() && field->is_constant() && (PrecompileBarriers & 16) == 16) {
+
+  if (UseFieldValueSpeculation && CURRENT_ENV->is_precompiled() && field->is_static() && field->is_constant() && (PrecompileBarriers & 16) == 16) {
+    LogStreamHandle(Debug, precompile) log;
+
     ciConstant con = field->archived_value();
     if (con.is_valid()) {
-//      LogStreamHandle(Debug, cds, dynamic) log;
-//      if (log.is_enabled()) {
-//        ResourceMark rm;
-//        log.print("constant_value: STATIC: ");
-//        field->print_on(&log);
-//        log.print(" = ");
-//        con.print_on(&log);
-//      }
-
       if (is_obj && !con.as_object()->is_null_object()) {
         ciKlass* predicted_type = con.as_object()->as_instance()->java_lang_Class_klass();
         const TypeOopPtr* toop = TypeOopPtr::make_from_klass(predicted_type, Type::trust_interfaces);
@@ -241,6 +226,22 @@ void Parse::do_get_xxx(Node* obj, ciField* field, bool is_field) {
         } else if (!too_many_traps(Deoptimization::Reason_speculate_class_check)) {
           ld = speculate_type(ld, predicted_type);
           assert(!stopped(), "");
+
+          if (log.is_enabled()) {
+            log.print("speculate_class_check: ");
+            method()->print_short_name(&log);
+            log.print(" @ %d:", bci());
+            field->print_on(&log);
+            log.print(" <: ");
+            predicted_type->print_name_on(&log);
+          }
+        } else {
+          if (log.is_enabled()) {
+            log.print("speculate_class_check: too many traps: ");
+            method()->print_short_name(&log);
+            log.print(" @ %d:", bci());
+            field->print_on(&log);
+          }
         }
       } else {
         assert(is_java_primitive(bt) || con.as_object()->is_null_object(), ""); // primitive constant or null
@@ -252,7 +253,7 @@ void Parse::do_get_xxx(Node* obj, ciField* field, bool is_field) {
           // nothing to do: speculative info contradicts observations
         } else if (tboth == tval) {
           // nothing to do: already a constant
-        } else {
+        } else if (!too_many_traps(Deoptimization::Reason_speculate_value_assert)) {
           Node* c = makecon(tcon);
 
           Node* chk = nullptr;
@@ -278,11 +279,34 @@ void Parse::do_get_xxx(Node* obj, ciField* field, bool is_field) {
           }
 //          ld = _gvn.transform(new CastPPNode(ld, tboth));
           ld = c;
+
+          if (log.is_enabled()) {
+            log.print("speculate_value_assert: ");
+            method()->print_short_name(&log);
+            log.print(" @ %d:", bci());
+            field->print_on(&log);
+            log.print(" = ");
+            con.print_on(&log);
+          }
+        } else {
+          if (log.is_enabled()) {
+            log.print("speculate_value_assert: too many traps: ");
+            method()->print_short_name(&log);
+            log.print(" @ %d:", bci());
+            field->print_on(&log);
+          }
         }
       }
       assert(!stopped(), "");
       if (stopped()) {
         return;
+      }
+    } else {
+      if (log.is_enabled()) {
+        method()->print_short_name(&log);
+        log.print(" @ %d:", bci());
+        field->print_on(&log);
+        log.print(" = UNKNOWN");
       }
     }
   }

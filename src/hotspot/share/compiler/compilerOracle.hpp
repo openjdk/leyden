@@ -89,7 +89,7 @@ NOT_PRODUCT(option(IGVPrintLevel, "IGVPrintLevel", Intx)) \
   option(CloneMapDebug, "CloneMapDebug", Bool) \
   option(IncrementalInlineForceCleanup, "IncrementalInlineForceCleanup", Bool) \
   option(MaxNodeLimit, "MaxNodeLimit", Intx)  \
-  option(PrecompileRecorded, "PrecompileRecorded", Bool) \
+  option(PrecompileRecorded, "PrecompileRecorded", Uintx) \
   option(DontPrecompile, "DontPrecompile", Bool) \
   option(IgnoreRecordedProfile, "IgnoreRecordedProfile", Bool) \
   option(TooManyTrapsAtBCI, "TooManyTrapsAtBCI", Ccstrlist) \
