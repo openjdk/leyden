@@ -47,10 +47,21 @@ public class ImageReaderFactory {
     private ImageReaderFactory() {}
 
     private static final String JAVA_HOME = System.getProperty("java.home");
-    private static final Path BOOT_MODULES_JIMAGE =
-        Paths.get(JAVA_HOME, "lib", "modules");
+    private static Path BOOT_MODULES_JIMAGE;
 
     private static final Map<Path, ImageReader> readers = new ConcurrentHashMap<>();
+
+    static {
+        if (JAVA_HOME.endsWith(".jar")) {
+            // The java.home is a jar file. In that case, there is no separate
+            // lib/modules image file. The modules image is embedded within the
+            // jar file and the ImageFileReader knows how to access the embedded
+            // modules image at a specific offset (see JIMAGE_Open()).
+            BOOT_MODULES_JIMAGE = Paths.get(JAVA_HOME);
+        } else {
+            BOOT_MODULES_JIMAGE = Paths.get(JAVA_HOME, "lib", "modules");
+        }
+    }
 
     /**
      * Returns an {@code ImageReader} to read from the given image file

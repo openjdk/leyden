@@ -25,11 +25,14 @@
 package sun.security.util;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.security.cert.X509Certificate;
 import java.util.Properties;
 
+import jdk.internal.misc.JavaHome;
 import jdk.internal.util.StaticProperty;
 import sun.security.x509.X509CertImpl;
 
@@ -54,10 +57,10 @@ public final class UntrustedCertificates {
         var dummy = AccessController.doPrivileged(new PrivilegedAction<Void>() {
             @Override
             public Void run() {
-                File f = new File(StaticProperty.javaHome(),
-                        "lib/security/blocked.certs");
-                try (FileInputStream fin = new FileInputStream(f)) {
-                    props.load(fin);
+                try (InputStream in = Files.newInputStream(
+                        JavaHome.getJDKResource(StaticProperty.javaHome(),
+                        "lib", "security", "blocked.certs"))) {
+                    props.load(in);
                 } catch (IOException fnfe) {
                     if (debug != null) {
                         debug.println("Error parsing blocked.certs");

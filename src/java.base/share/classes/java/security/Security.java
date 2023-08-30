@@ -30,10 +30,14 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.io.*;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 
 import jdk.internal.access.JavaSecurityPropertiesAccess;
 import jdk.internal.event.EventHelper;
 import jdk.internal.event.SecurityPropertyModificationEvent;
+import jdk.internal.misc.JavaHome;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.util.StaticProperty;
 import sun.security.util.Debug;
@@ -99,8 +103,8 @@ public final class Security {
 
         // first load the system properties file
         // to determine the value of security.overridePropertiesFile
-        File propFile = securityPropFile("java.security");
-        boolean success = loadProps(propFile, null, false);
+        Path propPath = securityPropFile("java.security");
+        boolean success = loadProps(propPath, null, false);
         if (!success) {
             throw new InternalError("Error loading java.security file");
         }
@@ -126,12 +130,13 @@ public final class Security {
 
     }
 
-    private static boolean loadProps(File masterFile, String extraPropFile, boolean overrideAll) {
+    private static boolean loadProps(Path masterFile, String extraPropFile, boolean overrideAll) {
         InputStream is = null;
         try {
-            if (masterFile != null && masterFile.exists()) {
-                is = new FileInputStream(masterFile);
+            if (masterFile != null) {
+                is = Files.newInputStream(masterFile);
             } else if (extraPropFile != null) {
+                // TODO (jiangli): Hermetic support for extraPropFile? 
                 extraPropFile = PropertyExpander.expand(extraPropFile);
                 File propFile = new File(extraPropFile);
                 URL propURL;
@@ -188,12 +193,24 @@ public final class Security {
     private Security() {
     }
 
-    private static File securityPropFile(String filename) {
+    private static Path securityPropFile(String filename) {
         // maybe check for a system property which will specify where to
         // look. Someday.
-        String sep = File.separator;
-        return new File(StaticProperty.javaHome() + sep + "conf" + sep +
-                        "security" + sep + filename);
+        Path res = null;
+        try {
+            res = JavaHome.getJDKResource(StaticProperty.javaHome(),
+                                          "conf", "security", filename);
+        } catch (InvalidPathException e) {
+            // Returns null in this case. And, the caller initialize()
+            // method will load the default properties when it cannot load
+            // the security properties file.
+            if (sdebug != null) {
+                sdebug.println("unable to find security property file " +
+                               filename);
+                e.printStackTrace();
+            }
+        }
+        return res;
     }
 
     /**

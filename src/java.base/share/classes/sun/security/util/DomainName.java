@@ -32,6 +32,7 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Arrays;
@@ -46,6 +47,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+
+import jdk.internal.misc.JavaHome;
 
 import sun.security.ssl.SSLLogger;
 
@@ -209,11 +212,13 @@ class DomainName {
                 new PrivilegedAction<>() {
                     @Override
                     public InputStream run() {
-                        File f = new File(System.getProperty("java.home"),
-                            "lib/security/public_suffix_list.dat");
                         try {
-                            return new FileInputStream(f);
-                        } catch (FileNotFoundException e) {
+                            return Files.newInputStream(
+                                JavaHome.getJDKResource(
+                                    System.getProperty("java.home"),
+                                    "lib", "security",
+                                    "public_suffix_list.dat"));
+                        } catch (IOException e) {
                             return null;
                         }
                     }

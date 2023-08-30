@@ -24,9 +24,11 @@
  */
 package sun.net;
 
+import jdk.internal.misc.JavaHome;
 import jdk.internal.util.StaticProperty;
 
 import java.io.*;
+import java.nio.file.Files;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Properties;
@@ -65,10 +67,8 @@ public class NetProperties {
             throw new Error("Can't find java.home ??");
         }
         try {
-            File f = new File(fname, "conf");
-            f = new File(f, "net.properties");
-            fname = f.getCanonicalPath();
-            try (FileInputStream in = new FileInputStream(fname)) {
+            try (InputStream in = Files.newInputStream(
+                JavaHome.getJDKResource(fname, "conf", "net.properties"))) {
                 props.load(in);
             }
         } catch (Exception e) {

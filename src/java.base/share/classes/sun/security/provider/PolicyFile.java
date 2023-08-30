@@ -43,6 +43,7 @@ import java.net.NetPermission;
 import java.util.concurrent.ConcurrentHashMap;
 import jdk.internal.access.JavaSecurityAccess;
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.misc.JavaHome;
 import jdk.internal.util.StaticProperty;
 import sun.nio.fs.DefaultFileSystemProvider;
 import sun.security.util.*;
@@ -388,6 +389,7 @@ public class PolicyFile extends java.security.Policy {
         }
     }
 
+    @SuppressWarnings("deprecation")
     private boolean initPolicyFile(final String propname, final String urlname,
                                    final PolicyInfo newInfo) {
         boolean loadedPolicy =
@@ -443,11 +445,29 @@ public class PolicyFile extends java.security.Policy {
                 while ((policy_uri = Security.getProperty(urlname+n)) != null) {
                     try {
                         URL policy_url = null;
-                        String expanded_uri = PropertyExpander.expand
-                                (policy_uri).replace(File.separatorChar, '/');
 
-                        if (policy_uri.startsWith("file:${java.home}/") ||
-                            policy_uri.startsWith("file:${user.home}/")) {
+                        String javaHomeUriPrefix = "file:${java.home}/";
+                        String userHomeUriPrefix = "file:${user.home}/";
+
+                        String expanded_uri;
+                        if (JavaHome.isHermetic() &&
+                            policy_uri.startsWith(javaHomeUriPrefix)) {
+                            // Convert to a jar URL before expanding the
+                            // java.home property.
+                            expanded_uri = JavaHome.hermeticJavaHome()
+                                               .toUri().toString() + "/" +
+                                           policy_uri.substring(
+                                               javaHomeUriPrefix.length());
+                        } else {
+                            expanded_uri = PropertyExpander.expand(policy_uri);
+                        }
+                        expanded_uri = expanded_uri.replace(File.separatorChar, '/');
+
+                        if (expanded_uri.startsWith("jar:file:/")) {
+                            // TODO (jiangli): Avoid the usage of deprecated URL constructor.
+                            policy_url = new URL(expanded_uri);
+                        } else if (policy_uri.startsWith(javaHomeUriPrefix) ||
+                                   policy_uri.startsWith(userHomeUriPrefix)) {
 
                             // this special case accommodates
                             // the situation java.home/user.home
@@ -483,7 +503,14 @@ public class PolicyFile extends java.security.Policy {
     }
 
     private void initDefaultPolicy(PolicyInfo newInfo) {
+        /*
         Path defaultPolicy = builtInFS.getPath(StaticProperty.javaHome(),
+                                     "lib",
+                                     "security",
+                                     "default.policy");
+        */
+        // TODO (jiangli): Check and apply JDK-8266345's builtInFS fix.
+        Path defaultPolicy = JavaHome.getJDKResource(StaticProperty.javaHome(),
                                      "lib",
                                      "security",
                                      "default.policy");

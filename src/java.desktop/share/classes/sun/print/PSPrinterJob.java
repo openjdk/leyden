@@ -92,12 +92,15 @@ import java.nio.charset.*;
 import java.nio.CharBuffer;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 //REMIND: Remove use of this class when IPPPrintService is moved to share directory.
 import java.lang.reflect.Method;
 import javax.print.attribute.Attribute;
 import javax.print.attribute.standard.JobSheets;
 import javax.print.attribute.standard.Media;
+
+import jdk.internal.misc.JavaHome;
 
 /**
  * A class which initiates and executes a PostScript printer job.
@@ -365,26 +368,24 @@ public class PSPrinterJob extends RasterPrinterJob {
             String ulocale = SunToolkit.getStartupLocale().getLanguage();
             try {
 
-                File f = new File(jhome + File.separator +
-                                  "lib" + File.separator +
-                                  "psfontj2d.properties." + ulocale);
+                Path p = JavaHome.getJDKResource(
+                             jhome, "lib", "psfontj2d.properties." + ulocale);
 
-                if (!f.canRead()){
+                if (!Files.isReadable(p)){
 
-                    f = new File(jhome + File.separator +
-                                      "lib" + File.separator +
-                                      "psfont.properties." + ulocale);
-                    if (!f.canRead()){
+                    p = JavaHome.getJDKResource(
+                            jhome, "lib", "psfont.properties." + ulocale);
+                    if (!Files.isReadable(p)){
 
-                        f = new File(jhome + File.separator + "lib" +
-                                     File.separator + "psfontj2d.properties");
+                        p = JavaHome.getJDKResource(
+                                jhome, "lib", "psfontj2d.properties");
 
-                        if (!f.canRead()){
+                        if (!Files.isReadable(p)){
 
-                            f = new File(jhome + File.separator + "lib" +
-                                         File.separator + "psfont.properties");
+                            p = JavaHome.getJDKResource(
+                                    jhome, "lib", "psfont.properties");
 
-                            if (!f.canRead()){
+                            if (!Files.isReadable(p)){
                                 return (Properties)null;
                             }
                         }
@@ -393,7 +394,7 @@ public class PSPrinterJob extends RasterPrinterJob {
 
                 // Load property file
                 Properties props = new Properties();
-                try (FileInputStream in = new FileInputStream(f.getPath())) {
+                try (InputStream in = Files.newInputStream(p)) {
                     props.load(in);
                 }
                 return props;
