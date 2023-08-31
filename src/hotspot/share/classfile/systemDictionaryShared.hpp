@@ -248,7 +248,6 @@ public:
   static void initialize() NOT_CDS_RETURN;
   static void init_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static void handle_class_unloading(InstanceKlass* k) NOT_CDS_RETURN;
-  static void init_dumptime_info(Method* m) NOT_CDS_RETURN;
 
   static Dictionary* boot_loader_dictionary() {
     return ClassLoaderData::the_null_class_loader_data()->dictionary();
