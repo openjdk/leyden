@@ -63,7 +63,7 @@ address ArchiveHeapWriter::_requested_top;
 GrowableArrayCHeap<ArchiveHeapWriter::NativePointerInfo, mtClassShared>* ArchiveHeapWriter::_native_pointers;
 GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_source_objs;
 
-static GrowableArrayCHeap<address, mtClassShared> *_permobj_seg_buffered_addrs = nullptr;
+static GrowableArrayCHeap<size_t, mtClassShared> *_permobj_seg_buffered_addrs = nullptr;
 static GrowableArrayCHeap<size_t, mtClassShared> *_permobj_seg_bytesizes = nullptr;
 static GrowableArrayCHeap<int, mtClassShared> *_permobj_seg_lengths = nullptr;
 
@@ -71,7 +71,7 @@ ArchiveHeapWriter::BufferOffsetToSourceObjectTable*
   ArchiveHeapWriter::_buffer_offset_to_source_obj_table = nullptr;
 
 
-typedef ResourceHashtable<address, size_t,
+typedef ResourceHashtable<size_t, size_t,
       127, // prime number
       AnyObj::C_HEAP,
       mtClassShared> FillersTable;
@@ -88,7 +88,7 @@ void ArchiveHeapWriter::init() {
 
     _native_pointers = new GrowableArrayCHeap<NativePointerInfo, mtClassShared>(2048);
     _source_objs = new GrowableArrayCHeap<oop, mtClassShared>(10000);
-    _permobj_seg_buffered_addrs = new GrowableArrayCHeap<address, mtClassShared>(5);
+    _permobj_seg_buffered_addrs = new GrowableArrayCHeap<size_t, mtClassShared>(5);
     _permobj_seg_bytesizes = new GrowableArrayCHeap<size_t, mtClassShared>(5);
     _permobj_seg_lengths = new GrowableArrayCHeap<int, mtClassShared>(5);
 
@@ -272,7 +272,7 @@ int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClas
     size_t word_size;
     size_t permobj_seg_bottom_offset = create_objarray_in_buffer(permobjs, from, num_elems, 0, word_size);
     permobj_seg_offsets->append(permobj_seg_bottom_offset);
-    _permobj_seg_buffered_addrs->append(offset_to_buffered_address<address>(permobj_seg_bottom_offset));
+    _permobj_seg_buffered_addrs->append(permobj_seg_bottom_offset);
     _permobj_seg_bytesizes->append(word_size * HeapWordSize);
     _permobj_seg_lengths->append(num_elems);
   }
@@ -347,13 +347,13 @@ void ArchiveHeapWriter::maybe_fill_gc_region_gap(size_t required_byte_size) {
     log_info(cds, heap)("Inserting filler obj array of %d elements (" SIZE_FORMAT " bytes total) @ buffer offset " SIZE_FORMAT,
                         array_length, fill_bytes, _buffer_used);
     HeapWord* filler = init_filler_array_at_buffer_top(array_length, fill_bytes);
+    _fillers->put(_buffer_used, fill_bytes);
     _buffer_used = filler_end;
-    _fillers->put((address)filler, fill_bytes);
   }
 }
 
 size_t ArchiveHeapWriter::get_filler_size_at(address buffered_addr) {
-  size_t* p = _fillers->get(buffered_addr);
+  size_t* p = _fillers->get(buffered_addr - buffer_bottom());
   if (p != nullptr) {
     assert(*p > 0, "filler must be larger than zero bytes");
     return *p;
@@ -611,8 +611,9 @@ template <typename T> void ArchiveHeapWriter::add_permobj_segments_to_roots(Grow
 
 // If the buffered_addr is one of the permobj segments, returns the size information about this segment.
 int ArchiveHeapWriter::get_permobj_segment_at(address buffered_addr, size_t* byte_size, int* permobj_segment_length) {
+  size_t offset = buffered_addr - buffer_bottom();
   for (int i = 0; i < _permobj_seg_buffered_addrs->length(); i++) {
-    if (buffered_addr == _permobj_seg_buffered_addrs->at(i)) {
+    if (offset == _permobj_seg_buffered_addrs->at(i)) {
       *byte_size = _permobj_seg_bytesizes->at(i);
       *permobj_segment_length = _permobj_seg_lengths->at(i);
       return i;

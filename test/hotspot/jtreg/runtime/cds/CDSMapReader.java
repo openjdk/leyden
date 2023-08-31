@@ -263,7 +263,7 @@ public class CDSMapReader {
     }
 
     private static void mustContain(HashMap<Long, HeapObject> allObjects, Field field, long pointer, boolean isNarrow) {
-        if (allObjects.get(pointer) == null) {
+        if (pointer != 0x0 && allObjects.get(pointer) == null) {
             throw new RuntimeException((isNarrow ? "narrowOop" : "oop") + " pointer 0x" + Long.toHexString(pointer) +
                                        " on line " + field.lineCount + " doesn't point to a valid heap object");
         }
