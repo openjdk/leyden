@@ -57,10 +57,12 @@ import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.net.URL;
 import java.nio.file.*;
+import java.util.stream.Stream;
 import java.security.*;
 
 import java.security.Provider.Service;
 
+import jdk.internal.misc.JavaHome;
 import jdk.internal.util.StaticProperty;
 
 import sun.security.jca.*;
@@ -341,10 +343,10 @@ final class JceSecurity {
         // Prepend java.home to get the full path.  normalize() in
         // case an extra "." or ".." snuck in somehow.
         String javaHomeProperty = StaticProperty.javaHome();
-        Path javaHomePolicyPath = Paths.get(javaHomeProperty, "conf",
-                "security", "policy").normalize();
-        Path cryptoPolicyPath = Paths.get(javaHomeProperty, "conf", "security",
-                "policy", cryptoPolicyProperty).normalize();
+        Path javaHomePolicyPath = JavaHome.getJDKResource(javaHomeProperty,
+                "conf", "security", "policy").normalize();
+        Path cryptoPolicyPath = JavaHome.getJDKResource(javaHomeProperty,
+                "conf", "security", "policy", cryptoPolicyProperty).normalize();
 
         if (cryptoPolicyPath.getParent().compareTo(javaHomePolicyPath) != 0) {
             throw new SecurityException(
@@ -352,16 +354,20 @@ final class JceSecurity {
                 cryptoPolicyProperty);
         }
 
-        if (!Files.isDirectory(cryptoPolicyPath)
+        // cryptoPolicyPath is a readable directory in the local file system or
+        // the hermetic JAR (java.home) file.
+        if ((!Files.isDirectory(cryptoPolicyPath) && !JavaHome.isHermetic())
                 || !Files.isReadable(cryptoPolicyPath)) {
             throw new SecurityException(
                 "Can't read cryptographic policy directory: " +
                 cryptoPolicyProperty);
         }
 
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(
-                cryptoPolicyPath, "{default,exempt}_*.policy")) {
-            for (Path entry : stream) {
+        final String s = cryptoPolicyProperty;
+        try (Stream<Path> stream = Files.find(
+            cryptoPolicyPath, Integer.MAX_VALUE, (file, attrs)
+                -> (file.toString().matches(".*(default|exempt)_.*policy")))) {
+            stream.forEach(entry -> {
                 try (InputStream is = new BufferedInputStream(
                         Files.newInputStream(entry))) {
                     String filename = entry.getFileName().toString();
@@ -378,18 +384,15 @@ final class JceSecurity {
                         exemptPolicy = ((exemptPolicy == null) ? tmpPerms :
                                 exemptPolicy.getMinimum(tmpPerms));
                     } else {
-                        // This should never happen.  newDirectoryStream
-                        // should only throw return "{default,exempt}_*.policy"
+                        // This should never happen.
                         throw new SecurityException(
-                            "Unexpected jurisdiction policy files in : " +
-                            cryptoPolicyProperty);
+                            "Unexpected jurisdiction policy files in : " + s);
                     }
                 } catch (Exception e) {
                     throw new SecurityException(
-                        "Couldn't parse jurisdiction policy files in: " +
-                        cryptoPolicyProperty);
+                        "Couldn't parse jurisdiction policy files in: " + s);
                 }
-            }
+            });
         } catch (DirectoryIteratorException ex) {
             // I/O error encountered during the iteration,
             // the cause is an IOException
