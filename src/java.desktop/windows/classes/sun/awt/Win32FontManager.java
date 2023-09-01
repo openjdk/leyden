@@ -88,7 +88,7 @@ public final class Win32FontManager extends SunFontManager {
                      * access them. This is used only on Windows so that when
                      * printing the printer driver can access the fonts.
                      */
-                    registerJREFontsWithPlatform(jreFontDirName);
+                    registerJREFontsWithPlatform(jreFontDirPath.toString());
                     return null;
                 }
             });
@@ -135,7 +135,7 @@ public final class Win32FontManager extends SunFontManager {
          * This is playing it safe as we would want to find fonts in the
          * JRE font directory ahead of those in the system directory
          */
-        String tmpFontPath = jreFontDirName+File.pathSeparator+fontPath;
+        String tmpFontPath = jreFontDirPath.toString()+File.pathSeparator+fontPath;
         StringTokenizer parser = new StringTokenizer(tmpFontPath,
                                                      File.pathSeparator);
 
@@ -143,7 +143,7 @@ public final class Win32FontManager extends SunFontManager {
         try {
             while (!found && parser.hasMoreTokens()) {
                 String newPath = parser.nextToken();
-                boolean isJREFont = newPath.equals(jreFontDirName);
+                boolean isJREFont = newPath.equals(jreFontDirPath.toString());
                 File theFile = new File(newPath, fontFileName);
                 if (theFile.canRead()) {
                     found = true;
