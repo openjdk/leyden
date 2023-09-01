@@ -3626,7 +3626,7 @@ void OptoRuntime::generate_exception_blob() {
   // Setup code generation tools
   CodeBuffer buffer("exception_blob", 2048, 1024);
   int pc_offset = 0;
-  if (SCAFile::load_exception_blob(&buffer, &pc_offset)) {
+  if (SCCache::load_exception_blob(&buffer, &pc_offset)) {
     OopMapSet* oop_maps = new OopMapSet();
     oop_maps->add_gc_map(pc_offset, new OopMap(SimpleRuntimeFrame::framesize, 0));
 
@@ -3723,7 +3723,7 @@ void OptoRuntime::generate_exception_blob() {
   // Make sure all code is generated
   masm->flush();
 
-  SCAFile::store_exception_blob(&buffer, pc_offset);
+  SCCache::store_exception_blob(&buffer, pc_offset);
   // Set exception blob
   _exception_blob =  ExceptionBlob::create(&buffer, oop_maps, SimpleRuntimeFrame::framesize >> 1);
 }

@@ -108,8 +108,8 @@ for i in $(seq 1 $RUNS); do
     premain_xon=$(get_elapsed logs/premain_xon.$i)
 
     (set -x;
-     perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadSharedCode \
-        -XX:SharedCodeArchive=$APP-dynamic.jsa-sc -XX:ReservedSharedCodeSize=1000M -Xlog:sca=error \
+     perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode \
+        -XX:CachedCodeFile=$APP-dynamic.jsa-sc -Xlog:scc=error \
         com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_aot.$i
     )
     premain_aot=$(get_elapsed logs/premain_aot.$i)

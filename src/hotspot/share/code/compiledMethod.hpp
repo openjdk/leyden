@@ -216,7 +216,7 @@ public:
   virtual bool  is_in_use() const = 0;
   virtual int   comp_level() const = 0;
   virtual int   compile_id() const = 0;
-  virtual bool  is_sca() const = 0;
+  virtual bool  is_scc() const = 0;
   virtual bool  preloaded() const = 0;
   virtual bool  has_clinit_barriers() const = 0;
 

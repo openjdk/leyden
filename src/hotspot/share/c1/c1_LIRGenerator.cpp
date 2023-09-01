@@ -3268,7 +3268,7 @@ void LIRGenerator::increment_event_counter_impl(CodeEmitInfo* info,
       bailout("method counters allocation failed");
       return;
     }
-if (SCArchive::is_on()) {
+if (SCCache::is_on()) {
     counter_holder = new_register(T_METADATA);
     __ metadata2reg(counters_adr, counter_holder);
 } else {

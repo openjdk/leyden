@@ -91,7 +91,7 @@ bool C2Compiler::init_c2_runtime() {
   HandleMark handle_mark(thread);
   bool success = OptoRuntime::generate(thread->env());
   if (success) {
-    SCAFile::init_opto_table();
+    SCCache::init_opto_table();
   }
   return success;
 }
@@ -115,21 +115,21 @@ void C2Compiler::initialize() {
 void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, bool install_code, DirectiveSet* directive) {
   assert(is_initialized(), "Compiler thread must be initialized");
   CompileTask* task = env->task();
-  if (install_code && task->is_sca()) {
-    bool success = SCAFile::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
+  if (install_code && task->is_scc()) {
+    bool success = SCCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
     if (success) {
       assert(task->is_success(), "sanity");
       return;
     }
     if (!task->preload()) { // Do not mark entry if pre-loading failed - it can pass normal load
-      SCArchive::invalidate(task->sca_entry()); // mark sca_entry as not entrant
+      SCCache::invalidate(task->scc_entry()); // mark sca_entry as not entrant
     }
-    if (SCArchive::is_SC_load_tread_on()) {
+    if (SCCache::is_code_load_thread_on()) {
       env->record_failure("Failed to load cached code");
       // Bail out if failed to load cached code in SC thread
       return;
     }
-    task->clear_sca();
+    task->clear_scc();
   }
   bool subsume_loads = SubsumeLoads;
   bool do_escape_analysis = DoEscapeAnalysis;
@@ -137,7 +137,7 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool do_reduce_allocation_merges = ReduceAllocationMerges && EliminateAllocations;
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
-  bool for_preload = SCArchive::gen_preload_code(target, entry_bci);
+  bool for_preload = SCCache::gen_preload_code(target, entry_bci);
 
   while (!env->failing()) {
     // Attempt to compile while subsuming loads into machine instructions.

@@ -1223,7 +1223,7 @@ void CodeCache::initialize() {
 
 void codeCache_init() {
   CodeCache::initialize();
-  SCArchive::initialize();
+  SCCache::initialize();
 }
 
 //------------------------------------------------------------------------------------------------

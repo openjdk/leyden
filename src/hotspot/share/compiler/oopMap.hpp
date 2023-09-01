@@ -153,7 +153,7 @@ class OopMap: public ResourceObj {
   friend class VMStructs;
   friend class OopMapSet;
   friend class OopMapSort;
-  friend class SCAReader;
+  friend class SCCReader;
  private:
   int  _pc_offset; // offset in the code that this OopMap corresponds to
   int  _omv_count; // number of OopMapValues in the stream
@@ -217,7 +217,7 @@ class OopMap: public ResourceObj {
 
 class OopMapSet : public ResourceObj {
   friend class VMStructs;
-  friend class SCAReader;
+  friend class SCCReader;
  private:
   GrowableArray<OopMap*> _list;
 

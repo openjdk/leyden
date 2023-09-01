@@ -33,7 +33,7 @@ class DirectiveSet;
 class DebugInformationRecorder;
 class JvmtiThreadState;
 class OopIterateClosure;
-class SCAEntry;
+class SCCEntry;
 
 // nmethods (native methods) are the compiled code versions of Java methods.
 //
@@ -239,7 +239,7 @@ class nmethod : public CompiledMethod {
   RTMState _rtm_state;
 #endif
 
-  SCAEntry* _sca_entry;
+  SCCEntry* _scc_entry;
 
   // These are used for compiled synchronized native methods to
   // locate the owner and stack slot for the BasicLock. They are
@@ -297,7 +297,7 @@ class nmethod : public CompiledMethod {
           ImplicitExceptionTable* nul_chk_table,
           AbstractCompiler* compiler,
           CompLevel comp_level
-          , SCAEntry* sca_entry
+          , SCCEntry* scc_entry
 #if INCLUDE_JVMCI
           , char* speculations = nullptr,
           int speculations_len = 0,
@@ -349,7 +349,7 @@ class nmethod : public CompiledMethod {
                               ImplicitExceptionTable* nul_chk_table,
                               AbstractCompiler* compiler,
                               CompLevel comp_level
-                              , SCAEntry* sca_entry
+                              , SCCEntry* scc_entry
 #if INCLUDE_JVMCI
                               , char* speculations = nullptr,
                               int speculations_len = 0,
@@ -606,8 +606,8 @@ public:
 
   int orig_pc_offset() { return _orig_pc_offset; }
 
-  SCAEntry* sca_entry() const { return _sca_entry; }
-  bool is_sca() const { return sca_entry() != nullptr; }
+  SCCEntry* scc_entry() const { return _scc_entry; }
+  bool is_scc() const { return scc_entry() != nullptr; }
   bool preloaded() const;
   bool has_clinit_barriers() const;
 

@@ -198,8 +198,8 @@ uint CompileBroker::_sum_nmethod_code_size          = 0;
 jlong CompileBroker::_peak_compilation_time        = 0;
 
 CompilerStatistics CompileBroker::_stats_per_level[CompLevel_full_optimization];
-CompilerStatistics CompileBroker::_sca_stats;
-CompilerStatistics CompileBroker::_sca_stats_per_level[CompLevel_full_optimization + 1];
+CompilerStatistics CompileBroker::_scc_stats;
+CompilerStatistics CompileBroker::_scc_stats_per_level[CompLevel_full_optimization + 1];
 
 CompileQueue* CompileBroker::_c3_compile_queue     = nullptr;
 CompileQueue* CompileBroker::_c2_compile_queue     = nullptr;
@@ -662,7 +662,7 @@ void CompileBroker::compilation_init_phase1(JavaThread* THREAD) {
 #endif // COMPILER1
       }
 #ifdef COMPILER2
-      if (SCArchive::is_on() && (_c3_count > 0)) {
+      if (SCCache::is_on() && (_c3_count > 0)) {
         _compilers[2] = new C2Compiler();
       }
 #endif
@@ -800,7 +800,7 @@ void CompileBroker::compilation_init_phase1(JavaThread* THREAD) {
 // Completes compiler initialization. Compilation requests submitted
 // prior to this will be silently ignored.
 void CompileBroker::compilation_init_phase2() {
-  log_info(sca, init)("CompileBroker is initialized");
+  log_info(scc, init)("CompileBroker is initialized");
   _initialized = true;
 }
 
@@ -1622,7 +1622,7 @@ bool CompileBroker::compilation_is_complete(const methodHandle& method,
       if (result == nullptr) {
         return false;
       }
-      if (online_only && result->is_sca()) {
+      if (online_only && result->is_scc()) {
         return false;
       }
       bool same_level = (comp_level == result->comp_level());
@@ -1752,7 +1752,7 @@ CompileTask* CompileBroker::create_compile_task(CompileQueue*       queue,
   new_task->initialize(compile_id, method, osr_bci, comp_level,
                        hot_method, hot_count, compile_reason,
                        requires_online_compilation, blocking);
-  if (new_task->is_sca() && (_sc_count > 0)) {
+  if (new_task->is_scc() && (_sc_count > 0)) {
     // Put it on SC queue
     queue = is_c1_compile(comp_level) ? _sc1_compile_queue : _sc2_compile_queue;
   }
@@ -1896,7 +1896,7 @@ bool CompileBroker::init_compiler_runtime() {
     // Perform per-thread and global initializations
     {
       MutexLocker only_one (thread, CompileThread_lock);
-      SCAFile::init_table();
+      SCCache::init_table();
     }
     comp->initialize();
   }
@@ -2504,7 +2504,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   if (PrintCompilation && PrintCompilation2) {
     tty->print("%7d ", (int) tty->time_stamp().milliseconds());  // print timestamp
     tty->print("%4d ", compile_id);    // print compilation number
-    tty->print("%s ", (is_osr ? "%" : (task->is_sca() ? "A" : " ")));
+    tty->print("%s ", (is_osr ? "%" : (task->is_scc() ? "A" : " ")));
     if (task->is_success()) {
       tty->print("size: %d(%d) ", task->nm_total_size(), task->nm_insts_size());
     }
@@ -2692,12 +2692,12 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
       }
 
       // Collect statistic per compilation level
-      if (task->is_sca()) {
-        _sca_stats._standard.update(time, bytes_compiled);
-        _sca_stats._nmethods_size += task->nm_total_size();
-        _sca_stats._nmethods_code_size += task->nm_insts_size();
+      if (task->is_scc()) {
+        _scc_stats._standard.update(time, bytes_compiled);
+        _scc_stats._nmethods_size += task->nm_total_size();
+        _scc_stats._nmethods_code_size += task->nm_insts_size();
         int level = task->preload() ? CompLevel_full_optimization : (comp_level - 1);
-        CompilerStatistics* stats = &_sca_stats_per_level[level];
+        CompilerStatistics* stats = &_scc_stats_per_level[level];
         stats->_standard.update(time, bytes_compiled);
         stats->_nmethods_size += task->nm_total_size();
         stats->_nmethods_code_size += task->nm_insts_size();
@@ -2716,7 +2716,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
       // Collect statistic per compiler
       AbstractCompiler* comp = task->compiler();
-      if (comp && !task->is_sca()) {
+      if (comp && !task->is_scc()) {
         CompilerStatistics* stats = comp->stats();
         if (is_osr) {
           stats->_osr.update(time, bytes_compiled);
@@ -2725,7 +2725,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
         }
         stats->_nmethods_size += task->nm_total_size();
         stats->_nmethods_code_size += task->nm_insts_size();
-      } else if (!task->is_sca()) { // if (!comp)
+      } else if (!task->is_scc()) { // if (!comp)
         assert(false, "Compiler object must exist");
       }
     }
@@ -2810,8 +2810,8 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
         print_times(comp->name(), comp->stats());
       }
     }
-    if (_sca_stats._standard._count > 0) {
-      print_times("SC", &_sca_stats);
+    if (_scc_stats._standard._count > 0) {
+      print_times("SC", &_scc_stats);
     }
     if (aggregate) {
       tty->cr();
@@ -2826,7 +2826,7 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
       print_times(tier_name, stats);
     }
     for (int tier = CompLevel_simple; tier <= CompilationPolicy::highest_compile_level() + 1; tier++) {
-      CompilerStatistics* stats = &_sca_stats_per_level[tier-1];
+      CompilerStatistics* stats = &_scc_stats_per_level[tier-1];
       if (stats->_standard._bytes > 0) {
         os::snprintf_checked(tier_name, sizeof(tier_name), "SC T%d", tier);
         print_times(tier_name, stats);

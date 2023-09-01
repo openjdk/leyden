@@ -1561,9 +1561,9 @@ void MetaspaceShared::initialize_shared_spaces() {
     }
     TrainingData::print_archived_training_data_on(tty);
 
-    if (LoadSharedCode) {
-      tty->print_cr("\n\nShared Code Archive: %s", SharedCodeArchive);
-      SCAFile::print_on(tty);
+    if (LoadCachedCode) {
+      tty->print_cr("\n\nCached Code file: %s", CachedCodeFile);
+      SCCache::print_on(tty);
     }
 
     // collect shared symbols and strings

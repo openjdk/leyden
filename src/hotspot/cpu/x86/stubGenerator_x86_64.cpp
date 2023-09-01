@@ -2973,7 +2973,7 @@ address StubGenerator::generate_multiplyToLen() {
   StubCodeMark mark(this, "StubRoutines", "multiplyToLen");
   address start = __ pc();
 
-  if (SCAFile::load_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", start)) {
+  if (SCCache::load_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", start)) {
     return start;
   }
 
@@ -3017,7 +3017,7 @@ address StubGenerator::generate_multiplyToLen() {
   __ leave(); // required for proper stackwalking of RuntimeStub frame
   __ ret(0);
 
-  SCAFile::store_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", start);
+  SCCache::store_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", start);
   return start;
 }
 
@@ -3089,7 +3089,7 @@ address StubGenerator::generate_squareToLen() {
   StubCodeMark mark(this, "StubRoutines", "squareToLen");
   address start = __ pc();
 
-  if (SCAFile::load_stub(this, vmIntrinsics::_squareToLen, "squareToLen", start)) {
+  if (SCCache::load_stub(this, vmIntrinsics::_squareToLen, "squareToLen", start)) {
     return start;
   }
 
@@ -3120,7 +3120,7 @@ address StubGenerator::generate_squareToLen() {
   __ leave(); // required for proper stackwalking of RuntimeStub frame
   __ ret(0);
 
-  SCAFile::store_stub(this, vmIntrinsics::_squareToLen, "squareToLen", start);
+  SCCache::store_stub(this, vmIntrinsics::_squareToLen, "squareToLen", start);
   return start;
 }
 
@@ -3218,7 +3218,7 @@ address StubGenerator::generate_mulAdd() {
   StubCodeMark mark(this, "StubRoutines", "mulAdd");
   address start = __ pc();
 
-  if (SCAFile::load_stub(this, vmIntrinsics::_mulAdd, "mulAdd", start)) {
+  if (SCCache::load_stub(this, vmIntrinsics::_mulAdd, "mulAdd", start)) {
     return start;
   }
 
@@ -3255,7 +3255,7 @@ address StubGenerator::generate_mulAdd() {
   __ leave(); // required for proper stackwalking of RuntimeStub frame
   __ ret(0);
 
-  SCAFile::store_stub(this, vmIntrinsics::_mulAdd, "mulAdd", start);
+  SCCache::store_stub(this, vmIntrinsics::_mulAdd, "mulAdd", start);
   return start;
 }
 

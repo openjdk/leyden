@@ -65,7 +65,7 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
   __ shrptr(end, CardTable::card_shift());
   __ subptr(end, addr); // end --> cards count
 
-  if (SCArchive::is_on_for_write()) {
+  if (SCCache::is_on_for_write()) {
     // SCA needs relocation info for this address
     __ lea(tmp, ExternalAddress((address)byte_map_base));
   } else {
@@ -109,7 +109,7 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   // never need to be relocated. On 64bit however the value may be too
   // large for a 32bit displacement.
   intptr_t byte_map_base = (intptr_t)ct->byte_map_base();
-  if (SCArchive::is_on_for_write()) {
+  if (SCCache::is_on_for_write()) {
     // SCA needs relocation info for this address
     ExternalAddress cardtable((address)byte_map_base);
     Address index(noreg, obj, Address::times_1);

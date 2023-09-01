@@ -227,8 +227,8 @@ class CompileBroker: AllStatic {
   static jlong _peak_compilation_time;
 
   static CompilerStatistics _stats_per_level[];
-  static CompilerStatistics _sca_stats;
-  static CompilerStatistics _sca_stats_per_level[];
+  static CompilerStatistics _scc_stats;
+  static CompilerStatistics _scc_stats_per_level[];
 
   static volatile int _print_compilation_warning;
 

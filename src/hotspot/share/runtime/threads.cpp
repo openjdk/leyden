@@ -805,7 +805,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
 #if defined(COMPILER2)
   // Pre-load cached compiled methods
-  SCArchive::preload_code(THREAD);
+  SCCache::preload_code(THREAD);
 #endif
 
   if (NativeHeapTrimmer::enabled()) {

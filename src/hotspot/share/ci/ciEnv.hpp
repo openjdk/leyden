@@ -38,7 +38,7 @@
 
 class CompileTask;
 class OopMapSet;
-class SCAEntry;
+class SCCEntry;
 
 // ciEnv
 //
@@ -387,7 +387,7 @@ public:
                        bool                      has_monitors,
                        int                       immediate_oops_patched,
                        RTMState                  rtm_state = NoRTM,
-                       SCAEntry*                 entry = nullptr);
+                       SCCEntry*                 entry = nullptr);
 
   // Access to certain well known ciObjects.
 #define VM_CLASS_FUNC(name, ignore_s) \
@@ -471,11 +471,11 @@ public:
   void metadata_do(MetadataClosure* f) { _factory->metadata_do(f); }
 
 private:
-  SCAEntry* _sca_clinit_barriers_entry;
+  SCCEntry* _scc_clinit_barriers_entry;
 
 public:
-  void  set_sca_clinit_barriers_entry(SCAEntry* entry) { _sca_clinit_barriers_entry = entry; }
-  SCAEntry* sca_clinit_barriers_entry()          const { return _sca_clinit_barriers_entry; }
+  void  set_scc_clinit_barriers_entry(SCCEntry* entry) { _scc_clinit_barriers_entry = entry; }
+  SCCEntry* scc_clinit_barriers_entry()          const { return _scc_clinit_barriers_entry; }
 
   // Replay support
 private:

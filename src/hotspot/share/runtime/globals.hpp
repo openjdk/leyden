@@ -1731,34 +1731,6 @@ const int ObjectAlignmentInBytes = 8;
   notproduct(bool, EnableJVMTIStackDepthAsserts, true,                      \
           "Enable JVMTI asserts related to stack depth checks")             \
                                                                             \
-  /* flags to control Leyden training and deployment modes  */              \
-                                                                            \
-  product(bool, RecordTraining, false,                                      \
-          "Request output of training data for improved deployment.")       \
-                                                                            \
-  product(ccstrlist, TrainingOptions, nullptr,                              \
-          "Options for what training data to record [default all]")         \
-                                                                            \
-  product(bool, ReplayTraining, false,                                      \
-          "Read training data, if available, for use in this execution")    \
-                                                                            \
-  product(bool, PrintTrainingInfo, false, DIAGNOSTIC,                       \
-          "Print additional information about training")                    \
-                                                                            \
-  product(ccstr, TrainingFile, nullptr,                                     \
-          "If training record or replay is enabled, store or load VM data " \
-          "to or from this file [default: ./hs_training_%p.log] "           \
-          "(_%p replaced with _pidNNN on output, empty string on input)")   \
-                                                                            \
-  product(bool, RecordOptCompilationOrder, false,                           \
-          "Record c2/jvmci nmethod temperature to guide compilation order.")\
-                                                                            \
-  product(bool, RecordOnlyTopCompilations, false,                           \
-          "Record only top compilations (non-zero counts)")                 \
-                                                                            \
-  product(int, RecordOptCompilationOrderInterval, 10,                       \
-          "Sampling interval for RecordOptCompilationOrder")                \
-                                                                            \
   /* flags for performance data collection */                               \
                                                                             \
   product(bool, UsePerfData, true,                                          \

@@ -33,7 +33,7 @@
 
 class CompileTrainingData;
 class DirectiveSet;
-class SCAEntry;
+class SCCEntry;
 
 JVMCI_ONLY(class JVMCICompileState;)
 
@@ -93,7 +93,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   CodeSection::csize_t _nm_insts_size;
   DirectiveSet*  _directive;
   AbstractCompiler*    _compiler;
-  SCAEntry*            _sca_entry;
+  SCCEntry*            _scc_entry;
 #if INCLUDE_JVMCI
   bool                 _has_waiter;
   // Compilation state for a blocking JVMCI compilation
@@ -135,9 +135,9 @@ class CompileTask : public CHeapObj<mtCompiler> {
   bool         is_complete() const                  { return _is_complete; }
   bool         is_blocking() const                  { return _is_blocking; }
   bool         is_success() const                   { return _is_success; }
-  bool         is_sca() const                       { return _sca_entry != nullptr; }
-  void         clear_sca()                          { _sca_entry = nullptr; }
-  SCAEntry*    sca_entry()                          { return _sca_entry; }
+  bool         is_scc() const                       { return _scc_entry != nullptr; }
+  void         clear_scc()                          { _scc_entry = nullptr; }
+  SCCEntry*    scc_entry()                          { return _scc_entry; }
   bool         requires_online_compilation() const  { return _requires_online_compilation; }
   DirectiveSet* directive() const                   { return _directive; }
   CompileReason compile_reason() const              { return _compile_reason; }
@@ -212,7 +212,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
 private:
   static void  print_impl(outputStream* st, Method* method, int compile_id, int comp_level,
                                       bool is_osr_method = false, int osr_bci = -1, bool is_blocking = false,
-                                      bool is_sca = false, bool is_preload = false,
+                                      bool is_scc = false, bool is_preload = false,
                                       const char* compiler_name = nullptr,
                                       const char* msg = nullptr, bool short_form = false, bool cr = true,
                                       jlong time_queued = 0, jlong time_started = 0);
@@ -223,7 +223,7 @@ public:
   static void  print(outputStream* st, const nmethod* nm, const char* msg = nullptr, bool short_form = false, bool cr = true) {
     print_impl(st, nm->method(), nm->compile_id(), nm->comp_level(),
                            nm->is_osr_method(), nm->is_osr_method() ? nm->osr_entry_bci() : -1, /*is_blocking*/ false,
-                           nm->sca_entry() != nullptr, nm->preloaded(),
+                           nm->scc_entry() != nullptr, nm->preloaded(),
                            nm->compiler_name(), msg, short_form, cr);
   }
   static void  print_ul(const nmethod* nm, const char* msg = nullptr);

@@ -770,7 +770,7 @@ void MacroAssembler::stop(const char* msg) {
   andq(rsp, -16); // align stack as required by ABI
   call(RuntimeAddress(CAST_FROM_FN_PTR(address, MacroAssembler::debug64)));
   hlt();
-  SCArchive::add_C_string(msg);
+  SCCache::add_C_string(msg);
 }
 
 void MacroAssembler::warn(const char* msg) {

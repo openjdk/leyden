@@ -137,7 +137,7 @@ jint init_globals() {
     LSAN_REGISTER_ROOT_REGION(summary.start(), summary.reserved_size());
   }
 #endif // LEAK_SANITIZER
-  SCArchive::init2();        // depends on universe_init
+  SCCache::init2();        // depends on universe_init
   AsyncLogWriter::initialize();
   gc_barrier_stubs_init();   // depends on universe_init, must be before interpreter_init
   continuations_init();      // must precede continuation stub generation

@@ -783,7 +783,7 @@ void external_word_Relocation::fix_relocation_after_move(const CodeBuffer* src, 
   // location, which means  there is nothing to fix here.  In either case, the
   // resulting target should be an "external" address.
 #ifdef ASSERT
-  if (SCArchive::is_on()) {
+  if (SCCache::is_on()) {
     // SCA needs relocation info for card table base which may point to CodeCache
     if (is_card_table_address(target())) {
       return;

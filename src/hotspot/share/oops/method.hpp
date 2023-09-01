@@ -67,7 +67,7 @@ class ConstMethod;
 class InlineTableSizes;
 class CompiledMethod;
 class InterpreterOopMap;
-class SCAEntry;
+class SCCEntry;
 
 class Method : public Metadata {
  friend class VMStructs;
@@ -106,8 +106,8 @@ class Method : public Metadata {
   CompiledMethod* volatile _code;                       // Points to the corresponding piece of native code
   volatile address           _from_interpreted_entry; // Cache of _code ? _adapter->i2c_entry() : _i2i_entry
 
-  CompiledMethod* _preload_code;  // preloaded SCA code
-  SCAEntry* _sca_entry;           // SCA entry for pre-loading code
+  CompiledMethod* _preload_code;  // preloaded SCCache code
+  SCCEntry* _scc_entry;           // SCCache entry for pre-loading code
 
   // Constructor
   Method(ConstMethod* xconst, AccessFlags access_flags, Symbol* name);
@@ -457,11 +457,11 @@ public:
   void set_preload_code(CompiledMethod* code) {
     _preload_code = code;
   }
-  void set_sca_entry(SCAEntry* entry) {
-    _sca_entry = entry;
+  void set_scc_entry(SCCEntry* entry) {
+    _scc_entry = entry;
   }
-  SCAEntry* sca_entry() const {
-    return _sca_entry;
+  SCCEntry* scc_entry() const {
+    return _scc_entry;
   }
 
   address get_i2c_entry();

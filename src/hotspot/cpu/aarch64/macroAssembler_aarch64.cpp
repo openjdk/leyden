@@ -695,7 +695,7 @@ void MacroAssembler::set_last_Java_frame(Register last_java_sp,
 }
 
 static inline bool target_needs_far_branch(address addr) {
-  if (SCArchive::is_on() && StoreSharedCode) {
+  if (SCCache::is_on_for_write()) {
     return true;
   }
   // codecache size <= 128M
@@ -1428,7 +1428,7 @@ void MacroAssembler::check_klass_subtype_slow_path(Register sub_klass,
   }
 
 #ifndef PRODUCT
-  if (SCArchive::is_on_for_write()) {
+  if (SCCache::is_on_for_write()) {
     // SCA needs relocation info for this
     lea(rscratch2, ExternalAddress((address)&SharedRuntime::_partial_subtype_ctr));
   } else {
@@ -2648,7 +2648,7 @@ void MacroAssembler::subw(Register Rd, Register Rn, RegisterOrConstant decrement
 void MacroAssembler::reinit_heapbase()
 {
   if (UseCompressedOops) {
-    if (Universe::is_fully_initialized() && !SCArchive::is_on_for_write()) {
+    if (Universe::is_fully_initialized() && !SCCache::is_on_for_write()) {
       mov(rheapbase, CompressedOops::ptrs_base());
     } else {
       lea(rheapbase, ExternalAddress(CompressedOops::ptrs_base_addr()));
@@ -4921,7 +4921,7 @@ void MacroAssembler::load_byte_map_base(Register reg) {
 
   // Strictly speaking the byte_map_base isn't an address at all, and it might
   // even be negative. It is thus materialised as a constant.
-  if (SCArchive::is_on_for_write()) {
+  if (SCCache::is_on_for_write()) {
     // SCA needs relocation info for card table base
     lea(reg, ExternalAddress(reinterpret_cast<address>(byte_map_base)));
   } else {

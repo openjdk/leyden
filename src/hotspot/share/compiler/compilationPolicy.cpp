@@ -120,7 +120,7 @@ bool CompilationPolicy::recompilation_step(int step, TRAPS) {
         continue;
       }
 
-      if (!ForceRecompilation && !(cm->is_sca() && cm->comp_level() == CompLevel_full_optimization)) {
+      if (!ForceRecompilation && !(cm->is_scc() && cm->comp_level() == CompLevel_full_optimization)) {
         // If it's already online-compiled at level 4, mark it as done.
         if (cm->comp_level() == CompLevel_full_optimization) {
           Atomic::store(&TrainingData::recompilation_status()[i], true);
@@ -326,7 +326,7 @@ bool CompilationPolicy::force_comp_at_level_simple(const methodHandle& method) {
     if (UseJVMCICompiler) {
       AbstractCompiler* comp = CompileBroker::compiler(CompLevel_full_optimization);
       if (comp != nullptr && comp->is_jvmci() && ((JVMCICompiler*) comp)->force_comp_at_level_simple(method)) {
-        return !SCArchive::is_C3_on();
+        return !SCCache::is_C3_on();
       }
     }
 #endif
@@ -650,7 +650,7 @@ void CompilationPolicy::initialize() {
         int c1_count = MAX2(count - libjvmci_count, 1);
         set_c2_count(libjvmci_count);
         set_c1_count(c1_count);
-      } else if (SCArchive::is_C3_on()) {
+      } else if (SCCache::is_C3_on()) {
         set_c1_count(MAX2(count / 3, 1));
         set_c2_count(MAX2(count - c1_count(), 1));
         set_c3_count(1);
@@ -660,7 +660,7 @@ void CompilationPolicy::initialize() {
         set_c1_count(MAX2(count / 3, 1));
         set_c2_count(MAX2(count - c1_count(), 1));
       }
-      if (SCArchive::is_SC_load_tread_on()) {
+      if (SCCache::is_code_load_thread_on()) {
         set_sc_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
       }
     }
@@ -1097,7 +1097,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  if (x->is_sca() && !y->is_sca()) {
+  if (x->is_scc() && !y->is_scc()) {
     // x has cached code
     return true;
   }

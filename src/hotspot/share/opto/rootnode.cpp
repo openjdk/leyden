@@ -72,7 +72,7 @@ HaltNode::HaltNode(Node* ctrl, Node* frameptr, const char* halt_reason, bool rea
   init_req(TypeFunc::Memory,   top);
   init_req(TypeFunc::FramePtr, frameptr    );
   init_req(TypeFunc::ReturnAdr,top);
-  SCArchive::add_C_string(halt_reason);
+  SCCache::add_C_string(halt_reason);
 }
 
 const Type *HaltNode::bottom_type() const { return Type::BOTTOM; }

@@ -204,7 +204,7 @@ void ciObject::add_to_constant_value_cache(int off, ciConstant val) {
 // ------------------------------------------------------------------
 // ciObject::should_be_constant()
 bool ciObject::should_be_constant() {
-  if (ScavengeRootsInCode >= 2 && !(SCArchive::is_on() && StoreSharedCode)) {
+  if (ScavengeRootsInCode >= 2 && !(SCCache::is_on_for_write())) {
     return true;  // force everybody to be a constant
   }
   if (is_null_object()) {
@@ -221,7 +221,7 @@ bool ciObject::should_be_constant() {
   }
   if ((klass()->is_subclass_of(env->MethodHandle_klass()) ||
        klass()->is_subclass_of(env->CallSite_klass())) &&
-      !(SCArchive::is_on() && StoreSharedCode)) { // For now disable it when writing SCArchive.
+      !(SCCache::is_on_for_write())) { // For now disable it when caching startup code.
     // We want to treat these aggressively.
     return true;
   }
