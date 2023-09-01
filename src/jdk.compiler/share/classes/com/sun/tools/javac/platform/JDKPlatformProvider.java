@@ -73,6 +73,8 @@ import com.sun.tools.javac.util.StringUtils;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import jdk.internal.misc.JavaHome;
+
 /** PlatformProvider for JDK N.
  *
  *  <p><b>This is NOT part of any supported API.
@@ -91,8 +93,6 @@ public class JDKPlatformProvider implements PlatformProvider {
     public PlatformDescription getPlatform(String platformName, String options) {
         return new PlatformDescriptionImpl(platformName);
     }
-
-    private static final String[] symbolFileLocation = { "lib", "ct.sym" };
 
     private static final Set<String> SUPPORTED_JAVA_PLATFORM_VERSIONS;
     public static final Comparator<String> NUMERICAL_COMPARATOR = (s1, s2) -> {
@@ -395,10 +395,7 @@ public class JDKPlatformProvider implements PlatformProvider {
 
     static Path findCtSym() {
         String javaHome = System.getProperty("java.home");
-        Path file = Paths.get(javaHome);
-        // file == ${jdk.home}
-        for (String name : symbolFileLocation)
-            file = file.resolve(name);
+        Path file = JavaHome.getJDKResource(javaHome, "lib", "ct.sym");
         return file;
     }
 
