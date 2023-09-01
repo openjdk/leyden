@@ -31,7 +31,7 @@
 #include "opto/rootnode.hpp"
 #include "opto/subnode.hpp"
 #include "opto/type.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 
 //------------------------------Ideal------------------------------------------
 // Remove dead inputs

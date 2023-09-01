@@ -40,7 +40,7 @@
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/oopRecorder.inline.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"

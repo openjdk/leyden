@@ -51,7 +51,7 @@
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "code/codeCache.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "gc/shared/gcVMOperations.hpp"
 #include "interpreter/bytecodeStream.hpp"
 #include "interpreter/bytecodes.hpp"

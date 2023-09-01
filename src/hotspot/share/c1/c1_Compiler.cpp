@@ -31,7 +31,7 @@
 #include "c1/c1_MacroAssembler.hpp"
 #include "c1/c1_Runtime1.hpp"
 #include "c1/c1_ValueType.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDirectives.hpp"
 #include "interpreter/linkResolver.hpp"

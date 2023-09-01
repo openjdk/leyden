@@ -28,7 +28,7 @@
 #include "code/compiledIC.hpp"
 #include "code/nmethod.hpp"
 #include "code/relocInfo.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "oops/compressedOops.inline.hpp"

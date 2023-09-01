@@ -24,7 +24,7 @@
 
 #include "precompiled.hpp"
 #include "classfile/vmClasses.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "jfr/support/jfrIntrinsics.hpp"

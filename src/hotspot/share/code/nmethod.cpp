@@ -31,7 +31,7 @@
 #include "code/nativeInst.hpp"
 #include "code/nmethod.hpp"
 #include "code/scopeDesc.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilationLog.hpp"
 #include "compiler/compileBroker.hpp"

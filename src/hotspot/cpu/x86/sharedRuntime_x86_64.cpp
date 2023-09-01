@@ -32,7 +32,7 @@
 #include "code/debugInfoRec.hpp"
 #include "code/icBuffer.hpp"
 #include "code/nativeInst.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "code/vtableStubs.hpp"
 #include "compiler/oopMap.hpp"
 #include "gc/shared/collectedHeap.hpp"

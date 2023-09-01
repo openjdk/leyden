@@ -30,7 +30,7 @@
 #include "asm/assembler.inline.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciUtilities.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compileTask.hpp"
 #include "compiler/disassembler.hpp"
 #include "compiler/oopMap.hpp"

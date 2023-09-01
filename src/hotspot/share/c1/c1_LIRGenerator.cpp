@@ -34,7 +34,7 @@
 #include "ci/ciInstance.hpp"
 #include "ci/ciObjArray.hpp"
 #include "ci/ciUtilities.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/c1/barrierSetC1.hpp"

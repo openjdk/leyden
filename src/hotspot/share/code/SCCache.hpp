@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef SHARE_CODE_SCARCHIVE_HPP
-#define SHARE_CODE_SCARCHIVE_HPP
+#ifndef SHARE_CODE_SCCACHE_HPP
+#define SHARE_CODE_SCCACHE_HPP
 
 /*
  * Startup Code Cache (SCC) collects compiled code and metadata during
@@ -477,4 +477,4 @@ public:
   static void print_timers();
 };
 
-#endif // SHARE_CODE_SCARCHIVE_HPP
+#endif // SHARE_CODE_SCCACHE_HPP

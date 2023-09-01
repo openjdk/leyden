@@ -31,7 +31,7 @@
 #include "code/codeCache.hpp"
 #include "code/codeHeapState.hpp"
 #include "code/dependencyContext.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compilationLog.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
