@@ -3104,6 +3104,8 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
 
   if (DynamicDumpSharedSpaces) {
     ArchiveInvokeDynamic = false; // requires heap dumping, which is not supported in dynamic archive.
+  } else if (!DumpSharedSpaces) {
+    ArchiveInvokeDynamic = false; // This flag is useful only when dumping the static archive.
   }
   if (!PreloadSharedClasses) {
     ArchiveInvokeDynamic = false;

@@ -2865,6 +2865,12 @@ bool InstanceKlass::can_be_verified_at_dumptime() const {
     // it was verified at dump time.
     return true;
   }
+
+  if (ArchiveInvokeDynamic) {
+    // FIXME: this works around JDK-8315719
+    return true;
+  }
+
   if (major_version() < 50 /*JAVA_6_VERSION*/) {
     return false;
   }
