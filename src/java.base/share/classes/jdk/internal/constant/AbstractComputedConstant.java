@@ -29,10 +29,7 @@ import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.Stable;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
 import java.util.NoSuchElementException;
-import java.util.Objects;
 import java.util.function.Supplier;
 
 public abstract sealed class AbstractComputedConstant<V, P>
@@ -46,51 +43,60 @@ public abstract sealed class AbstractComputedConstant<V, P>
     private static final long VALUE_OFFSET =
             Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "value");
 
-    private static final long AUX_OFFSET =
-            Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "auxiliary");
+    private static final long STATE_OFFSET =
+            Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "state");
+
+    private static final long BINDING_OFFSET =
+            Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "binding");
+
+    private final P provider;
 
     /**
      * This field holds a bound lazy value.
-     * If != null, a value is bound, otherwise the auxiliary field needs to be consulted.
+     * If != null, a value is bound, otherwise the state field needs to be consulted.
      */
     @Stable
     private V value;
 
     /**
-     * This non-final auxiliary field is used for:
-     *   0) Holding the initial provider
-     *   1) Flagging if the value is being bound (constructing)
-     *   2) Flagging if the value was actually evaluated to null
-     *   3) Flagging if the initial supplier threw an exception
-     *   4) Flagging if a value is bound
+     * This non-final state field is used for flagging:
+     *   0) if the value is never bound (State.UNBOUND)
+     *   1) Flagging if a non-null value is bound (State.BOUND_NON_NULL)
+     *   2) if the value was actually evaluated to null (State.BOUND_NULL)
+     *   3) if the initial supplier threw an exception (State.ERROR)
      */
-    private Object auxiliary;
+    @Stable
+    private byte state;
 
-    public AbstractComputedConstant(P provider) {
-        // Safely publish the provider using volatile access under the condition a first
-        // volatile read for `auxiliary` objects (having an internal state) is made by
-        // other threads.
-        // See JLS 17.4.5. Happens-before Order
-        setAuxiliaryVolatile(provider);
+    /**
+     * This variable indicates if we are trying to bind (1) or not (0).
+     */
+    private byte binding;
+
+    AbstractComputedConstant(P provider) {
+        this.provider = provider;
     }
 
     @ForceInline
     @Override
     public final boolean isUnbound() {
-        return providerType().isInstance(auxiliaryVolatile());
+        return stateVolatile() == State.UNBOUND.ordinalAsByte();
     }
 
     @ForceInline
     @Override
     public final boolean isBound() {
         // Try plain memory semantics first
-        return value != null || auxiliaryVolatile() instanceof ConstantUtil.Bound;
+        byte s;
+        return value != null ||
+                (s = stateVolatile()) == State.NON_NULL.ordinalAsByte()
+                || s == State.NULL.ordinalAsByte();
     }
 
     @ForceInline
     @Override
     public final boolean isError() {
-        return auxiliaryVolatile() instanceof ConstantUtil.BindError;
+        return stateVolatile() == State.ERROR.ordinalAsByte();
     }
 
     @ForceInline
@@ -101,9 +107,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
         if (v != null) {
             return v;
         }
-        // ConstantUtil.Null does not have an observed non-final internal state so,
-        // we are allowed to use plain memory semantics here.
-        if (auxiliary instanceof ConstantUtil.Null) {
+        if (state == State.NULL.ordinalAsByte()) {
             return null;
         }
         return slowPath(null, true);
@@ -117,9 +121,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
         if (v != null) {
             return v;
         }
-        // ConstantUtil.Null does not have an observed non-final internal state so,
-        // we are allowed to use plain memory semantics here.
-        if (auxiliary instanceof ConstantUtil.Null) {
+        if (state == State.NULL.ordinalAsByte()) {
             return null;
         }
         return slowPath(other, false);
@@ -129,7 +131,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
     @Override
     public final <X extends Throwable> V orElseThrow(Supplier<? extends X> exceptionSupplier) throws X {
         V v = orElse(null);
-        if (auxiliaryVolatile() instanceof ConstantUtil.BindError) {
+        if (state == State.ERROR.ordinalAsByte()) {
             throw exceptionSupplier.get();
         }
         return v;
@@ -138,45 +140,41 @@ public abstract sealed class AbstractComputedConstant<V, P>
     private synchronized V slowPath(V other,
                                     boolean rethrow) {
 
-        // Under synchronization, visibility and atomicy is guaranteed for
-        // the field "value" as it is only changed within this block.
-        V v = value;
-        if (v != null) {
-            return v;
+        if (binding != 0) {
+            throw new StackOverflowError(toStringDescription() + ": Circular provider detected: " + provider);
         }
-        // Volatile read is needed here as this might be the first read
-        // of an object that has an internal state for this thread
-        Object aux = auxiliaryVolatile();
-        return switch (aux) {
-            case ConstantUtil.Null __ -> null;
-            case ConstantUtil.Binding __ ->
-                    throw new StackOverflowError(toStringDescription() + ": Circular provider detected");
-            case ConstantUtil.BindError __ when rethrow ->
+
+        // Under synchronization, visibility and atomicy is guaranteed for
+        // the fields "value" and "state" as they only change within this block.
+        return switch (stateVolatileAsEnum()) {
+            case UNBOUND -> bindValue(rethrow, other);
+            case NON_NULL -> value;
+            case NULL -> null;
+            case ERROR -> {
+                if (rethrow) {
                     throw new NoSuchElementException(toStringDescription() + ": A previous provider threw an exception");
-            case ConstantUtil.BindError __ -> other;
-            default -> {
-                @SuppressWarnings("unchecked")
-                P provider = (P) aux;
-                yield bindValue(rethrow, other, provider);
+                } else {
+                    yield other;
+                }
             }
         };
     }
 
-    private V bindValue(boolean rethrow, V other, P provider) {
-        setAuxiliaryVolatile(ConstantUtil.BINDING_SENTINEL);
+    private V bindValue(boolean rethrow, V other) {
+        setBindingVolatile(true);
         try {
             V v = evaluate(provider);
             if (v == null) {
-                setAuxiliaryVolatile(ConstantUtil.NULL_SENTINEL);
+                casState(State.NULL.ordinalAsByte());
             } else {
                 casValue(v);
                 // Insert a memory barrier for store/store operations
                 freeze();
-                setAuxiliaryVolatile(ConstantUtil.NON_NULL_SENTINEL);
+                casState(State.NON_NULL.ordinalAsByte());
             }
             return v;
         } catch (Throwable e) {
-            setAuxiliaryVolatile(ConstantUtil.BIND_ERROR_SENTINEL);
+            casState(State.ERROR.ordinalAsByte());
             if (e instanceof Error err) {
                 // Always rethrow errors
                 throw err;
@@ -185,29 +183,22 @@ public abstract sealed class AbstractComputedConstant<V, P>
                 throw new NoSuchElementException(e);
             }
             return other;
+        } finally {
+            setBindingVolatile(false);
         }
     }
 
     abstract V evaluate(P provider);
 
-    abstract Class<?> providerType();
-
     abstract String toStringDescription();
 
     @Override
     public final String toString() {
-        var a = auxiliaryVolatile();
-        String v = switch (a) {
-            case ConstantUtil.Binding __ -> ".binding";
-            case ConstantUtil.Null __ -> "null";
-            case ConstantUtil.NonNull __ -> "[" + valueVolatile().toString() + "]";
-            case ConstantUtil.BindError __ -> ".error";
-            default -> {
-                if (providerType().isInstance(a)) {
-                    yield ".unbound";
-                }
-                yield ".INTERNAL_ERROR";
-            }
+        String v = switch (stateVolatileAsEnum()) {
+            case UNBOUND -> isBindingVolatile() ? ".binding" : ".unbound"; // Racy
+            case NON_NULL -> "[" + valueVolatile().toString() + "]";
+            case NULL -> "null";
+            case ERROR -> ".error";
         };
         return toStringDescription() + v;
     }
@@ -231,18 +222,32 @@ public abstract sealed class AbstractComputedConstant<V, P>
         return (V) Unsafe.getUnsafe().getReferenceVolatile(this, VALUE_OFFSET);
     }
 
-    private Object auxiliaryVolatile() {
-        return Unsafe.getUnsafe().getReferenceVolatile(this, AUX_OFFSET);
+    private byte stateVolatile() {
+        return Unsafe.getUnsafe().getByteVolatile(this, STATE_OFFSET);
+    }
+
+    private State stateVolatileAsEnum() {
+        return State.of(stateVolatile());
+    }
+
+    private boolean isBindingVolatile() {
+        return Unsafe.getUnsafe().getByteVolatile(this, BINDING_OFFSET) != 0;
     }
 
     private void casValue(Object o) {
         if (!Unsafe.getUnsafe().compareAndSetReference(this, VALUE_OFFSET, null, o)) {
-            throw new InternalError();
+            throw new InternalError("Value was not null: " + valueVolatile());
         }
     }
 
-    private void setAuxiliaryVolatile(Object o) {
-        Unsafe.getUnsafe().putReferenceVolatile(this, AUX_OFFSET, o);
+    private void casState(byte value) {
+        if (!Unsafe.getUnsafe().compareAndSetByte(this, STATE_OFFSET, (byte) 0, value)) {
+            throw new InternalError("Value was not zero: " + stateVolatile());
+        }
+    }
+
+    private void setBindingVolatile(boolean value) {
+        Unsafe.getUnsafe().putByteVolatile(this, BINDING_OFFSET, (byte) (value ? 1 : 0));
     }
 
 }

@@ -44,11 +44,6 @@ public final class ListElementComputedConstant<V>
     }
 
     @Override
-    Class<?> providerType() {
-        return IntFunction.class;
-    }
-
-    @Override
     String toStringDescription() {
         return "ListElementComputedConstant[" + index + "]";
     }

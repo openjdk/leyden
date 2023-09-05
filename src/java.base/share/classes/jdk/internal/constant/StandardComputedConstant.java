@@ -41,11 +41,6 @@ public final class StandardComputedConstant<V>
     }
 
     @Override
-    Class<?> providerType() {
-        return Supplier.class;
-    }
-
-    @Override
     String toStringDescription() {
         return "StandardComputedConstant";
     }

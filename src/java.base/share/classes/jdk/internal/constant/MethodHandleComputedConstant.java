@@ -46,11 +46,6 @@ public final class MethodHandleComputedConstant<V>
     }
 
     @Override
-    Class<?> providerType() {
-        return MethodHandle.class;
-    }
-
-    @Override
     String toStringDescription() {
         return "MethodHandleComputedConstant";
     }
