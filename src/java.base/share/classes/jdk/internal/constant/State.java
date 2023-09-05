@@ -10,7 +10,7 @@ enum State {
         return (byte) ordinal();
     }
 
-    // This or values()[value]
+    // This or `values()[value]`
     static State of(byte value) {
         return switch (value) {
             case 0 -> UNBOUND;

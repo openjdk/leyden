@@ -1,17 +1,15 @@
 package jdk.internal.constant;
 
-import jdk.internal.ValueBased;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.Stable;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
 import java.util.AbstractList;
 import java.util.List;
 import java.util.RandomAccess;
 import java.util.function.IntFunction;
 
-@ValueBased
+// Unfortunately, `AbstractList` declares `protected transient int modCount = 0;` preventing us
+// from annotating a `List` `@ValueBased`
 public final class OnDemandComputedConstantList<V>
         extends AbstractList<ComputedConstant<V>>
         implements List<ComputedConstant<V>>,
@@ -82,6 +80,5 @@ public final class OnDemandComputedConstantList<V>
     public static <V> List<ComputedConstant<V>> create(int size, IntFunction<? extends V> provider) {
         return new OnDemandComputedConstantList<>(size, provider);
     }
-
 
 }
