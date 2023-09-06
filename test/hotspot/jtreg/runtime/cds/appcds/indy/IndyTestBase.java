@@ -179,7 +179,7 @@ public class IndyTestBase {
                 .addSuffix("-XX:+RecordTraining");
             if ((runMode & RUN_BENCH) != 0) {
                 dynDumpOpts.setBenchmarkMode(true);
-                dynDumpOpts.addPrefix("-Xlog:cds=debug", "-Xlog:sca");
+                dynDumpOpts.addPrefix("-Xlog:cds=debug", "-Xlog:scc");
             } else {
                 dynDumpOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug",
                                       "-Xlog:cds+class=debug");
@@ -194,24 +194,24 @@ public class IndyTestBase {
             //======================================================================
             System.out.println("#" + testNumber +
                                ": (STEP 4 of 5) Run with dynamic archive and generate AOT code");
-            String sharedCodeArchive = s + ".sca";
+            String sharedCodeArchive = s + ".scc";
             CDSOptions aotOpts = (new CDSOptions())
                 .addPrefix("-cp", appJar)
                 .setArchiveName(archiveName)
                 .setUseVersion(false)
-                .addSuffix("-XX:+StoreSharedCode")
-                .addSuffix("-XX:SharedCodeArchive=" + sharedCodeArchive)
-                .addSuffix("-XX:ReservedSharedCodeSize=100M");
+                .addSuffix("-XX:+StoreCachedCode")
+                .addSuffix("-XX:CachedCodeFile=" + sharedCodeArchive)
+                .addSuffix("-XX:CachedCodeMaxSize=100M");
 
             if ((runMode & RUN_BENCH) != 0) {
                 aotOpts.setBenchmarkMode(true);
-                aotOpts.addPrefix("-Xlog:cds=debug", "-Xlog:sca");
+                aotOpts.addPrefix("-Xlog:cds=debug", "-Xlog:scc");
             } else {
                 // Tell CDSTestUtils to not add the -XX:VerifyArchivedFields=1 flag, which seems to be causing a crash
                 // in the AOT code.
                 aotOpts.setBenchmarkMode(true);
 
-                aotOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug", "-Xlog:sca*=trace");
+                aotOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug", "-Xlog:scc*=trace");
                 if (mainClass.equals("ConcatA")) {
                     // Hard-code the printing of loopA for now
                     dynDumpOpts
@@ -231,8 +231,8 @@ public class IndyTestBase {
             CDSOptions runOpts = (new CDSOptions())
                 .addPrefix("-cp", appJar)
                 .setArchiveName(dynamicArchiveName)
-                .addSuffix("-XX:+LoadSharedCode")
-                .addSuffix("-XX:SharedCodeArchive=" + sharedCodeArchive)
+                .addSuffix("-XX:+LoadCachedCode")
+                .addSuffix("-XX:CachedCodeFile=" + sharedCodeArchive)
                 .setUseVersion(false)
                 .addSuffix(mainClass)
                 .addSuffix(productionArg);

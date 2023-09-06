@@ -565,23 +565,6 @@ void SystemDictionaryShared::handle_class_unloading(InstanceKlass* klass) {
   }
 }
 
-void SystemDictionaryShared::init_dumptime_info(Method* m) {
-  Arguments::assert_is_dumping_archive();
-  assert_lock_strong(DumpTimeTable_lock);
-
-  if (m->method_data() != nullptr || m->method_counters() != nullptr) {
-    const MethodDataKey key(m);
-    const DumpTimeMethodDataInfo info(m->method_data(), m->method_counters());
-
-    bool created;
-    _dumptime_method_info_dictionary->put_if_absent(key, info, &created);
-    assert(created, "");
-    if (created) {
-      ++_dumptime_method_info_dictionary->_count;
-    }
-  }
-}
-
 void SystemDictionaryShared::record_init_info(InstanceKlass* ik) {
   assert(ik != nullptr, "");
   if (Arguments::is_dumping_archive()) {

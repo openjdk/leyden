@@ -34,7 +34,7 @@
 #include "ci/ciInstance.hpp"
 #include "ci/ciObjArray.hpp"
 #include "ci/ciUtilities.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/c1/barrierSetC1.hpp"
@@ -3268,7 +3268,7 @@ void LIRGenerator::increment_event_counter_impl(CodeEmitInfo* info,
       bailout("method counters allocation failed");
       return;
     }
-if (SCArchive::is_on()) {
+if (SCCache::is_on()) {
     counter_holder = new_register(T_METADATA);
     __ metadata2reg(counters_adr, counter_holder);
 } else {

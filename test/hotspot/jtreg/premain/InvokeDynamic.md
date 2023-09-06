@@ -19,7 +19,7 @@ Notes:
   covers all indy call sites that you want to generate good AOT code for.
 
 - Only two BSMs are supported so far. See `ClassPrelinker::should_preresolve_invokedynamic()` in 
-  [classPrelinker.cpp](../src/hotspot/share/cds/classPrelinker.cpp)
+  [classPrelinker.cpp](../../../../src/hotspot/share/cds/classPrelinker.cpp)
 
     - `StringConcatFactory::makeConcatWithConstants`
     - `LambdaMetafactory::metafactory`
@@ -309,16 +309,27 @@ flags (bitmask):
 (gdb) 
 ```
 
-## Bigger Test Case
+## Benchmarking with Javac
 
-Currently the code is pretty rough, but it's able to archive about 177 indy calls sites when running Javac to compile a 
-class with 3000 methods and 3000 fields. As of 2023/07/28, this test case passes with AOT enabled (`-XX:+LoadSharedCode`).
+The benchmark [javac_helloworld](javac_helloworld) measures the total elapsed time of `javac HelloWorld.java` using
+the premain branch vs the JDK mainline. About 180 indy call sites are archived.
 
-- See [IndyAndJavac.java](../runtime/cds/appcds/indy/IndyAndJavac.java).
-- Run this test case in jtreg
-- When completed, go to the scratch directory and do this:
+As of 2023/08/28, we can see the following improvement. Please see [javac_helloworld/run.sh](javac_helloworld/run.sh)
+for details.
 
 ```
-$ grep cds,resolve *0001-dump.stdout | grep indy | wc
-    177    2188   64186
+$ bash run.sh $MAINLINE_JAVA $PREMAIN_JAVA
+[...]
+Wall clock time - geomean over 10 runs of 'perf stat -r 16 javac HelloWorld.java'
+Mainline JDK (CDS disabled)     302.86 ms
+Mainline JDK (CDS enabled)      161.34 ms
+Premain Prototype (CDS only)    131.71 ms
+Premain Prototype (CDS + AOT)    92.84 ms
+
+$ grep entries.*archived Javac-static.dump.log
+[0.966s][info ][cds        ] Class  CP entries =  35021, archived =  11400 ( 32.6%)
+[0.966s][info ][cds        ] Field  CP entries =  19668, archived =   5643 ( 28.7%)
+[0.966s][info ][cds        ] Method CP entries =  47213, archived =   3289 (  7.0%)
+[0.966s][info ][cds        ] Indy   CP entries =   1192, archived =    184 ( 15.4%)
+
 ```

@@ -311,7 +311,7 @@ ciMetadata* ciObjectFactory::get_metadata(Metadata* key) {
     }
   }
 
-  if (CURRENT_ENV->is_precompiled() && StoreSharedCode && PreloadArchivedClasses < 2) {
+  if (CURRENT_ENV->is_precompiled() && StoreCachedCode && PreloadArchivedClasses < 2) {
     if (key->is_klass() && !MetaspaceObj::is_shared(key)) {
       Klass* k = (Klass*)key;
       if (k->is_instance_klass()) {

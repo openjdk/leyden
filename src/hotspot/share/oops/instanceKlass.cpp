@@ -2753,7 +2753,8 @@ void InstanceKlass::remove_unshareable_info() {
     init_implementor();
   }
 
-  constants()->remove_unshareable_info();
+  // ConstantPool is cleaned separately. See ArchiveBuilder::make_klasses_shareable()
+  // constants()->remove_unshareable_info();
 
   for (int i = 0; i < methods()->length(); i++) {
     Method* m = methods()->at(i);
@@ -2911,6 +2912,12 @@ bool InstanceKlass::can_be_verified_at_dumptime() const {
     // it was verified at dump time.
     return true;
   }
+
+  if (ArchiveInvokeDynamic) {
+    // FIXME: this works around JDK-8315719
+    return true;
+  }
+
   if (major_version() < 50 /*JAVA_6_VERSION*/) {
     return false;
   }

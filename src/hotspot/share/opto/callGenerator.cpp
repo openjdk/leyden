@@ -1016,7 +1016,7 @@ CallGenerator* CallGenerator::for_method_handle_inline(JVMState* jvms, ciMethod*
   if (StressMethodHandleLinkerInlining) {
     allow_inline = false;
   }
-  if (C->env()->is_precompiled() && StoreSharedCode && PreloadArchivedClasses < 2) {
+  if (C->env()->is_precompiled() && StoreCachedCode && PreloadArchivedClasses < 2) {
     input_not_const = false;
     return nullptr; // FIXME
   }

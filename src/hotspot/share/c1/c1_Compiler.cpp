@@ -31,7 +31,7 @@
 #include "c1/c1_MacroAssembler.hpp"
 #include "c1/c1_Runtime1.hpp"
 #include "c1/c1_ValueType.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDirectives.hpp"
 #include "interpreter/linkResolver.hpp"
@@ -52,7 +52,7 @@ Compiler::Compiler() : AbstractCompiler(compiler_c1) {
 void Compiler::init_c1_runtime() {
   BufferBlob* buffer_blob = CompilerThread::current()->get_buffer_blob();
   Runtime1::initialize(buffer_blob);
-  SCAFile::init_c1_table();
+  SCCache::init_c1_table();
   FrameMap::initialize();
   // initialize data structures
   ValueType::initialize();
@@ -250,20 +250,20 @@ bool Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
 
 void Compiler::compile_method(ciEnv* env, ciMethod* method, int entry_bci, bool install_code, DirectiveSet* directive) {
   CompileTask* task = env->task();
-  if (install_code && task->is_sca()) {
+  if (install_code && task->is_scc()) {
     assert(!task->preload(), "Pre-loading cached code is not implemeted for C1 code");
-    bool success = SCAFile::load_nmethod(env, method, entry_bci, this, CompLevel(task->comp_level()));
+    bool success = SCCache::load_nmethod(env, method, entry_bci, this, CompLevel(task->comp_level()));
     if (success) {
       assert(task->is_success(), "sanity");
       return;
     }
-    SCArchive::invalidate(task->sca_entry()); // mark sca_entry as not entrant
-    if (SCArchive::is_SC_load_tread_on()) {
+    SCCache::invalidate(task->scc_entry()); // mark scc_entry as not entrant
+    if (SCCache::is_code_load_thread_on()) {
       env->record_failure("Failed to load cached code");
       // Bail out if failed to load cached code in SC thread
       return;
     }
-    task->clear_sca();
+    task->clear_scc();
   }
   BufferBlob* buffer_blob = CompilerThread::current()->get_buffer_blob();
   assert(buffer_blob != nullptr, "Must exist");

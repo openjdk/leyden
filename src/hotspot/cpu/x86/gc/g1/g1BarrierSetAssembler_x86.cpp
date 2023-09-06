@@ -24,7 +24,7 @@
 
 #include "precompiled.hpp"
 #include "asm/macroAssembler.inline.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -306,7 +306,7 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
   __ shrptr(card_addr, CardTable::card_shift());
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
-  if (SCArchive::is_on_for_write()) {
+  if (SCCache::is_on_for_write()) {
     // SCA needs relocation info for this address
     __ lea(cardtable, ExternalAddress((address)ct->card_table()->byte_map_base()));
   } else {
@@ -543,7 +543,7 @@ void G1BarrierSetAssembler::generate_c1_post_barrier_runtime_stub(StubAssembler*
   __ shrptr(card_addr, CardTable::card_shift());
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
-  if (SCArchive::is_on()) {
+  if (SCCache::is_on()) {
     // SCA needs relocation info for this address
     __ lea(cardtable, ExternalAddress((address)ct->card_table()->byte_map_base()));
   } else {

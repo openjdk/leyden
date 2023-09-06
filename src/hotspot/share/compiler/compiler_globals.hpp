@@ -386,14 +386,50 @@
           "Don't compile methods larger than this if "                      \
           "+DontCompileHugeMethods")                                        \
                                                                             \
+  /* flags to control training and deployment modes  */                     \
+                                                                            \
+  product(bool, RecordTraining, false,                                      \
+          "Request output of training data for improved deployment.")       \
+                                                                            \
+  product(ccstrlist, TrainingOptions, nullptr,                              \
+          "Options for what training data to record [default all]")         \
+                                                                            \
+  product(bool, ReplayTraining, false,                                      \
+          "Read training data, if available, for use in this execution")    \
+                                                                            \
+  product(bool, PrintTrainingInfo, false, DIAGNOSTIC,                       \
+          "Print additional information about training")                    \
+                                                                            \
+  product(ccstr, TrainingFile, nullptr,                                     \
+          "If training record or replay is enabled, store or load VM data " \
+          "to or from this file [default: ./hs_training_%p.log] "           \
+          "(_%p replaced with _pidNNN on output, empty string on input)")   \
+                                                                            \
+  product(bool, RecordOptCompilationOrder, false,                           \
+          "Record c2/jvmci nmethod temperature to guide compilation order.")\
+                                                                            \
+  product(bool, RecordOnlyTopCompilations, false,                           \
+          "Record only top compilations (non-zero counts)")                 \
+                                                                            \
+  product(int, RecordOptCompilationOrderInterval, 10,                       \
+          "Sampling interval for RecordOptCompilationOrder")                \
+                                                                            \
+  /* Code Caching flags */                                                  \
+                                                                            \
   product(bool, UseC2asC3, false,                                           \
-          "Use C2 as 3rd compiler when JVMCI compiler is used")             \
+          "Use C2 as 3rd compiler when other high-optimizing compiler "     \
+          "is used")                                                        \
                                                                             \
-  product(bool, StoreSharedCode, false,                                     \
-          "Store compiled code")                                            \
+  product(bool, StoreCachedCode, false,                                     \
+          "Store cached compiled code")                                     \
                                                                             \
-  product(bool, LoadSharedCode, false,                                      \
-          "Load compiled code")                                             \
+  product(bool, LoadCachedCode, false,                                      \
+          "Load cached compiled code")                                      \
+                                                                            \
+  product(bool, UseClassInitBarriers, false,                                \
+          "Produce and use startup code which could be called "             \
+          "on first method invocation, add class initialization barriers, " \
+          "other checks and constrains if needed")                          \
                                                                             \
   product(bool, UseMetadataPointers, true,                                  \
           "Store Metadata pointers in Relocation Info for cached code")     \
@@ -401,30 +437,25 @@
   product(bool, UseCodeLoadThread, true,                                    \
           "Use separate thread for cached code load")                       \
                                                                             \
-  product(bool, StorePreloadCode, false,                                    \
-          "Generate shared code for preload before method execution, "      \
-          "generate class initialization checks in code")                   \
+  product(uint, SCLoadStart, 0,                                             \
+          "The id of the first cached code to load")                        \
                                                                             \
-  product(bool, PreloadSharedCode, false,                                   \
-          "Preload compiled code before method execution")                  \
+  product(uint, SCLoadStop, max_jint,                                       \
+          "The id of the last cached code to load")                         \
                                                                             \
-  product(uint, SCPreloadStart, 0,                                          \
-          "The id of the first shared code pre-load to permit")             \
+  product(ccstrlist, SCExclude, "",                                         \
+          "Exlcude startup code caching for specified method")              \
                                                                             \
-  product(uint, SCPreloadStop, max_jint,                                    \
-          "The id of the last shared code pre-load to permit")              \
+  product(ccstr, CachedCodeFile, "code.jsa",                                \
+          "File with cached compiled code")                                 \
                                                                             \
-  product(ccstrlist, SCPreloadExclude, "",                                  \
-          "Exlcude preloading code for specified method")                   \
+  product(uint, CachedCodeMaxSize, 10*M,                                    \
+          "Buffer size in bytes for code caching")                          \
                                                                             \
-  product(ccstr, SharedCodeArchive, "code.jsa",                             \
-          "File with compiled code")                                        \
-                                                                            \
-  product(uint, ReservedSharedCodeSize, 10*M,                               \
-          "Buffer size in bytes for storing shared code")                   \
-                                                                            \
-  product(bool, VerifySharedCode, false, DIAGNOSTIC,                        \
+  product(bool, VerifyCachedCode, false, DIAGNOSTIC,                        \
           "Load compiled code but not publish")                             \
+                                                                            \
+  /* Recompilation flags */                                                 \
                                                                             \
   product(int, RecompilationLoadAverageThreshold, 5,                        \
           "Queues load avergage after while recompilations are allowed")    \

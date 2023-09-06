@@ -84,7 +84,7 @@ function report () {
 }
 
 function geomean () {
-    printf "%6.2f ms" $(awk 'BEGIN{E = exp(1);} $1>0{tot+=log($1); c++} END{m=tot/c; printf "%.2f\n", E^m}' $1)
+    printf "%6.2f ms" $(awk 'BEGIN{E = exp(1);} $1>0{tot+=log($1); c++} END{m=tot/c; printf "%.2f\n", E^m}' $*)
 }
 
 report "mainline_xoff,mainline_xon,premain_xon,premain_aot"
@@ -108,8 +108,8 @@ for i in $(seq 1 $RUNS); do
     premain_xon=$(get_elapsed logs/premain_xon.$i)
 
     (set -x;
-     perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadSharedCode \
-        -XX:SharedCodeArchive=$APP-dynamic.jsa-sc -XX:ReservedSharedCodeSize=1000M -Xlog:sca=error \
+     perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode \
+        -XX:CachedCodeFile=$APP-dynamic.jsa-sc -Xlog:scc=error \
         com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_aot.$i
     )
     premain_aot=$(get_elapsed logs/premain_aot.$i)
@@ -129,26 +129,26 @@ echo =============================================================
 
 exit
 
-FYI: Results I got on 2023/08/15, Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz, 32MB RAM
+FYI: Results I got on 2023/08/28, Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz, 32MB RAM
 With JDK mainline repo and leyden-premain branch that are pretty up to date
 
 
 ===report.csv================================================
 mainline_xoff,mainline_xon,premain_xon,premain_aot
-306.33000,164.83000,135.191000,99.70000
-305.81000,163.295000,139.99000,99.57000
-308.45000,166.204000,139.664000,100.46000
-309.64000,167.040000,137.19000,98.88000
-309.79000,169.989000,139.449000,98.32000
-310.65000,173.60000,139.232000,100.34000
-309.01000,168.14000,137.82000,98.51000
-308.73000,168.168000,139.110000,97.74000
-310.29000,169.21000,139.68000,97.56000
-311.09000,169.80000,140.121000,99.44000
+302.57000,158.881000,127.616000,93.34000
+301.18000,160.397000,127.330000,93.08000
+303.43000,159.058000,128.77000,91.753000
+301.60000,160.08000,131.301000,92.185000
+305.96000,159.434000,133.06000,94.40000
+301.41000,159.534000,132.756000,91.443000
+300.04000,162.88000,133.691000,92.67000
+305.89000,163.226000,133.414000,93.74000
+303.10000,164.616000,133.968000,92.899000
+303.48000,165.50000,135.500000,92.915000
 ===geomean===================================================
-Wall clock time - geomean over 10 runs of 'perf stat -r 20 javac HelloWorld.java'
-Mainline JDK (CDS disabled)     311.09 ms
-Mainline JDK (CDS enabled)      169.80 ms
-Premain Prototype (CDS only)    140.12 ms
-Premain Prototype (CDS + AOT)    99.44 ms
+Wall clock time - geomean over 10 runs of 'perf stat -r 16 javac HelloWorld.java'
+Mainline JDK (CDS disabled)     302.86 ms
+Mainline JDK (CDS enabled)      161.34 ms
+Premain Prototype (CDS only)    131.71 ms
+Premain Prototype (CDS + AOT)    92.84 ms
 =============================================================

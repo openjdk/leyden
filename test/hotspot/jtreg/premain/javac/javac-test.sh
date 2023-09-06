@@ -71,7 +71,7 @@ while true; do
         shift
     elif [[ $1 = "-lsc" ]]; then
         # Log shared code
-        EXTRA_ARGS="$EXTRA_ARGS -Xlog:sca -Xlog:sca,nmethod"
+        EXTRA_ARGS="$EXTRA_ARGS -Xlog:scc -Xlog:scc,nmethod"
         shift
     elif [[ $1 = "-r" ]]; then
         # Limit the run to a single test case
@@ -428,8 +428,8 @@ for i in $TESTS; do
     fi
 
     #----------------------------------------------------------------------
-    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:sca*=trace:file=javac.sca-store.log::filesize=0 \
-        -XX:SharedArchiveFile=$JSA2 $X2 -XX:+StoreSharedCode -XX:SharedCodeArchive=${JSA2}-sc -XX:ReservedSharedCodeSize=100M \
+    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:scc*=trace:file=javac.scc-store.log::filesize=0 \
+        -XX:SharedArchiveFile=$JSA2 $X2 -XX:+StoreCachedCode -XX:CachedCodeFile=${JSA2}-sc -XX:CachedCodeMaxSize=100M \
         -cp JavacBench.jar JavacBench $LOOPS"
     test-info "${STEP4}Run with $JSA2 and generate AOT code" &&
     if $CMD; then
@@ -439,8 +439,8 @@ for i in $TESTS; do
     fi
 
     #----------------------------------------------------------------------
-    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:sca*=trace:file=javac.sca-load.log::filesize=0 \
-        -XX:SharedArchiveFile=$JSA2 $X2 -XX:+LoadSharedCode -XX:SharedCodeArchive=${JSA2}-sc -XX:ReservedSharedCodeSize=100M \
+    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:scc*=trace:file=javac.scc-load.log::filesize=0 \
+        -XX:SharedArchiveFile=$JSA2 $X2 -XX:+LoadCachedCode -XX:CachedCodeFile=${JSA2}-sc \
         -cp JavacBench.jar JavacBench $LOOPS"
     test-info "${STEP5}Final production run: with $JSA2 and load AOT code" &&
     if $CMD; then

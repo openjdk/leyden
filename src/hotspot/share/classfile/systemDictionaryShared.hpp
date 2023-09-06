@@ -416,7 +416,6 @@ public:
   static void initialize() NOT_CDS_RETURN;
   static void init_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static void handle_class_unloading(InstanceKlass* k) NOT_CDS_RETURN;
-  static void init_dumptime_info(Method* m) NOT_CDS_RETURN;
 
   static void record_init_info(InstanceKlass* k) NOT_CDS_RETURN;
   static void record_init_info(InstanceKlass* k, int index) NOT_CDS_RETURN;

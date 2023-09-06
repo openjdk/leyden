@@ -175,8 +175,8 @@ class outputStream;
   LOG_TAG(resolve) \
   LOG_TAG(safepoint) \
   LOG_TAG(sampling) \
-  LOG_TAG(sca) \
   LOG_TAG(scavenge) \
+  LOG_TAG(scc) \
   LOG_TAG(sealed) \
   LOG_TAG(setting) \
   LOG_TAG(smr) \

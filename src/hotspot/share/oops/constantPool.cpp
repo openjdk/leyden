@@ -413,7 +413,7 @@ void ConstantPool::remove_unshareable_info() {
   // we always set _on_stack to true to avoid having to change _flags during runtime.
   _flags |= (_on_stack | _is_shared);
 
-  if (!_pool_holder->is_linked() && !_pool_holder->verified_at_dump_time()) {
+  if (!ArchiveBuilder::current()->get_source_addr(_pool_holder)->is_linked()) {
     return;
   }
   if (is_for_method_handle_intrinsic()) {
@@ -432,17 +432,12 @@ void ConstantPool::remove_unshareable_info() {
   set_resolved_reference_length(
     resolved_references() != nullptr ? resolved_references()->length() : 0);
   set_resolved_references(OopHandle());
+
+  archive_entries();
 }
 
 void ConstantPool::archive_entries() {
-  // Note: Indy and Field entries are archived in ConstantPoolCache::remove_unshareable_info()
-  // -- FIXME: Why is this not done as part of the regular remove_unshareable_info()??
-  // -- FIXME: Is it because of the _pool_holder->is_linked()??
-  if (pool_holder()->name()->starts_with("java/lang/invoke/LambdaForm$MH")) {
-    // TODO -- hidden class ...
-  } else if (!_pool_holder->is_linked() && !_pool_holder->verified_at_dump_time()) {
-    return;
-  }
+  assert(ArchiveBuilder::current()->get_source_addr(_pool_holder)->is_linked(), "must be");
   ResourceMark rm;
   GrowableArray<bool> keep_cpcache(cache()->length(), cache()->length(), false);
   bool archived = false;

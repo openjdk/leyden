@@ -2150,7 +2150,7 @@ JRT_ENTRY(void, Deoptimization::uncommon_trap_inner(JavaThread* current, jint tr
                  trap_scope->bci(), p2i(fr.pc()), fr.pc() - nm->code_begin() JVMCI_ONLY(COMMA debug_id));
         st.print(" compiler=%s compile_id=%d%s%s%s%s", nm->compiler_name(), nm->compile_id(),
                  (nm->as_nmethod()->from_recorded_data()   ? " is_recorded"         : ""),
-                 (nm->as_nmethod()->sca_entry() != nullptr ? " from_sca"            : ""),
+                 (nm->as_nmethod()->is_scc()               ? " from_scc"            : ""),
                  (nm->as_nmethod()->preloaded()            ? " preloaded"           : ""),
                  (nm->as_nmethod()->has_clinit_barriers()  ? " has_clinit_barriers" : ""));
 #if INCLUDE_JVMCI

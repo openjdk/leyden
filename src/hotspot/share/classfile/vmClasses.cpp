@@ -140,12 +140,12 @@ static void test_cds_heap_access_api(TRAPS) {
     s->print_on(&log);
     log.cr();
 
-    int n = HeapShared::get_archived_object_permanent_index(s); // call this when -XX:+StoreSharedCode
+    int n = HeapShared::get_archived_object_permanent_index(s); // call this when -XX:+StoreCachedCode
     if (n < 0) {
       log.print_cr("*** This object is not in CDS archive");
     } else {
       log.print_cr("HeapShared::get_archived_object_permanent_index(s) = %d", n);
-      oop obj = HeapShared::get_archived_object(n); // call this when -XX:+LoadSharedCode
+      oop obj = HeapShared::get_archived_object(n); // call this when -XX:+LoadCachedCode
       if (obj == s) {
         log.print_cr("HeapShared::get_archived_object(%d) returns the same object, as expected", n);
       } else {

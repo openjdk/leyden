@@ -89,7 +89,7 @@ public:
 // They are filled concurrently, and concatenated at the end.
 class CodeSection {
   friend class CodeBuffer;
-  friend class SCAReader;
+  friend class SCCReader;
  public:
   typedef int csize_t;  // code size type; would be size_t except for history
 
@@ -387,7 +387,7 @@ typedef GrowableArray<SharedStubToInterpRequest> SharedStubToInterpRequests;
 class CodeBuffer: public StackObj DEBUG_ONLY(COMMA private Scrubber) {
   friend class CodeSection;
   friend class StubCodeGenerator;
-  friend class SCAReader;
+  friend class SCCReader;
 
  private:
   // CodeBuffers must be allocated on the stack except for a single

@@ -34,7 +34,7 @@
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "code/codeCache.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerOracle.hpp"
 #include "gc/shared/collectedHeap.hpp"
@@ -488,7 +488,7 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 #endif
 
-  SCArchive::close(); // Write final data and close archive
+  SCCache::close(); // Write final data and close archive
 
   // Hang forever on exit if we're reporting an error.
   if (ShowMessageBoxOnError && VMError::is_error_reported()) {

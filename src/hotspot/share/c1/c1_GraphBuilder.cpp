@@ -4155,7 +4155,7 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
 
 
 bool GraphBuilder::try_method_handle_inline(ciMethod* callee, bool ignore_return) {
-  if (compilation()->env()->is_precompiled() && StoreSharedCode && PreloadArchivedClasses < 2) {
+  if (compilation()->env()->is_precompiled() && StoreCachedCode && PreloadArchivedClasses < 2) {
     return false; // FIXME
   }
   ValueStack* state_before = copy_state_before();

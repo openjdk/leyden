@@ -2154,8 +2154,8 @@ encode %{
   enc_class Java_To_Runtime(method meth) %{
     // No relocation needed
     MacroAssembler _masm(&cbuf);
-    if (LoadSharedCode || StoreSharedCode) {
-      // Created runtime_call_type relocation
+    if (SCCache::is_on_for_write()) {
+      // Created runtime_call_type relocation when caching code
       __ lea(r10, RuntimeAddress((address)$meth$$method));
     } else {
       __ mov64(r10, (int64_t) $meth$$method);

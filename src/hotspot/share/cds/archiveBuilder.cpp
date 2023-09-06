@@ -740,10 +740,12 @@ void ArchiveBuilder::make_klasses_shareable() {
   int num_type_array_klasses = 0;
 
   for (int i = 0; i < klasses()->length(); i++) {
-    // This needs to be done before the next loop, which returns all classes to unlinked state.
+    // Some of the code in ConstantPool::remove_unshareable_info() requires the classes
+    // to be in linked state, so it must be call here before the next loop, which returns
+    // all classes to unlinked state.
     Klass* k = get_buffered_addr(klasses()->at(i));
     if (k->is_instance_klass()) {
-      InstanceKlass::cast(k)->constants()->archive_entries();
+      InstanceKlass::cast(k)->constants()->remove_unshareable_info();
     }
   }
 

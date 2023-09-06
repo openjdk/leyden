@@ -31,7 +31,7 @@
 #include "code/nativeInst.hpp"
 #include "code/nmethod.hpp"
 #include "code/scopeDesc.hpp"
-#include "code/SCArchive.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilationLog.hpp"
 #include "compiler/compileBroker.hpp"
@@ -550,7 +550,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
   CompLevel comp_level
-  , SCAEntry* sca_entry
+  , SCCEntry* scc_entry
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -587,7 +587,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
             nul_chk_table,
             compiler,
             comp_level
-            , sca_entry
+            , scc_entry
 #if INCLUDE_JVMCI
             , speculations,
             speculations_len,
@@ -674,7 +674,7 @@ nmethod::nmethod(
     _exception_offset        = 0;
     _orig_pc_offset          = 0;
     _gc_epoch                = CodeCache::gc_epoch();
-    _sca_entry               = nullptr;
+    _scc_entry               = nullptr;
     _method_profiling_count  = 0;
 
     _consts_offset           = content_offset()      + code_buffer->total_offset_of(code_buffer->consts());
@@ -792,7 +792,7 @@ nmethod::nmethod(
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
   CompLevel comp_level
-  , SCAEntry* sca_entry
+  , SCCEntry* scc_entry
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -819,7 +819,7 @@ nmethod::nmethod(
     _comp_level              = comp_level;
     _orig_pc_offset          = orig_pc_offset;
     _gc_epoch                = CodeCache::gc_epoch();
-    _sca_entry               = sca_entry;
+    _scc_entry               = scc_entry;
     _method_profiling_count  = 0;
 
     // Section offsets
@@ -1414,7 +1414,7 @@ bool nmethod::make_not_entrant(bool make_not_entrant) {
     if (make_not_entrant) {
       // Keep cached code if it was simply replaced
       // otherwise make it not entrant too.
-      SCArchive::invalidate(_sca_entry);
+      SCCache::invalidate(_scc_entry);
     }
   } // leave critical region under CompiledMethod_lock
 
@@ -1543,11 +1543,11 @@ void nmethod::flush_dependencies() {
 }
 
 bool nmethod::preloaded() const {
-  return SCArchive::is_on() && (_sca_entry != nullptr) && (_sca_entry->preloaded());
+  return SCCache::is_on() && (_scc_entry != nullptr) && (_scc_entry->preloaded());
 }
 
 bool nmethod::has_clinit_barriers() const {
-  return SCArchive::is_on() && (_sca_entry != nullptr) && (_sca_entry->has_clinit_barriers());
+  return SCCache::is_on() && (_scc_entry != nullptr) && (_scc_entry->has_clinit_barriers());
 }
 
 void nmethod::post_compiled_method(CompileTask* task) {
@@ -1561,11 +1561,11 @@ void nmethod::post_compiled_method(CompileTask* task) {
     set_from_recorded_data();
   }
 
-  // task->is_sca() is true only for loaded cached code.
-  // nmethod::_sca_entry is set for loaded and stored cached code
+  // task->is_scc() is true only for loaded cached code.
+  // nmethod::_scc_entry is set for loaded and stored cached code
   // to invalidate the entry when nmethod is deoptimized.
   // There is option to not store in archive cached code.
-  guarantee((_sca_entry != nullptr) || !task->is_sca() || VerifySharedCode, "sanity");
+  guarantee((_scc_entry != nullptr) || !task->is_scc() || VerifyCachedCode, "sanity");
 
   // JVMTI -- compiled method notification (must be done outside lock)
   post_compiled_method_load_event();
@@ -2535,8 +2535,8 @@ void nmethod::print(outputStream* st) const {
                                              p2i(jvmci_data_end()),
                                              jvmci_data_size());
 #endif
-  if (SCArchive::is_on() && _sca_entry != nullptr) {
-    _sca_entry->print(st);
+  if (SCCache::is_on() && _scc_entry != nullptr) {
+    _scc_entry->print(st);
   }
 }
 
