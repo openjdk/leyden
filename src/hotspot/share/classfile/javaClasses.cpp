@@ -2100,6 +2100,10 @@ void java_lang_Throwable::clear_stacktrace(oop throwable) {
   set_stacktrace(throwable, nullptr);
 }
 
+oop java_lang_Throwable::create_exception_instance(Symbol* class_name, TRAPS) {
+  Klass* k = SystemDictionary::resolve_or_fail(class_name, true, CHECK_NULL);
+  return InstanceKlass::cast(k)->allocate_instance(CHECK_NULL);
+}
 
 void java_lang_Throwable::print(oop throwable, outputStream* st) {
   ResourceMark rm;

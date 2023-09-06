@@ -372,29 +372,6 @@ void ciEnv::cache_dtrace_flags() {
   _dtrace_alloc_probes  = DTraceAllocProbes;
 }
 
-// ------------------------------------------------------------------
-// helper for lazy exception creation
-ciInstance* ciEnv::get_or_create_exception(jobject& handle, Symbol* name) {
-  VM_ENTRY_MARK;
-  if (handle == nullptr) {
-    // Cf. universe.cpp, creation of Universe::_null_ptr_exception_instance.
-    InstanceKlass* ik = SystemDictionary::find_instance_klass(THREAD, name, Handle(), Handle());
-    jobject objh = nullptr;
-    if (ik != nullptr) {
-      oop obj = ik->allocate_instance(THREAD);
-      if (!HAS_PENDING_EXCEPTION)
-        objh = JNIHandles::make_global(Handle(THREAD, obj));
-    }
-    if (HAS_PENDING_EXCEPTION) {
-      CLEAR_PENDING_EXCEPTION;
-    } else {
-      handle = objh;
-    }
-  }
-  oop obj = JNIHandles::resolve(handle);
-  return obj == nullptr? nullptr: get_object(obj)->as_instance();
-}
-
 ciInstanceKlass* ciEnv::get_box_klass_for_primitive_type(BasicType type) {
   switch (type) {
     case T_BOOLEAN: return Boolean_klass();
@@ -414,25 +391,22 @@ ciInstanceKlass* ciEnv::get_box_klass_for_primitive_type(BasicType type) {
 
 ciInstance* ciEnv::ArrayIndexOutOfBoundsException_instance() {
   if (_ArrayIndexOutOfBoundsException_instance == nullptr) {
-    _ArrayIndexOutOfBoundsException_instance
-          = get_or_create_exception(_ArrayIndexOutOfBoundsException_handle,
-          vmSymbols::java_lang_ArrayIndexOutOfBoundsException());
+    VM_ENTRY_MARK;
+    _ArrayIndexOutOfBoundsException_instance = get_object(Universe::array_index_oob_exception_instance())->as_instance();
   }
   return _ArrayIndexOutOfBoundsException_instance;
 }
 ciInstance* ciEnv::ArrayStoreException_instance() {
   if (_ArrayStoreException_instance == nullptr) {
-    _ArrayStoreException_instance
-          = get_or_create_exception(_ArrayStoreException_handle,
-          vmSymbols::java_lang_ArrayStoreException());
+    VM_ENTRY_MARK;
+    _ArrayStoreException_instance = get_object(Universe::array_store_exception_instance())->as_instance();
   }
   return _ArrayStoreException_instance;
 }
 ciInstance* ciEnv::ClassCastException_instance() {
   if (_ClassCastException_instance == nullptr) {
-    _ClassCastException_instance
-          = get_or_create_exception(_ClassCastException_handle,
-          vmSymbols::java_lang_ClassCastException());
+    VM_ENTRY_MARK;
+    _ClassCastException_instance = get_object(Universe::class_cast_exception_instance())->as_instance();
   }
   return _ClassCastException_instance;
 }

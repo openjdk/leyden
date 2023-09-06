@@ -1521,6 +1521,7 @@ void MetaspaceShared::initialize_shared_spaces() {
   ArchiveHeapLoader::finish_initialization();
 
   CDS_JAVA_HEAP_ONLY(Universe::update_archived_basic_type_mirrors());
+  CDS_JAVA_HEAP_ONLY(Universe::update_exception_instances());
 
   // Close the mapinfo file
   static_mapinfo->close();

@@ -282,6 +282,13 @@ private:
   static OopHandle _roots;
   static int _permobj_segments;
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
+  static OopHandle _scratch_null_ptr_exception_instance;
+  static OopHandle _scratch_arithmetic_exception_instance;
+  static OopHandle _scratch_virtual_machine_error_instance;
+  static OopHandle _scratch_array_index_oob_exception_instance;
+  static OopHandle _scratch_array_store_exception_instance;
+  static OopHandle _scratch_class_cast_exception_instance;
+
   static MetaspaceObjToOopHandleTable* _scratch_java_mirror_table;
   static MetaspaceObjToOopHandleTable* _scratch_references_table;
 
@@ -346,6 +353,7 @@ private:
   static bool can_mirror_be_used_in_subgraph(oop orig_java_mirror);
   static void archive_java_mirrors();
   static void archive_strings();
+  static void archive_exception_instances();
   static void exit_on_error();
  public:
   static void reset_archived_object_states(TRAPS);
@@ -409,6 +417,7 @@ private:
   static objArrayOop scratch_resolved_references(ConstantPool* src);
   static void add_scratch_resolved_references(ConstantPool* src, objArrayOop dest) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_scratch_objects(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
+  static void init_scratch_exceptions(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_box_classes(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void restore_loader_data() NOT_CDS_JAVA_HEAP_RETURN;
   static bool is_heap_region(int idx) {

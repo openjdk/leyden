@@ -161,6 +161,14 @@ GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_trace = nullptr;
 GrowableArrayCHeap<const char*, mtClassShared>* HeapShared::_context = nullptr;
 OopHandle HeapShared::_roots;
 OopHandle HeapShared::_scratch_basic_type_mirrors[T_VOID+1];
+
+OopHandle HeapShared::_scratch_null_ptr_exception_instance;
+OopHandle HeapShared::_scratch_arithmetic_exception_instance;
+OopHandle HeapShared::_scratch_virtual_machine_error_instance;
+OopHandle HeapShared::_scratch_array_index_oob_exception_instance;
+OopHandle HeapShared::_scratch_array_store_exception_instance;
+OopHandle HeapShared::_scratch_class_cast_exception_instance;
+
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_java_mirror_table = nullptr;
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_references_table = nullptr;
 ClassLoaderData* HeapShared::_saved_java_platform_loader_data = nullptr;
@@ -465,6 +473,27 @@ void HeapShared::init_scratch_objects(TRAPS) {
   _scratch_references_table = new (mtClass)MetaspaceObjToOopHandleTable();
 }
 
+void HeapShared::init_scratch_exceptions(TRAPS) {
+  oop instance = nullptr;
+
+  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_NullPointerException(), CHECK);
+  _scratch_null_ptr_exception_instance = OopHandle(Universe::vm_global(), instance);
+
+  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArithmeticException(), CHECK);
+  _scratch_arithmetic_exception_instance = OopHandle(Universe::vm_global(), instance);
+
+  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_VirtualMachineError(), CHECK);
+  _scratch_virtual_machine_error_instance = OopHandle(Universe::vm_global(), instance);
+
+  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArrayIndexOutOfBoundsException(), CHECK);
+  _scratch_array_index_oob_exception_instance = OopHandle(Universe::vm_global(), instance);
+
+  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArrayStoreException(), CHECK);
+  _scratch_array_store_exception_instance = OopHandle(Universe::vm_global(), instance);
+
+  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ClassCastException(), CHECK);
+  _scratch_class_cast_exception_instance = OopHandle(Universe::vm_global(), instance);
+}
 // Given java_mirror that represents a (primitive or reference) type T,
 // return the "scratch" version that represents the same type T.
 // Note that if java_mirror will be returned if it's already a
@@ -646,6 +675,45 @@ void HeapShared::archive_strings() {
   StringTable::set_shared_strings_array_index(append_root(shared_strings_array));
 }
 
+void HeapShared::archive_exception_instances() {
+  {
+    oop m = _scratch_null_ptr_exception_instance.resolve();
+    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::null_ptr_exception_instance()*/);
+    assert(success, "sanity");
+    Universe::set_archived_null_ptr_exception_instance_index(append_root(m));
+  }
+  {
+    oop m = _scratch_arithmetic_exception_instance.resolve();
+    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::arithmetic_exception_instance()*/);
+    assert(success, "sanity");
+    Universe::set_archived_arithmetic_exception_instance_index(append_root(m));
+  }
+  {
+    oop m = _scratch_virtual_machine_error_instance.resolve();
+    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::virtual_machine_error_instance()*/);
+    assert(success, "sanity");
+    Universe::set_archived_virtual_machine_error_instance_index(append_root(m));
+  }
+  {
+    oop m = _scratch_array_index_oob_exception_instance.resolve();
+    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::array_index_oob_exception_instance()*/);
+    assert(success, "sanity");
+    Universe::set_archived_array_index_oob_exception_instance_index(append_root(m));
+  }
+  {
+    oop m = _scratch_array_store_exception_instance.resolve();
+    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::array_store_exception_instance()*/);
+    assert(success, "sanity");
+    Universe::set_archived_array_store_exception_instance_index(append_root(m));
+  }
+  {
+    oop m = _scratch_class_cast_exception_instance.resolve();
+    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::class_cast_exception_instance()*/);
+    assert(success, "sanity");
+    Universe::set_archived_class_cast_exception_instance_index(append_root(m));
+  }
+}
+
 void HeapShared::mark_native_pointers(oop orig_obj) {
   if (java_lang_Class::is_instance(orig_obj)) {
     ArchiveHeapWriter::mark_native_pointer(orig_obj, java_lang_Class::klass_offset());
@@ -702,6 +770,7 @@ void HeapShared::copy_special_objects() {
   init_seen_objects_table();
   archive_java_mirrors();
   archive_strings();
+  archive_exception_instances();
   delete_seen_objects_table();
 }
 
