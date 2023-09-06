@@ -93,6 +93,13 @@ Klass* Universe::_fillerArrayKlassObj                 = nullptr;
 OopHandle Universe::_basic_type_mirrors[T_VOID+1];
 #if INCLUDE_CDS_JAVA_HEAP
 int Universe::_archived_basic_type_mirror_indices[T_VOID+1];
+
+int Universe::_archived_null_ptr_exception_instance_index;
+int Universe::_archived_arithmetic_exception_instance_index;
+int Universe::_archived_virtual_machine_error_instance_index;
+int Universe::_archived_array_index_oob_exception_instance_index;
+int Universe::_archived_array_store_exception_instance_index;
+int Universe::_archived_class_cast_exception_instance_index;
 #endif
 
 OopHandle Universe::_main_thread_group;
@@ -128,6 +135,10 @@ OopHandle Universe::_msg_class_metaspace;
 OopHandle Universe::_null_ptr_exception_instance;
 OopHandle Universe::_arithmetic_exception_instance;
 OopHandle Universe::_virtual_machine_error_instance;
+
+OopHandle Universe::_array_index_oob_exception_instance;
+OopHandle Universe::_array_store_exception_instance;
+OopHandle Universe::_class_cast_exception_instance;
 
 OopHandle Universe::_reference_pending_list;
 
@@ -183,6 +194,10 @@ oop Universe::the_min_jint_string()               { return _the_min_jint_string.
 oop Universe::null_ptr_exception_instance()       { return _null_ptr_exception_instance.resolve(); }
 oop Universe::arithmetic_exception_instance()     { return _arithmetic_exception_instance.resolve(); }
 oop Universe::virtual_machine_error_instance()    { return _virtual_machine_error_instance.resolve(); }
+
+oop Universe::array_index_oob_exception_instance() { return _array_index_oob_exception_instance.resolve(); }
+oop Universe::array_store_exception_instance()     { return _array_store_exception_instance.resolve(); }
+oop Universe::class_cast_exception_instance()      { return _class_cast_exception_instance.resolve(); }
 
 oop Universe::the_null_sentinel()                 { return _the_null_sentinel.resolve(); }
 
@@ -257,6 +272,41 @@ void Universe::update_archived_basic_type_mirrors() {
     }
   }
 }
+
+void Universe::update_exception_instances() {
+  if (ArchiveHeapLoader::is_in_use()) {
+    if (_archived_null_ptr_exception_instance_index >= 0) {
+      oop mirror_oop = HeapShared::get_root(_archived_null_ptr_exception_instance_index);
+      assert(mirror_oop != nullptr, "must be");
+      _null_ptr_exception_instance = OopHandle(vm_global(), mirror_oop);
+    }
+    if (_archived_arithmetic_exception_instance_index >= 0) {
+      oop mirror_oop = HeapShared::get_root(_archived_arithmetic_exception_instance_index);
+      assert(mirror_oop != nullptr, "must be");
+      _arithmetic_exception_instance = OopHandle(vm_global(), mirror_oop);
+    }
+    if (_archived_virtual_machine_error_instance_index >= 0) {
+      oop mirror_oop = HeapShared::get_root(_archived_virtual_machine_error_instance_index);
+      assert(mirror_oop != nullptr, "must be");
+      _virtual_machine_error_instance = OopHandle(vm_global(), mirror_oop);
+    }
+    if (_archived_array_index_oob_exception_instance_index >= 0) {
+      oop mirror_oop = HeapShared::get_root(_archived_array_index_oob_exception_instance_index);
+      assert(mirror_oop != nullptr, "must be");
+      _array_index_oob_exception_instance = OopHandle(vm_global(), mirror_oop);
+    }
+    if (_archived_array_store_exception_instance_index >= 0) {
+      oop mirror_oop = HeapShared::get_root(_archived_array_store_exception_instance_index);
+      assert(mirror_oop != nullptr, "must be");
+      _array_store_exception_instance = OopHandle(vm_global(), mirror_oop);
+    }
+    if (_archived_class_cast_exception_instance_index >= 0) {
+      oop mirror_oop = HeapShared::get_root(_archived_class_cast_exception_instance_index);
+      assert(mirror_oop != nullptr, "must be");
+      _class_cast_exception_instance = OopHandle(vm_global(), mirror_oop);
+    }
+  }
+}
 #endif
 
 void Universe::serialize(SerializeClosure* f) {
@@ -268,6 +318,12 @@ void Universe::serialize(SerializeClosure* f) {
     // contents may need to be relocated. _basic_type_mirrors[i] will be
     // updated later in Universe::update_archived_basic_type_mirrors().
   }
+  f->do_int(&_archived_null_ptr_exception_instance_index);
+  f->do_int(&_archived_arithmetic_exception_instance_index);
+  f->do_int(&_archived_virtual_machine_error_instance_index);
+  f->do_int(&_archived_array_index_oob_exception_instance_index);
+  f->do_int(&_archived_array_store_exception_instance_index);
+  f->do_int(&_archived_class_cast_exception_instance_index);
 #endif
 
   f->do_ptr(&_fillerArrayKlassObj);
@@ -1011,29 +1067,50 @@ bool universe_post_init() {
     instance = java_lang_String::create_oop_from_str("Delayed StackOverflowError due to ReservedStackAccess annotated method", CHECK_false);
     Universe::_delayed_stack_overflow_error_message = OopHandle(Universe::vm_global(), instance);
   }
+  if (Universe::_null_ptr_exception_instance.is_empty()) {
+    instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_NullPointerException(), CHECK_false);
+    Universe::_null_ptr_exception_instance = OopHandle(Universe::vm_global(), instance);
+    Universe::_archived_null_ptr_exception_instance_index = -1;
+  }
+  if (Universe::_arithmetic_exception_instance.is_empty()) {
+    instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArithmeticException(), CHECK_false);
+    Universe::_arithmetic_exception_instance = OopHandle(Universe::vm_global(), instance);
+    Universe::_archived_arithmetic_exception_instance_index = -1;
+  }
+//#ifdef COMPILER1_OR_COMPILER2_PRESENT
+  if (Universe::_array_index_oob_exception_instance.is_empty()) {
+    instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArrayIndexOutOfBoundsException(), CHECK_false);
+    Universe::_array_index_oob_exception_instance = OopHandle(Universe::vm_global(), instance);
+    Universe::_archived_array_index_oob_exception_instance_index = -1;
+  }
+  if (Universe::_array_store_exception_instance.is_empty()) {
+    instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArrayStoreException(), CHECK_false);
+    Universe::_array_store_exception_instance = OopHandle(Universe::vm_global(), instance);
+    Universe::_archived_array_store_exception_instance_index = -1;
+  }
+  if (Universe::_class_cast_exception_instance.is_empty()) {
+    instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ClassCastException(), CHECK_false);
+    Universe::_class_cast_exception_instance = OopHandle(Universe::vm_global(), instance);
+    Universe::_archived_class_cast_exception_instance_index = -1;
+  }
+//#endif // COMPILER1_OR_COMPILER2_PRESENT
 
-  // Setup preallocated NullPointerException
-  // (this is currently used for a cheap & dirty solution in compiler exception handling)
-  Klass* k = SystemDictionary::resolve_or_fail(vmSymbols::java_lang_NullPointerException(), true, CHECK_false);
-  instance = InstanceKlass::cast(k)->allocate_instance(CHECK_false);
-  Universe::_null_ptr_exception_instance = OopHandle(Universe::vm_global(), instance);
-
-  // Setup preallocated ArithmeticException
-  // (this is currently used for a cheap & dirty solution in compiler exception handling)
-  k = SystemDictionary::resolve_or_fail(vmSymbols::java_lang_ArithmeticException(), true, CHECK_false);
-  instance = InstanceKlass::cast(k)->allocate_instance(CHECK_false);
-  Universe::_arithmetic_exception_instance = OopHandle(Universe::vm_global(), instance);
+  if (DumpSharedSpaces) {
+    HeapShared::init_scratch_exceptions(CHECK_false);
+  }
 
   // Virtual Machine Error for when we get into a situation we can't resolve
-  k = vmClasses::VirtualMachineError_klass();
+  Klass* k = vmClasses::VirtualMachineError_klass();
   bool linked = InstanceKlass::cast(k)->link_class_or_fail(CHECK_false);
   if (!linked) {
      tty->print_cr("Unable to link/verify VirtualMachineError class");
      return false; // initialization failed
   }
-  instance = InstanceKlass::cast(k)->allocate_instance(CHECK_false);
-  Universe::_virtual_machine_error_instance = OopHandle(Universe::vm_global(), instance);
-
+  if (Universe::_virtual_machine_error_instance.is_empty()) {
+    instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_VirtualMachineError(), CHECK_false);
+    Universe::_virtual_machine_error_instance = OopHandle(Universe::vm_global(), instance);
+    Universe::_archived_virtual_machine_error_instance_index = -1;
+  }
   Handle msg = java_lang_String::create_from_str("/ by zero", CHECK_false);
   java_lang_Throwable::set_message(Universe::arithmetic_exception_instance(), msg());
 

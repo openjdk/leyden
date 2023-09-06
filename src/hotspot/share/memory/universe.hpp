@@ -143,6 +143,10 @@ class Universe: AllStatic {
   static OopHandle    _arithmetic_exception_instance; // preallocated exception object
   static OopHandle    _virtual_machine_error_instance; // preallocated exception object
 
+  static OopHandle    _array_index_oob_exception_instance; // preallocated exception object
+  static OopHandle    _array_store_exception_instance;     // preallocated exception object
+  static OopHandle    _class_cast_exception_instance;      // preallocated exception object
+
   // References waiting to be transferred to the ReferenceHandler
   static OopHandle    _reference_pending_list;
 
@@ -204,6 +208,13 @@ class Universe: AllStatic {
   // Each slot i stores an index that can be used to restore _basic_type_mirrors[i]
   // from the archive heap using HeapShared::get_root(int)
   static int _archived_basic_type_mirror_indices[T_VOID+1];
+
+  static int _archived_null_ptr_exception_instance_index;
+  static int _archived_arithmetic_exception_instance_index;
+  static int _archived_virtual_machine_error_instance_index;
+  static int _archived_array_index_oob_exception_instance_index;
+  static int _archived_array_store_exception_instance_index;
+  static int _archived_class_cast_exception_instance_index;
 #endif
 
  public:
@@ -247,6 +258,27 @@ class Universe: AllStatic {
 #if INCLUDE_CDS_JAVA_HEAP
   static void set_archived_basic_type_mirror_index(BasicType t, int index);
   static void update_archived_basic_type_mirrors();
+
+  static void set_archived_null_ptr_exception_instance_index(int index) {
+    _archived_null_ptr_exception_instance_index = index;
+  }
+  static void set_archived_arithmetic_exception_instance_index(int index) {
+    _archived_arithmetic_exception_instance_index = index;
+  }
+  static void set_archived_virtual_machine_error_instance_index(int index) {
+    _archived_virtual_machine_error_instance_index = index;
+  }
+  static void set_archived_array_index_oob_exception_instance_index(int index) {
+    _archived_array_index_oob_exception_instance_index = index;
+  }
+  static void set_archived_array_store_exception_instance_index(int index) {
+    _archived_array_store_exception_instance_index = index;
+  }
+  static void set_archived_class_cast_exception_instance_index(int index) {
+    _archived_class_cast_exception_instance_index = index;
+  }
+
+  static void update_exception_instances();
 #endif
 
   static oop      main_thread_group();
@@ -264,6 +296,10 @@ class Universe: AllStatic {
   static oop          arithmetic_exception_instance();
   static oop          virtual_machine_error_instance();
   static oop          vm_exception()                  { return virtual_machine_error_instance(); }
+
+  static oop          array_index_oob_exception_instance();
+  static oop          array_store_exception_instance();
+  static oop          class_cast_exception_instance();
 
   static Array<Klass*>* the_array_interfaces_array()  { return _the_array_interfaces_array;   }
   static Method*      finalizer_register_method()     { return _finalizer_register_cache->get_method(); }

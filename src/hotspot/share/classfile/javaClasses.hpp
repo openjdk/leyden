@@ -619,7 +619,9 @@ class java_lang_Throwable: AllStatic {
   // For recreating class initialization error exceptions.
   static Handle create_initialization_error(JavaThread* current, Handle throwable);
 
-  // Printing
+  static oop create_exception_instance(Symbol* class_name, TRAPS);
+
+    // Printing
   static void print(oop throwable, outputStream* st);
   static void print_stack_trace(Handle throwable, outputStream* st);
   static void java_printStackTrace(Handle throwable, TRAPS);

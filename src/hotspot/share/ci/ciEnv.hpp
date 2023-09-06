@@ -234,8 +234,6 @@ private:
 
   ciMethod* get_method_from_handle(Method* method);
 
-  ciInstance* get_or_create_exception(jobject& handle, Symbol* name);
-
   // Get a ciMethod representing either an unfound method or
   // a method with an unloaded holder.  Ensures uniqueness of
   // the result.
