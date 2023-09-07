@@ -792,6 +792,7 @@ int java_lang_Class::_name_offset;
 int java_lang_Class::_source_file_offset;
 int java_lang_Class::_classData_offset;
 int java_lang_Class::_classRedefinedCount_offset;
+int java_lang_Class::_reflectionData_offset;
 
 bool java_lang_Class::_offsets_computed = false;
 GrowableArray<Klass*>* java_lang_Class::_fixup_mirror_list = nullptr;
@@ -1215,6 +1216,20 @@ void java_lang_Class::set_class_data(oop java_class, oop class_data) {
   java_class->obj_field_put(_classData_offset, class_data);
 }
 
+oop java_lang_Class::reflection_data(oop java_class) {
+  assert(_reflectionData_offset != 0, "must be set");
+  return java_class->obj_field(_reflectionData_offset);
+}
+
+bool java_lang_Class::has_reflection_data(oop java_class) {
+  return (java_lang_Class::reflection_data(java_class) != nullptr);
+}
+
+void java_lang_Class::set_reflection_data(oop java_class, oop reflection_data) {
+  assert(_reflectionData_offset != 0, "must be set");
+  java_class->obj_field_put(_reflectionData_offset, reflection_data);
+}
+
 void java_lang_Class::set_class_loader(oop java_class, oop loader) {
   assert(_class_loader_offset != 0, "offsets should have been initialized");
   java_class->obj_field_put(_class_loader_offset, loader);
@@ -1404,7 +1419,8 @@ oop java_lang_Class::primitive_mirror(BasicType t) {
   macro(_component_mirror_offset,    k, "componentType",       class_signature,       false); \
   macro(_module_offset,              k, "module",              module_signature,      false); \
   macro(_name_offset,                k, "name",                string_signature,      false); \
-  macro(_classData_offset,           k, "classData",           object_signature,      false);
+  macro(_classData_offset,           k, "classData",           object_signature,      false); \
+  macro(_reflectionData_offset,      k, "reflectionData",      class_ReflectionData_signature, false); \
 
 void java_lang_Class::compute_offsets() {
   if (_offsets_computed) {

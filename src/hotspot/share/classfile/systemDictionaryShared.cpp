@@ -2359,7 +2359,6 @@ void SystemDictionaryShared::preload_archived_classes(bool prelink, bool preinit
               log_info(cds,dynamic)("Exception during pre-resolution of %s", ik->external_name());
               LogStreamHandle(Debug, cds) log;
               if (log.is_enabled()) {
-                java_lang_Throwable::print(exc_handle(), &log);
                 java_lang_Throwable::print_stack_trace(exc_handle, &log);
               }
             }
@@ -2367,7 +2366,7 @@ void SystemDictionaryShared::preload_archived_classes(bool prelink, bool preinit
             JavaValue result(T_VOID);
             JavaCalls::call_special(&result,
                                     vmClasses::Class_klass(),
-                                    vmSymbols::preinit_name(),
+                                    vmSymbols::generateReflectionData_name(),
                                     vmSymbols::void_method_signature(),
                                     &args, THREAD);
             if (HAS_PENDING_EXCEPTION) {
@@ -2377,7 +2376,6 @@ void SystemDictionaryShared::preload_archived_classes(bool prelink, bool preinit
               log_info(cds,dynamic)("Exception during preinit call of %s", ik->external_name());
               LogStreamHandle(Debug, cds) log;
               if (log.is_enabled()) {
-                java_lang_Throwable::print(exc_handle(), &log);
                 java_lang_Throwable::print_stack_trace(exc_handle, &log);
               }
             }

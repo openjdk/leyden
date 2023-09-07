@@ -107,6 +107,9 @@
   product(bool, ArchiveInvokeDynamic, false,                                \
           "Archive resolved JVM_CONSTANT_InvokeDynamic in ConstantPool")    \
                                                                             \
+  product(bool, ArchiveReflectionData, false,                               \
+          "Archive Class::reflectionData field")                            \
+                                                                            \
   product(bool, ArchiveMethodReferences, true,                              \
           "Archive resolved JVM_CONSTANT_Methodref and "                    \
           "JVM_CONSTANT_InterfaceMethodref in ConstantPool")                \

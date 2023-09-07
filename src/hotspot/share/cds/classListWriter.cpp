@@ -239,7 +239,11 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
   GrowableArray<bool> list(cp->length(), cp->length(), false);
   int methodref_cpcache_index = 0; // cpcache index for Methodref/InterfaceMethodref
 
-  for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is unused
+  if (ArchiveReflectionData && java_lang_Class::has_reflection_data(ik->java_mirror()) ) {
+    list.at_put(0, true); // use index 0 to signal that Class.reflectionData != null
+  }
+
+  for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is used for reflectionData
     switch (cp->tag_at(cp_index).value()) {
     case JVM_CONSTANT_Class:
       {

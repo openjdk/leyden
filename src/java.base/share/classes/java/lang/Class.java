@@ -3369,8 +3369,8 @@ public final class Class<T> implements java.io.Serializable,
                 = unsafe.objectFieldOffset(Class.class, "annotationData");
 
         static <T> boolean casReflectionData(Class<?> clazz,
-                                             SoftReference<ReflectionData<T>> oldData,
-                                             SoftReference<ReflectionData<T>> newData) {
+                                             ReflectionData<T> oldData,
+                                             ReflectionData<T> newData) {
             return unsafe.compareAndSetReference(clazz, reflectionDataOffset, oldData, newData);
         }
 
@@ -3418,7 +3418,7 @@ public final class Class<T> implements java.io.Serializable,
         }
     }
 
-    private transient volatile SoftReference<ReflectionData<T>> reflectionData;
+    private transient volatile ReflectionData<T> reflectionData;
 
     // Incremented by the VM on each call to JVM TI RedefineClasses()
     // that redefines this class or a superclass.
@@ -3426,33 +3426,29 @@ public final class Class<T> implements java.io.Serializable,
 
     // Lazily create and cache ReflectionData
     private ReflectionData<T> reflectionData() {
-        SoftReference<ReflectionData<T>> reflectionData = this.reflectionData;
+        ReflectionData<T> reflectionData = this.reflectionData;
         int classRedefinedCount = this.classRedefinedCount;
-        ReflectionData<T> rd;
         if (reflectionData != null &&
-            (rd = reflectionData.get()) != null &&
-            rd.redefinedCount == classRedefinedCount) {
-            return rd;
+            reflectionData.redefinedCount == classRedefinedCount) {
+            return reflectionData;
         }
         // else no SoftReference or cleared SoftReference or stale ReflectionData
         // -> create and replace new instance
         return newReflectionData(reflectionData, classRedefinedCount);
     }
 
-    private ReflectionData<T> newReflectionData(SoftReference<ReflectionData<T>> oldReflectionData,
+    private ReflectionData<T> newReflectionData(ReflectionData<T> oldReflectionData,
                                                 int classRedefinedCount) {
         while (true) {
             ReflectionData<T> rd = new ReflectionData<>(classRedefinedCount);
             // try to CAS it...
-            if (Atomic.casReflectionData(this, oldReflectionData, new SoftReference<>(rd))) {
+            if (Atomic.casReflectionData(this, oldReflectionData, rd)) {
                 return rd;
             }
             // else retry
             oldReflectionData = this.reflectionData;
             classRedefinedCount = this.classRedefinedCount;
-            if (oldReflectionData != null &&
-                (rd = oldReflectionData.get()) != null &&
-                rd.redefinedCount == classRedefinedCount) {
+            if (oldReflectionData != null && oldReflectionData.redefinedCount == classRedefinedCount) {
                 return rd;
             }
         }
@@ -4823,15 +4819,17 @@ public final class Class<T> implements java.io.Serializable,
 
     private native int getClassAccessFlagsRaw0();
 
-    private void preinit() {
-        getEnumConstantsShared();
-        privateGetPublicMethods();
-        privateGetPublicFields();
-        privateGetDeclaredConstructors(false);
-        privateGetDeclaredConstructors(true);
-        privateGetDeclaredMethods(false);
-        privateGetDeclaredMethods(true);
-        privateGetDeclaredFields(false);
-        privateGetDeclaredFields(true);
+    private void generateReflectionData() {
+        privateGetPublicMethods();             // Method[] publicMethods;
+        privateGetPublicFields();              // Field[] publicFields;
+        privateGetDeclaredConstructors(false); // Constructor<T>[] declaredConstructors;
+        privateGetDeclaredConstructors(true);  // Constructor<T>[] publicConstructors;
+        privateGetDeclaredMethods(false);      // Method[] declaredMethods;
+        privateGetDeclaredMethods(true);       // Method[] declaredPublicMethods;
+        privateGetDeclaredFields(false);       // Field[] declaredFields;
+        privateGetDeclaredFields(true);        // Field[] declaredPublicFields;
+        getInterfaces(false);                  // Class<?>[] interfaces;
+        getSimpleName();                       // String simpleName;
+        getCanonicalName();                    // String canonicalName;
     }
 }

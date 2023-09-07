@@ -116,6 +116,7 @@ private:
   const char*         _source;
   bool                _lambda_form_line;
   bool                _constant_pool_line;
+  int                 _preinit;
   ParseMode           _parse_mode;
 
   bool parse_int_option(const char* option_name, int* value);

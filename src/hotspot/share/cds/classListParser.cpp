@@ -827,6 +827,7 @@ void ClassListParser::parse_constant_pool_tag() {
   ResourceMark rm(THREAD);
   constantPoolHandle cp(THREAD, ik->constants());
   GrowableArray<bool> preresolve_list(cp->length(), cp->length(), false);
+  bool preresolve_reflection_data = false;
   bool preresolve_class = false;
   bool preresolve_fmi = false;
   bool preresolve_indy = false;
@@ -836,6 +837,10 @@ void ClassListParser::parse_constant_pool_tag() {
     skip_whitespaces();
     parse_uint(&cp_index);
     if (cp_index < 1 || cp_index >= cp->length()) {
+      if (cp_index == 0) {
+        preresolve_reflection_data = true;
+        continue;
+      }
       constant_pool_resolution_warning("Invalid constant pool index %d", cp_index);
       return;
     } else {
@@ -861,7 +866,26 @@ void ClassListParser::parse_constant_pool_tag() {
       return;
     }
   }
+  if (ArchiveReflectionData && preresolve_reflection_data) {
+    log_info(cds)("Generate ReflectionData: %s", ik->external_name());
+    JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
+    JavaValue result(T_VOID);
+    JavaCalls::call_special(&result,
+                            vmClasses::Class_klass(),
+                            vmSymbols::generateReflectionData_name(),
+                            vmSymbols::void_method_signature(),
+                            &args, THREAD);
+    if (HAS_PENDING_EXCEPTION) {
+      Handle exc_handle(THREAD, PENDING_EXCEPTION);
+      CLEAR_PENDING_EXCEPTION;
 
+      log_warning(cds,dynamic)("Exception during Class::generateReflectionData() call for %s", ik->external_name());
+      LogStreamHandle(Debug, cds) log;
+      if (log.is_enabled()) {
+        java_lang_Throwable::print_stack_trace(exc_handle, &log);
+      }
+    }
+  }
   if (preresolve_class) {
     ClassPrelinker::preresolve_class_cp_entries(THREAD, ik, &preresolve_list);
   }
