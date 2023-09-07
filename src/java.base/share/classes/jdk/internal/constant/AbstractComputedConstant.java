@@ -165,16 +165,16 @@ public abstract sealed class AbstractComputedConstant<V, P>
         try {
             V v = evaluate(provider);
             if (v == null) {
-                casState(State.NULL.ordinalAsByte());
+                casState(State.NULL);
             } else {
                 casValue(v);
                 // Insert a memory barrier for store/store operations
                 freeze();
-                casState(State.NON_NULL.ordinalAsByte());
+                casState(State.NON_NULL);
             }
             return v;
         } catch (Throwable e) {
-            casState(State.ERROR.ordinalAsByte());
+            casState(State.ERROR);
             if (e instanceof Error err) {
                 // Always rethrow errors
                 throw err;
@@ -240,8 +240,8 @@ public abstract sealed class AbstractComputedConstant<V, P>
         }
     }
 
-    private void casState(byte value) {
-        if (!Unsafe.getUnsafe().compareAndSetByte(this, STATE_OFFSET, (byte) 0, value)) {
+    private void casState(State state) {
+        if (!Unsafe.getUnsafe().compareAndSetByte(this, STATE_OFFSET, (byte) 0, state.ordinalAsByte())) {
             throw new InternalError("Value was not zero: " + stateVolatile());
         }
     }
