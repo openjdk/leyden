@@ -29,6 +29,7 @@ import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.Stable;
 
+import java.lang.invoke.VarHandle;
 import java.util.NoSuchElementException;
 import java.util.function.Supplier;
 
@@ -212,7 +213,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
     private static void freeze() {
         // Issue a store fence, which is sufficient
         // to provide protection against store/store reordering.
-        Unsafe.getUnsafe().storeFence();
+        VarHandle.releaseFence();
     }
 
     // Accessors
