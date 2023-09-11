@@ -105,6 +105,8 @@ class ClassPrelinker :  AllStatic {
   static Klass* get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, int cp_index);
   static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
+
+  class RecordResolveIndysCLDClosure;
 public:
   static void initialize();
   static void dispose();
@@ -113,6 +115,7 @@ public:
   static void preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_invoker_class(JavaThread* current, InstanceKlass* ik);
+  static void preresolve_indys_from_preimage(TRAPS);
 
   static bool should_preresolve_invokedynamic(ConstantPool* cp, int cp_index);
 
@@ -139,6 +142,7 @@ public:
 
   static void record_preloaded_klasses(bool is_static_archive);
   static void record_initiated_klasses(bool is_static_archive);
+  static void record_resolved_indys();
   static void serialize(SerializeClosure* soc, bool is_static_archive);
 
   static void runtime_preload(JavaThread* current, Handle loader);

@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cds_globals.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "interpreter/bytecodes.hpp"
@@ -126,6 +127,10 @@ void Rewriter::make_constant_pool_cache(TRAPS) {
     } else {
       cache->save_for_archive(THREAD);
     }
+  }
+
+  if (!HAS_PENDING_EXCEPTION && CDSPreimage != nullptr) {
+    cache->save_for_archive(THREAD);
   }
 #endif
 

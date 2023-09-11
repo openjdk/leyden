@@ -2930,7 +2930,7 @@ static void thread_entry(JavaThread* thread, TRAPS) {
 
 JVM_ENTRY(void, JVM_StartThread(JNIEnv* env, jobject jthread))
 #if INCLUDE_CDS
-  if (DumpSharedSpaces) {
+  if (DumpSharedSpaces && CacheDataStore == nullptr) {
     // During java -Xshare:dump, if we allow multiple Java threads to
     // execute in parallel, symbols and classes may be loaded in
     // random orders which will make the resulting CDS archive
@@ -3681,7 +3681,7 @@ JVM_ENTRY(jclass, JVM_LookupLambdaProxyClassFromArchive(JNIEnv* env,
 JVM_END
 
 JVM_LEAF(jboolean, JVM_IsCDSDumpingEnabled(JNIEnv* env))
-  return Arguments::is_dumping_archive();
+  return Arguments::is_dumping_archive() || CDSPreimage != nullptr;
 JVM_END
 
 JVM_LEAF(jboolean, JVM_IsSharingEnabled(JNIEnv* env))

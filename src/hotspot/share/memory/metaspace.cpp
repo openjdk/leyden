@@ -747,7 +747,9 @@ void Metaspace::global_initialize() {
   metaspace::ChunkHeaderPool::initialize();
 
   if (DumpSharedSpaces) {
-    assert(!UseSharedSpaces, "sanity");
+    if (CDSPreimage == nullptr) {
+      assert(!UseSharedSpaces, "sanity");
+    }
     MetaspaceShared::initialize_for_static_dump();
   }
 

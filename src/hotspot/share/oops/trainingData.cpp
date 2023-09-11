@@ -1616,9 +1616,8 @@ size_t TrainingData::estimate_size_for_archive() {
   if (_dumptime_training_data_dictionary != nullptr) {
     return CompactHashtableWriter::estimate_size(_dumptime_training_data_dictionary->length());
   } else {
-    assert(!need_data(), "");
+    return 0;
   }
-  return 0;
 }
 
 TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {

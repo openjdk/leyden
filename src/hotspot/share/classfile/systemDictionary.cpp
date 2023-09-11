@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classFileParser.hpp"
@@ -143,7 +144,7 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
   } else {
     // It must have been restored from the archived module graph
     assert(UseSharedSpaces, "must be");
-    assert(MetaspaceShared::use_full_module_graph(), "must be");
+    assert(CDSConfig::is_loading_full_module_graph(), "must be");
     DEBUG_ONLY(
       oop platform_loader = get_platform_class_loader_impl(CHECK);
       assert(_java_platform_loader.resolve() == platform_loader, "must be");
@@ -158,7 +159,7 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
   } else {
     // It must have been restored from the archived module graph
     assert(UseSharedSpaces, "must be");
-    assert(MetaspaceShared::use_full_module_graph(), "must be");
+    assert(CDSConfig::is_loading_full_module_graph(), "must be");
     DEBUG_ONLY(
       oop system_loader = get_system_class_loader_impl(CHECK);
       assert(_java_system_loader.resolve() == system_loader, "must be");
@@ -167,6 +168,14 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
 
   SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_platform_loader()), CHECK);
   SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_system_loader()), CHECK);
+
+  if (CDSPreimage != nullptr) {
+    // TODO: copy the verification and loader constraints from preimage to final image
+    // TODO: load archived classes for custom loaders as well.
+    log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
+    MetaspaceShared::preload_and_dump();
+    vm_direct_exit(0, "CacheDataStore dumping is complete");
+  }
 }
 
 oop SystemDictionary::get_system_class_loader_impl(TRAPS) {
@@ -1196,11 +1205,34 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
     s2 path_index = ik->shared_classpath_index();
     if (path_index >= 0) { // FIXME ... for lambda form classes
       ik->set_classpath_index(path_index);
+
+      if (CDSPreimage != nullptr) {
+        if (path_index > ClassLoaderExt::max_used_path_index()) {
+          ClassLoaderExt::set_max_used_path_index(path_index);
+        }
+      }
     }
   }
 
   // notify a class loaded from shared object
   ClassLoadingService::notify_class_loaded(ik, true /* shared class */);
+
+  if (CDSPreimage != nullptr) {
+    SystemDictionaryShared::init_dumptime_info(ik);
+    if (ik->constants()->cache()) {
+      EXCEPTION_MARK;
+      ik->constants()->cache()->save_for_archive(THREAD);
+      if (HAS_PENDING_EXCEPTION) {
+        vm_exit_during_initialization(err_msg("OOM when loading CDSPreimage"));
+      }
+    }
+
+    if (SystemDictionary::is_platform_class_loader(loader_data->class_loader())) {
+      ClassLoaderExt::set_has_platform_classes();
+    } else if (SystemDictionary::is_system_class_loader(loader_data->class_loader())) {
+      ClassLoaderExt::set_has_app_classes();
+    }
+  }
 }
 
 #endif // INCLUDE_CDS

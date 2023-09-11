@@ -23,6 +23,7 @@
 */
 
 #include "precompiled.hpp"
+#include "cds/cds_globals.hpp"
 #include "cds/filemap.hpp"
 #include "classfile/classFileParser.hpp"
 #include "classfile/classFileStream.hpp"
@@ -212,7 +213,7 @@ InstanceKlass* KlassFactory::create_from_stream(ClassFileStream* stream,
   JFR_ONLY(ON_KLASS_CREATION(result, parser, THREAD);)
 
 #if INCLUDE_CDS
-  if (Arguments::is_dumping_archive()) {
+  if (Arguments::is_dumping_archive() || CDSPreimage != nullptr) {
     ClassLoader::record_result(THREAD, result, stream, old_stream != stream);
   }
 #endif // INCLUDE_CDS

@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "classfile/altHashing.hpp"
 #include "classfile/classLoaderData.hpp"
@@ -491,7 +492,7 @@ Symbol* SymbolTable::do_add_if_needed(const char* name, int len, uintx hash, boo
   const int alloc_size = Symbol::byte_size(len);
   u1* u1_buf = NEW_RESOURCE_ARRAY_IN_THREAD(current, u1, alloc_size);
   Symbol* tmp = ::new ((void*)u1_buf) Symbol((const u1*)name, len,
-                                             (is_permanent || DumpSharedSpaces) ? PERM_REFCOUNT : 1);
+                                             (is_permanent || CDSConfig::is_dumping_static_archive()) ? PERM_REFCOUNT : 1);
 
   do {
     if (_local_table->insert(current, lookup, *tmp, &rehash_warning, &clean_hint)) {

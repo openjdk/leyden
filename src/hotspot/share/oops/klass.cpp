@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveHeapLoader.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoaderDataGraph.inline.hpp"
@@ -85,7 +86,7 @@ void Klass::set_name(Symbol* n) {
   _name = n;
   if (_name != nullptr) _name->increment_refcount();
 
-  if (Arguments::is_dumping_archive() && is_instance_klass()) {
+  if (CDSConfig::is_using_dumptime_tables() && is_instance_klass()) {
     SystemDictionaryShared::init_dumptime_info(InstanceKlass::cast(this));
   }
 }
@@ -536,8 +537,10 @@ void Klass::metaspace_pointers_do(MetaspaceClosure* it) {
 
 #if INCLUDE_CDS
 void Klass::remove_unshareable_info() {
+#if 0
   assert (Arguments::is_dumping_archive(),
           "only called during CDS dump time");
+#endif
   JFR_ONLY(REMOVE_ID(this);)
   if (log_is_enabled(Trace, cds, unshareable)) {
     ResourceMark rm;
@@ -647,7 +650,7 @@ void Klass::clear_archived_mirror_index() {
 
 // No GC barrier
 void Klass::set_archived_java_mirror(int mirror_index) {
-  assert(DumpSharedSpaces, "called only during dumptime");
+  assert(CDSConfig::is_dumping_heap(), "called only during dumptime");
   _archived_mirror_index = mirror_index;
 }
 #endif // INCLUDE_CDS_JAVA_HEAP

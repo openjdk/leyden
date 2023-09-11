@@ -25,6 +25,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -326,7 +327,7 @@ static void call_initPhase2(TRAPS) {
   // Preload all boot classes outside of java.base module
   ClassPrelinker::runtime_preload(THREAD, Handle());
   SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(), CHECK); // FIXME we can't allow exceptions!
-  if (MetaspaceShared::use_full_module_graph() && UseSharedSpaces) {
+  if (CDSConfig::is_loading_full_module_graph()) {
     // SystemDictionary::java_{platform,system}_loader are already assigned. We can spin
     // this up a little quicker.
     assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
@@ -860,7 +861,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   _vm_complete = true;
 #endif
 
-  if (DumpSharedSpaces) {
+  if (DumpSharedSpaces && CacheDataStore == nullptr) {
+    // Regular -Xshare:dump
     MetaspaceShared::preload_and_dump();
   }
 

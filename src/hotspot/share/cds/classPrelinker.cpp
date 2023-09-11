@@ -24,11 +24,13 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
+#include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
@@ -90,7 +92,7 @@ void ClassPrelinker::initialize() {
   for (auto id : EnumRange<vmClassID>{}) {
     add_one_vm_class(vmClasses::klass_at(id));
   }
-  if (_static_preloaded_klasses._boot != nullptr) {
+  if (_static_preloaded_klasses._boot != nullptr && CDSPreimage == nullptr) {
     assert(DynamicDumpSharedSpaces, "must be");
     add_preloaded_klasses(_static_preloaded_klasses._boot);
     add_preloaded_klasses(_static_preloaded_klasses._boot2);
@@ -311,8 +313,7 @@ Klass* ClassPrelinker::find_loaded_class(JavaThread* current, ConstantPool* cp, 
 
 #if INCLUDE_CDS_JAVA_HEAP
 void ClassPrelinker::resolve_string(constantPoolHandle cp, int cp_index, TRAPS) {
-  if (!DumpSharedSpaces) {
-    // The archive heap is not supported for the dynamic archive.
+  if (!CDSConfig::is_dumping_heap()) {
     return;
   }
 
@@ -507,7 +508,7 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
 static GrowableArrayCHeap<char*, mtClassShared>* _invokedynamic_filter = nullptr;
 
 bool ClassPrelinker::should_preresolve_invokedynamic(ConstantPool* cp, int cp_index) {
-  if (!ArchiveInvokeDynamic) {
+  if (!ArchiveInvokeDynamic || !HeapShared::can_write()) {
     return false;
   }
 
@@ -531,6 +532,29 @@ bool ClassPrelinker::should_preresolve_invokedynamic(ConstantPool* cp, int cp_in
   }
 
   return false;
+}
+
+static Array<InstanceKlass*>* _klasses_for_indy_resolution = nullptr;
+static Array<Array<int>*>* _cp_index_lists_for_indy_resolution = nullptr;
+
+void ClassPrelinker::preresolve_indys_from_preimage(TRAPS) {
+  if (CDSPreimage != nullptr && _klasses_for_indy_resolution != nullptr) {
+    assert(_cp_index_lists_for_indy_resolution != nullptr, "must be");
+    for (int i = 0; i < _klasses_for_indy_resolution->length(); i++) {
+      InstanceKlass* ik = _klasses_for_indy_resolution->at(i);
+      ConstantPool* cp = ik->constants();
+      Array<int>* cp_indices = _cp_index_lists_for_indy_resolution->at(i);
+      GrowableArray<bool> preresolve_list(cp->length(), cp->length(), false);
+      for (int j = 0; j < cp_indices->length(); j++) {
+        preresolve_list.at_put(cp_indices->at(j), true);
+      }
+      preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
+    }
+  }
+
+  // These aren't needed in the final CDS image
+  _klasses_for_indy_resolution = nullptr;
+  _cp_index_lists_for_indy_resolution = nullptr;
 }
 
 #ifdef ASSERT
@@ -589,8 +613,11 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
       return;
     }
     if (MetaspaceObj::is_shared(ik)) {
-      assert(DynamicDumpSharedSpaces, "must be");
-      return;
+      if (DynamicDumpSharedSpaces) {
+        return;
+      } else {
+        assert(CDSPreimage != nullptr, "must be");
+      }
     }
 
     // Do not preload any module classes that are not from the modules images,
@@ -643,7 +670,7 @@ public:
     GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
     for (GrowableArrayIterator<Klass*> it = klasses->begin(); it != klasses->end(); ++it) {
       Klass* k = *it;
-      assert(!k->is_shared(), "must be");
+      //assert(!k->is_shared(), "must be");
       if (k->is_instance_klass()) {
         maybe_record(InstanceKlass::cast(k));
       }
@@ -676,14 +703,21 @@ void ClassPrelinker::record_preloaded_klasses(bool is_static_archive) {
   }
 }
 
-Array<InstanceKlass*>* ClassPrelinker::archive_klass_array(GrowableArray<InstanceKlass*>* tmp_array) {
-  Array<InstanceKlass*>* archived_array = ArchiveBuilder::new_ro_array<InstanceKlass*>(tmp_array->length());
+template <typename T>
+Array<T>* archive_array(GrowableArray<T>* tmp_array) {
+  Array<T>* archived_array = ArchiveBuilder::new_ro_array<T>(tmp_array->length());
   for (int i = 0; i < tmp_array->length(); i++) {
     archived_array->at_put(i, tmp_array->at(i));
-    ArchivePtrMarker::mark_pointer(archived_array->adr_at(i));
+    if (std::is_pointer<T>::value) {
+      ArchivePtrMarker::mark_pointer(archived_array->adr_at(i));
+    }
   }
 
   return archived_array;
+}
+
+Array<InstanceKlass*>* ClassPrelinker::archive_klass_array(GrowableArray<InstanceKlass*>* tmp_array) {
+  return archive_array(tmp_array);
 }
 
 Array<InstanceKlass*>* ClassPrelinker::record_initiated_klasses(ClassesTable* table) {
@@ -716,6 +750,47 @@ void ClassPrelinker::record_initiated_klasses(bool is_static_archive) {
   }
 }
 
+void ClassPrelinker::record_resolved_indys() {
+  ResourceMark rm;
+  GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
+  GrowableArray<InstanceKlass*> tmp_klasses;
+  GrowableArray<Array<int>*> tmp_cp_index_lists;
+  int total_indys_to_resolve = 0;
+  for (int i = 0; i < klasses->length(); i++) {
+    Klass* k = klasses->at(i);
+    if (k->is_instance_klass()) {
+      InstanceKlass* ik = InstanceKlass::cast(k);
+      GrowableArray<int> indices;
+
+      if (ik->constants()->cache() != nullptr) {
+        Array<ResolvedIndyEntry>* indy_entries = ik->constants()->cache()->resolved_indy_entries();
+        if (indy_entries != nullptr) {
+          for (int i = 0; i < indy_entries->length(); i++) {
+            ResolvedIndyEntry* rie = indy_entries->adr_at(i);
+            int cp_index = rie->constant_pool_index();
+            if (rie->is_resolved()) {
+              indices.append(cp_index);
+            }
+          }
+        }
+      }
+
+      if (indices.length() > 0) {
+        tmp_klasses.append(ArchiveBuilder::current()->get_buffered_addr(ik));
+        tmp_cp_index_lists.append(archive_array(&indices));
+        total_indys_to_resolve += indices.length();
+      }
+    }
+  }
+
+  assert(tmp_klasses.length() == tmp_cp_index_lists.length(), "must be");
+  if (tmp_klasses.length() > 0) {
+    _klasses_for_indy_resolution = archive_array(&tmp_klasses);
+    _cp_index_lists_for_indy_resolution = archive_array(&tmp_cp_index_lists);
+  }
+  log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_klasses.length());
+}
+
 void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {
   PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_klasses : &_dynamic_preloaded_klasses;
 
@@ -725,6 +800,11 @@ void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {
   soc->do_ptr((void**)&table->_platform_initiated);
   soc->do_ptr((void**)&table->_app);
   soc->do_ptr((void**)&table->_app_initiated);
+
+  if (is_static_archive) {
+    soc->do_ptr((void**)&_klasses_for_indy_resolution);
+    soc->do_ptr((void**)&_cp_index_lists_for_indy_resolution);
+  }
 }
 
 volatile bool _class_preloading_finished = false;

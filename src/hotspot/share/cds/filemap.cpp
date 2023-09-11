@@ -28,6 +28,7 @@
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
@@ -203,7 +204,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _core_region_alignment = core_region_alignment;
   _obj_alignment = ObjectAlignmentInBytes;
   _compact_strings = CompactStrings;
-  if (DumpSharedSpaces && HeapShared::can_write()) {
+  if (CDSConfig::is_dumping_heap()) {
     _narrow_oop_mode = CompressedOops::mode();
     _narrow_oop_base = CompressedOops::base();
     _narrow_oop_shift = CompressedOops::shift();
@@ -212,7 +213,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _compressed_class_ptrs = UseCompressedClassPointers;
   _max_heap_size = MaxHeapSize;
   _use_optimized_module_handling = MetaspaceShared::use_optimized_module_handling();
-  _use_full_module_graph = MetaspaceShared::use_full_module_graph();
+  _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
 
   // The following fields are for sanity checks for whether this archive
   // will function correctly with this JVM and the bootclasspath it's
@@ -290,7 +291,7 @@ void FileMapHeader::print(outputStream* st) {
   st->print_cr("- heap_roots_offset:              " SIZE_FORMAT, _heap_roots_offset);
   st->print_cr("- allow_archiving_with_java_agent:%d", _allow_archiving_with_java_agent);
   st->print_cr("- use_optimized_module_handling:  %d", _use_optimized_module_handling);
-  st->print_cr("- use_full_module_graph           %d", _use_full_module_graph);
+  st->print_cr("- has_full_module_graph           %d", _has_full_module_graph);
   st->print_cr("- ptrmap_size_in_bits:            " SIZE_FORMAT, _ptrmap_size_in_bits);
 }
 
@@ -1791,8 +1792,9 @@ MapArchiveResult FileMapInfo::map_region(int i, intx addr_delta, char* mapped_ba
     // Note that this may either be a "fresh" mapping into unreserved address
     // space (Windows, first mapping attempt), or a mapping into pre-reserved
     // space (Posix). See also comment in MetaspaceShared::map_archives().
+    bool read_only = r->read_only() && CDSPreimage == nullptr;
     char* base = os::map_memory(_fd, _full_path, r->file_offset(),
-                                requested_addr, size, r->read_only(),
+                                requested_addr, size, read_only,
                                 r->allow_exec(), mtClassShared);
     if (base != requested_addr) {
       log_info(cds)("Unable to map %s shared space at " INTPTR_FORMAT,
@@ -1953,7 +1955,7 @@ void FileMapInfo::map_or_load_heap_region() {
   }
 
   if (!success) {
-    MetaspaceShared::disable_full_module_graph();
+    CDSConfig::disable_loading_full_module_graph("archive heap loading failed");
   }
 }
 
@@ -2372,9 +2374,8 @@ bool FileMapHeader::validate() {
     log_info(cds)("optimized module handling: disabled because archive was created without optimized module handling");
   }
 
-  if (!_use_full_module_graph) {
-    MetaspaceShared::disable_full_module_graph();
-    log_info(cds)("full module graph: disabled because archive was created without full module graph");
+  if (!_has_full_module_graph) {
+    CDSConfig::disable_loading_full_module_graph("archive was created without full module graph");
   }
 
   return true;

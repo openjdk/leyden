@@ -25,6 +25,7 @@
 #ifndef SHARE_CDS_HEAPSHARED_HPP
 #define SHARE_CDS_HEAPSHARED_HPP
 
+#include "cds/cds_globals.hpp"
 #include "cds/dumpTimeClassInfo.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/compactHashtable.hpp"

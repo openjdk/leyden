@@ -1283,7 +1283,7 @@ char* ClassLoader::skip_uri_protocol(char* source) {
 // by the builtin loaders at dump time.
 void ClassLoader::record_result(JavaThread* current, InstanceKlass* ik,
                                 const ClassFileStream* stream, bool redefined) {
-  Arguments::assert_is_dumping_archive();
+  // FIXME Arguments::assert_is_dumping_archive();
   assert(stream != nullptr, "sanity");
 
   if (ik->is_hidden()) {

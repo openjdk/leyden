@@ -76,8 +76,20 @@
           "Dump the names all loaded classes, that could be stored into "   \
           "the CDS archive, in the specified file")                         \
                                                                             \
+  product(ccstr, CacheDataStore, nullptr,                                   \
+          "If valid, use the specified file for SharedArchiveFile; "        \
+          "otherwise the specified file is generated at program exit")      \
+                                                                            \
+  product(ccstr, CDSPreimage, nullptr,                                      \
+          "(** internal use only **) -- used by a child JVM process to "    \
+          "create the CacheDataStore final image")                          \
+                                                                            \
+  product(bool, CDSManualFinalImage, false, DIAGNOSTIC,                     \
+          "(** internal use only **) -- if false, automatically launch a "  \
+          "child process to create the final image.")                       \
+                                                                            \
   product(ccstr, SharedClassListFile, nullptr,                              \
-          "Override the default CDS class list")                            \
+          "Override the default CDS class list")  \
                                                                             \
   product(ccstr, SharedArchiveFile, nullptr,                                \
           "Override the default location of the CDS archive file")          \
