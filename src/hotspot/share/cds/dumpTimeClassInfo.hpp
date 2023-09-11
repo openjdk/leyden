@@ -195,7 +195,8 @@ public:
   }
 
   bool is_excluded() {
-    return _excluded || _failed_verification;
+    return _excluded ||
+           (!ArchiveReflectionData && _failed_verification); // FIXME: !!! HACK !!!
   }
 
   // Was this class loaded while JvmtiExport::is_early_phase()==true

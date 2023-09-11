@@ -872,10 +872,17 @@ bool MetaspaceShared::try_link_class(JavaThread* current, InstanceKlass* ik) {
     }
     ik->link_class(THREAD);
     if (HAS_PENDING_EXCEPTION) {
-      ResourceMark rm(THREAD);
-      log_warning(cds)("Preload Warning: Verification failed for %s",
-                    ik->external_name());
+      ResourceMark rm;
+
+      Handle h_ex(THREAD, PENDING_EXCEPTION);
       CLEAR_PENDING_EXCEPTION;
+
+      log_warning(cds)("Preload Warning: Verification failed for %s: %s",
+                       ik->external_name(), h_ex->klass()->external_name());
+      LogStreamHandle(Debug, cds) log;
+      if (log.is_enabled()) {
+        java_lang_Throwable::print_stack_trace(h_ex, &log);
+      }
       SystemDictionaryShared::set_class_has_failed_verification(ik);
     }
     ik->compute_has_loops_flag_for_methods();

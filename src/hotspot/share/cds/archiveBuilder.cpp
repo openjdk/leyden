@@ -703,8 +703,12 @@ void ArchiveBuilder::mark_and_relocate_to_buffered_addr(address* ptr_location) {
 
 address ArchiveBuilder::get_buffered_addr(address src_addr) const {
   SourceObjInfo* p = _src_obj_table.get(src_addr);
-  assert(p != nullptr, "src_addr " INTPTR_FORMAT " is used but has not been archived",
-         p2i(src_addr));
+  if (p == nullptr && Metaspace::contains(src_addr)) {
+    Metadata* ptr = (Metadata*)src_addr;
+    ptr->print();
+  }
+  guarantee(p != nullptr, "src_addr " INTPTR_FORMAT " is used but has not been archived",
+            p2i(src_addr));
 
   return p->buffered_addr();
 }
