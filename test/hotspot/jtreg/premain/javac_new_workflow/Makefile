@@ -20,6 +20,6 @@
 # questions.
 
 clean:
-	rm -f *.cds *.cds.preimage cmds.txt *~
+	rm -f *.cds *.cds.preimage cmds.txt *~ HelloWorld.class
 
 
