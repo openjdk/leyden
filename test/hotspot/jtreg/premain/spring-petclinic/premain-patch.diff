@@ -1,0 +1,70 @@
+diff --git a/pom.xml b/pom.xml
+index ce92ea5..07a81c8 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -220,17 +220,19 @@
+           </execution>
+         </executions>
+       </plugin>
++<!--
+       <plugin>
+         <groupId>org.graalvm.buildtools</groupId>
+         <artifactId>native-maven-plugin</artifactId>
+       </plugin>
++-->
+       <plugin>
+         <groupId>org.springframework.boot</groupId>
+         <artifactId>spring-boot-maven-plugin</artifactId>
+         <executions>
+           <execution>
+             <!-- Spring Boot Actuator displays build-related information
+-              if a META-INF/build-info.properties file is present -->
++            if a META-INF/build-info.properties file is present -->
+             <goals>
+               <goal>build-info</goal>
+             </goals>
+@@ -241,8 +243,24 @@
+                 <java.source>${java.version}</java.source>
+                 <java.target>${java.version}</java.target>
+               </additionalProperties>
++
++              <image>
++                <builder>paketobuildpacks/builder:tiny</builder>
++                <env>
++                  <BP_NATIVE_IMAGE>true</BP_NATIVE_IMAGE>
++                </env>
++              </image>
++
+             </configuration>
+           </execution>
++
++          <execution>
++            <id>process-aot</id>
++            <goals>
++              <goal>process-aot</goal>
++            </goals>
++          </execution>
++
+         </executions>
+       </plugin>
+       <plugin>
+diff --git a/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java b/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
+index ac6e150..28b3931 100644
+--- a/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
++++ b/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
+@@ -31,7 +31,15 @@ import org.springframework.context.annotation.ImportRuntimeHints;
+ public class PetClinicApplication {
+ 
+ 	public static void main(String[] args) {
++		long begin = System.currentTimeMillis();
+ 		SpringApplication.run(PetClinicApplication.class, args);
++		long end = System.currentTimeMillis();
++		Boolean quit = Boolean.getBoolean("autoQuit");
++		if (quit) {
++			System.out.println("#### Booted and returned in " + (end - begin) + "ms");
++			System.exit(0);
++		}
++
+ 	}
+ 
+ }
