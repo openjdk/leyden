@@ -326,7 +326,14 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
       // won't work at runtime.
       // As a result, we cannot store this class. It must be loaded and fully verified
       // at runtime.
-      return warn_excluded(k, "Old class has been linked");
+      ResourceMark rm;
+      stringStream ss;
+      ss.print("Old class has been linked: version %d:%d", k->major_version(), k->minor_version());
+      if (k->is_hidden()) {
+        InstanceKlass* nest_host = k->nest_host_not_null();
+        ss.print(" (nest_host %d:%d)", nest_host->major_version(), nest_host->minor_version());
+      }
+      return warn_excluded(k, ss.freeze());
     }
   }
 
