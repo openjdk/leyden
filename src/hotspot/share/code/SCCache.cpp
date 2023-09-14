@@ -106,15 +106,13 @@ void SCCache::initialize() {
   }
   if ((LoadCachedCode || StoreCachedCode) && CachedCodeFile != nullptr) {
     const int len = (int)strlen(CachedCodeFile);
-    char* cp  = NEW_C_HEAP_ARRAY(char, len+1, mtCode);
-    memcpy(cp, CachedCodeFile, len);
-    cp[len] = '\0';
-    const int file_separator = *os::file_separator();
-    const char* start = strrchr(cp, file_separator);
-    const char* path = (start == nullptr) ? cp : (start + 1);
+    // cache file path
+    char* path  = NEW_C_HEAP_ARRAY(char, len+1, mtCode);
+    memcpy(path, CachedCodeFile, len);
+    path[len] = '\0';
 
     if (!open_cache(path)) {
-      FREE_C_HEAP_ARRAY(char, cp);
+      FREE_C_HEAP_ARRAY(char, path);
       return;
     }
     if (StoreCachedCode) {
@@ -246,7 +244,7 @@ bool SCCache::open_cache(const char* cache_path) {
     log_info(scc)("Trying to load Startup Code Cache '%s'", cache_path);
     struct stat st;
     if (os::stat(cache_path, &st) != 0) {
-      log_warning(scc, init)("Specified Startup Code Cache not found '%s'", cache_path);
+      log_warning(scc, init)("Specified Startup Code Cache file not found '%s'", cache_path);
       return false;
     } else if ((st.st_mode & S_IFMT) != S_IFREG) {
       log_warning(scc, init)("Specified Startup Code Cache is not file '%s'", cache_path);
@@ -255,7 +253,7 @@ bool SCCache::open_cache(const char* cache_path) {
     int fd = os::open(cache_path, O_RDONLY | O_BINARY, 0);
     if (fd < 0) {
       if (errno == ENOENT) {
-        log_warning(scc, init)("Specified Startup Code Cache not found '%s'", cache_path);
+        log_warning(scc, init)("Specified Startup Code Cache file not found '%s'", cache_path);
       } else {
         log_warning(scc, init)("Failed to open Startup Code Cache file '%s': (%s)", cache_path, os::strerror(errno));
       }
@@ -893,7 +891,7 @@ bool SCCache::finish_write() {
 
     // Now store to file
 #ifdef _WINDOWS  // On Windows, need WRITE permission to remove the file.
-    chmod(cache_path, _S_IREAD | _S_IWRITE);
+    chmod(_cache_path, _S_IREAD | _S_IWRITE);
 #endif
     // Use remove() to delete the existing file because, on Unix, this will
     // allow processes that have it open continued access to the file.
