@@ -30,6 +30,7 @@
 #include "classfile/compactHashtable.hpp"
 #include "classfile/javaClasses.hpp"
 #include "memory/metaspaceClosure.hpp"
+#include "oops/methodCounters.hpp"
 #include "oops/methodData.hpp"
 #include "utilities/growableArray.hpp"
 #include "utilities/resourceHash.hpp"

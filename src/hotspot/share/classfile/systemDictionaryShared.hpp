@@ -213,6 +213,8 @@ private:
   static void remove_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static void init_archived_hidden_class(Handle class_loader,
                                          InstanceKlass* ik, const char* which, TRAPS);
+  static InstanceKlass* retrieve_lambda_proxy_class(const RunTimeLambdaProxyClassInfo* info) NOT_CDS_RETURN_(nullptr);
+
   DEBUG_ONLY(static bool _class_loading_may_happen;)
 
 public:
