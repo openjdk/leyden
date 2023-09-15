@@ -84,9 +84,12 @@ static: ${PC_STATIC_JSA}
 dynamic: ${PC_DYNAMIC_JSA}
 aot: ${PC_CACHED_CODE}
 
+# Check out this specific version of spring-petclinic that we have been testing with.
+# https://github.com/spring-projects/spring-petclinic/commit/18266fec8b33664444efbc45ad5d641b3210a58c
 ${PC_APP_JAVA}: premain-patch.diff
 	rm -rf ${PC_REPO}
 	git clone https://github.com/spring-projects/spring-petclinic ${PC_REPO}
+	cd ${PC_REPO}; git reset --hard 18266fec8b33664444efbc45ad5d641b3210a58c
 	cd ${PC_REPO}; git apply ../premain-patch.diff
 
 # Need to touch ${PC_APP_JAR} as mvn wants to set it to May 10, 2023!
@@ -110,7 +113,9 @@ ${PC_APP_UNPACKED}: ${PC_APP_JAR}
 
 
 ${PC_CLASSLIST}: ${PC_APP_UNPACKED}
-	${PREMAIN_JAVA} -Xshare:off -XX:DumpLoadedClassList=${PC_CLASSLIST} ${UNPACKED_CMDLINE}
+	${PREMAIN_JAVA} -Xshare:off -XX:DumpLoadedClassList=${PC_CLASSLIST} \
+	    -Xlog:class+load=debug:file=spring-petclinic.classload.log \
+	    ${UNPACKED_CMDLINE}
 	wc -lc ${PC_CLASSLIST}
 
 ${PC_STATIC_JSA}: ${PC_CLASSLIST}
@@ -143,8 +148,9 @@ run0: ${PC_APP_UNPACKED}
 run17: ${PC_APP_UNPACKED}
 	${JDK17_JAVA} ${UNPACKED_CMDLINE}
 
-clean:
-	rm -rf *~ ${PC_REPO} spring-petclinic.*.jsa* *.classlist
+clean: clean0
+	rm -rf *~ ${PC_REPO}
 
+# clean the the leyden artifacts
 clean0:
-	rm -fv spring-petclinic.*.jsa* *.classlist
+	rm -fv spring-petclinic.*

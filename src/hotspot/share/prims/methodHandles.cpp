@@ -23,10 +23,12 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cds_globals.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "code/codeCache.hpp"
 #include "code/dependencyContext.hpp"
@@ -1228,6 +1230,36 @@ JVM_ENTRY(void, MHN_setCallSiteTargetNormal(JNIEnv* env, jobject igcls, jobject 
 }
 JVM_END
 
+// Make sure the class is linked. If the class cannot be verified, etc, an exception will be thrown.
+JVM_ENTRY(void, MHN_checkArchivable(JNIEnv *env, jobject igcls, jclass klass_jh)) {
+  if (klass_jh == nullptr) { THROW_MSG(vmSymbols::java_lang_InternalError(), "klass is null"); }
+
+  if (ArchiveInvokeDynamic) {
+    Klass* klass = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(klass_jh));
+    if (klass != nullptr && klass->is_instance_klass()) {
+      // klass could be null during very early VM start-up
+      InstanceKlass* ik = InstanceKlass::cast(klass);
+      ik->link_class(THREAD); // exception will be thrown if unverifiable
+      if (!ik->is_linked()) {
+        ResourceMark rm;
+        log_warning(cds)("Cannot use unverifiable class %s in MethodType",
+                         klass->external_name());
+      }
+
+      if (SystemDictionaryShared::is_jfr_event_class(ik)) {
+        ResourceMark rm;
+        log_warning(cds)("Cannot use JFR event class %s in MethodType",
+                         klass->external_name());
+        Exceptions::fthrow(THREAD_AND_LOCATION,
+                           vmSymbols::java_lang_NoClassDefFoundError(),
+                           "Class %s, or one of its supertypes, is a JFR event class",
+                           klass->external_name());
+      }
+    }
+  }
+}
+JVM_END
+
 JVM_ENTRY(void, MHN_setCallSiteTargetVolatile(JNIEnv* env, jobject igcls, jobject call_site_jh, jobject target_jh)) {
   Handle call_site(THREAD, JNIHandles::resolve_non_null(call_site_jh));
   Handle target   (THREAD, JNIHandles::resolve_non_null(target_jh));
@@ -1386,6 +1418,7 @@ static JNINativeMethod MHN_methods[] = {
   {CC "init",                      CC "(" MEM "" OBJ ")V",                   FN_PTR(MHN_init_Mem)},
   {CC "expand",                    CC "(" MEM ")V",                          FN_PTR(MHN_expand_Mem)},
   {CC "resolve",                   CC "(" MEM "" CLS "IZ)" MEM,              FN_PTR(MHN_resolve_Mem)},
+  {CC "checkArchivable",           CC "(" CLS ")V",                          FN_PTR(MHN_checkArchivable)},
   //  static native int getNamedCon(int which, Object[] name)
   {CC "getNamedCon",               CC "(I[" OBJ ")I",                        FN_PTR(MHN_getNamedCon)},
   {CC "objectFieldOffset",         CC "(" MEM ")J",                          FN_PTR(MHN_objectFieldOffset)},
