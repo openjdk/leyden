@@ -710,6 +710,11 @@ address ArchiveBuilder::get_buffered_addr(address src_addr) const {
   return p->buffered_addr();
 }
 
+bool ArchiveBuilder::has_been_archived(address src_addr) const {
+  SourceObjInfo* p = _src_obj_table.get(src_addr);
+  return (p != nullptr);
+}
+
 address ArchiveBuilder::get_source_addr(address buffered_addr) const {
   assert(is_in_buffer_space(buffered_addr), "must be");
   address* src_p = _buffered_to_src_table.get(buffered_addr);

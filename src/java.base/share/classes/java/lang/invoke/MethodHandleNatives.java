@@ -71,6 +71,9 @@ class MethodHandleNatives {
                                                  boolean resolve,
                                                  Object ifNotAvailable);
 
+    /// CDS support
+    static native void checkArchivable(Class<?> type);
+
     /** Represents a context to track nmethod dependencies on CallSite instance target. */
     static class CallSiteContext implements Runnable {
         //@Injected JVM_nmethodBucket* vmdependencies;

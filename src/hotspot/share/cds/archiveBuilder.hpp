@@ -397,6 +397,7 @@ public:
     mark_and_relocate_to_buffered_addr((address*)ptr_location);
   }
 
+  bool has_been_archived(address src_addr) const;
   address get_buffered_addr(address src_addr) const;
   template <typename T> T get_buffered_addr(T src_addr) const {
     return (T)get_buffered_addr((address)src_addr);

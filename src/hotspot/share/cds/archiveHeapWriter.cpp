@@ -638,6 +638,7 @@ void ArchiveHeapWriter::mark_native_pointer(oop src_obj, int field_offset) {
     info._src_obj = src_obj;
     info._field_offset = field_offset;
     _native_pointers->append(info);
+    assert(ArchiveBuilder::current()->has_been_archived((address)ptr), "must be archived %p", ptr);
   }
 }
 

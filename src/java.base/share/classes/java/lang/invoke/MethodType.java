@@ -158,11 +158,19 @@ class MethodType
     private @Stable Invokers invokers;   // cache of handy higher-order adapters
     private @Stable String methodDescriptor;  // cache for toMethodDescriptorString
 
+    private final boolean checkArchivable = CDS.isDumpingArchive();
     /**
      * Constructor that performs no copying or validation.
      * Should only be called from the factory method makeImpl
      */
     private MethodType(Class<?> rtype, Class<?>[] ptypes) {
+        if (checkArchivable) {
+            MethodHandleNatives.checkArchivable(rtype);
+            for (var p : ptypes) {
+                MethodHandleNatives.checkArchivable(p);
+            }
+        }
+
         this.rtype = rtype;
         this.ptypes = ptypes;
     }
