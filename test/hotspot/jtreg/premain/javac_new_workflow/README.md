@@ -25,11 +25,31 @@ condenser pipeline](https://openjdk.org/projects/leyden/notes/03-toward-condense
       prefix. E.g., `javac.cds.preimage`
     - A JVM subprocess is launched to convert `javac.cds.preimage` to the final CDS image, `javac.cds`
         - See the end of `MetaspaceShared::preload_and_dump_impl()` in
-          [metaspaceShared.cpp](../../../../../src/hotspot/share/cds/metaspaceShared.cpp) 
+          [metaspaceShared.cpp](../../../../../src/hotspot/share/cds/metaspaceShared.cpp)
+
 - In the next run of your application, the `javac.cds` file will be automatically loaded at start-up. Your
   application will see the benefit of CDS (and soon, AOT).
 
-- See [run.sh](run.sh) in this directory for an example of using `-XX:CacheDataStore=<app>.cds` 
+
+- By default, the following VM options are used when `-XX:CacheDataStore=<app>.cds` is specified. This way, you
+  can automatically use all the Leyden-premain optimizations without specifying any extra flags.
+
+    - `RecordTraining` is set to `true` when the VM is *writing* the `<app>.cds.preimage` file.
+    - `RecordTraining`, `ReplayTraining` and `StoreCachedCode` are set to `true` when the VM is *writing* the final CDS image file.
+    - `ReplayTraining` and `LoadCachedCode` are set to `true` when the VM is *loading* the final CDS image file.
+    - `CachedCodeFile` is set to `<app>.cds.code`.
+
+  However, you can explicitly disable some of these flags for diagnostic purposes. For example, the
+  following command-line will automatically generate `app.cds` and `app.cds.code` on its first run. However, it will
+  only load `app.cds` on subsequent runs, but not `app.cds.code`.
+
+
+    ```
+    java -XX:CacheDataStore=app.cds -XX:-LoadCachedCode -cp app.jar MyApp
+
+    ```
+
+- See [run.sh](run.sh) in this directory for an example of using `-XX:CacheDataStore=<app>.cds`
 
 ## Notes
 
@@ -51,7 +71,18 @@ condenser pipeline](https://openjdk.org/projects/leyden/notes/03-toward-condense
       file at exit. It will then print out a command-line that you can execute manually to create the
       final `<app>.cds` file.
 
+## AOT Code Generation
+
+AOT support is not fully implemented yet. As of Sep 18, 2023, at the end of `MetaspaceShared::preload_and_dump()`,
+the compiler will be executed to compile a single method, `String::charAt`. The nmethod will be stored inside the
+`CachedCodeFile`.
+
+The intended design is to, at this point, compile all methods that were recorded in the traing data during the
+training run. This is TBD.
+
 ## Benchmark
+
+(Sep 11, 2023)
 
 
 - Without `-XX:CacheDataStore`
@@ -73,7 +104,7 @@ $ perf stat -r 20 java com.sun.tools.javac.Main HelloWorld.java
       0.27091 +- 0.00107 seconds time elapsed  ( +-  0.40% )
 ```
 
-- With `-XX:CacheDataStore` (note; AOT is not yet supported)
+- With `-XX:CacheDataStore` (note: AOT is not yet supported)
 
 ```
 $ perf stat -r 20 java -XX:+ReplayTraining -XX:CacheDataStore=javac.cds com.sun.tools.javac.Main HelloWorld.java

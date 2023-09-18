@@ -87,7 +87,7 @@ function geomean () {
     printf "%6.2f ms" $(awk 'BEGIN{E = exp(1);} $1>0{tot+=log($1); c++} END{m=tot/c; printf "%.2f\n", E^m}' $*)
 }
 
-report "mainline_xoff,mainline_xon,premain_xon,premain_aot"
+report "mainline_xoff,mainline_xon,premain_xon,premain_td,premain_aot"
 
 for i in $(seq 1 $RUNS); do
     echo RUN $i
@@ -108,23 +108,30 @@ for i in $(seq 1 $RUNS); do
     premain_xon=$(get_elapsed logs/premain_xon.$i)
 
     (set -x;
+     perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining \
+        com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_td.$i
+    )
+    premain_td=$(get_elapsed logs/premain_td.$i)
+
+    (set -x;
      perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode \
         -XX:CachedCodeFile=$APP-dynamic.jsa-sc -Xlog:scc=error \
         com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_aot.$i
     )
     premain_aot=$(get_elapsed logs/premain_aot.$i)
-    
-    report $mainline_xoff,$mainline_xon,$premain_xon,$premain_aot
+
+    report $mainline_xoff,$mainline_xon,$premain_xon,$premain_td,$premain_aot
 done
 
 echo ===report.csv================================================
 cat report.csv
 echo ===geomean===================================================
 echo "Wall clock time - geomean over $RUNS runs of 'perf stat -r $REPEAT javac HelloWorld.java'"
-echo "Mainline JDK (CDS disabled)     $(geomean logs/mainline_xoff.*.elapsed)"
-echo "Mainline JDK (CDS enabled)      $(geomean logs/mainline_xon.*.elapsed)"
-echo "Premain Prototype (CDS only)    $(geomean logs/premain_xon.*.elapsed)"
-echo "Premain Prototype (CDS + AOT)   $(geomean logs/premain_aot.*.elapsed)"
+echo "Mainline JDK (CDS disabled)                   $(geomean logs/mainline_xoff.*.elapsed)"
+echo "Mainline JDK (CDS enabled)                    $(geomean logs/mainline_xon.*.elapsed)"
+echo "Premain Prototype (CDS )                      $(geomean logs/premain_xon.*.elapsed)"
+echo "Premain Prototype (CDS + Training Data)       $(geomean logs/premain_td.*.elapsed)"
+echo "Premain Prototype (CDS + Training Data + AOT) $(geomean logs/premain_aot.*.elapsed)"
 echo =============================================================
 
 exit

@@ -669,11 +669,13 @@ size_t SymbolTable::estimate_size_for_archive() {
   return CompactHashtableWriter::estimate_size(int(_items_count));
 }
 
+static SimpleCompactHashtable::States _saved_states;
+
 void SymbolTable::write_to_archive(GrowableArray<Symbol*>* symbols) {
   CompactHashtableWriter writer(int(_items_count), ArchiveBuilder::symbol_stats());
   copy_shared_symbol_table(symbols, &writer);
   if (!DynamicDumpSharedSpaces) {
-    _shared_table.reset();
+    _shared_table.reset(&_saved_states);
     writer.dump(&_shared_table, "symbol");
   } else {
     _dynamic_shared_table.reset();
@@ -691,8 +693,13 @@ void SymbolTable::serialize_shared_table_header(SerializeClosure* soc,
   }
   table->serialize_header(soc);
   if (soc->writing()) {
-    // Sanity. Make sure we don't use the shared table at dump time
-    table->reset();
+    if (CacheDataStore != nullptr && CDSPreimage != nullptr) {
+      assert(is_static_archive, "sanity");
+      table->restore(&_saved_states);
+    } else {
+      // Sanity. Make sure we don't use the shared table at dump time
+      table->reset();
+    }
   }
 }
 #endif //INCLUDE_CDS

@@ -24,6 +24,8 @@
 
 #include "precompiled.hpp"
 #include "asm/macroAssembler.hpp"
+#include "cds/cdsAccess.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "ci/ciConstant.hpp"
@@ -163,7 +165,7 @@ bool SCCache::is_code_load_thread_on() {
 bool SCCache::gen_preload_code(ciMethod* m, int entry_bci) {
   VM_ENTRY_MARK;
   return (entry_bci == InvocationEntryBci) && is_on() && _cache->gen_preload_code() &&
-         MetaspaceShared::is_in_shared_metaspace((address)(m->get_Method()));
+         CDSAccess::can_generate_cached_code(m->get_Method());
 }
 
 void SCCache::close() {
@@ -520,6 +522,12 @@ uint SCCache::write_bytes(const void* buffer, uint nbytes) {
   return nbytes;
 }
 
+void SCCEntry::update_method_for_writing() {
+  if (_method != nullptr) {
+    _method = CDSAccess::method_in_cached_code(_method);
+  }
+}
+
 void SCCEntry::print(outputStream* st) const {
   st->print_cr(" SCA entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s]", p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id, _decompile, (_not_entrant? "not_entrant" : "entrant"), (_preloaded ? ", preloaded" : ""), (_has_clinit_barriers ? ", has clinit barriers" : (_for_preload ? ", preload ready" : "")));
 }
@@ -795,6 +803,7 @@ bool SCCache::finish_write() {
         }
         copy_bytes((_store_buffer + entries_address[i].offset()), (address)current, size);
         entries_address[i].set_offset(current - start); // New offset
+        entries_address[i].update_method_for_writing();
         current += size;
         uint n = write_bytes(&(entries_address[i]), sizeof(SCCEntry));
         if (n != sizeof(SCCEntry)) {
@@ -1200,13 +1209,13 @@ bool SCCache::write_klass(Klass* klass) {
       set_lookup_failed();
       return false;
     }
-    if (_for_preload && (!ik->is_shared() || ik->is_shared_unregistered_class())) {
+    if (_for_preload && !CDSAccess::can_generate_cached_code(ik)) {
       _for_preload = false;
     }
     not_init = !ik->is_initialized() ? 1 : 0;
   }
   ResourceMark rm;
-  if (_for_preload && _use_meta_ptrs && MetaspaceShared::is_in_shared_metaspace((address)klass)) {
+  if (_for_preload && _use_meta_ptrs && CDSAccess::can_generate_cached_code(klass)) {
     DataKind kind = DataKind::Klass_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
@@ -1217,12 +1226,13 @@ bool SCCache::write_klass(Klass* klass) {
     if (n != sizeof(int)) {
       return false;
     }
-    uint klass_offset = (uint)pointer_delta((address)klass, (address)SharedBaseAddress, 1);
+    uint klass_offset = CDSAccess::delta_from_shared_address_base((address)klass);
     n = write_bytes(&klass_offset, sizeof(uint));
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(scc)("%d (L%d): Wrote shared klass: %s%s", compile_id(), comp_level(), klass->external_name(), (!klass->is_instance_klass() ? "" : ((not_init == 0) ? " (initialized)" : " (not-initialized)")));
+    log_info(scc)("%d (L%d): Wrote shared klass: %s%s @ 0x%08x", compile_id(), comp_level(), klass->external_name(),
+                  (!klass->is_instance_klass() ? "" : ((not_init == 0) ? " (initialized)" : " (not-initialized)")), klass_offset);
     return true;
   }
   _for_preload = false;
@@ -1287,23 +1297,23 @@ bool SCCache::write_method(Method* method) {
       set_lookup_failed();
       return false;
     }
-    if (_for_preload && (!ik->is_shared() || ik->is_shared_unregistered_class())) {
+    if (_for_preload && !CDSAccess::can_generate_cached_code(ik)) {
       _for_preload = false;
     }
   }
   ResourceMark rm;
-  if (_for_preload && _use_meta_ptrs && MetaspaceShared::is_in_shared_metaspace((address)method)) {
+  if (_for_preload && _use_meta_ptrs && CDSAccess::can_generate_cached_code(method)) {
     DataKind kind = DataKind::Method_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
       return false;
     }
-    uint method_offset = (uint)pointer_delta((address)method, (address)SharedBaseAddress, 1);
+    uint method_offset = CDSAccess::delta_from_shared_address_base((address)method);
     n = write_bytes(&method_offset, sizeof(uint));
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(scc)("%d (L%d): Wrote shared method: %s", compile_id(), comp_level(), method->name_and_sig_as_C_string());
+    log_info(scc)("%d (L%d): Wrote shared method: %s @ 0x%08x", compile_id(), comp_level(), method->name_and_sig_as_C_string(), method_offset);
     return true;
   }
   _for_preload = false;
@@ -2270,8 +2280,8 @@ bool SCCache::write_oop(jobject& jo) {
         return false;
       }
     }
-  } else if (java_lang_String::is_instance(obj)) {
-    int k = HeapShared::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
+  } else if (java_lang_String::is_instance(obj)) { // herere
+    int k = CDSAccess::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
     if (k > 0) {
       kind = DataKind::String_Shared;
       n = write_bytes(&kind, sizeof(int));
@@ -2319,8 +2329,8 @@ bool SCCache::write_oop(jobject& jo) {
     if (n != sizeof(int)) {
       return false;
     }
-  } else {
-    int k = HeapShared::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
+  } else { // herere
+    int k = CDSAccess::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
     if (k > 0) {
       kind = DataKind::MH_Oop_Shared;
       n = write_bytes(&kind, sizeof(int));
@@ -2664,6 +2674,9 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
                      bool has_monitors) {
   CompileTask* task = ciEnv::current()->task();
 
+  if (!CDSConfig::is_dumping_cached_code()) {
+    return nullptr; // The metadata and heap in the CDS image haven't been finalized yet.
+  }
   if (entry_bci != InvocationEntryBci) {
     return nullptr; // No OSR
   }
@@ -2697,7 +2710,7 @@ if (UseNewCode3) {
 #endif
   assert(!has_clinit_barriers || cache->_gen_preload_code, "sanity");
   Method* m = method();
-  bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)m);
+  bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)m); // herere
   InstanceKlass* holder = m->method_holder();
   bool klass_in_cds = holder->is_shared() && !holder->is_shared_unregistered_class();
   bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();

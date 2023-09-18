@@ -829,6 +829,9 @@ InstanceKlass* SystemDictionaryShared::get_shared_lambda_proxy_class(InstanceKla
                                                                      Symbol* method_type,
                                                                      Method* member_method,
                                                                      Symbol* instantiated_method_type) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    return nullptr;
+  }
   MutexLocker ml(CDSLambda_lock, Mutex::_no_safepoint_check_flag);
   LambdaProxyClassKey key(caller_ik, invoked_name, invoked_type,
                           method_type, member_method, instantiated_method_type);

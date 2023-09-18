@@ -2969,6 +2969,13 @@ void Arguments::fix_appclasspath() {
   }
 }
 
+static void set_new_workflow_default_CachedCodeFile() {
+  size_t len = strlen(CacheDataStore) + 6;
+  char* file = AllocateHeap(len, mtArguments);
+  jio_snprintf(file, len, "%s.code", CacheDataStore);
+  FLAG_SET_ERGO(CachedCodeFile, file);
+}
+
 jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
   // check if the default lib/endorsed directory exists; if so, error
   char path[JVM_MAXPATHLEN];
@@ -3056,10 +3063,16 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
     }
 
     if (CDSPreimage == nullptr) {
-      // The preimage phase -- run the app and write the preimage file
-      SharedArchiveFile = CacheDataStore;
-      if (!os::file_exists(CacheDataStore) /* || TODO: CDS file is invalid*/) {
-        // Force to load everything from classfiles
+      if (os::file_exists(CacheDataStore) /* && TODO: CDS file is valid*/) {
+        // The CacheDataStore is already up to date. Use it. Also turn on cached code by default.
+        SharedArchiveFile = CacheDataStore;
+        FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+        FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
+        if (LoadCachedCode && FLAG_IS_DEFAULT(CachedCodeFile)) {
+          set_new_workflow_default_CachedCodeFile();
+        }
+      } else {
+        // The preimage dumping phase -- run the app and write the preimage file
         size_t len = strlen(CacheDataStore) + 10;
         char* preimage = AllocateHeap(len, mtArguments);
         jio_snprintf(preimage, len, "%s.preimage", CacheDataStore);
@@ -3075,12 +3088,33 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
         HeapShared::disable_writing();
         CDSConfig::disable_dumping_full_module_graph();
         ArchiveInvokeDynamic = false;
+
+        FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
       }
     } else {
-      // The final image phase -- load the preimage and write the final image file
+      // The final image dumping phase -- load the preimage and write the final image file
       SharedArchiveFile = CDSPreimage;
       UseSharedSpaces = true;
       log_info(cds)("Generate CacheDataStore %s from CDSPreimage %s", CacheDataStore, CDSPreimage);
+      // Force -Xbatch for AOT compilation.
+      if (FLAG_SET_CMDLINE(BackgroundCompilation, false) != JVMFlag::SUCCESS) {
+        return JNI_EINVAL;
+      }
+      Inline = false; // FIXME: this is just for temp debugging.
+
+      // FIXME -- we want to pass the training data from the preimage to the final image,
+      // but this will also causes the new training data in the final image dumping phase
+      // to be recorded (which may be redundant).
+      FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+
+      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+      // Settings for AOT
+      FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
+      if (StoreCachedCode && FLAG_IS_DEFAULT(CachedCodeFile)) {
+        set_new_workflow_default_CachedCodeFile();
+        // Cannot dump cached code until metadata and heap are dumped.
+        CDSConfig::disable_dumping_cached_code();
+      }
     }
   } else {
     if (CDSPreimage != nullptr) {

@@ -67,11 +67,13 @@
 #include "oops/compressedKlass.hpp"
 #include "oops/instanceMirrorKlass.hpp"
 #include "oops/klass.inline.hpp"
+#include "oops/method.inline.hpp"
 #include "oops/objArrayOop.hpp"
 #include "oops/oop.inline.hpp"
 #include "oops/oopHandle.hpp"
 #include "oops/trainingData.hpp"
 #include "prims/jvmtiExport.hpp"
+#include "prims/whitebox.hpp"
 #include "runtime/arguments.hpp"
 #include "runtime/globals.hpp"
 #include "runtime/globals_extension.hpp"
@@ -462,10 +464,10 @@ private:
     SymbolTable::write_to_archive(symbols);
   }
   char* dump_read_only_tables();
-
+  StaticArchiveBuilder& _builder;
 public:
 
-  VM_PopulateDumpSharedSpace() : VM_Operation(), _heap_info() {}
+  VM_PopulateDumpSharedSpace(StaticArchiveBuilder& b) : VM_Operation(), _heap_info(), _builder(b) {}
 
   bool skip_operation() const { return false; }
 
@@ -531,21 +533,20 @@ void VM_PopulateDumpSharedSpace::doit() {
   MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
   SystemDictionaryShared::check_excluded_classes();
 
-  StaticArchiveBuilder builder;
-  builder.gather_source_objs();
-  builder.reserve_buffer();
+  _builder.gather_source_objs();
+  _builder.reserve_buffer();
 
-  char* cloned_vtables = CppVtables::dumptime_init(&builder);
+  char* cloned_vtables = CppVtables::dumptime_init(&_builder);
 
   // Initialize random for updating the hash of symbols
   os::init_random(0x12345678);
 
-  builder.dump_rw_metadata();
-  builder.dump_ro_metadata();
-  builder.relocate_metaspaceobj_embedded_pointers();
+  _builder.dump_rw_metadata();
+  _builder.dump_ro_metadata();
+  _builder.relocate_metaspaceobj_embedded_pointers();
 
-  dump_java_heap_objects(builder.klasses());
-  dump_shared_symbol_table(builder.symbols());
+  dump_java_heap_objects(_builder.klasses());
+  dump_shared_symbol_table(_builder.symbols());
 
   {
     ArchiveBuilder::OtherROAllocMark mark;
@@ -556,7 +557,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   }
 
   log_info(cds)("Make classes shareable");
-  builder.make_klasses_shareable();
+  _builder.make_klasses_shareable();
   MetaspaceShared::make_method_handle_intrinsics_shareable();
 
   char* serialized_data = dump_read_only_tables();
@@ -569,7 +570,7 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   // relocate the data so that it can be mapped to MetaspaceShared::requested_base_address()
   // without runtime relocation.
-  builder.relocate_to_requested();
+  _builder.relocate_to_requested();
 
   // Write the archive file
   const char* static_archive;
@@ -586,7 +587,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   mapinfo->set_serialized_data(serialized_data);
   mapinfo->set_cloned_vtables(cloned_vtables);
   mapinfo->open_for_write();
-  builder.write_archive(mapinfo, &_heap_info);
+  _builder.write_archive(mapinfo, &_heap_info);
 
   if (PrintSystemDictionaryAtExit) {
     SystemDictionary::print();
@@ -704,13 +705,40 @@ void MetaspaceShared::prepare_for_dumping() {
   ClassLoader::initialize_shared_path(JavaThread::current());
 }
 
+static void tmp_test_aot(ArchiveBuilder* builder, TRAPS) {
+  InstanceKlass* ik = vmClasses::String_klass();
+  TempNewSymbol name = SymbolTable::new_symbol("charAt");
+  TempNewSymbol sig = SymbolTable::new_symbol("(I)C");
+  Method* method = ik->find_method(name, sig);
+  assert(method != nullptr, "sanity");
+  int comp_level = CompLevel_full_optimization;
+  int bci = InvocationEntryBci;
+  {
+    method->unlink_code();
+    bool status = WhiteBox::compile_method(method, comp_level, bci, THREAD);
+    static int count = 0;
+    static CompiledMethod* last = nullptr;
+    Method* requested_m = builder->to_requested(builder->get_buffered_addr(method));
+    count ++;
+    ResourceMark rm;
+    CompiledMethod* code = method->code();
+    int isz = (code == nullptr) ? 0 : code->insts_size();
+    int delta = (last == nullptr) ? 0 : (int)(address(code) - address(last));
+    last = code;
+    tty->print_cr("[%4d] Compiled %s [%p -> %p] (%s) code = %p insts_size = %d delta = %d", count,
+                  method->external_name(), method, requested_m,
+                  status ? "success" : "FAILED", code, isz, delta);
+  }
+}
+
 // Preload classes from a list, populate the shared spaces and dump to a
 // file.
 void MetaspaceShared::preload_and_dump() {
   EXCEPTION_MARK;
   ResourceMark rm(THREAD);
   HandleMark hm(THREAD);
-  preload_and_dump_impl(THREAD);
+  StaticArchiveBuilder builder;
+  preload_and_dump_impl(builder, THREAD);
   if (HAS_PENDING_EXCEPTION) {
     if (PENDING_EXCEPTION->is_a(vmClasses::OutOfMemoryError_klass())) {
       log_error(cds)("Out of memory. Please run with a larger Java heap, current MaxHeapSize = "
@@ -729,6 +757,17 @@ void MetaspaceShared::preload_and_dump() {
     HeapShared::restore_loader_data();
   }
 #endif
+
+  if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
+    // We have just created the final image. Let's run the AOT compiler
+    CDSConfig::enable_dumping_cached_code();
+    int count = MAX2(1, (int)(NewCodeParameter & 0x7fffffff));
+    for (int i = 0; i < count; i++) {
+      tmp_test_aot(&builder, CHECK);
+    }
+    CDSConfig::disable_dumping_cached_code();
+    SCCache::close(); // Write final data and close archive
+  }
 }
 
 #if INCLUDE_CDS_JAVA_HEAP && defined(_LP64)
@@ -818,7 +857,7 @@ void MetaspaceShared::preload_classes(TRAPS) {
   log_info(cds)("Shared spaces: preloaded %d classes", class_count);
 }
 
-void MetaspaceShared::preload_and_dump_impl(TRAPS) {
+void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) {
   if (CacheDataStore == nullptr) {
     // We are running with -Xshare:dump
     preload_classes(CHECK);
@@ -870,7 +909,7 @@ void MetaspaceShared::preload_and_dump_impl(TRAPS) {
   }
 #endif
 
-  VM_PopulateDumpSharedSpace op;
+  VM_PopulateDumpSharedSpace op(builder);
   VMThread::execute(&op);
 
   if (CacheDataStore != nullptr && CDSPreimage == nullptr) {

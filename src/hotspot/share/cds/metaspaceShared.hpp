@@ -45,6 +45,8 @@ enum MapArchiveResult {
   MAP_ARCHIVE_OTHER_FAILURE
 };
 
+class StaticArchiveBuilder;
+
 // Class Data Sharing Support
 class MetaspaceShared : AllStatic {
   static ReservedSpace _symbol_rs;  // used only during -Xshare:dump
@@ -74,7 +76,7 @@ class MetaspaceShared : AllStatic {
 #endif
 
 private:
-  static void preload_and_dump_impl(TRAPS) NOT_CDS_RETURN;
+  static void preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) NOT_CDS_RETURN;
   static void preload_classes(TRAPS) NOT_CDS_RETURN;
 
 public:

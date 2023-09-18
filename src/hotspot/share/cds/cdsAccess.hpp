@@ -22,28 +22,33 @@
  *
  */
 
-#ifndef SHARE_CDS_CDSCONFIG_HPP
-#define SHARE_CDS_CDSCONFIG_HPP
+#ifndef SHARE_CDS_CDSACCESS_HPP
+#define SHARE_CDS_CDSACCESS_HPP
 
 #include "memory/allStatic.hpp"
-//#include "utilities/debug.hpp"
-#include "utilities/macros.hpp"
+#include "oops/oopsHierarchy.hpp"
+#include "utilities/globalDefinitions.hpp"
 
-class CDSConfig : public AllStatic {
+class InstanceKlass;
+class Klass;
+class Method;
+
+class CDSAccess : AllStatic {
+private:
+  static bool can_generate_cached_code(address addr);
 public:
-  static bool      is_using_dumptime_tables();
-  static bool      is_dumping_archive(); // dynamic or static archive
-  static bool      is_dumping_static_archive();
-  static bool      is_dumping_final_static_archive(); // new "half step" dumping. See ../../../../doc/leyden/xxxxxx.md
-  static bool      is_dumping_dynamic_archive();
-  static bool      is_dumping_heap();
-  static void disable_dumping_full_module_graph(const char* reason = nullptr);
-  static bool      is_dumping_full_module_graph();
-  static void disable_loading_full_module_graph(const char* reason = nullptr);
-  static bool      is_loading_full_module_graph();
-  static bool      is_dumping_cached_code();
-  static void disable_dumping_cached_code();
-  static void  enable_dumping_cached_code();
+  static bool can_generate_cached_code(Method* m) {
+    return can_generate_cached_code((address)m);
+  }
+  static bool can_generate_cached_code(Klass* k) {
+    return can_generate_cached_code((address)k);
+  }
+  static bool can_generate_cached_code(InstanceKlass* ik);
+
+  static uint delta_from_shared_address_base(address addr);
+  static Method* method_in_cached_code(Method* m);
+
+  static int get_archived_object_permanent_index(oop obj);
 };
 
-#endif // SHARE_CDS_CDSCONFIG_HPP
+#endif // SHARE_CDS_CDSACCESS_HPP

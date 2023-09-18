@@ -37,11 +37,22 @@ static bool _enable_dumping_full_module_graph = true;
 static bool _enable_loading_full_module_graph = true;
 
 bool CDSConfig::is_using_dumptime_tables() {
-  return Arguments::is_dumping_archive() || CDSPreimage != nullptr;
+  return is_dumping_static_archive() || is_dumping_dynamic_archive();
 }
 
 bool CDSConfig::is_dumping_static_archive() {
-  return DumpSharedSpaces || (CDSPreimage != nullptr);
+  return DumpSharedSpaces || is_dumping_final_static_archive();
+}
+
+bool CDSConfig::is_dumping_final_static_archive() {
+  if (CacheDataStore != nullptr && CDSPreimage != nullptr) {
+    // [Temp: refactoring in progress] DumpSharedSpaces is sometimes used in contexts
+    // that are not compatible with is_dumping_final_static_archive().
+    assert(!DumpSharedSpaces, "this flag must not be set");
+    return true;
+  } else {
+    return false;
+  }
 }
 
 bool CDSConfig::is_dumping_dynamic_archive() {
@@ -98,4 +109,20 @@ void CDSConfig::disable_loading_full_module_graph(const char* reason) {
       log_info(cds)("full module graph cannot be loaded: %s", reason);
     }
   }
+}
+
+// This is allowed by default. We disable it only in the final image dump before the
+// metadata and heap are dumped.
+static bool _is_dumping_cached_code = true;
+
+bool CDSConfig::is_dumping_cached_code() {
+  return _is_dumping_cached_code;
+}
+
+void CDSConfig::disable_dumping_cached_code() {
+  _is_dumping_cached_code = false;
+}
+
+void CDSConfig::enable_dumping_cached_code() {
+  _is_dumping_cached_code = true;
 }
