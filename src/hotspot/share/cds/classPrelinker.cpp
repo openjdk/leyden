@@ -888,6 +888,14 @@ void ClassPrelinker::runtime_preload(JavaThread* current, Handle loader) {
     if (loader() != nullptr && loader() == SystemDictionary::java_system_loader()) {
       Atomic::release_store(&_class_preloading_finished, true);
     }
+
+    if (!ModuleEntryTable::javabase_defined()) {
+      // For boot phase 1, init_archived_lambda_proxy_classes() is called some time
+      // after ClassPrelinker::runtime_preload().
+    } else {
+      // Exceptions are caughted by ExceptionMark.
+      SystemDictionaryShared::init_archived_lambda_proxy_classes(loader, current);
+    }
   }
 
   assert(!current->has_pending_exception(), "VM should have exited due to ExceptionMark");

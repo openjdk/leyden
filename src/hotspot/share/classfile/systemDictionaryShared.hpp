@@ -211,8 +211,11 @@ private:
   static bool is_registered_lambda_proxy_class(InstanceKlass* ik);
   static bool check_for_exclusion_impl(InstanceKlass* k);
   static void remove_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
-  static void init_archived_hidden_class(Handle class_loader,
-                                         InstanceKlass* ik, const char* which, TRAPS);
+  static void init_archived_hidden_classes(Handle class_loader, Array<InstanceKlass*>* classes,
+                                           const char* loader_name, TRAPS);
+  static void preload_archived_hidden_class(Handle class_loader, InstanceKlass* ik,
+                                            const char* loader_name, TRAPS);
+  static void init_archived_hidden_class(Handle class_loader, InstanceKlass* ik, TRAPS);
   static InstanceKlass* retrieve_lambda_proxy_class(const RunTimeLambdaProxyClassInfo* info) NOT_CDS_RETURN_(nullptr);
 
   DEBUG_ONLY(static bool _class_loading_may_happen;)

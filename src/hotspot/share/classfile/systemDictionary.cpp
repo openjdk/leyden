@@ -140,7 +140,6 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     oop platform_loader = get_platform_class_loader_impl(CHECK);
     _java_platform_loader = OopHandle(Universe::vm_global(), platform_loader);
     ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, java_platform_loader()));
-    //SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_platform_loader()), CHECK);
   } else {
     // It must have been restored from the archived module graph
     assert(UseSharedSpaces, "must be");
@@ -155,7 +154,6 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     oop system_loader = get_system_class_loader_impl(CHECK);
     _java_system_loader = OopHandle(Universe::vm_global(), system_loader);
     ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, java_system_loader()));
-    //SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_system_loader()), CHECK);
   } else {
     // It must have been restored from the archived module graph
     assert(UseSharedSpaces, "must be");
@@ -165,9 +163,6 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
       assert(_java_system_loader.resolve() == system_loader, "must be");
     )
   }
-
-  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_platform_loader()), CHECK);
-  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_system_loader()), CHECK);
 
   if (CDSPreimage != nullptr) {
     // TODO: copy the verification and loader constraints from preimage to final image

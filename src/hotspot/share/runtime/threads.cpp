@@ -326,28 +326,13 @@ static void call_initPhase2(TRAPS) {
 
   // Preload all boot classes outside of java.base module
   ClassPrelinker::runtime_preload(THREAD, Handle());
-  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(), CHECK); // FIXME we can't allow exceptions!
   if (CDSConfig::is_loading_full_module_graph()) {
     // SystemDictionary::java_{platform,system}_loader are already assigned. We can spin
     // this up a little quicker.
     assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
     assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
-#if 1
     ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, SystemDictionary::java_platform_loader()));
     ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, SystemDictionary::java_system_loader()));
-#else
-    {
-      Handle h(Handle(THREAD, SystemDictionary::java_platform_loader()));
-      ClassPrelinker::runtime_preload(THREAD, h);
-      SystemDictionaryShared::init_archived_lambda_proxy_classes(h, CHECK);
-    }
-
-    {
-      Handle h(Handle(THREAD, SystemDictionary::java_system_loader()));
-      ClassPrelinker::runtime_preload(THREAD, h);
-      SystemDictionaryShared::init_archived_lambda_proxy_classes(h, CHECK);
-    }
-#endif
   }
 }
 

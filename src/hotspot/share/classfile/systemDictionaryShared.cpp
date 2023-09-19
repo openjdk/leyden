@@ -1752,55 +1752,61 @@ void SystemDictionaryShared::record_archived_lambda_form_classes() {
 }
 
 void SystemDictionaryShared::init_archived_lambda_form_classes(TRAPS) {
-  if (_archived_lambda_form_classes == nullptr) {
-    return;
-  }
-
-  for (int i = 0; i < _archived_lambda_form_classes->length(); i++) {
-    InstanceKlass* ik = _archived_lambda_form_classes->at(i);
-    init_archived_hidden_class(Handle(), ik, "lambda form", CHECK);
+  if (_archived_lambda_form_classes != nullptr) {
+    log_info(cds)("init_archived_lambda_form_classes: %d", _archived_lambda_form_classes->length());
+    init_archived_hidden_classes(Handle(), _archived_lambda_form_classes, "boot ", CHECK);
   }
 }
 
 void SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle class_loader, TRAPS) {
   static Array<InstanceKlass*>* classes;
-  const char* name;
+  const char* loader_name;
   if (class_loader() == nullptr) {
     if (!ModuleEntryTable::javabase_defined()) {
       classes = _archived_lambda_proxy_classes_boot;
-      name = "boot";
+      loader_name = "boot ";
     } else {
       classes = _archived_lambda_proxy_classes_boot2;
-      name = "boot2";
+      loader_name = "boot2";
     }
   } else if (SystemDictionary::is_platform_class_loader(class_loader())) {
-    name = "platform";
+    loader_name = "plat ";
     classes = _archived_lambda_proxy_classes_platform;
   } else {
     assert(SystemDictionary::is_system_class_loader(class_loader()), "must be");
-    name = "app";
+    loader_name = "app  ";
     classes = _archived_lambda_proxy_classes_app;
   }
 
   if (classes != nullptr) {
-    log_info(cds)("init_archived_lambda_proxy_classes %s: %d", name, classes->length());
-    for (int i = 0; i < classes->length(); i++) {
-      InstanceKlass* ik = classes->at(i);
-      init_archived_hidden_class(class_loader, ik, "lambda proxy", CHECK);
-    }
+    log_info(cds)("init_archived_lambda_proxy_classes %s: %4d", loader_name, classes->length());
+    init_archived_hidden_classes(class_loader, classes, loader_name, CHECK);
   }
 }
 
+void SystemDictionaryShared::init_archived_hidden_classes(Handle class_loader, Array<InstanceKlass*>* classes,
+                                                          const char* loader_name, TRAPS) {
+  for (int i = 0; i < classes->length(); i++) {
+    preload_archived_hidden_class(class_loader, classes->at(i), loader_name, CHECK);
+  }
+  for (int i = 0; i < classes->length(); i++) {
+    init_archived_hidden_class(class_loader, classes->at(i), CHECK);
+  }
+}
 
-void SystemDictionaryShared::init_archived_hidden_class(Handle class_loader,
-                                                        InstanceKlass* ik, const char* which, TRAPS) {
-  if (log_is_enabled(Debug, cds, heap)) {
+void SystemDictionaryShared::preload_archived_hidden_class(Handle class_loader, InstanceKlass* ik,
+                                                           const char* loader_name, TRAPS) {
+  if (log_is_enabled(Info, cds, preload)) {
     ResourceMark rm;
-    log_debug(cds, heap)("Init archived %s class: %s ", which, ik->external_name());
+    log_info(cds, preload)("%s %s", loader_name, ik->external_name());
   }
 
-  assert(ik->super() == vmClasses::Object_klass(), "must be");
-  //assert(ik->local_interfaces()->length() == 0, "must be");
+  DEBUG_ONLY({
+      assert(ik->super() == vmClasses::Object_klass(), "must be");
+      for (int i = 0; i < ik->local_interfaces()->length(); i++) {
+        assert(ik->local_interfaces()->at(i)->is_loaded(), "must be");
+      }
+    });
 
   ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(class_loader());
   if (class_loader() == nullptr) {
@@ -1813,6 +1819,14 @@ void SystemDictionaryShared::init_archived_hidden_class(Handle class_loader,
   }
   SystemDictionary::load_shared_class_misc(ik, loader_data);
   ik->add_to_hierarchy(THREAD);
+}
+
+void SystemDictionaryShared::init_archived_hidden_class(Handle class_loader,
+                                                        InstanceKlass* ik, TRAPS) {
+  if (log_is_enabled(Info, cds, init)) {
+    ResourceMark rm;
+    log_info(cds, init)("%s", ik->external_name());
+  }
 
   assert(ik->is_loaded(), "Must be in at least loaded state");
   ik->link_class(CHECK);
