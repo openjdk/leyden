@@ -623,12 +623,13 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   if (nm != nullptr) {
 
 #ifdef ASSERT
-if (UseNewCode3) {
-  tty->print_cr("== new_nmethod 2");
-  FlagSetting fs(PrintRelocations, true);
-  nm->print();
-  nm->decode(tty);
-}
+    LogTarget(Debug, scc, nmethod) log;
+    if (log.is_enabled()) {
+      tty->print_cr("== new_nmethod 2");
+      FlagSetting fs(PrintRelocations, true);
+      nm->print();
+      nm->decode(tty);
+    }
 #endif
 
     // Safepoints in nmethod::verify aren't allowed because nm hasn't been installed yet.
