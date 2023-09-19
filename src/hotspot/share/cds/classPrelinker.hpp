@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -95,6 +95,8 @@ class ClassPrelinker :  AllStatic {
   static Klass* find_loaded_class(JavaThread* current, oop class_loader, Symbol* name);
   static Klass* find_loaded_class(JavaThread* current, ConstantPool* cp, int class_cp_index);
   static void add_preloaded_klasses(Array<InstanceKlass*>* klasses);
+  static void add_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses, bool need_to_record);
+  static void maybe_add_initiated_klass(InstanceKlass* ik, InstanceKlass* target);
   static Array<InstanceKlass*>* archive_klass_array(GrowableArray<InstanceKlass*>* tmp_array);
   static Array<InstanceKlass*>* record_preloaded_klasses(int loader_type);
   static Array<InstanceKlass*>* record_initiated_klasses(ClassesTable* table);

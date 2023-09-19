@@ -92,20 +92,62 @@ void ClassPrelinker::initialize() {
   for (auto id : EnumRange<vmClassID>{}) {
     add_one_vm_class(vmClasses::klass_at(id));
   }
-  if (_static_preloaded_klasses._boot != nullptr && CDSPreimage == nullptr) {
+  if (_static_preloaded_klasses._boot != nullptr && !CDSConfig::is_dumping_final_static_archive()) {
     assert(DynamicDumpSharedSpaces, "must be");
     add_preloaded_klasses(_static_preloaded_klasses._boot);
     add_preloaded_klasses(_static_preloaded_klasses._boot2);
     add_preloaded_klasses(_static_preloaded_klasses._platform);
     add_preloaded_klasses(_static_preloaded_klasses._app);
+
+    // These initiated classes are already recorded in the static archive. There's no need to
+    // record them again for the dynamic archive.
+    bool need_to_record = false;
+    add_initiated_klasses(_platform_initiated_classes, _static_preloaded_klasses._platform_initiated, need_to_record);
+    add_initiated_klasses(_app_initiated_classes, _static_preloaded_klasses._app_initiated, need_to_record);
   }
 }
 
 void ClassPrelinker::add_preloaded_klasses(Array<InstanceKlass*>* klasses) {
   for (int i = 0; i < klasses->length(); i++) {
+    assert(klasses->at(i)->is_shared() && klasses->at(i)->is_loaded(), "must be");
+    _preloaded_classes->put_when_absent(klasses->at(i), true);
+  }
+}
+
+void ClassPrelinker::add_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses, bool need_to_record) {
+  for (int i = 0; i < klasses->length(); i++) {
+    InstanceKlass* ik = klasses->at(i);
+    table->put_when_absent(ik, need_to_record);
+  }
+}
+
+// ik has a reference to target:
+//    - target is a declared supertype of ik, or
+//    - one of the constant pool entries in ik references target
+void ClassPrelinker::maybe_add_initiated_klass(InstanceKlass* ik, InstanceKlass* target) {
+  if (ik->class_loader_data() == target->class_loader_data()) {
+    return;
+  }
+
+  ClassesTable* initiated_classes = nullptr;
+  const char* loader_name = nullptr;
+  if (SystemDictionary::is_platform_class_loader(ik->class_loader())) {
+    loader_name = "platform";
+    initiated_classes = _platform_initiated_classes;
+  } else {
+    assert(SystemDictionary::is_system_class_loader(ik->class_loader()), "must be");
+    loader_name = "app";
+    initiated_classes = _app_initiated_classes;
+  }
+
+  if (initiated_classes != nullptr) {
+    bool need_to_record = true;
     bool created;
-    _preloaded_classes->put_if_absent(klasses->at(i), &created);
-    assert(created, "must add only once");
+    initiated_classes->put_if_absent(target, need_to_record, &created);
+    if (created && log_is_enabled(Trace, cds, resolve)) {
+      ResourceMark rm;
+      log_trace(cds, resolve)("%s loader initiated %s -> %s", loader_name, ik->external_name(), target->external_name());
+    }
   }
 }
 
@@ -163,29 +205,14 @@ bool ClassPrelinker::can_archive_resolved_klass(InstanceKlass* cp_holder, Klass*
     if (is_vm_class(cp_holder)) {
       return is_vm_class(ik);
     } else if (is_preloaded_class(ik)) {
-      oop loader = ik->class_loader();
-      bool dummy;
-
       if (cp_holder->is_shared_platform_class()) {
-        if (!SystemDictionary::is_platform_class_loader(loader)) {
-          if (log_is_enabled(Trace, cds, resolve)) {
-            ResourceMark rm;
-            log_trace(cds, resolve)("platform loader initiated %s -> %s", cp_holder->external_name(), ik->external_name());
-          }
-          _platform_initiated_classes->put_if_absent(ik, &dummy);
-        }
+        maybe_add_initiated_klass(cp_holder, ik);
         return true;
       } else if (cp_holder->is_shared_app_class()) {
-        if (!SystemDictionary::is_system_class_loader(loader)) {
-          if (log_is_enabled(Trace, cds, resolve)) {
-            ResourceMark rm;
-            log_trace(cds, resolve)("app loader initiated %s -> %s", cp_holder->external_name(), ik->external_name());
-          }
-          _app_initiated_classes->put_if_absent(ik, &dummy);
-        }
+        maybe_add_initiated_klass(cp_holder, ik);
         return true;
       } else if (cp_holder->is_shared_boot_class()) {
-        assert(loader == nullptr, "must be");
+        assert(ik->class_loader() == nullptr, "a boot class can reference only boot classes");
         return true;
       } else if (cp_holder->is_hidden() && cp_holder->class_loader() == nullptr) { // FIXME -- use better checks!
         return true;
@@ -632,17 +659,19 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
     InstanceKlass* s = ik->java_super();
     if (s != nullptr) {
       maybe_record(s);
+      maybe_add_initiated_klass(ik, s);
     }
 
     Array<InstanceKlass*>* interfaces = ik->local_interfaces();
     int num_interfaces = interfaces->length();
     for (int index = 0; index < num_interfaces; index++) {
-      maybe_record(interfaces->at(index));
+      InstanceKlass* intf = interfaces->at(index);
+      maybe_record(intf);
+      maybe_add_initiated_klass(ik, intf);
     }
 
     _list.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
-    _preloaded_classes->put_if_absent(ik, &created);
-    assert(created, "must be");
+    _preloaded_classes->put_when_absent(ik, true);
 
     if (log_is_enabled(Info, cds, preload)) {
       ResourceMark rm;
@@ -724,7 +753,10 @@ Array<InstanceKlass*>* ClassPrelinker::record_initiated_klasses(ClassesTable* ta
   ResourceMark rm;
   GrowableArray<InstanceKlass*> tmp_array;
 
-  auto collector = [&] (InstanceKlass* ik, bool ignored) {
+  auto collector = [&] (InstanceKlass* ik, bool need_to_record) {
+    if (!need_to_record) {
+      return;
+    }
     tmp_array.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
     if (log_is_enabled(Info, cds, preload)) {
       ResourceMark rm;
@@ -880,6 +912,7 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
   Array<InstanceKlass*>* preloaded_klasses;
   Array<InstanceKlass*>* initiated_klasses = nullptr;
   const char* loader_name;
+  ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(loader());
 
   // ResourceMark is missing in the code below due to JDK-8307315
   ResourceMark rm(THREAD);
@@ -903,18 +936,18 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
   }
 
   if (initiated_klasses != nullptr) {
+    MonitorLocker mu1(SystemDictionary_lock);
+
     for (int i = 0; i < initiated_klasses->length(); i++) {
       InstanceKlass* ik = initiated_klasses->at(i);
+      assert(ik->is_loaded(), "must have already been loaded by a parent loader");
       if (log_is_enabled(Info, cds, preload)) {
         ResourceMark rm;
-        log_info(cds, preload)("%s %s (initiated)", loader_name, ik->external_name());
+        const char* defining_loader = (ik->class_loader() == nullptr ? "boot" : "plat");
+        log_info(cds, preload)("%s %s (initiated, defined by %s)", loader_name, ik->external_name(),
+                               defining_loader);
       }
-      Klass* k = SystemDictionary::resolve_or_null(ik->name(), loader, Handle(), CHECK);
-      InstanceKlass* actual = InstanceKlass::cast(k);
-      if (actual != ik) {
-        jvmti_agent_error(ik, actual, "initiated");
-      }
-      assert(actual->is_loaded(), "must be");
+      SystemDictionary::preload_class(THREAD, ik, loader_data);
     }
   }
 
@@ -927,18 +960,15 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
                                ik->is_loaded() ? " (already loaded)" : "");
       }
       if (!ik->is_loaded()) {
-#if 1
-        Klass* k = SystemDictionary::resolve_or_null(ik->name(), loader, Handle(), CHECK);
-        InstanceKlass* actual = InstanceKlass::cast(k);
-#else
         InstanceKlass* actual;
         if (loader() == nullptr) {
           actual = SystemDictionary::load_instance_class(ik->name(), loader, CHECK);
         } else {
-          // This is wrong as it's missing the locker objects in the java.lang.ClassLoader::parallelLockMap
+          // Note: we are not adding the locker objects into java.lang.ClassLoader::parallelLockMap, but
+          // that should be harmless.
           actual = SystemDictionaryShared::find_or_load_shared_class(ik->name(), loader, CHECK);
         }
-#endif
+
         if (actual != ik) {
           jvmti_agent_error(ik, actual, "preloaded");
         }
