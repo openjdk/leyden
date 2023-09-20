@@ -138,6 +138,7 @@ private:
   bool   _for_preload; // Code can be used for preload
   bool   _preloaded;   // Code was pre-loaded
   bool   _not_entrant; // Deoptimized
+  bool   _load_fail;   // Failed to load due to some klass state
 
 public:
   SCCEntry(uint offset, uint size, uint name_offset, uint name_size,
@@ -169,6 +170,7 @@ public:
     _for_preload  = for_preload;
     _preloaded    = false;
     _not_entrant  = false;
+    _load_fail    = false;
   }
   void* operator new(size_t x, SCCache* cache);
   // Delete is a NOP
@@ -209,6 +211,9 @@ public:
   bool not_entrant()  const { return _not_entrant; }
   void set_not_entrant()    { _not_entrant = true; }
   void set_entrant()        { _not_entrant = false; }
+
+  bool load_fail()  const { return _load_fail; }
+  void set_load_fail()    { _load_fail = true; }
 
   void print(outputStream* st) const;
 };
@@ -333,6 +338,7 @@ private:
   bool _use_meta_ptrs;         // Store metadata pointers
   bool _for_preload;           // Code for preload
   bool _gen_preload_code;      // Generate pre-loading code
+  bool _has_clinit_barriers;   // Code with clinit barriers
   bool _closing;               // Closing cache file
   bool _failed;                // Failed read/write to/from cache (cache is broken?)
 

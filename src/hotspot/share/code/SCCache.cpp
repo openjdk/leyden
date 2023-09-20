@@ -313,6 +313,7 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
   _store_entries_cnt = 0;
   _gen_preload_code = false;
   _for_preload = false;       // changed while storing entry data
+  _has_clinit_barriers = false;
 
   _compile_id = 0;
   _comp_level = 0;
@@ -784,9 +785,46 @@ bool SCCache::finish_write() {
     SCCEntry* entries_address = _store_entries; // Pointer to latest entry
     uint not_entrant_nb = 0;
     uint max_size = 0;
+    // Add old entries first
+    if (_for_read && (_load_header != nullptr)) {
+      for(uint i = 0; i < load_count; i++) {
+        if (_load_entries[i].load_fail()) {
+          continue;
+        }
+        if (_load_entries[i].not_entrant()) {
+          log_info(scc, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
+          not_entrant_nb++;
+          _load_entries[i].set_entrant(); // Reset
+        } else if (_load_entries[i].for_preload() && _load_entries[i].method() != nullptr) {
+          // record entrant first version code for pre-loading
+          preload_entries[preload_entries_cnt++] = entries_count;
+        }
+        {
+          uint size = align_up(_load_entries[i].size(), DATA_ALIGNMENT);
+          if (size > max_size) {
+            max_size = size;
+          }
+          copy_bytes((_load_buffer + _load_entries[i].offset()), (address)current, size);
+          _load_entries[i].set_offset(current - start); // New offset
+          current += size;
+          uint n = write_bytes(&(_load_entries[i]), sizeof(SCCEntry));
+          if (n != sizeof(SCCEntry)) {
+            FREE_C_HEAP_ARRAY(char, buffer);
+            FREE_C_HEAP_ARRAY(uint, search);
+            return false;
+          }
+          search[entries_count*2 + 0] = _load_entries[i].id();
+          search[entries_count*2 + 1] = entries_count;
+          entries_count++;
+        }
+      }
+    }
     // SCCEntry entries were allocated in reverse in store buffer.
     // Process them in reverse order to cache first code first.
     for (int i = store_count - 1; i >= 0; i--) {
+      if (entries_address[i].load_fail()) {
+        continue;
+      }
       if (entries_address[i].not_entrant()) {
         log_info(scc, exit)("Not entrant new entry comp_id: %d, comp_level: %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s", entries_address[i].comp_id(), entries_address[i].comp_level(), entries_address[i].decompile(), entries_address[i].id(), (entries_address[i].has_clinit_barriers() ? ", has clinit barriers" : ""));
         not_entrant_nb++;
@@ -821,37 +859,6 @@ bool SCCache::finish_write() {
       FREE_C_HEAP_ARRAY(char, buffer);
       FREE_C_HEAP_ARRAY(uint, search);
       return true; // Nothing to write
-    }
-    // Add old entries
-    if (_for_read && (_load_header != nullptr)) {
-      for(uint i = 0; i < load_count; i++) {
-        if (_load_entries[i].not_entrant()) {
-          log_info(scc, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
-          not_entrant_nb++;
-          _load_entries[i].set_entrant(); // Reset
-        } else if (_load_entries[i].for_preload() && _load_entries[i].method() != nullptr) {
-          // record entrant first version code for pre-loading
-          preload_entries[preload_entries_cnt++] = entries_count;
-        }
-        {
-          uint size = align_up(_load_entries[i].size(), DATA_ALIGNMENT);
-          if (size > max_size) {
-            max_size = size;
-          }
-          copy_bytes((_load_buffer + _load_entries[i].offset()), (address)current, size);
-          _load_entries[i].set_offset(current - start); // New offset
-          current += size;
-          uint n = write_bytes(&(_load_entries[i]), sizeof(SCCEntry));
-          if (n != sizeof(SCCEntry)) {
-            FREE_C_HEAP_ARRAY(char, buffer);
-            FREE_C_HEAP_ARRAY(uint, search);
-            return false;
-          }
-          search[entries_count*2 + 0] = _load_entries[i].id();
-          search[entries_count*2 + 1] = entries_count;
-          entries_count++;
-        }
-      }
     }
     assert(entries_count <= (store_count + load_count), "%d > (%d + %d)", entries_count, store_count, load_count);
     // Write strings
@@ -1030,17 +1037,18 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
     }
     assert(k->is_klass(), "sanity");
     ResourceMark rm;
+    const char* comp_name = comp_method->name_and_sig_as_C_string();
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_loaded()) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for klass %s: not loaded",
-                       compile_id(), comp_level(), k->external_name());
+      log_warning(scc)("%d '%s' (L%d): Lookup failed for klass %s: not loaded",
+                       compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     } else
     // Allow not initialized klass which was uninitialized during code caching or for preload
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (not_init != 1) && !_preload) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for klass %s: not initialized",
-                       compile_id(), comp_level(), k->external_name());
+      log_warning(scc)("%d '%s' (L%d): Lookup failed for klass %s: not initialized",
+                       compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     }
     log_info(scc)("%d (L%d): Shared klass lookup: %s",
@@ -1101,22 +1109,23 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
     }
     assert(m->is_method(), "sanity");
     ResourceMark rm;
+    const char* comp_name = comp_method->name_and_sig_as_C_string();
     Klass* k = m->method_holder();
     if (!k->is_instance_klass()) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for holder %s: not instance klass", compile_id(), comp_level(), k->external_name());
+      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not instance klass", compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     } else if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for holder %s: not in CDS", compile_id(), comp_level(), k->external_name());
+      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not in CDS", compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_loaded()) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for holder %s: not loaded", compile_id(), comp_level(), k->external_name());
+      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not loaded", compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_linked() && !_preload) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for holder %s: not linked", compile_id(), comp_level(), k->external_name());
+      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not linked", compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     }
     log_info(scc)("%d (L%d): Shared method lookup: %s", compile_id(), comp_level(), m->name_and_sig_as_C_string());
@@ -1201,6 +1210,7 @@ bool SCCache::write_klass(Klass* klass) {
     set_lookup_failed();
     return false;
   }
+  bool can_use_meta_ptrs = _use_meta_ptrs;
   int not_init = 0;
   if (klass->is_instance_klass()) {
     InstanceKlass* ik = InstanceKlass::cast(klass);
@@ -1211,11 +1221,18 @@ bool SCCache::write_klass(Klass* klass) {
     }
     if (_for_preload && !CDSAccess::can_generate_cached_code(ik)) {
       _for_preload = false;
+      // Bailout if code has clinit barriers:
+      // method will be recompiled without them in any case
+      if (_has_clinit_barriers) {
+        set_lookup_failed();
+        return false;    
+      }
+      can_use_meta_ptrs = false;
     }
     not_init = !ik->is_initialized() ? 1 : 0;
   }
   ResourceMark rm;
-  if (_for_preload && _use_meta_ptrs && CDSAccess::can_generate_cached_code(klass)) {
+  if (can_use_meta_ptrs && CDSAccess::can_generate_cached_code(klass)) {
     DataKind kind = DataKind::Klass_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
@@ -1234,6 +1251,12 @@ bool SCCache::write_klass(Klass* klass) {
     log_info(scc)("%d (L%d): Wrote shared klass: %s%s @ 0x%08x", compile_id(), comp_level(), klass->external_name(),
                   (!klass->is_instance_klass() ? "" : ((not_init == 0) ? " (initialized)" : " (not-initialized)")), klass_offset);
     return true;
+  }
+  // Bailout if code has clinit barriers:
+  // method will be recompiled without them in any case
+  if (_for_preload && _has_clinit_barriers) {
+    set_lookup_failed();
+    return false;
   }
   _for_preload = false;
   log_info(scc,cds)("%d (L%d): Not shared klass: %s", compile_id(), comp_level(), klass->external_name());
@@ -1290,6 +1313,7 @@ bool SCCache::write_method(Method* method) {
     set_lookup_failed();
     return false;
   }
+  bool can_use_meta_ptrs = _use_meta_ptrs;
   Klass* klass = method->method_holder();
   if (klass->is_instance_klass()) {
     InstanceKlass* ik = InstanceKlass::cast(klass);
@@ -1300,10 +1324,17 @@ bool SCCache::write_method(Method* method) {
     }
     if (_for_preload && !CDSAccess::can_generate_cached_code(ik)) {
       _for_preload = false;
+      // Bailout if code has clinit barriers:
+      // method will be recompiled without them in any case
+      if (_has_clinit_barriers) {
+        set_lookup_failed();
+        return false;
+      }
+      can_use_meta_ptrs = false;
     }
   }
   ResourceMark rm;
-  if (_for_preload && _use_meta_ptrs && CDSAccess::can_generate_cached_code(method)) {
+  if (can_use_meta_ptrs && CDSAccess::can_generate_cached_code(method)) {
     DataKind kind = DataKind::Method_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
@@ -1316,6 +1347,12 @@ bool SCCache::write_method(Method* method) {
     }
     log_info(scc)("%d (L%d): Wrote shared method: %s @ 0x%08x", compile_id(), comp_level(), method->name_and_sig_as_C_string(), method_offset);
     return true;
+  }
+  // Bailout if code has clinit barriers:
+  // method will be recompiled without them in any case
+  if (_for_preload && _has_clinit_barriers) {
+    set_lookup_failed();
+    return false;
   }
   _for_preload = false;
   log_info(scc,cds)("%d (L%d): Not shared method: %s", compile_id(), comp_level(), method->name_and_sig_as_C_string());
@@ -2495,7 +2532,7 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
   if (success) {
     task->set_num_inlined_bytecodes(entry->num_inlined_bytecodes());
   } else {
-    entry->set_not_entrant();
+    entry->set_load_fail();
   }
   return success;
 }
@@ -2729,6 +2766,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
   }
   assert(!for_preload || method_in_cds, "sanity");
   cache->_for_preload = for_preload;
+  cache->_has_clinit_barriers = has_clinit_barriers;
 
   if (!cache->align_write()) {
     return nullptr;
