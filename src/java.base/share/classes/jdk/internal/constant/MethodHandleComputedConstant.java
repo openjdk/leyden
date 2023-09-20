@@ -40,6 +40,8 @@ public final class MethodHandleComputedConstant<V>
     V evaluate(MethodHandle provider) {
         try {
             return (V) provider.invoke();
+        } catch (Error e) {
+            throw e;
         } catch (Throwable e) {
             throw new IllegalArgumentException(e);
         }
