@@ -28,6 +28,7 @@
 #include "compiler/disassembler.hpp"
 #include "logging/log.hpp"
 #include "oops/klass.inline.hpp"
+#include "oops/methodCounters.hpp"
 #include "oops/methodData.hpp"
 #include "oops/oop.inline.hpp"
 #include "runtime/icache.hpp"

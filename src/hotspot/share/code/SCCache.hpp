@@ -181,6 +181,7 @@ public:
 
   Method*   method()  const { return _method; }
   void set_method(Method* method) { _method = method; }
+  void update_method_for_writing();
 
   Kind kind()         const { return _kind; }
   uint id()           const { return _id; }

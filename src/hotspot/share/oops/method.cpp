@@ -611,6 +611,24 @@ void Method::print_invocation_count() {
 #endif
 }
 
+MethodTrainingData* Method::training_data_or_null() const {
+  MethodCounters* mcs = method_counters();
+  if (mcs == nullptr) {
+    return nullptr;
+  } else {
+    return mcs->method_training_data();
+  }
+}
+
+bool Method::init_training_data(MethodTrainingData* tdata) {
+  MethodCounters* mcs = method_counters();
+  if (mcs == nullptr) {
+    return false;
+  } else {
+    return mcs->init_method_training_data(tdata);
+  }
+}
+
 bool Method::install_training_method_data(const methodHandle& method) {
   MethodTrainingData* mtd = MethodTrainingData::find(method);
   if (mtd != nullptr && mtd->has_holder() && mtd->final_profile() != nullptr &&
@@ -1210,7 +1228,7 @@ void Method::clear_code() {
 }
 
 void Method::unlink_code(CompiledMethod *compare) {
-  MutexLocker ml(CompiledMethod_lock->owned_by_self() ? nullptr : CompiledMethod_lock, Mutex::_no_safepoint_check_flag);
+  ConditionalMutexLocker ml(CompiledMethod_lock, !CompiledMethod_lock->owned_by_self(), Mutex::_no_safepoint_check_flag);
   // We need to check if either the _code or _from_compiled_code_entry_point
   // refer to this nmethod because there is a race in setting these two fields
   // in Method* as seen in bugid 4947125.
@@ -1221,7 +1239,7 @@ void Method::unlink_code(CompiledMethod *compare) {
 }
 
 void Method::unlink_code() {
-  MutexLocker ml(CompiledMethod_lock->owned_by_self() ? nullptr : CompiledMethod_lock, Mutex::_no_safepoint_check_flag);
+  ConditionalMutexLocker ml(CompiledMethod_lock, !CompiledMethod_lock->owned_by_self(), Mutex::_no_safepoint_check_flag);
   clear_code();
 }
 

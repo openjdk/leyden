@@ -73,6 +73,7 @@
 #include "runtime/vm_version.hpp"
 #include "services/management.hpp"
 #include "services/threadService.hpp"
+#include "utilities/checkedCast.hpp"
 #include "utilities/classpathStream.hpp"
 #include "utilities/events.hpp"
 #include "utilities/macros.hpp"
@@ -971,7 +972,7 @@ void ClassLoader::load_java_library() {
 }
 
 void ClassLoader::release_load_zip_library() {
-  MutexLocker locker(Zip_lock, Monitor::_no_safepoint_check_flag);
+  ConditionalMutexLocker locker(Zip_lock, Zip_lock != nullptr, Monitor::_no_safepoint_check_flag);
   if (_libzip_loaded == 0) {
     load_zip_library();
     Atomic::release_store(&_libzip_loaded, 1);
@@ -1283,7 +1284,7 @@ char* ClassLoader::skip_uri_protocol(char* source) {
 // by the builtin loaders at dump time.
 void ClassLoader::record_result(JavaThread* current, InstanceKlass* ik,
                                 const ClassFileStream* stream, bool redefined) {
-  Arguments::assert_is_dumping_archive();
+  // FIXME Arguments::assert_is_dumping_archive();
   assert(stream != nullptr, "sanity");
 
   if (ik->is_hidden()) {

@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "classfile/altHashing.hpp"
 #include "classfile/classLoaderData.hpp"
@@ -491,7 +492,7 @@ Symbol* SymbolTable::do_add_if_needed(const char* name, int len, uintx hash, boo
   const int alloc_size = Symbol::byte_size(len);
   u1* u1_buf = NEW_RESOURCE_ARRAY_IN_THREAD(current, u1, alloc_size);
   Symbol* tmp = ::new ((void*)u1_buf) Symbol((const u1*)name, len,
-                                             (is_permanent || DumpSharedSpaces) ? PERM_REFCOUNT : 1);
+                                             (is_permanent || CDSConfig::is_dumping_static_archive()) ? PERM_REFCOUNT : 1);
 
   do {
     if (_local_table->insert(current, lookup, *tmp, &rehash_warning, &clean_hint)) {
@@ -668,11 +669,13 @@ size_t SymbolTable::estimate_size_for_archive() {
   return CompactHashtableWriter::estimate_size(int(_items_count));
 }
 
+static SimpleCompactHashtable::States _saved_states;
+
 void SymbolTable::write_to_archive(GrowableArray<Symbol*>* symbols) {
   CompactHashtableWriter writer(int(_items_count), ArchiveBuilder::symbol_stats());
   copy_shared_symbol_table(symbols, &writer);
   if (!DynamicDumpSharedSpaces) {
-    _shared_table.reset();
+    _shared_table.reset(&_saved_states);
     writer.dump(&_shared_table, "symbol");
   } else {
     _dynamic_shared_table.reset();
@@ -690,8 +693,13 @@ void SymbolTable::serialize_shared_table_header(SerializeClosure* soc,
   }
   table->serialize_header(soc);
   if (soc->writing()) {
-    // Sanity. Make sure we don't use the shared table at dump time
-    table->reset();
+    if (CacheDataStore != nullptr && CDSPreimage != nullptr) {
+      assert(is_static_archive, "sanity");
+      table->restore(&_saved_states);
+    } else {
+      // Sanity. Make sure we don't use the shared table at dump time
+      table->reset();
+    }
   }
 }
 #endif //INCLUDE_CDS

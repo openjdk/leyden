@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveUtils.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/cdsEnumKlass.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/heapShared.hpp"
@@ -705,7 +706,7 @@ void InstanceKlass::deallocate_contents(ClassLoaderData* loader_data) {
   SystemDictionaryShared::handle_class_unloading(this);
 
 #if INCLUDE_CDS_JAVA_HEAP
-  if (DumpSharedSpaces) {
+  if (CDSConfig::is_dumping_heap()) {
     HeapShared::remove_scratch_objects(this);
   }
 #endif
@@ -801,7 +802,7 @@ bool InstanceKlass::link_class_or_fail(TRAPS) {
 }
 
 bool InstanceKlass::link_class_impl(TRAPS) {
-  if (DumpSharedSpaces && SystemDictionaryShared::has_class_failed_verification(this)) {
+  if (CDSConfig::is_dumping_static_archive() && SystemDictionaryShared::has_class_failed_verification(this)) {
     // This is for CDS dumping phase only -- we use the in_error_state to indicate that
     // the class has failed verification. Throwing the NoClassDefFoundError here is just
     // a convenient way to stop repeat attempts to verify the same (bad) class.
@@ -2644,7 +2645,7 @@ void InstanceKlass::clean_method_data() {
   for (int m = 0; m < methods()->length(); m++) {
     MethodData* mdo = methods()->at(m)->method_data();
     if (mdo != nullptr) {
-      MutexLocker ml(SafepointSynchronize::is_at_safepoint() ? nullptr : mdo->extra_data_lock());
+      ConditionalMutexLocker ml(mdo->extra_data_lock(), !SafepointSynchronize::is_at_safepoint());
       mdo->clean_method_data(/*always_clean*/false);
     }
   }
@@ -2781,7 +2782,7 @@ void InstanceKlass::remove_unshareable_info() {
   _methods_jmethod_ids = nullptr;
   _jni_ids = nullptr;
   _oop_map_cache = nullptr;
-  if (DumpSharedSpaces && ArchiveInvokeDynamic && HeapShared::is_lambda_proxy_klass(this)) {
+  if (ArchiveInvokeDynamic && HeapShared::is_lambda_proxy_klass(this)) {
     // keep _nest_host
   } else {
     // clear _nest_host to ensure re-load at runtime
@@ -2790,6 +2791,7 @@ void InstanceKlass::remove_unshareable_info() {
   init_shared_package_entry();
   _dep_context_last_cleaned = 0;
   _init_monitor = nullptr;
+  DEBUG_ONLY(_shared_class_load_count = 0);
 
   _training_data = nullptr;
   remove_unshareable_flags();
@@ -2818,7 +2820,7 @@ void InstanceKlass::init_shared_package_entry() {
 #if !INCLUDE_CDS_JAVA_HEAP
   _package_entry = nullptr;
 #else
-  if (!MetaspaceShared::use_full_module_graph()) {
+  if (!CDSConfig::is_dumping_full_module_graph()) {
     _package_entry = nullptr;
   } else if (DynamicDumpSharedSpaces) {
     if (!MetaspaceShared::is_in_shared_metaspace(_package_entry)) {
@@ -2882,10 +2884,11 @@ void InstanceKlass::restore_unshareable_info(ClassLoaderData* loader_data, Handl
   if (array_klasses() != nullptr) {
     // To get a consistent list of classes we need MultiArray_lock to ensure
     // array classes aren't observed while they are being restored.
-     MutexLocker ml(MultiArray_lock);
+    MutexLocker ml(MultiArray_lock);
+    assert(this == array_klasses()->bottom_klass(), "sanity");
     // Array classes have null protection domain.
     // --> see ArrayKlass::complete_create_array_klass()
-    array_klasses()->restore_unshareable_info(loader_data, Handle(), CHECK);
+    array_klasses()->restore_unshareable_info(class_loader_data(), Handle(), CHECK);
   }
 
   // Initialize @ValueBased class annotation
@@ -3160,7 +3163,7 @@ void InstanceKlass::set_package(ClassLoaderData* loader_data, PackageEntry* pkg_
   }
 
   if (is_shared() && _package_entry != nullptr) {
-    if (MetaspaceShared::use_full_module_graph() && _package_entry == pkg_entry) {
+    if (CDSConfig::is_loading_full_module_graph() && _package_entry == pkg_entry) {
       // we can use the saved package
       assert(MetaspaceShared::is_in_shared_metaspace(_package_entry), "must be");
       return;
@@ -3594,8 +3597,7 @@ void InstanceKlass::add_osr_nmethod(nmethod* n) {
 // Remove osr nmethod from the list. Return true if found and removed.
 bool InstanceKlass::remove_osr_nmethod(nmethod* n) {
   // This is a short non-blocking critical region, so the no safepoint check is ok.
-  MutexLocker ml(CompiledMethod_lock->owned_by_self() ? nullptr : CompiledMethod_lock
-                 , Mutex::_no_safepoint_check_flag);
+  ConditionalMutexLocker ml(CompiledMethod_lock, !CompiledMethod_lock->owned_by_self(), Mutex::_no_safepoint_check_flag);
   assert(n->is_osr_method(), "wrong kind of nmethod");
   nmethod* last = nullptr;
   nmethod* cur  = osr_nmethods_head();
@@ -3636,8 +3638,7 @@ bool InstanceKlass::remove_osr_nmethod(nmethod* n) {
 }
 
 int InstanceKlass::mark_osr_nmethods(DeoptimizationScope* deopt_scope, const Method* m) {
-  MutexLocker ml(CompiledMethod_lock->owned_by_self() ? nullptr : CompiledMethod_lock,
-                 Mutex::_no_safepoint_check_flag);
+  ConditionalMutexLocker ml(CompiledMethod_lock, !CompiledMethod_lock->owned_by_self(), Mutex::_no_safepoint_check_flag);
   nmethod* osr = osr_nmethods_head();
   int found = 0;
   while (osr != nullptr) {
@@ -3652,8 +3653,7 @@ int InstanceKlass::mark_osr_nmethods(DeoptimizationScope* deopt_scope, const Met
 }
 
 nmethod* InstanceKlass::lookup_osr_nmethod(const Method* m, int bci, int comp_level, bool match_level) const {
-  MutexLocker ml(CompiledMethod_lock->owned_by_self() ? nullptr : CompiledMethod_lock,
-                 Mutex::_no_safepoint_check_flag);
+  ConditionalMutexLocker ml(CompiledMethod_lock, !CompiledMethod_lock->owned_by_self(), Mutex::_no_safepoint_check_flag);
   nmethod* osr = osr_nmethods_head();
   nmethod* best = nullptr;
   while (osr != nullptr) {

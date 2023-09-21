@@ -24,7 +24,9 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/filemap.hpp"
+#include "cds/heapShared.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/javaAssertions.hpp"
 #include "classfile/moduleEntry.hpp"
@@ -60,6 +62,7 @@
 #include "services/management.hpp"
 #include "services/nmtCommon.hpp"
 #include "utilities/align.hpp"
+#include "utilities/checkedCast.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/defaultStream.hpp"
 #include "utilities/macros.hpp"
@@ -1261,7 +1264,8 @@ bool Arguments::add_property(const char* prop, PropertyWriteable writeable, Prop
   if (strcmp(key, "jdk.module.showModuleResolution") == 0 ||
       strcmp(key, "jdk.module.validation") == 0 ||
       strcmp(key, "java.system.class.loader") == 0) {
-    MetaspaceShared::disable_full_module_graph();
+    CDSConfig::disable_dumping_full_module_graph();
+    CDSConfig::disable_loading_full_module_graph();
     log_info(cds)("full module graph: disabled due to incompatible property: %s=%s", key, value);
   }
 #endif
@@ -2965,6 +2969,13 @@ void Arguments::fix_appclasspath() {
   }
 }
 
+static void set_new_workflow_default_CachedCodeFile() {
+  size_t len = strlen(CacheDataStore) + 6;
+  char* file = AllocateHeap(len, mtArguments);
+  jio_snprintf(file, len, "%s.code", CacheDataStore);
+  FLAG_SET_ERGO(CachedCodeFile, file);
+}
+
 jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
   // check if the default lib/endorsed directory exists; if so, error
   char path[JVM_MAXPATHLEN];
@@ -3040,7 +3051,78 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
   }
 
 #if INCLUDE_CDS
-  if (DumpSharedSpaces) {
+  if (CacheDataStore != nullptr) {
+    if (SharedArchiveFile != nullptr) {
+      vm_exit_during_initialization("CacheDataStore and SharedArchiveFile cannot be both specified");
+    }
+    if (!PreloadSharedClasses) {
+      // TODO: in the forked JVM, we should ensure all classes are loaded from the hotspot.cds.preimage.
+      // PreloadSharedClasses only loads the classes for built-in loaders. We need to load the classes
+      // for custom loaders as well.
+      vm_exit_during_initialization("CacheDataStore requires PreloadSharedClasses");
+    }
+
+    if (CDSPreimage == nullptr) {
+      if (os::file_exists(CacheDataStore) /* && TODO: CDS file is valid*/) {
+        // The CacheDataStore is already up to date. Use it. Also turn on cached code by default.
+        SharedArchiveFile = CacheDataStore;
+        FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+        FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
+        if (LoadCachedCode && FLAG_IS_DEFAULT(CachedCodeFile)) {
+          set_new_workflow_default_CachedCodeFile();
+        }
+      } else {
+        // The preimage dumping phase -- run the app and write the preimage file
+        size_t len = strlen(CacheDataStore) + 10;
+        char* preimage = AllocateHeap(len, mtArguments);
+        jio_snprintf(preimage, len, "%s.preimage", CacheDataStore);
+
+        UseSharedSpaces = false;
+        DumpSharedSpaces = true;
+        SharedArchiveFile = preimage;
+        log_info(cds)("CacheDataStore needs to be updated. Writing %s file", SharedArchiveFile);
+
+        // At VM exit, the module graph may be contaminated with program states. We should rebuild the
+        // module graph when dumping the CDS final image.
+        log_info(cds)("full module graph: disabled when writing CDS preimage");
+        HeapShared::disable_writing();
+        CDSConfig::disable_dumping_full_module_graph();
+        ArchiveInvokeDynamic = false;
+
+        FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+      }
+    } else {
+      // The final image dumping phase -- load the preimage and write the final image file
+      SharedArchiveFile = CDSPreimage;
+      UseSharedSpaces = true;
+      log_info(cds)("Generate CacheDataStore %s from CDSPreimage %s", CacheDataStore, CDSPreimage);
+      // Force -Xbatch for AOT compilation.
+      if (FLAG_SET_CMDLINE(BackgroundCompilation, false) != JVMFlag::SUCCESS) {
+        return JNI_EINVAL;
+      }
+      Inline = false; // FIXME: this is just for temp debugging.
+
+      // FIXME -- we want to pass the training data from the preimage to the final image,
+      // but this will also causes the new training data in the final image dumping phase
+      // to be recorded (which may be redundant).
+      FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+
+      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+      // Settings for AOT
+      FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
+      if (StoreCachedCode && FLAG_IS_DEFAULT(CachedCodeFile)) {
+        set_new_workflow_default_CachedCodeFile();
+        // Cannot dump cached code until metadata and heap are dumped.
+        CDSConfig::disable_dumping_cached_code();
+      }
+    }
+  } else {
+    if (CDSPreimage != nullptr) {
+      vm_exit_during_initialization("CDSPreimage must be specified only when CacheDataStore is specified");
+    }
+  }
+
+  if (CDSConfig::is_dumping_static_archive()) {
     // Compiler threads may concurrently update the class metadata (such as method entries), so it's
     // unsafe with -Xshare:dump (which modifies the class metadata in place). Let's disable
     // compiler just to be safe.
@@ -3048,7 +3130,10 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
     // Note: this is not a concern for dynamically dumping shared spaces, which makes a copy of the
     // class metadata instead of modifying them in place. The copy is inaccessible to the compiler.
     // TODO: revisit the following for the static archive case.
-    set_mode_flags(_int);
+    if (CacheDataStore == nullptr) {
+      // FIXME -- the above comment about "modifies the class metadata in place" is wrong.
+      set_mode_flags(_int);
+    }
 
     // String deduplication may cause CDS to iterate the strings in different order from one
     // run to another which resulting in non-determinstic CDS archives.
@@ -3102,12 +3187,7 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
     }
   }
 
-  if (DynamicDumpSharedSpaces) {
-    ArchiveInvokeDynamic = false; // requires heap dumping, which is not supported in dynamic archive.
-  } else if (!DumpSharedSpaces) {
-    ArchiveInvokeDynamic = false; // This flag is useful only when dumping the static archive.
-  }
-  if (!PreloadSharedClasses) {
+  if (!CDSConfig::is_dumping_static_archive() || !PreloadSharedClasses) {
     ArchiveInvokeDynamic = false;
   }
 #endif
@@ -3379,6 +3459,12 @@ jint Arguments::parse_options_buffer(const char* name, char* buffer, const size_
   return vm_args->set_args(&options);
 }
 
+#ifndef PRODUCT
+void Arguments::assert_is_dumping_archive() {
+  assert(Arguments::is_dumping_archive() || CDSPreimage != nullptr, "dump time only");
+}
+#endif
+
 void Arguments::set_shared_spaces_flags_and_archive_paths() {
   if (DumpSharedSpaces) {
     if (RequireSharedSpaces) {
@@ -3483,6 +3569,10 @@ void Arguments::init_shared_archive_paths() {
         "Cannot have more than 1 archive file specified in -XX:SharedArchiveFile during CDS dumping");
     }
 
+    if (CDSPreimage != nullptr && archives > 1) {
+      vm_exit_during_initialization("CDSPreimage must point to a single file", CDSPreimage);
+    }
+
     if (DumpSharedSpaces) {
       assert(archives == 1, "must be");
       // Static dump is simple: only one archive is allowed in SharedArchiveFile. This file
@@ -3507,6 +3597,10 @@ void Arguments::init_shared_archive_paths() {
         bool success =
           FileMapInfo::get_base_archive_name_from_header(SharedArchiveFile, &base_archive_path);
         if (!success) {
+          if (CDSPreimage != nullptr) {
+            vm_exit_during_initialization("Unable to map shared spaces from CDSPreimage", CDSPreimage);
+          }
+
           // If +AutoCreateSharedArchive and the specified shared archive does not exist,
           // regenerate the dynamic archive base on default archive.
           if (AutoCreateSharedArchive && !os::file_exists(SharedArchiveFile)) {

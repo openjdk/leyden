@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cds_globals.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "interpreter/bytecodes.hpp"
@@ -38,6 +39,7 @@
 #include "runtime/arguments.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/handles.inline.hpp"
+#include "utilities/checkedCast.hpp"
 
 // Computes a CPC map (new_index -> original_index) for constant pool entries
 // that are referred to by the interpreter at runtime via the constant pool cache.
@@ -126,6 +128,10 @@ void Rewriter::make_constant_pool_cache(TRAPS) {
     } else {
       cache->save_for_archive(THREAD);
     }
+  }
+
+  if (!HAS_PENDING_EXCEPTION && CDSPreimage != nullptr) {
+    cache->save_for_archive(THREAD);
   }
 #endif
 

@@ -143,16 +143,18 @@ bool DumpTimeClassInfo::is_builtin() {
 }
 
 DumpTimeClassInfo* DumpTimeSharedClassTable::allocate_info(InstanceKlass* k) {
-  assert(!k->is_shared(), "Do not call with shared classes");
+  assert(!k->is_shared() || CDSPreimage != nullptr, "Do not call with shared classes (FIXME comment)");
   bool created;
   DumpTimeClassInfo* p = put_if_absent(k, &created);
   assert(created, "must not exist in table");
   p->_klass = k;
+  //ResourceMark rm;
+  //tty->print_cr("allocate_info %p %s", k, k->external_name());
   return p;
 }
 
 DumpTimeClassInfo* DumpTimeSharedClassTable::get_info(InstanceKlass* k) {
-  assert(!k->is_shared(), "Do not call with shared classes");
+  assert(!k->is_shared() || CDSPreimage != nullptr, "Do not call with shared classes (FIXME comment)");
   DumpTimeClassInfo* p = get(k);
   assert(p != nullptr, "we must not see any non-shared InstanceKlass* that's "
          "not stored with SystemDictionaryShared::init_dumptime_info");

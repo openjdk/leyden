@@ -26,6 +26,7 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapLoader.inline.hpp"
 #include "cds/archiveHeapWriter.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/altHashing.hpp"
@@ -805,7 +806,7 @@ oop StringTable::lookup_shared(const jchar* name, int len) {
 // This should be called when we know no more strings will be added (which will be easy
 // to guarantee because CDS runs with a single Java thread. See JDK-8253495.)
 void StringTable::allocate_shared_strings_array(TRAPS) {
-  assert(DumpSharedSpaces, "must be");
+  assert(CDSConfig::is_dumping_heap(), "must be");
   if (_items_count > (size_t)max_jint) {
     fatal("Too many strings to be archived: %zu", _items_count);
   }
@@ -929,6 +930,12 @@ void StringTable::set_shared_strings_array_index(int root_index) {
 }
 
 void StringTable::serialize_shared_table_header(SerializeClosure* soc) {
+  if (soc->writing() && !HeapShared::can_write()) {
+    _shared_table.reset();
+    _is_two_dimensional_shared_strings_array = false;
+    _shared_strings_array_root_index = -1;
+  }
+
   _shared_table.serialize_header(soc);
 
   if (soc->writing()) {

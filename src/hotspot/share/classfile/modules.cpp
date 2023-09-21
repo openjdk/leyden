@@ -23,6 +23,7 @@
 */
 
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classFileParser.hpp"
 #include "classfile/classLoader.hpp"
@@ -484,8 +485,7 @@ static bool _seen_system_unnamed_module = false;
 //
 // Returns true iff the oop has an archived ModuleEntry.
 bool Modules::check_module_oop(oop orig_module_obj) {
-  assert(DumpSharedSpaces, "must be");
-  assert(MetaspaceShared::use_full_module_graph(), "must be");
+  assert(CDSConfig::is_dumping_full_module_graph(), "must be");
   assert(java_lang_Module::is_instance(orig_module_obj), "must be");
 
   ModuleEntry* orig_module_ent = java_lang_Module::module_entry_raw(orig_module_obj);
@@ -560,7 +560,7 @@ void Modules::verify_archived_modules() {
 }
 
 void Modules::define_archived_modules(Handle h_platform_loader, Handle h_system_loader, TRAPS) {
-  assert(UseSharedSpaces && MetaspaceShared::use_full_module_graph(), "must be");
+  assert(CDSConfig::is_loading_full_module_graph(), "must be");
 
   // We don't want the classes used by the archived full module graph to be redefined by JVMTI.
   // Luckily, such classes are loaded in the JVMTI "early" phase, and CDS is disabled if a JVMTI
@@ -596,7 +596,7 @@ void Modules::define_archived_modules(Handle h_platform_loader, Handle h_system_
 }
 
 void Modules::check_cds_restrictions(TRAPS) {
-  if (DumpSharedSpaces && Universe::is_module_initialized() && MetaspaceShared::use_full_module_graph()) {
+  if (Universe::is_module_initialized() && CDSConfig::is_dumping_full_module_graph()) {
     THROW_MSG(vmSymbols::java_lang_UnsupportedOperationException(),
               "During -Xshare:dump, module system cannot be modified after it's initialized");
   }

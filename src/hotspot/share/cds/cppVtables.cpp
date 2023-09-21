@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "logging/log.hpp"
@@ -202,7 +203,8 @@ enum ClonedVtableKind {
 //     ConstantPool *cp = new (...) ConstantPool(...) ; // a dynamically allocated constant pool
 // the following holds true:
 //     _orig_cpp_vtptrs[ConstantPool_Kind] ==  ((intptr_t**)cp)[0]
-static intptr_t* _orig_cpp_vtptrs[_num_cloned_vtable_kinds];
+static intptr_t* _orig_cpp_vtptrs[_num_cloned_vtable_kinds];  // vtptrs set by the C++ compiler
+static intptr_t* _archived_cpp_vtptrs[_num_cloned_vtable_kinds];  // vtptrs used in the static archive
 static bool _orig_cpp_vtptrs_inited = false;
 
 template <class T>
@@ -222,11 +224,17 @@ void CppVtableCloner<T>::init_orig_cpp_vtptr(int kind) {
 CppVtableInfo** CppVtables::_index = nullptr;
 
 char* CppVtables::dumptime_init(ArchiveBuilder* builder) {
-  assert(DumpSharedSpaces, "must");
+  assert(CDSConfig::is_dumping_static_archive(), "must");
   size_t vtptrs_bytes = _num_cloned_vtable_kinds * sizeof(CppVtableInfo*);
   _index = (CppVtableInfo**)builder->rw_region()->allocate(vtptrs_bytes);
 
   CPP_VTABLE_TYPES_DO(ALLOCATE_AND_INITIALIZE_VTABLE);
+
+  if (CDSPreimage == nullptr) {
+    for (int kind = 0; kind < _num_cloned_vtable_kinds; kind++) {
+      _archived_cpp_vtptrs[kind] = _index[kind]->cloned_vtable();
+    }
+  }
 
   size_t cpp_tables_size = builder->rw_region()->top() - builder->rw_region()->base();
   builder->alloc_stats()->record_cpp_vtables((int)cpp_tables_size);
@@ -238,6 +246,14 @@ void CppVtables::serialize(SerializeClosure* soc) {
   soc->do_ptr(&_index);
   if (soc->reading()) {
     CPP_VTABLE_TYPES_DO(INITIALIZE_VTABLE);
+  }
+
+  if (soc->writing() && CDSPreimage != nullptr) {
+    memset(_archived_cpp_vtptrs, 0, sizeof(_archived_cpp_vtptrs));
+  }
+
+  for (int kind = 0; kind < _num_cloned_vtable_kinds; kind++) {
+    soc->do_ptr(&_archived_cpp_vtptrs[kind]);
   }
 }
 
@@ -265,7 +281,8 @@ intptr_t* CppVtables::get_archived_vtable(MetaspaceObj::Type msotype, address ob
     break;
   default:
     for (kind = 0; kind < _num_cloned_vtable_kinds; kind ++) {
-      if (vtable_of((Metadata*)obj) == _orig_cpp_vtptrs[kind]) {
+      if (vtable_of((Metadata*)obj) == _orig_cpp_vtptrs[kind] ||
+          vtable_of((Metadata*)obj) == _archived_cpp_vtptrs[kind]) {
         break;
       }
     }
@@ -285,7 +302,7 @@ intptr_t* CppVtables::get_archived_vtable(MetaspaceObj::Type msotype, address ob
 }
 
 void CppVtables::zero_archived_vtables() {
-  assert(DumpSharedSpaces, "dump-time only");
+  assert(CDSConfig::is_dumping_static_archive(), "dump-time only");
   for (int kind = 0; kind < _num_cloned_vtable_kinds; kind ++) {
     _index[kind]->zero();
   }

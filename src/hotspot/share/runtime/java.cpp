@@ -27,6 +27,7 @@
 #include "cds/classListWriter.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/methodProfiler.hpp"
+#include "cds/metaspaceShared.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/javaClasses.hpp"
@@ -476,7 +477,12 @@ void before_exit(JavaThread* thread, bool halt) {
   ClassListWriter::write_resolved_constants();
   // Dynamic CDS dumping must happen whilst we can still reliably
   // run Java code.
-  DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
+  if (DumpSharedSpaces && CacheDataStore != nullptr) {
+    // Creating the hotspot.cds.preimage file
+    MetaspaceShared::preload_and_dump();
+  } else {
+    DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
+  }
   assert(!thread->has_pending_exception(), "must be");
 #endif
 

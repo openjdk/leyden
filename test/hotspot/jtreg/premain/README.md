@@ -13,6 +13,10 @@
 the premain branch vs the JDK mainline.
 It's a good demonstration of how we can improve start-up time of a complex application.
 
+- [javac_new_workflow](javac_new_workflow) Example of the new "one step training" workflow
+(still under development) where you can generate all the Leyden artifacts with a single
+JVM invocation.
+
 ## Docs
 
 - [InvokeDynamic.md](InvokeDynamic.md) CDS optimizations for invokedynamic

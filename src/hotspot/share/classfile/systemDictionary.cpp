@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classFileParser.hpp"
@@ -139,11 +140,10 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     oop platform_loader = get_platform_class_loader_impl(CHECK);
     _java_platform_loader = OopHandle(Universe::vm_global(), platform_loader);
     ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, java_platform_loader()));
-    //SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_platform_loader()), CHECK);
   } else {
     // It must have been restored from the archived module graph
     assert(UseSharedSpaces, "must be");
-    assert(MetaspaceShared::use_full_module_graph(), "must be");
+    assert(CDSConfig::is_loading_full_module_graph(), "must be");
     DEBUG_ONLY(
       oop platform_loader = get_platform_class_loader_impl(CHECK);
       assert(_java_platform_loader.resolve() == platform_loader, "must be");
@@ -154,19 +154,23 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     oop system_loader = get_system_class_loader_impl(CHECK);
     _java_system_loader = OopHandle(Universe::vm_global(), system_loader);
     ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, java_system_loader()));
-    //SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_system_loader()), CHECK);
   } else {
     // It must have been restored from the archived module graph
     assert(UseSharedSpaces, "must be");
-    assert(MetaspaceShared::use_full_module_graph(), "must be");
+    assert(CDSConfig::is_loading_full_module_graph(), "must be");
     DEBUG_ONLY(
       oop system_loader = get_system_class_loader_impl(CHECK);
       assert(_java_system_loader.resolve() == system_loader, "must be");
     )
   }
 
-  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_platform_loader()), CHECK);
-  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(THREAD, java_system_loader()), CHECK);
+  if (CDSPreimage != nullptr) {
+    // TODO: copy the verification and loader constraints from preimage to final image
+    // TODO: load archived classes for custom loaders as well.
+    log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
+    MetaspaceShared::preload_and_dump();
+    vm_direct_exit(0, "CacheDataStore dumping is complete");
+  }
 }
 
 oop SystemDictionary::get_system_class_loader_impl(TRAPS) {
@@ -1196,11 +1200,34 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
     s2 path_index = ik->shared_classpath_index();
     if (path_index >= 0) { // FIXME ... for lambda form classes
       ik->set_classpath_index(path_index);
+
+      if (CDSPreimage != nullptr) {
+        if (path_index > ClassLoaderExt::max_used_path_index()) {
+          ClassLoaderExt::set_max_used_path_index(path_index);
+        }
+      }
     }
   }
 
   // notify a class loaded from shared object
   ClassLoadingService::notify_class_loaded(ik, true /* shared class */);
+
+  if (CDSPreimage != nullptr) {
+    SystemDictionaryShared::init_dumptime_info(ik);
+    if (ik->constants()->cache()) {
+      EXCEPTION_MARK;
+      ik->constants()->cache()->save_for_archive(THREAD);
+      if (HAS_PENDING_EXCEPTION) {
+        vm_exit_during_initialization(err_msg("OOM when loading CDSPreimage"));
+      }
+    }
+
+    if (SystemDictionary::is_platform_class_loader(loader_data->class_loader())) {
+      ClassLoaderExt::set_has_platform_classes();
+    } else if (SystemDictionary::is_system_class_loader(loader_data->class_loader())) {
+      ClassLoaderExt::set_has_app_classes();
+    }
+  }
 }
 
 #endif // INCLUDE_CDS
@@ -1556,10 +1583,10 @@ bool SystemDictionary::do_unloading(GCTimer* gc_timer) {
     // First, mark for unload all ClassLoaderData referencing a dead class loader.
     unloading_occurred = ClassLoaderDataGraph::do_unloading();
     if (unloading_occurred) {
-      MutexLocker ml2(is_concurrent ? Module_lock : nullptr);
+      ConditionalMutexLocker ml2(Module_lock, is_concurrent);
       JFR_ONLY(Jfr::on_unloading_classes();)
       MANAGEMENT_ONLY(FinalizerService::purge_unloaded();)
-      MutexLocker ml1(is_concurrent ? SystemDictionary_lock : nullptr);
+      ConditionalMutexLocker ml1(SystemDictionary_lock, is_concurrent);
       ClassLoaderDataGraph::clean_module_and_package_info();
       LoaderConstraintTable::purge_loader_constraints();
       ResolutionErrorTable::purge_resolution_errors();
@@ -1582,7 +1609,7 @@ bool SystemDictionary::do_unloading(GCTimer* gc_timer) {
       assert(ProtectionDomainCacheTable::number_of_entries() == 0, "should be empty");
     }
 
-    MutexLocker ml(is_concurrent ? ClassInitError_lock : nullptr);
+    ConditionalMutexLocker ml(ClassInitError_lock, is_concurrent);
     InstanceKlass::clean_initialization_error_table();
   }
 
@@ -1711,6 +1738,17 @@ void SystemDictionary::update_dictionary(JavaThread* current,
   mu1.notify_all();
 }
 
+#if INCLUDE_CDS
+void SystemDictionary::preload_class(JavaThread* current,
+                                     InstanceKlass* k,
+                                     ClassLoaderData* loader_data) {
+  assert_locked_or_safepoint(SystemDictionary_lock);
+  Symbol* name  = k->name();
+  Dictionary* dictionary = loader_data->dictionary();
+  assert(dictionary->find_class(current, name) == nullptr, "sanity");
+  dictionary->add_klass(current, name, k);
+}
+#endif
 
 // Try to find a class name using the loader constraints.  The
 // loader constraints might know about a class that isn't fully loaded

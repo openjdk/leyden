@@ -625,12 +625,13 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   if (nm != nullptr) {
 
 #ifdef ASSERT
-if (UseNewCode3) {
-  tty->print_cr("== new_nmethod 2");
-  FlagSetting fs(PrintRelocations, true);
-  nm->print();
-  nm->decode(tty);
-}
+    LogTarget(Debug, scc, nmethod) log;
+    if (log.is_enabled()) {
+      tty->print_cr("== new_nmethod 2");
+      FlagSetting fs(PrintRelocations, true);
+      nm->print();
+      nm->decode(tty);
+    }
 #endif
 
     // Safepoints in nmethod::verify aren't allowed because nm hasn't been installed yet.
@@ -1368,7 +1369,7 @@ bool nmethod::make_not_entrant(bool make_not_entrant) {
 
   {
     // Enter critical section.  Does not block for safepoint.
-    MutexLocker ml(CompiledMethod_lock->owned_by_self() ? nullptr : CompiledMethod_lock, Mutex::_no_safepoint_check_flag);
+    ConditionalMutexLocker ml(CompiledMethod_lock, !CompiledMethod_lock->owned_by_self(), Mutex::_no_safepoint_check_flag);
 
     if (Atomic::load(&_state) == not_entrant) {
       // another thread already performed this transition so nothing

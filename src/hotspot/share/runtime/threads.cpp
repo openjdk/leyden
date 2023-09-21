@@ -25,6 +25,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -325,28 +326,13 @@ static void call_initPhase2(TRAPS) {
 
   // Preload all boot classes outside of java.base module
   ClassPrelinker::runtime_preload(THREAD, Handle());
-  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(), CHECK); // FIXME we can't allow exceptions!
-  if (MetaspaceShared::use_full_module_graph() && UseSharedSpaces) {
+  if (CDSConfig::is_loading_full_module_graph()) {
     // SystemDictionary::java_{platform,system}_loader are already assigned. We can spin
     // this up a little quicker.
     assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
     assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
-#if 1
     ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, SystemDictionary::java_platform_loader()));
     ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, SystemDictionary::java_system_loader()));
-#else
-    {
-      Handle h(Handle(THREAD, SystemDictionary::java_platform_loader()));
-      ClassPrelinker::runtime_preload(THREAD, h);
-      SystemDictionaryShared::init_archived_lambda_proxy_classes(h, CHECK);
-    }
-
-    {
-      Handle h(Handle(THREAD, SystemDictionary::java_system_loader()));
-      ClassPrelinker::runtime_preload(THREAD, h);
-      SystemDictionaryShared::init_archived_lambda_proxy_classes(h, CHECK);
-    }
-#endif
   }
 }
 
@@ -693,7 +679,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   LogConfiguration::post_initialize();
   Metaspace::post_initialize();
-  MutexLocker::post_initialize();
+  MutexLockerImpl::post_initialize();
 
   HOTSPOT_VM_INIT_END();
 
@@ -736,25 +722,15 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // initialize compiler(s)
 #if defined(COMPILER1) || COMPILER2_OR_JVMCI
 #if INCLUDE_JVMCI
-  bool force_JVMCI_intialization = false;
+  bool force_JVMCI_initialization = false;
   if (EnableJVMCI) {
     // Initialize JVMCI eagerly when it is explicitly requested.
     // Or when JVMCILibDumpJNIConfig or JVMCIPrintProperties is enabled.
-    force_JVMCI_intialization = EagerJVMCI || JVMCIPrintProperties || JVMCILibDumpJNIConfig;
-
-    if (!force_JVMCI_intialization) {
-      // 8145270: Force initialization of JVMCI runtime otherwise requests for blocking
-      // compilations via JVMCI will not actually block until JVMCI is initialized.
-      force_JVMCI_intialization = UseJVMCICompiler && (!UseInterpreter || !BackgroundCompilation);
-    }
+    force_JVMCI_initialization = EagerJVMCI || JVMCIPrintProperties || JVMCILibDumpJNIConfig;
   }
 #endif
   CompileBroker::compilation_init_phase1(CHECK_JNI_ERR);
-  // Postpone completion of compiler initialization to after JVMCI
-  // is initialized to avoid timeouts of blocking compilations.
-  if (JVMCI_ONLY(!force_JVMCI_intialization) NOT_JVMCI(true)) {
-    CompileBroker::compilation_init_phase2();
-  }
+  CompileBroker::compilation_init_phase2();
 #endif
 
   // Start string deduplication thread if requested.
@@ -797,9 +773,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 #endif
 
 #if INCLUDE_JVMCI
-  if (force_JVMCI_intialization) {
+  if (force_JVMCI_initialization) {
     JVMCI::initialize_compiler(CHECK_JNI_ERR);
-    CompileBroker::compilation_init_phase2();
   }
 #endif
 
@@ -860,7 +835,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   _vm_complete = true;
 #endif
 
-  if (DumpSharedSpaces) {
+  if (DumpSharedSpaces && CacheDataStore == nullptr) {
+    // Regular -Xshare:dump
     MetaspaceShared::preload_and_dump();
   }
 

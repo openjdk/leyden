@@ -24,6 +24,8 @@
 
 #include "precompiled.hpp"
 #include "asm/macroAssembler.hpp"
+#include "cds/cdsAccess.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "ci/ciConstant.hpp"
@@ -107,15 +109,13 @@ void SCCache::initialize() {
   }
   if ((LoadCachedCode || StoreCachedCode) && CachedCodeFile != nullptr) {
     const int len = (int)strlen(CachedCodeFile);
-    char* cp  = NEW_C_HEAP_ARRAY(char, len+1, mtCode);
-    memcpy(cp, CachedCodeFile, len);
-    cp[len] = '\0';
-    const int file_separator = *os::file_separator();
-    const char* start = strrchr(cp, file_separator);
-    const char* path = (start == nullptr) ? cp : (start + 1);
+    // cache file path
+    char* path  = NEW_C_HEAP_ARRAY(char, len+1, mtCode);
+    memcpy(path, CachedCodeFile, len);
+    path[len] = '\0';
 
     if (!open_cache(path)) {
-      FREE_C_HEAP_ARRAY(char, cp);
+      FREE_C_HEAP_ARRAY(char, path);
       return;
     }
     if (StoreCachedCode) {
@@ -166,7 +166,7 @@ bool SCCache::is_code_load_thread_on() {
 bool SCCache::gen_preload_code(ciMethod* m, int entry_bci) {
   VM_ENTRY_MARK;
   return (entry_bci == InvocationEntryBci) && is_on() && _cache->gen_preload_code() &&
-         MetaspaceShared::is_in_shared_metaspace((address)(m->get_Method()));
+         CDSAccess::can_generate_cached_code(m->get_Method());
 }
 
 void SCCache::close() {
@@ -247,7 +247,7 @@ bool SCCache::open_cache(const char* cache_path) {
     log_info(scc)("Trying to load Startup Code Cache '%s'", cache_path);
     struct stat st;
     if (os::stat(cache_path, &st) != 0) {
-      log_warning(scc, init)("Specified Startup Code Cache not found '%s'", cache_path);
+      log_warning(scc, init)("Specified Startup Code Cache file not found '%s'", cache_path);
       return false;
     } else if ((st.st_mode & S_IFMT) != S_IFREG) {
       log_warning(scc, init)("Specified Startup Code Cache is not file '%s'", cache_path);
@@ -256,7 +256,7 @@ bool SCCache::open_cache(const char* cache_path) {
     int fd = os::open(cache_path, O_RDONLY | O_BINARY, 0);
     if (fd < 0) {
       if (errno == ENOENT) {
-        log_warning(scc, init)("Specified Startup Code Cache not found '%s'", cache_path);
+        log_warning(scc, init)("Specified Startup Code Cache file not found '%s'", cache_path);
       } else {
         log_warning(scc, init)("Failed to open Startup Code Cache file '%s': (%s)", cache_path, os::strerror(errno));
       }
@@ -462,7 +462,7 @@ void copy_bytes(const char* from, address to, uint size) {
     by_words = false;
     Copy::conjoint_jbytes(from, to, (size_t)size);
   }
-  log_debug(scc)("Copied %d bytes as %s from " INTPTR_FORMAT " to " INTPTR_FORMAT, size, (by_words ? "HeapWord" : "bytes"), p2i(from), p2i(to));
+  log_trace(scc)("Copied %d bytes as %s from " INTPTR_FORMAT " to " INTPTR_FORMAT, size, (by_words ? "HeapWord" : "bytes"), p2i(from), p2i(to));
 }
 
 void SCCReader::set_read_position(uint pos) {
@@ -498,7 +498,7 @@ bool SCCache::align_write() {
   if (n != padding) {
     return false;
   }
-  log_debug(scc)("Adjust write alignment in Startup Code Cache '%s'", _cache_path);
+  log_trace(scc)("Adjust write alignment in Startup Code Cache '%s'", _cache_path);
   return true;
 }
 
@@ -515,12 +515,18 @@ uint SCCache::write_bytes(const void* buffer, uint nbytes) {
     return 0;
   }
   copy_bytes((const char* )buffer, (address)(_store_buffer + _write_position), nbytes);
-  log_debug(scc)("Wrote %d bytes at offset %d to Startup Code Cache '%s'", nbytes, _write_position, _cache_path);
+  log_trace(scc)("Wrote %d bytes at offset %d to Startup Code Cache '%s'", nbytes, _write_position, _cache_path);
   _write_position += nbytes;
   if (_store_size < _write_position) {
     _store_size = _write_position;
   }
   return nbytes;
+}
+
+void SCCEntry::update_method_for_writing() {
+  if (_method != nullptr) {
+    _method = CDSAccess::method_in_cached_code(_method);
+  }
 }
 
 void SCCEntry::print(outputStream* st) const {
@@ -801,6 +807,7 @@ bool SCCache::finish_write() {
         }
         copy_bytes((_store_buffer + entries_address[i].offset()), (address)current, size);
         entries_address[i].set_offset(current - start); // New offset
+        entries_address[i].update_method_for_writing();
         current += size;
         uint n = write_bytes(&(entries_address[i]), sizeof(SCCEntry));
         if (n != sizeof(SCCEntry)) {
@@ -897,7 +904,7 @@ bool SCCache::finish_write() {
 
     // Now store to file
 #ifdef _WINDOWS  // On Windows, need WRITE permission to remove the file.
-    chmod(cache_path, _S_IREAD | _S_IWRITE);
+    chmod(_cache_path, _S_IREAD | _S_IWRITE);
 #endif
     // Use remove() to delete the existing file because, on Unix, this will
     // allow processes that have it open continued access to the file.
@@ -1206,13 +1213,13 @@ bool SCCache::write_klass(Klass* klass) {
       set_lookup_failed();
       return false;
     }
-    if (_for_preload && (!ik->is_shared() || ik->is_shared_unregistered_class())) {
+    if (_for_preload && !CDSAccess::can_generate_cached_code(ik)) {
       _for_preload = false;
     }
     not_init = !ik->is_initialized() ? 1 : 0;
   }
   ResourceMark rm;
-  if (_for_preload && _use_meta_ptrs && MetaspaceShared::is_in_shared_metaspace((address)klass)) {
+  if (_for_preload && _use_meta_ptrs && CDSAccess::can_generate_cached_code(klass)) {
     DataKind kind = DataKind::Klass_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
@@ -1223,12 +1230,13 @@ bool SCCache::write_klass(Klass* klass) {
     if (n != sizeof(int)) {
       return false;
     }
-    uint klass_offset = (uint)pointer_delta((address)klass, (address)SharedBaseAddress, 1);
+    uint klass_offset = CDSAccess::delta_from_shared_address_base((address)klass);
     n = write_bytes(&klass_offset, sizeof(uint));
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(scc)("%d (L%d): Wrote shared klass: %s%s", compile_id(), comp_level(), klass->external_name(), (!klass->is_instance_klass() ? "" : ((not_init == 0) ? " (initialized)" : " (not-initialized)")));
+    log_info(scc)("%d (L%d): Wrote shared klass: %s%s @ 0x%08x", compile_id(), comp_level(), klass->external_name(),
+                  (!klass->is_instance_klass() ? "" : ((not_init == 0) ? " (initialized)" : " (not-initialized)")), klass_offset);
     return true;
   }
   _for_preload = false;
@@ -1249,23 +1257,24 @@ bool SCCache::write_klass(Klass* klass) {
   char* dest = NEW_RESOURCE_ARRAY(char, total_length);
   name->as_C_string(dest, total_length);
   dest[total_length - 1] = '\0';
-if (UseNewCode) {
-  oop loader = klass->class_loader();
-  oop domain = klass->protection_domain();
-  tty->print("Class %s loader: ", dest);
-  if (loader == nullptr) {
-    tty->print("nullptr");
-  } else {
-    loader->print_value_on(tty);
+  LogTarget(Info, scc, loader) log;
+  if (log.is_enabled()) {
+    oop loader = klass->class_loader();
+    oop domain = klass->protection_domain();
+    tty->print("Class %s loader: ", dest);
+    if (loader == nullptr) {
+      tty->print("nullptr");
+    } else {
+      loader->print_value_on(tty);
+    }
+    tty->print(" domain: ");
+    if (domain == nullptr) {
+      tty->print("nullptr");
+    } else {
+      domain->print_value_on(tty);
+    }
+    tty->cr();
   }
-  tty->print(" domain: ");
-  if (domain == nullptr) {
-    tty->print("nullptr");
-  } else {
-    domain->print_value_on(tty);
-  }
-  tty->cr();
-}
   n = write_bytes(&name_length, sizeof(int));
   if (n != sizeof(int)) {
     return false;
@@ -1293,23 +1302,23 @@ bool SCCache::write_method(Method* method) {
       set_lookup_failed();
       return false;
     }
-    if (_for_preload && (!ik->is_shared() || ik->is_shared_unregistered_class())) {
+    if (_for_preload && !CDSAccess::can_generate_cached_code(ik)) {
       _for_preload = false;
     }
   }
   ResourceMark rm;
-  if (_for_preload && _use_meta_ptrs && MetaspaceShared::is_in_shared_metaspace((address)method)) {
+  if (_for_preload && _use_meta_ptrs && CDSAccess::can_generate_cached_code(method)) {
     DataKind kind = DataKind::Method_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
       return false;
     }
-    uint method_offset = (uint)pointer_delta((address)method, (address)SharedBaseAddress, 1);
+    uint method_offset = CDSAccess::delta_from_shared_address_base((address)method);
     n = write_bytes(&method_offset, sizeof(uint));
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(scc)("%d (L%d): Wrote shared method: %s", compile_id(), comp_level(), method->name_and_sig_as_C_string());
+    log_info(scc)("%d (L%d): Wrote shared method: %s @ 0x%08x", compile_id(), comp_level(), method->name_and_sig_as_C_string(), method_offset);
     return true;
   }
   _for_preload = false;
@@ -1338,23 +1347,24 @@ bool SCCache::write_method(Method* method) {
   signat->as_C_string(&(dest[pos]), (total_length - pos));
   dest[total_length - 1] = '\0';
 
-if (UseNewCode) {
-  oop loader = klass->class_loader();
-  oop domain = klass->protection_domain();
-  tty->print("Holder %s loader: ", dest);
-  if (loader == nullptr) {
-    tty->print("nullptr");
-  } else {
-    loader->print_value_on(tty);
+  LogTarget(Info, scc, loader) log;
+  if (log.is_enabled()) {
+    oop loader = klass->class_loader();
+    oop domain = klass->protection_domain();
+    tty->print("Holder %s loader: ", dest);
+    if (loader == nullptr) {
+      tty->print("nullptr");
+    } else {
+      loader->print_value_on(tty);
+    }
+    tty->print(" domain: ");
+    if (domain == nullptr) {
+      tty->print("nullptr");
+    } else {
+      domain->print_value_on(tty);
+    }
+    tty->cr();
   }
-  tty->print(" domain: ");
-  if (domain == nullptr) {
-    tty->print("nullptr");
-  } else {
-    domain->print_value_on(tty);
-  }
-  tty->cr();
-}
 
   n = write_bytes(&holder_length, sizeof(int));
   if (n != sizeof(int)) {
@@ -1409,7 +1419,8 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
     uint* reloc_data = (uint*)addr(code_offset);
     code_offset += data_size;
     set_read_position(code_offset);
-    if (UseNewCode) {
+    LogTarget(Info, scc, reloc) log;
+    if (log.is_enabled()) {
       tty->print_cr("======== read code section %d relocations [%d]:", i, reloc_count);
     }
     RelocIterator iter(cs);
@@ -1531,7 +1542,7 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
           break;
       }
 #ifdef ASSERT
-      if (success && UseNewCode) {
+      if (success && log.is_enabled()) {
         iter.print_current();
       }
 #endif
@@ -1550,9 +1561,7 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
     CodeSection* cs = buffer->code_section(i);
     // Read original section size and address.
     uint orig_size = scc_cs[i]._size;
-    if (UseNewCode) {
-      tty->print_cr("======== read code section %d [%d]:", i, orig_size);
-    }
+    log_debug(scc)("======== read code section %d [%d]:", i, orig_size);
     uint orig_size_align = align_up(orig_size, DATA_ALIGNMENT);
     if (i != (int)CodeBuffer::SECT_INSTS) {
       buffer->initialize_section_size(cs, orig_size_align);
@@ -1585,10 +1594,11 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
 
 bool SCCache::load_exception_blob(CodeBuffer* buffer, int* pc_offset) {
 #ifdef ASSERT
-if (UseNewCode3) {
-  FlagSetting fs(PrintRelocations, true);
-  buffer->print();
-}
+  LogTarget(Debug, scc, nmethod) log;
+  if (log.is_enabled()) {
+    FlagSetting fs(PrintRelocations, true);
+    buffer->print();
+  }
 #endif
   SCCache* cache = open_for_read();
   if (cache == nullptr) {
@@ -1642,11 +1652,12 @@ bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
   log_info(scc, stubs)("%d (L%d): Read blob '%s' from Startup Code Cache '%s'",
                        compile_id(), comp_level(), name, _cache->cache_path());
 #ifdef ASSERT
-if (UseNewCode3) {
-  FlagSetting fs(PrintRelocations, true);
-  buffer->print();
-  buffer->decode();
-}
+  LogTarget(Debug, scc, nmethod) log;
+  if (log.is_enabled()) {
+    FlagSetting fs(PrintRelocations, true);
+    buffer->print();
+    buffer->decode();
+  }
 #endif
   return true;
 }
@@ -1686,7 +1697,8 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
       success = false;
       break;
     }
-    if (UseNewCode) {
+    LogTarget(Info, scc, reloc) log;
+    if (log.is_enabled()) {
       tty->print_cr("======== write code section %d relocations [%d]:", i, reloc_count);
     }
     // Collect additional data
@@ -1768,7 +1780,7 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
           break;
       }
 #ifdef ASSERT
-      if (UseNewCode) {
+      if (log.is_enabled()) {
         iter.print_current();
       }
 #endif
@@ -1881,11 +1893,12 @@ bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
   log_info(scc, stubs)("Writing blob '%s' to Startup Code Cache '%s'", buffer->name(), cache->_cache_path);
 
 #ifdef ASSERT
-if (UseNewCode3) {
-  FlagSetting fs(PrintRelocations, true);
-  buffer->print();
-  buffer->decode();
-}
+  LogTarget(Debug, scc, nmethod) log;
+  if (log.is_enabled()) {
+    FlagSetting fs(PrintRelocations, true);
+    buffer->print();
+    buffer->decode();
+  }
 #endif
   if (!cache->align_write()) {
     return false;
@@ -1938,9 +1951,7 @@ DebugInformationRecorder* SCCReader::read_debug_info(OopRecorder* oop_recorder) 
   int pcs_length = *(int*)addr(code_offset);
   code_offset   += sizeof(int);
 
-if (UseNewCode) {
-  tty->print_cr("======== read DebugInfo [%d, %d]:", data_size, pcs_length);
-}
+  log_debug(scc)("======== read DebugInfo [%d, %d]:", data_size, pcs_length);
 
   // Aligned initial sizes
   int data_size_align  = align_up(data_size, DATA_ALIGNMENT);
@@ -1991,9 +2002,7 @@ OopMapSet* SCCReader::read_oop_maps() {
   int om_count = *(int*)addr(code_offset);
   code_offset += sizeof(int);
 
-if (UseNewCode) {
-  tty->print_cr("======== read oop maps [%d]:", om_count);
-}
+  log_debug(scc)("======== read oop maps [%d]:", om_count);
 
   OopMapSet* oop_maps = new OopMapSet(om_count);
   for (int i = 0; i < (int)om_count; i++) {
@@ -2127,9 +2136,7 @@ bool SCCReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
   int oop_count = *(int*)addr(code_offset);
   code_offset += sizeof(int);
   set_read_position(code_offset);
-if (UseNewCode) {
-  tty->print_cr("======== read oops [%d]:", oop_count);
-}
+  log_debug(scc)("======== read oops [%d]:", oop_count);
   if (oop_count == 0) {
     return true;
   }
@@ -2146,17 +2153,18 @@ if (UseNewCode) {
       } else {
         oop_recorder->allocate_oop_index(jo);
       }
-if (UseNewCode) {
-      tty->print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
-      if (jo == (jobject)Universe::non_oop_word()) {
-        tty->print("non-oop word");
-      } else if (jo == nullptr) {
-        tty->print("nullptr-oop");
-      } else {
-        JNIHandles::resolve(jo)->print_value_on(tty);
+      LogTarget(Debug, scc, oops) log;
+      if (log.is_enabled()) {
+        tty->print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
+        if (jo == (jobject)Universe::non_oop_word()) {
+          tty->print("non-oop word");
+        } else if (jo == nullptr) {
+          tty->print("nullptr-oop");
+        } else {
+          JNIHandles::resolve(jo)->print_value_on(tty);
+        }
+        tty->cr();
       }
-      tty->cr();
-}
     }
   }
   return true;
@@ -2205,9 +2213,9 @@ bool SCCReader::read_metadata(OopRecorder* oop_recorder, ciMethod* target) {
   int metadata_count = *(int*)addr(code_offset);
   code_offset += sizeof(int);
   set_read_position(code_offset);
-if (UseNewCode) {
-  tty->print_cr("======== read metadata [%d]:", metadata_count);
-}
+
+  log_debug(scc)("======== read metadata [%d]:", metadata_count);
+
   if (metadata_count == 0) {
     return true;
   }
@@ -2225,17 +2233,18 @@ if (UseNewCode) {
       } else {
         oop_recorder->allocate_metadata_index(m);
       }
-if (UseNewCode) {
-     tty->print("%d: " INTPTR_FORMAT " ", i, p2i(m));
-      if (m == (Metadata*)Universe::non_oop_word()) {
-        tty->print("non-metadata word");
-      } else if (m == nullptr) {
-        tty->print("nullptr-oop");
-      } else {
-        Metadata::print_value_on_maybe_null(tty, m);
+      LogTarget(Debug, scc, metadata) log;
+      if (log.is_enabled()) {
+        tty->print("%d: " INTPTR_FORMAT " ", i, p2i(m));
+        if (m == (Metadata*)Universe::non_oop_word()) {
+          tty->print("non-metadata word");
+        } else if (m == nullptr) {
+          tty->print("nullptr-oop");
+        } else {
+          Metadata::print_value_on_maybe_null(tty, m);
+        }
+        tty->cr();
       }
-      tty->cr();
-}
     }
   }
   return true;
@@ -2276,8 +2285,8 @@ bool SCCache::write_oop(jobject& jo) {
         return false;
       }
     }
-  } else if (java_lang_String::is_instance(obj)) {
-    int k = HeapShared::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
+  } else if (java_lang_String::is_instance(obj)) { // herere
+    int k = CDSAccess::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
     if (k > 0) {
       kind = DataKind::String_Shared;
       n = write_bytes(&kind, sizeof(int));
@@ -2325,8 +2334,8 @@ bool SCCache::write_oop(jobject& jo) {
     if (n != sizeof(int)) {
       return false;
     }
-  } else {
-    int k = HeapShared::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
+  } else { // herere
+    int k = CDSAccess::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
     if (k > 0) {
       kind = DataKind::MH_Oop_Shared;
       n = write_bytes(&kind, sizeof(int));
@@ -2354,13 +2363,13 @@ bool SCCache::write_oops(OopRecorder* oop_recorder) {
   if (n != sizeof(int)) {
     return false;
   }
-if (UseNewCode3) {
-  tty->print_cr("======== write oops [%d]:", oop_count);
-}
+  log_debug(scc)("======== write oops [%d]:", oop_count);
+
   for (int i = 1; i < oop_count; i++) { // skip first virtual nullptr
     jobject jo = oop_recorder->oop_at(i);
-if (UseNewCode3) {
-     tty->print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
+    LogTarget(Info, scc, oops) log;
+    if (log.is_enabled()) {
+      tty->print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
       if (jo == (jobject)Universe::non_oop_word()) {
         tty->print("non-oop word");
       } else if (jo == nullptr) {
@@ -2369,7 +2378,7 @@ if (UseNewCode3) {
         JNIHandles::resolve(jo)->print_value_on(tty);
       }
       tty->cr();
-}
+    }
     if (!write_oop(jo)) {
       return false;
     }
@@ -2423,13 +2432,13 @@ bool SCCache::write_metadata(OopRecorder* oop_recorder) {
     return false;
   }
 
-if (UseNewCode3) {
-  tty->print_cr("======== write metadata [%d]:", metadata_count);
-}
+  log_debug(scc)("======== write metadata [%d]:", metadata_count);
+
   for (int i = 1; i < metadata_count; i++) { // skip first virtual nullptr
     Metadata* m = oop_recorder->metadata_at(i);
-if (UseNewCode3) {
-     tty->print("%d: " INTPTR_FORMAT " ", i, p2i(m));
+    LogTarget(Debug, scc, metadata) log;
+    if (log.is_enabled()) {
+      tty->print("%d: " INTPTR_FORMAT " ", i, p2i(m));
       if (m == (Metadata*)Universe::non_oop_word()) {
         tty->print("non-metadata word");
       } else if (m == nullptr) {
@@ -2438,7 +2447,7 @@ if (UseNewCode3) {
         Metadata::print_value_on_maybe_null(tty, m);
       }
       tty->cr();
-}
+    }
     if (!write_metadata(m)) {
       return false;
     }
@@ -2449,9 +2458,9 @@ if (UseNewCode3) {
 bool SCCReader::read_dependencies(Dependencies* dependencies) {
   uint code_offset = read_position();
   int dependencies_size = *(int*)addr(code_offset);
-if (UseNewCode) {
-  tty->print_cr("======== read dependencies [%d]:", dependencies_size);
-}
+
+  log_debug(scc)("======== read dependencies [%d]:", dependencies_size);
+
   code_offset += sizeof(int);
   code_offset = align_up(code_offset, DATA_ALIGNMENT);
   if (dependencies_size > 0) {
@@ -2614,11 +2623,12 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
 
   log_info(scc, nmethod)("%d (L%d): Read nmethod '%s' from Startup Code Cache '%s'", compile_id(), comp_level(), name, _cache->cache_path());
 #ifdef ASSERT
-if (UseNewCode3) {
-  FlagSetting fs(PrintRelocations, true);
-  buffer.print();
-  buffer.decode();
-}
+  LogTarget(Debug, scc, nmethod) log;
+  if (log.is_enabled()) {
+    FlagSetting fs(PrintRelocations, true);
+    buffer.print();
+    buffer.decode();
+  }
 #endif
 
   if (VerifyCachedCode) {
@@ -2671,6 +2681,9 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
                      uint decompile_count) {
   CompileTask* task = ciEnv::current()->task();
 
+  if (!CDSConfig::is_dumping_cached_code()) {
+    return nullptr; // The metadata and heap in the CDS image haven't been finalized yet.
+  }
   if (entry_bci != InvocationEntryBci) {
     return nullptr; // No OSR
   }
@@ -2695,16 +2708,17 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
     return nullptr;
   }
 #ifdef ASSERT
-if (UseNewCode3) {
-  tty->print_cr(" == store_nmethod");
-  FlagSetting fs(PrintRelocations, true);
-  buffer->print();
-  buffer->decode();
-}
+  LogTarget(Debug, scc, nmethod) log;
+  if (log.is_enabled()) {
+    tty->print_cr(" == store_nmethod");
+    FlagSetting fs(PrintRelocations, true);
+    buffer->print();
+    buffer->decode();
+  }
 #endif
   assert(!has_clinit_barriers || cache->_gen_preload_code, "sanity");
   Method* m = method();
-  bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)m);
+  bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)m); // herere
   InstanceKlass* holder = m->method_holder();
   bool klass_in_cds = holder->is_shared() && !holder->is_shared_unregistered_class();
   bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
@@ -2741,25 +2755,26 @@ if (UseNewCode3) {
                            task->compile_id(), task->comp_level(), name, comp_level, decompile_count,
                            (has_clinit_barriers ? ", has clinit barriers" : ""), cache->_cache_path);
 
-if (UseNewCode) {
-  oop loader = holder->class_loader();
-  oop domain = holder->protection_domain();
-  tty->print("Holder: ");
-  holder->print_value_on(tty);
-  tty->print(" loader: ");
-  if (loader == nullptr) {
-    tty->print("nullptr");
-  } else {
-    loader->print_value_on(tty);
-  }
-  tty->print(" domain: ");
-  if (domain == nullptr) {
-    tty->print("nullptr");
-  } else {
-    domain->print_value_on(tty);
-  }
-  tty->cr();
-}
+    LogTarget(Info, scc, loader) log;
+    if (log.is_enabled()) {
+      oop loader = holder->class_loader();
+      oop domain = holder->protection_domain();
+      tty->print("Holder: ");
+      holder->print_value_on(tty);
+      tty->print(" loader: ");
+      if (loader == nullptr) {
+        tty->print("nullptr");
+      } else {
+        loader->print_value_on(tty);
+      }
+      tty->print(" domain: ");
+      if (domain == nullptr) {
+        tty->print("nullptr");
+      } else {
+        domain->print_value_on(tty);
+      }
+      tty->cr();
+    }
     name_offset = cache->_write_position  - entry_position;
     name_size   = (uint)strlen(name) + 1; // Includes '/0'
     n = cache->write_bytes(name, name_size);
@@ -3428,7 +3443,7 @@ void SCAddressTable::add_C_string(const char* str) {
     }
     // Add new one
     if (_C_strings_count < MAX_STR_COUNT) {
-if (UseNewCode3) tty->print_cr("add_C_string: [%d] " INTPTR_FORMAT " %s", _C_strings_count, p2i(str), str);
+      log_trace(scc)("add_C_string: [%d] " INTPTR_FORMAT " %s", _C_strings_count, p2i(str), str);
       _C_strings_id[_C_strings_count] = -1; // Init
       _C_strings[_C_strings_count++] = str;
     } else {

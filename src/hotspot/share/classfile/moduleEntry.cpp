@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classLoader.hpp"
@@ -488,7 +489,7 @@ void ModuleEntry::init_as_archived_entry() {
 }
 
 void ModuleEntry::update_oops_in_archived_module(int root_oop_index) {
-  assert(DumpSharedSpaces, "static dump only");
+  assert(CDSConfig::is_dumping_full_module_graph(), "static dump only");
   assert(_archived_module_index == -1, "must be set exactly once");
   assert(root_oop_index >= 0, "sanity");
 
@@ -512,14 +513,14 @@ void ModuleEntry::verify_archived_module_entries() {
 #endif // PRODUCT
 
 void ModuleEntry::load_from_archive(ClassLoaderData* loader_data) {
-  assert(UseSharedSpaces, "runtime only");
+  assert(CDSConfig::is_loading_full_module_graph(), "runtime only");
   set_loader_data(loader_data);
   _reads = restore_growable_array((Array<ModuleEntry*>*)_reads);
   JFR_ONLY(INIT_ID(this);)
 }
 
 void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
-  assert(UseSharedSpaces, "runtime only");
+  assert(CDSConfig::is_loading_full_module_graph(), "runtime only");
   Handle module_handle(Thread::current(), HeapShared::get_root(_archived_module_index, /*clear=*/true));
   assert(module_handle.not_null(), "huh");
   set_module(loader_data->add_handle(module_handle));
@@ -540,7 +541,7 @@ void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
 }
 
 void ModuleEntry::clear_archived_oops() {
-  assert(UseSharedSpaces, "runtime only");
+  assert(UseSharedSpaces && !CDSConfig::is_loading_full_module_graph(), "runtime only");
   HeapShared::clear_root(_archived_module_index);
 }
 
@@ -576,7 +577,7 @@ Array<ModuleEntry*>* ModuleEntryTable::allocate_archived_entries() {
 }
 
 void ModuleEntryTable::init_archived_entries(Array<ModuleEntry*>* archived_modules) {
-  assert(DumpSharedSpaces, "dump time only");
+  assert(CDSConfig::is_dumping_full_module_graph(), "dump time only");
   for (int i = 0; i < archived_modules->length(); i++) {
     ModuleEntry* archived_entry = archived_modules->at(i);
     archived_entry->init_as_archived_entry();
@@ -585,7 +586,7 @@ void ModuleEntryTable::init_archived_entries(Array<ModuleEntry*>* archived_modul
 
 void ModuleEntryTable::load_archived_entries(ClassLoaderData* loader_data,
                                              Array<ModuleEntry*>* archived_modules) {
-  assert(UseSharedSpaces, "runtime only");
+  assert(CDSConfig::is_loading_full_module_graph(), "runtime only");
 
   for (int i = 0; i < archived_modules->length(); i++) {
     ModuleEntry* archived_entry = archived_modules->at(i);
@@ -595,7 +596,7 @@ void ModuleEntryTable::load_archived_entries(ClassLoaderData* loader_data,
 }
 
 void ModuleEntryTable::restore_archived_oops(ClassLoaderData* loader_data, Array<ModuleEntry*>* archived_modules) {
-  assert(UseSharedSpaces, "runtime only");
+  assert(CDSConfig::is_loading_full_module_graph(), "runtime only");
   for (int i = 0; i < archived_modules->length(); i++) {
     ModuleEntry* archived_entry = archived_modules->at(i);
     archived_entry->restore_archived_oops(loader_data);

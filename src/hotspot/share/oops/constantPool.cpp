@@ -26,6 +26,7 @@
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/heapShared.hpp"
@@ -69,6 +70,7 @@
 #include "runtime/perfData.hpp"
 #include "runtime/signature.hpp"
 #include "runtime/vframe.inline.hpp"
+#include "utilities/checkedCast.hpp"
 #include "utilities/copy.hpp"
 
 ConstantPool* ConstantPool::allocate(ClassLoaderData* loader_data, int length, TRAPS) {
@@ -223,7 +225,7 @@ void ConstantPool::initialize_resolved_references(ClassLoaderData* loader_data,
     set_resolved_references(loader_data->add_handle(refs_handle));
 
     // Create a "scratch" copy of the resolved references array to archive
-    if (DumpSharedSpaces) {
+    if (CDSConfig::is_dumping_heap()) {
       objArrayOop scratch_references = oopFactory::new_objArray(vmClasses::Object_klass(), map_length, CHECK);
       HeapShared::add_scratch_resolved_references(this, scratch_references);
     }
@@ -404,6 +406,11 @@ void ConstantPool::restore_unshareable_info(TRAPS) {
       }
     }
   }
+
+  if (CDSPreimage != nullptr && resolved_references() != nullptr) {
+    objArrayOop scratch_references = oopFactory::new_objArray(vmClasses::Object_klass(), resolved_references()->length(), CHECK);
+    HeapShared::add_scratch_resolved_references(this, scratch_references);
+  }
 }
 
 void ConstantPool::remove_unshareable_info() {
@@ -413,9 +420,12 @@ void ConstantPool::remove_unshareable_info() {
   // we always set _on_stack to true to avoid having to change _flags during runtime.
   _flags |= (_on_stack | _is_shared);
 
+// FIXME-hack
+ if (CDSPreimage == nullptr) {
   if (!ArchiveBuilder::current()->get_source_addr(_pool_holder)->is_linked()) {
     return;
   }
+ }
   if (is_for_method_handle_intrinsic()) {
     // This CP was created by Method::make_method_handle_intrinsic() and has nothing
     // that need to be removed/restored. It has no cpCache since the intrinsic methods
@@ -437,7 +447,8 @@ void ConstantPool::remove_unshareable_info() {
 }
 
 void ConstantPool::archive_entries() {
-  assert(ArchiveBuilder::current()->get_source_addr(_pool_holder)->is_linked(), "must be");
+  InstanceKlass* src_holder = ArchiveBuilder::current()->get_source_addr(_pool_holder);
+  assert(src_holder->is_linked(), "must be");
   ResourceMark rm;
   GrowableArray<bool> keep_cpcache(cache()->length(), cache()->length(), false);
   bool archived = false;

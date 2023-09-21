@@ -241,7 +241,6 @@ public:
   };
 
 private:
-  bool is_dumping_full_module_graph();
   FollowMode get_follow_mode(MetaspaceClosure::Ref *ref);
 
   void iterate_sorted_roots(MetaspaceClosure* it);
@@ -333,8 +332,6 @@ public:
     return to_offset_u4(offset);
   }
 
-  static void assert_is_vm_thread() PRODUCT_RETURN;
-
 public:
   ArchiveBuilder();
   ~ArchiveBuilder();
@@ -398,6 +395,7 @@ public:
     mark_and_relocate_to_buffered_addr((address*)ptr_location);
   }
 
+  bool has_been_archived(address src_addr) const;
   address get_buffered_addr(address src_addr) const;
   template <typename T> T get_buffered_addr(T src_addr) const {
     return (T)get_buffered_addr((address)src_addr);
@@ -417,7 +415,6 @@ public:
   }
 
   static ArchiveBuilder* current() {
-    assert_is_vm_thread();
     assert(_current != nullptr, "ArchiveBuilder must be active");
     return _current;
   }

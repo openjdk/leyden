@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveHeapLoader.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -255,7 +256,7 @@ void Universe::metaspace_pointers_do(MetaspaceClosure* it) {
 
 #if INCLUDE_CDS_JAVA_HEAP
 void Universe::set_archived_basic_type_mirror_index(BasicType t, int index) {
-  assert(DumpSharedSpaces, "dump-time only");
+  assert(CDSConfig::is_dumping_static_archive(), "dump-time only");
   assert(!is_reference_type(t), "sanity");
   _archived_basic_type_mirror_indices[t] = index;
 }
@@ -544,7 +545,7 @@ void Universe::initialize_basic_type_mirrors(TRAPS) {
         CDS_JAVA_HEAP_ONLY(_archived_basic_type_mirror_indices[i] = -1);
       }
     }
-    if (DumpSharedSpaces) {
+    if (CDSConfig::is_dumping_static_archive()) {
       HeapShared::init_scratch_objects(CHECK);
     }
 }
@@ -1095,7 +1096,7 @@ bool universe_post_init() {
   }
 //#endif // COMPILER1_OR_COMPILER2_PRESENT
 
-  if (DumpSharedSpaces) {
+  if (CDSConfig::is_dumping_static_archive()) {
     HeapShared::init_scratch_exceptions(CHECK_false);
   }
 

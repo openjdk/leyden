@@ -45,6 +45,8 @@ enum MapArchiveResult {
   MAP_ARCHIVE_OTHER_FAILURE
 };
 
+class StaticArchiveBuilder;
+
 // Class Data Sharing Support
 class MetaspaceShared : AllStatic {
   static ReservedSpace _symbol_rs;  // used only during -Xshare:dump
@@ -55,7 +57,6 @@ class MetaspaceShared : AllStatic {
   static intx _relocation_delta;
   static char* _requested_base_address;
   static bool _use_optimized_module_handling;
-  static bool _use_full_module_graph;
   static Array<Method*>* _archived_method_handle_intrinsics;
  public:
   enum {
@@ -75,7 +76,7 @@ class MetaspaceShared : AllStatic {
 #endif
 
 private:
-  static void preload_and_dump_impl(TRAPS) NOT_CDS_RETURN;
+  static void preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) NOT_CDS_RETURN;
   static void preload_classes(TRAPS) NOT_CDS_RETURN;
 
 public:
@@ -168,10 +169,6 @@ public:
   // Can we skip some expensive operations related to modules?
   static bool use_optimized_module_handling() { return NOT_CDS(false) CDS_ONLY(_use_optimized_module_handling); }
   static void disable_optimized_module_handling() { _use_optimized_module_handling = false; }
-
-  // Can we use the full archived module graph?
-  static bool use_full_module_graph() NOT_CDS_RETURN_(false);
-  static void disable_full_module_graph() { _use_full_module_graph = false; }
 
 private:
   static void read_extra_data(JavaThread* current, const char* filename) NOT_CDS_RETURN;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -95,6 +95,8 @@ class ClassPrelinker :  AllStatic {
   static Klass* find_loaded_class(JavaThread* current, oop class_loader, Symbol* name);
   static Klass* find_loaded_class(JavaThread* current, ConstantPool* cp, int class_cp_index);
   static void add_preloaded_klasses(Array<InstanceKlass*>* klasses);
+  static void add_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses, bool need_to_record);
+  static void maybe_add_initiated_klass(InstanceKlass* ik, InstanceKlass* target);
   static Array<InstanceKlass*>* archive_klass_array(GrowableArray<InstanceKlass*>* tmp_array);
   static Array<InstanceKlass*>* record_preloaded_klasses(int loader_type);
   static Array<InstanceKlass*>* record_initiated_klasses(ClassesTable* table);
@@ -105,6 +107,8 @@ class ClassPrelinker :  AllStatic {
   static Klass* get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, int cp_index);
   static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
+
+  class RecordResolveIndysCLDClosure;
 public:
   static void initialize();
   static void dispose();
@@ -113,6 +117,7 @@ public:
   static void preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_invoker_class(JavaThread* current, InstanceKlass* ik);
+  static void preresolve_indys_from_preimage(TRAPS);
 
   static bool should_preresolve_invokedynamic(ConstantPool* cp, int cp_index);
 
@@ -139,6 +144,7 @@ public:
 
   static void record_preloaded_klasses(bool is_static_archive);
   static void record_initiated_klasses(bool is_static_archive);
+  static void record_resolved_indys();
   static void serialize(SerializeClosure* soc, bool is_static_archive);
 
   static void runtime_preload(JavaThread* current, Handle loader);
