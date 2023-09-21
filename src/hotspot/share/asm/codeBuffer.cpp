@@ -997,8 +997,8 @@ void CodeBuffer::verify_section_allocation() {
       }
       guarantee(other->disjoint(sect), "sanity");
     }
-    guarantee(sect->end() <= tend, "sanity");
-    guarantee(sect->end() <= sect->limit(), "sanity");
+    guarantee(sect->end() <= tend, "sanity, sect_end: " PTR_FORMAT " tend: " PTR_FORMAT " size: %d", p2i(sect->end()), p2i(tend), (int)_total_size);
+    guarantee(sect->end() <= sect->limit(), "sanity, sect_end: " PTR_FORMAT " sect_limit: " PTR_FORMAT, p2i(sect->end()), p2i(sect->limit()));
   }
 }
 
