@@ -734,14 +734,23 @@ void ArchiveBuilder::relocate_metaspaceobj_embedded_pointers() {
   relocate_embedded_pointers(&_ro_src_objs);
 }
 
+#define ADD_COUNT(x) \
+  x += 1; \
+  x ## _i += inited;
+
+#define DECLARE_INSTANCE_KLASS_COUNTER(x) \
+  int x = 0; \
+  int x ## _i = 0; \
+
 void ArchiveBuilder::make_klasses_shareable() {
-  int num_instance_klasses = 0;
-  int num_boot_klasses = 0;
-  int num_platform_klasses = 0;
-  int num_app_klasses = 0;
-  int num_hidden_klasses = 0;
-  int num_unlinked_klasses = 0;
-  int num_unregistered_klasses = 0;
+  DECLARE_INSTANCE_KLASS_COUNTER(num_instance_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_boot_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_vm_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_platform_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_app_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_hidden_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_unlinked_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_unregistered_klasses);
   int num_obj_array_klasses = 0;
   int num_type_array_klasses = 0;
 
@@ -773,8 +782,10 @@ void ArchiveBuilder::make_klasses_shareable() {
       k->remove_unshareable_info();
     } else {
       assert(k->is_instance_klass(), " must be");
-      num_instance_klasses ++;
       InstanceKlass* ik = InstanceKlass::cast(k);
+      InstanceKlass* src_ik = get_source_addr(ik);
+      int inited = ik->has_preinitialized_mirror();
+      ADD_COUNT(num_instance_klasses);
       if (DynamicDumpSharedSpaces) {
         // For static dump, class loader type are already set.
         ik->assign_class_loader_type();
@@ -783,39 +794,43 @@ void ArchiveBuilder::make_klasses_shareable() {
         oop loader = k->class_loader();
         if (loader == nullptr) {
           type = "boot";
-          num_boot_klasses ++;
+          ADD_COUNT(num_boot_klasses);
         } else if (loader == SystemDictionary::java_platform_loader()) {
           type = "plat";
-          num_platform_klasses ++;
+          ADD_COUNT(num_platform_klasses);
         } else if (loader == SystemDictionary::java_system_loader()) {
           type = "app";
-          num_app_klasses ++;
+          ADD_COUNT(num_app_klasses);
         } else {
           type = "bad";
           assert(0, "shouldn't happen");
         }
       } else if (ik->is_shared_boot_class()) {
         type = "boot";
-        num_boot_klasses ++;
+        ADD_COUNT(num_boot_klasses);
       } else if (ik->is_shared_platform_class()) {
         type = "plat";
-        num_platform_klasses ++;
+        ADD_COUNT(num_platform_klasses);
       } else if (ik->is_shared_app_class()) {
         type = "app";
-        num_app_klasses ++;
+        ADD_COUNT(num_app_klasses);
       } else {
         assert(ik->is_shared_unregistered_class(), "must be");
         type = "unreg";
-        num_unregistered_klasses ++;
+        ADD_COUNT(num_unregistered_klasses);
+      }
+
+      if (ClassPrelinker::is_vm_class(src_ik)) {
+        ADD_COUNT(num_vm_klasses);
       }
 
       if (!ik->is_linked()) {
-        num_unlinked_klasses ++;
+        ADD_COUNT(num_unlinked_klasses);
         unlinked = " ** unlinked";
       }
 
       if (ik->is_hidden()) {
-        num_hidden_klasses ++;
+        ADD_COUNT(num_hidden_klasses);
         hidden = " ** hidden";
       }
 
@@ -835,14 +850,14 @@ void ArchiveBuilder::make_klasses_shareable() {
   }
 
   log_info(cds)("Number of classes %d", num_instance_klasses + num_obj_array_klasses + num_type_array_klasses);
-  log_info(cds)("    instance classes   = %5d", num_instance_klasses);
-  log_info(cds)("      boot             = %5d", num_boot_klasses);
-  log_info(cds)("       vm              = %5d", ClassPrelinker::num_vm_klasses());
-  log_info(cds)("      app              = %5d", num_app_klasses);
-  log_info(cds)("      platform         = %5d", num_platform_klasses);
-  log_info(cds)("      unregistered     = %5d", num_unregistered_klasses);
-  log_info(cds)("      (hidden)         = %5d", num_hidden_klasses);
-  log_info(cds)("      (unlinked)       = %5d", num_unlinked_klasses);
+  log_info(cds)("    instance classes   = %5d, inited = %5d", num_instance_klasses,     num_instance_klasses_i);
+  log_info(cds)("      boot             = %5d, inited = %5d", num_boot_klasses,         num_boot_klasses_i);
+  log_info(cds)("       vm              = %5d, inited = %5d", num_vm_klasses,           num_vm_klasses_i);
+  log_info(cds)("      app              = %5d, inited = %5d", num_app_klasses,          num_app_klasses_i);
+  log_info(cds)("      platform         = %5d, inited = %5d", num_platform_klasses,     num_platform_klasses_i);
+  log_info(cds)("      unregistered     = %5d, inited = %5d", num_unregistered_klasses, num_unregistered_klasses_i);
+  log_info(cds)("      (hidden)         = %5d, inited = %5d", num_hidden_klasses,       num_hidden_klasses_i);
+  log_info(cds)("      (unlinked)       = %5d, inited = %5d", num_unlinked_klasses,     num_unlinked_klasses_i);
   log_info(cds)("    obj array classes  = %5d", num_obj_array_klasses);
   log_info(cds)("    type array classes = %5d", num_type_array_klasses);
   log_info(cds)("               symbols = %5d", _symbols->length());

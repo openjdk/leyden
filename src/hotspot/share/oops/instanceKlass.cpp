@@ -758,6 +758,85 @@ void InstanceKlass::initialize(TRAPS) {
   }
 }
 
+static bool are_super_types_initialized(InstanceKlass* ik) {
+  InstanceKlass* s = ik->java_super();
+  if (s != nullptr && !s->is_initialized()) {
+    return false;
+  }
+
+  if (ik->has_nonstatic_concrete_methods()) {
+    // Only need to recurse if has_nonstatic_concrete_methods which includes declaring and
+    // having a superinterface that declares, non-static, concrete methods
+    Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+    int len = interfaces->length();
+    for (int i = 0; i < len; i++) {
+      InstanceKlass* intf = interfaces->at(i);
+      if (!intf->is_initialized()) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+static int call_class_initializer_counter = 0;   // for debugging
+static void log_class_init(InstanceKlass* ik) {
+  LogTarget(Info, class, init) lt;
+  if (lt.is_enabled()) {
+    ResourceMark rm;
+    LogStream ls(lt);
+    const char* info = "";
+    if (ik->has_preinitialized_mirror() && CDSConfig::is_loading_heap()) {
+      info = " (preinitialized)";
+    } else if (ik->class_initializer() == nullptr) {
+      info = " (no method)";
+    }
+    ls.print("%d Initializing ", call_class_initializer_counter++);
+    ik->name()->print_value_on(&ls);
+    ls.print_cr("%s (" PTR_FORMAT ")", info, p2i(ik));
+  }
+}
+
+void InstanceKlass::initialize_from_cds(TRAPS) {
+  if (is_initialized()) {
+    return;
+  }
+
+  if (has_preinitialized_mirror() && CDSConfig::is_loading_heap() &&
+      !ForceProfiling &&
+      !RecordTraining &&
+      are_super_types_initialized(this)) {
+    // FIXME: also check for events listeners such as JVMTI, JFR, etc
+    if (log_is_enabled(Info, cds, init)) {
+      ResourceMark rm;
+      log_info(cds, init)("%s (quickest)", external_name());
+    }
+
+    link_class(CHECK);
+
+#ifdef AZZERT
+    {
+      MonitorLocker ml(THREAD, _init_monitor);
+      assert(!initialized(), "sanity");
+      assert(!is_being_initialized(), "sanity");
+      assert(!is_in_error_state(), "sanity");
+    }
+#endif
+
+    log_class_init(this);
+    set_init_thread(THREAD);
+    set_initialization_state_and_notify(fully_initialized, CHECK);
+    return;
+  }
+
+  if (log_is_enabled(Info, cds, init)) {
+    ResourceMark rm;
+    log_info(cds, init)("%s%s", external_name(),
+                        (has_preinitialized_mirror() && CDSConfig::is_loading_heap()) ? " (quicker)" : "");
+  }
+  initialize(THREAD);
+}
 
 bool InstanceKlass::verify_code(TRAPS) {
   // 1) Verify the bytecodes
@@ -1236,6 +1315,10 @@ void InstanceKlass::initialize_impl(TRAPS) {
   }
   DTRACE_CLASSINIT_PROBE_WAIT(end, -1, wait);
 
+  replay_training_at_init(THREAD);
+}
+
+void InstanceKlass::replay_training_at_init(TRAPS) {
   if (TrainingData::have_data()) {
     KlassTrainingData* ktd = KlassTrainingData::find(this);
     if (ktd != nullptr) {
@@ -1265,7 +1348,6 @@ void InstanceKlass::initialize_impl(TRAPS) {
     }
   }
 }
-
 
 void InstanceKlass::set_initialization_state_and_notify(ClassState state, JavaThread* current) {
   MonitorLocker ml(current, _init_monitor);
@@ -1598,8 +1680,6 @@ ArrayKlass* InstanceKlass::array_klass_or_null() {
   return array_klass_or_null(1);
 }
 
-static int call_class_initializer_counter = 0;   // for debugging
-
 Method* InstanceKlass::class_initializer() const {
   Method* clinit = find_method(
       vmSymbols::class_initializer_name(), vmSymbols::void_method_signature());
@@ -1625,22 +1705,15 @@ void InstanceKlass::call_class_initializer(TRAPS) {
     if (initialized) {
       return;
     }
-  } else if (is_shared() && is_hidden() && name()->starts_with("java/lang/invoke/LambdaForm$")) {
-    oop mirror = java_mirror();
+  } else if (has_preinitialized_mirror() && CDSConfig::is_loading_heap()) {
+    log_class_init(this);
     return;
   }
 #endif
 
   methodHandle h_method(THREAD, class_initializer());
   assert(!is_initialized(), "we cannot initialize twice");
-  LogTarget(Info, class, init) lt;
-  if (lt.is_enabled()) {
-    ResourceMark rm(THREAD);
-    LogStream ls(lt);
-    ls.print("%d Initializing ", call_class_initializer_counter++);
-    name()->print_value_on(&ls);
-    ls.print_cr("%s (" PTR_FORMAT ")", h_method() == nullptr ? "(no method)" : "", p2i(this));
-  }
+  log_class_init(this);
   if (h_method() != nullptr) {
     JavaCallArguments args; // No arguments
     JavaValue result(T_VOID);

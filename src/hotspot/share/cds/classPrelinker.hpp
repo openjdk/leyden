@@ -113,6 +113,8 @@ public:
   static void initialize();
   static void dispose();
 
+  static void maybe_preinit_class(InstanceKlass* ik, TRAPS);
+
   static void preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
@@ -142,12 +144,15 @@ public:
   static bool can_archive_resolved_field(ConstantPool* cp, int cp_index);
   static bool can_archive_resolved_method(ConstantPool* cp, int cp_index);
 
+  static bool can_archive_preinitialized_mirror(InstanceKlass* src_ik);
+
   static void record_preloaded_klasses(bool is_static_archive);
   static void record_initiated_klasses(bool is_static_archive);
   static void record_resolved_indys();
   static void serialize(SerializeClosure* soc, bool is_static_archive);
 
   static void runtime_preload(JavaThread* current, Handle loader);
+  static void init_javabase_preloaded_classes(TRAPS);
   static bool class_preloading_finished();
 };
 

@@ -448,7 +448,7 @@ private:
 
   static bool is_lambda_form_klass(InstanceKlass* ik);
   static bool is_lambda_proxy_klass(InstanceKlass* ik);
-  static bool is_archived_hidden_klass(InstanceKlass* ik) {
+  static bool is_archivable_hidden_klass(InstanceKlass* ik) {
     return is_lambda_form_klass(ik) || is_lambda_proxy_klass(ik);
   }
 };

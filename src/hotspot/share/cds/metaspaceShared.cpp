@@ -673,6 +673,9 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
           if (may_be_eagerly_linked(ik)) {
             has_linked |= try_link_class(THREAD, ik);
           }
+          if (CDSConfig::is_dumping_heap() && ik->is_linked() && !ik->is_initialized()) {
+            ClassPrelinker::maybe_preinit_class(ik, CHECK);
+          }
         }
       }
     }

@@ -733,6 +733,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   CompileBroker::compilation_init_phase2();
 #endif
 
+  ClassPrelinker::init_javabase_preloaded_classes(CHECK_JNI_ERR);
+
   // Start string deduplication thread if requested.
   if (StringDedup::is_enabled()) {
     StringDedup::start();

@@ -555,6 +555,7 @@ public:
 
   // initialization (virtuals from Klass)
   bool should_be_initialized() const;  // means that initialize should be called
+  void initialize_from_cds(TRAPS);
   void initialize(TRAPS);
   void link_class(TRAPS);
   bool link_class_or_fail(TRAPS); // returns false on failure
@@ -1120,6 +1121,7 @@ private:
 
   void add_initialization_error(JavaThread* current, Handle exception);
   oop get_initialization_error(JavaThread* current);
+  void replay_training_at_init(TRAPS);
 
   // find a local method (returns null if not found)
   Method* find_method_impl(const Symbol* name,

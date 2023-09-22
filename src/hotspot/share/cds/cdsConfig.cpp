@@ -63,6 +63,10 @@ bool CDSConfig::is_dumping_heap() {
   return is_dumping_static_archive() && HeapShared::can_write();
 }
 
+bool CDSConfig::is_loading_heap() {
+  return ArchiveHeapLoader::is_in_use();
+}
+
 bool CDSConfig::is_dumping_full_module_graph() {
   if (is_dumping_heap() &&
       MetaspaceShared::use_optimized_module_handling() &&
@@ -125,4 +129,8 @@ void CDSConfig::disable_dumping_cached_code() {
 
 void CDSConfig::enable_dumping_cached_code() {
   _is_dumping_cached_code = true;
+}
+
+bool CDSConfig::is_initing_classes_at_dump_time() {
+  return is_dumping_heap() && PreloadSharedClasses;
 }
