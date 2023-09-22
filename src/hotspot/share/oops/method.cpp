@@ -674,6 +674,10 @@ void Method::build_profiling_method_data(const methodHandle& method, TRAPS) {
     lsh.cr();
   }
   */
+  if (TrainingData::need_data()) {
+    MethodTrainingData* mtd = MethodTrainingData::make(method, false);
+    guarantee(mtd != nullptr, "");
+  }
   if (PrintMethodData) {
     ResourceMark rm(THREAD);
     tty->print("build_profiling_method_data for ");
@@ -713,6 +717,11 @@ MethodCounters* Method::build_method_counters(Thread* current, Method* m) {
 
   if (!mh->init_method_counters(counters)) {
     MetadataFactory::free_metadata(mh->method_holder()->class_loader_data(), counters);
+  }
+
+  if (TrainingData::need_data()) {
+    MethodTrainingData* mtd = MethodTrainingData::make(mh, false);
+    guarantee(mtd != nullptr, "");
   }
 
   return mh->method_counters();
