@@ -27,6 +27,7 @@
 #include "asm/macroAssembler.hpp"
 #include "asm/macroAssembler.inline.hpp"
 #include "code/icBuffer.hpp"
+#include "code/SCCache.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "interpreter/bytecodes.hpp"
 #include "memory/resourceArea.hpp"
@@ -34,7 +35,7 @@
 #include "oops/oop.inline.hpp"
 
 int InlineCacheBuffer::ic_stub_code_size() {
-  return (MacroAssembler::far_branches() ? 6 : 4) * NativeInstruction::instruction_size;
+  return ((MacroAssembler::far_branches() || SCCache::is_on_for_write()) ? 6 : 4) * NativeInstruction::instruction_size;
 }
 
 #define __ masm->

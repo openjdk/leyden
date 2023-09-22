@@ -373,6 +373,8 @@ private:
 
   static bool is_registered_lambda_proxy_class(InstanceKlass* ik);
   static bool check_for_exclusion_impl(InstanceKlass* k);
+  static bool check_can_be_preinited(InstanceKlass* ik);
+  static bool has_non_default_static_fields(InstanceKlass* ik);
   static void remove_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static void init_archived_hidden_classes(Handle class_loader, Array<InstanceKlass*>* classes,
                                            const char* loader_name, TRAPS);
@@ -427,6 +429,9 @@ public:
   static void record_init_info(Method* m, int bci) NOT_CDS_RETURN;
 
   static void record_static_field_value(fieldDescriptor& fd) NOT_CDS_RETURN;
+
+  static bool can_be_preinited(InstanceKlass* ik);
+  static void reset_preinit_check();
 
   static Dictionary* boot_loader_dictionary() {
     return ClassLoaderData::the_null_class_loader_data()->dictionary();

@@ -40,6 +40,8 @@ class DumpTimeClassInfo: public CHeapObj<mtClass> {
   bool                         _excluded;
   bool                         _is_early_klass;
   bool                         _has_checked_exclusion;
+  bool                         _can_be_preinited;
+  bool                         _has_done_preinit_check;
 
   class DTLoaderConstraint {
     Symbol* _name;
@@ -135,6 +137,8 @@ public:
     _failed_verification = false;
     _is_archived_lambda_proxy = false;
     _has_checked_exclusion = false;
+    _can_be_preinited = false;
+    _has_done_preinit_check = false;
     _id = -1;
     _clsfile_size = -1;
     _clsfile_crc32 = -1;
@@ -212,6 +216,18 @@ public:
   void set_failed_verification()                    { _failed_verification = true; }
   InstanceKlass* nest_host() const                  { return _nest_host; }
   void set_nest_host(InstanceKlass* nest_host)      { _nest_host = nest_host; }
+
+  bool can_be_preinited() const                     { return _can_be_preinited; }
+  bool has_done_preinit_check() const               { return _has_done_preinit_check; }
+
+  void set_can_be_preinited(bool v) {
+    _can_be_preinited = v;
+    _has_done_preinit_check = true;
+  }
+  void reset_preinit_check() {
+    _can_be_preinited = false;
+    _has_done_preinit_check = false;
+  }
 
   size_t runtime_info_bytesize() const;
 };

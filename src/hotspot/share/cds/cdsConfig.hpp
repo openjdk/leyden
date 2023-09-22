@@ -37,6 +37,7 @@ public:
   static bool      is_dumping_final_static_archive(); // new "half step" dumping. See ../../../../doc/leyden/xxxxxx.md
   static bool      is_dumping_dynamic_archive();
   static bool      is_dumping_heap();
+  static bool      is_loading_heap();
   static void disable_dumping_full_module_graph(const char* reason = nullptr);
   static bool      is_dumping_full_module_graph();
   static void disable_loading_full_module_graph(const char* reason = nullptr);
@@ -44,6 +45,7 @@ public:
   static bool      is_dumping_cached_code();
   static void disable_dumping_cached_code();
   static void  enable_dumping_cached_code();
+  static bool      is_initing_classes_at_dump_time();
 };
 
 #endif // SHARE_CDS_CDSCONFIG_HPP

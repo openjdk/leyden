@@ -75,7 +75,7 @@ public class LoaderConstraintsTest  {
     };
 
     static void doTest() throws Exception  {
-        TestCommon.dump(appJar, appClasses, "-Xlog:cds");
+        TestCommon.dump(appJar, appClasses, "-Xlog:cds", "-XX:-PreloadSharedClasses");
         String cmdLine[] =
             TestCommon.concat("-cp", appJar,
                               "-Xlog:cds",

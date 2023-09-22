@@ -298,7 +298,7 @@ void ClassPrelinker::dumptime_resolve_constants(InstanceKlass* ik, TRAPS) {
     if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
       eager_resolve = true;
     }
-    if (ik->is_hidden() && HeapShared::is_archived_hidden_klass(ik)) {
+    if (ik->is_hidden() && HeapShared::is_archivable_hidden_klass(ik)) {
       eager_resolve = true;
     }
 
@@ -865,6 +865,39 @@ void ClassPrelinker::record_resolved_indys() {
   log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_klasses.length());
 }
 
+// Initialize a class at dump time, if possible.
+void ClassPrelinker::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
+  if (ik->is_initialized()) {
+    return;
+  }
+
+  {
+    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+    if (!SystemDictionaryShared::can_be_preinited(ik)) {
+      return;
+    }
+  }
+
+  if (log_is_enabled(Info, cds, init)) {
+    ResourceMark rm;
+    log_info(cds, init)("preinitializing %s", ik->external_name());
+  }
+  ik->initialize(CHECK);
+}
+
+bool ClassPrelinker::can_archive_preinitialized_mirror(InstanceKlass* ik) {
+  assert(!ArchiveBuilder::current()->is_in_buffer_space(ik), "must be source klass");
+  if (!CDSConfig::is_initing_classes_at_dump_time()) {
+    return false;
+  }
+
+  if (ik->is_hidden()) {
+    return HeapShared::is_archivable_hidden_klass(ik);
+  } else {
+    return SystemDictionaryShared::can_be_preinited(ik);
+  }
+}
+
 void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {
   PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_klasses : &_dynamic_preloaded_klasses;
 
@@ -1025,6 +1058,16 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
         assert(actual->is_loaded(), "must be");
       }
     }
+
+    if (!_preload_java_base_only) {
+      // The java.base classes needs to wait till ClassPrelinker::init_javabase_preloaded_classes()
+      for (int i = 0; i < preloaded_klasses->length(); i++) {
+        InstanceKlass* ik = preloaded_klasses->at(i);
+        if (ik->has_preinitialized_mirror()) {
+          ik->initialize_from_cds(CHECK);
+        }
+      }
+    }
   }
 
 #if 0
@@ -1034,4 +1077,16 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
     VMThread::execute(&verify_op);
   }
 #endif
+}
+
+void ClassPrelinker::init_javabase_preloaded_classes(TRAPS) {
+  Array<InstanceKlass*>* preloaded_klasses = _static_preloaded_klasses._boot;
+  if (preloaded_klasses != nullptr) {
+    for (int i = 0; i < preloaded_klasses->length(); i++) {
+      InstanceKlass* ik = preloaded_klasses->at(i);
+      if (ik->has_preinitialized_mirror()) {
+        ik->initialize_from_cds(CHECK);
+      }
+    }
+  }
 }

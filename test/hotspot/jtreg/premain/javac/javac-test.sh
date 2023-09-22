@@ -428,7 +428,7 @@ for i in $TESTS; do
     fi
 
     #----------------------------------------------------------------------
-    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:scc*=trace:file=javac.scc-store.log::filesize=0 \
+    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:scc*=warning:file=javac.scc-store.log::filesize=0 \
         -XX:SharedArchiveFile=$JSA2 $X2 -XX:+StoreCachedCode -XX:CachedCodeFile=${JSA2}-sc -XX:CachedCodeMaxSize=100M \
         -cp JavacBench.jar JavacBench $LOOPS"
     test-info "${STEP4}Run with $JSA2 and generate AOT code" &&
@@ -439,7 +439,7 @@ for i in $TESTS; do
     fi
 
     #----------------------------------------------------------------------
-    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:scc*=trace:file=javac.scc-load.log::filesize=0 \
+    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:scc*=warning:file=javac.scc-load.log::filesize=0 \
         -XX:SharedArchiveFile=$JSA2 $X2 -XX:+LoadCachedCode -XX:CachedCodeFile=${JSA2}-sc \
         -cp JavacBench.jar JavacBench $LOOPS"
     test-info "${STEP5}Final production run: with $JSA2 and load AOT code" &&

@@ -258,9 +258,10 @@ void Compiler::compile_method(ciEnv* env, ciMethod* method, int entry_bci, bool 
       return;
     }
     SCCache::invalidate(task->scc_entry()); // mark scc_entry as not entrant
-    if (SCCache::is_code_load_thread_on()) {
-      env->record_failure("Failed to load cached code");
+    if (SCCache::is_code_load_thread_on() && !StoreCachedCode) {
       // Bail out if failed to load cached code in SC thread
+      // unless the code is updating.
+      env->record_failure("Failed to load cached code");
       return;
     }
     task->clear_scc();

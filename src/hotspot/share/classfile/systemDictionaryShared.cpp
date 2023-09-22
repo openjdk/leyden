@@ -65,6 +65,7 @@
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "oops/constantPool.inline.hpp"
+#include "oops/fieldStreams.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/methodData.hpp"
@@ -342,7 +343,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
   }
 
   if (k->is_hidden() && !is_registered_lambda_proxy_class(k)) {
-    if (ArchiveInvokeDynamic && HeapShared::is_archived_hidden_klass(k)) {
+    if (ArchiveInvokeDynamic && HeapShared::is_archivable_hidden_klass(k)) {
       // Allow Lambda Proxy and LambdaForm classes, for ArchiveInvokeDynamic only
     } else {
       log_debug(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
@@ -1976,6 +1977,124 @@ void SystemDictionaryShared::cleanup_method_info_dictionary() {
   _dumptime_method_info_dictionary->unlink(&cleanup_method_info);
 }
 
+// SystemDictionaryShared::can_be_preinited() is called in two different phases
+//   [1] SystemDictionaryShared::try_init_class()
+//   [2] HeapShared::archive_java_mirrors()
+// Between the two phases, some Java code may have been executed to contaminate the
+// initialized mirror of X. So we call reset_preinit_check() at the beginning of the
+// [2] so that we will re-run has_non_default_static_fields() on all the classes.
+void SystemDictionaryShared::reset_preinit_check() {
+  auto iterator = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
+    if (info.can_be_preinited()) {
+      info.reset_preinit_check();
+    }
+  };
+  _dumptime_table->iterate_all_live_classes(iterator);
+}
+
+bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
+  if (!CDSConfig::is_initing_classes_at_dump_time()) {
+    return false;
+  }
+
+  assert_lock_strong(DumpTimeTable_lock);
+  DumpTimeClassInfo* info = get_info_locked(ik);
+  if (!info->has_done_preinit_check()) {
+    info->set_can_be_preinited(check_can_be_preinited(ik));
+  }
+  return info->can_be_preinited();
+}
+
+bool SystemDictionaryShared::has_non_default_static_fields(InstanceKlass* ik) {
+  oop mirror = ik->java_mirror();
+
+  for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
+    if (fs.access_flags().is_static()) {
+      fieldDescriptor& fd = fs.field_descriptor();
+      int offset = fd.offset();
+      bool is_default = true;
+      bool has_initval = fd.has_initial_value();
+      switch (fd.field_type()) {
+      case T_OBJECT:
+      case T_ARRAY:
+        is_default = mirror->obj_field(offset) == nullptr;
+        break;
+      case T_BOOLEAN:
+        is_default = mirror->bool_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_BYTE:
+        is_default = mirror->byte_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_SHORT:
+        is_default = mirror->short_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_CHAR:
+        is_default = mirror->char_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_INT:
+        is_default = mirror->int_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_LONG:
+        is_default = mirror->long_field(offset) == (has_initval ? fd.long_initial_value() : 0);
+        break;
+      case T_FLOAT:
+        is_default = mirror->float_field(offset) == (has_initval ? fd.float_initial_value() : 0);
+        break;
+      case T_DOUBLE:
+        is_default = mirror->double_field(offset) == (has_initval ? fd.double_initial_value() : 0);
+        break;
+      default:
+        ShouldNotReachHere();
+      }
+
+      if (!is_default) {
+        log_info(cds, init)("cannot initialize %s (static field %s has non-default value)",
+                            ik->external_name(), fd.name()->as_C_string());
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik) {
+  ResourceMark rm;
+
+  if (!is_builtin(ik)) {
+    log_info(cds, init)("cannot initialize %s (not built-in loader)", ik->external_name());
+    return false;
+  }
+
+  InstanceKlass* super = ik->java_super();
+  if (super != nullptr && !can_be_preinited(super)) {
+    log_info(cds, init)("cannot initialize %s (super %s not initable)", ik->external_name(), super->external_name());
+    return false;
+  }
+
+  Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+  for (int i = 0; i < interfaces->length(); i++) {
+    if (!can_be_preinited(interfaces->at(i))) {
+      log_info(cds, init)("cannot initialize %s (interface %s not initable)",
+                          ik->external_name(), interfaces->at(i)->external_name());
+      return false;
+    }
+  }
+
+  if (!HeapShared::is_lambda_form_klass(ik)) {
+    // We allow only LambdaForm classes to have <clinit> and non-default static fields
+    if (ik->class_initializer() != nullptr) {
+      log_info(cds, init)("cannot initialize %s (has <clinit>)", ik->external_name());
+      return false;
+    }
+    if (ik->is_initialized() && !has_non_default_static_fields(ik)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 static Array<InstanceKlass*>* copy_klass_array(GrowableArray<InstanceKlass*>* src) {
   Array<InstanceKlass*>* dst = ArchiveBuilder::new_ro_array<InstanceKlass*>(src->length());
   for (int i = 0; i < src->length(); i++) {
@@ -2018,10 +2137,10 @@ void SystemDictionaryShared::record_archived_lambda_form_classes() {
           }
         } else if (SystemDictionary::is_platform_class_loader(loader)) {
           classloader_type = ClassLoader::PLATFORM_LOADER;
-          proxy_list_platform.append(ik);        
+          proxy_list_platform.append(ik);
         } else if (SystemDictionary::is_system_class_loader(loader)) {
           classloader_type = ClassLoader::APP_LOADER;
-          proxy_list_app.append(ik);        
+          proxy_list_app.append(ik);
         } else {
           guarantee(0, "ArchiveInvokeDynamic not supported for custom class loaders!");
           classloader_type = ClassLoader::OTHER;
@@ -2117,14 +2236,8 @@ void SystemDictionaryShared::preload_archived_hidden_class(Handle class_loader, 
 
 void SystemDictionaryShared::init_archived_hidden_class(Handle class_loader,
                                                         InstanceKlass* ik, TRAPS) {
-  if (log_is_enabled(Info, cds, init)) {
-    ResourceMark rm;
-    log_info(cds, init)("%s", ik->external_name());
-  }
-
   assert(ik->is_loaded(), "Must be in at least loaded state");
-  ik->link_class(CHECK);
-  ik->initialize(CHECK); // quick-init that doesn't go through <clinit>
+  ik->initialize_from_cds(CHECK);
 }
 
 void SystemDictionaryShared::cleanup_init_list() {

@@ -150,6 +150,8 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
                                                                "OBJECT_ARRAY_SETTER");
   ADD_EXCL("java/lang/invoke/SimpleMethodHandle",              "BMH_SPECIES");
 
+  ADD_EXCL("java/lang/invoke/StringConcatFactory",             "NEW_ARRAY");
+
 # undef ADD_EXCL
 
   ClassLoaderDataGraph::classes_do(this);
@@ -224,6 +226,11 @@ void CDSHeapVerifier::do_klass(Klass* k) {
       // ik is inside one of the ArchivableStaticFieldInfo tables
       // in heapShared.cpp. We assume such classes are programmed to
       // update their static fields correctly at runtime.
+      return;
+    }
+
+    if (HeapShared::is_lambda_form_klass(ik)) {
+      // Archived lambda forms have preinitialized mirrors, so <clinit> won't run.
       return;
     }
 

@@ -30,6 +30,7 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEnumKlass.hpp"
 #include "cds/cdsHeapVerifier.hpp"
+#include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classLoaderData.hpp"
@@ -563,13 +564,18 @@ void HeapShared::copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop 
     return;
   }
   InstanceKlass* ik = InstanceKlass::cast(orig_k);
-  if (!ik->is_hidden()) {
-    return;
+
+  if (HeapShared::is_archivable_hidden_klass(ik)) {
+    // We can't rerun the <clinit> method of hidden classes as we don't save
+    // the classData, so we must archive its mirror in initialized state.
+    assert(ik->is_initialized(), "must be");
   }
-  if (!HeapShared::is_archived_hidden_klass(ik)) {
+
+  if (!ik->is_initialized() || !ClassPrelinker::can_archive_preinitialized_mirror(ik)) {
     return;
   }
 
+  int nfields = 0;
   for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
     if (fs.access_flags().is_static()) {
       fieldDescriptor& fd = fs.field_descriptor();
@@ -606,8 +612,17 @@ void HeapShared::copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop 
       default:
         ShouldNotReachHere();
       }
+      nfields ++;
     }
   }
+  if (log_is_enabled(Info, cds, init)) {
+    ResourceMark rm;
+    log_debug(cds, init)("copied %3d field(s) in preinitialized mirror %s%s", nfields, ik->external_name(),
+                         ik->is_hidden() ? " (hidden)" : "");
+  }
+
+  InstanceKlass* buffered_ik = ArchiveBuilder::current()->get_buffered_addr(ik);
+  buffered_ik->set_has_preinitialized_mirror();
 }
 
 static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
@@ -620,6 +635,8 @@ static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
 }
 
 void HeapShared::archive_java_mirrors() {
+  SystemDictionaryShared::reset_preinit_check();
+
   for (int i = T_BOOLEAN; i < T_VOID+1; i++) {
     BasicType bt = (BasicType)i;
     if (!is_reference_type(bt)) {
@@ -1718,6 +1735,7 @@ void HeapShared::verify_reachable_objects_from(oop obj) {
 void HeapShared::check_default_subgraph_classes() {
   GrowableArray<Klass*>* klasses = _default_subgraph_info->subgraph_object_klasses();
   int num = klasses->length();
+  int warned = 0;
   for (int i = 0; i < num; i++) {
     Klass* subgraph_k = klasses->at(i);
     if (log_is_enabled(Info, cds, heap)) {
@@ -1727,25 +1745,19 @@ void HeapShared::check_default_subgraph_classes() {
           i, subgraph_k->external_name());
     }
 
-#if 0
-    guarantee(subgraph_k->name()->equals("java/lang/Class") ||
-              subgraph_k->name()->equals("java/lang/String") ||
-              subgraph_k->name()->equals("[Ljava/lang/Object;") ||
-              subgraph_k->name()->equals("[C") ||
-              subgraph_k->name()->equals("[B"),
-              "default subgraph can have only these objects");
-#endif
-
-    if (subgraph_k->is_instance_klass() &&
-        !subgraph_k->name()->equals("java/lang/Class") &&
-        !subgraph_k->name()->equals("java/lang/String") &&
-        !subgraph_k->name()->equals("[Ljava/lang/Object;") &&
-        !subgraph_k->name()->equals("[C") &&
-        !subgraph_k->name()->equals("[B")) {
-      ResourceMark rm;
-      log_warning(cds, heap)(
-          "TODO: Archived unusual klass (default subgraph %d) => %s",
-          i, subgraph_k->external_name());
+    if (subgraph_k->is_instance_klass()) {
+      InstanceKlass* ik = InstanceKlass::cast(subgraph_k);
+      Symbol* name = ik->name();
+      if (!name->equals("java/lang/Class") &&
+          !name->equals("java/lang/String") &&
+          !name->equals("[Ljava/lang/Object;") &&
+          !name->equals("[C") &&
+          !name->equals("[B") &&
+          !is_archivable_hidden_klass(ik)) {
+        ResourceMark rm;
+        log_info(cds)("TODO: Archived unusual klass (default subgraph %d) => %s",
+                      ++warned, ik->external_name());
+      }
     }
   }
 }
