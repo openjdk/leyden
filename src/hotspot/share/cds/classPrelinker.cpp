@@ -402,7 +402,7 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
         }
         break;
       case Bytecodes::_invokehandle:
-        if (!ArchiveInvokeDynamic) {
+        if (!ArchiveInvokeDynamic || true) { // FIXME this is buggy -- temporarily disabled
           break;
         }
         // fall-through
@@ -428,6 +428,9 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   HandleMark hm(THREAD);
   int cp_index;
   ConstantPoolCacheEntry* cp_cache_entry = nullptr;
+
+  assert(bc != Bytecodes::_invokehandle, "this is buggy -- temporarily disabled");
+  assert(bc != Bytecodes::_invokevirtual, "this is buggy -- temporarily disabled");
 
   if (bc == Bytecodes::_invokehandle ||
       bc == Bytecodes::_invokestatic ||
