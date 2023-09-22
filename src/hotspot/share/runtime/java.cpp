@@ -228,7 +228,7 @@ void print_method_invocation_histogram() {
 
 void print_bytecode_count() {
   if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
-    tty->print_cr("[BytecodeCounter::counter_value = %d]", BytecodeCounter::counter_value());
+    tty->print_cr("[BytecodeCounter::counter_value = %ld]", BytecodeCounter::counter_value());
   }
 }
 
