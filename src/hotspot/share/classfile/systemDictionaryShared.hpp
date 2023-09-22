@@ -409,7 +409,7 @@ public:
                                        bool preresolve_cp, bool preresolve_indy, bool preresolve_invokehandle,
                                        TRAPS);
 
-  static bool force_compilation(bool recompile, TRAPS);
+  static int force_compilation(bool recompile, TRAPS);
 
   static void allocate_shared_data_arrays(int size, TRAPS);
 

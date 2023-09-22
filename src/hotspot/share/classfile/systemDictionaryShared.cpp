@@ -54,6 +54,7 @@
 #include "classfile/vmSymbols.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "interpreter/bootstrapInfo.hpp"
+#include "interpreter/bytecodeHistogram.hpp"
 #include "jfr/jfrEvents.hpp"
 #include "logging/log.hpp"
 #include "logging/logStream.hpp"
@@ -2258,13 +2259,19 @@ void SystemDictionaryShared::preload_archived_classes(TRAPS) {
 
   if (PrecompileLevel > 0) {
     log_info(precompile)("Precompile started");
-
+    if (CountBytecodes) {
+      BytecodeCounter::print();
+    }
     FlagSetting fs(UseRecompilation, false); // disable recompilation until precompilation is over
     int count = force_compilation(false, THREAD);
     assert(!HAS_PENDING_EXCEPTION, "");
     if (log_is_enabled(Info, cds, nmethod)) {
       MutexLocker ml(Threads_lock);
       CodeCache::arm_all_nmethods();
+    }
+    if (CountBytecodes) {
+      BytecodeCounter::print();
+      BytecodeCounter::reset();
     }
 
     log_info(precompile)("Precompile finished: %d methods compiled", count);
@@ -2553,7 +2560,7 @@ void SystemDictionaryShared::preload_archived_classes(bool prelink, bool preinit
       ClassLoader::class_init_time_ms());
 }
 
-bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
+int SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
   PrecompileIterator comp;
   TrainingData::archived_training_data_dictionary()->iterate(&comp);
   if (ForcePrecompilation) {
@@ -2585,7 +2592,7 @@ bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
 
       bool compile = (cid > 0 && !DirectivesStack::getMatchingDirective(mh, nullptr)->DontPrecompileOption) || ForcePrecompilation;
       if (compile) {
-        log_trace(cds,dynamic)("Precompile %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
+        log_debug(precompile)("Precompile %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
         ++count;
         if (!recompile) {
           MutexLocker ml(Compile_lock);
@@ -2598,12 +2605,12 @@ bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
         }
         CompileBroker::compile_method(mh, InvocationEntryBci, comp_level, methodHandle(), 0, requires_online_comp, comp_reason, THREAD);
         if (mh->code() == nullptr) {
-          log_trace(cds,dynamic)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
+          log_info(precompile)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
         }
       } else if (//!recompile && // TODO: any sense NOT to recompile?
                  /*!DirectivesStack::getMatchingDirective(mh, nullptr)->DontPrecompileOption &&*/
                  (comp_level = (CompLevel)DirectivesStack::getMatchingDirective(mh, nullptr)->PrecompileRecordedOption) > 0) {
-        log_trace(cds,dynamic)("Precompile (forced) %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
+        log_debug(precompile)("Precompile (forced) %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
         ++count;
         if (!recompile) {
           MutexLocker ml(Compile_lock);
@@ -2616,11 +2623,11 @@ bool SystemDictionaryShared::force_compilation(bool recompile, TRAPS) {
         }
         CompileBroker::compile_method(mh, InvocationEntryBci, comp_level, methodHandle(), 0, requires_online_comp, comp_reason, THREAD);
         if (mh->code() == nullptr) {
-          log_trace(cds,dynamic)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
+          log_info(precompile)("Precompile failed %d %s at level %d", cid, mh->name_and_sig_as_C_string(), comp_level);
         }
       }
     } else {
-      log_trace(cds,dynamic)("Precompile skipped (not initialized: %s) %d " PTR_FORMAT " " PTR_FORMAT " %s at level %d",
+      log_debug(precompile)("Precompile skipped (not initialized: %s) %d " PTR_FORMAT " " PTR_FORMAT " %s at level %d",
                              InstanceKlass::state2name(mh->method_holder()->init_state()),
                              cid,
                              p2i(mh()), p2i(mh->method_holder()),
