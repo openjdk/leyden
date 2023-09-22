@@ -135,6 +135,7 @@ class OptoRuntime : public AllStatic {
 
   static address _slow_arraycopy_Java;
   static address _register_finalizer_Java;
+  static address _class_init_barrier_Java;
 #if INCLUDE_JVMTI
   static address _notify_jvmti_vthread_start;
   static address _notify_jvmti_vthread_end;
@@ -186,6 +187,7 @@ private:
 
   static void register_finalizer(oopDesc* obj, JavaThread* current);
 
+  static void class_init_barrier(Klass* k, JavaThread* current);
  public:
 
   static bool is_callee_saved_register(MachRegisterNumbers reg);
@@ -214,6 +216,7 @@ private:
 
   static address slow_arraycopy_Java()                   { return _slow_arraycopy_Java; }
   static address register_finalizer_Java()               { return _register_finalizer_Java; }
+  static address class_init_barrier_Java()               { return _class_init_barrier_Java; }
 #if INCLUDE_JVMTI
   static address notify_jvmti_vthread_start()            { return _notify_jvmti_vthread_start; }
   static address notify_jvmti_vthread_end()              { return _notify_jvmti_vthread_end; }
@@ -304,6 +307,8 @@ private:
   static const TypeFunc* osr_end_Type();
 
   static const TypeFunc* register_finalizer_Type();
+
+  static const TypeFunc* class_init_barrier_Type();
 
   JFR_ONLY(static const TypeFunc* class_id_load_barrier_Type();)
 #if INCLUDE_JVMTI

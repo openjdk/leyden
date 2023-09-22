@@ -426,10 +426,11 @@
   product(bool, LoadCachedCode, false,                                      \
           "Load cached compiled code")                                      \
                                                                             \
-  product(bool, UseClassInitBarriers, false,                                \
+  product(uint, ClassInitBarrierMode, 0,                                    \
           "Produce and use startup code which could be called "             \
           "on first method invocation, add class initialization barriers, " \
-          "other checks and constrains if needed")                          \
+          "other checks and constrains if needed "                          \
+          "(0: no barriers; 1: uncommon trap; 2: full barrier)")            \
                                                                             \
   product(bool, UseMetadataPointers, true,                                  \
           "Store Metadata pointers in Relocation Info for cached code")     \
