@@ -1278,21 +1278,22 @@ bool SCCache::write_klass(Klass* klass) {
   dest[total_length - 1] = '\0';
   LogTarget(Info, scc, loader) log;
   if (log.is_enabled()) {
+    LogStream ls(log);
     oop loader = klass->class_loader();
     oop domain = klass->protection_domain();
-    tty->print("Class %s loader: ", dest);
+    ls.print("Class %s loader: ", dest);
     if (loader == nullptr) {
-      tty->print("nullptr");
+      ls.print("nullptr");
     } else {
-      loader->print_value_on(tty);
+      loader->print_value_on(&ls);
     }
-    tty->print(" domain: ");
+    ls.print(" domain: ");
     if (domain == nullptr) {
-      tty->print("nullptr");
+      ls.print("nullptr");
     } else {
-      domain->print_value_on(tty);
+      domain->print_value_on(&ls);
     }
-    tty->cr();
+    ls.cr();
   }
   n = write_bytes(&name_length, sizeof(int));
   if (n != sizeof(int)) {
@@ -1382,21 +1383,22 @@ bool SCCache::write_method(Method* method) {
 
   LogTarget(Info, scc, loader) log;
   if (log.is_enabled()) {
+    LogStream ls(log);
     oop loader = klass->class_loader();
     oop domain = klass->protection_domain();
-    tty->print("Holder %s loader: ", dest);
+    ls.print("Holder %s loader: ", dest);
     if (loader == nullptr) {
-      tty->print("nullptr");
+      ls.print("nullptr");
     } else {
-      loader->print_value_on(tty);
+      loader->print_value_on(&ls);
     }
-    tty->print(" domain: ");
+    ls.print(" domain: ");
     if (domain == nullptr) {
-      tty->print("nullptr");
+      ls.print("nullptr");
     } else {
-      domain->print_value_on(tty);
+      domain->print_value_on(&ls);
     }
-    tty->cr();
+    ls.cr();
   }
 
   n = write_bytes(&holder_length, sizeof(int));
@@ -1454,7 +1456,8 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
     set_read_position(code_offset);
     LogTarget(Info, scc, reloc) log;
     if (log.is_enabled()) {
-      tty->print_cr("======== read code section %d relocations [%d]:", i, reloc_count);
+      LogStream ls(log);
+      ls.print_cr("======== read code section %d relocations [%d]:", i, reloc_count);
     }
     RelocIterator iter(cs);
     int j = 0;
@@ -1732,7 +1735,8 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
     }
     LogTarget(Info, scc, reloc) log;
     if (log.is_enabled()) {
-      tty->print_cr("======== write code section %d relocations [%d]:", i, reloc_count);
+      LogStream ls(log);
+      ls.print_cr("======== write code section %d relocations [%d]:", i, reloc_count);
     }
     // Collect additional data
     RelocIterator iter(cs);
@@ -2188,15 +2192,16 @@ bool SCCReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
       }
       LogTarget(Debug, scc, oops) log;
       if (log.is_enabled()) {
-        tty->print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
+        LogStream ls(log);
+        ls.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
         if (jo == (jobject)Universe::non_oop_word()) {
-          tty->print("non-oop word");
+          ls.print("non-oop word");
         } else if (jo == nullptr) {
-          tty->print("nullptr-oop");
+          ls.print("nullptr-oop");
         } else {
-          JNIHandles::resolve(jo)->print_value_on(tty);
+          JNIHandles::resolve(jo)->print_value_on(&ls);
         }
-        tty->cr();
+        ls.cr();
       }
     }
   }
@@ -2268,15 +2273,16 @@ bool SCCReader::read_metadata(OopRecorder* oop_recorder, ciMethod* target) {
       }
       LogTarget(Debug, scc, metadata) log;
       if (log.is_enabled()) {
-        tty->print("%d: " INTPTR_FORMAT " ", i, p2i(m));
+        LogStream ls(log);
+        ls.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
         if (m == (Metadata*)Universe::non_oop_word()) {
-          tty->print("non-metadata word");
+          ls.print("non-metadata word");
         } else if (m == nullptr) {
-          tty->print("nullptr-oop");
+          ls.print("nullptr-oop");
         } else {
-          Metadata::print_value_on_maybe_null(tty, m);
+          Metadata::print_value_on_maybe_null(&ls, m);
         }
-        tty->cr();
+        ls.cr();
       }
     }
   }
@@ -2402,15 +2408,16 @@ bool SCCache::write_oops(OopRecorder* oop_recorder) {
     jobject jo = oop_recorder->oop_at(i);
     LogTarget(Info, scc, oops) log;
     if (log.is_enabled()) {
-      tty->print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
+      LogStream ls(log);
+      ls.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
       if (jo == (jobject)Universe::non_oop_word()) {
-        tty->print("non-oop word");
+        ls.print("non-oop word");
       } else if (jo == nullptr) {
-        tty->print("nullptr-oop");
+        ls.print("nullptr-oop");
       } else {
-        JNIHandles::resolve(jo)->print_value_on(tty);
+        JNIHandles::resolve(jo)->print_value_on(&ls);
       }
-      tty->cr();
+      ls.cr();
     }
     if (!write_oop(jo)) {
       return false;
@@ -2471,15 +2478,16 @@ bool SCCache::write_metadata(OopRecorder* oop_recorder) {
     Metadata* m = oop_recorder->metadata_at(i);
     LogTarget(Debug, scc, metadata) log;
     if (log.is_enabled()) {
-      tty->print("%d: " INTPTR_FORMAT " ", i, p2i(m));
+      LogStream ls(log);
+      ls.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
       if (m == (Metadata*)Universe::non_oop_word()) {
-        tty->print("non-metadata word");
+        ls.print("non-metadata word");
       } else if (m == nullptr) {
-        tty->print("nillptr-oop");
+        ls.print("nillptr-oop");
       } else {
-        Metadata::print_value_on_maybe_null(tty, m);
+        Metadata::print_value_on_maybe_null(&ls, m);
       }
-      tty->cr();
+      ls.cr();
     }
     if (!write_metadata(m)) {
       return false;
@@ -2791,23 +2799,24 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
 
     LogTarget(Info, scc, loader) log;
     if (log.is_enabled()) {
+      LogStream ls(log);
       oop loader = holder->class_loader();
       oop domain = holder->protection_domain();
-      tty->print("Holder: ");
-      holder->print_value_on(tty);
-      tty->print(" loader: ");
+      ls.print("Holder: ");
+      holder->print_value_on(&ls);
+      ls.print(" loader: ");
       if (loader == nullptr) {
-        tty->print("nullptr");
+        ls.print("nullptr");
       } else {
-        loader->print_value_on(tty);
+        loader->print_value_on(&ls);
       }
-      tty->print(" domain: ");
+      ls.print(" domain: ");
       if (domain == nullptr) {
-        tty->print("nullptr");
+        ls.print("nullptr");
       } else {
-        domain->print_value_on(tty);
+        domain->print_value_on(&ls);
       }
-      tty->cr();
+      ls.cr();
     }
     name_offset = cache->_write_position  - entry_position;
     name_size   = (uint)strlen(name) + 1; // Includes '/0'
