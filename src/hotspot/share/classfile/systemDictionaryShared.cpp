@@ -1697,6 +1697,13 @@ void SystemDictionaryShared::reset_preinit_check() {
   _dumptime_table->iterate_all_live_classes(iterator);
 }
 
+// Called by ClassPrelinker before we get into VM_PopulateDumpSharedSpace
+void SystemDictionaryShared::force_preinit(InstanceKlass* ik) {
+  MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+  DumpTimeClassInfo* info = get_info_locked(ik);
+  info->force_preinit();
+}
+
 bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
   if (!CDSConfig::is_initing_classes_at_dump_time()) {
     return false;
@@ -1705,7 +1712,7 @@ bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
   assert_lock_strong(DumpTimeTable_lock);
   DumpTimeClassInfo* info = get_info_locked(ik);
   if (!info->has_done_preinit_check()) {
-    info->set_can_be_preinited(check_can_be_preinited(ik));
+    info->set_can_be_preinited(check_can_be_preinited(ik, info));
   }
   return info->can_be_preinited();
 }
@@ -1763,7 +1770,7 @@ bool SystemDictionaryShared::has_non_default_static_fields(InstanceKlass* ik) {
   return true;
 }
 
-bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik) {
+bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik, DumpTimeClassInfo* info) {
   ResourceMark rm;
 
   if (!is_builtin(ik)) {
@@ -1786,8 +1793,9 @@ bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik) {
     }
   }
 
-  if (!HeapShared::is_lambda_form_klass(ik)) {
-    // We allow only LambdaForm classes to have <clinit> and non-default static fields
+  if (HeapShared::is_lambda_form_klass(ik) || info->is_forced_preinit()) {
+    // We allow only these to have <clinit> and non-default static fields
+  } else {
     if (ik->class_initializer() != nullptr) {
       log_info(cds, init)("cannot initialize %s (has <clinit>)", ik->external_name());
       return false;

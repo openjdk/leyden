@@ -42,6 +42,7 @@ class DumpTimeClassInfo: public CHeapObj<mtClass> {
   bool                         _has_checked_exclusion;
   bool                         _can_be_preinited;
   bool                         _has_done_preinit_check;
+  bool                         _forced_preinit;
 
   class DTLoaderConstraint {
     Symbol* _name;
@@ -139,6 +140,7 @@ public:
     _has_checked_exclusion = false;
     _can_be_preinited = false;
     _has_done_preinit_check = false;
+    _forced_preinit = false;
     _id = -1;
     _clsfile_size = -1;
     _clsfile_crc32 = -1;
@@ -216,6 +218,8 @@ public:
   InstanceKlass* nest_host() const                  { return _nest_host; }
   void set_nest_host(InstanceKlass* nest_host)      { _nest_host = nest_host; }
 
+  void force_preinit()                              { _forced_preinit = true; }
+  bool is_forced_preinit() const                    { return _forced_preinit; }
   bool can_be_preinited() const                     { return _can_be_preinited; }
   bool has_done_preinit_check() const               { return _has_done_preinit_check; }
 

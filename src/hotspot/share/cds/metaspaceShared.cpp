@@ -652,6 +652,8 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
     LambdaFormInvokers::regenerate_holder_classes(CHECK);
   }
 
+  ClassPrelinker::setup_forced_preinit_classes();
+
   // Collect all loaded ClassLoaderData.
   CollectCLDClosure collect_cld(THREAD);
   {

@@ -113,6 +113,7 @@ public:
   static void initialize();
   static void dispose();
 
+  static void setup_forced_preinit_classes();
   static void maybe_preinit_class(InstanceKlass* ik, TRAPS);
 
   static void preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);

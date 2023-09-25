@@ -834,6 +834,67 @@ void ClassPrelinker::record_resolved_indys() {
   log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_klasses.length());
 }
 
+// Warning -- this is fragile!!!
+// This is a hard-coded list of classes that are safely to preinitialize at dump time. It needs
+// to be updated if the Java source code changes.
+class ForcePreinitClosure : public CLDClosure {
+public:
+  void do_cld(ClassLoaderData* cld) {
+    static const char* forced_preinit_classes[] = {
+      "java/util/HexFormat",
+      "jdk/internal/util/ClassFileDumper",
+      "java/lang/reflect/ClassFileFormatVersion",
+      "java/lang/Character$CharacterCache",
+      "java/lang/invoke/Invokers",
+      "java/lang/invoke/Invokers$Holder",
+      "java/lang/invoke/MethodHandle",
+      "java/lang/invoke/MethodHandleStatics",
+      "java/lang/invoke/DelegatingMethodHandle",
+      "java/lang/invoke/DelegatingMethodHandle$Holder",
+      "java/lang/invoke/LambdaForm",
+      "java/lang/invoke/LambdaForm$NamedFunction",
+      "java/lang/invoke/ClassSpecializer",
+      "java/lang/invoke/DirectMethodHandle",
+      "java/lang/invoke/DirectMethodHandle$Holder",
+      "java/lang/invoke/BoundMethodHandle$Specializer",
+      "java/lang/invoke/MethodHandles$Lookup",
+
+    // TODO -- need to clear internTable, etc
+    //"java/lang/invoke/MethodType",
+
+    // TODO -- these need to link to native code
+    //"java/lang/invoke/BoundMethodHandle",
+    //"java/lang/invoke/BoundMethodHandle$Holder",
+    //"java/lang/invoke/MemberName",
+    //"java/lang/invoke/MethodHandleNatives",
+      nullptr
+    };
+    for (Klass* k = cld->klasses(); k != nullptr; k = k->next_link()) {
+      if (k->is_instance_klass()) {
+        for (const char** classes = forced_preinit_classes; *classes != nullptr; classes++) {
+          const char* class_name = *classes;
+          if (k->name()->equals(class_name)) {
+            ResourceMark rm;
+            log_info(cds, init)("Force initialization %s", k->external_name());
+            SystemDictionaryShared::force_preinit(InstanceKlass::cast(k));
+          }
+        }
+      }
+    }
+  }
+};
+
+void ClassPrelinker::setup_forced_preinit_classes() {
+  if (!ArchiveInvokeDynamic) {
+    return;
+  }
+
+  // Collect all loaded ClassLoaderData.
+  ForcePreinitClosure closure;
+  MutexLocker lock(ClassLoaderDataGraph_lock);
+  ClassLoaderDataGraph::loaded_cld_do(&closure);
+}
+
 // Initialize a class at dump time, if possible.
 void ClassPrelinker::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
   if (ik->is_initialized()) {
