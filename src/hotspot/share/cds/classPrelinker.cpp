@@ -52,8 +52,8 @@ ClassPrelinker::ClassesTable* ClassPrelinker::_preloaded_classes = nullptr;
 ClassPrelinker::ClassesTable* ClassPrelinker::_platform_initiated_classes = nullptr;
 ClassPrelinker::ClassesTable* ClassPrelinker::_app_initiated_classes = nullptr;
 int ClassPrelinker::_num_vm_klasses = 0;
-bool ClassPrelinker::_record_java_base_only = true;
-bool ClassPrelinker::_preload_java_base_only = true;
+bool ClassPrelinker::_record_javabase_only = true;
+bool ClassPrelinker::_preload_javabase_only = true;
 ClassPrelinker::PreloadedKlasses ClassPrelinker::_static_preloaded_klasses;
 ClassPrelinker::PreloadedKlasses ClassPrelinker::_dynamic_preloaded_klasses;
 
@@ -517,9 +517,9 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
   if (!ArchiveInvokeDynamic || cp->cache() == nullptr) {
     return;
   }
+
   assert(preresolve_list != nullptr, "preresolve_indy_cp_entries() should not be called for "
          "regenerated LambdaForm Invoker classes, which should not have indys anyway.");
-
 
   Array<ResolvedIndyEntry>* indy_entries = cp->cache()->resolved_indy_entries();
   for (int i = 0; i < indy_entries->length(); i++) {
@@ -539,6 +539,11 @@ static GrowableArrayCHeap<char*, mtClassShared>* _invokedynamic_filter = nullptr
 
 bool ClassPrelinker::should_preresolve_invokedynamic(ConstantPool* cp, int cp_index) {
   if (!ArchiveInvokeDynamic || !HeapShared::can_write()) {
+    return false;
+  }
+
+  // FIXME -- work around JDK-8316802: unresolved classes may be countered by compiler
+  if (is_in_javabase(cp->pool_holder())) {
     return false;
   }
 
@@ -597,6 +602,12 @@ bool ClassPrelinker::is_in_archivebuilder_buffer(address p) {
 }
 #endif
 
+bool ClassPrelinker::is_in_javabase(InstanceKlass* ik) {
+  return (ik->module() != nullptr &&
+          ik->module()->name() != nullptr &&
+          ik->module()->name()->equals("java.base"));
+}
+
 class ClassPrelinker::PreloadedKlassRecorder : StackObj {
   int _loader_type;
   ResourceHashtable<InstanceKlass*, bool, 15889, AnyObj::RESOURCE_AREA, mtClassShared> _seen_klasses;
@@ -627,10 +638,7 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
     }
 
     if (_loader_type == ClassLoader::BOOT_LOADER) {
-      bool is_java_base = (ik->module() != nullptr &&
-                           ik->module()->name() != nullptr &&
-                           ik->module()->name()->equals("java.base"));
-      if (_record_java_base_only != is_java_base) {
+      if (_record_javabase_only != is_in_javabase(ik)) {
         return;
       }
     }
@@ -680,7 +688,7 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
       ResourceMark rm;
       const char* loader_name;
       if (_loader_type  == ClassLoader::BOOT_LOADER) {
-        if (_record_java_base_only) {
+        if (_record_javabase_only) {
           loader_name = "boot ";
         } else {
           loader_name = "boot2";
@@ -725,9 +733,9 @@ void ClassPrelinker::record_preloaded_klasses(bool is_static_archive) {
   if (PreloadSharedClasses) {
     PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_klasses : &_dynamic_preloaded_klasses;
 
-    _record_java_base_only = true;
+    _record_javabase_only = true;
     table->_boot     = record_preloaded_klasses(ClassLoader::BOOT_LOADER);
-    _record_java_base_only = false;
+    _record_javabase_only = false;
     table->_boot2    = record_preloaded_klasses(ClassLoader::BOOT_LOADER);
 
     table->_platform = record_preloaded_klasses(ClassLoader::PLATFORM_LOADER);
@@ -919,7 +927,7 @@ void ClassPrelinker::runtime_preload(JavaThread* current, Handle loader) {
     if (!current->has_pending_exception()) {
       runtime_preload(&_dynamic_preloaded_klasses, loader, current);
     }
-    _preload_java_base_only = false;
+    _preload_javabase_only = false;
 
     if (loader() != nullptr && loader() == SystemDictionary::java_system_loader()) {
       Atomic::release_store(&_class_preloading_finished, true);
@@ -961,7 +969,7 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
   // ResourceMark is missing in the code below due to JDK-8307315
   ResourceMark rm(THREAD);
   if (loader() == nullptr) {
-    if (_preload_java_base_only) {
+    if (_preload_javabase_only) {
       loader_name = "boot ";
       preloaded_klasses = table->_boot;
     } else {
@@ -1020,7 +1028,7 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
       }
     }
 
-    if (!_preload_java_base_only) {
+    if (!_preload_javabase_only) {
       // The java.base classes needs to wait till ClassPrelinker::init_javabase_preloaded_classes()
       for (int i = 0; i < preloaded_klasses->length(); i++) {
         InstanceKlass* ik = preloaded_klasses->at(i);

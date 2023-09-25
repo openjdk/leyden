@@ -64,8 +64,8 @@ class ClassPrelinker :  AllStatic {
   static ClassesTable* _platform_initiated_classes; // classes initiated but not loaded by platform loader
   static ClassesTable* _app_initiated_classes;      // classes initiated but not loaded by app loader
   static int _num_vm_klasses;
-  static bool _record_java_base_only;
-  static bool _preload_java_base_only;
+  static bool _record_javabase_only;
+  static bool _preload_javabase_only;
   struct PreloadedKlasses {
     Array<InstanceKlass*>* _boot;  // only java.base classes
     Array<InstanceKlass*>* _boot2; // boot classes in other modules
@@ -107,7 +107,7 @@ class ClassPrelinker :  AllStatic {
   static Klass* get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, int cp_index);
   static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
-
+  static bool is_in_javabase(InstanceKlass* ik);
   class RecordResolveIndysCLDClosure;
 public:
   static void initialize();
