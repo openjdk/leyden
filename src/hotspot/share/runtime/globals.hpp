@@ -318,6 +318,13 @@ const int ObjectAlignmentInBytes = 8;
   product(bool, InlineUnsafeOps, true, DIAGNOSTIC,                          \
           "Inline memory ops (native methods) from Unsafe")                 \
                                                                             \
+  product(bool, DisableHermetic, false,                                     \
+          "If a hermetic deploy JAR is used, setting the flag to true "     \
+          "disables the hermetic Java runtime (the JDK modules image "      \
+          "and JDK resources) packaged in deploy JAR. NOTE: This flag "     \
+          "has no effect if the deploy JAR is non-hermetic. It does "       \
+          "not affect the JDK static support either.")                      \
+                                                                            \
   product(ccstr, UseHermeticJDK, NULL,                                      \
           "Use Hermetic JDK packaged within a self-contained executable "   \
           "image.")                                                         \

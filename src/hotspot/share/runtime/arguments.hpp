@@ -468,7 +468,7 @@ class Arguments : AllStatic {
   static const char* GetSharedDynamicArchivePath() { return SharedDynamicArchivePath; }
   static size_t default_SharedBaseAddress() { return _default_SharedBaseAddress; }
   // Java launcher properties
-  static void process_sun_java_launcher_and_hermetic_options(JavaVMInitArgs* args);
+  static jint process_sun_java_launcher_and_hermetic_options(JavaVMInitArgs* args);
 
   // System properties
   static void init_system_properties();

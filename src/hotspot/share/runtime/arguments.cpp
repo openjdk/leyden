@@ -342,7 +342,7 @@ bool Arguments::is_internal_module_property(const char* property) {
 }
 
 // Process java launcher properties.
-void Arguments::process_sun_java_launcher_and_hermetic_options(
+jint Arguments::process_sun_java_launcher_and_hermetic_options(
           JavaVMInitArgs* args) {
   // See if sun.java.launcher or sun.java.launcher.is_altjvm is defined.
   // Must do this before setting up other system properties,
@@ -358,6 +358,12 @@ void Arguments::process_sun_java_launcher_and_hermetic_options(
     if (match_option(option, "-Dsun.java.launcher.is_altjvm=", &tail)) {
       if (strcmp(tail, "true") == 0) {
         _sun_java_launcher_is_altjvm = true;
+      }
+      continue;
+    }
+    if (match_option(option, "-XX:+DisableHermetic")) {
+      if (FLAG_SET_CMDLINE(DisableHermetic, true) != JVMFlag::SUCCESS) {
+        return JNI_EINVAL;
       }
       continue;
     }
@@ -433,6 +439,8 @@ void Arguments::process_sun_java_launcher_and_hermetic_options(
       continue;
     }
   }
+
+  return JNI_OK;
 }
 
 // Initialize system properties key and value.
@@ -2948,9 +2956,20 @@ jint Arguments::parse_each_vm_init_arg(const JavaVMInitArgs* args, bool* patch_m
 #endif
     } else if (match_option(option, "-XX:UseHermeticJDK=", &tail)) {
       // Processed by process_sun_java_launcher_and_hermetic_options().
-      log_info(hermetic)(
-        "Use hermetic JDK from %s, hermetic packaged modules image starts at: " PTR_FORMAT,
-        _hermetic_jdk_image_path, _hermetic_jdk_jimage_offset);
+      // We handle the logging output here, since we can't do any logging output
+      // in process_sun_java_launcher_and_hermetic_options(), which is called
+      // before the logging system is fully initialized.
+      if (DisableHermetic) {
+        log_info(hermetic)("Hermetic JDK from %s is disabled",
+          _hermetic_jdk_image_path);
+      } else {
+        log_info(hermetic)(
+          "Use hermetic JDK from %s, hermetic packaged modules image starts at: "
+          PTR_FORMAT " , size: " SIZE_FORMAT,
+          _hermetic_jdk_image_path,
+          _hermetic_jdk_jimage_offset,
+          _hermetic_jdk_jimage_size);
+      }
     } else if (match_option(option, "-XX:", &tail)) { // -XX:xxxx
       // Skip -XX:Flags= and -XX:VMOptionsFile= since those cases have
       // already been handled

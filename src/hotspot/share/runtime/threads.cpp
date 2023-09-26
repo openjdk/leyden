@@ -423,7 +423,9 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   ostream_init();
 
   // Process java launcher properties and hermetic JDK options.
-  Arguments::process_sun_java_launcher_and_hermetic_options(args);
+  if (Arguments::process_sun_java_launcher_and_hermetic_options(args) != JNI_OK) {
+    return JNI_EINVAL;
+  }
 
   // Initialize the os module
   os::init();
