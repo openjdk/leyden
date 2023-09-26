@@ -2948,6 +2948,9 @@ jint Arguments::parse_each_vm_init_arg(const JavaVMInitArgs* args, bool* patch_m
 #endif
     } else if (match_option(option, "-XX:UseHermeticJDK=", &tail)) {
       // Processed by process_sun_java_launcher_and_hermetic_options().
+      log_info(hermetic)(
+        "Use hermetic JDK from %s, hermetic packaged modules image starts at: " PTR_FORMAT,
+        _hermetic_jdk_image_path, _hermetic_jdk_jimage_offset);
     } else if (match_option(option, "-XX:", &tail)) { // -XX:xxxx
       // Skip -XX:Flags= and -XX:VMOptionsFile= since those cases have
       // already been handled
