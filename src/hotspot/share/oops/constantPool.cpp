@@ -302,13 +302,14 @@ objArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
     ResourceMark rm;
     int rr_len = rr->length();
     GrowableArray<bool> keep_resolved_refs(rr_len, rr_len, false);
+    ConstantPool* orig_pool = ArchiveBuilder::current()->get_source_addr(this);
 
     if (cache() != nullptr && ArchiveInvokeDynamic) {
       Array<ResolvedIndyEntry>* indy_entries = cache()->resolved_indy_entries();
       if (indy_entries != nullptr) {
         for (int i = 0; i < indy_entries->length(); i++) {
           ResolvedIndyEntry *rei = indy_entries->adr_at(i);
-          if (rei->is_resolved() && ClassPrelinker::should_preresolve_invokedynamic(this, rei->constant_pool_index())) {
+          if (rei->is_resolved() && ClassPrelinker::is_indy_archivable(orig_pool, rei->constant_pool_index())) {
             int rr_index = rei->resolved_references_index();
             keep_resolved_refs.at_put(rr_index, true);
           }
@@ -323,7 +324,6 @@ objArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
       }
     }
 
-    ConstantPool* orig_pool = ArchiveBuilder::current()->get_source_addr(this);
     objArrayOop scratch_rr = HeapShared::scratch_resolved_references(orig_pool);
     Array<u2>* ref_map = reference_map();
     int ref_map_len = ref_map == nullptr ? 0 : ref_map->length();

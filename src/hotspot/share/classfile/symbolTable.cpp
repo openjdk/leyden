@@ -68,12 +68,7 @@ inline bool symbol_equals_compact_hashtable_entry(Symbol* value, const char* key
 static OffsetCompactHashtable<
   const char*, Symbol*,
   symbol_equals_compact_hashtable_entry
-> _shared_table;
-
-static OffsetCompactHashtable<
-  const char*, Symbol*,
-  symbol_equals_compact_hashtable_entry
-> _dynamic_shared_table;
+> _shared_table, _dynamic_shared_table, _shared_table_for_dumping;
 
 // --------------------------------------------------------------------------
 
@@ -669,38 +664,27 @@ size_t SymbolTable::estimate_size_for_archive() {
   return CompactHashtableWriter::estimate_size(int(_items_count));
 }
 
-static SimpleCompactHashtable::States _saved_states;
-
 void SymbolTable::write_to_archive(GrowableArray<Symbol*>* symbols) {
   CompactHashtableWriter writer(int(_items_count), ArchiveBuilder::symbol_stats());
   copy_shared_symbol_table(symbols, &writer);
-  if (!DynamicDumpSharedSpaces) {
-    _shared_table.reset(&_saved_states);
-    writer.dump(&_shared_table, "symbol");
-  } else {
-    _dynamic_shared_table.reset();
-    writer.dump(&_dynamic_shared_table, "symbol");
-  }
+  _shared_table_for_dumping.reset();
+  writer.dump(&_shared_table_for_dumping, "symbol");
 }
 
 void SymbolTable::serialize_shared_table_header(SerializeClosure* soc,
                                                 bool is_static_archive) {
   OffsetCompactHashtable<const char*, Symbol*, symbol_equals_compact_hashtable_entry> * table;
-  if (is_static_archive) {
-    table = &_shared_table;
-  } else {
-    table = &_dynamic_shared_table;
-  }
-  table->serialize_header(soc);
-  if (soc->writing()) {
-    if (CacheDataStore != nullptr && CDSPreimage != nullptr) {
-      assert(is_static_archive, "sanity");
-      table->restore(&_saved_states);
+  if (soc->reading()) {
+    if (is_static_archive) {
+      table = &_shared_table;
     } else {
-      // Sanity. Make sure we don't use the shared table at dump time
-      table->reset();
+      table = &_dynamic_shared_table;
     }
+  } else {
+    table = &_shared_table_for_dumping;
   }
+
+  table->serialize_header(soc);
 }
 #endif //INCLUDE_CDS
 

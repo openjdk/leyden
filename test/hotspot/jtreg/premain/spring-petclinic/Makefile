@@ -121,7 +121,7 @@ ${PC_CLASSLIST}: ${PC_APP_UNPACKED}
 ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	rm -f ${PC_STATIC_JSA}.log
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} -cp @${PC_APP_UNPACKED}/classpath \
-	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+heap=warning:file=${PC_STATIC_JSA}.log
+	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA}.log
 	ls -l ${PC_STATIC_JSA}
 
 ${PC_DYNAMIC_JSA}: ${PC_STATIC_JSA}
