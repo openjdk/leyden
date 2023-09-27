@@ -97,10 +97,11 @@ class ClassPrelinker :  AllStatic {
   static void add_preloaded_klasses(Array<InstanceKlass*>* klasses);
   static void add_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses, bool need_to_record);
   static void maybe_add_initiated_klass(InstanceKlass* ik, InstanceKlass* target);
-  static Array<InstanceKlass*>* archive_klass_array(GrowableArray<InstanceKlass*>* tmp_array);
   static Array<InstanceKlass*>* record_preloaded_klasses(int loader_type);
   static Array<InstanceKlass*>* record_initiated_klasses(ClassesTable* table);
   static void runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS);
+  static void preload_archived_hidden_class(Handle class_loader, InstanceKlass* ik,
+                                            const char* loader_name, TRAPS);
   static void jvmti_agent_error(InstanceKlass* expected, InstanceKlass* actual, const char* type);
 
   // fmi = FieldRef/MethodRef/InterfaceMethodRef

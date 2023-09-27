@@ -34,6 +34,7 @@
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
+#include "classfile/classLoader.hpp"
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/symbolTable.hpp"
@@ -213,6 +214,9 @@ bool ArchiveBuilder::gather_klass_and_symbol(MetaspaceClosure::Ref* ref, bool re
     assert(klass->is_klass(), "must be");
     if (!is_excluded(klass)) {
       _klasses->append(klass);
+      if (klass->is_hidden() && klass->is_instance_klass()) {
+        update_hidden_class_loader_type(InstanceKlass::cast(klass));
+      }
     }
     // See RunTimeClassInfo::get_for()
     _estimated_metaspaceobj_bytes += align_up(BytesPerWord, SharedSpaceObjectAlignment);
@@ -268,6 +272,34 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
     // TODO -- we need a proper estimate for the archived modules, etc,
     // but this should be enough for now
     _estimated_metaspaceobj_bytes += 200 * 1024 * 1024;
+  }
+}
+
+void ArchiveBuilder::update_hidden_class_loader_type(InstanceKlass* ik) {
+  s2 classloader_type;
+  if (HeapShared::is_lambda_form_klass(ik)) {
+    assert(CDSConfig::is_dumping_invokedynamic(), "lambda form classes are archived only if ArchiveInvokeDynamic is true");
+    classloader_type = ClassLoader::BOOT_LOADER;
+  } else if (HeapShared::is_lambda_proxy_klass(ik)) {
+    oop loader = ik->class_loader();
+
+    if (loader == nullptr) {
+      classloader_type = ClassLoader::BOOT_LOADER;
+    } else if (SystemDictionary::is_platform_class_loader(loader)) {
+      classloader_type = ClassLoader::PLATFORM_LOADER;
+    } else if (SystemDictionary::is_system_class_loader(loader)) {
+      classloader_type = ClassLoader::APP_LOADER;
+    } else {
+      ShouldNotReachHere();
+    }
+  } else {
+    ShouldNotReachHere();
+  }
+
+  ik->set_shared_class_loader_type(classloader_type);
+  if (HeapShared::is_lambda_proxy_klass(ik)) {
+    InstanceKlass* nest_host = ik->nest_host_not_null();
+    ik->set_shared_classpath_index(nest_host->shared_classpath_index());
   }
 }
 

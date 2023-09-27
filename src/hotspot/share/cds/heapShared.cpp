@@ -1139,9 +1139,6 @@ void HeapShared::initialize_java_lang_invoke(TRAPS) {
     return;
   }
 
-  SystemDictionaryShared::init_archived_lambda_form_classes(CHECK);
-  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(), CHECK);
-
   // FIXME - the following should be called only if we have archived MethodType table.
   resolve_or_init("java/lang/invoke/Invokers$Holder", true, CHECK);
   resolve_or_init("java/lang/invoke/MethodHandle", true, CHECK);

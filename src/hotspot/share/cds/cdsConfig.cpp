@@ -33,8 +33,9 @@
 #include "prims/jvmtiExport.hpp"
 #include "runtime/arguments.hpp"
 
-static bool _enable_dumping_full_module_graph = true;
-static bool _enable_loading_full_module_graph = true;
+bool CDSConfig::_has_preloaded_classes;
+bool CDSConfig::_enable_dumping_full_module_graph = true;
+bool CDSConfig::_enable_loading_full_module_graph = true;
 
 bool CDSConfig::is_using_dumptime_tables() {
   return is_dumping_static_archive() || is_dumping_dynamic_archive();
@@ -133,4 +134,8 @@ void CDSConfig::enable_dumping_cached_code() {
 
 bool CDSConfig::is_initing_classes_at_dump_time() {
   return is_dumping_heap() && PreloadSharedClasses;
+}
+
+bool CDSConfig::is_dumping_invokedynamic() {
+  return ArchiveInvokeDynamic && is_dumping_static_archive();
 }

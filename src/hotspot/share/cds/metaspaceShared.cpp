@@ -509,7 +509,6 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
   SystemDictionaryShared::write_to_archive();
   ClassPrelinker::record_initiated_klasses(true);
   MetaspaceShared::write_method_handle_intrinsics();
-  SystemDictionaryShared::record_archived_lambda_form_classes();
 
   // Write lambform lines into archive
   LambdaFormInvokers::dump_static_archive_invokers();
