@@ -2979,6 +2979,16 @@ jint Arguments::parse_each_vm_init_arg(const JavaVMInitArgs* args, bool* patch_m
           return JNI_EINVAL;
         }
       }
+    // When executing in hermetic Java mode, we may encounter the
+    // '-server|-client' options here if they are specified in the command
+    // line. Ignore the options in such cases without reporting an
+    // 'Unrecognized option' error. When running in non-hermetic Java mode,
+    // these options are processed and removed from command-line arguments by
+    // CheckJvmType (see src/java.base/share/native/libjli/java.c).
+    } else if (match_option(option, "-server")) {
+      // Ignore the option.
+    } else if (match_option(option, "-client")) {
+      // Ignore the option.
     // Unknown option
     } else if (is_bad_option(option, args->ignoreUnrecognized)) {
       return JNI_ERR;
