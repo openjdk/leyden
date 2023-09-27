@@ -758,6 +758,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   if (CDSConfig::has_preloaded_classes()) {
     force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
+    ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(CHECK_JNI_ERR);
   }
 
   // This will initialize the module system.  Only java.base classes can be

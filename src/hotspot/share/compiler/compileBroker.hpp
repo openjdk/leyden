@@ -291,6 +291,7 @@ public:
     return nullptr;
   }
 
+  static bool initialized() { return _initialized; }
   static bool compilation_is_complete(const methodHandle& method, int osr_bci, int comp_level, bool online_only = false);
   static bool compilation_is_in_queue(const methodHandle& method);
   static void print_compile_queues(outputStream* st);

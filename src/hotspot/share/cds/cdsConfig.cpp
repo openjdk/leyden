@@ -41,6 +41,10 @@ bool CDSConfig::is_using_dumptime_tables() {
   return is_dumping_static_archive() || is_dumping_dynamic_archive();
 }
 
+bool CDSConfig::is_dumping_archive() {
+  return is_dumping_static_archive() || is_dumping_dynamic_archive();
+}
+
 bool CDSConfig::is_dumping_static_archive() {
   return DumpSharedSpaces || is_dumping_final_static_archive();
 }

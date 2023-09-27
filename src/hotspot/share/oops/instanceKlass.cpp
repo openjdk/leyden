@@ -1319,7 +1319,7 @@ void InstanceKlass::initialize_impl(TRAPS) {
 }
 
 void InstanceKlass::replay_training_at_init(TRAPS) {
-  if (TrainingData::have_data()) {
+  if (CompileBroker::initialized() && TrainingData::have_data()) {
     KlassTrainingData* ktd = KlassTrainingData::find(this);
     if (ktd != nullptr) {
       guarantee(ktd->has_holder(), "");

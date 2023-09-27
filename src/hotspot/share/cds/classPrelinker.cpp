@@ -1174,3 +1174,19 @@ void ClassPrelinker::init_javabase_preloaded_classes(TRAPS) {
     }
   }
 }
+
+void ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(TRAPS) {
+  Array<InstanceKlass*>* preloaded_klasses = _static_preloaded_klasses._boot;
+  if (preloaded_klasses != nullptr) {
+    for (int i = 0; i < preloaded_klasses->length(); i++) {
+      InstanceKlass* ik = preloaded_klasses->at(i);
+      if (ik->is_initialized()) {
+        if (log_is_enabled(Debug, cds, init)) {
+          ResourceMark rm;
+          log_debug(cds, init)("replay training %s", ik->external_name());
+        }
+        ik->replay_training_at_init(CHECK);
+      }
+    }
+  }
+}

@@ -155,6 +155,7 @@ public:
 
   static void runtime_preload(JavaThread* current, Handle loader);
   static void init_javabase_preloaded_classes(TRAPS);
+  static void replay_training_at_init_for_javabase_preloaded_classes(TRAPS);
   static bool class_preloading_finished();
 };
 
