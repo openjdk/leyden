@@ -107,6 +107,14 @@ public class JavaHome {
         return jarFileSystem != null;
     }
 
+    public static String hermeticExecutable() {
+        if (!isHermetic()) {
+            throw new IllegalStateException("Not hermetic Java");
+        }
+        // JAVA_HOME is the hermetic executable JAR.
+        return JAVA_HOME;
+    }
+
     /**
      * Return a Path representation of the hermetic Java home (containing the
      * JDK resource files).

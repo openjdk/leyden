@@ -47,6 +47,7 @@ import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import jdk.internal.access.JavaIOFileDescriptorAccess;
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.misc.JavaHome;
 import jdk.internal.util.OperatingSystem;
 import jdk.internal.util.StaticProperty;
 import sun.security.action.GetPropertyAction;
@@ -123,7 +124,13 @@ final class ProcessImpl extends Process {
     }
 
     private static final LaunchMechanism launchMechanism = launchMechanism();
-    private static final byte[] helperpath = toCString(StaticProperty.javaHome() + "/lib/jspawnhelper");
+    // Use the launcher executable if we are executing in hermetic Java mode.
+    //
+    // When executing in non-hermetic Java mode, we still use 'lib/jspawnhelper'
+    // currently as the executable for posix_spawn.
+    private static final byte[] helperpath =
+        JavaHome.isHermetic() ? toCString(JavaHome.hermeticExecutable())
+                              : toCString(StaticProperty.javaHome() + "/lib/jspawnhelper");
 
     private static byte[] toCString(String s) {
         if (s == null)
