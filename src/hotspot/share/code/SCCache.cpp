@@ -926,6 +926,11 @@ bool SCCache::finish_write() {
         if (_load_entries[i].not_entrant()) {
           log_info(scc, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
           not_entrant_nb++;
+          if (_load_entries[i].for_preload()) {
+            // Skip not entrant preload code:
+            // we can't pre-load code which may have failing dependencies.
+            continue;
+          }
           _load_entries[i].set_entrant(); // Reset
         } else if (_load_entries[i].for_preload() && _load_entries[i].method() != nullptr) {
           // record entrant first version code for pre-loading
@@ -960,6 +965,11 @@ bool SCCache::finish_write() {
       if (entries_address[i].not_entrant()) {
         log_info(scc, exit)("Not entrant new entry comp_id: %d, comp_level: %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s", entries_address[i].comp_id(), entries_address[i].comp_level(), entries_address[i].decompile(), entries_address[i].id(), (entries_address[i].has_clinit_barriers() ? ", has clinit barriers" : ""));
         not_entrant_nb++;
+        if (entries_address[i].for_preload()) {
+          // Skip not entrant preload code:
+          // we can't pre-load code which may have failing dependencies.
+          continue;
+        }
         entries_address[i].set_entrant(); // Reset
       } else if (entries_address[i].for_preload() && entries_address[i].method() != nullptr) {
         // record entrant first version code for pre-loading
