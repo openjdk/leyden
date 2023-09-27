@@ -756,13 +756,6 @@ void MetaspaceShared::preload_and_dump() {
     }
   }
 
-#if INCLUDE_CDS_JAVA_HEAP
-  // Restore the java loaders that were cleared at dump time
-  if (CDSConfig::is_dumping_full_module_graph()) {
-    HeapShared::restore_loader_data();
-  }
-#endif
-
   if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
     // We have just created the final image. Let's run the AOT compiler
     CDSConfig::enable_dumping_cached_code();
