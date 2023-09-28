@@ -95,8 +95,11 @@ class ClassPrelinker :  AllStatic {
   static Klass* find_loaded_class(Thread* current, oop class_loader, Symbol* name);
   static Klass* find_loaded_class(Thread* current, ConstantPool* cp, int class_cp_index);
   static void add_preloaded_klasses(Array<InstanceKlass*>* klasses);
-  static void add_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses, bool need_to_record);
-  static void maybe_add_initiated_klass(InstanceKlass* ik, InstanceKlass* target);
+  static void add_unrecorded_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses);
+  static void add_extra_initiated_klasses(PreloadedKlasses* table);
+  static void add_initiated_klasses_for_loader(ClassLoaderData* loader_data, const char* loader_name, ClassesTable* table);
+  static void add_initiated_klass(InstanceKlass* ik, InstanceKlass* target);
+  static void add_initiated_klass(ClassesTable* initiated_classes, const char* loader_name, InstanceKlass* target);
   static Array<InstanceKlass*>* record_preloaded_klasses(int loader_type);
   static Array<InstanceKlass*>* record_initiated_klasses(ClassesTable* table);
   static void runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS);
@@ -110,6 +113,7 @@ class ClassPrelinker :  AllStatic {
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
   static bool is_in_javabase(InstanceKlass* ik);
   class RecordResolveIndysCLDClosure;
+  class RecordInitiatedClassesClosure;
 public:
   static void initialize();
   static void dispose();
@@ -157,6 +161,9 @@ public:
   static void init_javabase_preloaded_classes(TRAPS);
   static void replay_training_at_init_for_javabase_preloaded_classes(TRAPS);
   static bool class_preloading_finished();
+
+  static int  num_platform_initiated_classes();
+  static int  num_app_initiated_classes();
 };
 
 #endif // SHARE_CDS_CLASSPRELINKER_HPP
