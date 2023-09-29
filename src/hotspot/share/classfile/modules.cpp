@@ -484,7 +484,6 @@ static bool _seen_system_unnamed_module = false;
 // Validate the states of an java.lang.Module oop to be archived.
 //
 // Returns true iff the oop has an archived ModuleEntry.
-
 bool Modules::check_archived_module_oop(oop orig_module_obj) {
   assert(CDSConfig::is_dumping_full_module_graph(), "must be");
   assert(java_lang_Module::is_instance(orig_module_obj), "must be");
