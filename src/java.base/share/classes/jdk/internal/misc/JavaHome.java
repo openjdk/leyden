@@ -59,6 +59,8 @@ public class JavaHome {
 
     private static final String JAVA_HOME;
 
+    private static final String EXECUTABLE;
+
     private static final FileSystem jarFileSystem;
 
     private static final String HERMETIC_JAR_JDK_RESOURCES_HOME;
@@ -75,6 +77,11 @@ public class JavaHome {
 
         if (JAVA_HOME.endsWith(".jar")) {
             // The JAVA_HOME is a jar file. We are dealing with hermetic Java.
+
+            // JAVA_HOME is the hermetic executable JAR.
+            EXECUTABLE = props.getProperty(
+                "jdk.internal.misc.hermetic.executable", JAVA_HOME);
+
             try {
                 jarFileSystem = FileSystems.newFileSystem(
                     URI.create("jar:file:" + JAVA_HOME), Collections.emptyMap());
@@ -100,6 +107,7 @@ public class JavaHome {
         } else {
             jarFileSystem = null;
             HERMETIC_JAR_JDK_RESOURCES_HOME = "";
+            EXECUTABLE = "";
         }
     }
 
@@ -111,8 +119,10 @@ public class JavaHome {
         if (!isHermetic()) {
             throw new IllegalStateException("Not hermetic Java");
         }
-        // JAVA_HOME is the hermetic executable JAR.
-        return JAVA_HOME;
+        if (EXECUTABLE.equals("")) {
+            throw new IllegalStateException("Executable is not set");
+        }
+        return EXECUTABLE;
     }
 
     /**
