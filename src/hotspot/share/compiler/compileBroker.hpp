@@ -234,7 +234,8 @@ class CompileBroker: AllStatic {
 
   enum ThreadType {
     compiler_t,
-    deoptimizer_t
+    deoptimizer_t,
+    training_replay_t
   };
 
   static Handle create_thread_oop(const char* name, TRAPS);

@@ -36,6 +36,7 @@
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
+#include "compiler/compilationPolicy.hpp"
 #include "gc/shared/gcVMOperations.hpp"
 #include "interpreter/bytecode.hpp"
 #include "interpreter/bytecodeStream.hpp"
@@ -1185,7 +1186,7 @@ void ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(TRAP
           ResourceMark rm;
           log_debug(cds, init)("replay training %s", ik->external_name());
         }
-        ik->replay_training_at_init(CHECK);
+        CompilationPolicy::replay_training_at_init(ik, CHECK);
       }
     }
   }

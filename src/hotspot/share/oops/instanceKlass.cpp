@@ -1315,38 +1315,7 @@ void InstanceKlass::initialize_impl(TRAPS) {
   }
   DTRACE_CLASSINIT_PROBE_WAIT(end, -1, wait);
 
-  replay_training_at_init(THREAD);
-}
-
-void InstanceKlass::replay_training_at_init(TRAPS) {
-  if (CompileBroker::initialized() && TrainingData::have_data()) {
-    KlassTrainingData* ktd = KlassTrainingData::find(this);
-    if (ktd != nullptr) {
-      guarantee(ktd->has_holder(), "");
-      ktd->notice_fully_initialized();
-
-      ResourceMark rm;
-      GrowableArray<CompileTrainingData*> ctds;
-      ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
-        if (ctd->init_deps_left() == 0) {
-          ctds.append(ctd);
-        }
-      });
-
-      for (int i = 0; i < ctds.length(); i++) {
-        MethodTrainingData* mtd = ctds.at(i)->top_method();
-        if (mtd->has_holder()) {
-          const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
-          CompilationPolicy::compile_if_required(mh, THREAD);
-        }
-      }
-    }
-    int len = methods()->length();
-    for (int i = 0; i < len; i++) {
-      const methodHandle mh(THREAD, methods()->at(i));
-      CompilationPolicy::compile_if_required_after_init(mh, THREAD);
-    }
-  }
+  CompilationPolicy::replay_training_at_init(this, THREAD);
 }
 
 void InstanceKlass::set_initialization_state_and_notify(ClassState state, JavaThread* current) {

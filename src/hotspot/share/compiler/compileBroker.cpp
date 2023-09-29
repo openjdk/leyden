@@ -808,6 +808,17 @@ Handle CompileBroker::create_thread_oop(const char* name, TRAPS) {
   Handle thread_oop = JavaThread::create_system_thread_object(name, CHECK_NH);
   return thread_oop;
 }
+class TrainingReplayThread : public JavaThread {
+  static void training_replay_thread_entry(JavaThread* thread, TRAPS);
+public:
+  TrainingReplayThread() : JavaThread(&training_replay_thread_entry) { }
+
+  bool is_hidden_from_external_view() const      { return true; }
+};
+
+void TrainingReplayThread::training_replay_thread_entry(JavaThread* thread, TRAPS) {
+  CompilationPolicy::replay_training_at_init_loop(thread);
+}
 
 #if defined(ASSERT) && COMPILER2_OR_JVMCI
 // Stress testing. Dedicated threads revert optimizations based on escape analysis concurrently to
@@ -893,6 +904,9 @@ JavaThread* CompileBroker::make_thread(ThreadType type, jobject thread_handle, C
       new_thread = new DeoptimizeObjectsALotThread();
       break;
 #endif // ASSERT
+    case training_replay_t:
+      new_thread = new TrainingReplayThread();
+      break;
     default:
       ShouldNotReachHere();
   }
@@ -1106,6 +1120,11 @@ void CompileBroker::init_compiler_threads() {
     }
   }
 #endif // defined(ASSERT) && COMPILER2_OR_JVMCI
+  if (UseConcurrentTrainingReplay) {
+    Handle thread_oop = create_thread_oop("Training replay thread", CHECK);
+    jobject thread_handle = JNIHandles::make_local(THREAD, thread_oop());
+    make_thread(training_replay_t, thread_handle, nullptr, nullptr, THREAD);
+  }
 }
 
 void CompileBroker::possibly_add_compiler_threads(JavaThread* THREAD) {

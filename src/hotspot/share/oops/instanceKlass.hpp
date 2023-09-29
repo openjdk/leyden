@@ -558,7 +558,6 @@ public:
   bool should_be_initialized() const;  // means that initialize should be called
   void initialize_from_cds(TRAPS);
   void initialize(TRAPS);
-  void replay_training_at_init(TRAPS);
   void link_class(TRAPS);
   bool link_class_or_fail(TRAPS); // returns false on failure
   void rewrite_class(TRAPS);

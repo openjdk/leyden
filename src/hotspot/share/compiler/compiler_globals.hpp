@@ -471,6 +471,9 @@
                                                                             \
   product(double, DelayRecompilation, 0.0,                                  \
           "Delay recompilation for given number of seconds")                \
+                                                                            \
+  product(bool, UseConcurrentTrainingReplay, true,                          \
+          "Replay training after class initialization in a separate thread")\
 // end of COMPILER_FLAGS
 
 DECLARE_FLAGS(COMPILER_FLAGS)
