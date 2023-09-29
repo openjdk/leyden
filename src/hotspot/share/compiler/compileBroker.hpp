@@ -31,6 +31,7 @@
 #include "compiler/compilerDirectives.hpp"
 #include "compiler/compilerThread.hpp"
 #include "runtime/atomic.hpp"
+#include "runtime/javaThread.hpp"
 #include "runtime/perfDataTypes.hpp"
 #include "utilities/stack.hpp"
 #if INCLUDE_JVMCI
@@ -444,6 +445,14 @@ public:
   // CodeHeap State Analytics.
   static void print_info(outputStream *out);
   static void print_heapinfo(outputStream *out, const char* function, size_t granularity);
+};
+
+class TrainingReplayThread : public JavaThread {
+  static void training_replay_thread_entry(JavaThread* thread, TRAPS);
+public:
+  TrainingReplayThread() : JavaThread(&training_replay_thread_entry) { }
+
+  bool is_hidden_from_external_view() const      { return true; }
 };
 
 #endif // SHARE_COMPILER_COMPILEBROKER_HPP

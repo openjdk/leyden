@@ -151,6 +151,7 @@ public class Threads {
         virtualConstructor.addMapping("JavaThread", JavaThread.class);
         if (!VM.getVM().isCore()) {
             virtualConstructor.addMapping("CompilerThread", CompilerThread.class);
+            virtualConstructor.addMapping("TrainingReplayThread", TrainingReplayThread.class);
         }
         virtualConstructor.addMapping("JvmtiAgentThread", JvmtiAgentThread.class);
         virtualConstructor.addMapping("ServiceThread", ServiceThread.class);

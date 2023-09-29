@@ -804,13 +804,6 @@ Handle CompileBroker::create_thread_oop(const char* name, TRAPS) {
   Handle thread_oop = JavaThread::create_system_thread_object(name, CHECK_NH);
   return thread_oop;
 }
-class TrainingReplayThread : public JavaThread {
-  static void training_replay_thread_entry(JavaThread* thread, TRAPS);
-public:
-  TrainingReplayThread() : JavaThread(&training_replay_thread_entry) { }
-
-  bool is_hidden_from_external_view() const      { return true; }
-};
 
 void TrainingReplayThread::training_replay_thread_entry(JavaThread* thread, TRAPS) {
   CompilationPolicy::replay_training_at_init_loop(thread);
