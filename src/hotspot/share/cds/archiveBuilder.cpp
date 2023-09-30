@@ -786,6 +786,11 @@ void ArchiveBuilder::make_klasses_shareable() {
   int num_obj_array_klasses = 0;
   int num_type_array_klasses = 0;
 
+  int boot_unlinked = 0;
+  int platform_unlinked = 0;
+  int app_unlinked = 0;
+  int unreg_unlinked = 0;
+
   for (int i = 0; i < klasses()->length(); i++) {
     // Some of the code in ConstantPool::remove_unshareable_info() requires the classes
     // to be in linked state, so it must be call here before the next loop, which returns
@@ -859,6 +864,15 @@ void ArchiveBuilder::make_klasses_shareable() {
       if (!ik->is_linked()) {
         ADD_COUNT(num_unlinked_klasses);
         unlinked = " ** unlinked";
+        if (ik->is_shared_boot_class()) {
+          boot_unlinked ++;
+        } else if (ik->is_shared_platform_class()) {
+          platform_unlinked ++;
+        } else if (ik->is_shared_app_class()) {
+          app_unlinked ++;
+        } else {
+          unreg_unlinked ++;
+        }
       }
 
       if (ik->is_hidden()) {
@@ -885,11 +899,14 @@ void ArchiveBuilder::make_klasses_shareable() {
   log_info(cds)("    instance classes   = %5d, inited = %5d", num_instance_klasses,     num_instance_klasses_i);
   log_info(cds)("      boot             = %5d, inited = %5d", num_boot_klasses,         num_boot_klasses_i);
   log_info(cds)("       vm              = %5d, inited = %5d", num_vm_klasses,           num_vm_klasses_i);
-  log_info(cds)("      app              = %5d, inited = %5d", num_app_klasses,          num_app_klasses_i);
   log_info(cds)("      platform         = %5d, inited = %5d", num_platform_klasses,     num_platform_klasses_i);
+  log_info(cds)("      app              = %5d, inited = %5d", num_app_klasses,          num_app_klasses_i);
   log_info(cds)("      unregistered     = %5d, inited = %5d", num_unregistered_klasses, num_unregistered_klasses_i);
   log_info(cds)("      (hidden)         = %5d, inited = %5d", num_hidden_klasses,       num_hidden_klasses_i);
-  log_info(cds)("      (unlinked)       = %5d, inited = %5d", num_unlinked_klasses,     num_unlinked_klasses_i);
+  log_info(cds)("      (unlinked)       = %5d, inited = %5d, boot = %d, plat = %d, app = %d, unreg = %d",
+                                                              num_unlinked_klasses,     num_unlinked_klasses_i,
+                                                              boot_unlinked, platform_unlinked,
+                                                              app_unlinked, unreg_unlinked);
   log_info(cds)("    obj array classes  = %5d", num_obj_array_klasses);
   log_info(cds)("    type array classes = %5d", num_type_array_klasses);
   log_info(cds)("               symbols = %5d", _symbols->length());

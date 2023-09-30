@@ -200,9 +200,7 @@ public:
     }
   }
 
-  bool is_excluded() {
-    return _excluded || _failed_verification;
-  }
+  bool is_excluded();
 
   // Was this class loaded while JvmtiExport::is_early_phase()==true
   bool is_early_klass() {

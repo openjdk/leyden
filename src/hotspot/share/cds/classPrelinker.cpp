@@ -110,9 +110,9 @@ void ClassPrelinker::initialize() {
 
   // Record all the initiated classes that we used during dump time. This covers the verification constraints and
   // (resolved) class loader constraints.
-  add_initiated_klasses_for_loader(ClassLoaderData::class_loader_data(SystemDictionary::java_platform_loader()),
+  add_initiated_klasses_for_loader(ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_platform_loader()),
                                    "platform", _platform_initiated_classes);
-  add_initiated_klasses_for_loader(ClassLoaderData::class_loader_data(SystemDictionary::java_system_loader()),
+  add_initiated_klasses_for_loader(ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_system_loader()),
                                    "app", _app_initiated_classes);
 }
 
@@ -166,9 +166,11 @@ class ClassPrelinker::RecordInitiatedClassesClosure : public KlassClosure {
 };
 
 void ClassPrelinker::add_initiated_klasses_for_loader(ClassLoaderData* loader_data, const char* loader_name, ClassesTable* table) {
-  MonitorLocker mu1(SystemDictionary_lock);
-  RecordInitiatedClassesClosure mk(loader_data, loader_name, table);  
-  loader_data->dictionary()->all_entries_do(&mk);
+  if (loader_data != nullptr) {
+    MonitorLocker mu1(SystemDictionary_lock);
+    RecordInitiatedClassesClosure mk(loader_data, loader_name, table);  
+    loader_data->dictionary()->all_entries_do(&mk);
+  }
 }
 
 // ik has a reference to target:

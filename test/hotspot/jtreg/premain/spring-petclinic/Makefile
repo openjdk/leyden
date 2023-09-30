@@ -138,12 +138,17 @@ ${PC_CACHED_CODE}: ${PC_DYNAMIC_JSA}
 
 # run with premain optimizatipn
 run: ${PC_CACHED_CODE}
-	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
+	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
 		-XX:CachedCodeFile=${PC_CACHED_CODE} -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
+
+# run with just static CDS archive
+runs: ${PC_STATIC_JSA}
+	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} \
+		-Xlog:init ${UNPACKED_CMDLINE}
 
 # run WITHOUT premain optimizatipn
 run0: ${PC_APP_UNPACKED}
-	${PREMAIN_JAVA} -Xlog:init ${UNPACKED_CMDLINE}
+	time ${PREMAIN_JAVA} -Xlog:init ${UNPACKED_CMDLINE}
 
 run17: ${PC_APP_UNPACKED}
 	${JDK17_JAVA} ${UNPACKED_CMDLINE}

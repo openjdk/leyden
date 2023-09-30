@@ -308,19 +308,21 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     return warn_excluded(k, "JFR event class");
   }
 
-  if (!k->is_linked()) {
-    if (has_class_failed_verification(k)) {
-      return warn_excluded(k, "Failed verification");
-    }
-  } else {
-    if (!k->can_be_verified_at_dumptime()) {
-      // We have an old class that has been linked (e.g., it's been executed during
-      // dump time). This class has been verified using the old verifier, which
-      // doesn't save the verification constraints, so check_verification_constraints()
-      // won't work at runtime.
-      // As a result, we cannot store this class. It must be loaded and fully verified
-      // at runtime.
-      return warn_excluded(k, "Old class has been linked");
+  if (!PreloadSharedClasses || !is_builtin(k)) {
+    if (!k->is_linked()) {
+      if (has_class_failed_verification(k)) {
+        return warn_excluded(k, "Failed verification");
+      }
+    } else {
+      if (!k->can_be_verified_at_dumptime()) {
+        // We have an old class that has been linked (e.g., it's been executed during
+        // dump time). This class has been verified using the old verifier, which
+        // doesn't save the verification constraints, so check_verification_constraints()
+        // won't work at runtime.
+        // As a result, we cannot store this class. It must be loaded and fully verified
+        // at runtime.
+        return warn_excluded(k, "Old class has been linked");
+      }
     }
   }
 
@@ -695,10 +697,7 @@ void SystemDictionaryShared::set_excluded(InstanceKlass* k) {
 void SystemDictionaryShared::set_class_has_failed_verification(InstanceKlass* ik) {
   Arguments::assert_is_dumping_archive();
   DumpTimeClassInfo* p = get_info(ik);
-  if (p != nullptr) {
-    // TEMP: work around JDK-8312427
-    p->set_failed_verification();
-  }
+  p->set_failed_verification();
 }
 
 bool SystemDictionaryShared::has_class_failed_verification(InstanceKlass* ik) {
@@ -740,6 +739,11 @@ bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbo
     // verified during dump time. No need to record constraints as k won't be included in the dynamic archive.
     return false;
   }
+  if (PreloadSharedClasses && is_builtin(k)) {
+    // There's no need to save verification constraints
+    return false;
+  }
+
   DumpTimeClassInfo* info = get_info(k);
   info->add_verification_constraint(k, name, from_name, from_field_is_protected,
                                     from_is_array, from_is_object);
