@@ -362,7 +362,6 @@ private:
                                              KlassSubGraphInfo* subgraph_info,
                                              oop orig_obj);
 
-  static ResourceBitMap calculate_oopmap(MemRegion region); // marks all the oop pointers
   static void add_to_dumped_interned_strings(oop string);
 
   // Scratch objects for archiving Klass::java_mirror()
