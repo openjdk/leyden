@@ -516,8 +516,13 @@ public final class ServiceLoader<S>
                 fail(svc, "not accessible to " + callerModule + " during VM init");
             }
 
-            // restricted to boot loader during startup
-            cl = null;
+            // If the module system is not initialized yet, restrict to boot
+            // loader during startup.
+            if (!VM.isModuleSystemInited()) {
+                cl = null;
+            } else {
+                cl = ClassLoader.getPlatformClassLoader();
+            }
         }
 
         this.service = svc;
@@ -1186,7 +1191,10 @@ public final class ServiceLoader<S>
                 try {
                     String fullName = PREFIX + service.getName();
                     if (loader == null) {
-                        configs = ClassLoader.getSystemResources(fullName);
+                        // Find the resources using the boot loader. Don't use
+                        // the system class loader here since we will load the
+                        // provider class using the null loader below.
+                        configs = BootLoader.findResources(fullName);
                     } else if (loader == ClassLoaders.platformClassLoader()) {
                         // The platform classloader doesn't have a class path,
                         // but the boot loader might.
