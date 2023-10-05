@@ -2818,7 +2818,7 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
   if (per_compiler) {
     if (aggregate) {
       tty->cr();
-      tty->print_cr("Individual compiler times (for compiled methods only)");
+      tty->print_cr("[%dms] Individual compiler times (for compiled methods only)", (int)tty->time_stamp().milliseconds());
       tty->print_cr("------------------------------------------------");
       tty->cr();
     }

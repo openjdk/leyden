@@ -209,7 +209,7 @@ SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) 
 
     ResourceMark rm;
     const char* target_name = method->name_and_sig_as_C_string();
-    uint hash = java_lang_String::hash_code((const jbyte*)target_name, strlen(target_name));
+    uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
     SCCEntry* entry = _cache->find_entry(SCCEntry::Code, hash, comp_level, decomp);
     if (entry == nullptr) {
       log_info(scc, nmethod)("Missing entry for '%s' (comp_level %d, decomp: %d, hash: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, decomp, hash);
@@ -889,14 +889,14 @@ bool SCCache::finish_write() {
 
   uint store_count = _store_entries_cnt;
   if (store_count > 0) {
-    uint header_size = align_up(sizeof(SCCHeader),  DATA_ALIGNMENT);
+    uint header_size = (uint)align_up(sizeof(SCCHeader),  DATA_ALIGNMENT);
     const char* vm_version = VM_Version::internal_vm_info_string();
-    uint vm_version_size = align_up(strlen(vm_version) + 1, DATA_ALIGNMENT);
+    uint vm_version_size = (uint)align_up(strlen(vm_version) + 1, DATA_ALIGNMENT);
     uint load_count = (_load_header != nullptr) ? _load_header->entries_count() : 0;
     uint code_count = store_count + load_count;
     uint search_count = code_count * 2;
     uint search_size = search_count * sizeof(uint);
-    uint entries_size = align_up(code_count * sizeof(SCCEntry), DATA_ALIGNMENT); // In bytes
+    uint entries_size = (uint)align_up(code_count * sizeof(SCCEntry), DATA_ALIGNMENT); // In bytes
     uint preload_entries_cnt = 0;
     uint* preload_entries = NEW_C_HEAP_ARRAY(uint, code_count, mtCode);
     uint preload_entries_size = code_count * sizeof(uint);
@@ -911,7 +911,7 @@ bool SCCache::finish_write() {
     char* start = align_up(buffer, DATA_ALIGNMENT);
     char* current = start + header_size; // Skip header
     uint jvm_version_offset = current - start;
-    copy_bytes(vm_version, (address)current, strlen(vm_version) + 1);
+    copy_bytes(vm_version, (address)current, (uint)strlen(vm_version) + 1);
     current += vm_version_size;
 
     SCCEntry* entries_address = _store_entries; // Pointer to latest entry
@@ -2669,7 +2669,7 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
     ResourceMark rm;
     methodHandle method(THREAD, target->get_Method());
     const char* target_name = method->name_and_sig_as_C_string();
-    uint hash = java_lang_String::hash_code((const jbyte*)target_name, strlen(target_name));
+    uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
     bool clinit_brs = entry->has_clinit_barriers();
     log_info(scc, nmethod)("%d (L%d): %s nmethod '%s' (decomp: %d, hash: " UINT32_FORMAT_X_0 "%s)",
                            task->compile_id(), task->comp_level(), (preload ? "Preloading" : "Reading"),
@@ -2965,7 +2965,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
     if (n != name_size) {
       return nullptr;
     }
-    hash = java_lang_String::hash_code((const jbyte*)name, strlen(name));
+    hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
   }
 
   if (!cache->align_write()) {
@@ -3627,7 +3627,7 @@ int SCAddressTable::id_for_C_string(address str) {
         return id; // Found recorded
       }
       // Search for the same string content
-      int len = strlen((const char*)str);
+      int len = (int)strlen((const char*)str);
       int hash = java_lang_String::hash_code((const jbyte*)str, len);
       for (int j = 0; j < _C_strings_used; j++) {
         if ((_C_strings_len[j] == len) && (_C_strings_hash[j] == hash)) {

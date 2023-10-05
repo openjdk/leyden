@@ -587,7 +587,7 @@ class KlassTrainingData : public TrainingData {
   void metaspace_pointers_do(MetaspaceClosure *iter);
 
   int size() const {
-    return align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord)/BytesPerWord);
+    return (int)align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord)/BytesPerWord);
   }
 
   const char* internal_name() const {
@@ -726,7 +726,7 @@ public:
   };
 
   virtual int size() const {
-    return align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord)/BytesPerWord);
+    return (int)align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord)/BytesPerWord);
   }
 
   void cleanup();
@@ -860,7 +860,7 @@ class MethodTrainingData : public TrainingData {
 #endif
 
   virtual int size() const {
-    return align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord)/BytesPerWord);
+    return (int)align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord)/BytesPerWord);
   }
 
   virtual const char* internal_name() const {
