@@ -442,7 +442,7 @@ bool Threads::initialize_compilation(TRAPS) {
   }
 #endif
   if (init_compilation) {
-    CompileBroker::compilation_init(CHECK_JNI_ERR);
+    CompileBroker::compilation_init(CHECK_false);
   }
 #endif
 
