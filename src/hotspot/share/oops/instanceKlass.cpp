@@ -780,7 +780,7 @@ static bool are_super_types_initialized(InstanceKlass* ik) {
   return true;
 }
 
-static int log_class_init(InstanceKlass* ik) {
+static int log_class_init(JavaThread* current, InstanceKlass* ik) {
   LogTarget(Info, class, init) lt;
   if (lt.is_enabled()) {
     ResourceMark rm;
@@ -797,7 +797,7 @@ static int log_class_init(InstanceKlass* ik) {
     }
     ls.print("%d Initializing ", init_id);
     ik->name()->print_value_on(&ls);
-    ls.print_cr("%s (" PTR_FORMAT ")", info, p2i(ik));
+    ls.print_cr("%s (" PTR_FORMAT ") by thread \"%s\"", info, p2i(ik), current->name());
     return init_id;
   }
   return -1;
@@ -829,7 +829,7 @@ void InstanceKlass::initialize_from_cds(TRAPS) {
     }
 #endif
 
-    log_class_init(this);
+    log_class_init(THREAD, this);
     set_init_thread(THREAD);
     set_initialization_state_and_notify(fully_initialized, CHECK);
     return;
@@ -858,20 +858,43 @@ void InstanceKlass::link_class(TRAPS) {
 void InstanceKlass::check_link_state_and_wait(JavaThread* current) {
   MonitorLocker ml(current, _init_monitor);
 
+  bool debug_logging_enabled = log_is_enabled(Debug, class, init);
+
   // Another thread is linking this class, wait.
   while (is_being_linked() && !is_init_thread(current)) {
+    if (debug_logging_enabled) {
+      ResourceMark rm(current);
+      log_debug(class, init)("Thread \"%s\" waiting for linking of %s by thread \"%s\"",
+                             current->name(), external_name(), init_thread_name());
+    }
     ml.wait();
   }
 
   // This thread is recursively linking this class, continue
   if (is_being_linked() && is_init_thread(current)) {
+    if (debug_logging_enabled) {
+      ResourceMark rm(current);
+      log_debug(class, init)("Thread \"%s\" recursively linking %s",
+                             current->name(), external_name());
+    }
     return;
   }
 
   // If this class wasn't linked already, set state to being_linked
   if (!is_linked()) {
+    if (debug_logging_enabled) {
+      ResourceMark rm(current);
+      log_debug(class, init)("Thread \"%s\" linking %s",
+                             current->name(), external_name());
+    }
     set_init_state(being_linked);
     set_init_thread(current);
+  } else {
+    if (debug_logging_enabled) {
+      ResourceMark rm(current);
+      log_debug(class, init)("Thread \"%s\" found %s already linked",
+                             current->name(), external_name());
+      }
   }
 }
 
@@ -1169,13 +1192,22 @@ void InstanceKlass::initialize_impl(TRAPS) {
       }
     }
   }
+
+  bool debug_logging_enabled = log_is_enabled(Debug, class, init);
+
   // refer to the JVM book page 47 for description of steps
   // Step 1
   {
-    MonitorLocker ml(THREAD, _init_monitor);
+    MonitorLocker ml(jt, _init_monitor);
 
     // Step 2
     while (is_being_initialized() && !is_init_thread(jt)) {
+      if (debug_logging_enabled) {
+        ResourceMark rm(jt);
+        log_debug(class, init)("Thread \"%s\" waiting for initialization of %s by thread \"%s\"",
+                               jt->name(), external_name(), init_thread_name());
+      }
+
       wait = true;
       jt->set_class_to_be_initialized(this);
       ml.wait();
@@ -1184,24 +1216,44 @@ void InstanceKlass::initialize_impl(TRAPS) {
 
     // Step 3
     if (is_being_initialized() && is_init_thread(jt)) {
+      if (debug_logging_enabled) {
+        ResourceMark rm(jt);
+        log_debug(class, init)("Thread \"%s\" recursively initializing %s",
+                               jt->name(), external_name());
+      }
       DTRACE_CLASSINIT_PROBE_WAIT(recursive, -1, wait);
       return;
     }
 
     // Step 4
     if (is_initialized()) {
+      if (debug_logging_enabled) {
+        ResourceMark rm(jt);
+        log_debug(class, init)("Thread \"%s\" found %s already initialized",
+                               jt->name(), external_name());
+      }
       DTRACE_CLASSINIT_PROBE_WAIT(concurrent, -1, wait);
       return;
     }
 
     // Step 5
     if (is_in_error_state()) {
+      if (debug_logging_enabled) {
+        ResourceMark rm(jt);
+        log_debug(class, init)("Thread \"%s\" found %s is in error state",
+                               jt->name(), external_name());
+      }
       throw_error = true;
     } else {
 
       // Step 6
       set_init_state(being_initialized);
       set_init_thread(jt);
+      if (debug_logging_enabled) {
+        ResourceMark rm(jt);
+        log_debug(class, init)("Thread \"%s\" is initializing %s",
+                               jt->name(), external_name());
+      }
     }
   }
 
@@ -1320,66 +1372,7 @@ void InstanceKlass::initialize_impl(TRAPS) {
   }
   DTRACE_CLASSINIT_PROBE_WAIT(end, -1, wait);
 
-  replay_training_at_init(THREAD);
-}
-
-void InstanceKlass::replay_training_at_init(TRAPS) {
-  if (TrainingData::have_data()) {
-    KlassTrainingData* ktd = KlassTrainingData::find(this);
-    if (ktd != nullptr) {
-      guarantee(ktd->has_holder(), "");
-      ktd->notice_fully_initialized();
-
-      ResourceMark rm;
-      GrowableArray<CompileTrainingData*> ctds;
-      ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
-        if (ctd->init_deps_left() == 0) {
-          ctds.append(ctd);
-        }
-      });
-
-      for (int i = 0; i < ctds.length(); i++) {
-        MethodTrainingData* mtd = ctds.at(i)->top_method();
-        if (mtd->has_holder()) {
-          const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
-          CompilationPolicy::compile_if_required(mh, THREAD);
-        }
-      }
-    }
-    int len = methods()->length();
-    for (int i = 0; i < len; i++) {
-      const methodHandle mh(THREAD, methods()->at(i));
-      CompilationPolicy::compile_if_required_after_init(mh, THREAD);
-    }
-
-    if (ForceRecompilation && Universe::is_fully_initialized() && is_shared()) {
-      int init_count = SystemDictionaryShared::compute_init_count(this);
-      log_debug(recompile)("init_count = %d", init_count);
-
-      if (init_count <= ForceRecompilationThreshold) {
-        ForceRecompilation = false; // FIXME: coordinate recompilation
-
-        log_info(recompile)("Recompilation started");
-
-        LogTarget(Trace, recompile) lt;
-        if (lt.is_enabled()) {
-          ResourceMark rm(THREAD);
-          LogStream ls(lt);
-          SystemDictionaryShared::print_init_count(&ls);
-        }
-
-        IntFlagSetting fs(PrecompileBarriers, 0); // produce barrier-free code for recompilation purposes
-        int count = SystemDictionaryShared::force_compilation(true, THREAD);
-        assert(!HAS_PENDING_EXCEPTION, "");
-        if (log_is_enabled(Info, cds, nmethod)) {
-          MutexLocker ml(Threads_lock);
-          CodeCache::arm_all_nmethods();
-        }
-
-        log_info(recompile)("Recompilation finished: %d methods recompiled", count);
-      }
-    }
-  }
+  CompilationPolicy::replay_training_at_init(this, THREAD);
 }
 
 void InstanceKlass::set_initialization_state_and_notify(ClassState state, JavaThread* current) {
@@ -1751,14 +1744,14 @@ void InstanceKlass::call_class_initializer(TRAPS) {
       return;
     }
   } else if (has_preinitialized_mirror() && CDSConfig::is_loading_heap()) {
-    log_class_init(this);
+    log_class_init(THREAD, this);
     return;
   }
 #endif
 
   methodHandle h_method(THREAD, class_initializer());
   assert(!is_initialized(), "we cannot initialize twice");
-  int init_id = log_class_init(this);
+  int init_id = log_class_init(THREAD, this);
   if (h_method() != nullptr) {
     JavaCallArguments args; // No arguments
     JavaValue result(T_VOID);
@@ -2989,6 +2982,10 @@ void InstanceKlass::restore_unshareable_info(ClassLoaderData* loader_data, Handl
 // retrieved during dump time.
 // Verification of archived old classes will be performed during run time.
 bool InstanceKlass::can_be_verified_at_dumptime() const {
+  if (PreloadSharedClasses && SystemDictionaryShared::is_builtin(this)) {
+    return true;
+  }
+
   if (MetaspaceShared::is_in_shared_metaspace(this)) {
     // This is a class that was dumped into the base archive, so we know
     // it was verified at dump time.
@@ -3029,6 +3026,18 @@ bool InstanceKlass::methods_contain_jsr_bytecode() const {
     }
   }
   return false;
+}
+
+int InstanceKlass::shared_class_loader_type() const {
+  if (is_shared_boot_class()) {
+    return ClassLoader::BOOT_LOADER;
+  } else if (is_shared_platform_class()) {
+    return ClassLoader::PLATFORM_LOADER;
+  } else if (is_shared_app_class()) {
+    return ClassLoader::APP_LOADER;
+  } else {
+    return ClassLoader::OTHER;
+  }
 }
 #endif // INCLUDE_CDS
 
@@ -4720,4 +4729,3 @@ void ClassHierarchyIterator::next() {
   _current = _current->next_sibling();
   return; // visit next sibling subclass
 }
-

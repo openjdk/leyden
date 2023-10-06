@@ -42,6 +42,17 @@ DumpTimeClassInfo::~DumpTimeClassInfo() {
   }
 }
 
+bool DumpTimeClassInfo::is_excluded() {
+  if (_excluded) {
+    return true;
+  }
+  if ((!PreloadSharedClasses || !SystemDictionaryShared::is_builtin(_klass))
+      && _failed_verification) {
+    return true;
+  }
+  return false;
+}
+
 size_t DumpTimeClassInfo::runtime_info_bytesize() const {
   return RunTimeClassInfo::byte_size(_klass, num_verifier_constraints(),
                                      num_loader_constraints(),

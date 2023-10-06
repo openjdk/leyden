@@ -75,6 +75,7 @@ public class RedefineCallerClassTest extends DynamicArchiveTestBase {
                 "-XX:+UnlockDiagnosticVMOptions",
                 "-XX:+AllowArchivingWithJavaAgent",
                 "-javaagent:redefineagent.jar",
+                "-XX:-PreloadSharedClasses",
                 "-cp", appJar, mainClass, mainArg
             };
 

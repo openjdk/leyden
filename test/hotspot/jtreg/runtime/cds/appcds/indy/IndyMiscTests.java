@@ -33,7 +33,9 @@
  *          /test/hotspot/jtreg/runtime/cds/appcds/test-classes
  * @build OldInf
  * @build IndyMiscTests
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar LambdaWithOldIntf OldInf
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar
+ *             LambdaWithOldIntf OldInf
+ *             LambdaWithClinitInf ClinitInf
  * @run driver IndyMiscTests
  */
 
@@ -54,6 +56,7 @@ import jdk.test.lib.helpers.ClassFileInstaller;
 public class IndyMiscTests extends IndyTestBase {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
     static final String mainClass_LambdaWithOldIntf = LambdaWithOldIntf.class.getName();
+    static final String mainClass_LambdaWithClinitInf = LambdaWithClinitInf.class.getName();
 
     // Edit the following to disable some tests during development.
     static String forceSkip = null;
@@ -64,6 +67,11 @@ public class IndyMiscTests extends IndyTestBase {
         // ------------------------------------------------------------
         test("LambdaWithOldIntf", mainClass_LambdaWithOldIntf, "");
         checkExec("xxMy StringXX");
+
+        // ------------------------------------------------------------
+        test("LambdaWithClinitInf", mainClass_LambdaWithClinitInf, "");
+        checkExec("xxMy String2XX");
+        staticDumpOutput.shouldContain("Cannot resolve Lambda proxy of interface type ClinitInf");
     }
 }
 
@@ -80,3 +88,23 @@ class LambdaWithOldIntf {
     }
 }
 
+interface ClinitInf {
+    String bar = LambdaWithClinitInf.foo;
+    public String doit();
+}
+
+class LambdaWithClinitInf {
+    static String foo = "1";
+
+    public static void main(String args[]) throws Exception {
+        foo = "2";
+        test(() -> "My String");
+    }
+
+    static void test(ClinitInf i) {
+        System.out.print("OUTPUT = xx");
+        System.out.print(i.doit());
+        System.out.print(ClinitInf.bar);
+        System.out.println("XX");
+    }
+}

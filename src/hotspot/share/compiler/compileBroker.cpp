@@ -629,7 +629,7 @@ void register_jfr_phasetype_serializer(CompilerType compiler_type) {
 // CompileBroker::compilation_init
 //
 // Initialize the Compilation object
-void CompileBroker::compilation_init_phase1(JavaThread* THREAD) {
+void CompileBroker::compilation_init(JavaThread* THREAD) {
   // No need to initialize compilation system if we do not use it.
   if (!UseCompiler) {
     return;
@@ -795,11 +795,7 @@ void CompileBroker::compilation_init_phase1(JavaThread* THREAD) {
                                           (jlong)CompileBroker::no_compile,
                                           CHECK);
   }
-}
 
-// Completes compiler initialization. Compilation requests submitted
-// prior to this will be silently ignored.
-void CompileBroker::compilation_init_phase2() {
   log_info(scc, init)("CompileBroker is initialized");
   _initialized = true;
 }
@@ -807,6 +803,10 @@ void CompileBroker::compilation_init_phase2() {
 Handle CompileBroker::create_thread_oop(const char* name, TRAPS) {
   Handle thread_oop = JavaThread::create_system_thread_object(name, CHECK_NH);
   return thread_oop;
+}
+
+void TrainingReplayThread::training_replay_thread_entry(JavaThread* thread, TRAPS) {
+  CompilationPolicy::replay_training_at_init_loop(thread);
 }
 
 #if defined(ASSERT) && COMPILER2_OR_JVMCI
@@ -893,6 +893,9 @@ JavaThread* CompileBroker::make_thread(ThreadType type, jobject thread_handle, C
       new_thread = new DeoptimizeObjectsALotThread();
       break;
 #endif // ASSERT
+    case training_replay_t:
+      new_thread = new TrainingReplayThread();
+      break;
     default:
       ShouldNotReachHere();
   }
@@ -1106,6 +1109,11 @@ void CompileBroker::init_compiler_threads() {
     }
   }
 #endif // defined(ASSERT) && COMPILER2_OR_JVMCI
+  if (UseConcurrentTrainingReplay) {
+    Handle thread_oop = create_thread_oop("Training replay thread", CHECK);
+    jobject thread_handle = JNIHandles::make_local(THREAD, thread_oop());
+    make_thread(training_replay_t, thread_handle, nullptr, nullptr, THREAD);
+  }
 }
 
 void CompileBroker::possibly_add_compiler_threads(JavaThread* THREAD) {
@@ -1948,17 +1956,22 @@ bool CompileBroker::init_compiler_runtime() {
   return true;
 }
 
+void CompileBroker::free_buffer_blob_if_allocated(CompilerThread* thread) {
+  BufferBlob* blob = thread->get_buffer_blob();
+  if (blob != nullptr) {
+    blob->flush();
+    MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    CodeCache::free(blob);
+  }
+}
+
 /**
  * If C1 and/or C2 initialization failed, we shut down all compilation.
  * We do this to keep things simple. This can be changed if it ever turns
  * out to be a problem.
  */
 void CompileBroker::shutdown_compiler_runtime(AbstractCompiler* comp, CompilerThread* thread) {
-  // Free buffer blob, if allocated
-  if (thread->get_buffer_blob() != nullptr) {
-    MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    CodeCache::free(thread->get_buffer_blob());
-  }
+  free_buffer_blob_if_allocated(thread);
 
   if (comp->should_perform_shutdown()) {
     // There are two reasons for shutting down the compiler
@@ -2136,11 +2149,7 @@ void CompileBroker::compiler_thread_loop() {
           // Notify compiler that the compiler thread is about to stop
           thread->compiler()->stopping_compiler_thread(thread);
 
-          // Free buffer blob, if allocated
-          if (thread->get_buffer_blob() != nullptr) {
-            MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-            CodeCache::free(thread->get_buffer_blob());
-          }
+          free_buffer_blob_if_allocated(thread);
           return; // Stop this thread.
         }
       }
@@ -2867,7 +2876,7 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
   if (per_compiler) {
     if (aggregate) {
       tty->cr();
-      tty->print_cr("Individual compiler times (for compiled methods only)");
+      tty->print_cr("[%dms] Individual compiler times (for compiled methods only)", (int)tty->time_stamp().milliseconds());
       tty->print_cr("------------------------------------------------");
       tty->cr();
     }
@@ -2940,6 +2949,10 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
                 CompileBroker::_t_invalidated_compilation.seconds(),
                 total_invalidated_count == 0 ? 0.0 : CompileBroker::_t_invalidated_compilation.seconds() / total_invalidated_count);
 
+  if (StoreCachedCode || LoadCachedCode) { // Check flags because SC cache could be closed already
+    tty->cr();
+    SCCache::print_timers();
+  }
   AbstractCompiler *comp = compiler(CompLevel_simple);
   if (comp != nullptr) {
     tty->cr();

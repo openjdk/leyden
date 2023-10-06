@@ -27,10 +27,15 @@
 #include "precompiled.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciMetadata.hpp"
+#include "cds/archiveBuilder.hpp"
+#include "cds/metaspaceShared.hpp"
+#include "cds/methodDataDictionary.hpp"
 #include "cds/methodProfiler.hpp"
+#include "cds/runTimeClassInfo.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/symbolTable.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "compiler/compileTask.hpp"
 #include "memory/metadataFactory.hpp"
 #include "memory/metaspaceClosure.hpp"
@@ -1748,7 +1753,7 @@ KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
   assert(need_data() || have_data(), "");
   JavaThread* THREAD = JavaThread::current();
 
-  int size = align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord) / BytesPerWord);
+  size_t size = align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = holder->class_loader_data();
   return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
@@ -1759,7 +1764,7 @@ KlassTrainingData* KlassTrainingData::allocate(Symbol* name, Symbol* loader_name
   assert(need_data() || have_data(), "");
   JavaThread* THREAD = JavaThread::current();
 
-  int size = align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord) / BytesPerWord);
+  size_t size = align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
@@ -1771,7 +1776,7 @@ MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Symbol*
   JavaThread* THREAD = JavaThread::current();
 //  assert(!THREAD->owns_locks(), "Should not own any locks"); // FIXME
 
-  int size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
+  size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
@@ -1782,7 +1787,7 @@ MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Method*
   assert(need_data() || have_data(), "");
   JavaThread* THREAD = JavaThread::current();
 
-  int size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
+  size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
@@ -1795,7 +1800,7 @@ CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* this_meth
                                                    int compile_id) {
   assert(need_data() || have_data(), "");
   JavaThread* THREAD = JavaThread::current();
-  int size = align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord) / BytesPerWord);
+  size_t size = align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)

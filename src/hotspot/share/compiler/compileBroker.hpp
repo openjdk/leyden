@@ -31,6 +31,7 @@
 #include "compiler/compilerDirectives.hpp"
 #include "compiler/compilerThread.hpp"
 #include "runtime/atomic.hpp"
+#include "runtime/javaThread.hpp"
 #include "runtime/perfDataTypes.hpp"
 #include "utilities/stack.hpp"
 #if INCLUDE_JVMCI
@@ -234,7 +235,8 @@ class CompileBroker: AllStatic {
 
   enum ThreadType {
     compiler_t,
-    deoptimizer_t
+    deoptimizer_t,
+    training_replay_t
   };
 
   static Handle create_thread_oop(const char* name, TRAPS);
@@ -257,6 +259,8 @@ class CompileBroker: AllStatic {
 #if INCLUDE_JVMCI
   static bool wait_for_jvmci_completion(JVMCICompiler* comp, CompileTask* task, JavaThread* thread);
 #endif
+
+  static void free_buffer_blob_if_allocated(CompilerThread* thread);
 
   static void invoke_compiler_on_method(CompileTask* task);
   static void handle_compile_error(CompilerThread* thread, CompileTask* task, ciEnv* ci_env,
@@ -291,6 +295,7 @@ public:
     return nullptr;
   }
 
+  static bool initialized() { return _initialized; }
   static bool compilation_is_complete(const methodHandle& method, int osr_bci, int comp_level, bool online_only = false);
   static bool compilation_is_in_queue(const methodHandle& method);
   static void print_compile_queues(outputStream* st);
@@ -298,8 +303,7 @@ public:
     CompileQueue *q = compile_queue(comp_level);
     return q != nullptr ? q->size() : 0;
   }
-  static void compilation_init_phase1(JavaThread* THREAD);
-  static void compilation_init_phase2();
+  static void compilation_init(JavaThread* THREAD);
   static void init_compiler_thread_log();
   static nmethod* compile_method(const methodHandle& method,
                                  int osr_bci,
@@ -441,6 +445,14 @@ public:
   // CodeHeap State Analytics.
   static void print_info(outputStream *out);
   static void print_heapinfo(outputStream *out, const char* function, size_t granularity);
+};
+
+class TrainingReplayThread : public JavaThread {
+  static void training_replay_thread_entry(JavaThread* thread, TRAPS);
+public:
+  TrainingReplayThread() : JavaThread(&training_replay_thread_entry) { }
+
+  bool is_hidden_from_external_view() const      { return true; }
 };
 
 #endif // SHARE_COMPILER_COMPILEBROKER_HPP

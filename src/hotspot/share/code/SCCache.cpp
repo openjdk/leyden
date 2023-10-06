@@ -35,6 +35,7 @@
 #include "ci/ciMethodData.hpp"
 #include "ci/ciObject.hpp"
 #include "ci/ciUtilities.inline.hpp"
+#include "classfile/javaAssertions.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -47,6 +48,7 @@
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
+#include "gc/shared/gcConfig.hpp"
 #include "logging/log.hpp"
 #include "memory/universe.hpp"
 #include "oops/klass.inline.hpp"
@@ -85,12 +87,6 @@
 #define O_BINARY 0     // otherwise do nothing.
 #endif
 
-#ifdef _WINDOWS
-    const char pathSep = ';';
-#else
-    const char pathSep = ':';
-#endif
-
 static elapsedTimer _t_totalLoad;
 static elapsedTimer _t_totalRegister;
 static elapsedTimer _t_totalFind;
@@ -113,9 +109,7 @@ void SCCache::initialize() {
     char* path  = NEW_C_HEAP_ARRAY(char, len+1, mtCode);
     memcpy(path, CachedCodeFile, len);
     path[len] = '\0';
-
     if (!open_cache(path)) {
-      FREE_C_HEAP_ARRAY(char, path);
       return;
     }
     if (StoreCachedCode) {
@@ -127,6 +121,9 @@ void SCCache::initialize() {
 }
 
 void SCCache::init2() {
+  if (!is_on()) {
+    return;
+  }
   // After Universe initialized
   BarrierSet* bs = BarrierSet::barrier_set();
   if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
@@ -136,6 +133,9 @@ void SCCache::init2() {
       log_warning(scc, init)("Can't create Startup Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
       close();
     }
+  }
+  if (!verify_vm_config()) {
+    close();
   }
 }
 
@@ -210,7 +210,7 @@ SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) 
 
     ResourceMark rm;
     const char* target_name = method->name_and_sig_as_C_string();
-    uint hash = java_lang_String::hash_code((const jbyte*)target_name, strlen(target_name));
+    uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
     SCCEntry* entry = _cache->find_entry(SCCEntry::Code, hash, comp_level, decomp);
     if (entry == nullptr) {
       log_info(scc, nmethod)("Missing entry for '%s' (comp_level %d, decomp: %d, hash: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, decomp, hash);
@@ -266,17 +266,16 @@ bool SCCache::open_cache(const char* cache_path) {
     }
     SCCache* cache = new SCCache(cache_path, fd, (uint)st.st_size);
     bool failed = cache->failed();
-    if (failed) {
-      delete cache;
-      _cache = nullptr;
-    } else {
-      _cache = cache;
-    }
     if (::close(fd) < 0) {
       log_warning(scc)("Failed to close for read Startup Code Cache file '%s'", cache_path);
       failed = true;
     }
-    if (failed) return false;
+    if (failed) {
+      delete cache;
+      _cache = nullptr;
+      return false;
+    }
+    _cache = cache;
   }
   if (_cache == nullptr && StoreCachedCode) {
     SCCache* cache = new SCCache(cache_path, -1 /* fd */, 0 /* size */);
@@ -336,15 +335,19 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
     log_info(scc, init)("Read %d bytes at address " INTPTR_FORMAT " from Startup Code Cache '%s'", load_size, p2i(_load_buffer), _cache_path);
 
     _load_header = (SCCHeader*)addr(0);
-    assert(_load_header->version() == VM_Version::jvm_version(), "sanity");
-    assert(_load_header->cache_size() <= load_size, "recorded %d vs actual %d", _load_header->cache_size(), load_size);
+    const char* scc_jvm_version = addr(_load_header->jvm_version_offset());
+    if (strncmp(scc_jvm_version, VM_Version::internal_vm_info_string(), strlen(scc_jvm_version)) != 0) {
+      log_warning(scc, init)("Disable Startup Code Cache: JVM version '%s' recorded in '%s' does not match current version '%s'", scc_jvm_version, _cache_path, VM_Version::internal_vm_info_string());
+      set_failed();
+      return;
+    }
+    if (!_load_header->verify_config(_cache_path, load_size)) {
+      set_failed();
+      return;
+    }
     log_info(scc, init)("Read header from Startup Code Cache '%s'", cache_path);
     if (_load_header->has_meta_ptrs()) {
-      if (!UseSharedSpaces) {
-        log_warning(scc, init)("Code Cache '%s' contains metadata pointers but CDS is off", _cache_path);
-        set_failed();
-        return;
-      }
+      assert(UseSharedSpaces, "should be verified already");
       _use_meta_ptrs = true; // Regardless UseMetadataPointers
       UseMetadataPointers = true;
     }
@@ -384,6 +387,130 @@ void SCCache::init_c1_table() {
   }
 }
 
+void SCConfig::record(bool use_meta_ptrs) {
+  _flags = 0;
+  if (use_meta_ptrs) {
+    _flags |= metadataPointers;
+  }
+#ifdef ASSERT
+  _flags |= debugVM;
+#endif
+  if (UseCompressedOops) {
+    _flags |= compressedOops;
+  }
+  if (UseCompressedClassPointers) {
+    _flags |= compressedClassPointers;
+  }
+  if (UseTLAB) {
+    _flags |= useTLAB;
+  }
+  if (JavaAssertions::systemClassDefault()) {
+    _flags |= systemClassAssertions;
+  }
+  if (JavaAssertions::userClassDefault()) {
+    _flags |= userClassAssertions;
+  }
+  if (EnableContended) {
+    _flags |= enableContendedPadding;
+  }
+  if (RestrictContended) {
+    _flags |= restrictContendedPadding;
+  }
+  if (UseEmptySlotsInSupers) {
+    _flags |= useEmptySlotsInSupers;
+  }
+  _compressedOopShift    = CompressedOops::shift();
+  _compressedKlassShift  = CompressedKlassPointers::shift();
+  _contendedPaddingWidth = ContendedPaddingWidth;
+  _objectAlignment       = ObjectAlignmentInBytes;
+  _gc                    = (uint)Universe::heap()->kind();
+}
+
+bool SCConfig::verify(const char* cache_path) const {
+#ifdef ASSERT
+  if ((_flags & debugVM) == 0) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created by product VM, it can't be used by debug VM", cache_path);
+    return false;
+  }
+#else
+  if ((_flags & debugVM) != 0) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created by debug VM, it can't be used by product VM", cache_path);
+    return false;
+  }
+#endif
+
+  CollectedHeap::Name scc_gc = (CollectedHeap::Name)_gc;
+  if (scc_gc != Universe::heap()->kind()) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with %s vs current %s", cache_path, GCConfig::hs_err_name(scc_gc), GCConfig::hs_err_name());
+    return false;
+  }
+
+  if (((_flags & compressedOops) != 0) != UseCompressedOops) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with UseCompressedOops = %s", cache_path, UseCompressedOops ? "false" : "true");
+    return false;
+  }
+  if (((_flags & compressedClassPointers) != 0) != UseCompressedClassPointers) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with UseCompressedClassPointers = %s", cache_path, UseCompressedClassPointers ? "false" : "true");
+    return false;
+  }
+
+  if (((_flags & systemClassAssertions) != 0) != JavaAssertions::systemClassDefault()) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with JavaAssertions::systemClassDefault() = %s", cache_path, JavaAssertions::systemClassDefault() ? "disabled" : "enabled");
+    return false;
+  }
+  if (((_flags & userClassAssertions) != 0) != JavaAssertions::userClassDefault()) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with JavaAssertions::userClassDefault() = %s", cache_path, JavaAssertions::userClassDefault() ? "disabled" : "enabled");
+    return false;
+  }
+
+  if (((_flags & enableContendedPadding) != 0) != EnableContended) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with EnableContended = %s", cache_path, EnableContended ? "false" : "true");
+    return false;
+  }
+  if (((_flags & restrictContendedPadding) != 0) != RestrictContended) { 
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with RestrictContended = %s", cache_path, RestrictContended ? "false" : "true");
+    return false;
+  }
+  if (((_flags & useEmptySlotsInSupers) != 0) != UseEmptySlotsInSupers) { 
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with UseEmptySlotsInSupers = %s", cache_path, UseEmptySlotsInSupers ? "false" : "true");
+    return false;
+  }
+
+  if (_compressedOopShift != (uint)CompressedOops::shift()) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedOops::shift() = %d vs current %d", cache_path, _compressedOopShift, CompressedOops::shift());
+    return false;
+  }
+  if (_compressedKlassShift != (uint)CompressedKlassPointers::shift()) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedKlassPointers::shift() = %d vs current %d", cache_path, _compressedKlassShift, CompressedKlassPointers::shift());
+    return false;
+  }
+  if (_contendedPaddingWidth != (uint)ContendedPaddingWidth) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with ContendedPaddingWidth = %d vs current %d", cache_path, _contendedPaddingWidth, ContendedPaddingWidth);
+    return false;
+  }
+  if (_objectAlignment != (uint)ObjectAlignmentInBytes) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with ObjectAlignmentInBytes = %d vs current %d", cache_path, _objectAlignment, ObjectAlignmentInBytes);
+    return false;
+  }
+  return true;
+}
+
+bool SCCHeader::verify_config(const char* cache_path, uint load_size) const {
+  if (_version != SCC_VERSION) {
+    log_warning(scc, init)("Disable Startup Code Cache: different SCC version %d vs %d recorded in '%s'", SCC_VERSION, _version, cache_path);
+    return false;
+  }
+  if (_cache_size != load_size) {
+    log_warning(scc, init)("Disable Startup Code Cache: different cached code size %d vs %d recorded in '%s'", load_size, _cache_size, cache_path);
+    return false;
+  }
+  if (has_meta_ptrs() && !UseSharedSpaces) {
+    log_warning(scc, init)("Disable Startup Cached Code: '%s' contains metadata pointers but CDS is off", cache_path);
+    return false;
+  }
+  return true;
+}
+
 static volatile int _reading_nmethod = 0;
 
 class ReadingMark {
@@ -417,7 +544,6 @@ SCCache::~SCCache() {
   if (for_write()) { // Finalize cache
     finish_write();
   }
-
   FREE_C_HEAP_ARRAY(char, _cache_path);
   if (_C_load_buffer != nullptr) {
     FREE_C_HEAP_ARRAY(char, _C_load_buffer);
@@ -758,33 +884,36 @@ bool SCCache::finish_write() {
     return false;
   }
   uint strings_size = _write_position - strings_offset;
-  uint header_size = sizeof(SCCHeader);
 
   uint entries_count = 0; // Number of entrant (useful) code entries
   uint entries_offset = _write_position;
 
   uint store_count = _store_entries_cnt;
   if (store_count > 0) {
+    uint header_size = (uint)align_up(sizeof(SCCHeader),  DATA_ALIGNMENT);
+    const char* vm_version = VM_Version::internal_vm_info_string();
+    uint vm_version_size = (uint)align_up(strlen(vm_version) + 1, DATA_ALIGNMENT);
     uint load_count = (_load_header != nullptr) ? _load_header->entries_count() : 0;
     uint code_count = store_count + load_count;
     uint search_count = code_count * 2;
     uint search_size = search_count * sizeof(uint);
-    uint entries_size = code_count * sizeof(SCCEntry); // In bytes
+    uint entries_size = (uint)align_up(code_count * sizeof(SCCEntry), DATA_ALIGNMENT); // In bytes
     uint preload_entries_cnt = 0;
     uint* preload_entries = NEW_C_HEAP_ARRAY(uint, code_count, mtCode);
     uint preload_entries_size = code_count * sizeof(uint);
     // _write_position should include code and strings
     uint code_alignment = code_count * DATA_ALIGNMENT; // We align_up code size when storing it.
-    uint total_size = header_size +
-                      _write_position + _load_size + code_alignment +
-                      preload_entries_size + search_size +
-                      align_up(entries_size, DATA_ALIGNMENT);
+    uint total_size = _write_position + _load_size + header_size + vm_version_size +
+                     code_alignment + search_size + preload_entries_size + entries_size;
 
     // Create ordered search table for entries [id, index];
     uint* search = NEW_C_HEAP_ARRAY(uint, search_count, mtCode);
     char* buffer = NEW_C_HEAP_ARRAY(char, total_size + DATA_ALIGNMENT, mtCode);
     char* start = align_up(buffer, DATA_ALIGNMENT);
-    char* current = start + align_up(header_size, DATA_ALIGNMENT); // Skip header
+    char* current = start + header_size; // Skip header
+    uint jvm_version_offset = current - start;
+    copy_bytes(vm_version, (address)current, (uint)strlen(vm_version) + 1);
+    current += vm_version_size;
 
     SCCEntry* entries_address = _store_entries; // Pointer to latest entry
     uint not_entrant_nb = 0;
@@ -798,6 +927,11 @@ bool SCCache::finish_write() {
         if (_load_entries[i].not_entrant()) {
           log_info(scc, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
           not_entrant_nb++;
+          if (_load_entries[i].for_preload()) {
+            // Skip not entrant preload code:
+            // we can't pre-load code which may have failing dependencies.
+            continue;
+          }
           _load_entries[i].set_entrant(); // Reset
         } else if (_load_entries[i].for_preload() && _load_entries[i].method() != nullptr) {
           // record entrant first version code for pre-loading
@@ -832,6 +966,11 @@ bool SCCache::finish_write() {
       if (entries_address[i].not_entrant()) {
         log_info(scc, exit)("Not entrant new entry comp_id: %d, comp_level: %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s", entries_address[i].comp_id(), entries_address[i].comp_level(), entries_address[i].decompile(), entries_address[i].id(), (entries_address[i].has_clinit_barriers() ? ", has clinit barriers" : ""));
         not_entrant_nb++;
+        if (entries_address[i].for_preload()) {
+          // Skip not entrant preload code:
+          // we can't pre-load code which may have failing dependencies.
+          continue;
+        }
         entries_address[i].set_entrant(); // Reset
       } else if (entries_address[i].for_preload() && entries_address[i].method() != nullptr) {
         // record entrant first version code for pre-loading
@@ -901,12 +1040,11 @@ bool SCCache::finish_write() {
 
     // Finalize header
     SCCHeader* header = (SCCHeader*)start;
-    header->init(VM_Version::jvm_version(), size, (uint)strings_count, strings_offset,
+    header->init(jvm_version_offset, size,
+                 (uint)strings_count, strings_offset,
                  entries_count, new_entries_offset,
-                 preload_entries_cnt, preload_entries_offset);
-    if (_use_meta_ptrs) {
-      header->set_meta_ptrs();
-    }
+                 preload_entries_cnt, preload_entries_offset,
+                 _use_meta_ptrs);
     log_info(scc, init)("Wrote header to Startup Code Cache '%s'", _cache_path);
 
     // Now store to file
@@ -2532,7 +2670,7 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
     ResourceMark rm;
     methodHandle method(THREAD, target->get_Method());
     const char* target_name = method->name_and_sig_as_C_string();
-    uint hash = java_lang_String::hash_code((const jbyte*)target_name, strlen(target_name));
+    uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
     bool clinit_brs = entry->has_clinit_barriers();
     log_info(scc, nmethod)("%d (L%d): %s nmethod '%s' (decomp: %d, hash: " UINT32_FORMAT_X_0 "%s)",
                            task->compile_id(), task->comp_level(), (preload ? "Preloading" : "Reading"),
@@ -2828,7 +2966,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
     if (n != name_size) {
       return nullptr;
     }
-    hash = java_lang_String::hash_code((const jbyte*)name, strlen(name));
+    hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
   }
 
   if (!cache->align_write()) {
@@ -3511,7 +3649,7 @@ int SCAddressTable::id_for_C_string(address str) {
         return id; // Found recorded
       }
       // Search for the same string content
-      int len = strlen((const char*)str);
+      int len = (int)strlen((const char*)str);
       int hash = java_lang_String::hash_code((const jbyte*)str, len);
       for (int j = 0; j < _C_strings_used; j++) {
         if ((_C_strings_len[j] == len) && (_C_strings_hash[j] == hash)) {

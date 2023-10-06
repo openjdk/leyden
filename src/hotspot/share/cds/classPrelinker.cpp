@@ -24,16 +24,20 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/cdsProtectionDomain.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
+#include "classfile/dictionary.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
+#include "compiler/compilationPolicy.hpp"
 #include "gc/shared/gcVMOperations.hpp"
 #include "interpreter/bytecode.hpp"
 #include "interpreter/bytecodeStream.hpp"
@@ -45,6 +49,7 @@
 #include "oops/klass.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/vmOperations.hpp"
+#include "runtime/signature.hpp"
 
 ClassPrelinker::ClassesTable* ClassPrelinker::_processed_classes = nullptr;
 ClassPrelinker::ClassesTable* ClassPrelinker::_vm_classes = nullptr;
@@ -52,8 +57,8 @@ ClassPrelinker::ClassesTable* ClassPrelinker::_preloaded_classes = nullptr;
 ClassPrelinker::ClassesTable* ClassPrelinker::_platform_initiated_classes = nullptr;
 ClassPrelinker::ClassesTable* ClassPrelinker::_app_initiated_classes = nullptr;
 int ClassPrelinker::_num_vm_klasses = 0;
-bool ClassPrelinker::_record_java_base_only = true;
-bool ClassPrelinker::_preload_java_base_only = true;
+bool ClassPrelinker::_record_javabase_only = true;
+bool ClassPrelinker::_preload_javabase_only = true;
 ClassPrelinker::PreloadedKlasses ClassPrelinker::_static_preloaded_klasses;
 ClassPrelinker::PreloadedKlasses ClassPrelinker::_dynamic_preloaded_klasses;
 
@@ -99,12 +104,16 @@ void ClassPrelinker::initialize() {
     add_preloaded_klasses(_static_preloaded_klasses._platform);
     add_preloaded_klasses(_static_preloaded_klasses._app);
 
-    // These initiated classes are already recorded in the static archive. There's no need to
-    // record them again for the dynamic archive.
-    bool need_to_record = false;
-    add_initiated_klasses(_platform_initiated_classes, _static_preloaded_klasses._platform_initiated, need_to_record);
-    add_initiated_klasses(_app_initiated_classes, _static_preloaded_klasses._app_initiated, need_to_record);
+    add_unrecorded_initiated_klasses(_platform_initiated_classes, _static_preloaded_klasses._platform_initiated);
+    add_unrecorded_initiated_klasses(_app_initiated_classes, _static_preloaded_klasses._app_initiated);
   }
+
+  // Record all the initiated classes that we used during dump time. This covers the verification constraints and
+  // (resolved) class loader constraints.
+  add_initiated_klasses_for_loader(ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_platform_loader()),
+                                   "platform", _platform_initiated_classes);
+  add_initiated_klasses_for_loader(ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_system_loader()),
+                                   "app", _app_initiated_classes);
 }
 
 void ClassPrelinker::add_preloaded_klasses(Array<InstanceKlass*>* klasses) {
@@ -114,40 +123,79 @@ void ClassPrelinker::add_preloaded_klasses(Array<InstanceKlass*>* klasses) {
   }
 }
 
-void ClassPrelinker::add_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses, bool need_to_record) {
+void ClassPrelinker::add_unrecorded_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses) {
+  // These initiated classes are already recorded in the static archive. There's no need to
+  // record them again for the dynamic archive.
+  assert(DynamicDumpSharedSpaces, "must be");
+  bool need_to_record = false;
   for (int i = 0; i < klasses->length(); i++) {
     InstanceKlass* ik = klasses->at(i);
     table->put_when_absent(ik, need_to_record);
   }
 }
 
+void ClassPrelinker::add_extra_initiated_klasses(PreloadedKlasses* table) {
+  if (table->_app->length() > 0) {
+    // Add all public classes in boot/platform to the app loader. This speeds up
+    // Class.forName() opertaions in frameworks like spring.
+    GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
+    for (GrowableArrayIterator<Klass*> it = klasses->begin(); it != klasses->end(); ++it) {
+      Klass* k = *it;
+      if (k->is_instance_klass()) {
+        InstanceKlass* ik = InstanceKlass::cast(k);
+        if (ik->is_public() && (ik->is_shared_boot_class() || ik->is_shared_platform_class())) {
+          add_initiated_klass(_app_initiated_classes, "app", ik);
+        }
+      }
+    }
+  }
+}
+
+class ClassPrelinker::RecordInitiatedClassesClosure : public KlassClosure {
+  ClassLoaderData* _loader_data;
+  const char* _loader_name;
+  ClassesTable* _table;
+ public:
+  RecordInitiatedClassesClosure(ClassLoaderData* loader_data, const char* loader_name, ClassesTable* table) :
+    _loader_data(loader_data), _loader_name(loader_name), _table(table) {}
+  virtual void do_klass(Klass* k) {
+    if (k->is_instance_klass() && k->class_loader_data() != _loader_data) {
+      add_initiated_klass(_table, _loader_name, InstanceKlass::cast(k));
+    }
+  }
+};
+
+void ClassPrelinker::add_initiated_klasses_for_loader(ClassLoaderData* loader_data, const char* loader_name, ClassesTable* table) {
+  if (loader_data != nullptr) {
+    MonitorLocker mu1(SystemDictionary_lock);
+    RecordInitiatedClassesClosure mk(loader_data, loader_name, table);  
+    loader_data->dictionary()->all_entries_do(&mk);
+  }
+}
+
 // ik has a reference to target:
 //    - target is a declared supertype of ik, or
 //    - one of the constant pool entries in ik references target
-void ClassPrelinker::maybe_add_initiated_klass(InstanceKlass* ik, InstanceKlass* target) {
-  if (ik->class_loader_data() == target->class_loader_data()) {
+void ClassPrelinker::add_initiated_klass(InstanceKlass* ik, InstanceKlass* target) {
+  if (ik->shared_class_loader_type() == target->shared_class_loader_type()) {
     return;
   }
 
-  ClassesTable* initiated_classes = nullptr;
-  const char* loader_name = nullptr;
   if (SystemDictionary::is_platform_class_loader(ik->class_loader())) {
-    loader_name = "platform";
-    initiated_classes = _platform_initiated_classes;
+    add_initiated_klass(_platform_initiated_classes, "platform", target);
   } else {
     assert(SystemDictionary::is_system_class_loader(ik->class_loader()), "must be");
-    loader_name = "app";
-    initiated_classes = _app_initiated_classes;
+    add_initiated_klass(_app_initiated_classes, "app", target);
   }
+}
 
-  if (initiated_classes != nullptr) {
-    bool need_to_record = true;
-    bool created;
-    initiated_classes->put_if_absent(target, need_to_record, &created);
-    if (created && log_is_enabled(Trace, cds, resolve)) {
-      ResourceMark rm;
-      log_trace(cds, resolve)("%s loader initiated %s -> %s", loader_name, ik->external_name(), target->external_name());
-    }
+void ClassPrelinker::add_initiated_klass(ClassesTable* initiated_classes, const char* loader_name, InstanceKlass* target) {
+  bool need_to_record = true;
+  bool created;
+  initiated_classes->put_if_absent(target, need_to_record, &created);
+  if (created && log_is_enabled(Trace, cds, resolve)) {
+    ResourceMark rm;
+    log_trace(cds, resolve)("%s loader initiated %s", loader_name, target->external_name());
   }
 }
 
@@ -206,10 +254,10 @@ bool ClassPrelinker::can_archive_resolved_klass(InstanceKlass* cp_holder, Klass*
       return is_vm_class(ik);
     } else if (is_preloaded_class(ik)) {
       if (cp_holder->is_shared_platform_class()) {
-        maybe_add_initiated_klass(cp_holder, ik);
+        add_initiated_klass(cp_holder, ik);
         return true;
       } else if (cp_holder->is_shared_app_class()) {
-        maybe_add_initiated_klass(cp_holder, ik);
+        add_initiated_klass(cp_holder, ik);
         return true;
       } else if (cp_holder->is_shared_boot_class()) {
         assert(ik->class_loader() == nullptr, "a boot class can reference only boot classes");
@@ -310,7 +358,7 @@ void ClassPrelinker::dumptime_resolve_constants(InstanceKlass* ik, TRAPS) {
 }
 
 // This works only for the boot/platform/app loaders
-Klass* ClassPrelinker::find_loaded_class(JavaThread* current, oop class_loader, Symbol* name) {
+Klass* ClassPrelinker::find_loaded_class(Thread* current, oop class_loader, Symbol* name) {
   HandleMark hm(current);
   Handle h_loader(current, class_loader);
   Klass* k = SystemDictionary::find_instance_or_array_klass(current, name,
@@ -333,7 +381,7 @@ Klass* ClassPrelinker::find_loaded_class(JavaThread* current, oop class_loader, 
   return nullptr;
 }
 
-Klass* ClassPrelinker::find_loaded_class(JavaThread* current, ConstantPool* cp, int class_cp_index) {
+Klass* ClassPrelinker::find_loaded_class(Thread* current, ConstantPool* cp, int class_cp_index) {
   Symbol* name = cp->klass_name_at(class_cp_index);
   return find_loaded_class(current, cp->pool_holder()->class_loader(), name);
 }
@@ -517,9 +565,9 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
   if (!ArchiveInvokeDynamic || cp->cache() == nullptr) {
     return;
   }
+
   assert(preresolve_list != nullptr, "preresolve_indy_cp_entries() should not be called for "
          "regenerated LambdaForm Invoker classes, which should not have indys anyway.");
-
 
   Array<ResolvedIndyEntry>* indy_entries = cp->cache()->resolved_indy_entries();
   for (int i = 0; i < indy_entries->length(); i++) {
@@ -532,7 +580,7 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
     }
     if (preresolve_list->at(cp_index) == true) {
       if (!rie->is_resolved()) {
-        if (should_preresolve_invokedynamic(cp(), cp_index)) {
+        if (is_indy_archivable(cp(), cp_index)) {
           InterpreterRuntime::cds_resolve_invokedynamic(ConstantPool::encode_invokedynamic_index(i), cp, THREAD);
           if (HAS_PENDING_EXCEPTION) {
             if (log.is_enabled()) {
@@ -555,7 +603,7 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
         if (log.is_enabled()) {
           log.print("already resolved");
         }
-      }
+      } 
     } else {
       if (log.is_enabled()) {
         log.print("disabled");
@@ -569,8 +617,31 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
 
 static GrowableArrayCHeap<char*, mtClassShared>* _invokedynamic_filter = nullptr;
 
-bool ClassPrelinker::should_preresolve_invokedynamic(ConstantPool* cp, int cp_index) {
+static bool has_clinit(InstanceKlass* ik) {
+  if (ik->class_initializer() != nullptr) {
+    return true;
+  }
+  InstanceKlass* super = ik->java_super();
+  if (super != nullptr && has_clinit(super)) {
+    return true;
+  }
+  Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+  int num_interfaces = interfaces->length();
+  for (int index = 0; index < num_interfaces; index++) {
+    InstanceKlass* intf = interfaces->at(index);
+    if (has_clinit(intf)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ClassPrelinker::is_indy_archivable(ConstantPool* cp, int cp_index) {
   if (!ArchiveInvokeDynamic || !HeapShared::can_write()) {
+    return false;
+  }
+
+  if (!SystemDictionaryShared::is_builtin(cp->pool_holder())) {
     return false;
   }
 
@@ -580,16 +651,40 @@ bool ClassPrelinker::should_preresolve_invokedynamic(ConstantPool* cp, int cp_in
   Symbol* bsm_signature = cp->uncached_signature_ref_at(bsm_ref);
   Symbol* bsm_klass = cp->klass_name_at(cp->uncached_klass_ref_index_at(bsm_ref));
 
+  // We currently support only string concat and LambdaMetafactory::metafactory()
+
   if (bsm_klass->equals("java/lang/invoke/StringConcatFactory") &&
       bsm_name->equals("makeConcatWithConstants")) {
-    // Support string concact for now
     return true;
   }
 
   if (bsm_klass->equals("java/lang/invoke/LambdaMetafactory") &&
       ((bsm_name->equals("metafactory")    && bsm_signature->equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;")) ||
        (bsm_name->equals("altMetafactory") && bsm_signature->equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;")))) {
-    // Support only string concact for now
+    SignatureStream ss(cp->uncached_signature_ref_at(cp_index));
+    ss.skip_to_return_type();
+    Symbol* type = ss.as_symbol(); // This is the interface type implemented by the lambda proxy
+    InstanceKlass* holder = cp->pool_holder();
+    Klass* k = find_loaded_class(Thread::current(), holder->class_loader(), type);
+    if (k == nullptr) {
+      return false;
+    }
+    if (!k->is_interface()) {
+      // Might be a class not generated by javac
+      return false;
+    }
+
+    if (has_clinit(InstanceKlass::cast(k))) {
+      // We initialize the class of the archived lambda proxy at VM start-up, which will also initialize
+      // the interface that it implements. If that interface has a clinit method, we can potentially
+      // change program execution order. See test/hotspot/jtreg/runtime/cds/appcds/indy/IndyMiscTests.java
+      if (log_is_enabled(Debug, cds, resolve)) {
+        ResourceMark rm;
+        log_debug(cds, resolve)("Cannot resolve Lambda proxy of interface type %s", k->external_name());
+      }
+      return false;
+    }
+
     return true;
   }
 
@@ -639,19 +734,23 @@ bool ClassPrelinker::is_in_archivebuilder_buffer(address p) {
 }
 #endif
 
+bool ClassPrelinker::is_in_javabase(InstanceKlass* ik) {
+  if (ik->is_hidden() && HeapShared::is_lambda_form_klass(ik)) {
+    return true;
+  }
+
+  return (ik->module() != nullptr &&
+          ik->module()->name() != nullptr &&
+          ik->module()->name()->equals("java.base"));
+}
+
 class ClassPrelinker::PreloadedKlassRecorder : StackObj {
   int _loader_type;
   ResourceHashtable<InstanceKlass*, bool, 15889, AnyObj::RESOURCE_AREA, mtClassShared> _seen_klasses;
   GrowableArray<InstanceKlass*> _list;
-  bool loader_type_matches(InstanceKlass* k) {
-    switch (_loader_type) {
-    case ClassLoader::BOOT_LOADER:     return k->is_shared_boot_class();
-    case ClassLoader::PLATFORM_LOADER: return k->is_shared_platform_class();
-    case ClassLoader::APP_LOADER:      return k->is_shared_app_class();
-    default:
-      ShouldNotReachHere();
-      return false;
-    }
+  bool loader_type_matches(InstanceKlass* ik) {
+    InstanceKlass* buffered_ik = ArchiveBuilder::current()->get_buffered_addr(ik);
+    return buffered_ik->shared_class_loader_type() == _loader_type;
   }
 
   void maybe_record(InstanceKlass* ik) {
@@ -662,6 +761,14 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
       return;
     }
 
+    if (ik->is_hidden()) {
+      assert(ik->shared_class_loader_type() != ClassLoader::OTHER, "must have been set");
+      if (!CDSConfig::is_dumping_invokedynamic()) {
+        return;
+      }
+      assert(HeapShared::is_lambda_form_klass(ik) || HeapShared::is_lambda_proxy_klass(ik), "must be");
+    }
+
     if (ClassPrelinker::is_vm_class(ik)) {
       // vmClasses are loaded in vmClasses::resolve_all() at the very beginning
       // of VM bootstrap, before ClassPrelinker::runtime_preload() is called.
@@ -669,16 +776,9 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
     }
 
     if (_loader_type == ClassLoader::BOOT_LOADER) {
-      bool is_java_base = (ik->module() != nullptr &&
-                           ik->module()->name() != nullptr &&
-                           ik->module()->name()->equals("java.base"));
-      if (_record_java_base_only != is_java_base) {
+      if (_record_javabase_only != is_in_javabase(ik)) {
         return;
       }
-    }
-
-    if (ik->is_hidden()) {
-      return;
     }
 
     if (!loader_type_matches(ik)) {
@@ -692,19 +792,21 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
       }
     }
 
-    // Do not preload any module classes that are not from the modules images,
-    // since such classes may not be loadable at runtime
-    int scp_index = ik->shared_classpath_index();
-    assert(scp_index >= 0, "must be");
-    SharedClassPathEntry* scp_entry = FileMapInfo::shared_path(scp_index);
-    if (scp_entry->in_named_module() && !scp_entry->is_modules_image()) {
-      return;
+    if (!ik->is_hidden()) {
+      // Do not preload any module classes that are not from the modules images,
+      // since such classes may not be loadable at runtime
+      int scp_index = ik->shared_classpath_index();
+      assert(scp_index >= 0, "must be");
+      SharedClassPathEntry* scp_entry = FileMapInfo::shared_path(scp_index);
+      if (scp_entry->in_named_module() && !scp_entry->is_modules_image()) {
+        return;
+      }
     }
 
     InstanceKlass* s = ik->java_super();
     if (s != nullptr) {
       maybe_record(s);
-      maybe_add_initiated_klass(ik, s);
+      add_initiated_klass(ik, s);
     }
 
     Array<InstanceKlass*>* interfaces = ik->local_interfaces();
@@ -712,7 +814,7 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
     for (int index = 0; index < num_interfaces; index++) {
       InstanceKlass* intf = interfaces->at(index);
       maybe_record(intf);
-      maybe_add_initiated_klass(ik, intf);
+      add_initiated_klass(ik, intf);
     }
 
     _list.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
@@ -722,7 +824,7 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
       ResourceMark rm;
       const char* loader_name;
       if (_loader_type  == ClassLoader::BOOT_LOADER) {
-        if (_record_java_base_only) {
+        if (_record_javabase_only) {
           loader_name = "boot ";
         } else {
           loader_name = "boot2";
@@ -752,7 +854,7 @@ public:
   }
 
   Array<InstanceKlass*>* to_array() {
-    return archive_klass_array(&_list);
+    return ArchiveUtils::archive_array(&_list);
   }
 };
 
@@ -767,31 +869,16 @@ void ClassPrelinker::record_preloaded_klasses(bool is_static_archive) {
   if (PreloadSharedClasses) {
     PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_klasses : &_dynamic_preloaded_klasses;
 
-    _record_java_base_only = true;
+    _record_javabase_only = true;
     table->_boot     = record_preloaded_klasses(ClassLoader::BOOT_LOADER);
-    _record_java_base_only = false;
+    _record_javabase_only = false;
     table->_boot2    = record_preloaded_klasses(ClassLoader::BOOT_LOADER);
 
     table->_platform = record_preloaded_klasses(ClassLoader::PLATFORM_LOADER);
     table->_app      = record_preloaded_klasses(ClassLoader::APP_LOADER);
+
+    add_extra_initiated_klasses(table);
   }
-}
-
-template <typename T>
-Array<T>* archive_array(GrowableArray<T>* tmp_array) {
-  Array<T>* archived_array = ArchiveBuilder::new_ro_array<T>(tmp_array->length());
-  for (int i = 0; i < tmp_array->length(); i++) {
-    archived_array->at_put(i, tmp_array->at(i));
-    if (std::is_pointer<T>::value) {
-      ArchivePtrMarker::mark_pointer(archived_array->adr_at(i));
-    }
-  }
-
-  return archived_array;
-}
-
-Array<InstanceKlass*>* ClassPrelinker::archive_klass_array(GrowableArray<InstanceKlass*>* tmp_array) {
-  return archive_array(tmp_array);
 }
 
 Array<InstanceKlass*>* ClassPrelinker::record_initiated_klasses(ClassesTable* table) {
@@ -802,7 +889,14 @@ Array<InstanceKlass*>* ClassPrelinker::record_initiated_klasses(ClassesTable* ta
     if (!need_to_record) {
       return;
     }
-    tmp_array.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
+
+    if (CDSConfig::is_dumping_final_static_archive() || !ik->is_shared()) {
+      if (SystemDictionaryShared::is_excluded_class(ik)) {
+        return;
+      }
+      ik = (InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik);
+    }
+    tmp_array.append(ik);
     if (log_is_enabled(Info, cds, preload)) {
       ResourceMark rm;
       const char* loader_name;
@@ -816,7 +910,7 @@ Array<InstanceKlass*>* ClassPrelinker::record_initiated_klasses(ClassesTable* ta
   };
   table->iterate_all(collector);
 
-  return archive_klass_array(&tmp_array);
+  return ArchiveUtils::archive_array(&tmp_array);
 }
 
 void ClassPrelinker::record_initiated_klasses(bool is_static_archive) {
@@ -854,7 +948,7 @@ void ClassPrelinker::record_resolved_indys() {
 
       if (indices.length() > 0) {
         tmp_klasses.append(ArchiveBuilder::current()->get_buffered_addr(ik));
-        tmp_cp_index_lists.append(archive_array(&indices));
+        tmp_cp_index_lists.append(ArchiveUtils::archive_array(&indices));
         total_indys_to_resolve += indices.length();
       }
     }
@@ -862,10 +956,71 @@ void ClassPrelinker::record_resolved_indys() {
 
   assert(tmp_klasses.length() == tmp_cp_index_lists.length(), "must be");
   if (tmp_klasses.length() > 0) {
-    _klasses_for_indy_resolution = archive_array(&tmp_klasses);
-    _cp_index_lists_for_indy_resolution = archive_array(&tmp_cp_index_lists);
+    _klasses_for_indy_resolution = ArchiveUtils::archive_array(&tmp_klasses);
+    _cp_index_lists_for_indy_resolution = ArchiveUtils::archive_array(&tmp_cp_index_lists);
   }
   log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_klasses.length());
+}
+
+// Warning -- this is fragile!!!
+// This is a hard-coded list of classes that are safely to preinitialize at dump time. It needs
+// to be updated if the Java source code changes.
+class ForcePreinitClosure : public CLDClosure {
+public:
+  void do_cld(ClassLoaderData* cld) {
+    static const char* forced_preinit_classes[] = {
+      "java/util/HexFormat",
+      "jdk/internal/util/ClassFileDumper",
+      "java/lang/reflect/ClassFileFormatVersion",
+      "java/lang/Character$CharacterCache",
+      "java/lang/invoke/Invokers",
+      "java/lang/invoke/Invokers$Holder",
+      "java/lang/invoke/MethodHandle",
+      "java/lang/invoke/MethodHandleStatics",
+      "java/lang/invoke/DelegatingMethodHandle",
+      "java/lang/invoke/DelegatingMethodHandle$Holder",
+      "java/lang/invoke/LambdaForm",
+      "java/lang/invoke/LambdaForm$NamedFunction",
+      "java/lang/invoke/ClassSpecializer",
+      "java/lang/invoke/DirectMethodHandle",
+      "java/lang/invoke/DirectMethodHandle$Holder",
+      "java/lang/invoke/BoundMethodHandle$Specializer",
+      "java/lang/invoke/MethodHandles$Lookup",
+
+    // TODO -- need to clear internTable, etc
+    //"java/lang/invoke/MethodType",
+
+    // TODO -- these need to link to native code
+    //"java/lang/invoke/BoundMethodHandle",
+    //"java/lang/invoke/BoundMethodHandle$Holder",
+    //"java/lang/invoke/MemberName",
+    //"java/lang/invoke/MethodHandleNatives",
+      nullptr
+    };
+    for (Klass* k = cld->klasses(); k != nullptr; k = k->next_link()) {
+      if (k->is_instance_klass()) {
+        for (const char** classes = forced_preinit_classes; *classes != nullptr; classes++) {
+          const char* class_name = *classes;
+          if (k->name()->equals(class_name)) {
+            ResourceMark rm;
+            log_info(cds, init)("Force initialization %s", k->external_name());
+            SystemDictionaryShared::force_preinit(InstanceKlass::cast(k));
+          }
+        }
+      }
+    }
+  }
+};
+
+void ClassPrelinker::setup_forced_preinit_classes() {
+  if (!ArchiveInvokeDynamic) {
+    return;
+  }
+
+  // Collect all loaded ClassLoaderData.
+  ForcePreinitClosure closure;
+  MutexLocker lock(ClassLoaderDataGraph_lock);
+  ClassLoaderDataGraph::loaded_cld_do(&closure);
 }
 
 // Initialize a class at dump time, if possible.
@@ -915,6 +1070,26 @@ void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {
     soc->do_ptr((void**)&_klasses_for_indy_resolution);
     soc->do_ptr((void**)&_cp_index_lists_for_indy_resolution);
   }
+
+  if (table->_boot != nullptr && table->_boot->length() > 0) {
+    CDSConfig::set_has_preloaded_classes();
+  }
+}
+
+int ClassPrelinker::num_platform_initiated_classes() {
+  if (PreloadSharedClasses) {
+    PreloadedKlasses* table = CDSConfig::is_dumping_dynamic_archive() ? &_dynamic_preloaded_klasses : &_static_preloaded_klasses;
+    return table->_platform_initiated->length();
+  }
+  return 0;
+}
+
+int ClassPrelinker::num_app_initiated_classes() {
+  if (PreloadSharedClasses) {
+    PreloadedKlasses* table = CDSConfig::is_dumping_dynamic_archive() ? &_dynamic_preloaded_klasses : &_static_preloaded_klasses;
+    return table->_app_initiated->length();
+  }
+  return 0;
 }
 
 volatile bool _class_preloading_finished = false;
@@ -961,18 +1136,10 @@ void ClassPrelinker::runtime_preload(JavaThread* current, Handle loader) {
     if (!current->has_pending_exception()) {
       runtime_preload(&_dynamic_preloaded_klasses, loader, current);
     }
-    _preload_java_base_only = false;
+    _preload_javabase_only = false;
 
     if (loader() != nullptr && loader() == SystemDictionary::java_system_loader()) {
       Atomic::release_store(&_class_preloading_finished, true);
-    }
-
-    if (!ModuleEntryTable::javabase_defined()) {
-      // For boot phase 1, init_archived_lambda_proxy_classes() is called some time
-      // after ClassPrelinker::runtime_preload().
-    } else {
-      // Exceptions are caughted by ExceptionMark.
-      SystemDictionaryShared::init_archived_lambda_proxy_classes(loader, current);
     }
   }
 
@@ -1003,7 +1170,7 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
   // ResourceMark is missing in the code below due to JDK-8307315
   ResourceMark rm(THREAD);
   if (loader() == nullptr) {
-    if (_preload_java_base_only) {
+    if (_preload_javabase_only) {
       loader_name = "boot ";
       preloaded_klasses = table->_boot;
     } else {
@@ -1046,23 +1213,27 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
                                ik->is_loaded() ? " (already loaded)" : "");
       }
       if (!ik->is_loaded()) {
-        InstanceKlass* actual;
-        if (loader() == nullptr) {
-          actual = SystemDictionary::load_instance_class(ik->name(), loader, CHECK);
+        if (ik->is_hidden()) {
+          preload_archived_hidden_class(loader, ik, loader_name, CHECK);
         } else {
-          // Note: we are not adding the locker objects into java.lang.ClassLoader::parallelLockMap, but
-          // that should be harmless.
-          actual = SystemDictionaryShared::find_or_load_shared_class(ik->name(), loader, CHECK);
-        }
+          InstanceKlass* actual;
+          if (loader() == nullptr) {
+            actual = SystemDictionary::load_instance_class(ik->name(), loader, CHECK);
+          } else {
+            // Note: we are not adding the locker objects into java.lang.ClassLoader::parallelLockMap, but
+            // that should be harmless.
+            actual = SystemDictionaryShared::find_or_load_shared_class(ik->name(), loader, CHECK);
+          }
 
-        if (actual != ik) {
-          jvmti_agent_error(ik, actual, "preloaded");
+          if (actual != ik) {
+            jvmti_agent_error(ik, actual, "preloaded");
+          }
+          assert(actual->is_loaded(), "must be");
         }
-        assert(actual->is_loaded(), "must be");
       }
     }
 
-    if (!_preload_java_base_only) {
+    if (!_preload_javabase_only) {
       // The java.base classes needs to wait till ClassPrelinker::init_javabase_preloaded_classes()
       for (int i = 0; i < preloaded_klasses->length(); i++) {
         InstanceKlass* ik = preloaded_klasses->at(i);
@@ -1082,6 +1253,28 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
 #endif
 }
 
+void ClassPrelinker::preload_archived_hidden_class(Handle class_loader, InstanceKlass* ik,
+                                                   const char* loader_name, TRAPS) {
+  DEBUG_ONLY({
+      assert(ik->super() == vmClasses::Object_klass(), "must be");
+      for (int i = 0; i < ik->local_interfaces()->length(); i++) {
+        assert(ik->local_interfaces()->at(i)->is_loaded(), "must be");
+      }
+    });
+
+  ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(class_loader());
+  if (class_loader() == nullptr) {
+    ik->restore_unshareable_info(loader_data, Handle(), NULL, CHECK);
+  } else {
+    PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
+    Handle protection_domain =
+        CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK);
+    ik->restore_unshareable_info(loader_data, protection_domain, pkg_entry, CHECK);
+  }
+  SystemDictionary::load_shared_class_misc(ik, loader_data);
+  ik->add_to_hierarchy(THREAD);
+}
+
 void ClassPrelinker::init_javabase_preloaded_classes(TRAPS) {
   Array<InstanceKlass*>* preloaded_klasses = _static_preloaded_klasses._boot;
   if (preloaded_klasses != nullptr) {
@@ -1089,6 +1282,22 @@ void ClassPrelinker::init_javabase_preloaded_classes(TRAPS) {
       InstanceKlass* ik = preloaded_klasses->at(i);
       if (ik->has_preinitialized_mirror()) {
         ik->initialize_from_cds(CHECK);
+      }
+    }
+  }
+}
+
+void ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(TRAPS) {
+  Array<InstanceKlass*>* preloaded_klasses = _static_preloaded_klasses._boot;
+  if (preloaded_klasses != nullptr) {
+    for (int i = 0; i < preloaded_klasses->length(); i++) {
+      InstanceKlass* ik = preloaded_klasses->at(i);
+      if (ik->is_initialized()) {
+        if (log_is_enabled(Debug, cds, init)) {
+          ResourceMark rm;
+          log_debug(cds, init)("replay training %s", ik->external_name());
+        }
+        CompilationPolicy::replay_training_at_init(ik, CHECK);
       }
     }
   }

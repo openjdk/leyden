@@ -163,7 +163,7 @@ ciMethod::ciMethod(const methodHandle& h_m, ciInstanceKlass* holder) :
   }
   DirectiveSet* directives = DirectivesStack::getMatchingDirective(h_m, CURRENT_ENV->task()->compiler());
   ccstrlist bci_list = directives->TooManyTrapsAtBCIOption;
-  int len = strlen(bci_list);
+  int len = (int)strlen(bci_list);
   Arena* arena = CURRENT_ENV->arena();
   _has_trap_at_bci = new (arena) GrowableArray<int>(arena, 2, 0, 0);
   for (int i = 0; i < len; i++) {

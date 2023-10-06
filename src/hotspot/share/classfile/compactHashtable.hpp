@@ -204,13 +204,6 @@ protected:
   u4* _entries;
 
 public:
-  struct States {
-    u4  _bucket_count;
-    u4  _entry_count;
-    u4* _buckets;
-    u4* _entries;
-  };
-
   SimpleCompactHashtable() {
     _entry_count = 0;
     _bucket_count = 0;
@@ -218,25 +211,11 @@ public:
     _entries = 0;
   }
 
-  void reset(States* saved_states = nullptr) {
-    if (saved_states != nullptr) {
-      saved_states->_bucket_count = _bucket_count;
-      saved_states->_entry_count = _entry_count;
-      saved_states->_buckets = _buckets;
-      saved_states->_entries = _entries;
-    }
-
+  void reset() {
     _bucket_count = 0;
     _entry_count = 0;
     _buckets = 0;
     _entries = 0;
-  }
-
-  void restore(States* saved_states) {
-    _bucket_count = saved_states->_bucket_count;
-    _entry_count = saved_states->_entry_count;
-    _buckets = saved_states->_buckets;
-    _entries = saved_states->_entries;
   }
 
   void init(address base_address, u4 entry_count, u4 bucket_count, u4* buckets, u4* entries);

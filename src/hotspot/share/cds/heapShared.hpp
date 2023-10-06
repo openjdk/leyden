@@ -293,9 +293,6 @@ private:
   static MetaspaceObjToOopHandleTable* _scratch_java_mirror_table;
   static MetaspaceObjToOopHandleTable* _scratch_references_table;
 
-  static ClassLoaderData* _saved_java_platform_loader_data;
-  static ClassLoaderData* _saved_java_system_loader_data;
-
   static void init_seen_objects_table() {
     assert(_seen_objects_table == nullptr, "must be");
     _seen_objects_table = new (mtClass)SeenObjectsTable();
@@ -420,7 +417,6 @@ private:
   static void init_scratch_objects(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_scratch_exceptions(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_box_classes(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
-  static void restore_loader_data() NOT_CDS_JAVA_HEAP_RETURN;
   static bool is_heap_region(int idx) {
     CDS_JAVA_HEAP_ONLY(return (idx == MetaspaceShared::hp);)
     NOT_CDS_JAVA_HEAP_RETURN_(false);

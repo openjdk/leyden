@@ -81,6 +81,7 @@ extern Monitor* MethodCompileQueue_lock;         // a lock held when method comp
 extern Monitor* CompileThread_lock;              // a lock held by compile threads during compilation system initialization
 extern Monitor* Compilation_lock;                // a lock used to pause compilation
 extern Mutex*   TrainingData_lock;               // a lock used when accessing training records
+extern Monitor* TrainingReplayQueue_lock;        // a lock held when class are added/removed to the training replay queue
 extern Mutex*   CompileTaskAlloc_lock;           // a lock held when CompileTasks are allocated
 extern Mutex*   CompileStatistics_lock;          // a lock held when updating compilation statistics
 extern Mutex*   DirectivesStack_lock;            // a lock held when mutating the dirstack and ref counting directives

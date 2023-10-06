@@ -40,7 +40,8 @@ public class IndyTestBase {
     static Pattern forceSkipPattern = null; // Force some tests to be disabled during development.
     static int testNumber = 0;
     static String appJar;
-    static OutputAnalyzer output = null;
+    static OutputAnalyzer output = null; // after test() returns, this is the output of the final run
+    static OutputAnalyzer staticDumpOutput = null;
     static String jtregTestCase = "testcase";
 
     // bits for runMode
@@ -145,8 +146,8 @@ public class IndyTestBase {
                        "-Xlog:cds+resolve=trace",
                        "-Xlog:cds,cds+class=debug")
             .setArchiveName(archiveName);
-        output = CDSTestUtils.createArchiveAndCheck(opts);
-        TestCommon.checkExecReturn(output, 0, true);
+        staticDumpOutput = CDSTestUtils.createArchiveAndCheck(opts);
+        TestCommon.checkExecReturn(staticDumpOutput, 0, true);
 
         if ((runMode & RUN_STATIC) != 0) {
             // Run with static archive

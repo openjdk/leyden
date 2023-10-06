@@ -30,6 +30,9 @@
 #include "utilities/macros.hpp"
 
 class CDSConfig : public AllStatic {
+  static bool      _enable_dumping_full_module_graph;
+  static bool      _enable_loading_full_module_graph;
+  static bool      _has_preloaded_classes;
 public:
   static bool      is_using_dumptime_tables();
   static bool      is_dumping_archive(); // dynamic or static archive
@@ -42,10 +45,13 @@ public:
   static bool      is_dumping_full_module_graph();
   static void disable_loading_full_module_graph(const char* reason = nullptr);
   static bool      is_loading_full_module_graph();
+  static bool      is_dumping_invokedynamic();
   static bool      is_dumping_cached_code();
   static void disable_dumping_cached_code();
   static void  enable_dumping_cached_code();
   static bool      is_initing_classes_at_dump_time();
+  static bool      has_preloaded_classes()     { return _has_preloaded_classes; }
+  static void      set_has_preloaded_classes() { _has_preloaded_classes = true; }
 };
 
 #endif // SHARE_CDS_CDSCONFIG_HPP

@@ -373,14 +373,9 @@ private:
 
   static bool is_registered_lambda_proxy_class(InstanceKlass* ik);
   static bool check_for_exclusion_impl(InstanceKlass* k);
-  static bool check_can_be_preinited(InstanceKlass* ik);
+  static bool check_can_be_preinited(InstanceKlass* ik, DumpTimeClassInfo* info);
   static bool has_non_default_static_fields(InstanceKlass* ik);
   static void remove_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
-  static void init_archived_hidden_classes(Handle class_loader, Array<InstanceKlass*>* classes,
-                                           const char* loader_name, TRAPS);
-  static void preload_archived_hidden_class(Handle class_loader, InstanceKlass* ik,
-                                            const char* loader_name, TRAPS);
-  static void init_archived_hidden_class(Handle class_loader, InstanceKlass* ik, TRAPS);
   static InstanceKlass* retrieve_lambda_proxy_class(const RunTimeLambdaProxyClassInfo* info) NOT_CDS_RETURN_(nullptr);
 
   DEBUG_ONLY(static bool _class_loading_may_happen;)
@@ -430,6 +425,7 @@ public:
 
   static void record_static_field_value(fieldDescriptor& fd) NOT_CDS_RETURN;
 
+  static void force_preinit(InstanceKlass* ik);
   static bool can_be_preinited(InstanceKlass* ik);
   static void reset_preinit_check();
 
@@ -483,7 +479,7 @@ public:
   static bool check_linking_constraints(Thread* current, InstanceKlass* klass) NOT_CDS_RETURN_(false);
   static void record_linking_constraint(Symbol* name, InstanceKlass* klass,
                                      Handle loader1, Handle loader2) NOT_CDS_RETURN;
-  static bool is_builtin(InstanceKlass* k) {
+  static bool is_builtin(const InstanceKlass* k) {
     return (k->shared_classpath_index() != UNREGISTERED_INDEX);
   }
   static bool add_unregistered_class(Thread* current, InstanceKlass* k);
@@ -512,10 +508,6 @@ public:
   static bool is_dumptime_table_empty() NOT_CDS_RETURN_(true);
   static bool is_supported_invokedynamic(BootstrapInfo* bsi) NOT_CDS_RETURN_(false);
   DEBUG_ONLY(static bool class_loading_may_happen() {return _class_loading_may_happen;})
-
-  static void record_archived_lambda_form_classes();
-  static void init_archived_lambda_form_classes(TRAPS);
-  static void init_archived_lambda_proxy_classes(Handle class_loader, TRAPS);
 
   static MethodData* lookup_method_data(Method* m) {
     const RunTimeMethodDataInfo* info = _dynamic_archive.lookup_method_info(m);

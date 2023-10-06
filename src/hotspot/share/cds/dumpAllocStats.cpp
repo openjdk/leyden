@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/classPrelinker.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "logging/log.hpp"
 #include "logging/logMessage.hpp"
@@ -114,4 +115,6 @@ void DumpAllocStats::print_stats(int ro_all, int rw_all) {
   msg.info("Indy   CP entries = %6d, archived = %6d (%5.1f%%)",
            _num_indy_cp_entries, _num_indy_cp_entries_archived,
            percent_of(_num_indy_cp_entries_archived, _num_indy_cp_entries));
+  msg.info("Platform loader initiated classes = %5d", ClassPrelinker::num_platform_initiated_classes());
+  msg.info("App      loader initiated classes = %5d", ClassPrelinker::num_app_initiated_classes());
 }

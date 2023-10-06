@@ -317,28 +317,30 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     }
   }
 
-  if (!k->is_linked()) {
-    if (has_class_failed_verification(k)) {
-      if (!ArchiveReflectionData) { // FIXME: !!! HACK !!!
-        return warn_excluded(k, "Failed verification");
+  if (!PreloadSharedClasses || !is_builtin(k)) {
+    if (!k->is_linked()) {
+      if (has_class_failed_verification(k)) {
+        if (!ArchiveReflectionData) { // FIXME: !!! HACK !!!
+          return warn_excluded(k, "Failed verification");
+        }
       }
-    }
-  } else {
-    if (!k->can_be_verified_at_dumptime()) {
-      // We have an old class that has been linked (e.g., it's been executed during
-      // dump time). This class has been verified using the old verifier, which
-      // doesn't save the verification constraints, so check_verification_constraints()
-      // won't work at runtime.
-      // As a result, we cannot store this class. It must be loaded and fully verified
-      // at runtime.
-      ResourceMark rm;
-      stringStream ss;
-      ss.print("Old class has been linked: version %d:%d", k->major_version(), k->minor_version());
-      if (k->is_hidden()) {
-        InstanceKlass* nest_host = k->nest_host_not_null();
-        ss.print(" (nest_host %d:%d)", nest_host->major_version(), nest_host->minor_version());
+    } else {
+      if (!k->can_be_verified_at_dumptime()) {
+        // We have an old class that has been linked (e.g., it's been executed during
+        // dump time). This class has been verified using the old verifier, which
+        // doesn't save the verification constraints, so check_verification_constraints()
+        // won't work at runtime.
+        // As a result, we cannot store this class. It must be loaded and fully verified
+        // at runtime.
+        ResourceMark rm;
+        stringStream ss;
+        ss.print("Old class has been linked: version %d:%d", k->major_version(), k->minor_version());
+        if (k->is_hidden()) {
+          InstanceKlass* nest_host = k->nest_host_not_null();
+          ss.print(" (nest_host %d:%d)", nest_host->major_version(), nest_host->minor_version());
+        }
+        return warn_excluded(k, "Old class has been linked");
       }
-      return warn_excluded(k, ss.freeze());
     }
   }
 
@@ -779,10 +781,7 @@ void SystemDictionaryShared::set_excluded(InstanceKlass* k) {
 void SystemDictionaryShared::set_class_has_failed_verification(InstanceKlass* ik) {
   Arguments::assert_is_dumping_archive();
   DumpTimeClassInfo* p = get_info(ik);
-  if (p != nullptr) {
-    // TEMP: work around JDK-8312427
-    p->set_failed_verification();
-  }
+  p->set_failed_verification();
 }
 
 bool SystemDictionaryShared::has_class_failed_verification(InstanceKlass* ik) {
@@ -828,6 +827,11 @@ bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbo
     // verified during dump time. No need to record constraints as k won't be included in the dynamic archive.
     return false;
   }
+  if (PreloadSharedClasses && is_builtin(k)) {
+    // There's no need to save verification constraints
+    return false;
+  }
+
   DumpTimeClassInfo* info = get_info(k);
   info->add_verification_constraint(k, name, from_name, from_field_is_protected,
                                     from_is_array, from_is_object);
@@ -1992,6 +1996,13 @@ void SystemDictionaryShared::reset_preinit_check() {
   _dumptime_table->iterate_all_live_classes(iterator);
 }
 
+// Called by ClassPrelinker before we get into VM_PopulateDumpSharedSpace
+void SystemDictionaryShared::force_preinit(InstanceKlass* ik) {
+  MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+  DumpTimeClassInfo* info = get_info_locked(ik);
+  info->force_preinit();
+}
+
 bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
   if (!CDSConfig::is_initing_classes_at_dump_time()) {
     return false;
@@ -2000,7 +2011,7 @@ bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
   assert_lock_strong(DumpTimeTable_lock);
   DumpTimeClassInfo* info = get_info_locked(ik);
   if (!info->has_done_preinit_check()) {
-    info->set_can_be_preinited(check_can_be_preinited(ik));
+    info->set_can_be_preinited(check_can_be_preinited(ik, info));
   }
   return info->can_be_preinited();
 }
@@ -2058,7 +2069,7 @@ bool SystemDictionaryShared::has_non_default_static_fields(InstanceKlass* ik) {
   return true;
 }
 
-bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik) {
+bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik, DumpTimeClassInfo* info) {
   ResourceMark rm;
 
   if (!is_builtin(ik)) {
@@ -2081,8 +2092,9 @@ bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik) {
     }
   }
 
-  if (!HeapShared::is_lambda_form_klass(ik)) {
-    // We allow only LambdaForm classes to have <clinit> and non-default static fields
+  if (HeapShared::is_lambda_form_klass(ik) || info->is_forced_preinit()) {
+    // We allow only these to have <clinit> and non-default static fields
+  } else {
     if (ik->class_initializer() != nullptr) {
       log_info(cds, init)("cannot initialize %s (has <clinit>)", ik->external_name());
       return false;
@@ -2095,6 +2107,7 @@ bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik) {
   return true;
 }
 
+#if 0
 static Array<InstanceKlass*>* copy_klass_array(GrowableArray<InstanceKlass*>* src) {
   Array<InstanceKlass*>* dst = ArchiveBuilder::new_ro_array<InstanceKlass*>(src->length());
   for (int i = 0; i < src->length(); i++) {
@@ -2102,143 +2115,7 @@ static Array<InstanceKlass*>* copy_klass_array(GrowableArray<InstanceKlass*>* sr
   }
   return dst;
 }
-
-void SystemDictionaryShared::record_archived_lambda_form_classes() {
-  if (!(ArchiveInvokeDynamic && CDSConfig::is_dumping_static_archive())) {
-    return;
-  }
-
-  GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
-  GrowableArray<InstanceKlass*> lf_list;
-  GrowableArray<InstanceKlass*> proxy_list_boot;
-  GrowableArray<InstanceKlass*> proxy_list_boot2;
-  GrowableArray<InstanceKlass*> proxy_list_platform;
-  GrowableArray<InstanceKlass*> proxy_list_app;
-
-  for (int i = 0; i < klasses->length(); i++) {
-    Klass* k = klasses->at(i);
-    //assert(ArchiveBuilder::current()->is_in_buffer_space(k), "must be");
-    if (k->is_instance_klass()) {
-      InstanceKlass* ik = InstanceKlass::cast(k);
-      if (HeapShared::is_lambda_form_klass(ik)) {
-        assert(ArchiveInvokeDynamic, "lambda form classes are archived only if ArchiveInvokeDynamic is true");
-        lf_list.append(ik);
-      } else if (HeapShared::is_lambda_proxy_klass(ik)) {
-        assert(ArchiveInvokeDynamic, "lambda proxy classes are archived only if ArchiveInvokeDynamic is true");
-        oop loader = ik->class_loader();
-        s2 classloader_type;
-
-        if (loader == nullptr) {
-          classloader_type = ClassLoader::BOOT_LOADER;
-          if (ik->module() == ModuleEntryTable::javabase_moduleEntry()) {
-            proxy_list_boot.append(ik);
-          } else {
-            proxy_list_boot2.append(ik);
-          }
-        } else if (SystemDictionary::is_platform_class_loader(loader)) {
-          classloader_type = ClassLoader::PLATFORM_LOADER;
-          proxy_list_platform.append(ik);
-        } else if (SystemDictionary::is_system_class_loader(loader)) {
-          classloader_type = ClassLoader::APP_LOADER;
-          proxy_list_app.append(ik);
-        } else {
-          guarantee(0, "ArchiveInvokeDynamic not supported for custom class loaders!");
-          classloader_type = ClassLoader::OTHER;
-        }
-
-        if (classloader_type != ClassLoader::OTHER) {
-          InstanceKlass* buffered_ik = ArchiveBuilder::current()->get_buffered_addr(ik);
-          buffered_ik->set_shared_class_loader_type(classloader_type);
-
-          InstanceKlass* nest_host = ik->nest_host_not_null();
-          buffered_ik->set_shared_classpath_index(nest_host->shared_classpath_index()); // HACK!
-        }
-      }
-    }
-  }
-
-  _archived_lambda_form_classes           = copy_klass_array(&lf_list);
-  _archived_lambda_proxy_classes_boot     = copy_klass_array(&proxy_list_boot);
-  _archived_lambda_proxy_classes_boot2    = copy_klass_array(&proxy_list_boot2);
-  _archived_lambda_proxy_classes_platform = copy_klass_array(&proxy_list_platform);
-  _archived_lambda_proxy_classes_app      = copy_klass_array(&proxy_list_app);
-}
-
-void SystemDictionaryShared::init_archived_lambda_form_classes(TRAPS) {
-  if (_archived_lambda_form_classes != nullptr) {
-    log_info(cds)("init_archived_lambda_form_classes: %d", _archived_lambda_form_classes->length());
-    init_archived_hidden_classes(Handle(), _archived_lambda_form_classes, "boot ", CHECK);
-  }
-}
-
-void SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle class_loader, TRAPS) {
-  static Array<InstanceKlass*>* classes;
-  const char* loader_name;
-  if (class_loader() == nullptr) {
-    if (!ModuleEntryTable::javabase_defined()) {
-      classes = _archived_lambda_proxy_classes_boot;
-      loader_name = "boot ";
-    } else {
-      classes = _archived_lambda_proxy_classes_boot2;
-      loader_name = "boot2";
-    }
-  } else if (SystemDictionary::is_platform_class_loader(class_loader())) {
-    loader_name = "plat ";
-    classes = _archived_lambda_proxy_classes_platform;
-  } else {
-    assert(SystemDictionary::is_system_class_loader(class_loader()), "must be");
-    loader_name = "app  ";
-    classes = _archived_lambda_proxy_classes_app;
-  }
-
-  if (classes != nullptr) {
-    log_info(cds)("init_archived_lambda_proxy_classes %s: %4d", loader_name, classes->length());
-    init_archived_hidden_classes(class_loader, classes, loader_name, CHECK);
-  }
-}
-
-void SystemDictionaryShared::init_archived_hidden_classes(Handle class_loader, Array<InstanceKlass*>* classes,
-                                                          const char* loader_name, TRAPS) {
-  for (int i = 0; i < classes->length(); i++) {
-    preload_archived_hidden_class(class_loader, classes->at(i), loader_name, CHECK);
-  }
-  for (int i = 0; i < classes->length(); i++) {
-    init_archived_hidden_class(class_loader, classes->at(i), CHECK);
-  }
-}
-
-void SystemDictionaryShared::preload_archived_hidden_class(Handle class_loader, InstanceKlass* ik,
-                                                           const char* loader_name, TRAPS) {
-  if (log_is_enabled(Info, cds, preload)) {
-    ResourceMark rm;
-    log_info(cds, preload)("%s %s", loader_name, ik->external_name());
-  }
-
-  DEBUG_ONLY({
-      assert(ik->super() == vmClasses::Object_klass(), "must be");
-      for (int i = 0; i < ik->local_interfaces()->length(); i++) {
-        assert(ik->local_interfaces()->at(i)->is_loaded(), "must be");
-      }
-    });
-
-  ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(class_loader());
-  if (class_loader() == nullptr) {
-    ik->restore_unshareable_info(loader_data, Handle(), NULL, CHECK);
-  } else {
-      PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
-      Handle protection_domain =
-        CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK);
-      ik->restore_unshareable_info(loader_data, protection_domain, pkg_entry, CHECK);
-  }
-  SystemDictionary::load_shared_class_misc(ik, loader_data);
-  ik->add_to_hierarchy(THREAD);
-}
-
-void SystemDictionaryShared::init_archived_hidden_class(Handle class_loader,
-                                                        InstanceKlass* ik, TRAPS) {
-  assert(ik->is_loaded(), "Must be in at least loaded state");
-  ik->initialize_from_cds(CHECK);
-}
+#endif
 
 void SystemDictionaryShared::cleanup_init_list() {
   assert_lock_strong(DumpTimeTable_lock);

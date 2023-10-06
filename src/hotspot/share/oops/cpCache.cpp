@@ -809,7 +809,7 @@ void ConstantPoolCache::remove_unshareable_info(const GrowableArray<bool>* keep_
       ResolvedIndyEntry *rei = resolved_indy_entry_at(i);
       int cp_index = rei->constant_pool_index();
       bool archived = false;
-      if (rei->is_resolved() && ClassPrelinker::should_preresolve_invokedynamic(cp, cp_index)) {
+      if (rei->is_resolved() && ClassPrelinker::ClassPrelinker::is_indy_archivable(src_cp, cp_index)) {
         if (log_is_enabled(Debug, cds, resolve)) {
           ResourceMark rm;
           int bsm = cp->bootstrap_method_ref_index_at(cp_index);

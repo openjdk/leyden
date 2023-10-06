@@ -64,8 +64,8 @@ class ClassPrelinker :  AllStatic {
   static ClassesTable* _platform_initiated_classes; // classes initiated but not loaded by platform loader
   static ClassesTable* _app_initiated_classes;      // classes initiated but not loaded by app loader
   static int _num_vm_klasses;
-  static bool _record_java_base_only;
-  static bool _preload_java_base_only;
+  static bool _record_javabase_only;
+  static bool _preload_javabase_only;
   struct PreloadedKlasses {
     Array<InstanceKlass*>* _boot;  // only java.base classes
     Array<InstanceKlass*>* _boot2; // boot classes in other modules
@@ -92,27 +92,33 @@ class ClassPrelinker :  AllStatic {
   static void resolve_string(constantPoolHandle cp, int cp_index, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static Klass* maybe_resolve_class(constantPoolHandle cp, int cp_index, TRAPS);
   static bool can_archive_resolved_klass(InstanceKlass* cp_holder, Klass* resolved_klass);
-  static Klass* find_loaded_class(JavaThread* current, oop class_loader, Symbol* name);
-  static Klass* find_loaded_class(JavaThread* current, ConstantPool* cp, int class_cp_index);
+  static Klass* find_loaded_class(Thread* current, oop class_loader, Symbol* name);
+  static Klass* find_loaded_class(Thread* current, ConstantPool* cp, int class_cp_index);
   static void add_preloaded_klasses(Array<InstanceKlass*>* klasses);
-  static void add_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses, bool need_to_record);
-  static void maybe_add_initiated_klass(InstanceKlass* ik, InstanceKlass* target);
-  static Array<InstanceKlass*>* archive_klass_array(GrowableArray<InstanceKlass*>* tmp_array);
+  static void add_unrecorded_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses);
+  static void add_extra_initiated_klasses(PreloadedKlasses* table);
+  static void add_initiated_klasses_for_loader(ClassLoaderData* loader_data, const char* loader_name, ClassesTable* table);
+  static void add_initiated_klass(InstanceKlass* ik, InstanceKlass* target);
+  static void add_initiated_klass(ClassesTable* initiated_classes, const char* loader_name, InstanceKlass* target);
   static Array<InstanceKlass*>* record_preloaded_klasses(int loader_type);
   static Array<InstanceKlass*>* record_initiated_klasses(ClassesTable* table);
   static void runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS);
+  static void preload_archived_hidden_class(Handle class_loader, InstanceKlass* ik,
+                                            const char* loader_name, TRAPS);
   static void jvmti_agent_error(InstanceKlass* expected, InstanceKlass* actual, const char* type);
 
   // fmi = FieldRef/MethodRef/InterfaceMethodRef
   static Klass* get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, int cp_index);
   static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
-
+  static bool is_in_javabase(InstanceKlass* ik);
   class RecordResolveIndysCLDClosure;
+  class RecordInitiatedClassesClosure;
 public:
   static void initialize();
   static void dispose();
 
+  static void setup_forced_preinit_classes();
   static void maybe_preinit_class(InstanceKlass* ik, TRAPS);
 
   static void preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
@@ -121,7 +127,7 @@ public:
   static void preresolve_invoker_class(JavaThread* current, InstanceKlass* ik);
   static void preresolve_indys_from_preimage(TRAPS);
 
-  static bool should_preresolve_invokedynamic(ConstantPool* cp, int cp_index);
+  static bool is_indy_archivable(ConstantPool* cp, int cp_index);
 
   // Is this class resolved as part of vmClasses::resolve_all()? If so, these
   // classes are guatanteed to be loaded at runtime (and cannot be replaced by JVMTI)
@@ -153,7 +159,11 @@ public:
 
   static void runtime_preload(JavaThread* current, Handle loader);
   static void init_javabase_preloaded_classes(TRAPS);
+  static void replay_training_at_init_for_javabase_preloaded_classes(TRAPS);
   static bool class_preloading_finished();
+
+  static int  num_platform_initiated_classes();
+  static int  num_app_initiated_classes();
 };
 
 #endif // SHARE_CDS_CLASSPRELINKER_HPP

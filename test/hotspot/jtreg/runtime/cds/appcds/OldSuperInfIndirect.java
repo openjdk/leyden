@@ -53,7 +53,8 @@ public class OldSuperInfIndirect {
         boolean dynamicMode = CDSTestUtils.DYNAMIC_DUMP;
 
         // create archive with class list
-        OutputAnalyzer output = TestCommon.dump(appJar, appClasses, "-Xlog:class+load,cds=debug,verification=trace");
+        OutputAnalyzer output = TestCommon.dump(appJar, appClasses, "-Xlog:class+load,cds=debug,verification=trace",
+                                                "-XX:-PreloadSharedClasses");
         TestCommon.checkExecReturn(output, 0,
                                    dynamicMode ? true : false,
                                    "Skipping OldInf: Old class has been linked",

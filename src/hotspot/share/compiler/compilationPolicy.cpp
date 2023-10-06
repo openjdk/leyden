@@ -62,6 +62,7 @@ int CompilationPolicy::_sc_count = 0;
 double CompilationPolicy::_increase_threshold_at_ratio = 0;
 
 CompilationPolicy::LoadAverage CompilationPolicy::_load_average;
+CompilationPolicy::TrainingReplayQueue CompilationPolicy::_training_replay_queue;
 volatile bool CompilationPolicy::_recompilation_done = false;
 
 void compilationPolicy_init() {
@@ -286,6 +287,55 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
     CompileBroker::compile_method(m, InvocationEntryBci, level, methodHandle(), 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
   } else {
     maybe_compile_early(m, THREAD);
+  }
+}
+
+void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS) {
+  KlassTrainingData* ktd = KlassTrainingData::find(klass);
+  if (ktd != nullptr) {
+    guarantee(ktd->has_holder(), "");
+    ktd->notice_fully_initialized();
+
+    ResourceMark rm;
+    GrowableArray<CompileTrainingData*> ctds;
+    ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
+      if (ctd->init_deps_left() == 0) {
+        ctds.append(ctd);
+      }
+    });
+
+    for (int i = 0; i < ctds.length(); i++) {
+      MethodTrainingData* mtd = ctds.at(i)->top_method();
+      if (mtd->has_holder()) {
+        const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
+        CompilationPolicy::compile_if_required(mh, THREAD);
+      }
+    }
+  }
+  int len = klass->methods()->length();
+  for (int i = 0; i < len; i++) {
+    const methodHandle mh(THREAD, klass->methods()->at(i));
+    CompilationPolicy::compile_if_required_after_init(mh, THREAD);
+  }
+}
+
+void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
+  if (CompileBroker::initialized() && TrainingData::have_data() && klass->is_shared()) {
+    if (UseConcurrentTrainingReplay) {
+      _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
+    } else {
+      replay_training_at_init_impl(klass, THREAD);
+    }
+  }
+}
+
+void CompilationPolicy::replay_training_at_init_loop(TRAPS) {
+  precond(UseConcurrentTrainingReplay);
+
+  while (!CompileBroker::is_compilation_disabled_forever()) {
+    InstanceKlass* ik = _training_replay_queue.pop(TrainingReplayQueue_lock, THREAD);
+    if (CompileBroker::is_compilation_disabled_forever()) break;
+    replay_training_at_init_impl(ik, THREAD);
   }
 }
 

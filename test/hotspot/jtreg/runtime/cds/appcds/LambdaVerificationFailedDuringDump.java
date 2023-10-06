@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -41,8 +41,9 @@ public class LambdaVerificationFailedDuringDump {
         String appJar = TestCommon.getTestJar("badinvokedynamic.jar");
 
         OutputAnalyzer out = TestCommon.dump(appJar,
-        TestCommon.list("BadInvokeDynamic",
-                        "@lambda-proxy BadInvokeDynamic run ()Ljava/lang/Runnable; ()V REF_invokeStatic BadInvokeDynamic lambda$doTest$0 ()V ()V"));
+                TestCommon.list("BadInvokeDynamic",
+                                "@lambda-proxy BadInvokeDynamic run ()Ljava/lang/Runnable; ()V REF_invokeStatic BadInvokeDynamic lambda$doTest$0 ()V ()V"),
+            "-XX:-PreloadSharedClasses");
         out.shouldContain("Preload Warning: Verification failed for BadInvokeDynamic")
            .shouldContain("Skipping BadInvokeDynamic: Failed verification")
            .shouldHaveExitValue(0);

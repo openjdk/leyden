@@ -155,7 +155,7 @@ class StringTableConfig : public StackObj {
     StringTable::item_added();
     return AllocateHeap(size, mtSymbol);
   }
-  static void free_node(void* context, void* memory, Value const& value) {
+  static void free_node(void* context, void* memory, Value& value) {
     value.release(StringTable::_oop_storage);
     FreeHeap(memory);
     StringTable::item_removed();

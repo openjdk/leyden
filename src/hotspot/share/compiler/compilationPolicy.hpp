@@ -31,7 +31,7 @@
 #include "oops/trainingData.hpp"
 #include "utilities/globalDefinitions.hpp"
 
-
+namespace CompilationPolicyUtils {
 template<int SAMPLE_COUNT = 256>
 class WeightedMovingAverage {
   int _current;
@@ -80,6 +80,66 @@ public:
   void sample(int s) { sample(s, time()); }
   double value() const { return value(time()); }
 };
+
+template<typename T>
+class Queue {
+  class QueueNode : public CHeapObj<mtCompiler> {
+    T* _value;
+    QueueNode* _next;
+  public:
+    QueueNode(T* value, QueueNode* next) : _value(value), _next(next) { }
+    T* value() const { return _value; }
+    void set_next(QueueNode* next) { _next = next; }
+    QueueNode* next() const { return _next; }
+  };
+
+  QueueNode* _head;
+  QueueNode* _tail;
+
+  bool is_empty_unlocked() const { return _head == nullptr; }
+  void push_unlocked(T* value) {
+    QueueNode* n = new QueueNode(value, nullptr);
+    if (_tail != nullptr) {
+      _tail->set_next(n);
+    }
+    _tail = n;
+    if (_head == nullptr) {
+      _head = _tail;
+    }
+  }
+  T* pop_unlocked() {
+    QueueNode* n = _head;
+    if (_head != nullptr) {
+      _head = _head->next();
+    }
+    if (_head == nullptr) {
+      _tail = _head;
+    }
+    T* value = nullptr;
+    if (n != nullptr) {
+      value = n->value();
+      delete n;
+    }
+    return value;
+  }
+public:
+  Queue() : _head(nullptr), _tail(nullptr) { }
+  void push(T* value, Monitor* lock, TRAPS) {
+    MonitorLocker locker(THREAD, lock);
+    push_unlocked(value);
+    locker.notify_all();
+  }
+
+  T* pop(Monitor* lock, TRAPS) {
+    MonitorLocker locker(THREAD, lock);
+    while(is_empty_unlocked() && !CompileBroker::is_compilation_disabled_forever()) {
+      locker.wait();
+    }
+    T* value = pop_unlocked();
+    return value;
+  }
+};
+} // namespace CompilationPolicyUtils
 
 class CompileTask;
 class CompileQueue;
@@ -224,13 +284,15 @@ class CompilationPolicy : AllStatic {
   friend class CallPredicate;
   friend class LoopPredicate;
 
-  typedef WeightedMovingAverage<> LoadAverage;
+  typedef CompilationPolicyUtils::WeightedMovingAverage<> LoadAverage;
+  typedef CompilationPolicyUtils::Queue<InstanceKlass> TrainingReplayQueue;
 
   static int64_t _start_time;
   static int _c1_count, _c2_count, _c3_count, _sc_count;
   static double _increase_threshold_at_ratio;
   static LoadAverage _load_average;
   static volatile bool _recompilation_done;
+  static TrainingReplayQueue _training_replay_queue;
 
   // Set carry flags in the counters (in Method* and MDO).
   inline static void handle_counter_overflow(const methodHandle& method);
@@ -320,6 +382,7 @@ class CompilationPolicy : AllStatic {
   // m must be compiled before executing it
   static bool must_be_compiled(const methodHandle& m, int comp_level = CompLevel_any);
   static void maybe_compile_early(const methodHandle& m, TRAPS);
+  static void replay_training_at_init_impl(InstanceKlass* klass, TRAPS);
  public:
   static int min_invocations() { return Tier4MinInvocationThreshold; }
   static int c1_count() { return _c1_count; }
@@ -331,6 +394,8 @@ class CompilationPolicy : AllStatic {
   // This supports the -Xcomp option.
   static void compile_if_required(const methodHandle& m, TRAPS);
   static void compile_if_required_after_init(const methodHandle& m, TRAPS);
+  static void replay_training_at_init(InstanceKlass* klass, TRAPS);
+  static void replay_training_at_init_loop(TRAPS);
 
   // m is allowed to be compiled
   static bool can_be_compiled(const methodHandle& m, int comp_level = CompLevel_any);

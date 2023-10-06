@@ -27,6 +27,10 @@
 
 #include "cds/archiveUtils.hpp"
 
+#include "cds/archiveBuilder.hpp"
+#include "oops/array.hpp"
+#include "utilities/growableArray.hpp"
+
 #include "utilities/bitMap.inline.hpp"
 
 inline bool SharedDataRelocator::do_bit(size_t offset) {
@@ -46,5 +50,19 @@ inline bool SharedDataRelocator::do_bit(size_t offset) {
   *p = new_ptr;
   return true; // keep iterating
 }
+
+template <typename T>
+Array<T>* ArchiveUtils::archive_array(GrowableArray<T>* tmp_array) {
+  Array<T>* archived_array = ArchiveBuilder::new_ro_array<T>(tmp_array->length());
+  for (int i = 0; i < tmp_array->length(); i++) {
+    archived_array->at_put(i, tmp_array->at(i));
+    if (std::is_pointer<T>::value) {
+      ArchivePtrMarker::mark_pointer(archived_array->adr_at(i));
+    }
+  }
+
+  return archived_array;
+}
+
 
 #endif // SHARE_CDS_ARCHIVEUTILS_INLINE_HPP

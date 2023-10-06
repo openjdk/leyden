@@ -93,6 +93,7 @@ Monitor* BeforeExit_lock              = nullptr;
 Monitor* Notify_lock                  = nullptr;
 Mutex*   ExceptionCache_lock          = nullptr;
 Mutex*   TrainingData_lock            = nullptr;
+Monitor* TrainingReplayQueue_lock     = nullptr;
 #ifndef PRODUCT
 Mutex*   FullGCALot_lock              = nullptr;
 #endif
@@ -273,6 +274,7 @@ void mutex_init() {
   MUTEX_DEFN(CompiledIC_lock                 , PaddedMutex  , nosafepoint);  // locks VtableStubs_lock, InlineCacheBuffer_lock
   MUTEX_DEFN(MethodCompileQueue_lock         , PaddedMonitor, safepoint);
   MUTEX_DEFL(TrainingData_lock               , PaddedMutex  , MethodCompileQueue_lock);
+  MUTEX_DEFN(TrainingReplayQueue_lock        , PaddedMonitor, safepoint);
   MUTEX_DEFN(CompileStatistics_lock          , PaddedMutex  , safepoint);
   MUTEX_DEFN(DirectivesStack_lock            , PaddedMutex  , nosafepoint);
   MUTEX_DEFN(MultiArray_lock                 , PaddedMutex  , safepoint);

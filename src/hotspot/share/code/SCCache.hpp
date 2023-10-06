@@ -59,11 +59,43 @@ class StubCodeGenerator;
 enum class vmIntrinsicID : int;
 enum CompLevel : signed char;
 
+class SCConfig {
+  uint _compressedOopShift;
+  uint _compressedKlassShift;
+  uint _contendedPaddingWidth;
+  uint _objectAlignment;
+  uint _gc;
+  enum Flags {
+    none                     = 0,
+    metadataPointers         = 1,
+    debugVM                  = 2,
+    compressedOops           = 4,
+    compressedClassPointers  = 8,
+    useTLAB                  = 16,
+    systemClassAssertions    = 32,
+    userClassAssertions      = 64,
+    enableContendedPadding   = 128,
+    restrictContendedPadding = 256,
+    useEmptySlotsInSupers    = 512
+  };
+  uint _flags;
+
+public:
+  void record(bool use_meta_ptrs);
+  bool verify(const char* cache_path) const;
+
+  bool has_meta_ptrs()  const { return (_flags & metadataPointers) != 0; }
+};
+
 // Code Cache file header
 class SCCHeader : public CHeapObj<mtCode> {
 private:
   // Here should be version and other verification fields
-  uint _version;           // JDK version (should match when reading code cache file)
+  enum {
+    SCC_VERSION = 1
+  };
+  uint _version;           // SCC version (should match when reading code cache)
+  uint _jvm_version_offset;// JVM version string
   uint _cache_size;        // cache size in bytes
   uint _strings_count;
   uint _strings_offset;    // offset to recorded C strings
@@ -71,18 +103,16 @@ private:
   uint _entries_offset;    // offset of SCCEntry array describing entries
   uint _preload_entries_count; // entries for pre-loading code
   uint _preload_entries_offset;
-  enum Flags {
-    None = 0,
-    MetadataPointers = 1
-  };
-  uint _flags;
-  uint _dummy; // to align
+  SCConfig _config;
 
 public:
-  void init(uint version, uint cache_size, uint strings_count, uint strings_offset,
+  void init(uint jvm_version_offset, uint cache_size,
+            uint strings_count, uint strings_offset,
             uint entries_count, uint entries_offset,
-            uint preload_entries_count, uint preload_entries_offset) {
-    _version        = version;
+            uint preload_entries_count, uint preload_entries_offset,
+            bool use_meta_ptrs) {
+    _version        = SCC_VERSION;
+     _jvm_version_offset = jvm_version_offset;
     _cache_size     = cache_size;
     _strings_count  = strings_count;
     _strings_offset = strings_offset;
@@ -90,19 +120,25 @@ public:
     _entries_offset = entries_offset;
     _preload_entries_count  = preload_entries_count;
     _preload_entries_offset = preload_entries_offset;
-    _flags          = 0;
+
+    _config.record(use_meta_ptrs);
   }
 
-  uint version()        const { return _version; }
-  uint cache_size()   const { return _cache_size; }
+  uint jvm_version_offset() const { return _jvm_version_offset; }
+
+  uint cache_size()     const { return _cache_size; }
   uint strings_count()  const { return _strings_count; }
   uint strings_offset() const { return _strings_offset; }
   uint entries_count()  const { return _entries_count; }
   uint entries_offset() const { return _entries_offset; }
   uint preload_entries_count()  const { return _preload_entries_count; }
   uint preload_entries_offset() const { return _preload_entries_offset; }
-  bool has_meta_ptrs()  const { return (_flags & MetadataPointers) != 0; }
-  void set_meta_ptrs()        { _flags |= MetadataPointers; }
+  bool has_meta_ptrs()  const { return _config.has_meta_ptrs(); }
+
+  bool verify_config(const char* cache_path, uint load_size)  const;
+  bool verify_vm_config(const char* cache_path) const { // Called after Universe initialized
+    return _config.verify(cache_path);
+  }
 };
 
 // Code Cache's entry contain information from CodeBuffer
@@ -241,7 +277,14 @@ private:
   bool _c1_complete;
 
 public:
-  SCAddressTable() { _complete = false; _opto_complete = false; _c1_complete = false; }
+  SCAddressTable() {
+    _extrs_addr = nullptr;
+    _stubs_addr = nullptr;
+    _blobs_addr = nullptr;
+    _complete = false;
+    _opto_complete = false;
+    _c1_complete = false;
+  }
   ~SCAddressTable();
   void init();
   void init_opto();
@@ -465,7 +508,12 @@ private:
   static SCCache*  _cache;
 
   static bool open_cache(const char* cache_path);
-
+  static bool verify_vm_config() {
+    if (is_on_for_read()) {
+      return _cache->_load_header->verify_vm_config(_cache->_cache_path);
+    }
+    return true;
+  }
 public:
   static SCCache* cache() { return _cache; }
   static void initialize();

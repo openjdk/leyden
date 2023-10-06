@@ -509,7 +509,6 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
   SystemDictionaryShared::write_to_archive();
   ClassPrelinker::record_initiated_klasses(true);
   MetaspaceShared::write_method_handle_intrinsics();
-  SystemDictionaryShared::record_archived_lambda_form_classes();
 
   // Write lambform lines into archive
   LambdaFormInvokers::dump_static_archive_invokers();
@@ -652,6 +651,8 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
     LambdaFormInvokers::regenerate_holder_classes(CHECK);
   }
 
+  ClassPrelinker::setup_forced_preinit_classes();
+
   // Collect all loaded ClassLoaderData.
   CollectCLDClosure collect_cld(THREAD);
   {
@@ -753,13 +754,6 @@ void MetaspaceShared::preload_and_dump() {
       MetaspaceShared::unrecoverable_writing_error("VM exits due to exception, use -Xlog:cds,exceptions=trace for detail");
     }
   }
-
-#if INCLUDE_CDS_JAVA_HEAP
-  // Restore the java loaders that were cleared at dump time
-  if (CDSConfig::is_dumping_full_module_graph()) {
-    HeapShared::restore_loader_data();
-  }
-#endif
 
   if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
     // We have just created the final image. Let's run the AOT compiler

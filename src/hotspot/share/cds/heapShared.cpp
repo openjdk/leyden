@@ -173,8 +173,6 @@ OopHandle HeapShared::_scratch_class_cast_exception_instance;
 
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_java_mirror_table = nullptr;
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_references_table = nullptr;
-ClassLoaderData* HeapShared::_saved_java_platform_loader_data = nullptr;
-ClassLoaderData* HeapShared::_saved_java_system_loader_data = nullptr;
 int HeapShared::_permobj_segments = 0;
 
 static bool is_subgraph_root_class_of(ArchivableStaticFieldInfo fields[], InstanceKlass* ik) {
@@ -397,32 +395,12 @@ bool HeapShared::archive_object(oop obj) {
                            p2i(obj), obj->klass()->external_name());
     }
 
-    if (java_lang_Module::is_instance(obj)) {
-      if (Modules::check_module_oop(obj)) {
-        Modules::update_oops_in_archived_module(obj, append_root(obj));
-      }
-      java_lang_Module::set_module_entry(obj, nullptr);
-    } else if (java_lang_ClassLoader::is_instance(obj)) {
-      // class_data will be restored explicitly at run time and after dumptime
-      guarantee(obj == SystemDictionary::java_platform_loader() ||
-                obj == SystemDictionary::java_system_loader() ||
-                java_lang_ClassLoader::loader_data(obj) == nullptr, "must be");
-      if (obj == SystemDictionary::java_platform_loader()) {
-        _saved_java_platform_loader_data = java_lang_ClassLoader::loader_data_acquire(SystemDictionary::java_platform_loader());
-      } else if (obj == SystemDictionary::java_system_loader()) {
-        _saved_java_system_loader_data = java_lang_ClassLoader::loader_data_acquire(SystemDictionary::java_system_loader());
-      }
-      java_lang_ClassLoader::release_set_loader_data(obj, nullptr);
+    if (java_lang_Module::is_instance(obj) && Modules::check_archived_module_oop(obj)) {
+      Modules::update_oops_in_archived_module(obj, append_root(obj));
     }
 
     return true;
   }
-}
-
-void HeapShared::restore_loader_data() {
-  log_info(cds)("Restoring java platform and system loaders");
-  java_lang_ClassLoader::release_set_loader_data(SystemDictionary::java_platform_loader(), _saved_java_platform_loader_data);
-  java_lang_ClassLoader::release_set_loader_data(SystemDictionary::java_system_loader(), _saved_java_system_loader_data);
 }
 
 class MetaspaceObjToOopHandleTable: public ResourceHashtable<MetaspaceObj*, OopHandle,
@@ -1166,9 +1144,6 @@ void HeapShared::initialize_java_lang_invoke(TRAPS) {
   if (!UseSharedSpaces) {
     return;
   }
-
-  SystemDictionaryShared::init_archived_lambda_form_classes(CHECK);
-  SystemDictionaryShared::init_archived_lambda_proxy_classes(Handle(), CHECK);
 
   // FIXME - the following should be called only if we have archived MethodType table.
   resolve_or_init("java/lang/invoke/Invokers$Holder", true, CHECK);

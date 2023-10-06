@@ -417,6 +417,38 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   initialize_class(vmSymbols::java_lang_IllegalArgumentException(), CHECK);
 }
 
+bool Threads::initialize_compilation(TRAPS) {
+  // initialize compiler(s)
+  bool force_JVMCI_initialization = false;
+
+#if defined(COMPILER1) || COMPILER2_OR_JVMCI
+  bool init_compilation = true;
+#if INCLUDE_JVMCI
+  if (EnableJVMCI) {
+    // Initialize JVMCI eagerly when it is explicitly requested.
+    // Or when JVMCILibDumpJNIConfig or JVMCIPrintProperties is enabled.
+    force_JVMCI_initialization = EagerJVMCI || JVMCIPrintProperties || JVMCILibDumpJNIConfig;
+    if (!force_JVMCI_initialization && UseJVMCICompiler && !UseJVMCINativeLibrary && (!UseInterpreter || !BackgroundCompilation)) {
+      // Force initialization of jarjvmci otherwise requests for blocking
+      // compilations will not actually block until jarjvmci is initialized.
+      force_JVMCI_initialization = true;
+    }
+    if (JVMCIPrintProperties || JVMCILibDumpJNIConfig) {
+      // Both JVMCILibDumpJNIConfig and JVMCIPrintProperties exit the VM
+      // so compilation should be disabled. This prevents dumping or
+      // printing from happening more than once.
+      init_compilation = false;
+    }
+  }
+#endif
+  if (init_compilation) {
+    CompileBroker::compilation_init(CHECK_false);
+  }
+#endif
+
+  return force_JVMCI_initialization;
+}
+
 void Threads::initialize_jsr292_core_classes(TRAPS) {
   TraceTime timer("Initialize java.lang.invoke classes", TRACETIME_LOG(Info, startuptime));
 
@@ -719,19 +751,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Start the method sampler
   MethodProfiler::initialize();
 
-  // initialize compiler(s)
-#if defined(COMPILER1) || COMPILER2_OR_JVMCI
-#if INCLUDE_JVMCI
   bool force_JVMCI_initialization = false;
-  if (EnableJVMCI) {
-    // Initialize JVMCI eagerly when it is explicitly requested.
-    // Or when JVMCILibDumpJNIConfig or JVMCIPrintProperties is enabled.
-    force_JVMCI_initialization = EagerJVMCI || JVMCIPrintProperties || JVMCILibDumpJNIConfig;
+  if (!CDSConfig::has_preloaded_classes()) {
+    force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
   }
-#endif
-  CompileBroker::compilation_init_phase1(CHECK_JNI_ERR);
-  CompileBroker::compilation_init_phase2();
-#endif
 
   ClassPrelinker::init_javabase_preloaded_classes(CHECK_JNI_ERR);
 
@@ -745,6 +768,11 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // signature polymorphic MH intrinsics can be missed
   // (see SystemDictionary::find_method_handle_intrinsic).
   initialize_jsr292_core_classes(CHECK_JNI_ERR);
+
+  if (CDSConfig::has_preloaded_classes()) {
+    force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
+    ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(CHECK_JNI_ERR);
+  }
 
   // This will initialize the module system.  Only java.base classes can be
   // loaded until phase 2 completes
