@@ -916,7 +916,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     st.print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
     const char* cp = Arguments::get_appclasspath();
     if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
-      st.print(" -cp %s", cp);
+      st.print(" -cp ");  st.print_raw(cp);
     }
     for (int i = 0; i < Arguments::num_jvm_flags(); i++) {
       st.print(" %s", Arguments::jvm_flags_array()[i]);
@@ -930,7 +930,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     if (CDSManualFinalImage) {
       tty->print_cr("-XX:+CDSManualFinalImage is specified");
       tty->print_cr("Please manually execute the following command to create the final CDS image:");
-      tty->print_cr("    %s", cmd);
+      tty->print("    "); tty->print_raw_cr(cmd);
     } else {
       log_info(cds)("Launching child process to create final CDS image:");
       log_info(cds)("    %s", cmd);
