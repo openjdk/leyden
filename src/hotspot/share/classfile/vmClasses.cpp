@@ -122,7 +122,7 @@ void vmClasses::resolve_until(vmClassID limit_id, vmClassID &start_id, TRAPS) {
 
 // TEMP: examples for using the HeapShared::get_archived_object_permanent_index() and HeapShared::get_archived_object()
 // APIs for the AOT compiler.
-static void test_cds_heap_access_api(TRAPS) {
+void test_cds_heap_access_api(TRAPS) {
 #ifdef INCLUDE_CDS_JAVA_HEAP
   const char* tests[] = {
     "",
