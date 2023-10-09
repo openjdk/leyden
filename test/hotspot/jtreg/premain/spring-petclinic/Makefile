@@ -134,7 +134,7 @@ ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 ${PC_DYNAMIC_JSA}: ${PC_STATIC_JSA}
 	rm -f ${PC_DYNAMIC_JSA} ${PC_DYNAMIC_JSA}.log
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_JSA} \
-	    -Xlog:cds=debug,cds+class=debug:file=${PC_DYNAMIC_JSA}.log \
+	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=${PC_DYNAMIC_JSA}.log \
 	    -XX:+RecordTraining ${UNPACKED_CMDLINE}
 	ls -l ${PC_DYNAMIC_JSA}
 
