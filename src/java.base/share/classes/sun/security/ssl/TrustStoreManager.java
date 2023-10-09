@@ -27,10 +27,13 @@ package sun.security.ssl;
 
 import java.io.*;
 import java.lang.ref.WeakReference;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.*;
 import java.security.cert.*;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
+import jdk.internal.misc.JavaHome;
 import sun.security.action.*;
 import sun.security.util.FilePaths;
 import sun.security.validator.TrustStoreUtil;
@@ -73,13 +76,10 @@ final class TrustStoreManager {
      *    cacerts
      */
     private static final class TrustStoreDescriptor {
-        private static final String fileSep = File.separator;
-        private static final String defaultStorePath =
-                GetPropertyAction.privilegedGetProperty("java.home") +
-                fileSep + "lib" + fileSep + "security";
-        private static final String defaultStore = FilePaths.cacerts();
-        private static final String jsseDefaultStore =
-                defaultStorePath + fileSep + "jssecacerts";
+        private static final String javaHome =
+                GetPropertyAction.privilegedGetProperty("java.home");
+        private static final String defaultStoreName = "cacerts";
+        private static final String jsseDefaultStoreName = "jssecacerts";
 
         // the trust store name
         private final String storeName;
@@ -93,20 +93,20 @@ final class TrustStoreManager {
         // the password used for the trust store
         private final String storePassword;
 
-        // the File object of the trust store
-        private final File storeFile;
+        // the Path object of the trust store
+        private final Path storeFilePath;
 
         // the last modified time of the store
         private final long lastModified;
 
         private TrustStoreDescriptor(String storeName, String storeType,
                 String storeProvider, String storePassword,
-                File storeFile, long lastModified) {
+                Path storeFilePath, long lastModified) {
             this.storeName = storeName;
             this.storeType = storeType;
             this.storeProvider = storeProvider;
             this.storePassword = storePassword;
-            this.storeFile = storeFile;
+            this.storeFilePath = storeFilePath;
             this.lastModified = lastModified;
 
             if (SSLLogger.isOn && SSLLogger.isOn("trustmanager")) {
@@ -131,7 +131,7 @@ final class TrustStoreManager {
                 public TrustStoreDescriptor run() {
                     // Get the system properties for trust store.
                     String storePropName = System.getProperty(
-                            "javax.net.ssl.trustStore", jsseDefaultStore);
+                            "javax.net.ssl.trustStore", jsseDefaultStoreName);
                     String storePropType = System.getProperty(
                             "javax.net.ssl.trustStoreType",
                             KeyStore.getDefaultType());
@@ -141,19 +141,40 @@ final class TrustStoreManager {
                             "javax.net.ssl.trustStorePassword", "");
 
                     String temporaryName = "";
-                    File temporaryFile = null;
+                    Path temporaryFilePath = null;
                     long temporaryTime = 0L;
                     if (!"NONE".equals(storePropName)) {
                         String[] fileNames =
-                                new String[] {storePropName, defaultStore};
+                                new String[] {storePropName, defaultStoreName};
                         for (String fileName : fileNames) {
-                            File f = new File(fileName);
-                            if (f.isFile() && f.canRead()) {
-                                temporaryName = fileName;
-                                temporaryFile = f;
-                                temporaryTime = f.lastModified();
+                            Path p = null;
+                            if (fileName.equals(storePropName) &&
+                                !fileName.equals(jsseDefaultStoreName)) {
+                                // If the current 'fileName' is the
+                                // storePropName and is not the default one
+                                // specified by jsseDefaultStoreName, handle
+                                // it as a regular file path. It is specified
+                                // by the javax.net.ssl.trustStore property.
+                                p = Path.of(fileName);
+                            } else {
+                                // This must be one of the default store files,
+                                // specified by defaultStoreName or
+                                // jsseDefaultStoreName. Access the store file
+                                // using the JavaHome class.
+                                p = JavaHome.getJDKResource(
+                                    javaHome, "lib", "security", fileName);
+                            }
 
-                                break;
+                            if (Files.isRegularFile(p) && Files.isReadable(p)) {
+                                try {
+                                    temporaryName = fileName;
+                                    temporaryFilePath = p;
+                                    temporaryTime =
+                                        Files.getLastModifiedTime(p).toMillis();
+                                    break;
+                                } catch (IOException ioe) {
+                                    // Fall through
+                                }
                             }
 
                             // Not break, the file is inaccessible.
@@ -170,7 +191,7 @@ final class TrustStoreManager {
 
                     return new TrustStoreDescriptor(
                             temporaryName, storePropType, storePropProvider,
-                            storePropPassword, temporaryFile, temporaryTime);
+                            storePropPassword, temporaryFilePath, temporaryTime);
                 }
             });
         }
@@ -210,8 +231,8 @@ final class TrustStoreManager {
                 result = 31 * result + storeProvider.hashCode();
             }
 
-            if (storeFile != null) {
-                result = 31 * result + storeFile.hashCode();
+            if (storeFilePath != null) {
+                result = 31 * result + storeFilePath.hashCode();
             }
 
             if (lastModified != 0L) {
@@ -360,7 +381,7 @@ final class TrustStoreManager {
         private static KeyStore loadKeyStore(
                 TrustStoreDescriptor descriptor) throws Exception {
             if (!"NONE".equals(descriptor.storeName) &&
-                    descriptor.storeFile == null) {
+                    descriptor.storeFilePath == null) {
 
                 // No file available, no KeyStore available.
                 if (SSLLogger.isOn && SSLLogger.isOn("trustmanager")) {
@@ -384,10 +405,14 @@ final class TrustStoreManager {
             }
 
             if (!"NONE".equals(descriptor.storeName)) {
-                try (@SuppressWarnings("removal") FileInputStream fis = AccessController.doPrivileged(
-                        new OpenFileInputStreamAction(descriptor.storeFile))) {
-                    ks.load(fis, password);
-                } catch (FileNotFoundException fnfe) {
+                try (@SuppressWarnings("removal") InputStream is = AccessController.doPrivileged(
+                    new PrivilegedExceptionAction<InputStream>() {
+                        public InputStream run() throws IOException {
+                            return Files.newInputStream(descriptor.storeFilePath);
+                        }
+                    })) {
+                    ks.load(is, password);
+                } catch (IOException ioe) {
                     // No file available, no KeyStore available.
                     if (SSLLogger.isOn && SSLLogger.isOn("trustmanager")) {
                         SSLLogger.fine(

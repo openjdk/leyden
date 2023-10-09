@@ -25,13 +25,20 @@
 
 package sun.security.util;
 
+import java.nio.file.Path;
+
+import jdk.internal.misc.JavaHome;
 import jdk.internal.util.StaticProperty;
 
 import java.io.File;
 
 public class FilePaths {
+    public static Path cacertsPath() {
+        return JavaHome.getJDKResource(StaticProperty.javaHome(),
+                                       "lib", "security", "cacerts");
+    }
+
     public static String cacerts() {
-        return StaticProperty.javaHome() + File.separator + "lib"
-                + File.separator + "security" + File.separator + "cacerts";
+        return cacertsPath().toString();
     }
 }
