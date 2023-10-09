@@ -1,0 +1,78 @@
+== ToDos
+
+== Internal Classes
+
+Here are some candidates where ComputedConstants can be used directly:
+
+----
+CC (search on `synchronized`)
+File::toPath
+ProxyingConsole::writer
+ProxyingConsole::reader
+RandomAccessFile::getChannel
+ClassValue::initializeMap, getMap
+Module::moduleInfoClass
+ModuleLayer::getServicesCatalog
+StackFrameInfo::toStackTraceElement
+System::console
+Charset::defaultCharset
+Policy::getPolicyNoCheck
+Provider::hasKeyAttributes
+CertPathHelper::initialize
+Currency::getAvailableCurrencies
+Date.defaultCentryStart
+Date::getJulianCalendar
+GregorianCalendar::getJulianCalendarSystem
+ListResouceBundle.lookup
+(Locale::getDisplayLocale)
+(Locale::getFormatLocale)
+ResourceBundle::handleKeySet
+RandomNumberGeneratorFactory::getProperties
+ServerSocketFactory::getDefault
+SocketFactory::getDefault
+SoftReferenceCache.Node::get
+JrtFileSystemProvider::getTheFileSystem
+AbstractClassLoaderValue::get (exception is memoized too)
+Resource::cachedInputStream
+LazyLoggers::platform
+ModulePatcher::delegate
+VMSupport::getAgentProperties
+AixAsynchronousChannelProvider::defaultEventPort
+LinuxAsynchronousChannelProvider::defaultEventPort
+ResolverConfiguration::open
+ExtendedSocketOptions::getInstance (There is a setter so maybe no)
+FtpClientProvider::provider
+AsynchronousFileChannelImpl::ensureFileLockTableInitialized
+AsynchronousServerSocketChannelImpl::bind
+BsdAsynchronousChannelProvider::defaultEventPort
+FileChannelImpl::fileLockTable
+ServerSocketChannelImpl::socket
+SocketChannelImpl::socket
+SocketChannelImpl.(readerThread | writerThread)
+WindowsAsynchronousChannelProvider::defaultIocp (variable sync object?)
+MimeTypesFileTypeDetector.mimeTypeMap
+UnixFileAttributes::(fileKey | owner | group | permissions)
+UnixFileStore::checkIfFeaturePresent
+WindowsDirectoryStream::iterator
+WindowsPath::initOffsets
+JCAUtil::getDefSecureRandom
+ProviderConfig::(getProvider | getFullProviderList)
+PKCS8Key::getEncodedInternal
+NativePRNG::getMixRandom
+DisabledAlgorithmConstants::cachedCheckAlgorithm
+LazyCOdeSourcePermissionCollection::ensureAdded
+Password::convertToBytes
+AlgorithmId::aliasOidsTable
+X509CertImpl::(getExtendedKeyUsage | getSubjectAlternativeNames | getIssuerAlternativeNames)
+ClendarSystem::initNames
+ZoneInfo::getLastRule
+CLDRLocaleProviderAdapter::(getCalendarDataProvider | getCalendarNameProvider | getTimeZoneNameProvider | getAvailableLocales
+JRELocaleProviderAdapter::(getBreakIteratorProvider | getCollatorProvider | …)
+LocaleServiceProviderPool::getAvailableLocaleSet
+BreakIteratorResourceBundle::handleKeySet
+OpenListResourceBundle::(keySet | loadLookup)
+ParallelListResourceBundle::loadLookupTablesIfNecessary
+
+CC (search on `static`)
+
+----
