@@ -38,7 +38,7 @@
 #
 #  *** NOTE: JDK 17 (or 21??) is needed to build spring-petclinic-3.1.0-SNAPSHOT.jar
 JDK17_HOME   = /jdk3/official/jdk17
-PREMAIN_HOME = /jdk3/bld/le3/images/jdk
+PREMAIN_HOME = /jdk3/bld/le4/images/jdk
 #===============================================================================
 
 # Usually there's no need to change the following
@@ -55,7 +55,12 @@ PC_STATIC_JSA    = spring-petclinic.static.jsa
 PC_DYNAMIC_JSA   = spring-petclinic.dynamic.jsa
 PC_CACHED_CODE   = spring-petclinic.code.jsa
 
-UNPACKED_CMDLINE = -cp @${PC_APP_UNPACKED}/classpath -DautoQuit=true -Dspring.aot.enabled=true ${PC_MAIN_CLASS}
+# new workflow
+PC_CDS_PREIMAGE  = spring-petclinic.cds.preimage
+PC_CDS          = spring-petclinic.cds
+
+HEAP_SIZE        = -Xmx2g
+UNPACKED_CMDLINE = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath -DautoQuit=true -Dspring.aot.enabled=true ${PC_MAIN_CLASS}
 
 all: check git app aot
 
@@ -111,23 +116,25 @@ ${PC_APP_UNPACKED}: ${PC_APP_JAR}
 	    | sed -e 's/ /:/g' > ${PC_APP_UNPACKED}/classpath
 	$(MAKE) run17
 
+#uncomment this to see the generated classes for dynamic proxies
+#SAVE_GEN_FILES=-Djdk.proxy.ProxyGenerator.saveGeneratedFiles=true
 
 ${PC_CLASSLIST}: ${PC_APP_UNPACKED}
 	${PREMAIN_JAVA} -Xshare:off -XX:DumpLoadedClassList=${PC_CLASSLIST} \
-	    -Xlog:class+load=debug:file=spring-petclinic.classload.log \
+	    -Xlog:class+load=debug:file=spring-petclinic.classload.log ${SAVE_GEN_FILES} \
 	    ${UNPACKED_CMDLINE}
 	wc -lc ${PC_CLASSLIST}
 
 ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	rm -f ${PC_STATIC_JSA}.log
-	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} -cp @${PC_APP_UNPACKED}/classpath \
-	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA}.log
+	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
+	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA}.log
 	ls -l ${PC_STATIC_JSA}
 
 ${PC_DYNAMIC_JSA}: ${PC_STATIC_JSA}
 	rm -f ${PC_DYNAMIC_JSA} ${PC_DYNAMIC_JSA}.log
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_JSA} \
-	    -Xlog:cds:file=${PC_DYNAMIC_JSA}.log \
+	    -Xlog:cds=debug,cds+class=debug:file=${PC_DYNAMIC_JSA}.log \
 	    -XX:+RecordTraining ${UNPACKED_CMDLINE}
 	ls -l ${PC_DYNAMIC_JSA}
 
@@ -146,12 +153,40 @@ runs: ${PC_STATIC_JSA}
 	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} \
 		-Xlog:init ${UNPACKED_CMDLINE}
 
+# run with just dynamic CDS archive
+rund: ${PC_DYNAMIC_JSA}
+	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} \
+		-Xlog:init ${UNPACKED_CMDLINE}
+
 # run WITHOUT premain optimizatipn
 run0: ${PC_APP_UNPACKED}
 	time ${PREMAIN_JAVA} -Xlog:init ${UNPACKED_CMDLINE}
 
 run17: ${PC_APP_UNPACKED}
 	${JDK17_JAVA} ${UNPACKED_CMDLINE}
+
+#======================================== new workflow
+pre: ${PC_CDS_PREIMAGE}
+cds: ${PC_CDS}
+
+${PC_CDS_PREIMAGE}: ${PC_APP_UNPACKED}
+	rm -f ${PC_CDS_PREIMAGE} ${PC_CDS}
+	${PREMAIN_JAVA} -XX:+ArchiveInvokeDynamic -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage -XX:CacheDataStore=${PC_CDS} \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS_PREIMAGE}.log \
+	    ${UNPACKED_CMDLINE}
+	ls -l ${PC_CDS_PREIMAGE}
+
+${PC_CDS}: ${PC_CDS_PREIMAGE}
+	rm -f ${PC_CDS}
+	${PREMAIN_JAVA} -XX:+ArchiveInvokeDynamic -XX:+UnlockDiagnosticVMOptions -XX:CDSPreimage=${PC_CDS_PREIMAGE} -XX:CacheDataStore=${PC_CDS} \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS}.log \
+	    ${UNPACKED_CMDLINE}
+	ls -l ${PC_CDS}
+
+# run with NEW workflow
+runn: ${PC_CDS}
+	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_CDS} -XX:+ReplayTraining -XX:+LoadCachedCode \
+		-XX:CachedCodeFile=${PC_CDS}.jsa -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
 
 clean: clean0
 	rm -rf *~ ${PC_REPO}

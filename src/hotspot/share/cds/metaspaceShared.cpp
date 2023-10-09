@@ -735,6 +735,8 @@ static void tmp_test_aot(ArchiveBuilder* builder, TRAPS) {
   }
 }
 
+void test_cds_heap_access_api(TRAPS);
+
 // Preload classes from a list, populate the shared spaces and dump to a
 // file.
 void MetaspaceShared::preload_and_dump() {
@@ -758,6 +760,9 @@ void MetaspaceShared::preload_and_dump() {
   if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
     // We have just created the final image. Let's run the AOT compiler
     CDSConfig::enable_dumping_cached_code();
+    if (log_is_enabled(Info, cds, jit)) {
+      test_cds_heap_access_api(THREAD);
+    }
     int count = MAX2(1, (int)(NewCodeParameter & 0x7fffffff));
     for (int i = 0; i < count; i++) {
       tmp_test_aot(&builder, CHECK);
@@ -916,7 +921,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     st.print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
     const char* cp = Arguments::get_appclasspath();
     if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
-      st.print(" -cp %s", cp);
+      st.print(" -cp ");  st.print_raw(cp);
     }
     for (int i = 0; i < Arguments::num_jvm_flags(); i++) {
       st.print(" %s", Arguments::jvm_flags_array()[i]);
@@ -930,7 +935,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     if (CDSManualFinalImage) {
       tty->print_cr("-XX:+CDSManualFinalImage is specified");
       tty->print_cr("Please manually execute the following command to create the final CDS image:");
-      tty->print_cr("    %s", cmd);
+      tty->print("    "); tty->print_raw_cr(cmd);
     } else {
       log_info(cds)("Launching child process to create final CDS image:");
       log_info(cds)("    %s", cmd);

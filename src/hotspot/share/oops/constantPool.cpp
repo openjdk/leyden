@@ -420,12 +420,10 @@ void ConstantPool::remove_unshareable_info() {
   // we always set _on_stack to true to avoid having to change _flags during runtime.
   _flags |= (_on_stack | _is_shared);
 
-// FIXME-hack
- if (CDSPreimage == nullptr) {
   if (!ArchiveBuilder::current()->get_source_addr(_pool_holder)->is_linked()) {
     return;
   }
- }
+
   if (is_for_method_handle_intrinsic()) {
     // This CP was created by Method::make_method_handle_intrinsic() and has nothing
     // that need to be removed/restored. It has no cpCache since the intrinsic methods
@@ -447,12 +445,14 @@ void ConstantPool::remove_unshareable_info() {
 }
 
 void ConstantPool::archive_entries() {
-  InstanceKlass* src_holder = ArchiveBuilder::current()->get_source_addr(_pool_holder);
+  InstanceKlass* src_holder = ArchiveBuilder::current()->get_source_addr(pool_holder());
   assert(src_holder->is_linked(), "must be");
   ResourceMark rm;
   GrowableArray<bool> keep_cpcache(cache()->length(), cache()->length(), false);
   bool archived = false;
   int method_cpcache_index = 0; // cpcache index for Methodref/InterfaceMethodref
+  bool preresolve = pool_holder()->is_shared_boot_class() || pool_holder()->is_shared_platform_class() ||
+                    pool_holder()->is_shared_app_class();
   for (int cp_index = 1; cp_index < length(); cp_index++) { // cp_index 0 is unused
     int cp_tag = tag_at(cp_index).value();
     switch (cp_tag) {
@@ -473,11 +473,22 @@ void ConstantPool::archive_entries() {
       tag_at_put(cp_index, JVM_CONSTANT_Dynamic);
       break;
     case JVM_CONSTANT_Class:
-      archived = maybe_archive_resolved_klass_at(cp_index);
+      if (preresolve) {
+        archived = maybe_archive_resolved_klass_at(cp_index);
+      } else {
+        archived = false;
+      }
+      if (!archived) {
+        // This referenced class cannot be archived. Revert the tag to UnresolvedClass,
+        // so that the proper class loading and initialization can happen at runtime.
+        int resolved_klass_index = klass_slot_at(cp_index).resolved_klass_index();
+        resolved_klasses()->at_put(resolved_klass_index, nullptr);
+        tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
+      }
       ArchiveBuilder::alloc_stats()->record_klass_cp_entry(archived);
       break;
     case JVM_CONSTANT_Methodref:
-      if (ArchiveMethodReferences) {
+      if (ArchiveMethodReferences && preresolve) {
         archived = maybe_archive_resolved_method_ref_at(cp_index, method_cpcache_index, cp_tag);
       } else {
         archived = false;
@@ -485,7 +496,7 @@ void ConstantPool::archive_entries() {
       ArchiveBuilder::alloc_stats()->record_method_cp_entry(archived);
       break;
     case JVM_CONSTANT_InterfaceMethodref:
-      archived = false;
+      archived = false; // FIXME: TODO
       ArchiveBuilder::alloc_stats()->record_method_cp_entry(archived);
       break;
     default:
@@ -510,6 +521,7 @@ void ConstantPool::archive_entries() {
   }
 }
 
+#if 0
 static const char* get_type(Klass* buffered_k) {
   const char* type;
   Klass* src_k = ArchiveBuilder::current()->get_source_addr(buffered_k);
@@ -537,6 +549,7 @@ static const char* get_type(Klass* buffered_k) {
 
   return type;
 }
+#endif
 
 bool ConstantPool::maybe_archive_resolved_klass_at(int cp_index) {
   assert(ArchiveBuilder::current()->is_in_buffer_space(this), "must be");
@@ -560,19 +573,22 @@ bool ConstantPool::maybe_archive_resolved_klass_at(int cp_index) {
     if (ClassPrelinker::can_archive_resolved_klass(src_cp, cp_index)) {
       if (log_is_enabled(Debug, cds, resolve)) {
         ResourceMark rm;
+#if 0
+        // FIXME: get_type() fails with runtime/cds/appcds/loaderConstraints/DynamicLoaderConstraintsTest.java
         log_debug(cds, resolve)("archived klass  CP entry [%3d]: %s %s => %s %s%s", cp_index,
                                 get_type(pool_holder()), pool_holder()->name()->as_C_string(),
                                 get_type(k), k->name()->as_C_string(),
                                 pool_holder()->is_subtype_of(k) ? "" : " (not supertype)");
+#else
+        log_debug(cds, resolve)("archived klass  CP entry [%3d]: %s => %s%s", cp_index,
+                                pool_holder()->name()->as_C_string(),
+                                k->name()->as_C_string(),
+                                pool_holder()->is_subtype_of(k) ? "" : " (not supertype)");
+#endif
       }
       return true;
     }
   }
-
-  // This referenced class cannot be archived. Revert the tag to UnresolvedClass,
-  // so that the proper class loading and initialization can happen at runtime.
-  resolved_klasses()->at_put(resolved_klass_index, nullptr);
-  tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
   return false;
 }
 

@@ -300,6 +300,11 @@ class ArchivedObjectPermanentIndexTable: public ResourceHashtable<OopHandle, int
 static ArchivedObjectPermanentIndexTable* _permanent_index_table = nullptr;
 
 int HeapShared::get_archived_object_permanent_index(oop obj) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    log_warning(cds)("HeapShared::get_archived_object_permanent_index is not supported in new workflow yet");
+    return -1;
+  }
+
   if (_permobj_segments <= 0) {
     return -1;
   }
