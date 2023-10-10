@@ -57,11 +57,11 @@ import sun.security.action.GetPropertyAction;
 public class JavaHome {
     private static boolean DEBUG;
 
+    private static final boolean isHermetic;
+
     private static final String JAVA_HOME;
 
     private static final String EXECUTABLE;
-
-    private static final FileSystem jarFileSystem;
 
     private static final String HERMETIC_JAR_JDK_RESOURCES_HOME;
 
@@ -77,22 +77,11 @@ public class JavaHome {
 
         if (JAVA_HOME.endsWith(".jar")) {
             // The JAVA_HOME is a jar file. We are dealing with hermetic Java.
+            isHermetic = true;
 
             // JAVA_HOME is the hermetic executable JAR.
             EXECUTABLE = props.getProperty(
                 "jdk.internal.misc.hermetic.executable", JAVA_HOME);
-
-            try {
-                jarFileSystem = FileSystems.newFileSystem(
-                    URI.create("jar:file:" + JAVA_HOME), Collections.emptyMap());
-                if (DEBUG) {
-                    System.out.println(
-                        "Create hermetic java.home file system: " + jarFileSystem);
-                }
-            } catch (IOException ex) {
-                // The JAVA_HOME jar file should always exist.
-                throw new IllegalStateException(ex);
-            }
 
             String javaHome =
                 props.getProperty("jdk.internal.misc.JavaHome.Directory", "");
@@ -105,6 +94,7 @@ public class JavaHome {
                                    HERMETIC_JAR_JDK_RESOURCES_HOME);
             }
         } else {
+            isHermetic = false;
             jarFileSystem = null;
             HERMETIC_JAR_JDK_RESOURCES_HOME = "";
             EXECUTABLE = "";
@@ -125,6 +115,16 @@ public class JavaHome {
         return EXECUTABLE;
     }
 
+    // The jarFileSystem is not initialized as part of JavaHome <clinit> since
+    // JavaHome class initialization may occur before the module system is
+    // initialized (VM.isModuleSystemInited() returns false). Instead,
+    // jarFileSystem is initialized only when a hermetic packaged JDK
+    // resource/property file is accessed. The creation of jarFileSystem may
+    // trigger loading of the 'Jar' provider. The default 'Jar' provider is
+    // loaded by PlatformClassLoader, which can only be used after the module
+    // system is initialized. Hence delay the jarFileSystem initialization.
+    private static FileSystem jarFileSystem;
+
     /**
      * Return a Path representation of the hermetic Java home (containing the
      * JDK resource files).
@@ -132,6 +132,20 @@ public class JavaHome {
     public static Path hermeticJavaHome() {
         if (!isHermetic()) {
             throw new IllegalStateException("Not hermetic Java");
+        }
+
+        if (jarFileSystem == null) {
+            try {
+                jarFileSystem = FileSystems.newFileSystem(
+                    URI.create("jar:file:" + JAVA_HOME), Collections.emptyMap());
+                if (DEBUG) {
+                    System.out.println(
+                        "Create hermetic java.home file system: " + jarFileSystem);
+                }
+            } catch (IOException ex) {
+                // The JAVA_HOME jar file should always exist.
+                throw new IllegalStateException(ex);
+            }
         }
 
         Path p = jarFileSystem.getPath(HERMETIC_JAR_JDK_RESOURCES_HOME);
