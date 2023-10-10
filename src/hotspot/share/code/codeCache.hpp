@@ -226,6 +226,7 @@ class CodeCache : AllStatic {
   // Printing/debugging
   static void print();                           // prints summary
   static void print_internals();
+  static void print_nmethods_on(outputStream* st);
   static void print_memory_overhead();
   static void verify();                          // verifies the code cache
   static void print_trace(const char* event, CodeBlob* cb, int size = 0) PRODUCT_RETURN;
