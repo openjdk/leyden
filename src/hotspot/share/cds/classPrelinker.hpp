@@ -164,6 +164,7 @@ public:
 
   static int  num_platform_initiated_classes();
   static int  num_app_initiated_classes();
+  static void print_counters();
 };
 
 #endif // SHARE_CDS_CLASSPRELINKER_HPP

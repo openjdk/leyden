@@ -163,7 +163,7 @@ run0: ${PC_APP_UNPACKED}
 	time ${PREMAIN_JAVA} -Xlog:init ${UNPACKED_CMDLINE}
 
 run17: ${PC_APP_UNPACKED}
-	${JDK17_JAVA} ${UNPACKED_CMDLINE}
+	time ${JDK17_JAVA} ${UNPACKED_CMDLINE}
 
 #======================================== new workflow
 pre: ${PC_CDS_PREIMAGE}

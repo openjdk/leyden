@@ -48,8 +48,11 @@
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "runtime/handles.inline.hpp"
-#include "runtime/vmOperations.hpp"
+#include "runtime/perfData.hpp"
+#include "runtime/timer.hpp"
 #include "runtime/signature.hpp"
+#include "runtime/vmOperations.hpp"
+#include "services/management.hpp"
 
 ClassPrelinker::ClassesTable* ClassPrelinker::_processed_classes = nullptr;
 ClassPrelinker::ClassesTable* ClassPrelinker::_vm_classes = nullptr;
@@ -61,6 +64,9 @@ bool ClassPrelinker::_record_javabase_only = true;
 bool ClassPrelinker::_preload_javabase_only = true;
 ClassPrelinker::PreloadedKlasses ClassPrelinker::_static_preloaded_klasses;
 ClassPrelinker::PreloadedKlasses ClassPrelinker::_dynamic_preloaded_klasses;
+
+static PerfCounter* _perf_classes_preloaded = nullptr;
+static PerfCounter* _perf_class_preload_time = nullptr;
 
 bool ClassPrelinker::is_vm_class(InstanceKlass* ik) {
   return (_vm_classes->get(ik) != nullptr);
@@ -1032,6 +1038,12 @@ void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {
   if (table->_boot != nullptr && table->_boot->length() > 0) {
     CDSConfig::set_has_preloaded_classes();
   }
+
+  if (is_static_archive && soc->reading() && UsePerfData) {
+    JavaThread* THREAD = JavaThread::current();
+    NEWPERFEVENTCOUNTER(_perf_classes_preloaded, SUN_CLS, "preloadedClasses");
+    NEWPERFTICKCOUNTER(_perf_class_preload_time, SUN_CLS, "classPreloadTime");
+  }
 }
 
 int ClassPrelinker::num_platform_initiated_classes() {
@@ -1120,6 +1132,8 @@ void ClassPrelinker::jvmti_agent_error(InstanceKlass* expected, InstanceKlass* a
 }
 
 void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS) {
+  elapsedTimer timer;
+  timer.start();
   Array<InstanceKlass*>* preloaded_klasses;
   Array<InstanceKlass*>* initiated_klasses = nullptr;
   const char* loader_name;
@@ -1164,6 +1178,9 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
 
   if (preloaded_klasses != nullptr) {
     for (int i = 0; i < preloaded_klasses->length(); i++) {
+      if (UsePerfData) {
+        _perf_classes_preloaded->inc();
+      }
       InstanceKlass* ik = preloaded_klasses->at(i);
       if (log_is_enabled(Info, cds, preload)) {
         ResourceMark rm;
@@ -1202,8 +1219,11 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
     }
   }
 
+  timer.stop();
+  _perf_class_preload_time->inc(timer.ticks());
+
 #if 0
-  // Hmm, does JavacBench crash if this block is disabled??
+  // Hmm, does JavacBench crash if this block is enabled??
   if (VerifyDuringStartup) {
     VM_Verify verify_op;
     VMThread::execute(&verify_op);
@@ -1257,6 +1277,16 @@ void ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(TRAP
         }
         CompilationPolicy::replay_training_at_init(ik, CHECK);
       }
+    }
+  }
+}
+
+void ClassPrelinker::print_counters() {
+  if (UsePerfData && _perf_class_preload_time != nullptr) {
+    LogStreamHandle(Info, init) log;
+    if (log.is_enabled()) {
+      log.print_cr("ClassPrelinker:");
+      log.print_cr("  preload:           %ldms / %ld events", Management::ticks_to_ms(_perf_class_preload_time->get_value()), _perf_classes_preloaded->get_value());
     }
   }
 }
