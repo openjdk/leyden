@@ -632,9 +632,8 @@ bool ClassPrelinker::is_indy_archivable(ConstantPool* cp, int cp_index) {
   }
 
   if (bsm_klass->equals("java/lang/invoke/LambdaMetafactory") &&
-      bsm_name->equals("metafactory") &&
-      bsm_signature->equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;")) {
-
+      ((bsm_name->equals("metafactory")    && bsm_signature->equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;")) ||
+       (bsm_name->equals("altMetafactory") && bsm_signature->equals("(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;")))) {
     SignatureStream ss(cp->uncached_signature_ref_at(cp_index));
     ss.skip_to_return_type();
     Symbol* type = ss.as_symbol(); // This is the interface type implemented by the lambda proxy
