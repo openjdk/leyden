@@ -335,6 +335,13 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     }
   }
 
+  // FIXME: this is a work-around for JDK-8317841
+  // Classes like "org/springframework/cglib/core/MethodWrapper$MethodWrapperKey$$KeyFactoryByCGLIB$$552be97a"
+  if (k->name()->index_of_at(0, "CGLIB$$", 7) > 0) {
+    log_debug(cds)("Skipping %s: Generated class", k->name()->as_C_string());
+    return true;
+  }
+
   InstanceKlass* super = k->java_super();
   if (super != nullptr && check_for_exclusion(super, nullptr)) {
     ResourceMark rm;
