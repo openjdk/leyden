@@ -157,14 +157,14 @@ public:
   static void record_resolved_indys();
   static void serialize(SerializeClosure* soc, bool is_static_archive);
 
-  static void runtime_preload(JavaThread* current, Handle loader);
-  static void init_javabase_preloaded_classes(TRAPS);
-  static void replay_training_at_init_for_javabase_preloaded_classes(TRAPS);
+  static void runtime_preload(JavaThread* current, Handle loader) NOT_CDS_RETURN;
+  static void init_javabase_preloaded_classes(TRAPS) NOT_CDS_RETURN;
+  static void replay_training_at_init_for_javabase_preloaded_classes(TRAPS) NOT_CDS_RETURN;
   static bool class_preloading_finished();
 
   static int  num_platform_initiated_classes();
   static int  num_app_initiated_classes();
-  static void print_counters();
+  static void print_counters() NOT_CDS_RETURN;
 };
 
 #endif // SHARE_CDS_CLASSPRELINKER_HPP

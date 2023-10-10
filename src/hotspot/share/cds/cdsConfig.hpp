@@ -34,24 +34,24 @@ class CDSConfig : public AllStatic {
   static bool      _enable_loading_full_module_graph;
   static bool      _has_preloaded_classes;
 public:
-  static bool      is_using_dumptime_tables();
-  static bool      is_dumping_archive(); // dynamic or static archive
-  static bool      is_dumping_static_archive();
-  static bool      is_dumping_final_static_archive(); // new "half step" dumping. See ../../../../doc/leyden/xxxxxx.md
-  static bool      is_dumping_dynamic_archive();
-  static bool      is_dumping_heap();
-  static bool      is_loading_heap();
-  static void disable_dumping_full_module_graph(const char* reason = nullptr);
-  static bool      is_dumping_full_module_graph();
-  static void disable_loading_full_module_graph(const char* reason = nullptr);
-  static bool      is_loading_full_module_graph();
-  static bool      is_dumping_invokedynamic();
-  static bool      is_dumping_cached_code();
-  static void disable_dumping_cached_code();
-  static void  enable_dumping_cached_code();
-  static bool      is_initing_classes_at_dump_time();
-  static bool      has_preloaded_classes()     { return _has_preloaded_classes; }
-  static void      set_has_preloaded_classes() { _has_preloaded_classes = true; }
+  static bool      is_using_dumptime_tables() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_archive() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_static_archive() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_final_static_archive() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_dynamic_archive() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_heap() NOT_CDS_RETURN_(false);
+  static bool      is_loading_heap() NOT_CDS_RETURN_(false);
+  static void disable_dumping_full_module_graph(const char* reason = nullptr) NOT_CDS_RETURN;
+  static bool      is_dumping_full_module_graph() NOT_CDS_RETURN_(false);
+  static void disable_loading_full_module_graph(const char* reason = nullptr) NOT_CDS_RETURN;
+  static bool      is_loading_full_module_graph() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_invokedynamic() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_cached_code() NOT_CDS_RETURN_(false);
+  static void disable_dumping_cached_code() NOT_CDS_RETURN;
+  static void  enable_dumping_cached_code() NOT_CDS_RETURN;
+  static bool      is_initing_classes_at_dump_time() NOT_CDS_RETURN_(false);
+  static bool      has_preloaded_classes()     { CDS_ONLY(return _has_preloaded_classes); NOT_CDS(return false); }
+  static void      set_has_preloaded_classes() { CDS_ONLY(_has_preloaded_classes = true); }
 };
 
 #endif // SHARE_CDS_CDSCONFIG_HPP

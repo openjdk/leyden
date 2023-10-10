@@ -35,7 +35,7 @@ class Method;
 
 class CDSAccess : AllStatic {
 private:
-  static bool can_generate_cached_code(address addr);
+  static bool can_generate_cached_code(address addr) NOT_CDS_RETURN_(false);
 public:
   static bool can_generate_cached_code(Method* m) {
     return can_generate_cached_code((address)m);
@@ -43,12 +43,12 @@ public:
   static bool can_generate_cached_code(Klass* k) {
     return can_generate_cached_code((address)k);
   }
-  static bool can_generate_cached_code(InstanceKlass* ik);
+  static bool can_generate_cached_code(InstanceKlass* ik) NOT_CDS_RETURN_(false);
 
   static uint delta_from_shared_address_base(address addr);
-  static Method* method_in_cached_code(Method* m);
+  static Method* method_in_cached_code(Method* m) NOT_CDS_RETURN_(nullptr);
 
-  static int get_archived_object_permanent_index(oop obj);
+  static int get_archived_object_permanent_index(oop obj) NOT_CDS_RETURN_(-1);
 };
 
 #endif // SHARE_CDS_CDSACCESS_HPP

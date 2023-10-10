@@ -33,6 +33,7 @@
 #include "cds/methodProfiler.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "classfile/classLoaderData.hpp"
+#include "classfile/compactHashtable.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -1468,6 +1469,7 @@ void TrainingData::prepare_recompilation_schedule(TRAPS) {
   }
 }
 
+#if INCLUDE_CDS
 void TrainingData::iterate_roots(MetaspaceClosure* it) {
   if (!need_data()) {
     return;
@@ -1652,6 +1654,7 @@ TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {
   }
   return nullptr;
 }
+#endif
 
 template <typename T>
 void TrainingData::DepList<T>::metaspace_pointers_do(MetaspaceClosure* iter) {
