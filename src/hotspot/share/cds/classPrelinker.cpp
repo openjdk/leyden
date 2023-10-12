@@ -1132,7 +1132,9 @@ void ClassPrelinker::jvmti_agent_error(InstanceKlass* expected, InstanceKlass* a
 
 void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS) {
   elapsedTimer timer;
-  timer.start();
+  if (UsePerfData) {
+    timer.start();
+  }
   Array<InstanceKlass*>* preloaded_klasses;
   Array<InstanceKlass*>* initiated_klasses = nullptr;
   const char* loader_name;
@@ -1218,8 +1220,10 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
     }
   }
 
-  timer.stop();
-  _perf_class_preload_time->inc(timer.ticks());
+  if (UsePerfData) {
+    timer.stop();
+    _perf_class_preload_time->inc(timer.ticks());
+  }
 
 #if 0
   // Hmm, does JavacBench crash if this block is enabled??
