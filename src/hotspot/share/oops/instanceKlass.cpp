@@ -780,22 +780,27 @@ static bool are_super_types_initialized(InstanceKlass* ik) {
   return true;
 }
 
-static int call_class_initializer_counter = 0;   // for debugging
-static void log_class_init(JavaThread* current, InstanceKlass* ik) {
+static int log_class_init(JavaThread* current, InstanceKlass* ik) {
   LogTarget(Info, class, init) lt;
   if (lt.is_enabled()) {
     ResourceMark rm;
     LogStream ls(lt);
+
+    static int call_class_initializer_counter = 0;   // for debugging
+    int init_id = Atomic::fetch_then_add(&call_class_initializer_counter, 1);
+
     const char* info = "";
     if (ik->has_preinitialized_mirror() && CDSConfig::is_loading_heap()) {
       info = " (preinitialized)";
     } else if (ik->class_initializer() == nullptr) {
       info = " (no method)";
     }
-    ls.print("%d Initializing ", call_class_initializer_counter++);
+    ls.print("%d Initializing ", init_id);
     ik->name()->print_value_on(&ls);
     ls.print_cr("%s (" PTR_FORMAT ") by thread \"%s\"", info, p2i(ik), current->name());
+    return init_id;
   }
+  return -1;
 }
 
 void InstanceKlass::initialize_from_cds(TRAPS) {
@@ -1734,7 +1739,7 @@ void InstanceKlass::call_class_initializer(TRAPS) {
 
   methodHandle h_method(THREAD, class_initializer());
   assert(!is_initialized(), "we cannot initialize twice");
-  log_class_init(THREAD, this);
+  int init_id = log_class_init(THREAD, this);
   if (h_method() != nullptr) {
     JavaCallArguments args; // No arguments
     JavaValue result(T_VOID);
@@ -1755,6 +1760,14 @@ void InstanceKlass::call_class_initializer(TRAPS) {
       tdata->record_initialization_end();
       THREAD->set_class_being_initialized(outer);
     }
+  }
+  LogTarget(Info, class, init) lt;
+  if (lt.is_enabled()) {
+    ResourceMark rm(THREAD);
+    LogStream ls(lt);
+    ls.print("%d Initialized ", init_id);
+    name()->print_value_on(&ls);
+    ls.print_cr("%s (" PTR_FORMAT ")", h_method() == nullptr ? "(no method)" : "", p2i(this));
   }
 }
 
