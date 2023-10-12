@@ -1563,6 +1563,19 @@ void TrainingData::print_archived_training_data_on(outputStream* st) {
   TrainingDataPrinter tdp(st);
   TrainingDataLocker::initialize();
   _archived_training_data_dictionary.iterate(&tdp);
+  if (_recompilation_schedule != nullptr && _recompilation_schedule->length() > 0) {
+    st->print_cr("Archived TrainingData Recompilation Schedule");
+    for (int i = 0; i < _recompilation_schedule->length(); i++) {
+      st->print("%4d: ", i);
+      MethodTrainingData* mtd = _recompilation_schedule->at(i);
+      if (mtd != nullptr) {
+        mtd->print_on(st);
+      } else {
+        st->print("nullptr");
+      }
+      st->cr();
+    }
+  }
 }
 
 void TrainingData::Key::metaspace_pointers_do(MetaspaceClosure *iter) {
