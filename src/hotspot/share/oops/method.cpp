@@ -179,12 +179,13 @@ char* Method::name_and_sig_as_C_string(Klass* klass, Symbol* method_name, Symbol
   const char* klass_name = klass->external_name();
   int klass_name_len  = (int)strlen(klass_name);
   int method_name_len = method_name->utf8_length();
-  int len             = klass_name_len + 1 + method_name_len + signature->utf8_length();
+  int len             = klass_name_len + 2 + method_name_len + signature->utf8_length();
   char* dest          = NEW_RESOURCE_ARRAY(char, len + 1);
   strcpy(dest, klass_name);
-  dest[klass_name_len] = '.';
-  strcpy(&dest[klass_name_len + 1], method_name->as_C_string());
-  strcpy(&dest[klass_name_len + 1 + method_name_len], signature->as_C_string());
+  dest[klass_name_len + 0] = ':';
+  dest[klass_name_len + 1] = ':';
+  strcpy(&dest[klass_name_len + 2], method_name->as_C_string());
+  strcpy(&dest[klass_name_len + 2 + method_name_len], signature->as_C_string());
   dest[len] = 0;
   return dest;
 }
