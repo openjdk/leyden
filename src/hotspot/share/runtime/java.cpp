@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/classListWriter.hpp"
+#include "cds/classPrelinker.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/methodProfiler.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -355,6 +356,7 @@ void print_statistics() {
   if (UsePerfData) {
     SharedRuntime::print_counters();
     ClassLoader::print_counters();
+    ClassPrelinker::print_counters();
   }
 }
 
@@ -411,6 +413,7 @@ void print_statistics() {
   if (UsePerfData) {
     SharedRuntime::print_counters();
     ClassLoader::print_counters();
+    ClassPrelinker::print_counters();
   }
 }
 

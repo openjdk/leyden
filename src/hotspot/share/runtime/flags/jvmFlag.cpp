@@ -26,6 +26,7 @@
 #include "jfr/jfrEvents.hpp"
 #include "jvm_io.h"
 #include "memory/allocation.inline.hpp"
+#include "memory/universe.hpp"
 #include "runtime/arguments.hpp"
 #include "runtime/flags/jvmFlag.hpp"
 #include "runtime/flags/jvmFlagAccess.hpp"

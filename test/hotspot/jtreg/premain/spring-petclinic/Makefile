@@ -134,7 +134,7 @@ ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 ${PC_DYNAMIC_JSA}: ${PC_STATIC_JSA}
 	rm -f ${PC_DYNAMIC_JSA} ${PC_DYNAMIC_JSA}.log
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_JSA} \
-	    -Xlog:cds=debug,cds+class=debug:file=${PC_DYNAMIC_JSA}.log \
+	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=${PC_DYNAMIC_JSA}.log \
 	    -XX:+RecordTraining ${UNPACKED_CMDLINE}
 	ls -l ${PC_DYNAMIC_JSA}
 
@@ -163,7 +163,7 @@ run0: ${PC_APP_UNPACKED}
 	time ${PREMAIN_JAVA} -Xlog:init ${UNPACKED_CMDLINE}
 
 run17: ${PC_APP_UNPACKED}
-	${JDK17_JAVA} ${UNPACKED_CMDLINE}
+	time ${JDK17_JAVA} ${UNPACKED_CMDLINE}
 
 #======================================== new workflow
 pre: ${PC_CDS_PREIMAGE}
@@ -186,7 +186,7 @@ ${PC_CDS}: ${PC_CDS_PREIMAGE}
 # run with NEW workflow
 runn: ${PC_CDS}
 	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_CDS} -XX:+ReplayTraining -XX:+LoadCachedCode \
-		-XX:CachedCodeFile=${PC_CDS}.jsa -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
+		-XX:CachedCodeFile=${PC_CDS}.code -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
 
 clean: clean0
 	rm -rf *~ ${PC_REPO}

@@ -2959,12 +2959,14 @@ void Arguments::fix_appclasspath() {
   }
 }
 
+#if INCLUDE_CDS
 static void set_new_workflow_default_CachedCodeFile() {
   size_t len = strlen(CacheDataStore) + 6;
   char* file = AllocateHeap(len, mtArguments);
   jio_snprintf(file, len, "%s.code", CacheDataStore);
   FLAG_SET_ERGO(CachedCodeFile, file);
 }
+#endif
 
 jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
   // check if the default lib/endorsed directory exists; if so, error

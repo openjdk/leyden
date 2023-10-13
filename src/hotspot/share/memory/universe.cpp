@@ -95,12 +95,12 @@ OopHandle Universe::_basic_type_mirrors[T_VOID+1];
 #if INCLUDE_CDS_JAVA_HEAP
 int Universe::_archived_basic_type_mirror_indices[T_VOID+1];
 
-int Universe::_archived_null_ptr_exception_instance_index;
-int Universe::_archived_arithmetic_exception_instance_index;
-int Universe::_archived_virtual_machine_error_instance_index;
-int Universe::_archived_array_index_oob_exception_instance_index;
-int Universe::_archived_array_store_exception_instance_index;
-int Universe::_archived_class_cast_exception_instance_index;
+int Universe::_archived_null_ptr_exception_instance_index = -1;
+int Universe::_archived_arithmetic_exception_instance_index = -1;
+int Universe::_archived_virtual_machine_error_instance_index = -1;
+int Universe::_archived_array_index_oob_exception_instance_index = -1;
+int Universe::_archived_array_store_exception_instance_index = -1;
+int Universe::_archived_class_cast_exception_instance_index = -1;
 #endif
 
 OopHandle Universe::_main_thread_group;
@@ -1071,28 +1071,23 @@ bool universe_post_init() {
   if (Universe::_null_ptr_exception_instance.is_empty()) {
     instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_NullPointerException(), CHECK_false);
     Universe::_null_ptr_exception_instance = OopHandle(Universe::vm_global(), instance);
-    Universe::_archived_null_ptr_exception_instance_index = -1;
   }
   if (Universe::_arithmetic_exception_instance.is_empty()) {
     instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArithmeticException(), CHECK_false);
     Universe::_arithmetic_exception_instance = OopHandle(Universe::vm_global(), instance);
-    Universe::_archived_arithmetic_exception_instance_index = -1;
   }
 //#ifdef COMPILER1_OR_COMPILER2_PRESENT
   if (Universe::_array_index_oob_exception_instance.is_empty()) {
     instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArrayIndexOutOfBoundsException(), CHECK_false);
     Universe::_array_index_oob_exception_instance = OopHandle(Universe::vm_global(), instance);
-    Universe::_archived_array_index_oob_exception_instance_index = -1;
   }
   if (Universe::_array_store_exception_instance.is_empty()) {
     instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArrayStoreException(), CHECK_false);
     Universe::_array_store_exception_instance = OopHandle(Universe::vm_global(), instance);
-    Universe::_archived_array_store_exception_instance_index = -1;
   }
   if (Universe::_class_cast_exception_instance.is_empty()) {
     instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ClassCastException(), CHECK_false);
     Universe::_class_cast_exception_instance = OopHandle(Universe::vm_global(), instance);
-    Universe::_archived_class_cast_exception_instance_index = -1;
   }
 //#endif // COMPILER1_OR_COMPILER2_PRESENT
 
@@ -1110,7 +1105,6 @@ bool universe_post_init() {
   if (Universe::_virtual_machine_error_instance.is_empty()) {
     instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_VirtualMachineError(), CHECK_false);
     Universe::_virtual_machine_error_instance = OopHandle(Universe::vm_global(), instance);
-    Universe::_archived_virtual_machine_error_instance_index = -1;
   }
   Handle msg = java_lang_String::create_from_str("/ by zero", CHECK_false);
   java_lang_Throwable::set_message(Universe::arithmetic_exception_instance(), msg());

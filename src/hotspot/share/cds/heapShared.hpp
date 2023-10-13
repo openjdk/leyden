@@ -440,7 +440,7 @@ private:
   // get_archived_object_permanent_index().
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 
-  static void initialize_java_lang_invoke(TRAPS);
+  static void initialize_java_lang_invoke(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 
   static bool is_lambda_form_klass(InstanceKlass* ik);
   static bool is_lambda_proxy_klass(InstanceKlass* ik);

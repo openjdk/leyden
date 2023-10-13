@@ -521,10 +521,15 @@ void ConstantPool::archive_entries() {
   }
 }
 
-#if 0
-static const char* get_type(Klass* buffered_k) {
+static const char* get_type(Klass* k) {
   const char* type;
-  Klass* src_k = ArchiveBuilder::current()->get_source_addr(buffered_k);
+  Klass* src_k;
+  if (ArchiveBuilder::is_active() && ArchiveBuilder::current()->is_in_buffer_space(k)) {
+    src_k = ArchiveBuilder::current()->get_source_addr(k);
+  } else {
+    src_k = k;
+  }
+
   if (src_k->is_objArray_klass()) {
     src_k = ObjArrayKlass::cast(src_k)->bottom_klass();
     assert(!src_k->is_objArray_klass(), "sanity");
@@ -549,7 +554,6 @@ static const char* get_type(Klass* buffered_k) {
 
   return type;
 }
-#endif
 
 bool ConstantPool::maybe_archive_resolved_klass_at(int cp_index) {
   assert(ArchiveBuilder::current()->is_in_buffer_space(this), "must be");
@@ -573,18 +577,10 @@ bool ConstantPool::maybe_archive_resolved_klass_at(int cp_index) {
     if (ClassPrelinker::can_archive_resolved_klass(src_cp, cp_index)) {
       if (log_is_enabled(Debug, cds, resolve)) {
         ResourceMark rm;
-#if 0
-        // FIXME: get_type() fails with runtime/cds/appcds/loaderConstraints/DynamicLoaderConstraintsTest.java
         log_debug(cds, resolve)("archived klass  CP entry [%3d]: %s %s => %s %s%s", cp_index,
-                                get_type(pool_holder()), pool_holder()->name()->as_C_string(),
-                                get_type(k), k->name()->as_C_string(),
+                                pool_holder()->name()->as_C_string(), get_type(pool_holder()),
+                                k->name()->as_C_string(), get_type(k),
                                 pool_holder()->is_subtype_of(k) ? "" : " (not supertype)");
-#else
-        log_debug(cds, resolve)("archived klass  CP entry [%3d]: %s => %s%s", cp_index,
-                                pool_holder()->name()->as_C_string(),
-                                k->name()->as_C_string(),
-                                pool_holder()->is_subtype_of(k) ? "" : " (not supertype)");
-#endif
       }
       return true;
     }

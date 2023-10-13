@@ -49,6 +49,14 @@ bool CDSConfig::is_dumping_static_archive() {
   return DumpSharedSpaces || is_dumping_final_static_archive();
 }
 
+bool CDSConfig::is_dumping_preimage_static_archive() {
+  if (CacheDataStore != nullptr && CDSPreimage == nullptr && DumpSharedSpaces) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 bool CDSConfig::is_dumping_final_static_archive() {
   if (CacheDataStore != nullptr && CDSPreimage != nullptr) {
     // [Temp: refactoring in progress] DumpSharedSpaces is sometimes used in contexts
@@ -62,6 +70,17 @@ bool CDSConfig::is_dumping_final_static_archive() {
 
 bool CDSConfig::is_dumping_dynamic_archive() {
   return DynamicDumpSharedSpaces;
+}
+
+bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
+  if (CacheDataStore != nullptr || CDSPreimage != nullptr) {
+    // Not yet supported in new workflow -- the training data may point
+    // to a method in a lambdaform holder class that was not regenerated
+    // due to JDK-8318064.
+    return false;
+  } else {
+    return is_dumping_archive();
+  }
 }
 
 bool CDSConfig::is_dumping_heap() {

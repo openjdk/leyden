@@ -412,7 +412,8 @@ public:
   GrowableArray<Symbol*>* symbols() const { return _symbols; }
 
   static bool is_active() {
-    return (_current != nullptr);
+    CDS_ONLY(return (_current != nullptr));
+    NOT_CDS(return false;)
   }
 
   static ArchiveBuilder* current() {

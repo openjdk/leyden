@@ -33,6 +33,7 @@
 #include "cds/methodProfiler.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "classfile/classLoaderData.hpp"
+#include "classfile/compactHashtable.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -1478,6 +1479,7 @@ void TrainingData::prepare_recompilation_schedule(TRAPS) {
   }
 }
 
+#if INCLUDE_CDS
 void TrainingData::iterate_roots(MetaspaceClosure* it) {
   if (!need_data()) {
     return;
@@ -1490,7 +1492,6 @@ void TrainingData::iterate_roots(MetaspaceClosure* it) {
 }
 
 void TrainingData::dump_training_data() {
-  assert(!DumpSharedSpaces, "temporary restriction"); // See MetaspaceShared::link_shared_classes().
   if (!need_data()) {
     return;
   }
@@ -1675,6 +1676,7 @@ TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {
   }
   return nullptr;
 }
+#endif
 
 KlassTrainingData* TrainingData::lookup_ktd_for(InstanceKlass* ik) {
   if (TrainingData::have_data() && ik != nullptr && ik->is_loaded()) {
