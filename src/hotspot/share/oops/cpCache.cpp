@@ -839,11 +839,11 @@ void ConstantPoolCache::remove_unshareable_info(const GrowableArray<bool>* keep_
         if (log_is_enabled(Debug, cds, resolve)) {
           ResourceMark rm;
           int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
-          Klass* resolved_klass = cp->resolved_klass_at(klass_cp_index);
+          Symbol* klass_name = cp->klass_name_at(klass_cp_index);
           Symbol* name = cp->uncached_name_ref_at(cp_index);
           Symbol* signature = cp->uncached_signature_ref_at(cp_index);
           log_debug(cds, resolve)("archived field  CP entry [%3d]: %s => %s.%s:%s", cp_index,
-                                  cp->pool_holder()->name()->as_C_string(), resolved_klass->name()->as_C_string(),
+                                  cp->pool_holder()->name()->as_C_string(), klass_name->as_C_string(),
                                   name->as_C_string(), signature->as_C_string());
         }
         rfi->mark_and_relocate();

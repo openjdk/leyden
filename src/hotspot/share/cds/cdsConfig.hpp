@@ -37,8 +37,10 @@ public:
   static bool      is_using_dumptime_tables() NOT_CDS_RETURN_(false);
   static bool      is_dumping_archive() NOT_CDS_RETURN_(false);
   static bool      is_dumping_static_archive() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_preimage_static_archive() NOT_CDS_RETURN_(false);
   static bool      is_dumping_final_static_archive() NOT_CDS_RETURN_(false);
   static bool      is_dumping_dynamic_archive() NOT_CDS_RETURN_(false);
+  static bool      is_dumping_regenerated_lambdaform_invokers() NOT_CDS_RETURN_(false);
   static bool      is_dumping_heap() NOT_CDS_RETURN_(false);
   static bool      is_loading_heap() NOT_CDS_RETURN_(false);
   static void disable_dumping_full_module_graph(const char* reason = nullptr) NOT_CDS_RETURN;

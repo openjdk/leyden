@@ -186,7 +186,7 @@ ${PC_CDS}: ${PC_CDS_PREIMAGE}
 # run with NEW workflow
 runn: ${PC_CDS}
 	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_CDS} -XX:+ReplayTraining -XX:+LoadCachedCode \
-		-XX:CachedCodeFile=${PC_CDS}.jsa -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
+		-XX:CachedCodeFile=${PC_CDS}.code -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
 
 clean: clean0
 	rm -rf *~ ${PC_REPO}
