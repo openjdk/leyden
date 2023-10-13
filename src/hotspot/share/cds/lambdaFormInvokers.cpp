@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/lambdaFormInvokers.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
@@ -90,6 +91,9 @@ class PrintLambdaFormMessage {
 };
 
 void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
+  if (!CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
+    return;
+  }
   PrintLambdaFormMessage plm;
   if (_lambdaform_lines == nullptr || _lambdaform_lines->length() == 0) {
     log_info(cds)("Nothing to regenerate for holder classes");

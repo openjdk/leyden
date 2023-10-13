@@ -485,6 +485,7 @@ public:
     SystemDictionaryShared::dumptime_classes_do(it);
     Universe::metaspace_pointers_do(it);
     vmSymbols::metaspace_pointers_do(it);
+    TrainingData::iterate_roots(it);
 
     // The above code should find all the symbols that are referenced by the
     // archived classes. We just need to add the extra symbols which
@@ -508,6 +509,7 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
 
   SystemDictionaryShared::write_to_archive();
   ClassPrelinker::record_initiated_klasses(true);
+  TrainingData::dump_training_data();
   MetaspaceShared::write_method_handle_intrinsics();
 
   // Write lambform lines into archive
@@ -562,6 +564,12 @@ void VM_PopulateDumpSharedSpace::doit() {
   char* serialized_data = dump_read_only_tables();
 
   SystemDictionaryShared::adjust_lambda_proxy_class_dictionary();
+
+  log_info(cds)("Adjust method info dictionary");
+  SystemDictionaryShared::adjust_method_info_dictionary();
+
+  log_info(cds)("Adjust training data dictionary");
+  TrainingData::adjust_training_data_dictionary();
 
   // The vtable clones contain addresses of the current process.
   // We don't want to write these addresses into the archive.
@@ -901,6 +909,10 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   // are implemented by K are not verified.
   link_shared_classes(false/*not from jcmd*/, CHECK);
   log_info(cds)("Rewriting and linking classes: done");
+
+  // copy shared path table to saved.
+  TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
+  TrainingData::prepare_recompilation_schedule(CHECK);
 
   _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
   SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);

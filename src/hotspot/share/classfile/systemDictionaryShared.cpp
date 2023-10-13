@@ -335,7 +335,9 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     }
   }
 
-  if (CDSConfig::is_dumping_dynamic_archive()) {
+  if (CDSConfig::is_dumping_dynamic_archive() ||
+      CDSConfig::is_dumping_preimage_static_archive() ||
+      CDSConfig::is_dumping_final_static_archive() ) {
     // FIXME: this is a work-around for JDK-8317841
     // Classes like "org/springframework/cglib/core/MethodWrapper$MethodWrapperKey$$KeyFactoryByCGLIB$$552be97a"
     if (k->name()->index_of_at(0, "CGLIB$$", 7) > 0) {
