@@ -4173,7 +4173,11 @@ jint Arguments::apply_ergo() {
     FLAG_SET_DEFAULT(UseVectorStubs, false);
   }
 #endif // COMPILER2_OR_JVMCI
-
+  if (log_is_enabled(Info, init)) {
+    if (FLAG_IS_DEFAULT(ProfileVMLocks)) {
+      FLAG_SET_DEFAULT(ProfileVMLocks, true);
+    }
+  }
   if (FLAG_IS_CMDLINE(DiagnoseSyncOnValueBasedClasses)) {
     if (DiagnoseSyncOnValueBasedClasses == ObjectSynchronizer::LOG_WARNING && !log_is_enabled(Info, valuebasedclasses)) {
       LogConfiguration::configure_stdout(LogLevel::Info, true, LOG_TAGS(valuebasedclasses));
