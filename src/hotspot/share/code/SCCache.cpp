@@ -53,6 +53,7 @@
 #include "memory/universe.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/method.inline.hpp"
+#include "prims/jvmtiThreadState.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/globals_extension.hpp"
@@ -3149,7 +3150,7 @@ void SCCReader::print_on(outputStream* st) {
 #define _stubs_max 120
 #define _blobs_max 80
 #define _shared_blobs_max 16
-#define _C2_blobs_max 17
+#define _C2_blobs_max 21
 #define _C1_blobs_max (_blobs_max - _shared_blobs_max - _C2_blobs_max)
 #define _all_max 280
 
@@ -3193,7 +3194,10 @@ void SCAddressTable::init() {
 
   SET_ADDRESS(_extrs, SharedRuntime::complete_monitor_unlocking_C);
   SET_ADDRESS(_extrs, SharedRuntime::enable_stack_reserved_zone);
-
+#ifdef AMD64
+  SET_ADDRESS(_extrs, SharedRuntime::montgomery_multiply);
+  SET_ADDRESS(_extrs, SharedRuntime::montgomery_square);
+#endif // AMD64
   SET_ADDRESS(_extrs, SharedRuntime::d2f);
   SET_ADDRESS(_extrs, SharedRuntime::d2i);
   SET_ADDRESS(_extrs, SharedRuntime::d2l);
@@ -3225,6 +3229,8 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, os::javaTimeMillis);
   SET_ADDRESS(_extrs, os::javaTimeNanos);
 
+  SET_ADDRESS(_extrs, &JvmtiVTMSTransitionDisabler::_VTMS_notify_jvmti_events);
+  SET_ADDRESS(_extrs, StubRoutines::crc_table_addr());
 #ifndef PRODUCT
   SET_ADDRESS(_extrs, &SharedRuntime::_partial_subtype_ctr);
   SET_ADDRESS(_extrs, JavaThread::verify_cross_modify_fence_failure);
@@ -3335,7 +3341,6 @@ void SCAddressTable::init() {
   SET_ADDRESS(_stubs, StubRoutines::sha3_implCompressMB());
 
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32());
-  SET_ADDRESS(_stubs, StubRoutines::crc_table_addr());
 
   SET_ADDRESS(_stubs, StubRoutines::crc32c_table_addr());
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32C());
@@ -3376,6 +3381,10 @@ void SCAddressTable::init() {
   SET_ADDRESS(_stubs, StubRoutines::x86::double_sign_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::double_sign_flip());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_popcount_lut());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_float_sign_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_float_sign_flip());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_double_sign_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_double_sign_flip());
   // The iota indices are ordered by type B/S/I/L/F/D, and the offset between two types is 64.
   // See C2_MacroAssembler::load_iota_indices().
   for (int i = 0; i < 6; i++) {
@@ -3451,6 +3460,10 @@ void SCAddressTable::init_opto() {
   SET_ADDRESS(_C2_blobs, OptoRuntime::slow_arraycopy_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::register_finalizer_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::class_init_barrier_Java());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_start());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_end());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_mount());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_unmount());
 #endif
 
   assert(_C2_blobs_length <= _C2_blobs_max, "increase _C2_blobs_max to %d", _C2_blobs_length);
