@@ -109,6 +109,7 @@ address OptoRuntime::_rethrow_Java                                = nullptr;
 
 address OptoRuntime::_slow_arraycopy_Java                         = nullptr;
 address OptoRuntime::_register_finalizer_Java                     = nullptr;
+address OptoRuntime::_class_init_barrier_Java                     = nullptr;
 #if INCLUDE_JVMTI
 address OptoRuntime::_notify_jvmti_vthread_start                  = nullptr;
 address OptoRuntime::_notify_jvmti_vthread_end                    = nullptr;
@@ -167,6 +168,7 @@ bool OptoRuntime::generate(ciEnv* env) {
 
   gen(env, _slow_arraycopy_Java            , slow_arraycopy_Type          , SharedRuntime::slow_arraycopy_C ,    0 , false, false);
   gen(env, _register_finalizer_Java        , register_finalizer_Type      , register_finalizer              ,    0 , false, false);
+  gen(env, _class_init_barrier_Java        , class_init_barrier_Type      , class_init_barrier              ,    0 , false, false);
 
   return true;
 }
@@ -1649,6 +1651,20 @@ const TypeFunc *OptoRuntime::register_finalizer_Type() {
   return TypeFunc::make(domain,range);
 }
 
+const TypeFunc *OptoRuntime::class_init_barrier_Type() {
+  // create input type (domain)
+  const Type** fields = TypeTuple::fields(1);
+  fields[TypeFunc::Parms+0] = TypeKlassPtr::NOTNULL;
+  // // The JavaThread* is passed to each routine as the last argument
+  // fields[TypeFunc::Parms+1] = TypeRawPtr::NOTNULL;  // JavaThread *; Executing thread
+  const TypeTuple* domain = TypeTuple::make(TypeFunc::Parms+1, fields);
+
+  // create result type (range)
+  fields = TypeTuple::fields(0);
+  const TypeTuple *range = TypeTuple::make(TypeFunc::Parms+0, fields);
+  return TypeFunc::make(domain,range);
+}
+
 #if INCLUDE_JFR
 const TypeFunc *OptoRuntime::class_id_load_barrier_Type() {
   // create input type (domain)
@@ -1703,6 +1719,11 @@ JRT_ENTRY_NO_ASYNC(void, OptoRuntime::register_finalizer(oopDesc* obj, JavaThrea
   assert(oopDesc::is_oop(obj), "must be a valid oop");
   assert(obj->klass()->has_finalizer(), "shouldn't be here otherwise");
   InstanceKlass::register_finalizer(instanceOop(obj), CHECK);
+JRT_END
+
+JRT_ENTRY_NO_ASYNC(void, OptoRuntime::class_init_barrier(Klass* k, JavaThread* current))
+  assert(k->is_instance_klass(), "");
+  InstanceKlass::cast(k)->initialize(CHECK);
 JRT_END
 
 //-----------------------------------------------------------------------------

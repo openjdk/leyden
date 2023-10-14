@@ -95,12 +95,12 @@ SCCache* SCCache::_cache = nullptr;
 
 void SCCache::initialize() {
   if (StoreCachedCode || LoadCachedCode) {
-    if (FLAG_IS_DEFAULT(UseClassInitBarriers)) {
-      FLAG_SET_DEFAULT(UseClassInitBarriers, true);
+    if (FLAG_IS_DEFAULT(ClassInitBarrierMode)) {
+      FLAG_SET_DEFAULT(ClassInitBarrierMode, 1);
     }
-  } else if (UseClassInitBarriers) {
-    log_warning(scc, init)("Set UseClassInitBarriers to false because StoreCachedCode and LoadCachedCode are false.");
-    FLAG_SET_DEFAULT(UseClassInitBarriers, false);
+  } else if (ClassInitBarrierMode > 0) {
+    log_warning(scc, init)("Set ClassInitBarrierMode to 0 because StoreCachedCode and LoadCachedCode are false.");
+    FLAG_SET_DEFAULT(ClassInitBarrierMode, 0);
   }
   if ((LoadCachedCode || StoreCachedCode) && CachedCodeFile != nullptr) {
     const int len = (int)strlen(CachedCodeFile);
@@ -190,7 +190,7 @@ bool SCCache::is_loaded(SCCEntry* entry) {
 }
 
 void SCCache::preload_code(JavaThread* thread) {
-  if (!UseClassInitBarriers || !is_on_for_read()) {
+  if ((ClassInitBarrierMode == 0) || !is_on_for_read()) {
     return;
   }
   _cache->preload_startup_code(thread);
@@ -354,7 +354,7 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
     load_strings();
   }
   if (_for_write) {
-    _gen_preload_code = _use_meta_ptrs && UseClassInitBarriers;
+    _gen_preload_code = _use_meta_ptrs && (ClassInitBarrierMode > 0);
 
     _C_store_buffer = NEW_C_HEAP_ARRAY(char, CachedCodeMaxSize + DATA_ALIGNMENT, mtCode);
     _store_buffer = align_up(_C_store_buffer, DATA_ALIGNMENT);
@@ -3149,7 +3149,7 @@ void SCCReader::print_on(outputStream* st) {
 #define _stubs_max 120
 #define _blobs_max 80
 #define _shared_blobs_max 16
-#define _C2_blobs_max 16
+#define _C2_blobs_max 17
 #define _C1_blobs_max (_blobs_max - _shared_blobs_max - _C2_blobs_max)
 #define _all_max 280
 
@@ -3450,6 +3450,7 @@ void SCAddressTable::init_opto() {
   SET_ADDRESS(_C2_blobs, OptoRuntime::rethrow_stub());
   SET_ADDRESS(_C2_blobs, OptoRuntime::slow_arraycopy_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::register_finalizer_Java());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::class_init_barrier_Java());
 #endif
 
   assert(_C2_blobs_length <= _C2_blobs_max, "increase _C2_blobs_max to %d", _C2_blobs_length);
