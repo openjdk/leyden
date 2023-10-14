@@ -432,6 +432,9 @@
           "other checks and constrains if needed "                          \
           "(0: no barriers; 1: uncommon trap; 2: full barrier)")            \
                                                                             \
+  product(bool, StressClassInitBarriers, false, DIAGNOSTIC,                 \
+          "Force slow path in class initialization barriers")               \
+                                                                            \
   product(bool, UseMetadataPointers, true,                                  \
           "Store Metadata pointers in Relocation Info for cached code")     \
                                                                             \

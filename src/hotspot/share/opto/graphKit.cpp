@@ -3011,6 +3011,9 @@ void GraphKit::guard_klass_is_initialized(Node* klass) {
       break;
     }
     case 2: { // runtime call on slow path
+      if (StressClassInitBarriers) {
+        tst = makecon(TypeInt::ZERO); // always go through slow path
+      }
       IfNode* iff = create_and_xform_if(control(), tst, PROB_MAX, COUNT_UNKNOWN);
 //    IfNode* iff = create_and_map_if(control(), tst, PROB_MAX, COUNT_UNKNOWN);
 
