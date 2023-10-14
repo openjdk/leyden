@@ -28,6 +28,7 @@
 #include "memory/allocation.hpp"
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/mutex.hpp"
+#include "runtime/perfData.hpp"
 
 // Mutexes used in the VM.
 
@@ -195,21 +196,39 @@ void assert_lock_strong(const Mutex* lock);
 class MutexLockerImpl: public StackObj {
  protected:
   Mutex* _mutex;
+  bool _prof;
+  elapsedTimer _before;
+  elapsedTimer _after;
+
+private:
+  static PerfCounter** _perf_lock_count;
+  static PerfCounter** _perf_lock_wait_time;
+  static PerfCounter** _perf_lock_hold_time;
+
+public:
 
   MutexLockerImpl(Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag) :
-    _mutex(mutex) {
+    _mutex(mutex), _prof(ProfileVMLocks && Thread::current()->profile_vm_locks()) {
+
     bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
     if (_mutex != nullptr) {
+      if (_prof) { _before.start(); } // before
+
       if (no_safepoint_check) {
         _mutex->lock_without_safepoint_check();
       } else {
         _mutex->lock();
       }
+
+      if (_prof) { _before.stop(); _after.start(); } // after
     }
   }
 
   MutexLockerImpl(Thread* thread, Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag) :
-    _mutex(mutex) {
+    _mutex(mutex), _prof(thread->profile_vm_locks()) {
+
+    if (_prof) { _before.start(); } // before
+
     bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
     if (_mutex != nullptr) {
       if (no_safepoint_check) {
@@ -218,17 +237,32 @@ class MutexLockerImpl: public StackObj {
         _mutex->lock(thread);
       }
     }
+
+    if (_prof) { _before.stop(); _after.start(); } // after
   }
 
   ~MutexLockerImpl() {
     if (_mutex != nullptr) {
       assert_lock_strong(_mutex);
       _mutex->unlock();
+
+      if (_prof) {
+        assert(UsePerfData, "required");
+        _after.stop();
+        _perf_lock_count    [_mutex->id() + 1]->inc();
+        _perf_lock_wait_time[_mutex->id() + 1]->inc(_before.ticks());
+        _perf_lock_hold_time[_mutex->id() + 1]->inc(_after.ticks());
+      }
     }
   }
 
+ private:
+  static void print_counters(const char* name, int idx);
+
  public:
   static void post_initialize();
+  static void init();
+  static void print_counters();
 };
 
 // Simplest mutex locker.

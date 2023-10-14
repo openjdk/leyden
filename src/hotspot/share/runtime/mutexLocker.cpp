@@ -28,10 +28,12 @@
 #include "logging/logStream.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "runtime/java.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "runtime/safepoint.hpp"
 #include "runtime/vmThread.hpp"
+#include "services/management.hpp"
 #include "utilities/vmError.hpp"
 
 // Mutexes used in the VM (see comment in mutexLocker.hpp):
@@ -189,7 +191,9 @@ void assert_lock_strong(const Mutex* lock) {
 
 static void add_mutex(Mutex* var) {
   assert(_num_mutex < MAX_NUM_MUTEX, "increase MAX_NUM_MUTEX");
-  _mutex_array[_num_mutex++] = var;
+  int id = _num_mutex++;
+  _mutex_array[id] = var;
+  var->set_id(id);
 }
 
 #define MUTEX_STORAGE_NAME(name) name##_storage
@@ -376,6 +380,68 @@ void mutex_init() {
 #undef MUTEX_DEF
 #undef MUTEX_STORAGE
 #undef MUTEX_STORAGE_NAME
+
+PerfCounter** MutexLockerImpl::_perf_lock_count     = nullptr;
+PerfCounter** MutexLockerImpl::_perf_lock_wait_time = nullptr;
+PerfCounter** MutexLockerImpl::_perf_lock_hold_time = nullptr;
+
+void MutexLockerImpl::init() {
+  assert(ProfileVMLocks, "required");
+  assert(UsePerfData, "required");
+
+  ResourceMark rm;
+  EXCEPTION_MARK;
+  _perf_lock_count     = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex, mtInternal);
+  _perf_lock_wait_time = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex, mtInternal);
+  _perf_lock_hold_time = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex, mtInternal);
+
+  NEWPERFEVENTCOUNTER(_perf_lock_count[0],     SUN_RT, PerfDataManager::counter_name("Other", "Count"));
+  NEWPERFEVENTCOUNTER(_perf_lock_wait_time[0], SUN_RT, PerfDataManager::counter_name("Other", "BeforeTime"));
+  NEWPERFEVENTCOUNTER(_perf_lock_hold_time[0], SUN_RT, PerfDataManager::counter_name("Other", "AfterTime"));
+  for (int i = 0; i < _num_mutex; i++) {
+    NEWPERFEVENTCOUNTER(_perf_lock_count[i+1],       SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "Count"));
+    NEWPERFEVENTCOUNTER(_perf_lock_wait_time[i + 1], SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "BeforeTime"));
+    NEWPERFEVENTCOUNTER(_perf_lock_hold_time[i + 1], SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "AfterTime"));
+  }
+  if (HAS_PENDING_EXCEPTION) {
+    vm_exit_during_initialization("TrainingData::initialize() failed unexpectedly");
+  }
+}
+
+void MutexLockerImpl::print_counters(const char* name, int idx) {
+  jlong count = _perf_lock_count[idx]->get_value();
+  if (count > 0) {
+    log_info(init)("  %3d: %32s = %5ldms (%5ldms) / %9ld events", idx, name,
+                   Management::ticks_to_ms(_perf_lock_hold_time[idx]->get_value()),
+                   Management::ticks_to_ms(_perf_lock_wait_time[idx]->get_value()),
+                   count);
+  }
+}
+
+static jlong accumulate_lock_counters(PerfCounter** lock_counters) {
+  jlong acc = 0;
+  for (int i = 0; i < _num_mutex + 1; i++) { // 0 slot is reserved for unnamed locks
+    acc += lock_counters[i]->get_value();
+  }
+  return acc;
+}
+
+void MutexLockerImpl::print_counters() {
+  if (ProfileVMLocks && UsePerfData) {
+    jlong total_count     = accumulate_lock_counters(_perf_lock_count);
+    jlong total_wait_time = accumulate_lock_counters(_perf_lock_wait_time);
+    jlong total_hold_time = accumulate_lock_counters(_perf_lock_hold_time);
+
+    log_info(init)("MutexLocker: Total: hold = %ldms (wait = %ldms) / %ld events for thread \"main\"",
+                   Management::ticks_to_ms(total_hold_time),
+                   Management::ticks_to_ms(total_wait_time),
+                   total_count);
+    for (int i = 0; i < _num_mutex; i++) {
+      print_counters(_mutex_array[i]->name(), i+1);
+    }
+    print_counters("Unnamed / Other", 0);
+  }
+}
 
 void MutexLockerImpl::post_initialize() {
   // Print mutex ranks if requested.

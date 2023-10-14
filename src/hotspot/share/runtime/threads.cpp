@@ -585,6 +585,11 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   main_thread->set_active_handles(JNIHandleBlock::allocate_block());
   MACOS_AARCH64_ONLY(main_thread->init_wx());
 
+  if (ProfileVMLocks && UsePerfData) {
+    MutexLockerImpl::init();
+    main_thread->set_profile_vm_locks();
+  }
+
   if (!main_thread->set_as_starting_thread()) {
     vm_shutdown_during_initialization(
                                       "Failed necessary internal allocation. Out of swap space");

@@ -353,10 +353,11 @@ void print_statistics() {
 
   ThreadsSMRSupport::log_statistics();
 
-  if (UsePerfData) {
+  if (UsePerfData && log_is_enabled(Info, init)) {
     SharedRuntime::print_counters();
     ClassLoader::print_counters();
     ClassPrelinker::print_counters();
+    MutexLockerImpl::print_counters();
   }
 }
 
@@ -410,10 +411,11 @@ void print_statistics() {
 
   ThreadsSMRSupport::log_statistics();
 
-  if (UsePerfData) {
+  if (UsePerfData && log_is_enabled(Info, init)) {
     SharedRuntime::print_counters();
     ClassLoader::print_counters();
     ClassPrelinker::print_counters();
+    MutexLockerImpl::print_counters();
   }
 }
 

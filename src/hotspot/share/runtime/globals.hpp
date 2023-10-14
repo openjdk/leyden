@@ -1994,6 +1994,9 @@ const int ObjectAlignmentInBytes = 8;
           "more eagerly at the cost of higher overhead. A value of 0 "      \
           "(default) disables native heap trimming.")                       \
           range(0, UINT_MAX)                                                \
+                                                                            \
+  product(bool, ProfileVMLocks, false, DIAGNOSTIC,                          \
+          "Profile VM locks usage on main thread")                          \
 
 // end of RUNTIME_FLAGS
 
