@@ -1889,13 +1889,12 @@ bool Arguments::check_vm_args_consistency() {
      * Ioi - 2023/05/19. There's no need for this with my patch-jdk.sh script, which adds
      * jdk.internal.vm.ci as one of the default modules. Using -Djdk.module.addmods will
      * cause the full module graph to be disabled and slow down performance.
-     *
-    if (ClassLoader::is_module_observable("jdk.internal.vm.ci")) {
+     */
+    if (!TempDisableAddJVMCIModule && ClassLoader::is_module_observable("jdk.internal.vm.ci")) {
       if (!create_numbered_module_property("jdk.module.addmods", "jdk.internal.vm.ci", addmods_count++)) {
         return false;
       }
     }
-    */
   }
 #endif
 
@@ -4173,11 +4172,7 @@ jint Arguments::apply_ergo() {
     FLAG_SET_DEFAULT(UseVectorStubs, false);
   }
 #endif // COMPILER2_OR_JVMCI
-  if (log_is_enabled(Info, init)) {
-    if (FLAG_IS_DEFAULT(ProfileVMLocks)) {
-      FLAG_SET_DEFAULT(ProfileVMLocks, true);
-    }
-  }
+
   if (FLAG_IS_CMDLINE(DiagnoseSyncOnValueBasedClasses)) {
     if (DiagnoseSyncOnValueBasedClasses == ObjectSynchronizer::LOG_WARNING && !log_is_enabled(Info, valuebasedclasses)) {
       LogConfiguration::configure_stdout(LogLevel::Info, true, LOG_TAGS(valuebasedclasses));

@@ -55,22 +55,26 @@ public class ExcludedClasses {
             return mainClass;
         }
 
+        @Override
         public String classpath(RunMode runMode) {
             return appJar;
         }
 
+        @Override
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
                 "-Xlog:cds+resolve=debug",
             };
         }
 
+        @Override
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
                 mainClass, runMode.name()
             };
         }
 
+        @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
             if (runMode == RunMode.TRAINING || runMode == RunMode.DUMP_STATIC) {
                 out.shouldMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.Bar.f:I");

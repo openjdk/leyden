@@ -123,6 +123,9 @@
           "Archive resolved JVM_CONSTANT_Methodref and "                    \
           "JVM_CONSTANT_InterfaceMethodref in ConstantPool")                \
                                                                             \
+  product(bool, TempDisableAddJVMCIModule, false,                           \
+          "Do not add jdk.internal.vm.ci module even for -XX:+EnableJVMCI") \
+
 
 // end of CDS_FLAGS
 

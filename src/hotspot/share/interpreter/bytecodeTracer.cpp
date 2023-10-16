@@ -293,8 +293,9 @@ void BytecodePrinter::print_invokedynamic(int indy_index, int cp_index, outputSt
       indy_entry->print_on(st);
       if (indy_entry->has_appendix()) {
         oop apx = constants()->resolved_reference_from_indy(indy_index);
-        int perm_index = HeapShared::get_archived_object_permanent_index(apx);
-        st->print_cr(" - appendix = " INTPTR_FORMAT ", CDS perm index = %d", p2i(apx), perm_index);
+        //FIXME: lock out of order with runtime/interpreter/BytecodeTracerTest.java
+        //int perm_index = HeapShared::get_archived_object_permanent_index(apx);
+        st->print_cr(" - appendix = " INTPTR_FORMAT, p2i(apx));
       }
     }
   }

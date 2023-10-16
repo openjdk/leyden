@@ -49,16 +49,19 @@ public class LeydenHello {
             return mainClass;
         }
 
+        @Override
         public String classpath(RunMode runMode) {
             return appJar;
         }
 
+        @Override
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
                 mainClass, runMode.name()
             };
         }
 
+        @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
             if (runMode != RunMode.DUMP_STATIC) {
                 out.shouldContain("Hello Leyden " + runMode.name());
