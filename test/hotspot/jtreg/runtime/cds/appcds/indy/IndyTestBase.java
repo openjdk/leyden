@@ -212,7 +212,7 @@ public class IndyTestBase {
                 // in the AOT code.
                 aotOpts.setBenchmarkMode(true);
 
-                aotOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug", "-Xlog:scc*=trace");
+                aotOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug", "-Xlog:scc");
                 if (mainClass.equals("ConcatA")) {
                     // Hard-code the printing of loopA for now
                     dynDumpOpts
