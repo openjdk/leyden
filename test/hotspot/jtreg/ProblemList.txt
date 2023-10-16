@@ -175,3 +175,20 @@ vmTestbase/vm/mlvm/indy/func/jvmti/mergeCP_indy2manySame_b/TestDescription.java 
 vmTestbase/nsk/jdwp/ThreadReference/ForceEarlyReturn/forceEarlyReturn001/forceEarlyReturn001.java 7199837 generic-all
 
 vmTestbase/nsk/monitoring/ThreadMXBean/ThreadInfo/Multi/Multi005/TestDescription.java 8076494 windows-x64
+
+#############################################################################
+
+# Leyden
+
+#############################################################################
+
+runtime/cds/appcds/dynamicArchive/LambdasInTwoArchives.java 8318142 generic-all
+runtime/cds/appcds/dynamicArchive/TestDynamicDumpAtOom.java 8318142 generic-all
+runtime/cds/appcds/dynamicArchive/TestDynamicRegenerateHolderClasses.java 8318142 generic-all
+runtime/cds/appcds/dynamicArchive/TestLambdaInvokers.java 8318142 generic-all
+runtime/cds/appcds/javaldr/ExceptionDuringDumpAtObjectsInitPhase.java 8318142 generic-all
+runtime/cds/appcds/lambdaForm/DefaultClassListLFInvokers.java 8318142 generic-all
+
+
+
+
