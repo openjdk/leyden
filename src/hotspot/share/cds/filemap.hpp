@@ -224,6 +224,7 @@ private:
   bool   _use_optimized_module_handling;// No module-relation VM options were specified, so we can skip
                                         // some expensive operations.
   bool   _has_full_module_graph;        // Does the archive includes the full archived module graph?
+  bool   _has_preloaded_classes;        // Does the archive have preloaded classes?
   size_t _ptrmap_size_in_bits;          // Size of pointer relocation bitmap
   size_t _heap_roots_offset;            // Offset of the HeapShared::roots() object, from the bottom
                                         // of the archived heap objects, in bytes.
@@ -263,6 +264,7 @@ public:
   char* mapped_base_address()              const { return _mapped_base_address; }
   bool has_platform_or_app_classes()       const { return _has_platform_or_app_classes; }
   bool has_non_jar_in_classpath()          const { return _has_non_jar_in_classpath; }
+  bool has_preloaded_classes()             const { return _has_preloaded_classes; }
   size_t ptrmap_size_in_bits()             const { return _ptrmap_size_in_bits; }
   bool compressed_oops()                   const { return _compressed_oops; }
   bool compressed_class_pointers()         const { return _compressed_class_ptrs; }

@@ -214,6 +214,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _max_heap_size = MaxHeapSize;
   _use_optimized_module_handling = MetaspaceShared::use_optimized_module_handling();
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
+  _has_preloaded_classes = PreloadSharedClasses;
 
   // The following fields are for sanity checks for whether this archive
   // will function correctly with this JVM and the bootclasspath it's
@@ -2276,6 +2277,17 @@ bool FileMapInfo::initialize() {
         DynamicDumpSharedSpaces = true;
         ArchiveClassesAtExit = Arguments::GetSharedDynamicArchivePath();
       }
+      return false;
+    }
+  }
+
+  if (header()->has_preloaded_classes()) {
+    if (JvmtiExport::should_post_class_file_load_hook()) {
+      log_info(cds)("CDS archive has preloaded classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
+      return false;
+    }
+    if (JvmtiExport::has_early_vmstart_env()) {
+      log_info(cds)("CDS archive has preloaded classes. It cannot be used when JVMTI early vm start is in use.");
       return false;
     }
   }
