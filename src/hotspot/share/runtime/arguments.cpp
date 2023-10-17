@@ -3092,11 +3092,7 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
         return JNI_EINVAL;
       }
       Inline = false; // FIXME: this is just for temp debugging.
-
-      // FIXME -- we want to pass the training data from the preimage to the final image,
-      // but this will also causes the new training data in the final image dumping phase
-      // to be recorded (which may be redundant).
-      FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+      RecordTraining = false; // This will be updated inside MetaspaceShared::preload_and_dump()
 
       FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
       // Settings for AOT

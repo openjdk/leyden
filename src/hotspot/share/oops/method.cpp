@@ -393,7 +393,8 @@ void Method::metaspace_pointers_do(MetaspaceClosure* it) {
     print_external_name(&lsh);
     lsh.cr();
   }
-  if (!method_holder()->is_rewritten()) {
+  if (method_holder() != nullptr && !method_holder()->is_rewritten()) {
+    // holder is null for MH intrinsic methods
     it->push(&_constMethod, MetaspaceClosure::_writable);
   } else {
     it->push(&_constMethod);

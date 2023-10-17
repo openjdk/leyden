@@ -235,8 +235,10 @@ private:
 
   static TrainingDataSet _training_data_set;
   static TrainingDataDictionary _archived_training_data_dictionary;
+  static TrainingDataDictionary _archived_training_data_dictionary_for_dumping;
   static GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>* _dumptime_training_data_dictionary;
   static Array<MethodTrainingData*>* _recompilation_schedule;
+  static Array<MethodTrainingData*>* _recompilation_schedule_for_dumping;
   static volatile bool* _recompilation_status;
 
   static Options* options() { return &_options; }

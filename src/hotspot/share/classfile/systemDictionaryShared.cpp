@@ -1203,7 +1203,7 @@ size_t SystemDictionaryShared::estimate_size_for_archive() {
 }
 
 unsigned int SystemDictionaryShared::hash_for_shared_dictionary(address ptr) {
-  if (ArchiveBuilder::is_active()) {
+  if (ArchiveBuilder::is_active() && ArchiveBuilder::current()->is_in_buffer_space(ptr)) {
     uintx offset = ArchiveBuilder::current()->any_to_offset(ptr);
     unsigned int hash = primitive_hash<uintx>(offset);
     DEBUG_ONLY({

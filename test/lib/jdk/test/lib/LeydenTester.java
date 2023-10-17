@@ -231,6 +231,7 @@ abstract public class LeydenTester {
         File f = new File(cdsFile);
         f.delete();
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), trainingLog(),
+                                                   "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:CacheDataStore=" + cdsFile,
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));

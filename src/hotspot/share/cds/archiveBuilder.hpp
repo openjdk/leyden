@@ -281,6 +281,9 @@ public:
   intx buffer_to_requested_delta()           const { return _buffer_to_requested_delta;           }
 
   bool is_in_buffer_space(address p) const {
+    if (current_dump_space() == nullptr) {
+      return false;
+    }
     return (buffer_bottom() <= p && p < buffer_top());
   }
 

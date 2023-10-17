@@ -406,6 +406,7 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
   ClassPrelinker::serialize(soc, true);
+  TrainingData::serialize_training_data(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
 
   // Dump/restore well known classes (pointers)
@@ -751,6 +752,12 @@ void MetaspaceShared::preload_and_dump() {
   EXCEPTION_MARK;
   ResourceMark rm(THREAD);
   HandleMark hm(THREAD);
+
+  if (CDSConfig::is_dumping_final_static_archive() && UseNewCode) {
+    tty->print_cr("==================== archived_training_data ** before dumping ====================");
+    TrainingData::print_archived_training_data_on(tty);
+  }
+
   StaticArchiveBuilder builder;
   preload_and_dump_impl(builder, THREAD);
   if (HAS_PENDING_EXCEPTION) {
@@ -768,6 +775,10 @@ void MetaspaceShared::preload_and_dump() {
   if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
     // We have just created the final image. Let's run the AOT compiler
     CDSConfig::enable_dumping_cached_code();
+    if (UseNewCode) {
+      tty->print_cr("==================== archived_training_data ** after dumping ====================");
+      TrainingData::print_archived_training_data_on(tty);
+    }
     if (log_is_enabled(Info, cds, jit)) {
       test_cds_heap_access_api(THREAD);
     }
@@ -910,7 +921,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   link_shared_classes(false/*not from jcmd*/, CHECK);
   log_info(cds)("Rewriting and linking classes: done");
 
-  // copy shared path table to saved.
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    assert(RecordTraining == false, "must be");
+    RecordTraining = true;
+  }
+
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
   TrainingData::prepare_recompilation_schedule(CHECK);
 
@@ -926,8 +941,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   VM_PopulateDumpSharedSpace op(builder);
   VMThread::execute(&op);
 
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    RecordTraining = false;
+  }
+
   if (CacheDataStore != nullptr && CDSPreimage == nullptr) {
-    // Create the final CDS image.
     ResourceMark rm;
     stringStream st;
     st.print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());

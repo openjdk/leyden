@@ -60,7 +60,7 @@ PC_CDS_PREIMAGE  = spring-petclinic.cds.preimage
 PC_CDS          = spring-petclinic.cds
 
 HEAP_SIZE        = -Xmx2g
-UNPACKED_CMDLINE = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath -DautoQuit=true -Dspring.aot.enabled=true ${PC_MAIN_CLASS}
+UNPACKED_CMDLINE = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath -DautoQuit=true -Dspring.aot.enabled=true -Dspring.output.ansi.enabled=NEVER ${PC_MAIN_CLASS}
 
 all: check git app aot
 
@@ -194,3 +194,7 @@ clean: clean0
 # clean the the leyden artifacts
 clean0:
 	rm -fv spring-petclinic.*
+
+# clean the the leyden artifacts for the new workflow only
+cleann:
+	rm -fv spring-petclinic.cds.*

@@ -47,6 +47,7 @@
 #include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
+#include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/perfData.hpp"
 #include "runtime/timer.hpp"
@@ -1110,6 +1111,11 @@ void ClassPrelinker::runtime_preload(JavaThread* current, Handle loader) {
     if (loader() != nullptr && loader() == SystemDictionary::java_system_loader()) {
       Atomic::release_store(&_class_preloading_finished, true);
     }
+  }
+
+  if (loader() != nullptr && loader() == SystemDictionary::java_system_loader() && UseNewCode) {
+    tty->print_cr("==================== archived_training_data ** after all classes preloaded ====================");
+    TrainingData::print_archived_training_data_on(tty);
   }
 
   assert(!current->has_pending_exception(), "VM should have exited due to ExceptionMark");
