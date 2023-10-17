@@ -53,6 +53,7 @@
 #include "classfile/vmSymbols.hpp"
 #include "code/codeCache.hpp"
 #include "code/SCCache.hpp"
+#include "compiler/compileBroker.hpp"
 #include "gc/shared/gcVMOperations.hpp"
 #include "interpreter/bytecodeStream.hpp"
 #include "interpreter/bytecodes.hpp"
@@ -718,29 +719,128 @@ void MetaspaceShared::prepare_for_dumping() {
   ClassLoader::initialize_shared_path(JavaThread::current());
 }
 
-static void tmp_test_aot(ArchiveBuilder* builder, TRAPS) {
-  InstanceKlass* ik = vmClasses::String_klass();
-  TempNewSymbol name = SymbolTable::new_symbol("charAt");
-  TempNewSymbol sig = SymbolTable::new_symbol("(I)C");
-  Method* method = ik->find_method(name, sig);
-  assert(method != nullptr, "sanity");
-  int comp_level = CompLevel_full_optimization;
-  int bci = InvocationEntryBci;
-  {
-    method->unlink_code();
-    bool status = WhiteBox::compile_method(method, comp_level, bci, THREAD);
+class PrecompileIterator : StackObj {
+private:
+  Thread* _thread;
+  GrowableArray<Method*> _methods;
+
+  static nmethod* precompile(Method* m, TRAPS) {
+    assert(m->method_holder()->is_linked(), "required");
+
+    methodHandle mh(THREAD, m);
+    assert(!HAS_PENDING_EXCEPTION, "");
+    return CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0,
+                                         true /*requires_online_comp*/, CompileTask::Reason_Precompile,
+                                         THREAD);
+  }
+
+  static nmethod* precompile(Method* m, ArchiveBuilder* builder, TRAPS) {
+    nmethod* code = precompile(m, THREAD);
+    bool status = (!HAS_PENDING_EXCEPTION) && (code != nullptr);
+
     static int count = 0;
     static CompiledMethod* last = nullptr;
-    Method* requested_m = builder->to_requested(builder->get_buffered_addr(method));
-    count ++;
+    Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
+    ++count;
+
+    if (log_is_enabled(Info, precompile)) {
+      int isz = 0;
+      int delta = 0;
+      if (status) {
+        isz = code->insts_size();
+        if (last != nullptr) {
+          delta = (int) (address(code) - address(last));
+        }
+        last = code;
+      }
+
+      ResourceMark rm;
+      log_info(precompile)("[%4d] Compiled %s [%p -> %p] (%s) code = %p insts_size = %d delta = %d", count,
+                           m->external_name(), m, requested_m,
+                           status ? "success" : "FAILED", code, isz, delta);
+    }
+    return code;
+  }
+
+public:
+  PrecompileIterator(): _thread(Thread::current()) {
+    assert(TrainingData::have_data(), "sanity");
+  }
+
+  bool include(Method* m) {
+    if (m->is_native() || m->is_abstract()) {
+      return false;
+    }
+    DirectiveSet* directives = DirectivesStack::getMatchingDirective(methodHandle(_thread, m), nullptr);
+    if (directives->DontPrecompileOption) {
+      return false; // excluded
+    } else if (directives->PrecompileRecordedOption > 0) {
+      return true;
+    }
+    int cid = compile_id(m, CompLevel_full_optimization);
+    return (cid < INT_MAX);
+  }
+
+  void do_value(const RunTimeClassInfo* record) {
+    Array<Method*>* methods = record->_klass->methods();
+    for (int i = 0; i < methods->length(); i++) {
+      Method* m = methods->at(i);
+      if (include(m)) {
+        _methods.push(m);
+      }
+    }
+  }
+  void do_value(TrainingData* td) {
+    if (td->is_MethodTrainingData()) {
+      MethodTrainingData* mtd = td->as_MethodTrainingData();
+      if (mtd->has_holder() && include((Method*)mtd->holder())) {
+        _methods.push((Method*)mtd->holder());
+      }
+    }
+  }
+
+  static int compile_id(Method* m, int level) {
+    MethodTrainingData* mtd = TrainingData::lookup_for(m);
+    if (mtd != nullptr) {
+      CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
+      if (ctd != nullptr) {
+        return ctd->compile_id();
+      }
+    }
+    return INT_MAX; // treat as the last compilation
+  }
+
+  static int compare_by_compile_id(Method** m1, Method** m2) {
+    int id1 = compile_id(*m1, CompLevel_full_optimization);
+    int id2 = compile_id(*m2, CompLevel_full_optimization);
+    return (id1 - id2);
+  }
+
+  static void sort_methods_by_compile_id(GrowableArray<Method*>* methods) {
+    methods->sort(&compare_by_compile_id);
+  }
+
+  void precompile(ArchiveBuilder* builder, TRAPS) {
+    sort_methods_by_compile_id(&_methods);
+
+    for (int i = 0; i < _methods.length(); i++) {
+      Method* m = _methods.at(i);
+
+      assert(!HAS_PENDING_EXCEPTION, "");
+      precompile(m, builder, THREAD);
+      if (HAS_PENDING_EXCEPTION) {
+        CLEAR_PENDING_EXCEPTION;
+      }
+    }
+  }
+};
+
+static void tmp_test_aot(ArchiveBuilder* builder, TRAPS) {
+  if (TrainingData::have_data()) {
     ResourceMark rm;
-    CompiledMethod* code = method->code();
-    int isz = (code == nullptr) ? 0 : code->insts_size();
-    int delta = (last == nullptr) ? 0 : (int)(address(code) - address(last));
-    last = code;
-    tty->print_cr("[%4d] Compiled %s [%p -> %p] (%s) code = %p insts_size = %d delta = %d", count,
-                  method->external_name(), method, requested_m,
-                  status ? "success" : "FAILED", code, isz, delta);
+    PrecompileIterator pi;
+    TrainingData::archived_training_data_dictionary()->iterate(&pi);
+    pi.precompile(builder, THREAD);
   }
 }
 

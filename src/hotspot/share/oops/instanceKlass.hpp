@@ -536,6 +536,8 @@ public:
   // return existing if there is one, else allocate
   KlassTrainingData* alloc_training_data(TRAPS);
 
+  static const char* state2name(ClassState state);
+
   class LockLinkState : public StackObj {
     InstanceKlass* _ik;
     JavaThread*    _current;

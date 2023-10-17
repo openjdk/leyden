@@ -138,7 +138,9 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
   bool for_preload = SCCache::gen_preload_code(target, entry_bci);
-
+  if (task->is_precompiled()) {
+    assert(for_preload, "required");
+  }
   while (!env->failing()) {
     // Attempt to compile while subsuming loads into machine instructions.
     Options options(subsume_loads, do_escape_analysis, do_iterative_escape_analysis, do_reduce_allocation_merges, eliminate_boxing, do_locks_coarsening, for_preload, install_code);

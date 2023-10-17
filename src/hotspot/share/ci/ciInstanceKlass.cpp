@@ -61,7 +61,7 @@ ciInstanceKlass::ciInstanceKlass(Klass* k) :
   _flags = ciFlags(access_flags);
   _has_finalizer = access_flags.has_finalizer();
   _has_subklass = flags().is_final() ? subklass_false : subklass_unknown;
-  _init_state = ik->init_state();
+  _init_state = compute_init_state(ik); // _init_state
   _has_nonstatic_fields = ik->has_nonstatic_fields();
   _has_nonstatic_concrete_methods = ik->has_nonstatic_concrete_methods();
   _is_hidden = ik->is_hidden();
@@ -145,8 +145,18 @@ ciInstanceKlass::ciInstanceKlass(ciSymbol* name,
 void ciInstanceKlass::compute_shared_init_state() {
   GUARDED_VM_ENTRY(
     InstanceKlass* ik = get_instanceKlass();
-    _init_state = ik->init_state();
+    _init_state = compute_init_state(ik);
   )
+}
+
+InstanceKlass::ClassState ciInstanceKlass::compute_init_state(InstanceKlass* ik) {
+  ASSERT_IN_VM;
+  ciEnv* env = CURRENT_ENV;
+  if (env != nullptr && env->is_precompiled()) {
+    return env->compute_init_state_for_precompiled(ik);
+  } else {
+    return ik->init_state();
+  }
 }
 
 // ------------------------------------------------------------------

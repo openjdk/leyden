@@ -65,6 +65,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
       Reason_MustBeCompiled,   // Used for -Xcomp or AlwaysCompileLoopMethods (see CompilationPolicy::must_be_compiled())
       Reason_Bootstrap,        // JVMCI bootstrap
       Reason_Preload,          // pre-load SC code
+      Reason_Precompile,
       Reason_Count
   };
 
@@ -78,7 +79,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
       "whitebox",
       "must_be_compiled",
       "bootstrap",
-      "preload"
+      "preload",
+      "precompile",
     };
     return reason_names[compile_reason];
   }
@@ -177,6 +179,10 @@ class CompileTask : public CHeapObj<mtCompiler> {
     }
   }
 
+  bool is_precompiled() {
+    return compile_reason() == CompileTask::Reason_Precompile;
+  }
+
   bool         has_waiter() const                { return _has_waiter; }
   void         clear_waiter()                    { _has_waiter = false; }
   JVMCICompileState* blocking_jvmci_compile_state() const { return _blocking_jvmci_compile_state; }
@@ -210,6 +216,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
 
   CompileTrainingData* training_data() const     { return _training_data; }
   void set_training_data(CompileTrainingData*td) { _training_data = td; }
+
+  CompileReason compile_reason()                 { return _compile_reason; }
 
   // RedefineClasses support
   void         metadata_do(MetadataClosure* f);

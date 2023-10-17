@@ -49,6 +49,7 @@
 #include "oops/generateOopMap.hpp"
 #include "oops/method.inline.hpp"
 #include "oops/oop.inline.hpp"
+#include "oops/trainingData.hpp"
 #include "prims/methodHandles.hpp"
 #include "runtime/deoptimization.hpp"
 #include "runtime/handles.inline.hpp"
@@ -143,6 +144,7 @@ ciMethod::ciMethod(const methodHandle& h_m, ciInstanceKlass* holder) :
   constantPoolHandle cpool(Thread::current(), h_m->constants());
   _signature = new (env->arena()) ciSignature(_holder, cpool, sig_symbol);
   _method_data = nullptr;
+  _method_data_recorded = nullptr;
   // Take a snapshot of these values, so they will be commensurate with the MDO.
   if (ProfileInterpreter || CompilerConfig::is_c1_profiling()) {
     int invcnt = h_m->interpreter_invocation_count();
@@ -190,6 +192,7 @@ ciMethod::ciMethod(ciInstanceKlass* holder,
   _name(                   name),
   _holder(                 holder),
   _method_data(            nullptr),
+  _method_data_recorded(   nullptr),
   _method_blocks(          nullptr),
   _intrinsic_id(           vmIntrinsics::_none),
   _inline_instructions_size(-1),
@@ -1041,22 +1044,54 @@ bool ciMethod::ensure_method_data(bool training_data_only) {
 // ciMethod::method_data
 //
 ciMethodData* ciMethod::method_data() {
-  if (_method_data != nullptr) {
+  CompileTask::CompileReason reason = CURRENT_ENV->task()->compile_reason();
+  if (CURRENT_ENV->task()->is_precompiled() && CURRENT_ENV->task()->comp_level() == CompLevel_full_optimization) {
+    if (_method_data_recorded == nullptr) {
+      VM_ENTRY_MARK;
+      methodHandle h_m(thread, get_Method());
+      MethodTrainingData* mtd = TrainingData::lookup_for(h_m());
+      MethodData* mdo = (mtd != nullptr ? mtd->final_profile() : nullptr);
+      DirectiveSet* directives = DirectivesStack::getMatchingDirective(h_m, CURRENT_ENV->task()->compiler());
+      if (mdo == nullptr || directives->IgnoreRecordedProfileOption) {
+        if (directives->IgnoreRecordedProfileOption) {
+          ResourceMark rm;
+          log_debug(precompile)("Ignore recorded profile for %s", h_m->name_and_sig_as_C_string());
+        } else {
+          ResourceMark rm;
+          log_debug(precompile)("No profile for %s", h_m->name_and_sig_as_C_string());
+        }
+        _method_data_recorded = CURRENT_ENV->get_empty_methodData();
+      } else {
+        if (mdo->extra_data_lock() == nullptr) {
+          assert(!HAS_PENDING_EXCEPTION, "");
+          mdo->restore_unshareable_info(thread);
+          assert(!HAS_PENDING_EXCEPTION, "");
+        }
+        _method_data_recorded = CURRENT_ENV->get_method_data(mdo);
+        _method_data_recorded->load_data();
+        {
+          ResourceMark rm;
+          log_debug(precompile)("Recorded profile " PTR_FORMAT " for %s", p2i(mdo), h_m->name_and_sig_as_C_string());
+        }
+      }
+    }
+    assert(_method_data_recorded != nullptr, "");
+    return _method_data_recorded;
+  } else {
+    if (_method_data != nullptr) {
+      return _method_data;
+    }
+    VM_ENTRY_MARK;
+    methodHandle h_m(thread, get_Method());
+    MethodData* mdo = h_m()->method_data();
+    if (mdo != nullptr) {
+      _method_data = CURRENT_ENV->get_method_data(mdo);
+      _method_data->load_data();
+    } else {
+      _method_data = CURRENT_ENV->get_empty_methodData();
+    }
     return _method_data;
   }
-  VM_ENTRY_MARK;
-  ciEnv* env = CURRENT_ENV;
-  Thread* my_thread = JavaThread::current();
-  methodHandle h_m(my_thread, get_Method());
-
-  if (h_m()->method_data() != nullptr) {
-    _method_data = CURRENT_ENV->get_method_data(h_m()->method_data());
-    _method_data->load_data();
-  } else {
-    _method_data = CURRENT_ENV->get_empty_methodData();
-  }
-  return _method_data;
-
 }
 
 // ------------------------------------------------------------------
@@ -1194,6 +1229,17 @@ bool ciMethod::is_not_reached(int bci) {
 // ------------------------------------------------------------------
 // ciMethod::was_never_executed
 bool ciMethod::was_executed_more_than(int times) {
+  // Invocation counter is reset when the Method* is compiled.
+  // If the method has compiled code we therefore assume it has
+  // be executed more than n times.
+  if (is_accessor() || is_empty() || has_compiled_code()) {
+    // interpreter doesn't bump invocation counter of trivial methods
+    // compiler does not bump invocation counter of compiled methods
+    return true;
+  }
+  if (!method_data()->is_empty()) {
+    return (method_data()->invocation_count() > times);
+  }
   VM_ENTRY_MARK;
   return get_Method()->was_executed_more_than(times);
 }

@@ -2830,7 +2830,7 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
                        has_unsafe_access,
                        has_wide_vectors,
                        has_monitors,
-                       0, NoRTM,
+                       0, true /* install_code */, NoRTM,
                        (SCCEntry *)_entry);
   CompileTask* task = env->task();
   bool success = task->is_success();

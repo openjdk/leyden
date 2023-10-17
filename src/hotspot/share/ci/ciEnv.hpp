@@ -384,6 +384,7 @@ public:
                        bool                      has_wide_vectors,
                        bool                      has_monitors,
                        int                       immediate_oops_patched,
+                       bool                      install_code,
                        RTMState                  rtm_state = NoRTM,
                        SCCEntry*                 entry = nullptr);
 
@@ -519,6 +520,10 @@ public:
   void process_invokedynamic(const constantPoolHandle &cp, int index, JavaThread* thread);
   void process_invokehandle(const constantPoolHandle &cp, int index, JavaThread* thread);
   void find_dynamic_call_sites();
+
+  bool is_precompiled();
+  bool is_fully_initialized(InstanceKlass* ik);
+  InstanceKlass::ClassState compute_init_state_for_precompiled(InstanceKlass* ik);
 };
 
 #endif // SHARE_CI_CIENV_HPP

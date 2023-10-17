@@ -1252,8 +1252,9 @@ void CompileBroker::compile_method_base(const methodHandle& method,
   guarantee(!method->is_abstract(), "cannot compile abstract methods");
   assert(method->method_holder()->is_instance_klass(),
          "sanity check");
-  assert(!method->method_holder()->is_not_initialized() || compile_reason == CompileTask::Reason_Preload,
-         "method holder must be initialized");
+  assert(!method->method_holder()->is_not_initialized() ||
+         compile_reason == CompileTask::Reason_Preload  ||
+         compile_reason == CompileTask::Reason_Precompile, "method holder must be initialized");
   assert(!method->is_method_handle_intrinsic(), "do not enqueue these guys");
 
   if (CIPrintRequests) {
@@ -1277,7 +1278,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
   // A request has been made for compilation.  Before we do any
   // real work, check to see if the method has been compiled
   // in the meantime with a definitive result.
-  if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation)) {
+  if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation, compile_reason)) {
     return;
   }
 
@@ -1335,7 +1336,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     // We need to check again to see if the compilation has
     // completed.  A previous compilation may have registered
     // some result.
-    if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation)) {
+    if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation, compile_reason)) {
       return;
     }
 
@@ -1481,7 +1482,9 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
   assert(method->method_holder()->is_instance_klass(), "not an instance method");
   assert(osr_bci == InvocationEntryBci || (0 <= osr_bci && osr_bci < method->code_size()), "bci out of range");
   assert(!method->is_abstract() && (osr_bci == InvocationEntryBci || !method->is_native()), "cannot compile abstract/native methods");
-  assert(!method->method_holder()->is_not_initialized() || compile_reason == CompileTask::Reason_Preload, "method holder must be initialized");
+  assert(!method->method_holder()->is_not_initialized() ||
+         compile_reason == CompileTask::Reason_Preload  ||
+         compile_reason == CompileTask::Reason_Precompile, "method holder must be initialized");
   // return quickly if possible
 
   // lock, make sure that the compilation
@@ -1495,7 +1498,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     // standard compilation
     CompiledMethod* method_code = method->code();
     if (method_code != nullptr && method_code->is_nmethod()) {
-      if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation)) {
+      if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation, compile_reason)) {
         return (nmethod*) method_code;
       }
     }
@@ -1590,8 +1593,10 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     if (!should_compile_new_jobs()) {
       return nullptr;
     }
-    bool is_blocking = !directive->BackgroundCompilationOption || ReplayCompiles;
-    compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
+    bool is_blocking = ReplayCompiles ||
+                       !directive->BackgroundCompilationOption ||
+                       (compile_reason == CompileTask::Reason_Precompile);
+	  compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
   }
 
   // return requested nmethod
@@ -1612,10 +1617,14 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
 // CompileBroker::compilation_is_complete
 //
 // See if compilation of this method is already complete.
-bool CompileBroker::compilation_is_complete(const methodHandle& method,
-                                            int                 osr_bci,
-                                            int                 comp_level,
-                                            bool                online_only) {
+bool CompileBroker::compilation_is_complete(const methodHandle&        method,
+                                            int                        osr_bci,
+                                            int                        comp_level,
+                                            bool                       online_only,
+                                            CompileTask::CompileReason compile_reason) {
+  if (compile_reason == CompileTask::Reason_Precompile) {
+    return false; // FIXME: any restrictions?
+  }
   bool is_osr = (osr_bci != standard_entry_bci);
   if (is_osr) {
     if (method->is_not_osr_compilable(comp_level)) {
@@ -2446,13 +2455,17 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
     TraceTime t1("compilation", &time);
     EventCompilation event;
 
+    bool install_code = true;
     if (comp == nullptr) {
       ci_env.record_method_not_compilable("no compiler");
     } else if (!ci_env.failing()) {
       if (WhiteBoxAPI && WhiteBox::compilation_locked) {
         whitebox_lock_compilation();
       }
-      comp->compile_method(&ci_env, target, osr_bci, true, directive);
+      if (StoreCachedCode && task->is_precompiled()) {
+        install_code = false; // not suitable in the current context
+      }
+      comp->compile_method(&ci_env, target, osr_bci, install_code, directive);
 
       /* Repeat compilation without installing code for profiling purposes */
       int repeat_compilation_count = directive->RepeatCompilationOption;
@@ -2466,7 +2479,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
 
     DirectivesStack::release(directive);
 
-    if (!ci_env.failing() && !task->is_success()) {
+    if (!ci_env.failing() && !task->is_success() && install_code) {
       assert(ci_env.failure_reason() != nullptr, "expect failure reason");
       assert(false, "compiler should always document failure: %s", ci_env.failure_reason());
       // The compiler elected, without comment, not to register a result.

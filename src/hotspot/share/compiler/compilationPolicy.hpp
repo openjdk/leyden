@@ -411,7 +411,7 @@ class CompilationPolicy : AllStatic {
   // Select task is called by CompileBroker. We should return a task or nullptr.
   static CompileTask* select_task(CompileQueue* compile_queue, JavaThread* THREAD);
   // Tell the runtime if we think a given method is adequately profiled.
-  static bool is_mature(Method* method);
+  static bool is_mature(MethodData* mdo);
   // Initialize: set compiler thread count
   static void initialize();
   static bool should_not_inline(ciEnv* env, ciMethod* callee);

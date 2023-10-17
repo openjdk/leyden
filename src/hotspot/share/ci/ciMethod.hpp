@@ -72,6 +72,7 @@ class ciMethod : public ciMetadata {
   ciInstanceKlass* _holder;
   ciSignature*     _signature;
   ciMethodData*    _method_data;
+  ciMethodData*    _method_data_recorded;
   ciMethodBlocks*   _method_blocks;
 
   // Code attributes.

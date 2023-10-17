@@ -899,7 +899,9 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       max_method != nullptr && is_method_profiled(max_method_h) && !Arguments::is_compiler_only()) {
     max_task->set_comp_level(CompLevel_limited_profile);
 
-    if (CompileBroker::compilation_is_complete(max_method_h, max_task->osr_bci(), CompLevel_limited_profile)) {
+    if (CompileBroker::compilation_is_complete(max_method_h, max_task->osr_bci(), CompLevel_limited_profile,
+                                               false /* requires_online_compilation */,
+                                               CompileTask::Reason_None)) {
       if (PrintTieredEvents) {
         print_event(REMOVE_FROM_QUEUE, max_method, max_method, max_task->osr_bci(), (CompLevel)max_task->comp_level());
       }
@@ -1170,13 +1172,12 @@ bool CompilationPolicy::is_method_profiled(const methodHandle& method) {
 
 
 // Determine is a method is mature.
-bool CompilationPolicy::is_mature(Method* method) {
+bool CompilationPolicy::is_mature(MethodData* mdo) {
   if (Arguments::is_compiler_only()) {
     // Always report profiles as immature with -Xcomp
     return false;
   }
-  methodHandle mh(Thread::current(), method);
-  MethodData* mdo = method->method_data();
+  methodHandle mh(Thread::current(), mdo->method());
   if (mdo != nullptr) {
     int i = mdo->invocation_count();
     int b = mdo->backedge_count();

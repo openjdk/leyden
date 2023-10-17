@@ -1020,6 +1020,7 @@ void ciEnv::register_method(ciMethod* target,
                             bool has_wide_vectors,
                             bool has_monitors,
                             int immediate_oops_patched,
+                            bool install_code,
                             RTMState  rtm_state,
                             SCCEntry* scc_entry) {
   VM_ENTRY_MARK;
@@ -1084,7 +1085,8 @@ void ciEnv::register_method(ciMethod* target,
       dependencies()->encode_content_bytes();
     }
     // Check for {class loads, evolution, breakpoints, ...} during compilation
-    if (!preload) {
+    if (install_code && !preload) {
+      // Check for {class loads, evolution, breakpoints, ...} during compilation
       validate_compile_task_dependencies(target);
     }
 #if INCLUDE_RTM_OPT
@@ -1142,17 +1144,18 @@ void ciEnv::register_method(ciMethod* target,
         }
       }
     }
-    nm =  nmethod::new_nmethod(method,
-                               compile_id(),
-                               entry_bci,
-                               offsets,
-                               orig_pc_offset,
-                               debug_info(), dependencies(), code_buffer,
-                               frame_words, oop_map_set,
-                               handler_table, inc_table,
-                               compiler, CompLevel(task()->comp_level()),
-                               scc_entry);
-
+    if (install_code) {
+      nm =  nmethod::new_nmethod(method,
+                                 compile_id(),
+                                 entry_bci,
+                                 offsets,
+                                 orig_pc_offset,
+                                 debug_info(), dependencies(), code_buffer,
+                                 frame_words, oop_map_set,
+                                 handler_table, inc_table,
+                                 compiler, CompLevel(task()->comp_level()),
+                                 scc_entry);
+    }
     // Free codeBlobs
     code_buffer->free_blob();
 
@@ -1221,9 +1224,11 @@ void ciEnv::register_method(ciMethod* target,
     // Compilation succeeded, post what we know about it
     nm->post_compiled_method(task());
     task()->set_num_inlined_bytecodes(num_inlined_bytecodes());
-  } else {
+  } else if (install_code) {
     // The CodeCache is full.
     record_failure("code cache is full");
+  } else {
+    task()->set_num_inlined_bytecodes(num_inlined_bytecodes());
   }
 
   // safepoints are allowed again
@@ -1782,4 +1787,41 @@ void ciEnv::dump_inline_data(int compile_id) {
 
 void ciEnv::dump_replay_data_version(outputStream* out) {
   out->print_cr("version %d", REPLAY_VERSION);
+}
+
+bool ciEnv::is_precompiled() {
+  return (task() != nullptr) && (task()->compile_reason() == CompileTask::Reason_Precompile);
+}
+
+bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
+  assert(is_precompiled(), "");
+  if (task()->method()->method_holder() == ik) {
+    return true; // FIXME: may be too strong; being_initialized, at least
+  }
+  if (task()->comp_level() == CompLevel_full_optimization && // C2 only
+//      (SystemDictionaryShared::lookup_init_state(ik) == InstanceKlass::ClassState::fully_initialized)
+      ik->is_shared() /* && do_clinit_barriers */) { // FIXME: assumes that all shared classes are initialized by default
+    return true; // class init barriers in C2 code
+  }
+  return false;
+}
+
+InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
+  ASSERT_IN_VM;
+  assert(is_precompiled(), "");
+  ResourceMark rm;
+  if (is_fully_initialized(ik)) {
+    log_trace(precompile)("%d: fully_initialized: %s", task()->compile_id(), ik->external_name());
+    return InstanceKlass::ClassState::fully_initialized;
+  } else if (MetaspaceObj::is_shared(ik)) {
+    guarantee(ik->is_loaded(), ""); // FIXME: assumes pre-loading by CDS; ik->is_linked() requires pre-linking
+    log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+    return ik->init_state(); // not yet initialized
+  } else {
+    // Not present in the archive.
+    fatal("unloaded: %s", ik->external_name());
+//    guarantee(SystemDictionaryShared::lookup_init_state(ik) == ik->init_state(), "");
+    log_trace(precompile)("%d: allocated: %s", task()->compile_id(), ik->external_name());
+    return InstanceKlass::ClassState::allocated; // not yet linked
+  }
 }
