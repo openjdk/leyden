@@ -26,7 +26,6 @@
 #include "asm/macroAssembler.hpp"
 #include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "ci/ciConstant.hpp"
 #include "ci/ciEnv.hpp"
@@ -2270,8 +2269,8 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     int k = *(int*)addr(code_offset);
     code_offset += sizeof(int);
     set_read_position(code_offset);
-    obj = HeapShared::get_archived_object(k);
-    assert(k == HeapShared::get_archived_object_permanent_index(obj), "sanity");
+    obj = CDSAccess::get_archived_object(k);
+    assert(k == CDSAccess::get_archived_object_permanent_index(obj), "sanity");
   } else if (kind == DataKind::String) {
     code_offset = read_position();
     int length = *(int*)addr(code_offset);
@@ -2299,8 +2298,8 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     int k = *(int*)addr(code_offset);
     code_offset += sizeof(int);
     set_read_position(code_offset);
-    obj = HeapShared::get_archived_object(k);
-    assert(k == HeapShared::get_archived_object_permanent_index(obj), "sanity");
+    obj = CDSAccess::get_archived_object(k);
+    assert(k == CDSAccess::get_archived_object_permanent_index(obj), "sanity");
   } else {
     set_lookup_failed();
     log_warning(scc)("%d (L%d): Unknown oop's kind: %d",

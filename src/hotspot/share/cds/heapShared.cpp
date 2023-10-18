@@ -290,6 +290,38 @@ static bool oop_handle_equals(const OopHandle& a, const OopHandle& b) {
   return a.resolve() == b.resolve();
 }
 
+class OrigToScratchObjectTable: public ResourceHashtable<OopHandle, OopHandle,
+    36137, // prime number
+    AnyObj::C_HEAP,
+    mtClassShared,
+    oop_handle_hash,
+    oop_handle_equals> {};
+
+static OrigToScratchObjectTable* _orig_to_scratch_object_table = nullptr;
+
+void HeapShared::track_scratch_object(oop orig_obj, oop scratch_obj) {
+  MutexLocker ml(ArchivedObjectTables_lock, Mutex::_no_safepoint_check_flag);
+  if (_orig_to_scratch_object_table == nullptr) {
+    _orig_to_scratch_object_table = new (mtClass)OrigToScratchObjectTable();
+  }
+
+  OopHandle orig_h(Universe::vm_global(), orig_obj);
+  OopHandle scratch_h(Universe::vm_global(), scratch_obj);
+  _orig_to_scratch_object_table->put_when_absent(orig_h, scratch_h);
+}
+
+oop HeapShared::orig_to_scratch_object(oop orig_obj) {
+  MutexLocker ml(ArchivedObjectTables_lock, Mutex::_no_safepoint_check_flag);
+  if (_orig_to_scratch_object_table != nullptr) {
+    OopHandle orig(&orig_obj);
+    OopHandle* v = _orig_to_scratch_object_table->get(orig);
+    if (v != nullptr) {
+      return v->resolve();
+    }
+  }
+  return nullptr;
+}
+
 class ArchivedObjectPermanentIndexTable: public ResourceHashtable<OopHandle, int,
     36137, // prime number
     AnyObj::C_HEAP,
@@ -299,50 +331,69 @@ class ArchivedObjectPermanentIndexTable: public ResourceHashtable<OopHandle, int
 
 static ArchivedObjectPermanentIndexTable* _permanent_index_table = nullptr;
 
-int HeapShared::get_archived_object_permanent_index(oop obj) {
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    log_warning(cds)("HeapShared::get_archived_object_permanent_index is not supported in new workflow yet");
-    return -1;
-  }
+void HeapShared::add_to_permanent_index_table(oop obj, int index) {
+  assert_locked_or_safepoint(ArchivedObjectTables_lock);
 
-  if (_permobj_segments <= 0) {
-    return -1;
-  }
-
-  int first_permobj_segment = roots()->length() - _permobj_segments;
-
-  MutexLocker ml(ArchivedObjectTables_lock, Mutex::_no_safepoint_check_flag);
   if (_permanent_index_table == nullptr) {
     _permanent_index_table = new (mtClass)ArchivedObjectPermanentIndexTable();
+  }
+  OopHandle oh(Universe::vm_global(), obj);
+  _permanent_index_table->put(oh, index);
+}
+
+int HeapShared::get_archived_object_permanent_index(oop obj) {
+  if (!UsePermanentHeapObjects) {
+    return -1;
+  }
+  if (!CDSConfig::is_dumping_heap() && _permobj_segments <= 0) {
+    return -1;
+  }
+
+  MutexLocker ml(ArchivedObjectTables_lock, Mutex::_no_safepoint_check_flag);
+
+  if (!CDSConfig::is_dumping_heap() && _permanent_index_table == nullptr) {
+    int first_permobj_segment = roots()->length() - _permobj_segments;
     for (int i = 0; i < _permobj_segments; i++) {
       objArrayOop a = (objArrayOop)roots()->obj_at(i + first_permobj_segment);
       for (int j = 0; j < a->length(); j++) {
-        OopHandle oh(Universe::vm_global(), a->obj_at(j));
         int index = (i << ArchiveHeapWriter::PERMOBJ_SEGMENT_MAX_SHIFT) + j;
-        _permanent_index_table->put(oh, index);
+        add_to_permanent_index_table(a->obj_at(j), index);
       }
     }
   }
 
-  OopHandle tmp(&obj);
-  int* v = _permanent_index_table->get(tmp);
-  if (v == nullptr) {
-    return -1;
-  } else {
-    int n = *v;
-    return n;
+  if (_permanent_index_table != nullptr) {
+    if (_orig_to_scratch_object_table != nullptr) {
+      OopHandle orig(&obj);
+      OopHandle* v = _orig_to_scratch_object_table->get(orig);
+      if (v != nullptr) {
+        obj = v->resolve();
+      }
+    }
+    OopHandle tmp(&obj);
+    int* v = _permanent_index_table->get(tmp);
+    if (v != nullptr) {
+      int n = *v;
+      return n;
+    }
   }
+
+  return -1;
 }
 
 oop HeapShared::get_archived_object(int permanent_index) {
-  assert(ArchiveHeapLoader::is_in_use(), "Do not call this if CDS heap is not in use");
-  assert(_permobj_segments > 0, "must be");
+  if (ArchiveHeapLoader::is_in_use()) {
+    assert(_permobj_segments > 0, "must be");
 
-  int first_permobj_segment = roots()->length() - _permobj_segments;
-  int upper = permanent_index >> ArchiveHeapWriter::PERMOBJ_SEGMENT_MAX_SHIFT;
-  int lower = permanent_index &  ArchiveHeapWriter::PERMOBJ_SEGMENT_MAX_MASK;
-  objArrayOop a = (objArrayOop)roots()->obj_at(upper + first_permobj_segment);
-  return a->obj_at(lower);
+    int first_permobj_segment = roots()->length() - _permobj_segments;
+    int upper = permanent_index >> ArchiveHeapWriter::PERMOBJ_SEGMENT_MAX_SHIFT;
+    int lower = permanent_index &  ArchiveHeapWriter::PERMOBJ_SEGMENT_MAX_MASK;
+    objArrayOop a = (objArrayOop)roots()->obj_at(upper + first_permobj_segment);
+    return a->obj_at(lower);
+  } else {
+    assert(CDSConfig::is_dumping_heap(), "must be");
+    return ArchiveHeapWriter::get_perm_object_by_index(permanent_index);
+  }
 }
 
 // Returns an objArray that contains all the roots of the archived objects
@@ -455,6 +506,7 @@ void HeapShared::init_scratch_objects(TRAPS) {
     if (!is_reference_type(bt)) {
       oop m = java_lang_Class::create_basic_type_mirror(type2name(bt), bt, CHECK);
       _scratch_basic_type_mirrors[i] = OopHandle(Universe::vm_global(), m);
+      track_scratch_object(Universe::java_mirror(bt), m);
     }
   }
   _scratch_java_mirror_table = new (mtClass)MetaspaceObjToOopHandleTable();
@@ -463,26 +515,20 @@ void HeapShared::init_scratch_objects(TRAPS) {
   }
 }
 
+OopHandle HeapShared::init_scratch_exception(oop orig_exception_obj, TRAPS) {
+  Symbol* klass_name = orig_exception_obj->klass()->name();
+  oop scratch_obj = java_lang_Throwable::create_exception_instance(klass_name, CHECK_(OopHandle()));
+  track_scratch_object(orig_exception_obj, scratch_obj);
+  return OopHandle(Universe::vm_global(), scratch_obj);
+}
+
 void HeapShared::init_scratch_exceptions(TRAPS) {
-  oop instance = nullptr;
-
-  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_NullPointerException(), CHECK);
-  _scratch_null_ptr_exception_instance = OopHandle(Universe::vm_global(), instance);
-
-  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArithmeticException(), CHECK);
-  _scratch_arithmetic_exception_instance = OopHandle(Universe::vm_global(), instance);
-
-  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_VirtualMachineError(), CHECK);
-  _scratch_virtual_machine_error_instance = OopHandle(Universe::vm_global(), instance);
-
-  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArrayIndexOutOfBoundsException(), CHECK);
-  _scratch_array_index_oob_exception_instance = OopHandle(Universe::vm_global(), instance);
-
-  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ArrayStoreException(), CHECK);
-  _scratch_array_store_exception_instance = OopHandle(Universe::vm_global(), instance);
-
-  instance = java_lang_Throwable::create_exception_instance(vmSymbols::java_lang_ClassCastException(), CHECK);
-  _scratch_class_cast_exception_instance = OopHandle(Universe::vm_global(), instance);
+  _scratch_null_ptr_exception_instance        = init_scratch_exception(Universe::null_ptr_exception_instance(),        CHECK);
+  _scratch_arithmetic_exception_instance      = init_scratch_exception(Universe::arithmetic_exception_instance(),      CHECK);
+  _scratch_virtual_machine_error_instance     = init_scratch_exception(Universe::virtual_machine_error_instance(),     CHECK);
+  _scratch_array_index_oob_exception_instance = init_scratch_exception(Universe::array_index_oob_exception_instance(), CHECK);
+  _scratch_array_store_exception_instance     = init_scratch_exception(Universe::array_store_exception_instance(),     CHECK);
+  _scratch_class_cast_exception_instance      = init_scratch_exception(Universe::class_cast_exception_instance(),      CHECK);
 }
 // Given java_mirror that represents a (primitive or reference) type T,
 // return the "scratch" version that represents the same type T.
@@ -520,6 +566,7 @@ oop HeapShared::scratch_java_mirror(Klass* k) {
 }
 
 void HeapShared::set_scratch_java_mirror(Klass* k, oop mirror) {
+  track_scratch_object(k->java_mirror(), mirror);
   _scratch_java_mirror_table->set_oop(k, mirror);
 }
 
@@ -1961,6 +2008,7 @@ void HeapShared::init_for_dumping(TRAPS) {
     setup_test_class(ArchiveHeapTestClass);
     _dumped_interned_strings = new (mtClass)DumpedInternedStrings();
     init_subgraph_entry_fields(CHECK);
+    init_scratch_exceptions(CHECK);
   }
 }
 

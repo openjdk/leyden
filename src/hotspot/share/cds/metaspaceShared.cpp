@@ -27,6 +27,7 @@
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/classListWriter.hpp"
@@ -844,8 +845,6 @@ static void tmp_test_aot(ArchiveBuilder* builder, TRAPS) {
   }
 }
 
-void test_cds_heap_access_api(TRAPS);
-
 // Preload classes from a list, populate the shared spaces and dump to a
 // file.
 void MetaspaceShared::preload_and_dump() {
@@ -872,15 +871,16 @@ void MetaspaceShared::preload_and_dump() {
     }
   }
 
+  if (log_is_enabled(Info, cds, jit)) {
+    CDSAccess::test_heap_access_api();
+  }
+
   if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
     // We have just created the final image. Let's run the AOT compiler
     CDSConfig::enable_dumping_cached_code();
     if (UseNewCode) {
       tty->print_cr("==================== archived_training_data ** after dumping ====================");
       TrainingData::print_archived_training_data_on(tty);
-    }
-    if (log_is_enabled(Info, cds, jit)) {
-      test_cds_heap_access_api(THREAD);
     }
     int count = MAX2(1, (int)(NewCodeParameter & 0x7fffffff));
     for (int i = 0; i < count; i++) {

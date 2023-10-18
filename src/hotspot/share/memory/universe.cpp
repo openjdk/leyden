@@ -1091,10 +1091,6 @@ bool universe_post_init() {
   }
 //#endif // COMPILER1_OR_COMPILER2_PRESENT
 
-  if (CDSConfig::is_dumping_static_archive()) {
-    HeapShared::init_scratch_exceptions(CHECK_false);
-  }
-
   // Virtual Machine Error for when we get into a situation we can't resolve
   Klass* k = vmClasses::VirtualMachineError_klass();
   bool linked = InstanceKlass::cast(k)->link_class_or_fail(CHECK_false);

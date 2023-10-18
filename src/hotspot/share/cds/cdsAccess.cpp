@@ -28,6 +28,11 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
+#include "classfile/stringTable.hpp"
+#include "logging/log.hpp"
+#include "logging/logStream.hpp"
+#include "memory/resourceArea.hpp"
+#include "memory/universe.hpp"
 #include "oops/instanceKlass.hpp"
 
 bool CDSAccess::can_generate_cached_code(address addr) {
@@ -82,11 +87,66 @@ Method* CDSAccess::method_in_cached_code(Method* m) {
   }
 }
 
+#ifdef INCLUDE_CDS_JAVA_HEAP
 int CDSAccess::get_archived_object_permanent_index(oop obj) {
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    // TODO: not implemented yet
-    return -1;
+  return HeapShared::get_archived_object_permanent_index(obj);
+}
+
+oop CDSAccess::get_archived_object(int permanent_index) {
+  return HeapShared::get_archived_object(permanent_index);
+}
+
+static void test_cds_heap_access_api_for_object(oop obj) {
+  LogStreamHandle(Info, cds, jit) log;
+
+  obj->print_on(&log);
+  log.cr();
+
+  int n = CDSAccess::get_archived_object_permanent_index(obj); // call this when -XX:+StoreCachedCode
+  if (n < 0) {
+    log.print_cr("*** This object is not in CDS archive");
   } else {
-    return HeapShared::get_archived_object_permanent_index(obj);
+    log.print_cr("CDSAccess::get_archived_object_permanent_index(s) = %d", n);
+    oop archived_obj = CDSAccess::get_archived_object(n); // call this when -XX:+LoadCachedCode
+    if (archived_obj == obj || archived_obj == HeapShared::orig_to_scratch_object(obj)) {
+      log.print_cr("CDSAccess::get_archived_object(%d) returns the same object, as expected", n);
+    } else {
+      log.print_cr("Error!!! CDSAccess::get_archived_object(%d) returns an unexpected object", n);
+      if (archived_obj == nullptr) {
+        log.print_cr("--> null");
+      } else {
+        archived_obj->print_on(&log);
+        log.cr();
+      }
+    }
   }
 }
+
+// TEMP: examples for using the CDSAccess::get_archived_object_permanent_index() and CDSAccess::get_archived_object()
+// APIs for the AOT compiler.
+
+void CDSAccess::test_heap_access_api() {
+  ResourceMark rm;
+  const char* tests[] = {
+    "",
+    "null",
+    "NARROW",
+    "not in cds",
+    nullptr,
+  };
+
+  LogStreamHandle(Info, cds, jit) log;
+
+  int i;
+  for (i = 0; tests[i] != nullptr; i++) {
+    EXCEPTION_MARK;
+    log.print_cr("Test %d ======================================== \"%s\"", i, tests[i]);
+    oop s = StringTable::intern(tests[i], CHECK);
+    test_cds_heap_access_api_for_object(s);
+  }
+
+  log.print_cr("Test %d ======================================== Universe::null_ptr_exception_instance()", i);
+  test_cds_heap_access_api_for_object(Universe::null_ptr_exception_instance());
+}
+
+#endif // INCLUDE_CDS_JAVA_HEAP

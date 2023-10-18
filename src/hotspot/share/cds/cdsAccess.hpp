@@ -48,7 +48,10 @@ public:
   static uint delta_from_shared_address_base(address addr);
   static Method* method_in_cached_code(Method* m) NOT_CDS_RETURN_(nullptr);
 
-  static int get_archived_object_permanent_index(oop obj) NOT_CDS_RETURN_(-1);
+  static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
+  static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
+
+  static void test_heap_access_api() NOT_CDS_JAVA_HEAP_RETURN;
 };
 
 #endif // SHARE_CDS_CDSACCESS_HPP

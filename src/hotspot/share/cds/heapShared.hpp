@@ -378,6 +378,9 @@ private:
   static ResourceBitMap calculate_oopmap(MemRegion region); // marks all the oop pointers
   static void add_to_dumped_interned_strings(oop string);
 
+  static OopHandle init_scratch_exception(oop orig_exception_obj, TRAPS);
+  static void track_scratch_object(oop orig_obj, oop scratch_obj);
+
   // Scratch objects for archiving Klass::java_mirror()
   static void set_scratch_java_mirror(Klass* k, oop mirror);
   static void remove_scratch_objects(Klass* k);
@@ -412,6 +415,7 @@ private:
 #endif // INCLUDE_CDS_JAVA_HEAP
 
  public:
+  static oop orig_to_scratch_object(oop orig_obj);
   static objArrayOop scratch_resolved_references(ConstantPool* src);
   static void add_scratch_resolved_references(ConstantPool* src, objArrayOop dest) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_scratch_objects(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
@@ -433,6 +437,7 @@ private:
 
   static bool is_a_test_class_in_unnamed_module(Klass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
 
+  static void add_to_permanent_index_table(oop obj, int index);
   // AOT-compile time only: get a stable index for an archived object.
   // Returns 0 if obj is not archived.
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);

@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
+#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/classPrelinker.hpp"
@@ -1074,6 +1075,7 @@ bool ClassPrelinker::class_preloading_finished() {
     return Atomic::load_acquire(&_class_preloading_finished);
   }
 }
+
 // This function is called 4 times:
 // preload only java.base classes
 // preload boot classes outside of java.base
@@ -1113,9 +1115,15 @@ void ClassPrelinker::runtime_preload(JavaThread* current, Handle loader) {
     }
   }
 
-  if (loader() != nullptr && loader() == SystemDictionary::java_system_loader() && UseNewCode) {
-    tty->print_cr("==================== archived_training_data ** after all classes preloaded ====================");
-    TrainingData::print_archived_training_data_on(tty);
+  if (loader() != nullptr && loader() == SystemDictionary::java_system_loader()) {
+    if (UseNewCode) {
+      tty->print_cr("==================== archived_training_data ** after all classes preloaded ====================");
+      TrainingData::print_archived_training_data_on(tty);
+    }
+
+    if (log_is_enabled(Info, cds, jit)) {
+      CDSAccess::test_heap_access_api();
+    }
   }
 
   assert(!current->has_pending_exception(), "VM should have exited due to ExceptionMark");

@@ -64,6 +64,7 @@ address ArchiveHeapWriter::_requested_top;
 
 GrowableArrayCHeap<ArchiveHeapWriter::NativePointerInfo, mtClassShared>* ArchiveHeapWriter::_native_pointers;
 GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_source_objs;
+GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_perm_objs = nullptr;
 
 static GrowableArrayCHeap<size_t, mtClassShared> *_permobj_seg_buffered_addrs = nullptr;
 static GrowableArrayCHeap<size_t, mtClassShared> *_permobj_seg_bytesizes = nullptr;
@@ -251,7 +252,7 @@ size_t ArchiveHeapWriter::create_objarray_in_buffer(GrowableArrayCHeap<oop, mtCl
 int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots,
                                                   GrowableArray<size_t>* permobj_seg_offsets) {
   // Copy the contents of all the archived objects in _source_objs into the output buffer.
-  GrowableArrayCHeap<oop, mtClassShared>* permobjs = new GrowableArrayCHeap<oop, mtClassShared>();
+  _perm_objs = new GrowableArrayCHeap<oop, mtClassShared>();
   for (int i = 0; i < _source_objs->length(); i++) {
     oop src_obj = _source_objs->at(i);
     HeapShared::CachedOopInfo* info = HeapShared::archived_object_cache()->get(src_obj);
@@ -260,19 +261,23 @@ int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClas
     info->set_buffer_offset(buffer_offset);
 
     _buffer_offset_to_source_obj_table->put(buffer_offset, src_obj);
-    permobjs->append(src_obj);
+    // FIXME: Let's keep _perm_objs and _source_objs separate for now. We might
+    // want to add only the objects that are needed by AOT. (How??)
+    int perm_index = _perm_objs->length();
+    HeapShared::add_to_permanent_index_table(src_obj, perm_index);
+    _perm_objs->append(src_obj);
   }
 
   // Create HeapShared::roots() in the output buffer. Reserve some extra slots at the end of it
   // for the permobj_segments
-  int permobj_segments = (permobjs->length() + PERMOBJ_SEGMENT_MAX_LENGTH - 1) / PERMOBJ_SEGMENT_MAX_LENGTH;
+  int permobj_segments = (_perm_objs->length() + PERMOBJ_SEGMENT_MAX_LENGTH - 1) / PERMOBJ_SEGMENT_MAX_LENGTH;
   _heap_roots_offset = create_objarray_in_buffer(roots, 0, roots->length(), permobj_segments, _heap_roots_word_size);
 
   // Create the permobj_segments in the output buffer.
-  for (int from = 0; from < permobjs->length(); from += PERMOBJ_SEGMENT_MAX_LENGTH) {
-    int num_elems = MIN2(PERMOBJ_SEGMENT_MAX_LENGTH, permobjs->length() - from);
+  for (int from = 0; from < _perm_objs->length(); from += PERMOBJ_SEGMENT_MAX_LENGTH) {
+    int num_elems = MIN2(PERMOBJ_SEGMENT_MAX_LENGTH, _perm_objs->length() - from);
     size_t word_size;
-    size_t permobj_seg_bottom_offset = create_objarray_in_buffer(permobjs, from, num_elems, 0, word_size);
+    size_t permobj_seg_bottom_offset = create_objarray_in_buffer(_perm_objs, from, num_elems, 0, word_size);
     permobj_seg_offsets->append(permobj_seg_bottom_offset);
     _permobj_seg_buffered_addrs->append(permobj_seg_bottom_offset);
     _permobj_seg_bytesizes->append(word_size * HeapWordSize);
@@ -280,12 +285,19 @@ int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClas
   }
 
   log_info(cds)("Size of heap region = " SIZE_FORMAT " bytes, %d objects, %d roots, %d permobjs in %d segments",
-                _buffer_used, _source_objs->length() + 2, roots->length(), permobjs->length(), permobj_segments);
+                _buffer_used, _source_objs->length() + 2, roots->length(), _perm_objs->length(), permobj_segments);
   assert(permobj_seg_offsets->length() == permobj_segments, "sanity");
   HeapShared::set_permobj_segments(permobj_segments);
-  int n = permobjs->length();
-  delete permobjs;
+  int n = _perm_objs->length();
   return n;
+}
+
+oop ArchiveHeapWriter::get_perm_object_by_index(int permanent_index) {
+  if (_perm_objs != nullptr && 0 <= permanent_index && permanent_index < _perm_objs->length()) {
+    return _perm_objs->at(permanent_index);
+  } else {
+    return nullptr;
+  }
 }
 
 size_t ArchiveHeapWriter::filler_array_byte_size(int length) {

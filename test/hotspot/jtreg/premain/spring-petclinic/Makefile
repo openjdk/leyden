@@ -179,9 +179,10 @@ ${PC_CDS_PREIMAGE}: ${PC_APP_UNPACKED}
 ${PC_CDS}: ${PC_CDS_PREIMAGE}
 	rm -f ${PC_CDS}
 	${PREMAIN_JAVA} -XX:+ArchiveInvokeDynamic -XX:+UnlockDiagnosticVMOptions -XX:CDSPreimage=${PC_CDS_PREIMAGE} -XX:CacheDataStore=${PC_CDS} \
-	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS}.log \
+	    -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS}.log \
 	    ${UNPACKED_CMDLINE}
 	ls -l ${PC_CDS}
+	ls -l ${PC_CDS}.code
 
 # run with NEW workflow
 runn: ${PC_CDS}
