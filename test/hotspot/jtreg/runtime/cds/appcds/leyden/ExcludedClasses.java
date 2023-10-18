@@ -27,14 +27,26 @@
  * @summary test the handling of classes that are excluded from the CDS dump.
  * @requires vm.cds.write.archived.java.heap
  * @library /test/jdk/lib/testlibrary /test/lib
- * @build ExcludedClasses
+ *          /test/hotspot/jtreg/runtime/cds/appcds/leyden/test-classes
+ * @build ExcludedClasses Custy
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar
  *                 TestApp
  *                 TestApp$Foo
  *                 TestApp$Foo$Bar
  *                 TestApp$Foo$ShouldBeExcluded
+ *                 TestApp$MyInvocationHandler
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
+ *                 Custy
  * @run driver ExcludedClasses
  */
+
+import java.io.File;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.Map;
 
 import jdk.jfr.Event;
 import jdk.test.lib.helpers.ClassFileInstaller;
@@ -64,6 +76,9 @@ public class ExcludedClasses {
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
                 "-Xlog:cds+resolve=debug",
+
+                //TEMP: uncomment the next line to see the TrainingData::_archived_training_data_dictionary
+                //"-XX:+UnlockDiagnosticVMOptions", "-XX:+UseNewCode",
             };
         }
 
@@ -85,13 +100,51 @@ public class ExcludedClasses {
 }
 
 class TestApp {
-    public static void main(String args[]) {
+    static Object custInstance;
+
+    public static void main(String args[]) throws Exception {
+        custInstance = initFromCustomLoader();
+
         System.out.println("Counter = " + Foo.hotSpot());
+    }
+
+    static Object initFromCustomLoader() throws Exception {
+        String path = "cust.jar";
+        URL url = new File(path).toURI().toURL();
+        URL[] urls = new URL[] {url};
+        URLClassLoader urlClassLoader =
+            new URLClassLoader("MyLoader", urls, null);
+        Class c = Class.forName("Custy", true, urlClassLoader);
+        return c.newInstance();
+    }
+
+    static class MyInvocationHandler implements InvocationHandler {
+        volatile static int cnt;
+
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            long start = System.currentTimeMillis();
+            while (System.currentTimeMillis() - start < 20) {
+                cnt += 2;
+                for (int i = 0; i < 1000; i++) {
+                    int n = cnt - 2;
+                    if (n < 2) {
+                        n = 2;
+                    }
+                    cnt += (i + cnt) % n + cnt % 2;
+                }
+            }
+            return Integer.valueOf(cnt);
+        }
     }
 
     static class Foo {
         volatile static int counter;
         static Class c = ShouldBeExcluded.class;
+
+        static Map mapProxy = (Map) Proxy.newProxyInstance(
+            Foo.class.getClassLoader(), 
+            new Class[] { Map.class },
+            new MyInvocationHandler());
 
         static int hotSpot() {
             ShouldBeExcluded s = new ShouldBeExcluded();
@@ -101,6 +154,15 @@ class TestApp {
             while (System.currentTimeMillis() - start < 1000) {
                 s.hotSpot2();
                 b.hotSpot3();
+
+                // Currently, generated proxy classes are excluded from the CDS archive
+                Integer i = (Integer)mapProxy.get(null);
+                counter += i.intValue();
+
+                // For new workflow only:
+                // Currently, classes loaded by custom loaders are included in the preimage run
+                // but excluded from the final image.
+                counter += custInstance.equals(null) ? 1 : 2;
             }
 
             return counter + s.m() + s.f + b.m() + b.f;

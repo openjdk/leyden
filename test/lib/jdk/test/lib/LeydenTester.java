@@ -240,7 +240,8 @@ abstract public class LeydenTester {
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "training");
         listOutputFile(cdsFile);
-        listOutputFile(cdsFile + ".log");
+        listOutputFile(cdsFile + ".log");   // The final dump
+        listOutputFile(cdsFile + ".log.0"); // the preimage dump
         output.shouldHaveExitValue(0);
         checkExecution(output, runMode);
         return output;

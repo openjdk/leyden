@@ -1438,8 +1438,7 @@ void TrainingData::init_dumptime_table(TRAPS) {
     return;
   }
   if (CDSConfig::is_dumping_final_static_archive()) {
-    int num_of_entries;
-    _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>(num_of_entries);
+    _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>();
     Transfer transfer;
     _archived_training_data_dictionary.iterate(&transfer);
   } else {
