@@ -454,7 +454,7 @@ else # $(HAS_SPEC)=true
 	          $(if $(filter all, $(LOG_REPORT)), \
 	            $(GREP) -v -e "^Note: including file:" <  $(logfile) || true ; \
 	          , \
-	            ($(GREP) -v -e "^Note: including file:" <  $(logfile) || true) | $(HEAD) -n 15 ; \
+	            ($(GREP) -v -e "^Note: including file:" <  $(logfile) || true); \
 	            if test `$(WC) -l < $(logfile)` -gt 15; then \
 	              $(ECHO) "   ... (rest of output omitted)" ; \
 	            fi ; \
