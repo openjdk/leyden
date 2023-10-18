@@ -242,6 +242,9 @@ private:
   static volatile bool* _recompilation_status;
 
   static Options* options() { return &_options; }
+
+  class Transfer;
+
 public:
   // Returns the key under which this TD is installed, or else
   // Key::EMPTY if it is not installed.

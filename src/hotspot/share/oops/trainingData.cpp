@@ -1425,25 +1425,40 @@ void KlassTrainingData::log_initialization(bool is_start) {
 
 // CDS support
 
+class TrainingData::Transfer : StackObj {
+public:
+  void do_value(TrainingData* record) {
+    _dumptime_training_data_dictionary->append(record);
+  }
+};
+
+
 void TrainingData::init_dumptime_table(TRAPS) {
   if (!need_data()) {
     return;
   }
-  ResourceMark rm;
-  TrainingDataDumper tdd;
-  tdd.prepare(training_data_set(), CHECK);
-  GrowableArray<TrainingData*>& tda = tdd.hand_off_node_list();
-  tda.sort(qsort_compare_tdata); // FIXME: needed?
-  int num_of_entries = tda.length();
-  _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>(num_of_entries);
-  for (int i = 0; i < num_of_entries; i++) {
-    TrainingData* td = tda.at(i);
-    if (td->is_CompileTrainingData()) {
-      continue; // skip CTDs; discoverable through corresponding MTD
-    } else {
-      // TODO: filter TD
-      // if (SystemDictionaryShared::check_for_exclusion(), nullptr);
-      _dumptime_training_data_dictionary->append(td);
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    int num_of_entries;
+    _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>(num_of_entries);
+    Transfer transfer;
+    _archived_training_data_dictionary.iterate(&transfer);
+  } else {
+    ResourceMark rm;
+    TrainingDataDumper tdd;
+    tdd.prepare(training_data_set(), CHECK);
+    GrowableArray<TrainingData*>& tda = tdd.hand_off_node_list();
+    tda.sort(qsort_compare_tdata); // FIXME: needed?
+    int num_of_entries = tda.length();
+    _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>(num_of_entries);
+    for (int i = 0; i < num_of_entries; i++) {
+      TrainingData* td = tda.at(i);
+      if (td->is_CompileTrainingData()) {
+        continue; // skip CTDs; discoverable through corresponding MTD
+      } else {
+        // TODO: filter TD
+        // if (SystemDictionaryShared::check_for_exclusion(), nullptr);
+        _dumptime_training_data_dictionary->append(td);
+      }
     }
   }
 }
@@ -1505,11 +1520,13 @@ void TrainingData::cleanup_training_data() {
 }
 
 void KlassTrainingData::cleanup() {
-  bool is_excluded = SystemDictionaryShared::check_for_exclusion(holder(), nullptr);
-  if (is_excluded) {
-    ResourceMark rm;
-    log_debug(cds)("Cleanup KTD %s", name()->as_klass_external_name());
-    _holder = nullptr; // reset
+  if (holder() != nullptr) {
+    bool is_excluded = !holder()->is_loaded() || SystemDictionaryShared::check_for_exclusion(holder(), nullptr);
+    if (is_excluded) {
+      ResourceMark rm;
+      log_debug(cds)("Cleanup KTD %s", name()->as_klass_external_name());
+      _holder = nullptr; // reset
+    }
   }
   for (int i = 0; i < _comp_deps.length(); i++) {
     _comp_deps.at(i)->cleanup();
