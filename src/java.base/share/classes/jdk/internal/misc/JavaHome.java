@@ -102,7 +102,7 @@ public class JavaHome {
     }
 
     public static boolean isHermetic() {
-        return jarFileSystem != null;
+        return isHermetic;
     }
 
     public static String hermeticExecutable() {
