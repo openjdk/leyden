@@ -55,6 +55,8 @@ public abstract sealed class AbstractComputedConstant<V, P>
     /**
      * This field holds a bound lazy value.
      * If != null, a value is bound, otherwise the state field needs to be consulted.
+     *
+     * This field is accessed indirectly via Unsafe operations
      */
     @Stable
     private V value;
@@ -65,12 +67,16 @@ public abstract sealed class AbstractComputedConstant<V, P>
      *   1) Flagging if a non-null value is bound (State.BOUND_NON_NULL)
      *   2) if the value was actually evaluated to null (State.BOUND_NULL)
      *   3) if the initial supplier threw an exception (State.ERROR)
+     *
+     * This field is accessed indirectly via Unsafe operations
      */
     @Stable
     private byte state;
 
     /**
      * This variable indicates if we are trying to bind (1) or not (0).
+     *
+     * This field is accessed indirectly via Unsafe operations
      */
     private byte binding;
 
