@@ -329,6 +329,7 @@ class Deoptimization : AllStatic {
   static void gather_statistics(DeoptReason reason, DeoptAction action,
                                 Bytecodes::Code bc = Bytecodes::_illegal);
   static void print_statistics();
+  static void print_statistics_on(outputStream* st);
 
   // How much room to adjust the last frame's SP by, to make space for
   // the callee's interpreter frame (which expects locals to be next to

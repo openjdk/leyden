@@ -35,6 +35,7 @@
 #include "runtime/mutexLocker.hpp"
 #include "runtime/orderAccess.hpp"
 #include "runtime/os.hpp"
+#include "runtime/perfData.hpp"
 #include "runtime/safepointMechanism.inline.hpp"
 #include "runtime/safepointVerifiers.hpp"
 #include "runtime/threadWXSetters.inline.hpp"
@@ -338,9 +339,56 @@ class VMNativeEntryWrapper {
     JavaThread* THREAD = current; /* For exception macros. */        \
     debug_only(VMEntryWrapper __vew;)
 
-#define JRT_BLOCK_END }
+#define JRT_ENTRY_PROF(result_type, sub, name, header)               \
+  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
+  result_type header {                                               \
+    assert(current == JavaThread::current(), "Must be");             \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->profile_rt_calls()); \
+    MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, current));       \
+    ThreadInVMfromJava __tiv(current);                               \
+    VM_ENTRY_BASE(result_type, header, current)                      \
+    debug_only(VMEntryWrapper __vew;)
 
+#define JRT_LEAF_PROF(result_type, sub, name, header)                \
+  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
+  result_type header {                                               \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, \
+                                            ProfileRuntimeCalls && Thread::current()->profile_rt_calls()); \
+    VM_LEAF_BASE(result_type, header)                                \
+    debug_only(NoSafepointVerifier __nsv;)
+
+#define JRT_ENTRY_NO_ASYNC_PROF(result_type, sub, name, header)      \
+  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
+  result_type header {                                               \
+    assert(current == JavaThread::current(), "Must be");             \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->profile_rt_calls()); \
+    MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, current));       \
+    ThreadInVMfromJava __tiv(current, false /* check asyncs */);     \
+    VM_ENTRY_BASE(result_type, header, current)                      \
+    debug_only(VMEntryWrapper __vew;)
+
+#define JRT_BLOCK_ENTRY_PROF(result_type, sub, name, header)         \
+  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
+  result_type header {                                               \
+    assert(current == JavaThread::current(), "Must be");             \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->profile_rt_calls()); \
+    MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, current));       \
+    HandleMarkCleaner __hm(current);
+
+#define PROF_ENTRY(result_type, sub, name, header)                   \
+  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
+  result_type header {                                               \
+    assert(current == JavaThread::current(), "must be");             \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->profile_rt_calls());
+
+#define JRT_BLOCK_END }
 #define JRT_END }
+#define PROF_END }
 
 // Definitions for JNI
 //
@@ -413,6 +461,41 @@ extern "C" {                                                         \
     debug_only(VMNativeEntryWrapper __vew;)                          \
     VM_ENTRY_BASE_FROM_LEAF(result_type, header, thread)
 
+#define JVM_ENTRY_PROF(result_type, name, header)                    \
+  PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfCounter* _perf_##name##_count = nullptr;                       \
+extern "C" {                                                         \
+  result_type JNICALL header {                                       \
+    JavaThread* thread=JavaThread::thread_from_jni_environment(env); \
+    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_count, thread->profile_vm_calls()); \
+    MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, thread));        \
+    ThreadInVMfromNative __tiv(thread);                              \
+    debug_only(VMNativeEntryWrapper __vew;)                          \
+    VM_ENTRY_BASE(result_type, header, thread)
+
+
+#define JVM_ENTRY_NO_ENV_PROF(result_type, name, header)             \
+  PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfCounter* _perf_##name##_count = nullptr;                       \
+extern "C" {                                                         \
+  result_type JNICALL header {                                       \
+    JavaThread* thread = JavaThread::current();                      \
+    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_count, thread->profile_vm_calls()); \
+    MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, thread));        \
+    ThreadInVMfromNative __tiv(thread);                              \
+    debug_only(VMNativeEntryWrapper __vew;)                          \
+    VM_ENTRY_BASE(result_type, header, thread)
+
+
+#define JVM_LEAF_PROF(result_type, name, header)                     \
+  PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfCounter* _perf_##name##_count = nullptr;                       \
+extern "C" {                                                         \
+  result_type JNICALL header {                                       \
+    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_count, \
+                                    ProfileVMCalls && Thread::current()->profile_vm_calls()); \
+    VM_Exit::block_if_vm_exited();                                   \
+    VM_LEAF_BASE(result_type, header)
 
 #define JVM_END } }
 

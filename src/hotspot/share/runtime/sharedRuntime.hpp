@@ -530,7 +530,7 @@ class SharedRuntime: AllStatic {
   static uint _resolve_virtual_ctr;
   static uint _resolve_opt_virtual_ctr;
 
-  static void print_counters();
+  static void print_counters_on(outputStream* st);
 
 #ifndef PRODUCT
 
@@ -584,9 +584,12 @@ class SharedRuntime: AllStatic {
   static address nof_inlined_static_calls_addr()        { return (address)&_nof_inlined_static_calls; }
   static address nof_interface_calls_addr()             { return (address)&_nof_interface_calls; }
   static address nof_inlined_interface_calls_addr()     { return (address)&_nof_inlined_interface_calls; }
-  static void print_call_statistics(uint64_t comp_total);
+
+  static void print_call_statistics_on(outputStream* st);
+  static void print_ic_miss_histogram_on(outputStream* st);
+  static void print_counters_on(outputStream* st);
+
   static void print_statistics();
-  static void print_ic_miss_histogram();
 
 #endif // PRODUCT
 };
@@ -710,7 +713,7 @@ class AdapterHandlerLibrary: public AllStatic {
   static void print_handler_on(outputStream* st, const CodeBlob* b);
   static bool contains(const CodeBlob* b);
 #ifndef PRODUCT
-  static void print_statistics();
+  static void print_statistics_on(outputStream* st);
 #endif // PRODUCT
 
 };

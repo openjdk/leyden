@@ -59,6 +59,12 @@ extern void vm_shutdown_during_initialization(const char* error, const char* mes
 
 extern void vm_exit_during_cds_dumping(const char* error, const char* message = nullptr);
 
+extern void perf_jvm_print_on(outputStream* st);
+extern void perf_deoptimization_print_on(outputStream* st);
+
+extern void log_vm_init_stats();
+extern void perf_jvm_reset();
+
 /**
  * With the integration of the changes to handle the version string
  * as defined by JEP-223, most of the code related to handle the version

@@ -949,6 +949,8 @@ private:
   // or vthread as applicable.
   void print_jni_stack();
 
+  void print_native_stack_on(outputStream* st);
+
   // Print stack traces in various internal formats
   void trace_stack()                             PRODUCT_RETURN;
   void trace_stack_from(vframe* start_vf)        PRODUCT_RETURN;

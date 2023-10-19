@@ -67,6 +67,7 @@
 #include "runtime/frame.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
+#include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/signature.hpp"
@@ -77,6 +78,7 @@
 #include "runtime/vframe.hpp"
 #include "runtime/vframeArray.hpp"
 #include "runtime/vframe_hp.hpp"
+#include "services/management.hpp"
 #include "utilities/copy.hpp"
 #include "utilities/preserveException.hpp"
 
@@ -119,6 +121,8 @@ address OptoRuntime::_notify_jvmti_vthread_unmount                = nullptr;
 
 ExceptionBlob* OptoRuntime::_exception_blob;
 
+PerfCounter* _perf_OptoRuntime_class_init_barrier_redundant_count = nullptr;
+
 // This should be called in an assertion at the start of OptoRuntime routines
 // which are entered from compiled code (all of them)
 #ifdef ASSERT
@@ -140,6 +144,7 @@ static bool check_compiled_frame(JavaThread* thread) {
   if (var == nullptr) { return false; }
 
 bool OptoRuntime::generate(ciEnv* env) {
+  init_counters();
 
   generate_exception_blob();
 
@@ -214,7 +219,7 @@ const char* OptoRuntime::stub_name(address entry) {
 // and try allocation again.
 
 // object allocation
-JRT_BLOCK_ENTRY(void, OptoRuntime::new_instance_C(Klass* klass, JavaThread* current))
+JRT_BLOCK_ENTRY_PROF(void, OptoRuntime, new_instance_C, OptoRuntime::new_instance_C(Klass* klass, JavaThread* current))
   JRT_BLOCK;
 #ifndef PRODUCT
   SharedRuntime::_new_instance_ctr++;         // new instance requires GC
@@ -252,7 +257,7 @@ JRT_END
 
 
 // array allocation
-JRT_BLOCK_ENTRY(void, OptoRuntime::new_array_C(Klass* array_type, int len, JavaThread* current))
+JRT_BLOCK_ENTRY_PROF(void, OptoRuntime, new_array_C, OptoRuntime::new_array_C(Klass* array_type, int len, JavaThread* current))
   JRT_BLOCK;
 #ifndef PRODUCT
   SharedRuntime::_new_array_ctr++;            // new array requires GC
@@ -289,7 +294,7 @@ JRT_BLOCK_ENTRY(void, OptoRuntime::new_array_C(Klass* array_type, int len, JavaT
 JRT_END
 
 // array allocation without zeroing
-JRT_BLOCK_ENTRY(void, OptoRuntime::new_array_nozero_C(Klass* array_type, int len, JavaThread* current))
+JRT_BLOCK_ENTRY_PROF(void, OptoRuntime, new_array_nozero_C, OptoRuntime::new_array_nozero_C(Klass* array_type, int len, JavaThread* current))
   JRT_BLOCK;
 #ifndef PRODUCT
   SharedRuntime::_new_array_ctr++;            // new array requires GC
@@ -338,7 +343,7 @@ JRT_END
 // Note: multianewarray for one dimension is handled inline by GraphKit::new_array.
 
 // multianewarray for 2 dimensions
-JRT_ENTRY(void, OptoRuntime::multianewarray2_C(Klass* elem_type, int len1, int len2, JavaThread* current))
+JRT_ENTRY_PROF(void, OptoRuntime, multianewarray2_C, OptoRuntime::multianewarray2_C(Klass* elem_type, int len1, int len2, JavaThread* current))
 #ifndef PRODUCT
   SharedRuntime::_multi2_ctr++;                // multianewarray for 1 dimension
 #endif
@@ -354,7 +359,7 @@ JRT_ENTRY(void, OptoRuntime::multianewarray2_C(Klass* elem_type, int len1, int l
 JRT_END
 
 // multianewarray for 3 dimensions
-JRT_ENTRY(void, OptoRuntime::multianewarray3_C(Klass* elem_type, int len1, int len2, int len3, JavaThread* current))
+JRT_ENTRY_PROF(void, OptoRuntime, multianewarray3_C, OptoRuntime::multianewarray3_C(Klass* elem_type, int len1, int len2, int len3, JavaThread* current))
 #ifndef PRODUCT
   SharedRuntime::_multi3_ctr++;                // multianewarray for 1 dimension
 #endif
@@ -371,7 +376,7 @@ JRT_ENTRY(void, OptoRuntime::multianewarray3_C(Klass* elem_type, int len1, int l
 JRT_END
 
 // multianewarray for 4 dimensions
-JRT_ENTRY(void, OptoRuntime::multianewarray4_C(Klass* elem_type, int len1, int len2, int len3, int len4, JavaThread* current))
+JRT_ENTRY_PROF(void, OptoRuntime, multianewarray4_C, OptoRuntime::multianewarray4_C(Klass* elem_type, int len1, int len2, int len3, int len4, JavaThread* current))
 #ifndef PRODUCT
   SharedRuntime::_multi4_ctr++;                // multianewarray for 1 dimension
 #endif
@@ -407,7 +412,7 @@ JRT_ENTRY(void, OptoRuntime::multianewarray5_C(Klass* elem_type, int len1, int l
   current->set_vm_result(obj);
 JRT_END
 
-JRT_ENTRY(void, OptoRuntime::multianewarrayN_C(Klass* elem_type, arrayOopDesc* dims, JavaThread* current))
+JRT_ENTRY_PROF(void, OptoRuntime, multianewarrayN_C, OptoRuntime::multianewarrayN_C(Klass* elem_type, arrayOopDesc* dims, JavaThread* current))
   assert(check_compiled_frame(current), "incorrect caller");
   assert(elem_type->is_klass(), "not a class");
   assert(oop(dims)->is_typeArray(), "not an array");
@@ -425,7 +430,7 @@ JRT_ENTRY(void, OptoRuntime::multianewarrayN_C(Klass* elem_type, arrayOopDesc* d
   current->set_vm_result(obj);
 JRT_END
 
-JRT_BLOCK_ENTRY(void, OptoRuntime::monitor_notify_C(oopDesc* obj, JavaThread* current))
+JRT_BLOCK_ENTRY_PROF(void, OptoRuntime, monitor_notify_C, OptoRuntime::monitor_notify_C(oopDesc* obj, JavaThread* current))
 
   // Very few notify/notifyAll operations find any threads on the waitset, so
   // the dominant fast-path is to simply return.
@@ -447,7 +452,7 @@ JRT_BLOCK_ENTRY(void, OptoRuntime::monitor_notify_C(oopDesc* obj, JavaThread* cu
   JRT_BLOCK_END;
 JRT_END
 
-JRT_BLOCK_ENTRY(void, OptoRuntime::monitor_notifyAll_C(oopDesc* obj, JavaThread* current))
+JRT_BLOCK_ENTRY_PROF(void, OptoRuntime, monitor_notifyAll_C, OptoRuntime::monitor_notifyAll_C(oopDesc* obj, JavaThread* current))
 
   if (!SafepointSynchronize::is_synchronizing() ) {
     if (ObjectSynchronizer::quick_notify(obj, current, true)) {
@@ -1375,7 +1380,7 @@ static void trace_exception(outputStream* st, oop exception_oop, address excepti
 // The method is an entry that is always called by a C++ method not
 // directly from compiled code. Compiled code will call the C++ method following.
 // We can't allow async exception to be installed during  exception processing.
-JRT_ENTRY_NO_ASYNC(address, OptoRuntime::handle_exception_C_helper(JavaThread* current, nmethod* &nm))
+JRT_ENTRY_NO_ASYNC_PROF(address, OptoRuntime, handle_exception_C_helper, OptoRuntime::handle_exception_C_helper(JavaThread* current, nmethod* &nm))
   // The frame we rethrow the exception to might not have been processed by the GC yet.
   // The stack watermark barrier takes care of detecting that and ensuring the frame
   // has updated oops.
@@ -1715,15 +1720,19 @@ const TypeFunc *OptoRuntime::dtrace_object_alloc_Type() {
 }
 
 
-JRT_ENTRY_NO_ASYNC(void, OptoRuntime::register_finalizer(oopDesc* obj, JavaThread* current))
+JRT_ENTRY_NO_ASYNC_PROF(void, OptoRuntime, register_finalizer, OptoRuntime::register_finalizer(oopDesc* obj, JavaThread* current))
   assert(oopDesc::is_oop(obj), "must be a valid oop");
   assert(obj->klass()->has_finalizer(), "shouldn't be here otherwise");
   InstanceKlass::register_finalizer(instanceOop(obj), CHECK);
 JRT_END
 
-JRT_ENTRY_NO_ASYNC(void, OptoRuntime::class_init_barrier(Klass* k, JavaThread* current))
-  assert(k->is_instance_klass(), "");
-  InstanceKlass::cast(k)->initialize(CHECK);
+JRT_ENTRY_NO_ASYNC_PROF(void, OptoRuntime, class_init_barrier, OptoRuntime::class_init_barrier(Klass* k, JavaThread* current))
+  InstanceKlass* ik = InstanceKlass::cast(k);
+  if (ik->should_be_initialized()) {
+    ik->initialize(CHECK);
+  } else if (UsePerfData) {
+    _perf_OptoRuntime_class_init_barrier_redundant_count->inc();
+  }
 JRT_END
 
 //-----------------------------------------------------------------------------
@@ -1840,3 +1849,64 @@ static void trace_exception(outputStream* st, oop exception_oop, address excepti
 
   st->print_raw_cr(tempst.freeze());
 }
+
+#define DO_COUNTERS2(macro2, macro1) \
+  macro2(OptoRuntime, new_instance_C) \
+  macro2(OptoRuntime, new_array_C) \
+  macro2(OptoRuntime, new_array_nozero_C) \
+  macro2(OptoRuntime, multianewarray2_C) \
+  macro2(OptoRuntime, multianewarray3_C) \
+  macro2(OptoRuntime, multianewarray4_C) \
+  macro2(OptoRuntime, multianewarrayN_C) \
+  macro2(OptoRuntime, monitor_notify_C) \
+  macro2(OptoRuntime, monitor_notifyAll_C) \
+  macro2(OptoRuntime, handle_exception_C_helper) \
+  macro2(OptoRuntime, register_finalizer) \
+  macro2(OptoRuntime, class_init_barrier) \
+  macro1(OptoRuntime, class_init_barrier_redundant)
+
+#define INIT_COUNTER_TIME_AND_CNT(sub, name) \
+  NEWPERFTICKCOUNTER (_perf_##sub##_##name##_timer, SUN_CI, #sub "::" #name "_time"); \
+  NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_CI, #sub "::" #name "_count");
+
+#define INIT_COUNTER_CNT(sub, name) \
+  NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_CI, #sub "::" #name "_count");
+
+void OptoRuntime::init_counters() {
+  if (UsePerfData) {
+    EXCEPTION_MARK;
+
+    DO_COUNTERS2(INIT_COUNTER_TIME_AND_CNT, INIT_COUNTER_CNT)
+
+    if (HAS_PENDING_EXCEPTION) {
+      vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
+    }
+  }
+}
+#undef INIT_COUNTER_TIME_AND_CNT
+#undef INIT_COUNTER_CNT
+
+#define PRINT_COUNTER_TIME_AND_CNT(sub, name) { \
+  jlong count = _perf_##sub##_##name##_count->get_value(); \
+  if (count > 0) { \
+    st->print_cr("  %-30s = %4ldms (%5ld events)", #sub "::" #name, \
+                 Management::ticks_to_ms(_perf_##sub##_##name##_timer->get_value()), count); \
+  }}
+
+#define PRINT_COUNTER_CNT(sub, name) { \
+  jlong count = _perf_##sub##_##name##_count->get_value(); \
+  if (count > 0) { \
+    st->print_cr("  %-30s = %5ld events", #name, count); \
+  }}
+
+void OptoRuntime::print_counters_on(outputStream* st) {
+  if (UsePerfData && ProfileRuntimeCalls) {
+    DO_COUNTERS2(PRINT_COUNTER_TIME_AND_CNT, PRINT_COUNTER_CNT)
+  } else {
+    st->print_cr("  OptoRuntime: no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
+  }
+}
+
+#undef PRINT_COUNTER_TIME_AND_CNT
+#undef PRINT_COUNTER_CNT
+#undef DO_COUNTERS2

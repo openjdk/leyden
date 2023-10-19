@@ -642,9 +642,17 @@ protected:
   VMErrorCallback* _vm_error_callbacks;
 
   bool  _profile_vm_locks;
+  bool  _profile_vm_calls;
+  bool  _profile_rt_calls;
  public:
   bool     profile_vm_locks() const { return _profile_vm_locks; }
   void set_profile_vm_locks()       { _profile_vm_locks = true; }
+
+  bool     profile_vm_calls() const { return _profile_vm_calls; }
+  void set_profile_vm_calls()       { _profile_vm_calls = true; }
+
+  bool     profile_rt_calls() const { return _profile_rt_calls; }
+  void set_profile_rt_calls()       { _profile_rt_calls = true; }
 };
 
 class ThreadInAsgct {

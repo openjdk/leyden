@@ -57,6 +57,8 @@ void TemplateInterpreter::initialize_stub() {
 }
 
 void TemplateInterpreter::initialize_code() {
+  InterpreterRuntime::init_counters();
+
   AbstractInterpreter::initialize();
 
   TemplateTable::initialize();

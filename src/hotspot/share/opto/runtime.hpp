@@ -330,6 +330,9 @@ private:
  // dumps all the named counters
  static void          print_named_counters();
 
+ public:
+  static void init_counters();
+  static void print_counters_on(outputStream* st);
 };
 
 #endif // SHARE_OPTO_RUNTIME_HPP

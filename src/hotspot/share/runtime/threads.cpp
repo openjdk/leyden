@@ -24,6 +24,7 @@
  */
 
 #include "precompiled.hpp"
+#include "c1/c1_Runtime1.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
@@ -47,6 +48,7 @@
 #include "gc/shared/oopStorage.hpp"
 #include "gc/shared/oopStorageSet.hpp"
 #include "gc/shared/stringdedup/stringDedup.hpp"
+#include "interpreter/interpreterRuntime.hpp"
 #include "jfr/jfrEvents.hpp"
 #include "jvm.h"
 #include "jvmtifiles/jvmtiEnv.hpp"
@@ -62,6 +64,7 @@
 #include "oops/klass.inline.hpp"
 #include "oops/oop.inline.hpp"
 #include "oops/symbol.hpp"
+#include "opto/runtime.hpp"
 #include "prims/jvmtiAgentList.hpp"
 #include "prims/jvm_misc.hpp"
 #include "runtime/arguments.hpp"
@@ -585,9 +588,17 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   main_thread->set_active_handles(JNIHandleBlock::allocate_block());
   MACOS_AARCH64_ONLY(main_thread->init_wx());
 
-  if (ProfileVMLocks && UsePerfData) {
-    MutexLockerImpl::init();
-    main_thread->set_profile_vm_locks();
+  if (UsePerfData) {
+    if (ProfileVMLocks) {
+      MutexLockerImpl::init();
+      main_thread->set_profile_vm_locks();
+    }
+    if (ProfileVMCalls) {
+      main_thread->set_profile_vm_calls();
+    }
+    if (ProfileRuntimeCalls) {
+      main_thread->set_profile_rt_calls();
+    }
   }
 
   if (!main_thread->set_as_starting_thread()) {
@@ -874,6 +885,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     // Regular -Xshare:dump
     MetaspaceShared::preload_and_dump();
   }
+
+  log_info(init)("Before main:");
+  log_vm_init_stats();
+  perf_jvm_reset();
 
   return JNI_OK;
 }

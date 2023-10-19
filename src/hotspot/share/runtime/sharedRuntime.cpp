@@ -151,24 +151,23 @@ void SharedRuntime::generate_stubs() {
   }
 }
 
-void SharedRuntime::print_counters() {
+void SharedRuntime::print_counters_on(outputStream* st) {
+  st->print_cr("SharedRuntime:");
   if (UsePerfData) {
-    LogStreamHandle(Info, init) log;
-    if (log.is_enabled()) {
-      log.print_cr("SharedRuntime:");
-      log.print_cr("  resolve_opt_virtual_call: %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->get_value()), _resolve_opt_virtual_ctr);
-      log.print_cr("  resolve_virtual_call:     %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_virtual_total_time->get_value()),     _resolve_virtual_ctr);
-      log.print_cr("  resolve_static_call:      %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_static_total_time->get_value()),      _resolve_static_ctr);
-      log.print_cr("  handle_wrong_method:      %5ldms / %5d events", Management::ticks_to_ms(_perf_handle_wrong_method_total_time->get_value()), _wrong_method_ctr);
-      log.print_cr("  ic_miss:                  %5ldms / %5d events", Management::ticks_to_ms(_perf_ic_miss_total_time->get_value()),             _ic_miss_ctr);
+    st->print_cr("  resolve_opt_virtual_call: %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->get_value()), _resolve_opt_virtual_ctr);
+    st->print_cr("  resolve_virtual_call:     %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_virtual_total_time->get_value()),     _resolve_virtual_ctr);
+    st->print_cr("  resolve_static_call:      %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_static_total_time->get_value()),      _resolve_static_ctr);
+    st->print_cr("  handle_wrong_method:      %5ldms / %5d events", Management::ticks_to_ms(_perf_handle_wrong_method_total_time->get_value()), _wrong_method_ctr);
+    st->print_cr("  ic_miss:                  %5ldms / %5d events", Management::ticks_to_ms(_perf_ic_miss_total_time->get_value()),             _ic_miss_ctr);
 
-      jlong total_ms = Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->get_value() +
-                                               _perf_resolve_virtual_total_time->get_value() +
-                                               _perf_resolve_static_total_time->get_value() +
-                                               _perf_handle_wrong_method_total_time->get_value() +
-                                               _perf_ic_miss_total_time->get_value());
-      log.print_cr("Total:                      %5ldms", total_ms);
-    }
+    jlong total_ms = Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->get_value() +
+                                             _perf_resolve_virtual_total_time->get_value() +
+                                             _perf_resolve_static_total_time->get_value() +
+                                             _perf_handle_wrong_method_total_time->get_value() +
+                                             _perf_ic_miss_total_time->get_value());
+    st->print_cr("Total:                      %5ldms", total_ms);
+  } else {
+    st->print_cr("  no data (UsePerfData is turned off)");
   }
 }
 
@@ -236,18 +235,18 @@ void SharedRuntime::trace_ic_miss(address at) {
   _ICmiss_count[index] = 1;
 }
 
-void SharedRuntime::print_ic_miss_histogram() {
+void SharedRuntime::print_ic_miss_histogram_on(outputStream* st) {
   if (ICMissHistogram) {
-    tty->print_cr("IC Miss Histogram:");
+    st->print_cr("IC Miss Histogram:");
     int tot_misses = 0;
     for (int i = 0; i < _ICmiss_index; i++) {
-      tty->print_cr("  at: " INTPTR_FORMAT "  nof: %d", p2i(_ICmiss_at[i]), _ICmiss_count[i]);
+      st->print_cr("  at: " INTPTR_FORMAT "  nof: %d", p2i(_ICmiss_at[i]), _ICmiss_count[i]);
       tot_misses += _ICmiss_count[i];
     }
-    tty->print_cr("Total IC misses: %7d", tot_misses);
+    st->print_cr("Total IC misses: %7d", tot_misses);
   }
 }
-#endif // PRODUCT
+#endif // !PRODUCT
 
 
 JRT_LEAF(jlong, SharedRuntime::lmul(jlong y, jlong x))
@@ -2324,43 +2323,45 @@ void SharedRuntime::print_statistics() {
   ttyLocker ttyl;
   if (xtty != nullptr)  xtty->head("statistics type='SharedRuntime'");
 
-  SharedRuntime::print_ic_miss_histogram();
-
-  // Dump the JRT_ENTRY counters
-  if (_new_instance_ctr) tty->print_cr("%5u new instance requires GC", _new_instance_ctr);
-  if (_new_array_ctr) tty->print_cr("%5u new array requires GC", _new_array_ctr);
-  if (_multi2_ctr) tty->print_cr("%5u multianewarray 2 dim", _multi2_ctr);
-  if (_multi3_ctr) tty->print_cr("%5u multianewarray 3 dim", _multi3_ctr);
-  if (_multi4_ctr) tty->print_cr("%5u multianewarray 4 dim", _multi4_ctr);
-  if (_multi5_ctr) tty->print_cr("%5u multianewarray 5 dim", _multi5_ctr);
-
-  tty->print_cr("%5u inline cache miss in compiled", _ic_miss_ctr);
-  tty->print_cr("%5u wrong method", _wrong_method_ctr);
-  tty->print_cr("%5u unresolved static call site", _resolve_static_ctr);
-  tty->print_cr("%5u unresolved virtual call site", _resolve_virtual_ctr);
-  tty->print_cr("%5u unresolved opt virtual call site", _resolve_opt_virtual_ctr);
-
-  if (_mon_enter_stub_ctr) tty->print_cr("%5u monitor enter stub", _mon_enter_stub_ctr);
-  if (_mon_exit_stub_ctr) tty->print_cr("%5u monitor exit stub", _mon_exit_stub_ctr);
-  if (_mon_enter_ctr) tty->print_cr("%5u monitor enter slow", _mon_enter_ctr);
-  if (_mon_exit_ctr) tty->print_cr("%5u monitor exit slow", _mon_exit_ctr);
-  if (_partial_subtype_ctr) tty->print_cr("%5u slow partial subtype", _partial_subtype_ctr);
-  if (_jbyte_array_copy_ctr) tty->print_cr("%5u byte array copies", _jbyte_array_copy_ctr);
-  if (_jshort_array_copy_ctr) tty->print_cr("%5u short array copies", _jshort_array_copy_ctr);
-  if (_jint_array_copy_ctr) tty->print_cr("%5u int array copies", _jint_array_copy_ctr);
-  if (_jlong_array_copy_ctr) tty->print_cr("%5u long array copies", _jlong_array_copy_ctr);
-  if (_oop_array_copy_ctr) tty->print_cr("%5u oop array copies", _oop_array_copy_ctr);
-  if (_checkcast_array_copy_ctr) tty->print_cr("%5u checkcast array copies", _checkcast_array_copy_ctr);
-  if (_unsafe_array_copy_ctr) tty->print_cr("%5u unsafe array copies", _unsafe_array_copy_ctr);
-  if (_generic_array_copy_ctr) tty->print_cr("%5u generic array copies", _generic_array_copy_ctr);
-  if (_slow_array_copy_ctr) tty->print_cr("%5u slow array copies", _slow_array_copy_ctr);
-  if (_find_handler_ctr) tty->print_cr("%5u find exception handler", _find_handler_ctr);
-  if (_rethrow_ctr) tty->print_cr("%5u rethrow handler", _rethrow_ctr);
-
-  AdapterHandlerLibrary::print_statistics();
+  SharedRuntime::print_ic_miss_histogram_on(tty);
+  SharedRuntime::print_counters_on(tty);
+  AdapterHandlerLibrary::print_statistics_on(tty);
 
   if (xtty != nullptr)  xtty->tail("statistics");
 }
+
+//void SharedRuntime::print_counters_on(outputStream* st) {
+//  // Dump the JRT_ENTRY counters
+//  if (_new_instance_ctr) st->print_cr("%5u new instance requires GC", _new_instance_ctr);
+//  if (_new_array_ctr)    st->print_cr("%5u new array requires GC", _new_array_ctr);
+//  if (_multi2_ctr)       st->print_cr("%5u multianewarray 2 dim", _multi2_ctr);
+//  if (_multi3_ctr)       st->print_cr("%5u multianewarray 3 dim", _multi3_ctr);
+//  if (_multi4_ctr)       st->print_cr("%5u multianewarray 4 dim", _multi4_ctr);
+//  if (_multi5_ctr)       st->print_cr("%5u multianewarray 5 dim", _multi5_ctr);
+//
+//  st->print_cr("%5u inline cache miss in compiled", _ic_miss_ctr);
+//  st->print_cr("%5u wrong method", _wrong_method_ctr);
+//  st->print_cr("%5u unresolved static call site", _resolve_static_ctr);
+//  st->print_cr("%5u unresolved virtual call site", _resolve_virtual_ctr);
+//  st->print_cr("%5u unresolved opt virtual call site", _resolve_opt_virtual_ctr);
+//
+//  if (_mon_enter_stub_ctr)       st->print_cr("%5u monitor enter stub", _mon_enter_stub_ctr);
+//  if (_mon_exit_stub_ctr)        st->print_cr("%5u monitor exit stub", _mon_exit_stub_ctr);
+//  if (_mon_enter_ctr)            st->print_cr("%5u monitor enter slow", _mon_enter_ctr);
+//  if (_mon_exit_ctr)             st->print_cr("%5u monitor exit slow", _mon_exit_ctr);
+//  if (_partial_subtype_ctr)      st->print_cr("%5u slow partial subtype", _partial_subtype_ctr);
+//  if (_jbyte_array_copy_ctr)     st->print_cr("%5u byte array copies", _jbyte_array_copy_ctr);
+//  if (_jshort_array_copy_ctr)    st->print_cr("%5u short array copies", _jshort_array_copy_ctr);
+//  if (_jint_array_copy_ctr)      st->print_cr("%5u int array copies", _jint_array_copy_ctr);
+//  if (_jlong_array_copy_ctr)     st->print_cr("%5u long array copies", _jlong_array_copy_ctr);
+//  if (_oop_array_copy_ctr)       st->print_cr("%5u oop array copies", _oop_array_copy_ctr);
+//  if (_checkcast_array_copy_ctr) st->print_cr("%5u checkcast array copies", _checkcast_array_copy_ctr);
+//  if (_unsafe_array_copy_ctr)    st->print_cr("%5u unsafe array copies", _unsafe_array_copy_ctr);
+//  if (_generic_array_copy_ctr)   st->print_cr("%5u generic array copies", _generic_array_copy_ctr);
+//  if (_slow_array_copy_ctr)      st->print_cr("%5u slow array copies", _slow_array_copy_ctr);
+//  if (_find_handler_ctr)         st->print_cr("%5u find exception handler", _find_handler_ctr);
+//  if (_rethrow_ctr)              st->print_cr("%5u rethrow handler", _rethrow_ctr);
+//}
 
 inline double percent(int64_t x, int64_t y) {
   return 100.0 * (double)x / (double)MAX2(y, (int64_t)1);
@@ -2446,7 +2447,7 @@ uint64_t MethodArityHistogram::_max_compiled_calls_per_method;
 int MethodArityHistogram::_max_arity;
 int MethodArityHistogram::_max_size;
 
-void SharedRuntime::print_call_statistics(uint64_t comp_total) {
+void SharedRuntime::print_call_statistics_on(outputStream* st) {
   tty->print_cr("Calls from compiled code:");
   int64_t total  = _nof_normal_calls + _nof_interface_calls + _nof_static_calls;
   int64_t mono_c = _nof_normal_calls - _nof_megamorphic_calls;
@@ -2699,18 +2700,18 @@ static AdapterHandlerEntry* lookup(int total_args_passed, BasicType* sig_bt) {
 }
 
 #ifndef PRODUCT
-static void print_table_statistics() {
+void AdapterHandlerLibrary::print_statistics_on(outputStream* st) {
   auto size = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
     return sizeof(*key) + sizeof(*a);
   };
   TableStatistics ts = _adapter_handler_table->statistics_calculate(size);
-  ts.print(tty, "AdapterHandlerTable");
-  tty->print_cr("AdapterHandlerTable (table_size=%d, entries=%d)",
-                _adapter_handler_table->table_size(), _adapter_handler_table->number_of_entries());
-  tty->print_cr("AdapterHandlerTable: lookups %d equals %d hits %d compact %d",
-                _lookups, _equals, _hits, _compact);
+  ts.print(st, "AdapterHandlerTable");
+  st->print_cr("AdapterHandlerTable (table_size=%d, entries=%d)",
+               _adapter_handler_table->table_size(), _adapter_handler_table->number_of_entries());
+  st->print_cr("AdapterHandlerTable: lookups %d equals %d hits %d compact %d",
+               _lookups, _equals, _hits, _compact);
 }
-#endif
+#endif // !PRODUCT
 
 // ---------------------------------------------------------------------------
 // Implementation of AdapterHandlerLibrary
@@ -3158,7 +3159,7 @@ void AdapterHandlerLibrary::create_native_wrapper(const methodHandle& method) {
           }
         }
 
-        DirectiveSet* directive = DirectivesStack::getDefaultDirective(CompileBroker::compiler(CompLevel_simple));
+        DirectiveSet* directive = DirectivesStack::getMatchingDirective(method, CompileBroker::compiler(CompLevel_simple));
         if (directive->PrintAssemblyOption) {
           nm->print_code();
         }
@@ -3387,14 +3388,6 @@ void AdapterHandlerEntry::print_adapter_on(outputStream* st) const {
   }
   st->cr();
 }
-
-#ifndef PRODUCT
-
-void AdapterHandlerLibrary::print_statistics() {
-  print_table_statistics();
-}
-
-#endif /* PRODUCT */
 
 JRT_LEAF(void, SharedRuntime::enable_stack_reserved_zone(JavaThread* current))
   assert(current == JavaThread::current(), "pre-condition");

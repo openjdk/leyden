@@ -4169,6 +4169,26 @@ jint Arguments::apply_ergo() {
   }
 #endif // COMPILER2_OR_JVMCI
 
+  if (log_is_enabled(Info, init)) {
+    if (FLAG_IS_DEFAULT(ProfileVMLocks)) {
+      FLAG_SET_DEFAULT(ProfileVMLocks, true);
+    }
+    // Don't turn on ProfileVMCalls and ProfileRuntimeCalls by default.
+  } else {
+    if (!FLAG_IS_DEFAULT(ProfileVMLocks) && ProfileVMLocks) {
+      warning("Disabling ProfileVMLocks since logging is turned off.");
+      FLAG_SET_DEFAULT(ProfileVMLocks, false);
+    }
+    if (!FLAG_IS_DEFAULT(ProfileVMCalls) && ProfileVMCalls) {
+      warning("Disabling ProfileVMCalls since logging is turned off.");
+      FLAG_SET_DEFAULT(ProfileVMCalls, false);
+    }
+    if (!FLAG_IS_DEFAULT(ProfileRuntimeCalls) && ProfileRuntimeCalls) {
+      warning("Disabling ProfileRuntimeCalls since logging is turned off.");
+      FLAG_SET_DEFAULT(ProfileRuntimeCalls, false);
+    }
+  }
+
   if (FLAG_IS_CMDLINE(DiagnoseSyncOnValueBasedClasses)) {
     if (DiagnoseSyncOnValueBasedClasses == ObjectSynchronizer::LOG_WARNING && !log_is_enabled(Info, valuebasedclasses)) {
       LogConfiguration::configure_stdout(LogLevel::Info, true, LOG_TAGS(valuebasedclasses));

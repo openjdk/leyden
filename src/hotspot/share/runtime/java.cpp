@@ -42,6 +42,7 @@
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/stringdedup/stringDedup.hpp"
 #include "interpreter/bytecodeHistogram.hpp"
+#include "interpreter/interpreterRuntime.hpp"
 #include "jfr/jfrEvents.hpp"
 #include "jfr/support/jfrThreadId.hpp"
 #include "jvm.h"
@@ -156,6 +157,32 @@ void print_method_profiling_data() {
   }
 }
 
+void log_vm_init_stats() {
+  LogStreamHandle(Info, init) log;
+  if (log.is_enabled()) {
+    SharedRuntime::print_counters_on(&log);
+    ClassLoader::print_counters();
+    ClassPrelinker::print_counters();
+    log.cr();
+    log.print("Deoptimization events: ");
+    Deoptimization::print_statistics_on(&log);
+    log.cr();
+    MutexLockerImpl::print_counters_on(&log);
+    log.cr();
+    log.print_cr("Runtime events for thread \"main\":");
+    Runtime1::print_counters_on(&log);
+    OptoRuntime::print_counters_on(&log);
+    InterpreterRuntime::print_counters_on(&log);
+    perf_deoptimization_print_on(&log);
+    perf_jvm_print_on(&log);
+  }
+}
+
+void print_bytecode_count() {
+  if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
+    tty->print_cr("[BytecodeCounter::counter_value = %ld]", BytecodeCounter::counter_value());
+  }
+}
 
 #ifndef PRODUCT
 
@@ -224,18 +251,12 @@ void print_method_invocation_histogram() {
   tty->print_cr("\t" UINT64_FORMAT_W(12) " (%4.1f%%)    |- native",      native_total,  100.0 * (double)native_total / total_div);
   tty->print_cr("\t" UINT64_FORMAT_W(12) " (%4.1f%%)    |- accessor",    access_total,  100.0 * (double)access_total / total_div);
   tty->cr();
-  SharedRuntime::print_call_statistics(comp_total);
+  SharedRuntime::print_call_statistics_on(tty);
 }
-
-void print_bytecode_count() {
-  if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
-    tty->print_cr("[BytecodeCounter::counter_value = %ld]", BytecodeCounter::counter_value());
-  }
-}
-
 
 // General statistics printing (profiling ...)
 void print_statistics() {
+  ttyLocker ttyl;
   if (ReplayTraining && PrintTrainingInfo) {
     TrainingData::print_archived_training_data_on(tty);
   }
@@ -246,7 +267,7 @@ void print_statistics() {
 #ifdef COMPILER1
   if ((PrintC1Statistics || LogVMOutput || LogCompilation) && UseCompiler) {
     FlagSetting fs(DisplayVMOutput, DisplayVMOutput && PrintC1Statistics);
-    Runtime1::print_statistics();
+    Runtime1::print_statistics_on(tty);
     SharedRuntime::print_statistics();
   }
 #endif /* COMPILER1 */
@@ -353,12 +374,7 @@ void print_statistics() {
 
   ThreadsSMRSupport::log_statistics();
 
-  if (UsePerfData && log_is_enabled(Info, init)) {
-    SharedRuntime::print_counters();
-    ClassLoader::print_counters();
-    ClassPrelinker::print_counters();
-    MutexLockerImpl::print_counters();
-  }
+  log_vm_init_stats();
 }
 
 #else // PRODUCT MODE STATISTICS
@@ -383,6 +399,10 @@ void print_statistics() {
     Deoptimization::print_statistics();
   }
 #endif /* COMPILER2 || INCLUDE_JVMCI */
+
+  if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
+    BytecodeCounter::print();
+  }
 
   if (PrintCodeCache) {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
@@ -411,12 +431,7 @@ void print_statistics() {
 
   ThreadsSMRSupport::log_statistics();
 
-  if (UsePerfData && log_is_enabled(Info, init)) {
-    SharedRuntime::print_counters();
-    ClassLoader::print_counters();
-    ClassPrelinker::print_counters();
-    MutexLockerImpl::print_counters();
-  }
+  log_vm_init_stats();
 }
 
 #endif

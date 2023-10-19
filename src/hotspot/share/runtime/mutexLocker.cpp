@@ -408,13 +408,13 @@ void MutexLockerImpl::init() {
   }
 }
 
-void MutexLockerImpl::print_counters(const char* name, int idx) {
+void MutexLockerImpl::print_counter_on(outputStream* st, const char* name, int idx) {
   jlong count = _perf_lock_count[idx]->get_value();
   if (count > 0) {
-    log_info(init)("  %3d: %32s = %5ldms (%5ldms) / %9ld events", idx, name,
-                   Management::ticks_to_ms(_perf_lock_hold_time[idx]->get_value()),
-                   Management::ticks_to_ms(_perf_lock_wait_time[idx]->get_value()),
-                   count);
+    st->print_cr("  %3d: %32s = %5ldms (%5ldms) / %9ld events", idx, name,
+                 Management::ticks_to_ms(_perf_lock_hold_time[idx]->get_value()),
+                 Management::ticks_to_ms(_perf_lock_wait_time[idx]->get_value()),
+                 count);
   }
 }
 
@@ -426,20 +426,22 @@ static jlong accumulate_lock_counters(PerfCounter** lock_counters) {
   return acc;
 }
 
-void MutexLockerImpl::print_counters() {
+void MutexLockerImpl::print_counters_on(outputStream* st) {
   if (ProfileVMLocks && UsePerfData) {
     jlong total_count     = accumulate_lock_counters(_perf_lock_count);
     jlong total_wait_time = accumulate_lock_counters(_perf_lock_wait_time);
     jlong total_hold_time = accumulate_lock_counters(_perf_lock_hold_time);
 
-    log_info(init)("MutexLocker: Total: hold = %ldms (wait = %ldms) / %ld events for thread \"main\"",
-                   Management::ticks_to_ms(total_hold_time),
-                   Management::ticks_to_ms(total_wait_time),
-                   total_count);
+    st->print_cr("MutexLocker: Total: hold = %ldms (wait = %ldms) / %ld events for thread \"main\"",
+                 Management::ticks_to_ms(total_hold_time),
+                 Management::ticks_to_ms(total_wait_time),
+                 total_count);
     for (int i = 0; i < _num_mutex; i++) {
-      print_counters(_mutex_array[i]->name(), i+1);
+      print_counter_on(st, _mutex_array[i]->name(), i+1);
     }
-    print_counters("Unnamed / Other", 0);
+    print_counter_on(st, "Unnamed / Other", 0);
+  } else {
+    st->print_cr("MutexLocker: no info (%s is disabled)", (UsePerfData ? "ProfileVMLocks" : "UsePerfData"));
   }
 }
 

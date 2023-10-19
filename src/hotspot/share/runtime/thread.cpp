@@ -140,6 +140,8 @@ Thread::Thread() {
   MACOS_AARCH64_ONLY(DEBUG_ONLY(_wx_init = false));
 
   _profile_vm_locks = false;
+  _profile_vm_calls = false;
+  _profile_rt_calls = false;
 }
 
 void Thread::initialize_tlab() {

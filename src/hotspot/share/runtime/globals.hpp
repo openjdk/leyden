@@ -1161,7 +1161,7 @@ const int ObjectAlignmentInBytes = 8;
           "Use always interpreter stubs for native methods invoked via "    \
           "interpreter")                                                    \
                                                                             \
-  develop(bool, CountBytecodes, false,                                      \
+  product(bool, CountBytecodes, false, DIAGNOSTIC,                          \
           "Count number of bytecodes executed")                             \
                                                                             \
   develop(bool, PrintBytecodeHistogram, false,                              \
@@ -1997,6 +1997,12 @@ const int ObjectAlignmentInBytes = 8;
                                                                             \
   product(bool, ProfileVMLocks, false, DIAGNOSTIC,                          \
           "Profile VM locks usage on main thread")                          \
+                                                                            \
+  product(bool, ProfileVMCalls, false, DIAGNOSTIC,                          \
+          "Profile VM calls on main thread")                                \
+                                                                            \
+  product(bool, ProfileRuntimeCalls, false, DIAGNOSTIC,                     \
+          "Profile calls into VM runtime on main thread")                   \
 
 // end of RUNTIME_FLAGS
 

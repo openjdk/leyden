@@ -413,6 +413,7 @@ class PerfLongVariant : public PerfLong {
     inline void inc() { (*(jlong*)_valuep)++; }
     inline void inc(jlong val) { (*(jlong*)_valuep) += val; }
     inline void dec(jlong val) { inc(-val); }
+    inline void reset() { (*(jlong*)_valuep) = 0; }
 };
 
 /*

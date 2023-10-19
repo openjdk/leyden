@@ -258,12 +258,12 @@ public:
   }
 
  private:
-  static void print_counters(const char* name, int idx);
+  static void print_counter_on(outputStream* st, const char* name, int idx);
 
  public:
   static void post_initialize();
   static void init();
-  static void print_counters();
+  static void print_counters_on(outputStream* st);
 };
 
 // Simplest mutex locker.

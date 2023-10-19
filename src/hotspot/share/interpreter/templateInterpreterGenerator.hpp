@@ -75,7 +75,7 @@ class TemplateInterpreterGenerator: public AbstractInterpreterGenerator {
 
   // Helpers for generate_and_dispatch
   address generate_trace_code(TosState state)   PRODUCT_RETURN0;
-  void count_bytecode()                         PRODUCT_RETURN;
+  void count_bytecode();
   void histogram_bytecode(Template* t)          PRODUCT_RETURN;
   void histogram_bytecode_pair(Template* t)     PRODUCT_RETURN;
   void trace_bytecode(Template* t)              PRODUCT_RETURN;

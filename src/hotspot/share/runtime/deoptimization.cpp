@@ -89,6 +89,7 @@
 #include "runtime/vframeArray.hpp"
 #include "runtime/vframe_hp.hpp"
 #include "runtime/vmOperations.hpp"
+#include "services/management.hpp"
 #include "utilities/checkedCast.hpp"
 #include "utilities/events.hpp"
 #include "utilities/growableArray.hpp"
@@ -272,7 +273,7 @@ void Deoptimization::UnrollBlock::print() {
 // analysis, the method was changed from JRT_LEAF to JRT_BLOCK_ENTRY.
 // The actual reallocation of previously eliminated objects occurs in realloc_objects,
 // which is called from the method fetch_unroll_info_helper below.
-JRT_BLOCK_ENTRY(Deoptimization::UnrollBlock*, Deoptimization::fetch_unroll_info(JavaThread* current, int exec_mode))
+JRT_BLOCK_ENTRY_PROF(Deoptimization::UnrollBlock*, Deoptimization, fetch_unroll_info, Deoptimization::fetch_unroll_info(JavaThread* current, int exec_mode))
   // fetch_unroll_info() is called at the beginning of the deoptimization
   // handler. Note this fact before we start generating temporary frames
   // that can confuse an asynchronous stack walker. This counter is
@@ -843,7 +844,7 @@ static bool falls_through(Bytecodes::Code bc) {
 #endif
 
 // Return BasicType of value being returned
-JRT_LEAF(BasicType, Deoptimization::unpack_frames(JavaThread* thread, int exec_mode))
+JRT_LEAF_PROF(BasicType, Deoptimization, unpack_frames, Deoptimization::unpack_frames(JavaThread* thread, int exec_mode))
   assert(thread == JavaThread::current(), "pre-condition");
 
   // We are already active in the special DeoptResourceMark any ResourceObj's we
@@ -1979,7 +1980,7 @@ static void log_deopt(CompiledMethod* nm, Method* tm, intptr_t pc, frame& fr, in
   }
 }
 
-JRT_ENTRY(void, Deoptimization::uncommon_trap_inner(JavaThread* current, jint trap_request)) {
+JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncommon_trap_inner(JavaThread* current, jint trap_request)) {
   HandleMark hm(current);
 
   // uncommon_trap() is called at the beginning of the uncommon trap
@@ -2545,7 +2546,7 @@ Deoptimization::update_method_data_from_interpreter(MethodData* trap_mdo, int tr
                            ignore_maybe_prior_recompile);
 }
 
-Deoptimization::UnrollBlock* Deoptimization::uncommon_trap(JavaThread* current, jint trap_request, jint exec_mode) {
+PROF_ENTRY(Deoptimization::UnrollBlock*, Deoptimization, uncommon_trap, Deoptimization::uncommon_trap(JavaThread* current, jint trap_request, jint exec_mode))
   // Enable WXWrite: current function is called from methods compiled by C2 directly
   MACOS_AARCH64_ONLY(ThreadWXEnable wx(WXWrite, current));
 
@@ -2556,7 +2557,7 @@ Deoptimization::UnrollBlock* Deoptimization::uncommon_trap(JavaThread* current, 
   }
   HandleMark hm(current);
   return fetch_unroll_info_helper(current, exec_mode);
-}
+PROF_END
 
 // Local derived constants.
 // Further breakdown of DataLayout::trap_state, as promised by DataLayout.
@@ -2815,15 +2816,20 @@ jint Deoptimization::deoptimization_count(const char *reason_str, const char *ac
 }
 
 void Deoptimization::print_statistics() {
+  ttyLocker ttyl;
+  if (xtty != nullptr)  xtty->head("statistics type='deoptimization'");
+  tty->print_cr("Deoptimization traps recorded:");
+  print_statistics_on(tty);
+  if (xtty != nullptr)  xtty->tail("statistics");
+}
+
+void Deoptimization::print_statistics_on(outputStream* st) {
   juint total = total_deoptimization_count();
   juint account = total;
-  if (total != 0) {
-    ttyLocker ttyl;
-    if (xtty != nullptr)  xtty->head("statistics type='deoptimization'");
-    tty->print_cr("Deoptimization traps recorded:");
-    #define PRINT_STAT_LINE(name, r) \
-      tty->print_cr("  %4d (%4.1f%%) %s", (int)(r), ((r) * 100.0) / total, name);
-    PRINT_STAT_LINE("total", total);
+#define PRINT_STAT_LINE(name, r) \
+      st->print_cr("%d (%4.1f%%) %s", (int)(r), ((r) == total ? 100.0 : (((r) * 100.0) / total)), name);
+  PRINT_STAT_LINE("total", total);
+  if (total > 0) {
     // For each non-zero entry in the histogram, print the reason,
     // the action, and (if specifically known) the type of bytecode.
     for (int reason = 0; reason < Reason_LIMIT; reason++) {
@@ -2834,14 +2840,12 @@ void Deoptimization::print_statistics() {
           if (counter != 0) {
             char name[1*K];
             Bytecodes::Code bc = (Bytecodes::Code)(counter & LSB_MASK);
-            if (bc_case == BC_CASE_LIMIT && (int)bc == 0)
-              bc = Bytecodes::_illegal;
-            os::snprintf_checked(name, sizeof(name), "%s/%s/%s",
+            os::snprintf_checked(name, sizeof(name), "%-34s %16s %16s",
                     trap_reason_name(reason),
                     trap_action_name(action),
                     Bytecodes::is_defined(bc)? Bytecodes::name(bc): "other");
             juint r = counter >> LSB_BITS;
-            tty->print_cr("  %40s: " UINT32_FORMAT " (%.1f%%)", name, r, (r * 100.0) / total);
+            st->print_cr("  %s: " UINT32_FORMAT_W(5) " (%4.1f%%)", name, r, (r * 100.0) / total);
             account -= r;
           }
         }
@@ -2851,7 +2855,6 @@ void Deoptimization::print_statistics() {
       PRINT_STAT_LINE("unaccounted", account);
     }
     #undef PRINT_STAT_LINE
-    if (xtty != nullptr)  xtty->tail("statistics");
   }
 }
 
@@ -2900,3 +2903,42 @@ const char* Deoptimization::format_trap_state(char* buf, size_t buflen,
 }
 
 #endif // COMPILER2_OR_JVMCI
+
+#define DO_COUNTERS(macro) \
+  macro(Deoptimization, fetch_unroll_info)   \
+  macro(Deoptimization, unpack_frames) \
+  macro(Deoptimization, uncommon_trap_inner) \
+  macro(Deoptimization, uncommon_trap)
+
+#define INIT_COUNTER(sub, name) \
+  NEWPERFTICKCOUNTER (_perf_##sub##_##name##_timer, SUN_RT, #sub "::" #name "_time"); \
+  NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_RT, #sub "::" #name "_count");
+
+void perf_deoptimize_init() {
+  EXCEPTION_MARK;
+  if (UsePerfData) {
+    DO_COUNTERS(INIT_COUNTER)
+  }
+  if (HAS_PENDING_EXCEPTION) {
+    vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
+  }
+}
+#undef INIT_COUNTER
+
+#define PRINT_COUNTER(sub, name) { \
+  jlong count = _perf_##sub##_##name##_count->get_value(); \
+  if (count > 0) { \
+    st->print_cr("  %-50s = %4ldms (%5ld events)", #sub "::" #name, \
+                 Management::ticks_to_ms(_perf_##sub##_##name##_timer->get_value()), count); \
+  }}
+
+void perf_deoptimization_print_on(outputStream* st) {
+  if (ProfileRuntimeCalls && UsePerfData) {
+    DO_COUNTERS(PRINT_COUNTER)
+  } else {
+    st->print_cr("  Deoptimization: no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
+  }
+}
+
+#undef PRINT_COUNTER
+#undef DO_COUNTERS
