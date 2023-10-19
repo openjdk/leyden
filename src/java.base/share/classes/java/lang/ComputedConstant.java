@@ -223,6 +223,9 @@ import java.util.function.Supplier;
  *         }
  *     }
  *}
+ * <p>
+ * Care must be taken if the provider has security and/or access restrictions and can be called
+ * by both authorized and non-authorized code in order not to propagate confidential information.
  *
  * @param <V> The type of the value to be bound
  * @since 22
