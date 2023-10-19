@@ -53,6 +53,14 @@ class ArrayKlass: public Klass {
   // Testing operation
   DEBUG_ONLY(bool is_array_klass_slow() const { return true; })
 
+  // Returns the ObjArrayKlass for n'th dimension.
+  ArrayKlass* array_klass(int n, TRAPS);
+  ArrayKlass* array_klass_or_null(int n);
+
+  // Returns the array class with this class as element type.
+  ArrayKlass* array_klass(TRAPS);
+  ArrayKlass* array_klass_or_null();
+
   // Instance variables
   int dimension() const                 { return _dimension;      }
   void set_dimension(int dimension)     { _dimension = dimension; }
@@ -123,6 +131,7 @@ class ArrayKlass: public Klass {
   void cds_print_value_on(outputStream* st) const;
 #endif
 
+  void log_array_class_load(Klass* k);
   // Printing
   void print_on(outputStream* st) const;
   void print_value_on(outputStream* st) const;
