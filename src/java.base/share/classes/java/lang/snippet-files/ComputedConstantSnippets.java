@@ -25,7 +25,9 @@
 package java.lang.snippet;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.ResourceBundle;
 import java.util.function.Supplier;
 
 /**
@@ -135,6 +137,66 @@ public final class ComputedConstantSnippets {
         }
     }
     // @end
+
+
+    public static
+
+    class GermanLabels {
+
+        private static final ResourceBundle BUNDLE =
+                ResourceBundle.getBundle("LabelsBundle", Locale.GERMAN);
+
+        public static String get(int i) {
+            return BUNDLE.getString(Integer.toString(i));
+        }
+    /*
+    # This is the LabelsBundle_de.properties file
+    #file: LabelsBundle_de.properties
+    0 = Rechner
+    1 = Festplatte
+    2 = Monitor
+    3 = Tastatur
+     */
+
+        public static void main(String[] args) {
+            var keyboard = GermanLabels.get(3); // Tastatur
+        }
+
+    }
+
+
+    public static
+
+    class GermanLabels2 {
+
+        private static final ComputedConstant<ResourceBundle> BUNDLE =
+                ComputedConstant.of(
+                        () -> ResourceBundle.getBundle("LabelsBundle", Locale.GERMAN)
+                );
+
+        private static final List<ComputedConstant<String>> LABELS = ComputedConstant.of(
+                4,
+                i -> BUNDLE.get().getString(Integer.toString(i)));
+
+        public static String get(int i) {
+            return LABELS.get(i) // Gets the i-th ComputedConstant
+                    .get();      // Gets its bound value
+        }
+
+    /*
+    # This is the LabelsBundle_de.properties file
+    0 = Rechner
+    1 = Festplatte
+    2 = Monitor
+    3 = Tastatur
+     */
+
+        public static void main(String[] args) {
+                var keyboard = GermanLabels.get(3); // Tastatur
+        }
+
+    }
+
 
     // Dummy classes
     static final class Foo {}
