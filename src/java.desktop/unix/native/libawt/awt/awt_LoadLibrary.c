@@ -98,8 +98,8 @@ JNIEXPORT jboolean JNICALL AWTIsHeadless() {
   #define HEADLESS_PATH "/libawt_headless.so"
 #endif
 
-typedef jboolean (*JLI_IsStaticJDK_t)();
-static JLI_IsStaticJDK_t IsStaticJDK = NULL;
+typedef jboolean (*JVM_IsStaticJDK_t)();
+static JVM_IsStaticJDK_t IsStaticJDK = NULL;
 
 jint
 AWT_OnLoad(JavaVM *vm, void *reserved)
@@ -120,8 +120,8 @@ AWT_OnLoad(JavaVM *vm, void *reserved)
 
     jvm = vm;
 
-    // IsStaticJDK is defined by libjli. Check if it is statically linked.
-    IsStaticJDK = (JLI_IsStaticJDK_t)dlsym(RTLD_DEFAULT, "JLI_IsStaticJDK");
+    // IsStaticJDK is defined by libjvm. Check if it is statically linked.
+    IsStaticJDK = (JVM_IsStaticJDK_t)dlsym(RTLD_DEFAULT, "JVM_IsStaticJDK");
     jboolean isStaticJDK = (IsStaticJDK != NULL) && (IsStaticJDK)();
     if (!isStaticJDK) {
         /* Get address of this library and the directory containing it. */
