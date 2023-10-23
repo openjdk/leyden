@@ -86,7 +86,7 @@ void Klass::set_name(Symbol* n) {
   _name = n;
   if (_name != nullptr) _name->increment_refcount();
 
-  if (CDSConfig::is_using_dumptime_tables() && is_instance_klass()) {
+  if (CDSConfig::is_dumping_archive() && is_instance_klass()) {
     SystemDictionaryShared::init_dumptime_info(InstanceKlass::cast(this));
   }
 }

@@ -37,10 +37,6 @@ bool CDSConfig::_has_preloaded_classes;
 bool CDSConfig::_enable_dumping_full_module_graph = true;
 bool CDSConfig::_enable_loading_full_module_graph = true;
 
-bool CDSConfig::is_using_dumptime_tables() {
-  return is_dumping_static_archive() || is_dumping_dynamic_archive();
-}
-
 bool CDSConfig::is_dumping_archive() {
   return is_dumping_static_archive() || is_dumping_dynamic_archive();
 }
@@ -83,6 +79,7 @@ bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
   }
 }
 
+#if INCLUDE_CDS_JAVA_HEAP
 bool CDSConfig::is_dumping_heap() {
   return is_dumping_static_archive() && HeapShared::can_write();
 }
@@ -102,11 +99,9 @@ bool CDSConfig::is_dumping_full_module_graph() {
 }
 
 bool CDSConfig::is_loading_full_module_graph() {
-#if INCLUDE_CDS_JAVA_HEAP
   if (ClassLoaderDataShared::is_full_module_graph_loaded()) {
     return true;
   }
-#endif
 
   if (UseSharedSpaces &&
       ArchiveHeapLoader::can_use() &&
@@ -138,6 +133,7 @@ void CDSConfig::disable_loading_full_module_graph(const char* reason) {
     }
   }
 }
+#endif // INCLUDE_CDS_JAVA_HEAP
 
 // This is allowed by default. We disable it only in the final image dump before the
 // metadata and heap are dumped.
@@ -160,5 +156,5 @@ bool CDSConfig::is_initing_classes_at_dump_time() {
 }
 
 bool CDSConfig::is_dumping_invokedynamic() {
-  return ArchiveInvokeDynamic && is_dumping_static_archive();
+  return ArchiveInvokeDynamic && is_dumping_heap();
 }
