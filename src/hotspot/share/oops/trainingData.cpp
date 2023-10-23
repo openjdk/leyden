@@ -698,6 +698,7 @@ bool CompileTrainingData::dump(TrainingDataDumper& tdd, DumpPhase dp) {
     tdd.prepare(md);
     tdd.prepare(td);
     _init_deps.prepare(_method->klass()->class_loader_data());
+    _ci_records.prepare(_method->klass()->class_loader_data());
     return true;
   }
   auto out = tdd.out();
@@ -1751,6 +1752,7 @@ void CompileTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
   log_trace(cds)("Iter(CompileTrainingData): %p", this);
   TrainingData::metaspace_pointers_do(iter);
   _init_deps.metaspace_pointers_do(iter);
+  _ci_records.metaspace_pointers_do(iter);
   iter->push(&_method);
   iter->push(&_top_method);
   iter->push(&_next);
@@ -1953,10 +1955,12 @@ void MethodTrainingData::restore_unshareable_info(TRAPS) {
 void CompileTrainingData::remove_unshareable_info() {
   TrainingData::remove_unshareable_info();
   _init_deps.remove_unshareable_info();
+  _ci_records.remove_unshareable_info();
 }
 
 void CompileTrainingData::restore_unshareable_info(TRAPS) {
   TrainingData::restore_unshareable_info(CHECK);
   _init_deps.restore_unshareable_info(CHECK);
+  _ci_records.restore_unshareable_info(CHECK);
 }
 #endif // INCLUDE_CDS
