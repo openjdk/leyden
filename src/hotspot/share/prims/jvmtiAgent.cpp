@@ -432,7 +432,6 @@ static bool invoke_JVM_OnLoad(JvmtiAgent* agent) {
   assert(agent != nullptr, "invariant");
   assert(agent->is_xrun(), "invariant");
   assert(JvmtiEnvBase::get_phase() == JVMTI_PHASE_PRIMORDIAL, "invalid init sequence");
-
   OnLoadEntry_t on_load_entry = lookup_JVM_OnLoad_entry_point(agent);
   if (on_load_entry == nullptr) {
     vm_exit_during_initialization("Could not find JVM_OnLoad function in -Xrun library", agent->name());
