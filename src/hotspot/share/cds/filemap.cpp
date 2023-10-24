@@ -304,7 +304,7 @@ void SharedClassPathEntry::init_as_non_existent(const char* path, TRAPS) {
 void SharedClassPathEntry::init(bool is_modules_image,
                                 bool is_module_path,
                                 ClassPathEntry* cpe, TRAPS) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   _timestamp = 0;
   _filesize  = 0;
   _from_class_path_attr = false;
@@ -464,7 +464,7 @@ void SharedPathTable::dumptime_init(ClassLoaderData* loader_data, TRAPS) {
 }
 
 void FileMapInfo::allocate_shared_path_table(TRAPS) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   ClassPathEntry* jrt = ClassLoader::get_jrt_entry();
@@ -511,7 +511,7 @@ int FileMapInfo::add_shared_classpaths(int i, const char* which, ClassPathEntry 
 }
 
 void FileMapInfo::check_nonempty_dir_in_shared_path_table() {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
 
   bool has_nonempty_dir = false;
 
@@ -538,7 +538,7 @@ void FileMapInfo::check_nonempty_dir_in_shared_path_table() {
 }
 
 void FileMapInfo::record_non_existent_class_path_entry(const char* path) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   log_info(class, path)("non-existent Class-Path entry %s", path);
   if (_non_existent_class_paths == nullptr) {
     _non_existent_class_paths = new (mtClass) GrowableArray<const char*>(10, mtClass);
@@ -547,7 +547,7 @@ void FileMapInfo::record_non_existent_class_path_entry(const char* path) {
 }
 
 int FileMapInfo::num_non_existent_class_paths() {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   if (_non_existent_class_paths != nullptr) {
     return _non_existent_class_paths->length();
   } else {
@@ -688,7 +688,7 @@ bool FileMapInfo::check_paths_existence(const char* paths) {
 }
 
 GrowableArray<const char*>* FileMapInfo::create_dumptime_app_classpath_array() {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   GrowableArray<const char*>* path_array = new GrowableArray<const char*>(10);
   ClassPathEntry* cpe = ClassLoader::app_classpath_entries();
   while (cpe != nullptr) {
@@ -1510,7 +1510,7 @@ void FileMapRegion::print(outputStream* st, int region_index) {
 
 void FileMapInfo::write_region(int region, char* base, size_t size,
                                bool read_only, bool allow_exec) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
 
   FileMapRegion* r = region_at(region);
   char* requested_base;

@@ -370,6 +370,10 @@ private:
   // Either called with CompiledMethod_lock held or from constructor.
   void clear_code();
 
+  void clear_method_data() {
+    _method_data = nullptr;
+  }
+
 public:
   static void set_code(const methodHandle& mh, CompiledMethod* code);
   void set_adapter_entry(AdapterHandlerEntry* adapter) {

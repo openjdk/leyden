@@ -263,7 +263,7 @@ int HeapShared::append_root(oop obj) {
 }
 
 objArrayOop HeapShared::roots() {
-  if (DumpSharedSpaces && CDSPreimage == nullptr) {
+  if (CDSConfig::is_dumping_heap() && CDSPreimage == nullptr) {
     assert(Thread::current() == (Thread*)VMThread::vm_thread(), "should be in vm thread");
     if (!HeapShared::can_write()) {
       return nullptr;
@@ -399,7 +399,7 @@ oop HeapShared::get_archived_object(int permanent_index) {
 // Returns an objArray that contains all the roots of the archived objects
 oop HeapShared::get_root(int index, bool clear) {
   assert(index >= 0, "sanity");
-  //assert(!DumpSharedSpaces && UseSharedSpaces, "runtime only");
+  assert(!CDSConfig::is_dumping_heap() && UseSharedSpaces, "runtime only");
   assert(!_roots.is_empty(), "must have loaded shared heap");
   oop result = roots()->obj_at(index);
   if (clear) {
@@ -1231,7 +1231,7 @@ void HeapShared::initialize_from_archived_subgraph(JavaThread* current, Klass* k
 
 const ArchivedKlassSubGraphInfoRecord*
 HeapShared::resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAPS) {
-  //assert(!DumpSharedSpaces, "Should not be called with DumpSharedSpaces");
+  assert(!CDSConfig::is_dumping_heap(), "Should not be called when dumping heap");
 
   if (!k->is_shared()) {
     return nullptr;

@@ -714,7 +714,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
 }
 
 void MetaspaceShared::prepare_for_dumping() {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   Arguments::check_unsupported_dumping_properties();
 
   ClassLoader::initialize_shared_path(JavaThread::current());
@@ -993,23 +993,23 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   HeapShared::init_for_dumping(CHECK);
 
 #if INCLUDE_CDS_JAVA_HEAP
- if (HeapShared::can_write()) {
-  ArchiveHeapWriter::init();
-  if (CDSConfig::is_dumping_full_module_graph()) {
-    HeapShared::reset_archived_object_states(CHECK);
-  }
+  if (CDSConfig::is_dumping_heap()) {
+    ArchiveHeapWriter::init();
+    if (CDSConfig::is_dumping_full_module_graph()) {
+      HeapShared::reset_archived_object_states(CHECK);
+    }
 
-  if (ArchiveInvokeDynamic) {
-    // Do this just before going into the safepoint.
-    // We also assume no other Java threads are running
-    // This makes sure that the MethodType and MethodTypeForm objects are clean.
-    JavaValue result(T_VOID);
-    JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
-                           vmSymbols::dumpSharedArchive(),
-                           vmSymbols::void_method_signature(),
-                           CHECK);
+    if (ArchiveInvokeDynamic) {
+      // Do this just before going into the safepoint.
+      // We also assume no other Java threads are running
+      // This makes sure that the MethodType and MethodTypeForm objects are clean.
+      JavaValue result(T_VOID);
+      JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
+                             vmSymbols::dumpSharedArchive(),
+                             vmSymbols::void_method_signature(),
+                             CHECK);
+    }
   }
- }
 #endif
 
   // Rewrite and link classes
@@ -1033,7 +1033,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
 
 #if INCLUDE_CDS_JAVA_HEAP
-  if (HeapShared::can_write()) {
+  if (CDSConfig::is_dumping_heap()) {
     StringTable::allocate_shared_strings_array(CHECK);
   }
 #endif
@@ -1089,7 +1089,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 bool MetaspaceShared::try_link_class(JavaThread* current, InstanceKlass* ik) {
   ExceptionMark em(current);
   JavaThread* THREAD = current; // For exception macros.
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
 
   if (ik->is_shared() && CDSPreimage == nullptr) {
     assert(CDSConfig::is_dumping_dynamic_archive(), "must be");

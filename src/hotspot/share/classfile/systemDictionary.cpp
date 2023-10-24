@@ -1831,7 +1831,7 @@ bool SystemDictionary::add_loader_constraint(Symbol* class_name,
     bool result = LoaderConstraintTable::add_entry(constraint_name, klass1, loader_data1,
                                                    klass2, loader_data2);
 #if INCLUDE_CDS
-    if (Arguments::is_dumping_archive() && klass_being_linked != nullptr &&
+    if (CDSConfig::is_dumping_archive() && klass_being_linked != nullptr &&
         !klass_being_linked->is_shared()) {
          SystemDictionaryShared::record_linking_constraint(constraint_name,
                                      InstanceKlass::cast(klass_being_linked),

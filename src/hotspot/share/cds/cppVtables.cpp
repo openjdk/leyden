@@ -263,7 +263,7 @@ intptr_t* CppVtables::get_archived_vtable(MetaspaceObj::Type msotype, address ob
     _orig_cpp_vtptrs_inited = true;
   }
 
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   int kind = -1;
   switch (msotype) {
   case MetaspaceObj::SymbolType:

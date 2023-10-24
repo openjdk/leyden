@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/dynamicArchive.hpp"
@@ -3606,8 +3607,8 @@ JVM_ENTRY(void, JVM_RegisterLambdaProxyClassForArchiving(JNIEnv* env,
                                               jobject dynamicMethodType,
                                               jclass lambdaProxyClass))
 #if INCLUDE_CDS
-  if (!DynamicDumpSharedSpaces) {
-    return; // FIXME: record lambda proxy classes only for dynamic archive to avoid duplication
+  if (!CDSConfig::is_dumping_archive()) {
+    return;
   }
 
   Klass* caller_k = java_lang_Class::as_Klass(JNIHandles::resolve(caller));
@@ -3694,7 +3695,7 @@ JVM_ENTRY(jclass, JVM_LookupLambdaProxyClassFromArchive(JNIEnv* env,
 JVM_END
 
 JVM_LEAF(jboolean, JVM_IsCDSDumpingEnabled(JNIEnv* env))
-  return Arguments::is_dumping_archive() || CDSPreimage != nullptr;
+  return CDSConfig::is_dumping_archive();
 JVM_END
 
 JVM_LEAF(jboolean, JVM_IsSharingEnabled(JNIEnv* env))
