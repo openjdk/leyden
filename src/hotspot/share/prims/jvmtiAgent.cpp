@@ -360,36 +360,62 @@ extern "C" {
 
 // Find the OnLoad entry point for -agentlib:  -agentpath:   -Xrun agents.
 // num_symbol_entries must be passed-in since only the caller knows the number of symbols in the array.
-static OnLoadEntry_t lookup_On_Load_entry_point(JvmtiAgent* agent, const char* on_load_symbols[], size_t num_symbol_entries) {
+static OnLoadEntry_t lookup_On_Load_entry_point(JvmtiAgent* agent,
+                                                const char* on_load_symbols[],
+                                                size_t num_symbol_entries,
+                                                bool ignore_errors) {
   assert(agent != nullptr, "invariant");
   if (!agent->is_loaded()) {
     if (!load_agent_from_executable(agent, on_load_symbols, num_symbol_entries)) {
-      void* const library = load_library(agent, on_load_symbols, num_symbol_entries, /* vm exit on error */ true);
-      assert(library != nullptr, "invariant");
-      agent->set_os_lib(library);
-      agent->set_loaded();
+      void* const library = load_library(agent, on_load_symbols,
+                                         num_symbol_entries,
+                                         /* vm exit on error */ !ignore_errors);
+      /* If ignore_errors is true, the shared library may be null. The error
+         is handled by the caller(s) in that case. See
+         lookup_JVM_OnLoad_entry_point and JvmtiAgent::convert_xrun_agent.*/
+      assert(library != nullptr || ignore_errors, "invariant");
+      if (library != nullptr) {
+        agent->set_os_lib(library);
+        agent->set_loaded();
+      }
     }
   }
-  assert(agent->is_loaded(), "invariant");
+  assert(agent->is_loaded() || ignore_errors, "invariant");
   // Find the OnLoad function.
   return CAST_TO_FN_PTR(OnLoadEntry_t, os::find_agent_function(agent, false, on_load_symbols, num_symbol_entries));
 }
 
-static OnLoadEntry_t lookup_JVM_OnLoad_entry_point(JvmtiAgent* lib) {
+static OnLoadEntry_t lookup_JVM_OnLoad_entry_point(JvmtiAgent* lib,
+                                                   bool ignore_errors = false) {
   const char* on_load_symbols[] = JVM_ONLOAD_SYMBOLS;
-  return lookup_On_Load_entry_point(lib, on_load_symbols, sizeof(on_load_symbols) / sizeof(char*));
+  return lookup_On_Load_entry_point(lib, on_load_symbols,
+                                    sizeof(on_load_symbols) / sizeof(char*),
+                                    ignore_errors);
 }
 
-static OnLoadEntry_t lookup_Agent_OnLoad_entry_point(JvmtiAgent* agent) {
+static OnLoadEntry_t lookup_Agent_OnLoad_entry_point(JvmtiAgent* agent,
+                                                     bool ignore_errors = false) {
   const char* on_load_symbols[] = AGENT_ONLOAD_SYMBOLS;
-  return lookup_On_Load_entry_point(agent, on_load_symbols, sizeof(on_load_symbols) / sizeof(char*));
+  return lookup_On_Load_entry_point(agent, on_load_symbols,
+                                    sizeof(on_load_symbols) / sizeof(char*),
+                                    ignore_errors);
 }
 
 void JvmtiAgent::convert_xrun_agent() {
   assert(is_xrun(), "invariant");
   assert(!is_loaded(), "invariant");
   assert(JvmtiEnvBase::get_phase() == JVMTI_PHASE_PRIMORDIAL, "invalid init sequence");
-  OnLoadEntry_t on_load_entry = lookup_JVM_OnLoad_entry_point(this);
+
+  // Don't report any error and bail out too early in
+  // lookup_JVM_OnLoad_entry_point if it does not succeed, since we want
+  // to try lookup_Agent_OnLoad_entry_point for Agent_OnLoad as well.
+  // With static linking support for built-in library, if we cannot
+  // find the JVM_OnLoad_<libName> symbol and determine that the library is
+  // built-in, we also try loading the shared library. However, we don't want
+  // to report error if the requested shared library cannot be loaded.
+  // Instead we let lookup_Agent_OnLoad_entry_point  to report any error if
+  // there is any failure.
+  OnLoadEntry_t on_load_entry = lookup_JVM_OnLoad_entry_point(this, true);
   // If there is an JVM_OnLoad function it will get called later,
   // otherwise see if there is an Agent_OnLoad.
   if (on_load_entry == nullptr) {
@@ -406,6 +432,7 @@ static bool invoke_JVM_OnLoad(JvmtiAgent* agent) {
   assert(agent != nullptr, "invariant");
   assert(agent->is_xrun(), "invariant");
   assert(JvmtiEnvBase::get_phase() == JVMTI_PHASE_PRIMORDIAL, "invalid init sequence");
+
   OnLoadEntry_t on_load_entry = lookup_JVM_OnLoad_entry_point(agent);
   if (on_load_entry == nullptr) {
     vm_exit_during_initialization("Could not find JVM_OnLoad function in -Xrun library", agent->name());
