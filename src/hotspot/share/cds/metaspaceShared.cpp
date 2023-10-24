@@ -1072,6 +1072,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       int status = os::fork_and_exec(cmd);
       if (status != 0) {
         log_error(cds)("Child process finished; status = %d", status);
+        log_error(cds)("To reproduce the error");
+        ResourceMark rm;
+        LogStream ls(Log(cds)::error());
+        ls.print("    "); ls.print_raw_cr(cmd);
+        vm_direct_exit(status);
       } else {
         log_info(cds)("Child process finished; status = %d", status);
         status = remove(SharedArchiveFile);

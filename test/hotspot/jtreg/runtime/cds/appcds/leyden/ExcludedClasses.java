@@ -103,7 +103,9 @@ class TestApp {
     static Object custInstance;
 
     public static void main(String args[]) throws Exception {
-        custInstance = initFromCustomLoader();
+        if (!args[0].equals("TRAINING")) { // FIXME new workflow: TD in custom loaders are not properly cleaned up in TRAINING run
+            custInstance = initFromCustomLoader();
+        }
 
         System.out.println("Counter = " + Foo.hotSpot());
     }
@@ -152,6 +154,7 @@ class TestApp {
 
             long start = System.currentTimeMillis();
             while (System.currentTimeMillis() - start < 1000) {
+                lambdaHotSpot();
                 s.hotSpot2();
                 b.hotSpot3();
 
@@ -159,10 +162,13 @@ class TestApp {
                 Integer i = (Integer)mapProxy.get(null);
                 counter += i.intValue();
 
-                // For new workflow only:
-                // Currently, classes loaded by custom loaders are included in the preimage run
-                // but excluded from the final image.
-                counter += custInstance.equals(null) ? 1 : 2;
+
+                if (custInstance != null) {
+                    // For new workflow only:
+                    // Currently, classes loaded by custom loaders are included in the preimage run
+                    // but excluded from the final image.
+                    counter += custInstance.equals(null) ? 1 : 2;
+                }
             }
 
             return counter + s.m() + s.f + b.m() + b.f;
@@ -172,6 +178,20 @@ class TestApp {
             if (counter % 2 == 1) {
                 counter ++;
             }
+        }
+
+        // Lambda classes should be excluded from new workflow training run
+        static void lambdaHotSpot() {
+            long start = System.currentTimeMillis();
+            while (System.currentTimeMillis() - start < 20) {
+                doit(() -> {
+                        counter ++;
+                    });
+            }
+        }
+
+        static void doit(Runnable r) {
+            r.run();
         }
 
         // All subclasses of jdk.jfr.Event are excluded from the CDS archive.

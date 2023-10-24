@@ -1534,8 +1534,14 @@ void KlassTrainingData::cleanup() {
 
 void MethodTrainingData::cleanup() {
   if (has_holder()) {
-    bool is_excluded = SystemDictionaryShared::check_for_exclusion(holder()->method_holder(), nullptr);
-    if (is_excluded) {
+    InstanceKlass* k = holder()->method_holder();
+    if (
+        // FIXME --- {
+        // these are need to avoid crashes in the new workflow with petclinic.
+        !k->is_loaded() ||
+        (CDSConfig::is_dumping_preimage_static_archive() && !SystemDictionaryShared::is_builtin(k)) ||
+        // --- }
+        SystemDictionaryShared::check_for_exclusion(holder()->method_holder(), nullptr)) {
       log_debug(cds)("Cleanup MTD %s::%s", name()->as_klass_external_name(), signature()->as_utf8());
       if (_final_profile != nullptr && _final_profile->method() != _holder) {
         // FIXME: MDO still points at the stale method; either completely drop the MDO or zero out the link

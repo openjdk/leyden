@@ -808,6 +808,10 @@ void SystemDictionaryShared::add_lambda_proxy_class(InstanceKlass* caller_ik,
     // The proxy classes will be accessible through the archived CP entries.
     return;
   }
+  if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
+    // TODO: not supported in new workflow
+    return;
+  }
 
   assert(caller_ik->class_loader() == lambda_ik->class_loader(), "mismatched class loader");
   assert(caller_ik->class_loader_data() == lambda_ik->class_loader_data(), "mismatched class loader data");

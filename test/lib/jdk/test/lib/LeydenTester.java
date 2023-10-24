@@ -46,7 +46,7 @@ abstract public class LeydenTester {
     abstract public String name();
 
     // must override
-    abstract public void checkExecution(OutputAnalyzer out, RunMode runMode);
+    abstract public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception;
 
     // must override
     // main class, followed by arguments to the main class
@@ -118,6 +118,13 @@ abstract public class LeydenTester {
         }
     }
 
+    private void checkExecutionHelper(OutputAnalyzer output, RunMode runMode) throws Exception {
+        output.shouldHaveExitValue(0);
+        CDSTestUtils.checkCommonExecExceptions(output);
+        checkExecution(output, runMode);
+    }
+
+
     //========================================
     // Old workflow
     //========================================
@@ -135,8 +142,7 @@ abstract public class LeydenTester {
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "classlist");
         listOutputFile(classListFile);
         listOutputFile(classListFile + ".log");
-        output.shouldHaveExitValue(0);
-        checkExecution(output, runMode);
+        checkExecutionHelper(output, runMode);
         return output;
     }
 
@@ -155,8 +161,7 @@ abstract public class LeydenTester {
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "static");
         listOutputFile(staticArchiveFile);
         listOutputFile(staticArchiveFile + ".log");
-        output.shouldHaveExitValue(0);
-        checkExecution(output, runMode);
+        checkExecutionHelper(output, runMode);
         return output;
     }
 
@@ -175,8 +180,7 @@ abstract public class LeydenTester {
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "dynamic");
         listOutputFile(dynamicArchiveFile);
         listOutputFile(dynamicArchiveFile + ".log");
-        output.shouldHaveExitValue(0);
-        checkExecution(output, runMode);
+        checkExecutionHelper(output, runMode);
         return output;
     }
 
@@ -196,8 +200,7 @@ abstract public class LeydenTester {
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "code");
         listOutputFile(codeCacheFile);
         listOutputFile(codeCacheFile + ".log");
-        output.shouldHaveExitValue(0);
-        checkExecution(output, runMode);
+        checkExecutionHelper(output, runMode);
         return output;
     }
 
@@ -217,8 +220,7 @@ abstract public class LeydenTester {
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "old-production");
         listOutputFile(name() + ".old-production.log");
-        output.shouldHaveExitValue(0);
-        checkExecution(output, runMode);
+        checkExecutionHelper(output, runMode);
         return output;
     }
 
@@ -242,8 +244,7 @@ abstract public class LeydenTester {
         listOutputFile(cdsFile);
         listOutputFile(cdsFile + ".log");   // The final dump
         listOutputFile(cdsFile + ".log.0"); // the preimage dump
-        output.shouldHaveExitValue(0);
-        checkExecution(output, runMode);
+        checkExecutionHelper(output, runMode);
         return output;
     }
 
@@ -258,8 +259,7 @@ abstract public class LeydenTester {
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "production");
         listOutputFile(name() + ".production.log");
-        output.shouldHaveExitValue(0);
-        checkExecution(output, runMode);
+        checkExecutionHelper(output, runMode);
         return output;
     }
 
