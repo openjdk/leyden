@@ -37,7 +37,7 @@
  *                 TestApp$MyInvocationHandler
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
  *                 Custy
- * @run driver ExcludedClasses
+ * @run driver ExcludedClasses NEW
  */
 
 import java.io.File;
@@ -59,7 +59,7 @@ public class ExcludedClasses {
 
     public static void main(String[] args) throws Exception {
         Tester t = new Tester();
-        t.run();
+        t.run(args);
     }
 
     static class Tester extends LeydenTester {
@@ -78,7 +78,7 @@ public class ExcludedClasses {
                 "-Xlog:cds+resolve=debug",
 
                 //TEMP: uncomment the next line to see the TrainingData::_archived_training_data_dictionary
-                //"-XX:+UnlockDiagnosticVMOptions", "-XX:+UseNewCode",
+                //"-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintTrainingInfo",
             };
         }
 
@@ -91,7 +91,11 @@ public class ExcludedClasses {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (runMode == RunMode.TRAINING || runMode == RunMode.DUMP_STATIC) {
+            switch (runMode) {
+            case RunMode.TRAINING:
+            case RunMode.TRAINING0:
+            case RunMode.TRAINING1:
+            case RunMode.DUMP_STATIC:
                 out.shouldMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.Bar.f:I");
                 out.shouldNotMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.ShouldBeExcluded.f:I");
             }
@@ -103,7 +107,7 @@ class TestApp {
     static Object custInstance;
 
     public static void main(String args[]) throws Exception {
-        if (!args[0].equals("TRAINING")) { // FIXME new workflow: TD in custom loaders are not properly cleaned up in TRAINING run
+        if (!args[0].startsWith("TRAINING")) { // FIXME new workflow: TD in custom loaders are not properly cleaned up in TRAINING run
             custInstance = initFromCustomLoader();
         }
 

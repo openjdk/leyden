@@ -28,50 +28,7 @@
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build LeydenHello
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar LeydenHelloApp
- * @run driver LeydenHello NEW
+ * @run driver LeydenHello OLD
  */
 
-import jdk.test.lib.helpers.ClassFileInstaller;
-import jdk.test.lib.LeydenTester;
-import jdk.test.lib.process.OutputAnalyzer;
-
-public class LeydenHello {
-    static final String appJar = ClassFileInstaller.getJarPath("app.jar");
-    static final String mainClass = "LeydenHelloApp";
-
-    public static void main(String[] args) throws Exception {
-        Tester t = new Tester();
-        t.run(args);
-    }
-
-    static class Tester extends LeydenTester {
-        public String name() {
-            return mainClass;
-        }
-
-        @Override
-        public String classpath(RunMode runMode) {
-            return appJar;
-        }
-
-        @Override
-        public String[] appCommandLine(RunMode runMode) {
-            return new String[] {
-                mainClass, runMode.name()
-            };
-        }
-
-        @Override
-        public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (!runMode.isStaticDump()) {
-                out.shouldContain("Hello Leyden " + runMode.name());
-            }
-        }
-    }
-}
-
-class LeydenHelloApp {
-    public static void main(String args[]) {
-        System.out.println("Hello Leyden " + args[0]);
-    }
-}
+// Old workflow
