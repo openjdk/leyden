@@ -263,7 +263,7 @@ int HeapShared::append_root(oop obj) {
 }
 
 objArrayOop HeapShared::roots() {
-  if (CDSConfig::is_dumping_heap() && CDSPreimage == nullptr) {
+  if (CDSConfig::is_dumping_heap() && !CDSConfig::is_dumping_final_static_archive()) {
     assert(Thread::current() == (Thread*)VMThread::vm_thread(), "should be in vm thread");
     if (!HeapShared::can_write()) {
       return nullptr;

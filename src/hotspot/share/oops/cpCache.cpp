@@ -897,7 +897,7 @@ void ConstantPoolCache::clear_archived_references() {
 }
 
 void ConstantPoolCache::set_archived_references(int root_index) {
-  assert(DumpSharedSpaces || CDSPreimage != nullptr, "called only during runtime");
+  assert(CDSConfig::is_dumping_heap(), "called only during runtime");
   _archived_references_index = root_index;
 }
 #endif

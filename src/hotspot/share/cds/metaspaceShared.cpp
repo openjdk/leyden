@@ -555,7 +555,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   {
     ArchiveBuilder::OtherROAllocMark mark;
     ClassPrelinker::record_preloaded_klasses(true);
-    if (CacheDataStore != nullptr && DumpSharedSpaces) {
+    if (CDSConfig::is_dumping_preimage_static_archive()) {
       ClassPrelinker::record_resolved_indys();
     }
   }
@@ -584,7 +584,7 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   // Write the archive file
   const char* static_archive;
-  if (CDSPreimage != nullptr) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
     static_archive = CacheDataStore;
     assert(FileMapInfo::current_info() != nullptr, "sanity");
     delete FileMapInfo::current_info();
@@ -710,7 +710,9 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
     }
   }
 
-  ClassPrelinker::preresolve_indys_from_preimage(CHECK);
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    ClassPrelinker::preresolve_indys_from_preimage(CHECK);
+  }
 }
 
 void MetaspaceShared::prepare_for_dumping() {
@@ -852,7 +854,7 @@ void MetaspaceShared::preload_and_dump() {
   ResourceMark rm(THREAD);
   HandleMark hm(THREAD);
 
-  if (CDSConfig::is_dumping_final_static_archive() && UseNewCode) {
+  if (CDSConfig::is_dumping_final_static_archive() && PrintTrainingInfo) {
     tty->print_cr("==================== archived_training_data ** before dumping ====================");
     TrainingData::print_archived_training_data_on(tty);
   }
@@ -878,7 +880,7 @@ void MetaspaceShared::preload_and_dump() {
   if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
     // We have just created the final image. Let's run the AOT compiler
     CDSConfig::enable_dumping_cached_code();
-    if (UseNewCode) {
+    if (PrintTrainingInfo) {
       tty->print_cr("==================== archived_training_data ** after dumping ====================");
       TrainingData::print_archived_training_data_on(tty);
     }
@@ -1027,7 +1029,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   }
 
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
-  TrainingData::prepare_recompilation_schedule(CHECK);
 
   _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
   SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
@@ -1045,7 +1046,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     RecordTraining = false;
   }
 
-  if (CacheDataStore != nullptr && CDSPreimage == nullptr) {
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
     ResourceMark rm;
     stringStream st;
     st.print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
@@ -1096,7 +1097,7 @@ bool MetaspaceShared::try_link_class(JavaThread* current, InstanceKlass* ik) {
   JavaThread* THREAD = current; // For exception macros.
   assert(CDSConfig::is_dumping_archive(), "sanity");
 
-  if (ik->is_shared() && CDSPreimage == nullptr) {
+  if (ik->is_shared() && !CDSConfig::is_dumping_final_static_archive()) {
     assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
     return false;
   }

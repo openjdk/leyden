@@ -69,7 +69,7 @@ bool CDSConfig::is_dumping_dynamic_archive() {
 }
 
 bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
-  if (CacheDataStore != nullptr || CDSPreimage != nullptr) {
+  if (is_dumping_final_static_archive()) {
     // Not yet supported in new workflow -- the training data may point
     // to a method in a lambdaform holder class that was not regenerated
     // due to JDK-8318064.
@@ -81,7 +81,8 @@ bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
 
 #if INCLUDE_CDS_JAVA_HEAP
 bool CDSConfig::is_dumping_heap() {
-  return is_dumping_static_archive() && HeapShared::can_write();
+  return is_dumping_static_archive() && !is_dumping_preimage_static_archive()
+    && HeapShared::can_write();
 }
 
 bool CDSConfig::is_loading_heap() {

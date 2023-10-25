@@ -1807,7 +1807,7 @@ MapArchiveResult FileMapInfo::map_region(int i, intx addr_delta, char* mapped_ba
     // Note that this may either be a "fresh" mapping into unreserved address
     // space (Windows, first mapping attempt), or a mapping into pre-reserved
     // space (Posix). See also comment in MetaspaceShared::map_archives().
-    bool read_only = r->read_only() && CDSPreimage == nullptr;
+    bool read_only = r->read_only() && !CDSConfig::is_dumping_final_static_archive();
     char* base = map_memory(_fd, _full_path, r->file_offset(),
                             requested_addr, size, read_only,
                             r->allow_exec(), mtClassShared);

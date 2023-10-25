@@ -328,7 +328,7 @@ size_t ArchiveBuilder::estimate_archive_size() {
   size_t training_data_est = TrainingData::estimate_size_for_archive();
   _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est;
 
-  if (CDSPreimage != nullptr) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
     _estimated_hashtable_bytes += 200 * 1024 * 1024; // FIXME -- need to iterate archived symbols??
   }
 

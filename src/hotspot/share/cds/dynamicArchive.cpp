@@ -532,7 +532,6 @@ void DynamicArchive::dump_at_exit(JavaThread* current, const char* archive_name)
   if (!HAS_PENDING_EXCEPTION) {
     // copy shared path table to saved.
     TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
-    TrainingData::prepare_recompilation_schedule(CHECK);
     if (!HAS_PENDING_EXCEPTION) {
       VM_PopulateDynamicDumpSharedSpace op(archive_name);
       VMThread::execute(&op);
@@ -557,7 +556,6 @@ void DynamicArchive::dump_for_jcmd(const char* archive_name, TRAPS) {
   MetaspaceShared::link_shared_classes(true/*from jcmd*/, CHECK);
   // copy shared path table to saved.
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
-  TrainingData::prepare_recompilation_schedule(CHECK);
   VM_PopulateDynamicDumpSharedSpace op(archive_name);
   VMThread::execute(&op);
 }

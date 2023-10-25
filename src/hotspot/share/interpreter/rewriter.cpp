@@ -130,7 +130,7 @@ void Rewriter::make_constant_pool_cache(TRAPS) {
     }
   }
 
-  if (!HAS_PENDING_EXCEPTION && CDSPreimage != nullptr) {
+  if (!HAS_PENDING_EXCEPTION && CDSConfig::is_dumping_final_static_archive()) {
     cache->save_for_archive(THREAD);
   }
 #endif

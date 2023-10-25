@@ -108,7 +108,7 @@ InstanceKlass* SystemDictionaryShared::load_shared_class_for_builtin_loader(
       SharedClassLoadingMark slm(THREAD, ik);
       PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
       Handle protection_domain;
-      if (CDSPreimage == nullptr) {
+      if (!CDSConfig::is_dumping_final_static_archive()) { // Why this check??
         protection_domain = CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK_NULL);
       }
       return load_shared_class(ik, class_loader, protection_domain, nullptr, pkg_entry, THREAD);
@@ -210,7 +210,7 @@ DumpTimeClassInfo* SystemDictionaryShared::get_info_locked(InstanceKlass* k) {
 }
 
 bool SystemDictionaryShared::check_for_exclusion(InstanceKlass* k, DumpTimeClassInfo* info) {
-  if (CDSPreimage == nullptr && MetaspaceShared::is_in_shared_metaspace(k)) {
+  if (!CDSConfig::is_dumping_final_static_archive() && MetaspaceShared::is_in_shared_metaspace(k)) {
     // We have reached a super type that's already in the base archive. Treat it
     // as "not excluded".
     assert(CDSConfig::is_dumping_dynamic_archive(), "must be");

@@ -230,7 +230,7 @@ char* CppVtables::dumptime_init(ArchiveBuilder* builder) {
 
   CPP_VTABLE_TYPES_DO(ALLOCATE_AND_INITIALIZE_VTABLE);
 
-  if (CDSPreimage == nullptr) {
+  if (!CDSConfig::is_dumping_final_static_archive()) {
     for (int kind = 0; kind < _num_cloned_vtable_kinds; kind++) {
       _archived_cpp_vtptrs[kind] = _index[kind]->cloned_vtable();
     }
@@ -248,7 +248,7 @@ void CppVtables::serialize(SerializeClosure* soc) {
     CPP_VTABLE_TYPES_DO(INITIALIZE_VTABLE);
   }
 
-  if (soc->writing() && CDSPreimage != nullptr) {
+  if (soc->writing() && CDSConfig::is_dumping_final_static_archive()) {
     memset(_archived_cpp_vtptrs, 0, sizeof(_archived_cpp_vtptrs));
   }
 

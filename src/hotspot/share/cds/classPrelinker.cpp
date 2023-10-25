@@ -670,7 +670,9 @@ static Array<InstanceKlass*>* _klasses_for_indy_resolution = nullptr;
 static Array<Array<int>*>* _cp_index_lists_for_indy_resolution = nullptr;
 
 void ClassPrelinker::preresolve_indys_from_preimage(TRAPS) {
-  if (CDSPreimage != nullptr && _klasses_for_indy_resolution != nullptr) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+
+  if (_klasses_for_indy_resolution != nullptr) {
     assert(_cp_index_lists_for_indy_resolution != nullptr, "must be");
     for (int i = 0; i < _klasses_for_indy_resolution->length(); i++) {
       InstanceKlass* ik = _klasses_for_indy_resolution->at(i);
@@ -753,7 +755,7 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
       if (DynamicDumpSharedSpaces) {
         return;
       } else {
-        assert(CDSPreimage != nullptr, "must be");
+        assert(CDSConfig::is_dumping_final_static_archive(), "must be");
       }
     }
 

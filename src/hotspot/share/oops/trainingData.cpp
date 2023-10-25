@@ -1460,6 +1460,8 @@ void TrainingData::init_dumptime_table(TRAPS) {
       }
     }
   }
+
+  prepare_recompilation_schedule(CHECK);
 }
 
 void TrainingData::prepare_recompilation_schedule(TRAPS) {
