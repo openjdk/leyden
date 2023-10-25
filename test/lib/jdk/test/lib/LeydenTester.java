@@ -49,6 +49,9 @@ abstract public class LeydenTester {
         public boolean isStaticDump() {
             return this == TRAINING1 || this == DUMP_STATIC;
         }
+        public boolean isProductionRun() {
+            return this == OLD_PRODUCTION || this == PRODUCTION;
+        }
     };
 
     // must override
