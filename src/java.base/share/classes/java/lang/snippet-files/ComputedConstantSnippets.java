@@ -24,11 +24,15 @@
  */
 package java.lang.snippet;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.ResourceBundle;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 /**
  * Snippets for the ComputedConstant class
@@ -139,7 +143,7 @@ public final class ComputedConstantSnippets {
     // @end
 
 
-    public static
+    static
 
     class GermanLabels {
 
@@ -165,7 +169,7 @@ public final class ComputedConstantSnippets {
     }
 
 
-    public static
+    static
 
     class GermanLabels2 {
 
@@ -196,6 +200,73 @@ public final class ComputedConstantSnippets {
         }
 
     }
+
+
+    static
+
+    class Fibonacci {
+
+        private final Map<Integer, Integer> map;
+
+        public Fibonacci(int upperBound) {
+            map = new ConcurrentHashMap<>(upperBound);
+        }
+
+        public int number(int n) {
+                return (n < 2)
+                        ? n
+                        : map.computeIfAbsent(n, nk -> number(nk - 1) + number(nk - 2) );
+        }
+
+    }
+
+    static
+
+    class Fibonacci2 {
+
+        private final List<ComputedConstant<Integer>> list;
+
+        public Fibonacci2(int upperBound) {
+            list = ComputedConstant.of(upperBound, this::number);
+        }
+
+        public int number(int n) {
+            return (n < 2)
+                    ? n
+                    : list.get(n - 1).get() + list.get(n - 2).get();
+        }
+
+
+        public static void main(String[] args) {
+            Fibonacci fibonacci = new Fibonacci(20);
+            int[] fibs = IntStream.range(0, 10)
+                    .map(fibonacci::number)
+                    .toArray(); // { 0, 1, 1, 2, 3, 5, 8, 13, 21, 34 }
+        }
+
+    }
+
+    static final
+
+    class Fibonacci3 {
+
+        private static final List<ComputedConstant<Integer>> LIST
+                = ComputedConstant.of(40, Fibonacci3::number);
+
+        public static int number(int n) {
+            return (n < 2)
+                    ? n
+                    : LIST.get(n - 1).get() + LIST.get(n - 2).get();
+        }
+
+        public static void main(String[] args) {
+            int[] fibs = IntStream.range(0, 10)
+                    .map(Fibonacci3::number)
+                    .toArray(); // { 0, 1, 1, 2, 3, 5, 8, 13, 21, 34 }
+        }
+
+    }
+
 
 
     // Dummy classes
