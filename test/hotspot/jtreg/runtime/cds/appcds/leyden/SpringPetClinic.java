@@ -150,7 +150,7 @@ public class SpringPetClinic {
                 "org.springframework.samples.petclinic.PetClinicApplication"
             };
             if (runMode == RunMode.PRODUCTION) {
-                // FIXME: bug ??????
+                // FIXME: bug JDK-8318393
                 cmdLine = StringArrayUtils.concat("-XX:-LoadCachedCode", cmdLine);
             }
 
@@ -162,7 +162,7 @@ public class SpringPetClinic {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (runMode != RunMode.DUMP_STATIC) {
+            if (!runMode.isStaticDump()) {
                 out.shouldContain("Booted and returned in ");
             }
         }
