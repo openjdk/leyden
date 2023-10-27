@@ -107,10 +107,9 @@ class TestApp {
     static Object custInstance;
 
     public static void main(String args[]) throws Exception {
-        if (!args[0].startsWith("TRAINING")) { // FIXME new workflow: TD in custom loaders are not properly cleaned up in TRAINING run
-            custInstance = initFromCustomLoader();
-        }
-
+        // In new workflow, classes from custom loaders are passed from the preimage
+        // to the final image. See ClassPrelinker::record_unregistered_klasses().
+        custInstance = initFromCustomLoader();
         System.out.println("Counter = " + Foo.hotSpot());
     }
 

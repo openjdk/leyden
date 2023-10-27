@@ -277,6 +277,11 @@ bool SystemDictionaryShared::is_hidden_lambda_proxy(InstanceKlass* ik) {
 }
 
 bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
+  if (CDSConfig::is_dumping_final_static_archive() && k->is_shared_unregistered_class()
+      && k->is_shared()) {
+    return false; // Do not exclude: unregistered classes are passed from preimage to final image.
+  }
+
   if (k->is_in_error_state()) {
     return warn_excluded(k, "In error state");
   }
@@ -721,7 +726,10 @@ void SystemDictionaryShared::dumptime_classes_do(class MetaspaceClosure* it) {
   assert_lock_strong(DumpTimeTable_lock);
 
   auto do_klass = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (k->is_loader_alive() && !info.is_excluded()) {
+    if (CDSConfig::is_dumping_final_static_archive() && !k->is_loaded()) {
+      assert(k->is_shared_unregistered_class(), "must be");
+      info.metaspace_pointers_do(it);
+    } else if (k->is_loader_alive() && !info.is_excluded()) {
       info.metaspace_pointers_do(it);
     }
   };

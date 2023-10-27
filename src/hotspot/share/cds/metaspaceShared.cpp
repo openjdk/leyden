@@ -512,6 +512,7 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
 
   SystemDictionaryShared::write_to_archive();
   ClassPrelinker::record_initiated_klasses(true);
+  ClassPrelinker::record_unregistered_klasses();
   TrainingData::dump_training_data();
   MetaspaceShared::write_method_handle_intrinsics();
 

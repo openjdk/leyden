@@ -24,6 +24,7 @@
 
 /*
  * @test
+ * @requires vm.cds
  * @summary run Spring Pet Clinic demo with leyden-premain
  * @library /test/lib
  * @run driver/timeout=120 SpringPetClinic NEW
