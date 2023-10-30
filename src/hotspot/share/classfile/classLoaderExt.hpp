@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -59,7 +59,8 @@ private:
   static bool _has_non_jar_in_classpath;
 
   static char* read_manifest(JavaThread* current, ClassPathEntry* entry, jint *manifest_size, bool clean_text);
-
+  static ClassPathEntry* get_class_path_entry(s2 classpath_index);
+  static void check_invalid_classpath_index(s2 classpath_index, InstanceKlass* ik);
 public:
   static void process_jar_manifest(JavaThread* current, ClassPathEntry* entry);
 

@@ -92,12 +92,14 @@ typedef void * * (*ZipOpen_t)(const char *name, char **pmsg);
 typedef void     (*ZipClose_t)(jzfile *zip);
 typedef jzentry* (*FindEntry_t)(jzfile *zip, const char *name, jint *sizeP, jint *nameLen);
 typedef jboolean (*ReadEntry_t)(jzfile *zip, jzentry *entry, unsigned char *buf, char *namebuf);
+typedef void     (*FreeEntry_t)(jzfile *zip, jzentry *entry);
 typedef jint     (*Crc32_t)(jint crc, const jbyte *buf, jint len);
 
 static ZipOpen_t         ZipOpen            = nullptr;
 static ZipClose_t        ZipClose           = nullptr;
 static FindEntry_t       FindEntry          = nullptr;
 static ReadEntry_t       ReadEntry          = nullptr;
+static FreeEntry_t       FreeEntry          = nullptr;
 static Crc32_t           Crc32              = nullptr;
 int    ClassLoader::_libzip_loaded          = 0;
 void*  ClassLoader::_zip_handle             = nullptr;
@@ -319,7 +321,7 @@ ClassFileStream* ClassPathDirEntry::open_stream(JavaThread* current, const char*
 }
 
 ClassPathZipEntry::ClassPathZipEntry(jzfile* zip, const char* zip_name,
-                                     bool is_boot_append, bool from_class_path_attr) : ClassPathEntry() {
+                                     bool from_class_path_attr) : ClassPathEntry() {
   _zip = zip;
   _zip_name = copy_path(zip_name);
   _from_class_path_attr = from_class_path_attr;
@@ -330,13 +332,27 @@ ClassPathZipEntry::~ClassPathZipEntry() {
   FREE_C_HEAP_ARRAY(char, _zip_name);
 }
 
+bool ClassPathZipEntry::has_entry(JavaThread* current, const char* name) {
+  ThreadToNativeFromVM ttn(current);
+  // check whether zip archive contains name
+  jint name_len;
+  jint filesize;
+  jzentry* entry = (*FindEntry)(_zip, name, &filesize, &name_len);
+  if (entry == nullptr) {
+    return false;
+  } else {
+    (*FreeEntry)(_zip, entry);
+    return true;
+  }
+}
+
 u1* ClassPathZipEntry::open_entry(JavaThread* current, const char* name, jint* filesize, bool nul_terminate) {
   // enable call to C land
   ThreadToNativeFromVM ttn(current);
   // check whether zip archive contains name
   jint name_len;
-  jzentry* entry = (*FindEntry)(_zip, name, filesize, &name_len);
-  if (entry == nullptr) return nullptr;
+  jzentry* zentry = (*FindEntry)(_zip, name, filesize, &name_len);
+  if (zentry == nullptr) return nullptr;
   u1* buffer;
   char name_buf[128];
   char* filename;
@@ -354,8 +370,10 @@ u1* ClassPathZipEntry::open_entry(JavaThread* current, const char* name, jint* f
     }
     size++;
   }
+
+  // ZIP_ReadEntry also frees zentry
   buffer = NEW_RESOURCE_ARRAY(u1, size);
-  if (!(*ReadEntry)(_zip, entry, buffer, filename)) return nullptr;
+  if (!(*ReadEntry)(_zip, zentry, buffer, filename)) return nullptr;
 
   // return result
   if (nul_terminate) {
@@ -778,7 +796,7 @@ ClassPathEntry* ClassLoader::create_class_path_entry(JavaThread* current,
     char* error_msg = nullptr;
     jzfile* zip = open_zip_file(canonical_path, &error_msg, current);
     if (zip != nullptr && error_msg == nullptr) {
-      new_entry = new ClassPathZipEntry(zip, path, is_boot_append, from_class_path_attr);
+      new_entry = new ClassPathZipEntry(zip, path, from_class_path_attr);
     } else {
 #if INCLUDE_CDS
       ClassLoaderExt::set_has_non_jar_in_classpath();
@@ -798,7 +816,7 @@ ClassPathEntry* ClassLoader::create_class_path_entry(JavaThread* current,
 
 // Create a class path zip entry for a given path (return null if not found
 // or zip/JAR file cannot be opened)
-ClassPathZipEntry* ClassLoader::create_class_path_zip_entry(const char *path, bool is_boot_append) {
+ClassPathZipEntry* ClassLoader::create_class_path_zip_entry(const char *path) {
   // check for a regular file
   struct stat st;
   if (os::stat(path, &st) == 0) {
@@ -811,7 +829,7 @@ ClassPathZipEntry* ClassLoader::create_class_path_zip_entry(const char *path, bo
         jzfile* zip = open_zip_file(canonical_path, &error_msg, thread);
         if (zip != nullptr && error_msg == nullptr) {
           // create using canonical path
-          return new ClassPathZipEntry(zip, canonical_path, is_boot_append, false);
+          return new ClassPathZipEntry(zip, canonical_path, false);
         }
       }
     }
@@ -994,6 +1012,7 @@ void ClassLoader::load_zip_library() {
   ZipClose = CAST_TO_FN_PTR(ZipClose_t, dll_lookup(_zip_handle, "ZIP_Close", path));
   FindEntry = CAST_TO_FN_PTR(FindEntry_t, dll_lookup(_zip_handle, "ZIP_FindEntry", path));
   ReadEntry = CAST_TO_FN_PTR(ReadEntry_t, dll_lookup(_zip_handle, "ZIP_ReadEntry", path));
+  FreeEntry = CAST_TO_FN_PTR(FreeEntry_t, dll_lookup(_zip_handle, "ZIP_FreeEntry", path));
   Crc32 = CAST_TO_FN_PTR(Crc32_t, dll_lookup(_zip_handle, "ZIP_CRC32", path));
 }
 
