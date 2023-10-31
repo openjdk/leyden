@@ -642,8 +642,7 @@ class CompileTrainingData : public TrainingData {
 
 public:
   class ciRecords {
-    template <typename... Ts> class Arguments;
-    template <> class Arguments<> {
+    template <typename... Ts> class Arguments {
     public:
       bool operator==(const Arguments<>&) const { return true; }
       void metaspace_pointers_do(MetaspaceClosure *iter) { }
