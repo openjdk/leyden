@@ -460,7 +460,6 @@ void MetaspaceShared::rewrite_nofast_bytecodes_and_calculate_fingerprints(Thread
 class VM_PopulateDumpSharedSpace : public VM_Operation {
 private:
   ArchiveHeapInfo _heap_info;
-
   void dump_java_heap_objects(GrowableArray<Klass*>* klasses) NOT_CDS_JAVA_HEAP_RETURN;
   void dump_shared_symbol_table(GrowableArray<Symbol*>* symbols) {
     log_info(cds)("Dumping symbol table ...");
@@ -468,15 +467,19 @@ private:
   }
   char* dump_read_only_tables();
   StaticArchiveBuilder& _builder;
+  FileMapInfo* _mapinfo;
 public:
 
-  VM_PopulateDumpSharedSpace(StaticArchiveBuilder& b) : VM_Operation(), _heap_info(), _builder(b) {}
+  VM_PopulateDumpSharedSpace(StaticArchiveBuilder& b) :
+    VM_Operation(), _heap_info(), _builder(b), _mapinfo(nullptr) {}
 
   bool skip_operation() const { return false; }
 
   VMOp_Type type() const { return VMOp_PopulateDumpSharedSpace; }
   void doit();   // outline because gdb sucks
   bool allow_nested_vm_operations() const { return true; }
+  FileMapInfo* mapinfo() const { return _mapinfo; }
+  ArchiveHeapInfo* heap_info() { return &_heap_info; }
 }; // class VM_PopulateDumpSharedSpace
 
 class StaticArchiveBuilder : public ArchiveBuilder {
@@ -583,7 +586,6 @@ void VM_PopulateDumpSharedSpace::doit() {
   // without runtime relocation.
   _builder.relocate_to_requested();
 
-  // Write the archive file
   const char* static_archive;
   if (CDSConfig::is_dumping_final_static_archive()) {
     static_archive = CacheDataStore;
@@ -593,21 +595,10 @@ void VM_PopulateDumpSharedSpace::doit() {
     static_archive = Arguments::GetSharedArchivePath();
   }
   assert(static_archive != nullptr, "SharedArchiveFile not set?");
-  FileMapInfo* mapinfo = new FileMapInfo(static_archive, true);
-  mapinfo->populate_header(MetaspaceShared::core_region_alignment());
-  mapinfo->set_serialized_data(serialized_data);
-  mapinfo->set_cloned_vtables(cloned_vtables);
-  mapinfo->open_for_write();
-  _builder.write_archive(mapinfo, &_heap_info);
-
-  if (PrintSystemDictionaryAtExit) {
-    SystemDictionary::print();
-  }
-
-  if (AllowArchivingWithJavaAgent) {
-    log_warning(cds)("This archive was created with AllowArchivingWithJavaAgent. It should be used "
-            "for testing purposes only and should not be used in a production environment");
-  }
+  _mapinfo = new FileMapInfo(static_archive, true);
+  _mapinfo->populate_header(MetaspaceShared::core_region_alignment());
+  _mapinfo->set_serialized_data(serialized_data);
+  _mapinfo->set_cloned_vtables(cloned_vtables);
 }
 
 class CollectCLDClosure : public CLDClosure {
@@ -839,7 +830,9 @@ public:
   }
 };
 
-static void tmp_test_aot(ArchiveBuilder* builder, TRAPS) {
+// New workflow only
+void MetaspaceShared::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
+  assert(CDSConfig::is_dumping_final_static_archive() && StoreCachedCode, "sanity");
   if (TrainingData::have_data()) {
     ResourceMark rm;
     PrecompileIterator pi;
@@ -872,25 +865,6 @@ void MetaspaceShared::preload_and_dump() {
                      java_lang_String::as_utf8_string(java_lang_Throwable::message(PENDING_EXCEPTION)));
       MetaspaceShared::unrecoverable_writing_error("VM exits due to exception, use -Xlog:cds,exceptions=trace for detail");
     }
-  }
-
-  if (log_is_enabled(Info, cds, jit)) {
-    CDSAccess::test_heap_access_api();
-  }
-
-  if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
-    // We have just created the final image. Let's run the AOT compiler
-    CDSConfig::enable_dumping_cached_code();
-    if (PrintTrainingInfo) {
-      tty->print_cr("==================== archived_training_data ** after dumping ====================");
-      TrainingData::print_archived_training_data_on(tty);
-    }
-    int count = MAX2(1, (int)(NewCodeParameter & 0x7fffffff));
-    for (int i = 0; i < count; i++) {
-      tmp_test_aot(&builder, CHECK);
-    }
-    CDSConfig::disable_dumping_cached_code();
-    SCCache::close(); // Write final data and close archive
   }
 }
 
@@ -1042,51 +1016,92 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   VM_PopulateDumpSharedSpace op(builder);
   VMThread::execute(&op);
-
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    RecordTraining = false;
-  }
+  FileMapInfo* mapinfo = op.mapinfo();
+  ArchiveHeapInfo* heap_info = op.heap_info();
 
   if (CDSConfig::is_dumping_preimage_static_archive()) {
-    ResourceMark rm;
-    stringStream st;
-    st.print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
-    const char* cp = Arguments::get_appclasspath();
-    if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
-      st.print(" -cp ");  st.print_raw(cp);
-    }
-    for (int i = 0; i < Arguments::num_jvm_flags(); i++) {
-      st.print(" %s", Arguments::jvm_flags_array()[i]);
-    }
-    for (int i = 0; i < Arguments::num_jvm_args(); i++) {
-      st.print(" %s", Arguments::jvm_args_array()[i]);
-    }
-    st.print(" -XX:CDSPreimage=%s", SharedArchiveFile);
+    write_static_archive(&builder, mapinfo, heap_info);
+    fork_and_dump_final_static_archive();
+  } else if (CDSConfig::is_dumping_final_static_archive()) {
+    RecordTraining = false;
+    if (StoreCachedCode && CachedCodeFile != nullptr) {
+      if (log_is_enabled(Info, cds, jit)) {
+        CDSAccess::test_heap_access_api();
+      }
 
-    const char* cmd = st.freeze();
-    if (CDSManualFinalImage) {
-      tty->print_cr("-XX:+CDSManualFinalImage is specified");
-      tty->print_cr("Please manually execute the following command to create the final CDS image:");
-      tty->print("    "); tty->print_raw_cr(cmd);
+      // We have just created the final image. Let's run the AOT compiler
+      if (PrintTrainingInfo) {
+        tty->print_cr("==================== archived_training_data ** after dumping ====================");
+        TrainingData::print_archived_training_data_on(tty);
+      }
+
+      CDSConfig::enable_dumping_cached_code();
+      compile_cached_code(&builder, CHECK);
+      CDSConfig::disable_dumping_cached_code();
+
+      SCCache::close(); // Write final data and close archive
+    }
+    write_static_archive(&builder, mapinfo, heap_info);
+  } else {
+    write_static_archive(&builder, mapinfo, heap_info);
+  }
+}
+
+void MetaspaceShared::write_static_archive(ArchiveBuilder* builder, FileMapInfo *mapinfo, ArchiveHeapInfo* heap_info) {
+  mapinfo->open_for_write();
+  builder->write_archive(mapinfo, heap_info);
+
+  if (PrintSystemDictionaryAtExit) {
+    SystemDictionary::print();
+  }
+
+  if (AllowArchivingWithJavaAgent) {
+    log_warning(cds)("This archive was created with AllowArchivingWithJavaAgent. It should be used "
+            "for testing purposes only and should not be used in a production environment");
+  }
+}
+
+void MetaspaceShared::fork_and_dump_final_static_archive() {
+  assert(CDSConfig::is_dumping_preimage_static_archive(), "sanity");
+
+  ResourceMark rm;
+  stringStream st;
+  st.print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
+  const char* cp = Arguments::get_appclasspath();
+  if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
+    st.print(" -cp ");  st.print_raw(cp);
+  }
+  for (int i = 0; i < Arguments::num_jvm_flags(); i++) {
+    st.print(" %s", Arguments::jvm_flags_array()[i]);
+  }
+  for (int i = 0; i < Arguments::num_jvm_args(); i++) {
+    st.print(" %s", Arguments::jvm_args_array()[i]);
+  }
+  st.print(" -XX:CDSPreimage=%s", SharedArchiveFile);
+
+  const char* cmd = st.freeze();
+  if (CDSManualFinalImage) {
+    tty->print_cr("-XX:+CDSManualFinalImage is specified");
+    tty->print_cr("Please manually execute the following command to create the final CDS image:");
+    tty->print("    "); tty->print_raw_cr(cmd);
+  } else {
+    log_info(cds)("Launching child process to create final CDS image:");
+    log_info(cds)("    %s", cmd);
+    int status = os::fork_and_exec(cmd);
+    if (status != 0) {
+      log_error(cds)("Child process finished; status = %d", status);
+      log_error(cds)("To reproduce the error");
+      ResourceMark rm;
+      LogStream ls(Log(cds)::error());
+      ls.print("    "); ls.print_raw_cr(cmd);
+      vm_direct_exit(status);
     } else {
-      log_info(cds)("Launching child process to create final CDS image:");
-      log_info(cds)("    %s", cmd);
-      int status = os::fork_and_exec(cmd);
+      log_info(cds)("Child process finished; status = %d", status);
+      status = remove(SharedArchiveFile);
       if (status != 0) {
-        log_error(cds)("Child process finished; status = %d", status);
-        log_error(cds)("To reproduce the error");
-        ResourceMark rm;
-        LogStream ls(Log(cds)::error());
-        ls.print("    "); ls.print_raw_cr(cmd);
-        vm_direct_exit(status);
+        log_error(cds)("Failed to remove CDSPreimage file %s", SharedArchiveFile);
       } else {
-        log_info(cds)("Child process finished; status = %d", status);
-        status = remove(SharedArchiveFile);
-        if (status != 0) {
-          log_error(cds)("Failed to remove CDSPreimage file %s", SharedArchiveFile);
-        } else {
-          log_info(cds)("Removed CDSPreimage file %s", SharedArchiveFile);
-        }
+        log_info(cds)("Removed CDSPreimage file %s", SharedArchiveFile);
       }
     }
   }
