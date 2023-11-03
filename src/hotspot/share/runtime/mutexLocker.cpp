@@ -388,25 +388,24 @@ PerfCounter** MutexLockerImpl::_perf_lock_wait_time = nullptr;
 PerfCounter** MutexLockerImpl::_perf_lock_hold_time = nullptr;
 
 void MutexLockerImpl::init() {
-  assert(ProfileVMLocks, "required");
-  assert(UsePerfData, "required");
+  if (ProfileVMLocks && UsePerfData) {
+    ResourceMark rm;
+    EXCEPTION_MARK;
+    _perf_lock_count     = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex + 1, mtInternal);
+    _perf_lock_wait_time = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex + 1, mtInternal);
+    _perf_lock_hold_time = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex + 1, mtInternal);
 
-  ResourceMark rm;
-  EXCEPTION_MARK;
-  _perf_lock_count     = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex, mtInternal);
-  _perf_lock_wait_time = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex, mtInternal);
-  _perf_lock_hold_time = NEW_C_HEAP_ARRAY(PerfCounter*, _num_mutex, mtInternal);
-
-  NEWPERFEVENTCOUNTER(_perf_lock_count[0],     SUN_RT, PerfDataManager::counter_name("Other", "Count"));
-  NEWPERFEVENTCOUNTER(_perf_lock_wait_time[0], SUN_RT, PerfDataManager::counter_name("Other", "BeforeTime"));
-  NEWPERFEVENTCOUNTER(_perf_lock_hold_time[0], SUN_RT, PerfDataManager::counter_name("Other", "AfterTime"));
-  for (int i = 0; i < _num_mutex; i++) {
-    NEWPERFEVENTCOUNTER(_perf_lock_count[i+1],       SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "Count"));
-    NEWPERFEVENTCOUNTER(_perf_lock_wait_time[i + 1], SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "BeforeTime"));
-    NEWPERFEVENTCOUNTER(_perf_lock_hold_time[i + 1], SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "AfterTime"));
-  }
-  if (HAS_PENDING_EXCEPTION) {
-    vm_exit_during_initialization("TrainingData::initialize() failed unexpectedly");
+    NEWPERFEVENTCOUNTER(_perf_lock_count[0],     SUN_RT, PerfDataManager::counter_name("Other", "Count"));
+    NEWPERFEVENTCOUNTER(_perf_lock_wait_time[0], SUN_RT, PerfDataManager::counter_name("Other", "BeforeTime"));
+    NEWPERFEVENTCOUNTER(_perf_lock_hold_time[0], SUN_RT, PerfDataManager::counter_name("Other", "AfterTime"));
+    for (int i = 0; i < _num_mutex; i++) {
+      NEWPERFEVENTCOUNTER(_perf_lock_count[i+1],       SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "Count"));
+      NEWPERFEVENTCOUNTER(_perf_lock_wait_time[i + 1], SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "BeforeTime"));
+      NEWPERFEVENTCOUNTER(_perf_lock_hold_time[i + 1], SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "AfterTime"));
+    }
+    if (HAS_PENDING_EXCEPTION) {
+      vm_exit_during_initialization("TrainingData::initialize() failed unexpectedly");
+    }
   }
 }
 

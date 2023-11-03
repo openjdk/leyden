@@ -588,18 +588,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   main_thread->set_active_handles(JNIHandleBlock::allocate_block());
   MACOS_AARCH64_ONLY(main_thread->init_wx());
 
-  if (UsePerfData) {
-    if (ProfileVMLocks) {
-      MutexLockerImpl::init();
-      main_thread->set_profile_vm_locks();
-    }
-    if (ProfileVMCalls) {
-      main_thread->set_profile_vm_calls();
-    }
-    if (ProfileRuntimeCalls) {
-      main_thread->set_profile_rt_calls();
-    }
-  }
+  MutexLockerImpl::init(); // depends on mutex_init(), perfMemory_init(), and Thread::initialize_thread_current().
 
   if (!main_thread->set_as_starting_thread()) {
     vm_shutdown_during_initialization(
@@ -888,7 +877,18 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   log_info(init)("Before main:");
   log_vm_init_stats();
-  perf_jvm_reset();
+
+  if (UsePerfData) {
+    if (ProfileVMLocks) {
+      main_thread->set_profile_vm_locks();
+    }
+    if (ProfileVMCalls) {
+      main_thread->set_profile_vm_calls();
+    }
+    if (ProfileRuntimeCalls) {
+      main_thread->set_profile_rt_calls();
+    }
+  }
 
   return JNI_OK;
 }

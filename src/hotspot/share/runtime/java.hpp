@@ -63,7 +63,6 @@ extern void perf_jvm_print_on(outputStream* st);
 extern void perf_deoptimization_print_on(outputStream* st);
 
 extern void log_vm_init_stats();
-extern void perf_jvm_reset();
 
 /**
  * With the integration of the changes to handle the version string
