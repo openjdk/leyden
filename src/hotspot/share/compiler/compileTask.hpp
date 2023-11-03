@@ -31,6 +31,7 @@
 #include "memory/allocation.hpp"
 #include "utilities/xmlstream.hpp"
 
+class CompileQueue;
 class CompileTrainingData;
 class DirectiveSet;
 class SCCEntry;
@@ -122,6 +123,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   // Specifies if _failure_reason is on the C heap.
   bool                 _failure_reason_on_C_heap;
   CompileTrainingData* _training_data;
+  CompileQueue*        _compile_queue;
 
  public:
   CompileTask() : _failure_reason(nullptr), _failure_reason_on_C_heap(false) {
@@ -130,8 +132,10 @@ class CompileTask : public CHeapObj<mtCompiler> {
   }
 
   void initialize(int compile_id, const methodHandle& method, int osr_bci, int comp_level,
-                  const methodHandle& hot_method, int hot_count,
-                  CompileTask::CompileReason compile_reason, bool requires_online_compilation, bool is_blocking);
+                  const methodHandle& hot_method, int hot_count, SCCEntry* scc_entry,
+                  CompileTask::CompileReason compile_reason,
+                  CompileQueue* compile_queue,
+                  bool requires_online_compilation, bool is_blocking);
 
   static CompileTask* allocate();
   static void         free(CompileTask* task);
@@ -192,6 +196,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
 #endif
 
   Monitor*     lock() const                      { return _lock; }
+
+  CompileQueue* compile_queue() const            { return _compile_queue; }
 
   void         mark_complete()                   { _is_complete = true; }
   void         mark_success()                    { _is_success = true; }

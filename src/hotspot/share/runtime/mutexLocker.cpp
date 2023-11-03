@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "compiler/compiler_globals.hpp"
 #include "gc/shared/gc_globals.hpp"
 #include "logging/log.hpp"
 #include "logging/logStream.hpp"
@@ -83,6 +84,11 @@ Mutex*   MonitoringSupport_lock       = nullptr;
 Monitor* ConcurrentGCBreakpoints_lock = nullptr;
 Mutex*   Compile_lock                 = nullptr;
 Monitor* MethodCompileQueue_lock      = nullptr;
+Monitor* MethodCompileQueueC1_lock    = nullptr;
+Monitor* MethodCompileQueueC2_lock    = nullptr;
+Monitor* MethodCompileQueueC3_lock    = nullptr;
+Monitor* MethodCompileQueueSC1_lock   = nullptr;
+Monitor* MethodCompileQueueSC2_lock   = nullptr;
 Monitor* CompileThread_lock           = nullptr;
 Monitor* Compilation_lock             = nullptr;
 Mutex*   CompileTaskAlloc_lock        = nullptr;
@@ -278,6 +284,19 @@ void mutex_init() {
 
   MUTEX_DEFN(CompiledIC_lock                 , PaddedMutex  , nosafepoint);  // locks VtableStubs_lock, InlineCacheBuffer_lock
   MUTEX_DEFN(MethodCompileQueue_lock         , PaddedMonitor, safepoint);
+  if (UseGlobalCompileQueueLock) {
+    MethodCompileQueueC1_lock  = MethodCompileQueue_lock;
+    MethodCompileQueueC2_lock  = MethodCompileQueue_lock;
+    MethodCompileQueueC3_lock  = MethodCompileQueue_lock;
+    MethodCompileQueueSC1_lock = MethodCompileQueue_lock;
+    MethodCompileQueueSC2_lock = MethodCompileQueue_lock;
+  } else {
+    MUTEX_DEFN(MethodCompileQueueC1_lock     , PaddedMonitor, safepoint);
+    MUTEX_DEFN(MethodCompileQueueC2_lock     , PaddedMonitor, safepoint);
+    MUTEX_DEFN(MethodCompileQueueC3_lock     , PaddedMonitor, safepoint);
+    MUTEX_DEFN(MethodCompileQueueSC1_lock    , PaddedMonitor, safepoint);
+    MUTEX_DEFN(MethodCompileQueueSC2_lock    , PaddedMonitor, safepoint);
+  }
   MUTEX_DEFL(TrainingData_lock               , PaddedMutex  , MethodCompileQueue_lock);
   MUTEX_DEFN(TrainingReplayQueue_lock        , PaddedMonitor, safepoint);
   MUTEX_DEFN(CompileStatistics_lock          , PaddedMutex  , safepoint);

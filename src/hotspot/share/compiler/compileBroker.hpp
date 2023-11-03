@@ -88,17 +88,14 @@ class CompileQueue : public CHeapObj<mtCompiler> {
 
   CompileTask* _first_stale;
 
+  Monitor* _lock;
+
   int _size;
 
   void purge_stale_tasks();
  public:
-  CompileQueue(const char* name) {
-    _name = name;
-    _first = nullptr;
-    _last = nullptr;
-    _size = 0;
-    _first_stale = nullptr;
-  }
+  CompileQueue(const char* name, Monitor* lock)
+  : _name(name), _first(nullptr), _last(nullptr), _first_stale(nullptr), _lock(lock), _size(0) {}
 
   const char*  name() const                      { return _name; }
 
@@ -113,6 +110,7 @@ class CompileQueue : public CHeapObj<mtCompiler> {
   bool         is_empty() const                  { return _first == nullptr; }
   int          size()     const                  { return _size;          }
 
+  Monitor* lock() const { return _lock; }
 
   // Redefine Classes support
   void mark_on_stack();
@@ -252,6 +250,7 @@ class CompileBroker: AllStatic {
                                           int                 comp_level,
                                           const methodHandle& hot_method,
                                           int                 hot_count,
+                                          SCCEntry*           scc_entry,
                                           CompileTask::CompileReason compile_reason,
                                           bool                requires_online_compilation,
                                           bool                blocking);
@@ -279,9 +278,13 @@ class CompileBroker: AllStatic {
                                   bool blocking,
                                   Thread* thread);
 
-  static CompileQueue* compile_queue(int comp_level);
+  static CompileQueue* compile_queue(int comp_level, bool is_scc);
   static bool init_compiler_runtime();
   static void shutdown_compiler_runtime(AbstractCompiler* comp, CompilerThread* thread);
+
+  static SCCEntry* find_scc_entry(const methodHandle& method, int osr_bci, int comp_level,
+                                  CompileTask::CompileReason compile_reason,
+                                  bool requires_online_compilation);
 
 public:
   enum {
@@ -300,8 +303,8 @@ public:
                                       CompileTask::CompileReason compile_reason);
   static bool compilation_is_in_queue(const methodHandle& method);
   static void print_compile_queues(outputStream* st);
-  static int queue_size(int comp_level) {
-    CompileQueue *q = compile_queue(comp_level);
+  static int queue_size(int comp_level, bool is_scc = false) {
+    CompileQueue *q = compile_queue(comp_level, is_scc);
     return q != nullptr ? q->size() : 0;
   }
   static void compilation_init(JavaThread* THREAD);

@@ -93,7 +93,9 @@ void CompileTask::initialize(int compile_id,
                              int comp_level,
                              const methodHandle& hot_method,
                              int hot_count,
+                             SCCEntry* scc_entry,
                              CompileTask::CompileReason compile_reason,
+                             CompileQueue* compile_queue,
                              bool requires_online_compilation,
                              bool is_blocking) {
   assert(!_lock->is_locked(), "bad locking");
@@ -123,6 +125,8 @@ void CompileTask::initialize(int compile_id,
   _failure_reason = nullptr;
   _failure_reason_on_C_heap = false;
   _training_data = nullptr;
+  _scc_entry = scc_entry;
+  _compile_queue = compile_queue;
 
   AbstractCompiler* comp = CompileBroker::compiler(comp_level);
 #if INCLUDE_JVMCI
@@ -151,16 +155,6 @@ void CompileTask::initialize(int compile_id,
     }
   }
 
-  _scc_entry = nullptr;
-  if (osr_bci == InvocationEntryBci && !requires_online_compilation && SCCache::is_on_for_read()) {
-    // Check for cached code.
-    if (compile_reason == CompileTask::Reason_Preload) {
-      _scc_entry = method->scc_entry();
-      assert(_scc_entry != nullptr && _scc_entry->for_preload(), "sanity");
-    } else {
-      _scc_entry = SCCache::find_code_entry(method, comp_level);
-    }
-  }
   _next = nullptr;
 }
 

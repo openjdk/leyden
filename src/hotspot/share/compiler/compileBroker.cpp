@@ -329,7 +329,7 @@ bool CompileBroker::can_remove(CompilerThread *ct, bool do_it) {
  * Add a CompileTask to a CompileQueue.
  */
 void CompileQueue::add(CompileTask* task) {
-  assert(MethodCompileQueue_lock->owned_by_self(), "must own lock");
+  assert(_lock->owned_by_self(), "must own lock");
 
   task->set_next(nullptr);
   task->set_prev(nullptr);
@@ -368,7 +368,7 @@ void CompileQueue::add(CompileTask* task) {
   }
 
   // Notify CompilerThreads that a task is available.
-  MethodCompileQueue_lock->notify_all();
+  _lock->notify_all();
 }
 
 /**
@@ -378,7 +378,7 @@ void CompileQueue::add(CompileTask* task) {
  * compilation is disabled.
  */
 void CompileQueue::free_all() {
-  MutexLocker mu(MethodCompileQueue_lock);
+  MutexLocker mu(_lock);
   CompileTask* next = _first;
 
   // Iterate over all tasks in the compile queue
@@ -397,7 +397,7 @@ void CompileQueue::free_all() {
   _last = nullptr;
 
   // Wake up all threads that block on the queue.
-  MethodCompileQueue_lock->notify_all();
+  _lock->notify_all();
 }
 
 /**
@@ -405,11 +405,11 @@ void CompileQueue::free_all() {
  */
 CompileTask* CompileQueue::get(CompilerThread* thread) {
   // save methods from RedefineClasses across safepoint
-  // across MethodCompileQueue_lock below.
+  // across compile queue lock below.
   methodHandle save_method;
   methodHandle save_hot_method;
 
-  MonitorLocker locker(MethodCompileQueue_lock);
+  MonitorLocker locker(_lock);
 
   CompilationPolicy::sample_load_average();
 
@@ -478,7 +478,7 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
 // Clean & deallocate stale compile tasks.
 // Temporarily releases MethodCompileQueue lock.
 void CompileQueue::purge_stale_tasks() {
-  assert(MethodCompileQueue_lock->owned_by_self(), "must own lock");
+  assert(_lock->owned_by_self(), "must own lock");
   if (_first_stale != nullptr) {
     // Stale tasks are purged when MCQ lock is released,
     // but _first_stale updates are protected by MCQ lock.
@@ -487,7 +487,7 @@ void CompileQueue::purge_stale_tasks() {
     CompileTask* head = _first_stale;
     _first_stale = nullptr;
     {
-      MutexUnlocker ul(MethodCompileQueue_lock);
+      MutexUnlocker ul(_lock);
       for (CompileTask* task = head; task != nullptr; ) {
         CompileTask* next_task = task->next();
         CompileTaskWrapper ctw(task); // Frees the task
@@ -499,7 +499,7 @@ void CompileQueue::purge_stale_tasks() {
 }
 
 void CompileQueue::remove(CompileTask* task) {
-  assert(MethodCompileQueue_lock->owned_by_self(), "must own lock");
+  assert(_lock->owned_by_self(), "must own lock");
   if (task->prev() != nullptr) {
     task->prev()->set_next(task->next());
   } else {
@@ -519,7 +519,7 @@ void CompileQueue::remove(CompileTask* task) {
 }
 
 void CompileQueue::remove_and_mark_stale(CompileTask* task) {
-  assert(MethodCompileQueue_lock->owned_by_self(), "must own lock");
+  assert(_lock->owned_by_self(), "must own lock");
   remove(task);
 
   // Enqueue the task for reclamation (should be done outside MCQ lock)
@@ -539,9 +539,9 @@ void CompileQueue::mark_on_stack() {
 }
 
 
-CompileQueue* CompileBroker::compile_queue(int comp_level) {
-  if (is_c2_compile(comp_level)) return _c2_compile_queue;
-  if (is_c1_compile(comp_level)) return _c1_compile_queue;
+CompileQueue* CompileBroker::compile_queue(int comp_level, bool is_scc) {
+  if (is_c2_compile(comp_level)) return (is_scc ? _sc2_compile_queue : _c2_compile_queue);
+  if (is_c1_compile(comp_level)) return (is_scc ? _sc1_compile_queue : _c1_compile_queue);
   return nullptr;
 }
 
@@ -571,7 +571,7 @@ void CompileBroker::print_compile_queues(outputStream* st) {
 }
 
 void CompileQueue::print(outputStream* st) {
-  assert_locked_or_safepoint(MethodCompileQueue_lock);
+  assert_locked_or_safepoint(_lock);
   st->print_cr("%s:", name());
   CompileTask* task = _first;
   if (task == nullptr) {
@@ -994,27 +994,27 @@ void CompileBroker::init_compiler_threads() {
   // Initialize the compilation queue
   if (_c2_count > 0) {
     const char* name = JVMCI_ONLY(UseJVMCICompiler ? "JVMCI compile queue" :) "C2 compile queue";
-    _c2_compile_queue  = new CompileQueue(name);
+    _c2_compile_queue  = new CompileQueue(name, MethodCompileQueueC2_lock);
     _compiler2_objects = NEW_C_HEAP_ARRAY(jobject, _c2_count, mtCompiler);
     _compiler2_logs = NEW_C_HEAP_ARRAY(CompileLog*, _c2_count, mtCompiler);
   }
   if (_c1_count > 0) {
-    _c1_compile_queue  = new CompileQueue("C1 compile queue");
+    _c1_compile_queue  = new CompileQueue("C1 compile queue", MethodCompileQueueC1_lock);
     _compiler1_objects = NEW_C_HEAP_ARRAY(jobject, _c1_count, mtCompiler);
     _compiler1_logs = NEW_C_HEAP_ARRAY(CompileLog*, _c1_count, mtCompiler);
   }
   if (_c3_count > 0) {
     const char* name = "C2 compile queue";
-    _c3_compile_queue  = new CompileQueue(name);
+    _c3_compile_queue  = new CompileQueue(name, MethodCompileQueueC3_lock);
     _compiler3_objects = NEW_C_HEAP_ARRAY(jobject, _c3_count, mtCompiler);
     _compiler3_logs = NEW_C_HEAP_ARRAY(CompileLog*, _c3_count, mtCompiler);
   }
   if (_sc_count > 0) {
     if (_c1_count > 0) { // C1 is present
-      _sc1_compile_queue  = new CompileQueue("C1 SC compile queue");
+      _sc1_compile_queue  = new CompileQueue("C1 SC compile queue", MethodCompileQueueSC1_lock);
     }
     if (_c2_count > 0) { // C2 is present
-      _sc2_compile_queue  = new CompileQueue("C2 SC compile queue");
+      _sc2_compile_queue  = new CompileQueue("C2 SC compile queue", MethodCompileQueueSC2_lock);
     }
     _sc_objects = NEW_C_HEAP_ARRAY(jobject, _sc_count, mtCompiler);
     _sc_logs = NEW_C_HEAP_ARRAY(CompileLog*, _sc_count, mtCompiler);
@@ -1315,6 +1315,10 @@ void CompileBroker::compile_method_base(const methodHandle& method,
   if (compile_reason != CompileTask::Reason_Preload) {
     method->get_method_counters(thread);
   }
+
+  SCCEntry* scc_entry = find_scc_entry(method, osr_bci, comp_level, compile_reason, requires_online_compilation);
+  bool is_scc = (scc_entry != nullptr);
+
   // Outputs from the following MutexLocker block:
   CompileTask* task = nullptr;
   CompileQueue* queue;
@@ -1325,11 +1329,11 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     queue = _c3_compile_queue; // JVMCI compiler's methods compilation
   } else
 #endif
-  queue = compile_queue(comp_level);
+  queue = compile_queue(comp_level, is_scc);
 
   // Acquire our lock.
   {
-    MutexLocker locker(thread, MethodCompileQueue_lock);
+    MutexLocker locker(thread, queue->lock());
 
     // Make sure the method has not slipped into the queues since
     // last we checked; note that those checks were "fast bail-outs".
@@ -1431,13 +1435,29 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     task = create_compile_task(queue,
                                compile_id, method,
                                osr_bci, comp_level,
-                               hot_method, hot_count, compile_reason,
+                               hot_method, hot_count, scc_entry, compile_reason,
                                requires_online_compilation, blocking);
   }
 
   if (blocking) {
     wait_for_completion(task);
   }
+}
+
+SCCEntry* CompileBroker::find_scc_entry(const methodHandle& method, int osr_bci, int comp_level,
+                                        CompileTask::CompileReason compile_reason,
+                                        bool requires_online_compilation) {
+  SCCEntry* scc_entry = nullptr;
+  if (_sc_count > 0 && osr_bci == InvocationEntryBci && !requires_online_compilation && SCCache::is_on_for_read()) {
+    // Check for cached code.
+    if (compile_reason == CompileTask::Reason_Preload) {
+      scc_entry = method->scc_entry();
+      assert(scc_entry != nullptr && scc_entry->for_preload(), "sanity");
+    } else {
+      scc_entry = SCCache::find_code_entry(method, comp_level);
+    }
+  }
+  return scc_entry;
 }
 
 nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
@@ -1753,7 +1773,6 @@ int CompileBroker::assign_compile_id(const methodHandle& method, int osr_bci) {
 //
 // Public wrapper for assign_compile_id that acquires the needed locks
 int CompileBroker::assign_compile_id_unlocked(Thread* thread, const methodHandle& method, int osr_bci) {
-  MutexLocker locker(thread, MethodCompileQueue_lock);
   return assign_compile_id(method, osr_bci);
 }
 
@@ -1769,17 +1788,14 @@ CompileTask* CompileBroker::create_compile_task(CompileQueue*       queue,
                                                 int                 comp_level,
                                                 const methodHandle& hot_method,
                                                 int                 hot_count,
+                                                SCCEntry*           scc_entry,
                                                 CompileTask::CompileReason compile_reason,
                                                 bool                requires_online_compilation,
                                                 bool                blocking) {
   CompileTask* new_task = CompileTask::allocate();
   new_task->initialize(compile_id, method, osr_bci, comp_level,
-                       hot_method, hot_count, compile_reason,
+                       hot_method, hot_count, scc_entry, compile_reason, queue,
                        requires_online_compilation, blocking);
-  if (new_task->is_scc() && (_sc_count > 0)) {
-    // Put it on SC queue
-    queue = is_c1_compile(comp_level) ? _sc1_compile_queue : _sc2_compile_queue;
-  }
   queue->add(new_task);
   return new_task;
 }

@@ -478,6 +478,9 @@
                                                                             \
   product(bool, UseConcurrentTrainingReplay, true,                          \
           "Replay training after class initialization in a separate thread")\
+                                                                            \
+  product(bool, UseGlobalCompileQueueLock, false,                           \
+          "Use a global lock for all compilation queues")                   \
 // end of COMPILER_FLAGS
 
 DECLARE_FLAGS(COMPILER_FLAGS)

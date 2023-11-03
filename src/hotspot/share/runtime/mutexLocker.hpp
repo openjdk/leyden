@@ -80,6 +80,11 @@ extern Mutex*   MonitoringSupport_lock;          // Protects updates to the serv
 extern Monitor* ConcurrentGCBreakpoints_lock;    // Protects concurrent GC breakpoint management
 extern Mutex*   Compile_lock;                    // a lock held when Compilation is updating code (used to block CodeCache traversal, CHA updates, etc)
 extern Monitor* MethodCompileQueue_lock;         // a lock held when method compilations are enqueued, dequeued
+extern Monitor* MethodCompileQueueC1_lock;       // a lock held when method compilations are enqueued, dequeued
+extern Monitor* MethodCompileQueueC2_lock;       // a lock held when method compilations are enqueued, dequeued
+extern Monitor* MethodCompileQueueC3_lock;       // a lock held when method compilations are enqueued, dequeued
+extern Monitor* MethodCompileQueueSC1_lock;      // a lock held when method compilations are enqueued, dequeued
+extern Monitor* MethodCompileQueueSC2_lock;      // a lock held when method compilations are enqueued, dequeued
 extern Monitor* CompileThread_lock;              // a lock held by compile threads during compilation system initialization
 extern Monitor* Compilation_lock;                // a lock used to pause compilation
 extern Mutex*   TrainingData_lock;               // a lock used when accessing training records
