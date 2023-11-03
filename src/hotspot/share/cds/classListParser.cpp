@@ -881,7 +881,7 @@ void ClassListParser::parse_class_reflection_data_tag() {
         strstr(class_name, "MethodHandle$Species_") != nullptr) {
       // ignore -- TODO: we should filter these out in classListWriter.cpp
     } else {
-      error("class %s is not (yet) loaded by one of the built-in loaders", class_name);
+      warning("@class-reflection-data: class not found: %s", class_name);
     }
     return;
   }

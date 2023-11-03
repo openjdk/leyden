@@ -237,8 +237,7 @@ void ClassListWriter::write_reflection_data() {
 void ClassListWriter::write_reflection_data_for(InstanceKlass* ik) {
   ResourceMark rm;
   outputStream* stream = _classlist_file;
-  if (SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) &&
-      !ik->is_hidden()) {
+  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) || ik->is_hidden()) {
     return; // ignore
   }
   if (java_lang_Class::has_reflection_data(ik->java_mirror())) {
