@@ -55,6 +55,8 @@
 
 const char* ClassListParser::LAMBDA_PROXY_TAG = "@lambda-proxy";
 const char* ClassListParser::LAMBDA_FORM_TAG  = "@lambda-form-invoker";
+const char* ClassListParser::CLASS_REFLECTION_DATA_TAG  = "@class-reflection-data";
+
 const char* ClassListParser::CONSTANT_POOL_TAG  = "@cp";
 volatile Thread* ClassListParser::_parsing_thread = nullptr;
 ClassListParser* ClassListParser::_instance = nullptr;
@@ -113,6 +115,9 @@ int ClassListParser::parse(TRAPS) {
       continue;
     }
     if (_constant_pool_line) {
+      continue;
+    }
+    if (_class_reflection_data_line) {
       continue;
     }
     if (_parse_mode == _parse_lambda_forms_invokers_only) {
@@ -220,6 +225,7 @@ bool ClassListParser::parse_one_line() {
   _indy_items->clear();
   _lambda_form_line = false;
   _constant_pool_line = false;
+  _class_reflection_data_line = false;
 
   if (_line[0] == '@') {
     return parse_at_tags();
@@ -326,6 +332,11 @@ bool ClassListParser::parse_at_tags() {
     _token = _line + offset;
     _constant_pool_line = true;
     parse_constant_pool_tag();
+    return true;
+  } else if (strcmp(_token, CLASS_REFLECTION_DATA_TAG) == 0) {
+    _token = _line + offset;
+    _class_reflection_data_line = true;
+    parse_class_reflection_data_tag();
     return true;
   } else {
     error("Invalid @ tag at the beginning of line \"%s\" line #%d", _token, _line_no);
@@ -849,4 +860,68 @@ void ClassListParser::parse_constant_pool_tag() {
   if (preresolve_indy) {
     ClassPrelinker::preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
   }
+}
+
+void ClassListParser::parse_class_reflection_data_tag() {
+  if (_parse_mode == _parse_lambda_forms_invokers_only) {
+    return;
+  }
+
+  JavaThread* THREAD = JavaThread::current();
+  skip_whitespaces();
+  char* class_name = _token;
+  skip_non_whitespaces();
+  *_token = '\0';
+  _token ++;
+
+  InstanceKlass* ik = find_builtin_class(THREAD, class_name);
+  if (ik == nullptr) {
+    _token = class_name;
+    if (strstr(class_name, "/$Proxy") != nullptr ||
+        strstr(class_name, "MethodHandle$Species_") != nullptr) {
+      // ignore -- TODO: we should filter these out in classListWriter.cpp
+    } else {
+      error("class %s is not (yet) loaded by one of the built-in loaders", class_name);
+    }
+    return;
+  }
+
+  ResourceMark rm(THREAD);
+
+  int rd_flags = _unspecified;
+  while (*_token) {
+    skip_whitespaces();
+    if (rd_flags != _unspecified) {
+      error("rd_flags specified twice");
+      return;
+    }
+    parse_uint(&rd_flags);
+  }
+  if (rd_flags == _unspecified) {
+    error("no rd_flags specified");
+    return;
+  }
+
+  if (ArchiveReflectionData) {
+    log_info(cds)("Generate ReflectionData: %s (flags=" INT32_FORMAT_X ")", ik->external_name(), rd_flags);
+    JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
+    args.push_int(rd_flags);
+    JavaValue result(T_OBJECT);
+    JavaCalls::call_special(&result,
+                            vmClasses::Class_klass(),
+                            vmSymbols::generateReflectionData_name(),
+                            vmSymbols::int_void_signature(),
+                            &args, THREAD);
+    if (HAS_PENDING_EXCEPTION) {
+      Handle exc_handle(THREAD, PENDING_EXCEPTION);
+      CLEAR_PENDING_EXCEPTION;
+
+      log_warning(cds)("Exception during Class::generateReflectionData() call for %s", ik->external_name());
+      LogStreamHandle(Debug, cds) log;
+      if (log.is_enabled()) {
+        java_lang_Throwable::print_stack_trace(exc_handle, &log);
+      }
+    }
+  }
+
 }

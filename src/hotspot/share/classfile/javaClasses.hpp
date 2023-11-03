@@ -234,6 +234,7 @@ class java_lang_Class : AllStatic {
   static int _source_file_offset;
   static int _classData_offset;
   static int _classRedefinedCount_offset;
+  static int _reflectionData_offset;
 
   static bool _offsets_computed;
 
@@ -297,6 +298,10 @@ class java_lang_Class : AllStatic {
   static void set_signers(oop java_class, objArrayOop signers);
   static oop  class_data(oop java_class);
   static void set_class_data(oop java_class, oop classData);
+
+  static oop  reflection_data(oop java_class);
+  static void set_reflection_data(oop java_class, oop reflection_data);
+  static bool has_reflection_data(oop java_class);
 
   static int component_mirror_offset() { return _component_mirror_offset; }
 

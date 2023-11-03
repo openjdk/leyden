@@ -448,6 +448,9 @@ void before_exit(JavaThread* thread, bool halt) {
 
 #if INCLUDE_CDS
   ClassListWriter::write_resolved_constants();
+  if (ArchiveReflectionData) {
+    ClassListWriter::write_reflection_data();
+  }
   // Dynamic CDS dumping must happen whilst we can still reliably
   // run Java code.
   if (DumpSharedSpaces && CacheDataStore != nullptr) {

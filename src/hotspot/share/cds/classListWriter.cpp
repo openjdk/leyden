@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classFileStream.hpp"
@@ -35,6 +36,7 @@
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
+#include "runtime/javaCalls.hpp"
 #include "runtime/mutexLocker.hpp"
 
 fileStream* ClassListWriter::_classlist_file = nullptr;
@@ -220,6 +222,43 @@ void ClassListWriter::write_resolved_constants() {
 
   WriteResolveConstantsCLDClosure closure;
   ClassLoaderDataGraph::loaded_cld_do(&closure);
+}
+
+void ClassListWriter::write_reflection_data() {
+  if (!is_enabled()) {
+    return;
+  }
+  auto collector = [&] (const InstanceKlass* ik, int id) {
+    write_reflection_data_for(const_cast<InstanceKlass*>(ik));
+  };
+  _id_table->iterate_all(collector);
+}
+
+void ClassListWriter::write_reflection_data_for(InstanceKlass* ik) {
+  ResourceMark rm;
+  outputStream* stream = _classlist_file;
+  if (SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) &&
+      !ik->is_hidden()) {
+    return; // ignore
+  }
+  if (java_lang_Class::has_reflection_data(ik->java_mirror())) {
+    EXCEPTION_MARK;
+    HandleMark hm(THREAD);
+    log_info(cds)("Encode ReflectionData: %s", ik->external_name());
+    JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
+    JavaValue result(T_INT);
+    JavaCalls::call_special(&result,
+                            vmClasses::Class_klass(),
+                            vmSymbols::encodeReflectionData_name(),
+                            vmSymbols::void_int_signature(),
+                            &args, THREAD);
+
+    { // FIXME: can't hold the lock when doing the upcall
+      MutexLocker lock2(ClassListFile_lock, Mutex::_no_safepoint_check_flag);
+      int rd_flags = result.get_jint();
+      stream->print_cr("%s %s %d", ClassListParser::CLASS_REFLECTION_DATA_TAG, ik->name()->as_C_string(), rd_flags);
+    }
+  }
 }
 
 void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {

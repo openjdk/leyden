@@ -47,7 +47,7 @@ bool DumpTimeClassInfo::is_excluded() {
   if (_excluded) {
     return true;
   }
-  if ((!PreloadSharedClasses || !SystemDictionaryShared::is_builtin(_klass))
+  if ((!PreloadSharedClasses || !ArchiveReflectionData || !SystemDictionaryShared::is_builtin(_klass))
       && _failed_verification) {
     return true;
   }

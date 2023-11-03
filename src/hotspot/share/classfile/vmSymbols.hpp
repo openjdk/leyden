@@ -325,6 +325,10 @@ class SerializeClosure;
   template(jdk_internal_vm_annotation_ChangesCurrentThread_signature,  "Ljdk/internal/vm/annotation/ChangesCurrentThread;")  \
   template(jdk_internal_vm_annotation_JvmtiMountTransition_signature,  "Ljdk/internal/vm/annotation/JvmtiMountTransition;")  \
                                                                                                   \
+  template(class_ReflectionData_signature,         "Ljava/lang/Class$ReflectionData;")            \
+  template(encodeReflectionData_name,              "encodeReflectionData")                        \
+  template(generateReflectionData_name,            "generateReflectionData")                      \
+                                                                                                  \
   /* Support for JSR 292 & invokedynamic (JDK 1.7 and above) */                                   \
   template(java_lang_invoke_CallSite,                 "java/lang/invoke/CallSite")                \
   template(java_lang_invoke_ConstantCallSite,         "java/lang/invoke/ConstantCallSite")        \

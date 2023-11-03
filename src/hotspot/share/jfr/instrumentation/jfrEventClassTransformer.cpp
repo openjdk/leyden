@@ -1472,6 +1472,7 @@ static ClassFileStream* schema_extend_event_subklass_bytes(const InstanceKlass* 
   assert(JdkJfrEvent::is_a(ik), "invariant");
   assert(!is_instrumented, "invariant");
   DEBUG_ONLY(JfrJavaSupport::check_java_thread_in_vm(THREAD));
+  initialize_symbols();
   if (invalid_preconditions_for_subklass_on_initial_load(ik)) {
     // Remove the tag denoting this as a jdk.jfr.Event subklass. No instrumentation, hence no events can be written.
     // The class is allowed to load as-is, but it is classified as outside of the jfr system.

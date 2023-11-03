@@ -69,6 +69,8 @@ class ClassListParser : public StackObj {
   static const char* LAMBDA_FORM_TAG;
   static const char* CONSTANT_POOL_TAG;
 public:
+  static const char* CLASS_REFLECTION_DATA_TAG;
+
   enum ParseMode {
     _parse_all,
     _parse_lambda_forms_invokers_only,
@@ -116,6 +118,7 @@ private:
   const char*         _source;
   bool                _lambda_form_line;
   bool                _constant_pool_line;
+  bool                _class_reflection_data_line;
   ParseMode           _parse_mode;
 
   bool parse_int_option(const char* option_name, int* value);
@@ -137,6 +140,7 @@ private:
   bool parse_one_line();
   Klass* load_current_class(Symbol* class_name_symbol, TRAPS);
   void parse_constant_pool_tag();
+  void parse_class_reflection_data_tag();
 
   ClassListParser(const char* file, ParseMode _parse_mode);
   ~ClassListParser();

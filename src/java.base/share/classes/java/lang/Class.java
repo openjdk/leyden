@@ -31,7 +31,6 @@ import java.lang.constant.ConstantDescs;
 import java.lang.invoke.TypeDescriptor;
 import java.lang.invoke.MethodHandles;
 import java.lang.module.ModuleReader;
-import java.lang.ref.SoftReference;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectStreamField;
@@ -3371,8 +3370,8 @@ public final class Class<T> implements java.io.Serializable,
                 = unsafe.objectFieldOffset(Class.class, "annotationData");
 
         static <T> boolean casReflectionData(Class<?> clazz,
-                                             SoftReference<ReflectionData<T>> oldData,
-                                             SoftReference<ReflectionData<T>> newData) {
+                                             ReflectionData<T> oldData,
+                                             ReflectionData<T> newData) {
             return unsafe.compareAndSetReference(clazz, reflectionDataOffset, oldData, newData);
         }
 
@@ -3420,7 +3419,7 @@ public final class Class<T> implements java.io.Serializable,
         }
     }
 
-    private transient volatile SoftReference<ReflectionData<T>> reflectionData;
+    private transient volatile ReflectionData<T> reflectionData;
 
     // Incremented by the VM on each call to JVM TI RedefineClasses()
     // that redefines this class or a superclass.
@@ -3428,33 +3427,29 @@ public final class Class<T> implements java.io.Serializable,
 
     // Lazily create and cache ReflectionData
     private ReflectionData<T> reflectionData() {
-        SoftReference<ReflectionData<T>> reflectionData = this.reflectionData;
+        ReflectionData<T> reflectionData = this.reflectionData;
         int classRedefinedCount = this.classRedefinedCount;
-        ReflectionData<T> rd;
         if (reflectionData != null &&
-            (rd = reflectionData.get()) != null &&
-            rd.redefinedCount == classRedefinedCount) {
-            return rd;
+            reflectionData.redefinedCount == classRedefinedCount) {
+            return reflectionData;
         }
         // else no SoftReference or cleared SoftReference or stale ReflectionData
         // -> create and replace new instance
         return newReflectionData(reflectionData, classRedefinedCount);
     }
 
-    private ReflectionData<T> newReflectionData(SoftReference<ReflectionData<T>> oldReflectionData,
+    private ReflectionData<T> newReflectionData(ReflectionData<T> oldReflectionData,
                                                 int classRedefinedCount) {
         while (true) {
             ReflectionData<T> rd = new ReflectionData<>(classRedefinedCount);
             // try to CAS it...
-            if (Atomic.casReflectionData(this, oldReflectionData, new SoftReference<>(rd))) {
+            if (Atomic.casReflectionData(this, oldReflectionData, rd)) {
                 return rd;
             }
             // else retry
             oldReflectionData = this.reflectionData;
             classRedefinedCount = this.classRedefinedCount;
-            if (oldReflectionData != null &&
-                (rd = oldReflectionData.get()) != null &&
-                rd.redefinedCount == classRedefinedCount) {
+            if (oldReflectionData != null && oldReflectionData.redefinedCount == classRedefinedCount) {
                 return rd;
             }
         }
@@ -4824,4 +4819,47 @@ public final class Class<T> implements java.io.Serializable,
     }
 
     private native int getClassAccessFlagsRaw0();
+
+    private static final int RD_PUBLIC_METHODS          = (1 <<  0);
+    private static final int RD_PUBLIC_FIELDS           = (1 <<  1);
+    private static final int RD_DECLARED_CTORS          = (1 <<  2);
+    private static final int RD_PUBLIC_CTORS = (1 <<  3);
+    private static final int RD_DECLARED_METHODS        = (1 <<  4);
+    private static final int RD_DECLARED_PUBLIC_METHODS = (1 <<  5);
+    private static final int RD_DECLARED_FIELDS         = (1 <<  6);
+    private static final int RD_DECLARED_PUBLIC_FIELDS  = (1 <<  7);
+    private static final int RD_DECLARED_INTERFACES     = (1 <<  8);
+    private static final int RD_DECLARED_SIMPLE_NAME    = (1 <<  9);
+    private static final int RD_DECLARED_CANONICAL_NAME = (1 << 10);
+
+    private int encodeReflectionData() {
+        int flags = 0;
+        if (reflectionData != null) {
+            flags = (reflectionData.publicMethods         != null ? RD_PUBLIC_METHODS          : 0) |
+                    (reflectionData.publicFields          != null ? RD_PUBLIC_FIELDS           : 0) |
+                    (reflectionData.declaredConstructors  != null ? RD_DECLARED_CTORS          : 0) |
+                    (reflectionData.publicConstructors    != null ? RD_PUBLIC_CTORS            : 0) |
+                    (reflectionData.declaredMethods       != null ? RD_DECLARED_METHODS        : 0) |
+                    (reflectionData.declaredPublicMethods != null ? RD_DECLARED_PUBLIC_METHODS : 0) |
+                    (reflectionData.declaredFields        != null ? RD_DECLARED_FIELDS         : 0) |
+                    (reflectionData.declaredPublicFields  != null ? RD_DECLARED_PUBLIC_FIELDS  : 0) |
+                    (reflectionData.interfaces            != null ? RD_DECLARED_INTERFACES     : 0) |
+                    (reflectionData.simpleName            != null ? RD_DECLARED_SIMPLE_NAME    : 0) |
+                    (reflectionData.canonicalName         != null ? RD_DECLARED_CANONICAL_NAME : 0);
+        }
+        return flags;
+    }
+    private void generateReflectionData(int flags) {
+        if ((flags & RD_PUBLIC_METHODS         ) != 0) { privateGetPublicMethods();             } // Method[] publicMethods;
+        if ((flags & RD_PUBLIC_FIELDS          ) != 0) { privateGetPublicFields();              } // Field[] publicFields;
+        if ((flags & RD_DECLARED_CTORS         ) != 0) { privateGetDeclaredConstructors(false); } // Constructor<T>[] declaredConstructors;
+        if ((flags & RD_PUBLIC_CTORS           ) != 0) { privateGetDeclaredConstructors(true);  } // Constructor<T>[] publicConstructors;
+        if ((flags & RD_DECLARED_METHODS       ) != 0) { privateGetDeclaredMethods(false);      } // Method[] declaredMethods;
+        if ((flags & RD_DECLARED_PUBLIC_METHODS) != 0) { privateGetDeclaredMethods(true);       } // Method[] declaredPublicMethods;
+        if ((flags & RD_DECLARED_FIELDS        ) != 0) { privateGetDeclaredFields(false);       } // Field[] declaredFields;
+        if ((flags & RD_DECLARED_PUBLIC_FIELDS ) != 0) { privateGetDeclaredFields(true);        } // Field[] declaredPublicFields;
+        if ((flags & RD_DECLARED_INTERFACES    ) != 0) { getInterfaces(false);                  } // Class<?>[] interfaces;
+        if ((flags & RD_DECLARED_SIMPLE_NAME   ) != 0) { getSimpleName();                       } // String simpleName;
+        if ((flags & RD_DECLARED_CANONICAL_NAME) != 0) { getCanonicalName();                    } // String canonicalName;
+    }
 }

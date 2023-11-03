@@ -310,10 +310,12 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     // instrumentation in order to work with -XX:FlightRecorderOptions:retransform=false.
     // There are only a small number of these classes, so it's not worthwhile to
     // support them and make CDS more complicated.
-    return warn_excluded(k, "JFR event class");
+    if (!ArchiveReflectionData) { // FIXME: !!! HACK !!!
+      return warn_excluded(k, "JFR event class");
+    }
   }
 
-  if (!PreloadSharedClasses || !is_builtin(k)) {
+  if (!PreloadSharedClasses || !ArchiveReflectionData || !is_builtin(k)) {
     if (!k->is_linked()) {
       if (has_class_failed_verification(k)) {
         return warn_excluded(k, "Failed verification");

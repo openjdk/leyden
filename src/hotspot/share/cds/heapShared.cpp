@@ -694,6 +694,12 @@ void HeapShared::archive_java_mirrors() {
     if (m != nullptr) {
       copy_java_mirror_hashcode(orig_mirror, m);
       copy_preinitialized_mirror(orig_k, orig_mirror, m);
+      if (ArchiveReflectionData && java_lang_Class::has_reflection_data(orig_mirror)) {
+        oop reflection_data = java_lang_Class::reflection_data(orig_mirror);
+        bool success = archive_reachable_objects_from(1, _default_subgraph_info, reflection_data);
+        guarantee(success, "");
+        java_lang_Class::set_reflection_data(m, reflection_data);
+      }
       Klass* buffered_k = ArchiveBuilder::get_buffered_klass(orig_k);
       bool success = archive_reachable_objects_from(1, _default_subgraph_info, orig_mirror);
       guarantee(success, "scratch mirrors must point to only archivable objects");
