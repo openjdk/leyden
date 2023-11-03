@@ -125,6 +125,9 @@
                                                                             \
   product(bool, TempDisableAddJVMCIModule, false,                           \
           "Do not add jdk.internal.vm.ci module even for -XX:+EnableJVMCI") \
+                                                                            \
+  product(bool, UsePermanentHeapObjects, true, DIAGNOSTIC,                  \
+          "Allow AOT code to access permanent archived heap objects")       \
 
 
 // end of CDS_FLAGS

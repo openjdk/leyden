@@ -78,6 +78,7 @@ class ClassPrelinker :  AllStatic {
 
   static PreloadedKlasses _static_preloaded_klasses;
   static PreloadedKlasses _dynamic_preloaded_klasses;
+  static Array<InstanceKlass*>* _unregistered_klasses_from_preimage;
 
   static void add_one_vm_class(InstanceKlass* ik);
 
@@ -154,6 +155,7 @@ public:
 
   static void record_preloaded_klasses(bool is_static_archive);
   static void record_initiated_klasses(bool is_static_archive);
+  static void record_unregistered_klasses();
   static void record_resolved_indys();
   static void serialize(SerializeClosure* soc, bool is_static_archive);
 

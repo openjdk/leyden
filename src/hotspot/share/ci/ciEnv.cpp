@@ -23,6 +23,8 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/archiveBuilder.hpp"
+#include "cds/cdsConfig.hpp"
 #include "ci/ciConstant.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciField.hpp"
@@ -1815,6 +1817,13 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
     return InstanceKlass::ClassState::fully_initialized;
   } else if (MetaspaceObj::is_shared(ik)) {
     guarantee(ik->is_loaded(), ""); // FIXME: assumes pre-loading by CDS; ik->is_linked() requires pre-linking
+    log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+    return ik->init_state(); // not yet initialized
+  } else if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active()) {
+    if (!ArchiveBuilder::current()->has_been_archived((address)ik)) {
+      fatal("New workflow: should not compile code for unarchived class: %s", ik->external_name());
+    }
+    guarantee(ik->is_loaded(), "");
     log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
     return ik->init_state(); // not yet initialized
   } else {

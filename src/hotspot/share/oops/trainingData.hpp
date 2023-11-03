@@ -240,8 +240,12 @@ private:
   static Array<MethodTrainingData*>* _recompilation_schedule;
   static Array<MethodTrainingData*>* _recompilation_schedule_for_dumping;
   static volatile bool* _recompilation_status;
+  static void prepare_recompilation_schedule(TRAPS);
 
   static Options* options() { return &_options; }
+
+  class Transfer;
+
 public:
   // Returns the key under which this TD is installed, or else
   // Key::EMPTY if it is not installed.
@@ -326,6 +330,13 @@ public:
         return _deps_dyn->append_if_missing(dep);
       }
     }
+    void append(E dep) {
+      //assert(_deps == nullptr, "must be growable");
+      if (_deps_dyn == nullptr) {
+        _deps_dyn = new GrowableArrayCHeap<E, mtCompiler>(10);
+      }
+      _deps_dyn->append(dep);
+    }
     bool contains(E dep) {
       for (int i = 0; i < length(); i++) {
         if (dep == at(i)) {
@@ -353,7 +364,6 @@ public:
   static void restore_all_unshareable_info(TRAPS);
 #endif
   static void init_dumptime_table(TRAPS);
-  static void prepare_recompilation_schedule(TRAPS);
   static void iterate_roots(MetaspaceClosure* it);
   static void dump_training_data();
   static void cleanup_training_data();
@@ -630,6 +640,108 @@ class CompileTrainingData : public TrainingData {
   DepList<KlassTrainingData*> _init_deps;
   volatile int _init_deps_left;
 
+public:
+  class ciRecords {
+    template <typename... Ts> class Arguments {
+    public:
+      bool operator==(const Arguments<>&) const { return true; }
+      void metaspace_pointers_do(MetaspaceClosure *iter) { }
+    };
+    template <typename T, typename... Ts> class Arguments<T, Ts...> {
+    private:
+      T _first;
+      Arguments<Ts...> _remaining;
+
+    public:
+      constexpr Arguments(const T& first, const Ts&... remaining) noexcept
+        : _first(first), _remaining(remaining...) {}
+      constexpr Arguments() noexcept : _first(), _remaining() {}
+      bool operator==(const Arguments<T, Ts...>& that) const {
+        return _first == that._first && _remaining == that._remaining;
+      }
+      template<typename U = T, std::enable_if_t<std::is_pointer<U>::value && std::is_base_of<MetaspaceObj, typename std::remove_pointer<U>::type>::value, int> = 0>
+      void metaspace_pointers_do(MetaspaceClosure *iter) {
+        iter->push(&_first);
+        _remaining.metaspace_pointers_do(iter);
+      }
+      template<typename U = T, std::enable_if_t<!(std::is_pointer<U>::value && std::is_base_of<MetaspaceObj, typename std::remove_pointer<U>::type>::value), int> = 0>
+      void metaspace_pointers_do(MetaspaceClosure *iter) {
+        _remaining.metaspace_pointers_do(iter);
+      }
+    };
+
+    template <typename ReturnType, typename... Args> class ciMemoizedFunction : public StackObj {
+    public:
+      class OptionalReturnType {
+        bool _valid;
+        ReturnType _result;
+      public:
+        OptionalReturnType(bool valid, const ReturnType& result) : _valid(valid), _result(result) {}
+        bool is_valid() const { return _valid; }
+        ReturnType result() const { return _result; }
+      };
+    private:
+      typedef Arguments<Args...> ArgumentsType;
+      class Record : public MetaspaceObj {
+        ReturnType    _result;
+        ArgumentsType _arguments;
+      public:
+        Record(const ReturnType& result, const ArgumentsType& arguments) : _result(result), _arguments(arguments) {}
+        Record() { }
+        ReturnType result() const { return _result; }
+        ArgumentsType arguments() const { return _arguments; }
+        bool operator==(const Record& that) { return _arguments == that._arguments; }
+        void metaspace_pointers_do(MetaspaceClosure *iter) { _arguments.metaspace_pointers_do(iter); }
+      };
+      DepList<Record> _data;
+    public:
+      OptionalReturnType find(const Args&... args) {
+        ArgumentsType a(args...);
+        for (int i = 0; i < _data.length(); i++) {
+          if (_data.at(i).arguments() == a) {
+            return OptionalReturnType(true, _data.at(i).result());
+          }
+        }
+        return OptionalReturnType(false, ReturnType());
+      }
+      bool append_if_missing(const ReturnType& result, const Args&... args) {
+        return _data.append_if_missing(Record(result, ArgumentsType(args...)));
+      }
+#if INCLUDE_CDS
+      void remove_unshareable_info() { _data.remove_unshareable_info(); }
+      void restore_unshareable_info(TRAPS) { _data.restore_unshareable_info(THREAD); }
+#endif
+      void prepare(ClassLoaderData* loader_data) {
+        _data.prepare(loader_data);
+      }
+      void metaspace_pointers_do(MetaspaceClosure *iter) {
+        _data.metaspace_pointers_do(iter);
+      }
+    };
+
+
+public:
+    typedef ciMemoizedFunction<int, MethodTrainingData*> ciMethod__inline_instructions_size_type;
+    ciMethod__inline_instructions_size_type ciMethod__inline_instructions_size;
+#if INCLUDE_CDS
+    void remove_unshareable_info() {
+      ciMethod__inline_instructions_size.remove_unshareable_info();
+    }
+    void restore_unshareable_info(TRAPS) {
+      ciMethod__inline_instructions_size.restore_unshareable_info(THREAD);
+    }
+#endif
+    void prepare(ClassLoaderData* loader_data) {
+      ciMethod__inline_instructions_size.prepare(loader_data);
+    }
+    void metaspace_pointers_do(MetaspaceClosure *iter) {
+      ciMethod__inline_instructions_size.metaspace_pointers_do(iter);
+    }
+  };
+
+private:
+  ciRecords _ci_records;
+
   CompileTrainingData() : _level(-1), _compile_id (-1) {
     assert(DumpSharedSpaces || UseSharedSpaces, "only for CDS");
   }
@@ -650,6 +762,7 @@ class CompileTrainingData : public TrainingData {
   }
 
 public:
+  ciRecords& ci_records() { return _ci_records; }
   // Record a use of a method in a given task.  If non-null, the given
   // method is not the top-level method of the task, but instead it is
   // inlined into the top-level method.

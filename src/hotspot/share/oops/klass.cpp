@@ -49,7 +49,6 @@
 #include "oops/oop.inline.hpp"
 #include "oops/oopHandle.inline.hpp"
 #include "prims/jvmtiExport.hpp"
-#include "runtime/arguments.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/handles.inline.hpp"
 #include "utilities/macros.hpp"
@@ -86,7 +85,7 @@ void Klass::set_name(Symbol* n) {
   _name = n;
   if (_name != nullptr) _name->increment_refcount();
 
-  if (CDSConfig::is_using_dumptime_tables() && is_instance_klass()) {
+  if (CDSConfig::is_dumping_archive() && is_instance_klass()) {
     SystemDictionaryShared::init_dumptime_info(InstanceKlass::cast(this));
   }
 }
@@ -520,7 +519,7 @@ void Klass::metaspace_pointers_do(MetaspaceClosure* it) {
     it->push(&_primary_supers[i]);
   }
   it->push(&_super);
-  if (!Arguments::is_dumping_archive()) {
+  if (!CDSConfig::is_dumping_archive()) {
     // If dumping archive, these may point to excluded classes. There's no need
     // to follow these pointers anyway, as they will be set to null in
     // remove_unshareable_info().
@@ -537,10 +536,8 @@ void Klass::metaspace_pointers_do(MetaspaceClosure* it) {
 
 #if INCLUDE_CDS
 void Klass::remove_unshareable_info() {
-#if 0
-  assert (Arguments::is_dumping_archive(),
+  assert(CDSConfig::is_dumping_archive(),
           "only called during CDS dump time");
-#endif
   JFR_ONLY(REMOVE_ID(this);)
   if (log_is_enabled(Trace, cds, unshareable)) {
     ResourceMark rm;
@@ -562,7 +559,7 @@ void Klass::remove_unshareable_info() {
 }
 
 void Klass::remove_java_mirror() {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   if (log_is_enabled(Trace, cds, unshareable)) {
     ResourceMark rm;
     log_trace(cds, unshareable)("remove java_mirror: %s", external_name());
@@ -652,7 +649,7 @@ void Klass::clear_archived_mirror_index() {
 
 // No GC barrier
 void Klass::set_archived_java_mirror(int mirror_index) {
-  assert(CDSConfig::is_dumping_heap(), "called only during dumptime");
+  assert(CDSConfig::is_dumping_heap(), "sanity");
   _archived_mirror_index = mirror_index;
 }
 #endif // INCLUDE_CDS_JAVA_HEAP

@@ -106,8 +106,9 @@ class ClassPathZipEntry: public ClassPathEntry {
   bool is_jar_file() const { return true;  }
   bool from_class_path_attr() const { return _from_class_path_attr; }
   const char* name() const { return _zip_name; }
-  ClassPathZipEntry(jzfile* zip, const char* zip_name, bool is_boot_append, bool from_class_path_attr);
+  ClassPathZipEntry(jzfile* zip, const char* zip_name, bool from_class_path_attr);
   virtual ~ClassPathZipEntry();
+  bool has_entry(JavaThread* current, const char* name);
   u1* open_entry(JavaThread* current, const char* name, jint* filesize, bool nul_terminate);
   ClassFileStream* open_stream(JavaThread* current, const char* name);
 };
@@ -169,7 +170,6 @@ class ClassLoader: AllStatic {
   static PerfCounter* _perf_classes_linked;
   static PerfCounter* _perf_class_link_time;
   static PerfCounter* _perf_class_link_selftime;
-  static PerfCounter* _perf_sys_class_lookup_time;
   static PerfCounter* _perf_shared_classload_time;
   static PerfCounter* _perf_sys_classload_time;
   static PerfCounter* _perf_app_classload_time;
@@ -309,7 +309,6 @@ class ClassLoader: AllStatic {
   static PerfCounter* perf_classes_linked()           { return _perf_classes_linked; }
   static PerfCounter* perf_class_link_time()          { return _perf_class_link_time; }
   static PerfCounter* perf_class_link_selftime()      { return _perf_class_link_selftime; }
-  static PerfCounter* perf_sys_class_lookup_time()    { return _perf_sys_class_lookup_time; }
   static PerfCounter* perf_shared_classload_time()    { return _perf_shared_classload_time; }
   static PerfCounter* perf_sys_classload_time()       { return _perf_sys_classload_time; }
   static PerfCounter* perf_app_classload_time()       { return _perf_app_classload_time; }
@@ -437,7 +436,7 @@ class ClassLoader: AllStatic {
   static void add_to_boot_append_entries(ClassPathEntry* new_entry);
 
   // creates a class path zip entry (returns null if JAR file cannot be opened)
-  static ClassPathZipEntry* create_class_path_zip_entry(const char *apath, bool is_boot_append);
+  static ClassPathZipEntry* create_class_path_zip_entry(const char *apath);
 
   static bool string_ends_with(const char* str, const char* str_to_find);
 

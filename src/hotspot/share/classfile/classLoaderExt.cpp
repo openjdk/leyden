@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
@@ -70,7 +71,7 @@ void ClassLoaderExt::append_boot_classpath(ClassPathEntry* new_entry) {
 }
 
 void ClassLoaderExt::setup_app_search_path(JavaThread* current) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   int start_index = ClassLoader::num_boot_classpath_entries();
   _app_class_paths_start_index = checked_cast<jshort>(start_index);
   char* app_class_path = os::strdup_check_oom(Arguments::get_appclasspath(), mtClass);
@@ -121,7 +122,7 @@ void ClassLoaderExt::process_module_table(JavaThread* current, ModuleEntryTable*
 }
 
 void ClassLoaderExt::setup_module_paths(JavaThread* current) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   int start_index = ClassLoader::num_boot_classpath_entries() +
                     ClassLoader::num_app_classpath_entries();
   _app_module_paths_start_index = checked_cast<jshort>(start_index);
@@ -257,7 +258,7 @@ void ClassLoaderExt::setup_search_paths(JavaThread* current) {
 }
 
 void ClassLoaderExt::record_result(const s2 classpath_index, InstanceKlass* result, bool redefined) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
 
   // We need to remember where the class comes from during dumping.
   oop loader = result->class_loader();
@@ -291,4 +292,66 @@ void ClassLoaderExt::record_result(const s2 classpath_index, InstanceKlass* resu
     HeapShared::disable_writing();
   }
 #endif // INCLUDE_CDS_JAVA_HEAP
+  if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_dynamic_archive()) {
+    check_invalid_classpath_index(classpath_index, result);
+  }
+}
+
+ClassPathEntry* ClassLoaderExt::get_class_path_entry(s2 classpath_index) {
+  if (classpath_index < 0) {
+    return nullptr;
+  }
+
+  if (classpath_index == 0) {
+    assert(has_jrt_entry(), "CDS requires modules image");
+    return get_jrt_entry();
+  }
+
+  // Iterate over -Xbootclasspath, if any;
+  int i = 0;
+  for (ClassPathEntry* cpe = first_append_entry(); cpe != nullptr; cpe = cpe->next()) {
+    i++;
+    if (i == classpath_index) {
+      return cpe;
+    }
+  }
+
+  // Iterate over -cp, if any
+  for (ClassPathEntry* cpe = app_classpath_entries(); cpe != nullptr; cpe = cpe->next()) {
+    i++;
+    if (i == classpath_index) {
+      return cpe;
+    }
+  }
+
+  // Iterate over --module-path, if any
+  for (ClassPathEntry* cpe = module_path_entries(); cpe != nullptr; cpe = cpe->next()) {
+    i++;
+    if (i == classpath_index) {
+      return cpe;
+    }
+  }
+
+  return nullptr;
+}
+
+// Spring can use reflection+setAccessible to call into ClassLoader::defineClass() and dynamically
+// define a class using the same ProtectionDomain as another class which was loaded from a
+// JAR file in the classpath.
+// We cannot archive such dynamically defined classes.
+void ClassLoaderExt::check_invalid_classpath_index(s2 classpath_index, InstanceKlass* ik) {
+  ClassPathEntry *cpe = get_class_path_entry(classpath_index);
+  if (cpe != nullptr && cpe->is_jar_file()) {
+    ClassPathZipEntry *zip = (ClassPathZipEntry*)cpe;
+    JavaThread* current = JavaThread::current();
+    ResourceMark rm(current);
+    const char* const class_name = ik->name()->as_C_string();
+    const char* const file_name = file_name_for_class_name(class_name,
+                                                           ik->name()->utf8_length());
+    if (!zip->has_entry(current, file_name)) {
+      log_warning(cds)("class %s cannot be archived because it was not define from %s as claimed",
+                       class_name, zip->name());
+      ik->set_shared_classpath_index(-1);
+    }
+  }
 }

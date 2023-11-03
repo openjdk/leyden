@@ -587,11 +587,9 @@ class SharedRuntime: AllStatic {
 
   static void print_call_statistics_on(outputStream* st);
   static void print_ic_miss_histogram_on(outputStream* st);
-  static void print_counters_on(outputStream* st);
-
-  static void print_statistics();
-
 #endif // PRODUCT
+
+  static void print_statistics() PRODUCT_RETURN;
 };
 
 

@@ -25,18 +25,14 @@
 #include "precompiled.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/classPrelinker.hpp"
-#include "cds/heapShared.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/systemDictionary.hpp"
-#include "classfile/stringTable.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "gc/shared/collectedHeap.hpp"
-#include "logging/log.hpp"
-#include "logging/logStream.hpp"
 #include "memory/metaspaceClosure.hpp"
 #include "memory/universe.hpp"
 #include "oops/instanceKlass.hpp"
@@ -120,48 +116,6 @@ void vmClasses::resolve_until(vmClassID limit_id, vmClassID &start_id, TRAPS) {
   start_id = limit_id;
 }
 
-// TEMP: examples for using the HeapShared::get_archived_object_permanent_index() and HeapShared::get_archived_object()
-// APIs for the AOT compiler.
-void test_cds_heap_access_api(TRAPS) {
-#ifdef INCLUDE_CDS_JAVA_HEAP
-  const char* tests[] = {
-    "",
-    "null",
-    "NARROW",
-    "not in cds",
-    nullptr,
-  };
-
-  LogStreamHandle(Info, cds, jit) log;
-
-  for (int i = 0; tests[i] != nullptr; i++) {
-    oop s = StringTable::intern(tests[i], CHECK);
-    log.print_cr("Test %d ======================================== \"%s\"", i, tests[i]);
-    s->print_on(&log);
-    log.cr();
-
-    int n = HeapShared::get_archived_object_permanent_index(s); // call this when -XX:+StoreCachedCode
-    if (n < 0) {
-      log.print_cr("*** This object is not in CDS archive");
-    } else {
-      log.print_cr("HeapShared::get_archived_object_permanent_index(s) = %d", n);
-      oop obj = HeapShared::get_archived_object(n); // call this when -XX:+LoadCachedCode
-      if (obj == s) {
-        log.print_cr("HeapShared::get_archived_object(%d) returns the same object, as expected", n);
-      } else {
-        log.print_cr("Error!!! HeapShared::get_archived_object(%d) returns an unexpected object", n);
-        if (obj == nullptr) {
-          log.print_cr("--> null");
-        } else {
-          obj->print_on(&log);
-          log.cr();
-        }
-      }
-    }
-  }
-#endif // INCLUDE_CDS_JAVA_HEAP
-}
-
 void vmClasses::resolve_all(TRAPS) {
   assert(!Object_klass_loaded(), "well-known classes should only be initialized once");
 
@@ -195,9 +149,6 @@ void vmClasses::resolve_all(TRAPS) {
     assert(Object_klass()->is_shared(), "must be");
     Object_klass()->constants()->restore_unshareable_info(CHECK);
     resolve_through(VM_CLASS_ID(Class_klass), scan, CHECK);
-    if (log_is_enabled(Info, cds, jit)) {
-      test_cds_heap_access_api(CHECK);
-    }
   } else
 #endif
   {

@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "classfile/vmClasses.hpp"
 #include "code/SCCache.hpp"
+#include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "jfr/support/jfrIntrinsics.hpp"
@@ -55,6 +56,9 @@ const char* C2Compiler::retry_no_iterative_escape_analysis() {
 }
 const char* C2Compiler::retry_no_reduce_allocation_merges() {
   return "retry without reducing allocation merges";
+}
+const char* C2Compiler::retry_no_superword() {
+  return "retry without SuperWord";
 }
 
 const char* C2Compiler::retry_no_clinit_barriers() {
@@ -114,6 +118,7 @@ void C2Compiler::initialize() {
 
 void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, bool install_code, DirectiveSet* directive) {
   assert(is_initialized(), "Compiler thread must be initialized");
+  CompilationMemoryStatisticMark cmsm(directive);
   CompileTask* task = env->task();
   if (install_code && task->is_scc()) {
     bool success = SCCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
@@ -131,19 +136,30 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
     }
     task->clear_scc();
   }
+
   bool subsume_loads = SubsumeLoads;
   bool do_escape_analysis = DoEscapeAnalysis;
   bool do_iterative_escape_analysis = DoEscapeAnalysis;
   bool do_reduce_allocation_merges = ReduceAllocationMerges && EliminateAllocations;
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
+  bool do_superword = UseSuperWord;
   bool for_preload = SCCache::gen_preload_code(target, entry_bci);
   if (task->is_precompiled()) {
     assert(for_preload, "required");
   }
   while (!env->failing()) {
+    ResourceMark rm;
     // Attempt to compile while subsuming loads into machine instructions.
-    Options options(subsume_loads, do_escape_analysis, do_iterative_escape_analysis, do_reduce_allocation_merges, eliminate_boxing, do_locks_coarsening, for_preload, install_code);
+    Options options(subsume_loads,
+                    do_escape_analysis,
+                    do_iterative_escape_analysis,
+                    do_reduce_allocation_merges,
+                    eliminate_boxing,
+                    do_locks_coarsening,
+                    do_superword,
+                    for_preload,
+                    install_code);
     Compile C(env, target, entry_bci, options, directive);
 
     // Check result and retry if appropriate.
@@ -181,6 +197,12 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
       if (C.failure_reason_is(retry_no_clinit_barriers())) {
         assert(for_preload, "must make progress");
         for_preload = false;
+        continue;
+      }
+      if (C.failure_reason_is(retry_no_superword())) {
+        assert(do_superword, "must make progress");
+        do_superword = false;
+        env->report_failure(C.failure_reason());
         continue;  // retry
       }
       if (C.has_boxed_value()) {
@@ -630,6 +652,8 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_min_strict:
   case vmIntrinsics::_max_strict:
   case vmIntrinsics::_arraycopy:
+  case vmIntrinsics::_arraySort:
+  case vmIntrinsics::_arrayPartition:
   case vmIntrinsics::_indexOfL:
   case vmIntrinsics::_indexOfU:
   case vmIntrinsics::_indexOfUL:

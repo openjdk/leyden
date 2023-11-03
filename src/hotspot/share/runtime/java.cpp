@@ -37,6 +37,7 @@
 #include "classfile/systemDictionary.hpp"
 #include "code/codeCache.hpp"
 #include "code/SCCache.hpp"
+#include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerOracle.hpp"
 #include "gc/shared/collectedHeap.hpp"
@@ -254,6 +255,13 @@ void print_method_invocation_histogram() {
   SharedRuntime::print_call_statistics_on(tty);
 }
 
+#else
+
+void print_method_invocation_histogram() {}
+
+#endif // PRODUCT
+
+
 // General statistics printing (profiling ...)
 void print_statistics() {
   ttyLocker ttyl;
@@ -372,69 +380,14 @@ void print_statistics() {
     MetaspaceUtils::print_basic_report(tty, 0);
   }
 
-  ThreadsSMRSupport::log_statistics();
-
-  log_vm_init_stats();
-}
-
-#else // PRODUCT MODE STATISTICS
-
-void print_statistics() {
-  if (ReplayTraining && PrintTrainingInfo) {
-    TrainingData::print_archived_training_data_on(tty);
-  }
-
-  if (PrintMethodData) {
-    print_method_profiling_data();
-  }
-
-  if (CITime) {
-    CompileBroker::print_times();
-  }
-
-#ifdef COMPILER2_OR_JVMCI
-  if ((LogVMOutput || LogCompilation) && UseCompiler) {
-    // Only print the statistics to the log file
-    FlagSetting fs(DisplayVMOutput, false);
-    Deoptimization::print_statistics();
-  }
-#endif /* COMPILER2 || INCLUDE_JVMCI */
-
-  if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
-    BytecodeCounter::print();
-  }
-
-  if (PrintCodeCache) {
-    MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    CodeCache::print();
-  }
-
-  // CodeHeap State Analytics.
-  if (PrintCodeHeapAnalytics) {
-    CompileBroker::print_heapinfo(nullptr, "all", 4096); // details
-  }
-
-#ifdef COMPILER2
-  if (PrintPreciseRTMLockingStatistics) {
-    OptoRuntime::print_named_counters();
-  }
-#endif
-
-  // Native memory tracking data
-  if (PrintNMTStatistics) {
-    MemTracker::final_report(tty);
-  }
-
-  if (PrintMetaspaceStatisticsAtExit) {
-    MetaspaceUtils::print_basic_report(tty, 0);
+  if (CompilerOracle::should_print_final_memstat_report()) {
+    CompilationMemoryStatistic::print_all_by_size(tty, false, 0);
   }
 
   ThreadsSMRSupport::log_statistics();
 
   log_vm_init_stats();
 }
-
-#endif
 
 // Note: before_exit() can be executed only once, if more than one threads
 //       are trying to shutdown the VM at the same time, only one thread

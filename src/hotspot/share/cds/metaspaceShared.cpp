@@ -27,6 +27,7 @@
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/classListWriter.hpp"
@@ -511,6 +512,7 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
 
   SystemDictionaryShared::write_to_archive();
   ClassPrelinker::record_initiated_klasses(true);
+  ClassPrelinker::record_unregistered_klasses();
   TrainingData::dump_training_data();
   MetaspaceShared::write_method_handle_intrinsics();
 
@@ -554,7 +556,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   {
     ArchiveBuilder::OtherROAllocMark mark;
     ClassPrelinker::record_preloaded_klasses(true);
-    if (CacheDataStore != nullptr && DumpSharedSpaces) {
+    if (CDSConfig::is_dumping_preimage_static_archive()) {
       ClassPrelinker::record_resolved_indys();
     }
   }
@@ -583,7 +585,7 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   // Write the archive file
   const char* static_archive;
-  if (CDSPreimage != nullptr) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
     static_archive = CacheDataStore;
     assert(FileMapInfo::current_info() != nullptr, "sanity");
     delete FileMapInfo::current_info();
@@ -709,11 +711,13 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
     }
   }
 
-  ClassPrelinker::preresolve_indys_from_preimage(CHECK);
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    ClassPrelinker::preresolve_indys_from_preimage(CHECK);
+  }
 }
 
 void MetaspaceShared::prepare_for_dumping() {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   Arguments::check_unsupported_dumping_properties();
 
   ClassLoader::initialize_shared_path(JavaThread::current());
@@ -844,8 +848,6 @@ static void tmp_test_aot(ArchiveBuilder* builder, TRAPS) {
   }
 }
 
-void test_cds_heap_access_api(TRAPS);
-
 // Preload classes from a list, populate the shared spaces and dump to a
 // file.
 void MetaspaceShared::preload_and_dump() {
@@ -853,7 +855,7 @@ void MetaspaceShared::preload_and_dump() {
   ResourceMark rm(THREAD);
   HandleMark hm(THREAD);
 
-  if (CDSConfig::is_dumping_final_static_archive() && UseNewCode) {
+  if (CDSConfig::is_dumping_final_static_archive() && PrintTrainingInfo) {
     tty->print_cr("==================== archived_training_data ** before dumping ====================");
     TrainingData::print_archived_training_data_on(tty);
   }
@@ -872,15 +874,16 @@ void MetaspaceShared::preload_and_dump() {
     }
   }
 
+  if (log_is_enabled(Info, cds, jit)) {
+    CDSAccess::test_heap_access_api();
+  }
+
   if (CDSConfig::is_dumping_final_static_archive() && StoreCachedCode && CachedCodeFile != nullptr) {
     // We have just created the final image. Let's run the AOT compiler
     CDSConfig::enable_dumping_cached_code();
-    if (UseNewCode) {
+    if (PrintTrainingInfo) {
       tty->print_cr("==================== archived_training_data ** after dumping ====================");
       TrainingData::print_archived_training_data_on(tty);
-    }
-    if (log_is_enabled(Info, cds, jit)) {
-      test_cds_heap_access_api(THREAD);
     }
     int count = MAX2(1, (int)(NewCodeParameter & 0x7fffffff));
     for (int i = 0; i < count; i++) {
@@ -993,23 +996,23 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   HeapShared::init_for_dumping(CHECK);
 
 #if INCLUDE_CDS_JAVA_HEAP
- if (HeapShared::can_write()) {
-  ArchiveHeapWriter::init();
-  if (CDSConfig::is_dumping_full_module_graph()) {
-    HeapShared::reset_archived_object_states(CHECK);
-  }
+  if (CDSConfig::is_dumping_heap()) {
+    ArchiveHeapWriter::init();
+    if (CDSConfig::is_dumping_full_module_graph()) {
+      HeapShared::reset_archived_object_states(CHECK);
+    }
 
-  if (ArchiveInvokeDynamic) {
-    // Do this just before going into the safepoint.
-    // We also assume no other Java threads are running
-    // This makes sure that the MethodType and MethodTypeForm objects are clean.
-    JavaValue result(T_VOID);
-    JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
-                           vmSymbols::dumpSharedArchive(),
-                           vmSymbols::void_method_signature(),
-                           CHECK);
+    if (ArchiveInvokeDynamic) {
+      // Do this just before going into the safepoint.
+      // We also assume no other Java threads are running
+      // This makes sure that the MethodType and MethodTypeForm objects are clean.
+      JavaValue result(T_VOID);
+      JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
+                             vmSymbols::dumpSharedArchive(),
+                             vmSymbols::void_method_signature(),
+                             CHECK);
+    }
   }
- }
 #endif
 
   // Rewrite and link classes
@@ -1027,13 +1030,12 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   }
 
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
-  TrainingData::prepare_recompilation_schedule(CHECK);
 
   _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
   SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
 
 #if INCLUDE_CDS_JAVA_HEAP
-  if (HeapShared::can_write()) {
+  if (CDSConfig::is_dumping_heap()) {
     StringTable::allocate_shared_strings_array(CHECK);
   }
 #endif
@@ -1045,7 +1047,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     RecordTraining = false;
   }
 
-  if (CacheDataStore != nullptr && CDSPreimage == nullptr) {
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
     ResourceMark rm;
     stringStream st;
     st.print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
@@ -1072,6 +1074,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       int status = os::fork_and_exec(cmd);
       if (status != 0) {
         log_error(cds)("Child process finished; status = %d", status);
+        log_error(cds)("To reproduce the error");
+        ResourceMark rm;
+        LogStream ls(Log(cds)::error());
+        ls.print("    "); ls.print_raw_cr(cmd);
+        vm_direct_exit(status);
       } else {
         log_info(cds)("Child process finished; status = %d", status);
         status = remove(SharedArchiveFile);
@@ -1089,9 +1096,9 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 bool MetaspaceShared::try_link_class(JavaThread* current, InstanceKlass* ik) {
   ExceptionMark em(current);
   JavaThread* THREAD = current; // For exception macros.
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
 
-  if (ik->is_shared() && CDSPreimage == nullptr) {
+  if (ik->is_shared() && !CDSConfig::is_dumping_final_static_archive()) {
     assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
     return false;
   }

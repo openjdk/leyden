@@ -164,7 +164,7 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     )
   }
 
-  if (CDSPreimage != nullptr) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
     // TODO: copy the verification and loader constraints from preimage to final image
     // TODO: load archived classes for custom loaders as well.
     log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
@@ -1201,7 +1201,7 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
     if (path_index >= 0) { // FIXME ... for lambda form classes
       ik->set_classpath_index(path_index);
 
-      if (CDSPreimage != nullptr) {
+      if (CDSConfig::is_dumping_final_static_archive()) {
         if (path_index > ClassLoaderExt::max_used_path_index()) {
           ClassLoaderExt::set_max_used_path_index(path_index);
         }
@@ -1212,7 +1212,7 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
   // notify a class loaded from shared object
   ClassLoadingService::notify_class_loaded(ik, true /* shared class */);
 
-  if (CDSPreimage != nullptr) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
     SystemDictionaryShared::init_dumptime_info(ik);
     if (ik->constants()->cache()) {
       EXCEPTION_MARK;
@@ -1831,7 +1831,7 @@ bool SystemDictionary::add_loader_constraint(Symbol* class_name,
     bool result = LoaderConstraintTable::add_entry(constraint_name, klass1, loader_data1,
                                                    klass2, loader_data2);
 #if INCLUDE_CDS
-    if (Arguments::is_dumping_archive() && klass_being_linked != nullptr &&
+    if (CDSConfig::is_dumping_archive() && klass_being_linked != nullptr &&
         !klass_being_linked->is_shared()) {
          SystemDictionaryShared::record_linking_constraint(constraint_name,
                                      InstanceKlass::cast(klass_being_linked),

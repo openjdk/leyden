@@ -884,7 +884,7 @@ jint universe_init() {
     // system dictionary, symbol table, etc.)
     MetaspaceShared::initialize_shared_spaces();
   }
-  if (Arguments::is_dumping_archive()) {
+  if (CDSConfig::is_dumping_archive()) {
     MetaspaceShared::prepare_for_dumping();
   }
 #endif
@@ -1090,10 +1090,6 @@ bool universe_post_init() {
     Universe::_class_cast_exception_instance = OopHandle(Universe::vm_global(), instance);
   }
 //#endif // COMPILER1_OR_COMPILER2_PRESENT
-
-  if (CDSConfig::is_dumping_static_archive()) {
-    HeapShared::init_scratch_exceptions(CHECK_false);
-  }
 
   // Virtual Machine Error for when we get into a situation we can't resolve
   Klass* k = vmClasses::VirtualMachineError_klass();

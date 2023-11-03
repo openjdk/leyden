@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/filemap.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.inline.hpp"
@@ -91,12 +92,14 @@ typedef void * * (*ZipOpen_t)(const char *name, char **pmsg);
 typedef void     (*ZipClose_t)(jzfile *zip);
 typedef jzentry* (*FindEntry_t)(jzfile *zip, const char *name, jint *sizeP, jint *nameLen);
 typedef jboolean (*ReadEntry_t)(jzfile *zip, jzentry *entry, unsigned char *buf, char *namebuf);
+typedef void     (*FreeEntry_t)(jzfile *zip, jzentry *entry);
 typedef jint     (*Crc32_t)(jint crc, const jbyte *buf, jint len);
 
 static ZipOpen_t         ZipOpen            = nullptr;
 static ZipClose_t        ZipClose           = nullptr;
 static FindEntry_t       FindEntry          = nullptr;
 static ReadEntry_t       ReadEntry          = nullptr;
+static FreeEntry_t       FreeEntry          = nullptr;
 static Crc32_t           Crc32              = nullptr;
 int    ClassLoader::_libzip_loaded          = 0;
 void*  ClassLoader::_zip_handle             = nullptr;
@@ -123,7 +126,6 @@ PerfCounter*    ClassLoader::_perf_class_verify_selftime = nullptr;
 PerfCounter*    ClassLoader::_perf_classes_linked = nullptr;
 PerfCounter*    ClassLoader::_perf_class_link_time = nullptr;
 PerfCounter*    ClassLoader::_perf_class_link_selftime = nullptr;
-PerfCounter*    ClassLoader::_perf_sys_class_lookup_time = nullptr;
 PerfCounter*    ClassLoader::_perf_shared_classload_time = nullptr;
 PerfCounter*    ClassLoader::_perf_sys_classload_time = nullptr;
 PerfCounter*    ClassLoader::_perf_app_classload_time = nullptr;
@@ -319,7 +321,7 @@ ClassFileStream* ClassPathDirEntry::open_stream(JavaThread* current, const char*
 }
 
 ClassPathZipEntry::ClassPathZipEntry(jzfile* zip, const char* zip_name,
-                                     bool is_boot_append, bool from_class_path_attr) : ClassPathEntry() {
+                                     bool from_class_path_attr) : ClassPathEntry() {
   _zip = zip;
   _zip_name = copy_path(zip_name);
   _from_class_path_attr = from_class_path_attr;
@@ -330,13 +332,27 @@ ClassPathZipEntry::~ClassPathZipEntry() {
   FREE_C_HEAP_ARRAY(char, _zip_name);
 }
 
+bool ClassPathZipEntry::has_entry(JavaThread* current, const char* name) {
+  ThreadToNativeFromVM ttn(current);
+  // check whether zip archive contains name
+  jint name_len;
+  jint filesize;
+  jzentry* entry = (*FindEntry)(_zip, name, &filesize, &name_len);
+  if (entry == nullptr) {
+    return false;
+  } else {
+    (*FreeEntry)(_zip, entry);
+    return true;
+  }
+}
+
 u1* ClassPathZipEntry::open_entry(JavaThread* current, const char* name, jint* filesize, bool nul_terminate) {
   // enable call to C land
   ThreadToNativeFromVM ttn(current);
   // check whether zip archive contains name
   jint name_len;
-  jzentry* entry = (*FindEntry)(_zip, name, filesize, &name_len);
-  if (entry == nullptr) return nullptr;
+  jzentry* zentry = (*FindEntry)(_zip, name, filesize, &name_len);
+  if (zentry == nullptr) return nullptr;
   u1* buffer;
   char name_buf[128];
   char* filename;
@@ -354,8 +370,10 @@ u1* ClassPathZipEntry::open_entry(JavaThread* current, const char* name, jint* f
     }
     size++;
   }
+
+  // ZIP_ReadEntry also frees zentry
   buffer = NEW_RESOURCE_ARRAY(u1, size);
-  if (!(*ReadEntry)(_zip, entry, buffer, filename)) return nullptr;
+  if (!(*ReadEntry)(_zip, zentry, buffer, filename)) return nullptr;
 
   // return result
   if (nul_terminate) {
@@ -481,7 +499,7 @@ bool ClassPathImageEntry::is_modules_image() const {
 
 #if INCLUDE_CDS
 void ClassLoader::exit_with_path_failure(const char* error, const char* message) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   tty->print_cr("Hint: enable -Xlog:class+path=info to diagnose the failure");
   vm_exit_during_initialization(error, message);
 }
@@ -551,7 +569,7 @@ void ClassLoader::setup_bootstrap_search_path(JavaThread* current) {
 
 #if INCLUDE_CDS
 void ClassLoader::setup_app_search_path(JavaThread* current, const char *class_path) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
 
   ResourceMark rm(current);
   ClasspathStream cp_stream(class_path);
@@ -566,7 +584,7 @@ void ClassLoader::setup_app_search_path(JavaThread* current, const char *class_p
 void ClassLoader::add_to_module_path_entries(const char* path,
                                              ClassPathEntry* entry) {
   assert(entry != nullptr, "ClassPathEntry should not be nullptr");
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
 
   // The entry does not exist, add to the list
   if (_module_path_entries == nullptr) {
@@ -580,7 +598,7 @@ void ClassLoader::add_to_module_path_entries(const char* path,
 
 // Add a module path to the _module_path_entries list.
 void ClassLoader::setup_module_search_path(JavaThread* current, const char* path) {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   struct stat st;
   if (os::stat(path, &st) != 0) {
     tty->print_cr("os::stat error %d (%s). CDS dump aborted (path was \"%s\").",
@@ -668,7 +686,7 @@ void ClassLoader::setup_bootstrap_search_path_impl(JavaThread* current, const ch
   bool set_base_piece = true;
 
 #if INCLUDE_CDS
-  if (Arguments::is_dumping_archive()) {
+  if (CDSConfig::is_dumping_archive()) {
     if (!Arguments::has_jimage()) {
       vm_exit_during_initialization("CDS is not supported in exploded JDK build", nullptr);
     }
@@ -778,7 +796,7 @@ ClassPathEntry* ClassLoader::create_class_path_entry(JavaThread* current,
     char* error_msg = nullptr;
     jzfile* zip = open_zip_file(canonical_path, &error_msg, current);
     if (zip != nullptr && error_msg == nullptr) {
-      new_entry = new ClassPathZipEntry(zip, path, is_boot_append, from_class_path_attr);
+      new_entry = new ClassPathZipEntry(zip, path, from_class_path_attr);
     } else {
 #if INCLUDE_CDS
       ClassLoaderExt::set_has_non_jar_in_classpath();
@@ -798,7 +816,7 @@ ClassPathEntry* ClassLoader::create_class_path_entry(JavaThread* current,
 
 // Create a class path zip entry for a given path (return null if not found
 // or zip/JAR file cannot be opened)
-ClassPathZipEntry* ClassLoader::create_class_path_zip_entry(const char *path, bool is_boot_append) {
+ClassPathZipEntry* ClassLoader::create_class_path_zip_entry(const char *path) {
   // check for a regular file
   struct stat st;
   if (os::stat(path, &st) == 0) {
@@ -811,7 +829,7 @@ ClassPathZipEntry* ClassLoader::create_class_path_zip_entry(const char *path, bo
         jzfile* zip = open_zip_file(canonical_path, &error_msg, thread);
         if (zip != nullptr && error_msg == nullptr) {
           // create using canonical path
-          return new ClassPathZipEntry(zip, canonical_path, is_boot_append, false);
+          return new ClassPathZipEntry(zip, canonical_path, false);
         }
       }
     }
@@ -994,6 +1012,7 @@ void ClassLoader::load_zip_library() {
   ZipClose = CAST_TO_FN_PTR(ZipClose_t, dll_lookup(_zip_handle, "ZIP_Close", path));
   FindEntry = CAST_TO_FN_PTR(FindEntry_t, dll_lookup(_zip_handle, "ZIP_FindEntry", path));
   ReadEntry = CAST_TO_FN_PTR(ReadEntry_t, dll_lookup(_zip_handle, "ZIP_ReadEntry", path));
+  FreeEntry = CAST_TO_FN_PTR(FreeEntry_t, dll_lookup(_zip_handle, "ZIP_FreeEntry", path));
   Crc32 = CAST_TO_FN_PTR(Crc32_t, dll_lookup(_zip_handle, "ZIP_CRC32", path));
 }
 
@@ -1284,7 +1303,7 @@ char* ClassLoader::skip_uri_protocol(char* source) {
 // by the builtin loaders at dump time.
 void ClassLoader::record_result(JavaThread* current, InstanceKlass* ik,
                                 const ClassFileStream* stream, bool redefined) {
-  // FIXME Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   assert(stream != nullptr, "sanity");
 
   if (ik->is_hidden()) {
@@ -1411,7 +1430,6 @@ void ClassLoader::initialize(TRAPS) {
     NEWPERFEVENTCOUNTER(_perf_classes_linked, SUN_CLS, "linkedClasses");
     NEWPERFEVENTCOUNTER(_perf_classes_verified, SUN_CLS, "verifiedClasses");
 
-    NEWPERFTICKCOUNTER(_perf_sys_class_lookup_time, SUN_CLS, "lookupSysClassTime");
     NEWPERFTICKCOUNTER(_perf_shared_classload_time, SUN_CLS, "sharedClassLoadTime");
     NEWPERFTICKCOUNTER(_perf_sys_classload_time, SUN_CLS, "sysClassLoadTime");
     NEWPERFTICKCOUNTER(_perf_app_classload_time, SUN_CLS, "appClassLoadTime");
@@ -1500,13 +1518,13 @@ bool ClassLoader::is_module_observable(const char* module_name) {
 
 #if INCLUDE_CDS
 void ClassLoader::initialize_shared_path(JavaThread* current) {
-  if (Arguments::is_dumping_archive()) {
+  if (CDSConfig::is_dumping_archive()) {
     ClassLoaderExt::setup_search_paths(current);
   }
 }
 
 void ClassLoader::initialize_module_path(TRAPS) {
-  if (Arguments::is_dumping_archive()) {
+  if (CDSConfig::is_dumping_archive()) {
     ClassLoaderExt::setup_module_paths(THREAD);
     FileMapInfo::allocate_shared_path_table(CHECK);
   }
@@ -1515,7 +1533,7 @@ void ClassLoader::initialize_module_path(TRAPS) {
 // Helper function used by CDS code to get the number of module path
 // entries during shared classpath setup time.
 int ClassLoader::num_module_path_entries() {
-  Arguments::assert_is_dumping_archive();
+  assert(CDSConfig::is_dumping_archive(), "sanity");
   int num_entries = 0;
   ClassPathEntry* e= ClassLoader::_module_path_entries;
   while (e != nullptr) {

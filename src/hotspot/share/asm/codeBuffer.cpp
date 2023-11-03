@@ -1068,10 +1068,12 @@ void CodeSection::print(const char* name) {
 }
 
 void CodeBuffer::print() {
-  if (this == nullptr) {
+#if 0
+  if (this == nullptr) { // gcc complains 'nonnull' argument 'this' compared to NULL 
     tty->print_cr("null CodeBuffer pointer");
     return;
   }
+#endif
 
   tty->print_cr("CodeBuffer:%s", name());
   for (int n = 0; n < (int)SECT_LIMIT; n++) {

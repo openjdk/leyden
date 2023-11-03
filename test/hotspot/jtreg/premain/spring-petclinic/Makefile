@@ -49,6 +49,11 @@ PC_REPO          = petclinic-snapshot
 PC_APP_JAVA      = ${PC_REPO}/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
 PC_APP_JAR       = ${PC_REPO}/target/spring-petclinic-3.1.0-SNAPSHOT.jar
 PC_APP_UNPACKED  = ${PC_REPO}/target/unpacked
+
+# This is for uploading to artifactory, to be tested with
+# ../../runtime/cds/appcds/leyden/SpringPetClinic.java
+PC_APP_UNPACKED_ZIP = ${PC_REPO}/target/spring-petclinic-3.1.0.zip
+
 PC_MAIN_CLASS    = org.springframework.samples.petclinic.PetClinicApplication
 PC_CLASSLIST     = spring-petclinic.classlist
 PC_STATIC_JSA    = spring-petclinic.static.jsa
@@ -114,6 +119,7 @@ ${PC_APP_UNPACKED}: ${PC_APP_JAR}
 	    ${JAR_CMD} cf classes.jar *
 	echo ${PC_APP_UNPACKED}/classes.jar $$(find ${PC_APP_UNPACKED}/BOOT-INF -name \*.jar | sort) \
 	    | sed -e 's/ /:/g' > ${PC_APP_UNPACKED}/classpath
+	${JAR_CMD} cf0 ${PC_APP_UNPACKED_ZIP} ${PC_APP_UNPACKED}
 	$(MAKE) run17
 
 #uncomment this to see the generated classes for dynamic proxies
@@ -179,13 +185,14 @@ ${PC_CDS_PREIMAGE}: ${PC_APP_UNPACKED}
 ${PC_CDS}: ${PC_CDS_PREIMAGE}
 	rm -f ${PC_CDS}
 	${PREMAIN_JAVA} -XX:+ArchiveInvokeDynamic -XX:+UnlockDiagnosticVMOptions -XX:CDSPreimage=${PC_CDS_PREIMAGE} -XX:CacheDataStore=${PC_CDS} \
-	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS}.log \
+	    -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS}.log \
 	    ${UNPACKED_CMDLINE}
 	ls -l ${PC_CDS}
+	ls -l ${PC_CDS}.code
 
 # run with NEW workflow
 runn: ${PC_CDS}
-	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_CDS} -XX:+ReplayTraining -XX:+LoadCachedCode \
+	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_CDS} -XX:+ReplayTraining -XX:-LoadCachedCode \
 		-XX:CachedCodeFile=${PC_CDS}.code -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
 
 clean: clean0

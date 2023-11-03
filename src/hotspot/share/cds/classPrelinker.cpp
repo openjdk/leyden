@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
+#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/classPrelinker.hpp"
@@ -65,6 +66,7 @@ bool ClassPrelinker::_record_javabase_only = true;
 bool ClassPrelinker::_preload_javabase_only = true;
 ClassPrelinker::PreloadedKlasses ClassPrelinker::_static_preloaded_klasses;
 ClassPrelinker::PreloadedKlasses ClassPrelinker::_dynamic_preloaded_klasses;
+Array<InstanceKlass*>* ClassPrelinker::_unregistered_klasses_from_preimage = nullptr;
 
 static PerfCounter* _perf_classes_preloaded = nullptr;
 static PerfCounter* _perf_class_preload_time = nullptr;
@@ -669,7 +671,9 @@ static Array<InstanceKlass*>* _klasses_for_indy_resolution = nullptr;
 static Array<Array<int>*>* _cp_index_lists_for_indy_resolution = nullptr;
 
 void ClassPrelinker::preresolve_indys_from_preimage(TRAPS) {
-  if (CDSPreimage != nullptr && _klasses_for_indy_resolution != nullptr) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+
+  if (_klasses_for_indy_resolution != nullptr) {
     assert(_cp_index_lists_for_indy_resolution != nullptr, "must be");
     for (int i = 0; i < _klasses_for_indy_resolution->length(); i++) {
       InstanceKlass* ik = _klasses_for_indy_resolution->at(i);
@@ -724,6 +728,9 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
       // Already seen this class when we walked the hierarchy of a previous class
       return;
     }
+    if (!loader_type_matches(ik)) {
+      return;
+    }
 
     if (ik->is_hidden()) {
       assert(ik->shared_class_loader_type() != ClassLoader::OTHER, "must have been set");
@@ -745,14 +752,11 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
       }
     }
 
-    if (!loader_type_matches(ik)) {
-      return;
-    }
     if (MetaspaceObj::is_shared(ik)) {
       if (DynamicDumpSharedSpaces) {
         return;
       } else {
-        assert(CDSPreimage != nullptr, "must be");
+        assert(CDSConfig::is_dumping_final_static_archive(), "must be");
       }
     }
 
@@ -882,6 +886,25 @@ void ClassPrelinker::record_initiated_klasses(bool is_static_archive) {
     PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_klasses : &_dynamic_preloaded_klasses;
     table->_platform_initiated = record_initiated_klasses(_platform_initiated_classes);
     table->_app_initiated = record_initiated_klasses(_app_initiated_classes);
+  }
+}
+
+void ClassPrelinker::record_unregistered_klasses() {
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    GrowableArray<InstanceKlass*> unreg_klasses;
+    GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
+    for (int i = 0; i < klasses->length(); i++) {
+      Klass* k = klasses->at(i);
+      if (k->is_instance_klass()) {
+        InstanceKlass* ik = InstanceKlass::cast(k);
+        if (ik->is_shared_unregistered_class()) {
+          unreg_klasses.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
+        }
+      }
+    }
+    _unregistered_klasses_from_preimage = ArchiveUtils::archive_array(&unreg_klasses);
+  } else {
+    _unregistered_klasses_from_preimage = nullptr;
   }
 }
 
@@ -1032,6 +1055,7 @@ void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {
 
   if (is_static_archive) {
     soc->do_ptr((void**)&_klasses_for_indy_resolution);
+    soc->do_ptr((void**)&_unregistered_klasses_from_preimage);
     soc->do_ptr((void**)&_cp_index_lists_for_indy_resolution);
   }
 
@@ -1074,6 +1098,7 @@ bool ClassPrelinker::class_preloading_finished() {
     return Atomic::load_acquire(&_class_preloading_finished);
   }
 }
+
 // This function is called 4 times:
 // preload only java.base classes
 // preload boot classes outside of java.base
@@ -1112,13 +1137,27 @@ void ClassPrelinker::runtime_preload(JavaThread* current, Handle loader) {
       Atomic::release_store(&_class_preloading_finished, true);
     }
   }
-
-  if (loader() != nullptr && loader() == SystemDictionary::java_system_loader() && UseNewCode) {
-    tty->print_cr("==================== archived_training_data ** after all classes preloaded ====================");
-    TrainingData::print_archived_training_data_on(tty);
-  }
-
   assert(!current->has_pending_exception(), "VM should have exited due to ExceptionMark");
+
+  if (loader() != nullptr && loader() == SystemDictionary::java_system_loader()) {
+    if (UseNewCode) {
+      tty->print_cr("==================== archived_training_data ** after all classes preloaded ====================");
+      TrainingData::print_archived_training_data_on(tty);
+    }
+
+    if (log_is_enabled(Info, cds, jit)) {
+      CDSAccess::test_heap_access_api();
+    }
+
+    if (CDSConfig::is_dumping_final_static_archive()) {
+      assert(_unregistered_klasses_from_preimage != nullptr, "must be");
+      for (int i = 0; i < _unregistered_klasses_from_preimage->length(); i++) {
+        InstanceKlass* ik = _unregistered_klasses_from_preimage->at(i);
+        SystemDictionaryShared::init_dumptime_info(ik);
+        SystemDictionaryShared::add_unregistered_class(current, ik);
+      }
+    }
+  }
 }
 
 void ClassPrelinker::jvmti_agent_error(InstanceKlass* expected, InstanceKlass* actual, const char* type) {

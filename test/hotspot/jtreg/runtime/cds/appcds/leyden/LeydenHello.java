@@ -28,7 +28,7 @@
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build LeydenHello
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar LeydenHelloApp
- * @run driver LeydenHello
+ * @run driver LeydenHello NEW
  */
 
 import jdk.test.lib.helpers.ClassFileInstaller;
@@ -41,7 +41,7 @@ public class LeydenHello {
 
     public static void main(String[] args) throws Exception {
         Tester t = new Tester();
-        t.run();
+        t.run(args);
     }
 
     static class Tester extends LeydenTester {
@@ -63,7 +63,7 @@ public class LeydenHello {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (runMode != RunMode.DUMP_STATIC) {
+            if (!runMode.isStaticDump()) {
                 out.shouldContain("Hello Leyden " + runMode.name());
             }
         }
