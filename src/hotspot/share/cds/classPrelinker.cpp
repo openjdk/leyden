@@ -1140,7 +1140,7 @@ void ClassPrelinker::runtime_preload(JavaThread* current, Handle loader) {
   assert(!current->has_pending_exception(), "VM should have exited due to ExceptionMark");
 
   if (loader() != nullptr && loader() == SystemDictionary::java_system_loader()) {
-    if (UseNewCode) {
+    if (PrintTrainingInfo) {
       tty->print_cr("==================== archived_training_data ** after all classes preloaded ====================");
       TrainingData::print_archived_training_data_on(tty);
     }
