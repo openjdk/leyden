@@ -924,7 +924,7 @@ static Klass* resolve_field_return_klass(const methodHandle& caller, int bci, TR
 // Therefore, if there is any chance of a race condition, we try to
 // patch only naturally aligned words, as single, full-word writes.
 
-JRT_ENTRY(void, Runtime1::patch_code(JavaThread* current, Runtime1::StubID stub_id ))
+JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* current, Runtime1::StubID stub_id))
 #ifndef PRODUCT
   if (PrintC1Statistics) {
     _patch_code_slowcase_cnt++;
