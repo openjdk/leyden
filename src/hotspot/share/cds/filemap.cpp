@@ -1484,7 +1484,7 @@ bool FileMapRegion::check_region_crc() const {
 
 static const char* region_name(int region_index) {
   static const char* names[] = {
-    "rw", "ro", "bm", "hp"
+    "rw", "ro", "bm", "hp", "cc",
   };
   const int num_regions = sizeof(names)/sizeof(names[0]);
   assert(0 <= region_index && region_index < num_regions, "sanity");
@@ -1547,6 +1547,9 @@ void FileMapInfo::write_region(int region, char* base, size_t size,
                    " bytes, addr " INTPTR_FORMAT " file offset 0x%08" PRIxPTR
                    " crc 0x%08x",
                    region_name(region), region, size, p2i(requested_base), _file_offset, crc);
+  } else {
+    log_info(cds)("Shared file region (%s) %d: " SIZE_FORMAT_W(8)
+                  " bytes", region_name(region), region, size);
   }
 
   r->init(region, mapping_offset, size, read_only, allow_exec, crc);
@@ -1705,7 +1708,7 @@ bool FileMapInfo::remap_shared_readonly_as_readwrite() {
 }
 
 // Memory map a region in the address space.
-static const char* shared_region_name[] = { "ReadWrite", "ReadOnly", "Bitmap", "Heap" };
+static const char* shared_region_name[] = { "ReadWrite", "ReadOnly", "Bitmap", "Heap", "Code" };
 
 MapArchiveResult FileMapInfo::map_regions(int regions[], int num_regions, char* mapped_base_address, ReservedSpace rs) {
   DEBUG_ONLY(FileMapRegion* last_region = nullptr);
@@ -1860,6 +1863,86 @@ char* FileMapInfo::map_bitmap_region() {
   return bitmap_base;
 }
 
+bool FileMapInfo::map_cached_code_region(ReservedSpace rs) {
+  FileMapRegion* r = region_at(MetaspaceShared::cc);
+  assert(r->used() > 0 && rs.size(), "must be");
+
+  bool read_only = false, allow_exec = true;
+  char* requested_base = rs.base();
+  char* mapped_base = map_memory(_fd, _full_path, r->file_offset(),
+                                 requested_base, r->used_aligned(), read_only, allow_exec, mtClassShared);
+  if (mapped_base == nullptr) {
+    log_info(cds)("failed to map cached code region");
+    return false;
+  } else {
+    assert(mapped_base == requested_base, "must be");
+    r->set_mapped_from_file(true);
+    r->set_mapped_base(mapped_base);
+    relocate_pointers_in_cached_code_region();
+    log_info(cds)("Mapped static region #%d at base " INTPTR_FORMAT " top " INTPTR_FORMAT " (%s)",
+                  MetaspaceShared::bm, p2i(r->mapped_base()), p2i(r->mapped_end()),
+                  shared_region_name[MetaspaceShared::cc]);
+    return true;
+  }
+}
+
+class CachedCodeRelocator: public BitMapClosure {
+  address _code_requested_base;
+  address* _patch_base;
+  intx _code_delta;
+  intx _metadata_delta;
+
+public:
+  CachedCodeRelocator(address code_requested_base, address code_mapped_base,
+                      intx metadata_delta) {
+    _code_requested_base = code_requested_base;
+    _patch_base = (address*)code_mapped_base;
+    _code_delta = code_mapped_base - code_requested_base;
+    _metadata_delta = metadata_delta;
+  }
+  
+  bool do_bit(size_t offset) {
+    address* p = _patch_base + offset;
+    address requested_ptr = *p;
+    if (requested_ptr < _code_requested_base) {
+      *p = requested_ptr + _metadata_delta;
+    } else {
+      *p = requested_ptr + _code_delta;
+    }
+    return true; // keep iterating
+  }
+};
+
+void FileMapInfo::relocate_pointers_in_cached_code_region() {
+  FileMapRegion* r = region_at(MetaspaceShared::cc);
+  char* bitmap_base = map_bitmap_region();
+
+  address core_regions_requested_base = (address)header()->requested_base_address();
+  address core_regions_mapped_base = (address)header()->mapped_base_address();
+  address cc_region_requested_base = core_regions_requested_base + r->mapping_offset();
+  address cc_region_mapped_base = (address)r->mapped_base();
+
+  size_t max_bits_for_core_regions = pointer_delta(mapped_end(), mapped_base(), // FIXME - renamed to core_regions_mapped_base(), etc
+                                                   sizeof(address));
+  size_t ptrmap_size_in_bits = header()->ptrmap_size_in_bits();
+  if (ptrmap_size_in_bits <= max_bits_for_core_regions) {
+    // No relocation inside the cached code region??
+    return;
+  }
+
+  ptrmap_size_in_bits -= max_bits_for_core_regions;
+  assert((max_bits_for_core_regions % 8) == 0, "must be aligned");
+  bitmap_base += max_bits_for_core_regions / 8;
+  BitMapView ptrmap((BitMap::bm_word_t*)bitmap_base, ptrmap_size_in_bits);
+
+  log_debug(cds, reloc)("cached code bitmap @ " INTPTR_FORMAT " (" SIZE_FORMAT " bits)",
+                        p2i(bitmap_base), ptrmap_size_in_bits);
+
+  CachedCodeRelocator patcher(cc_region_requested_base, cc_region_mapped_base,
+                              core_regions_mapped_base - core_regions_requested_base);
+  ptrmap.iterate(&patcher);
+}
+
 // This is called when we cannot map the archive at the requested[ base address (usually 0x800000000).
 // We relocate all pointers in the 2 core regions (ro, rw).
 bool FileMapInfo::relocate_pointers_in_core_regions(intx addr_delta) {
@@ -1869,15 +1952,13 @@ bool FileMapInfo::relocate_pointers_in_core_regions(intx addr_delta) {
   if (bitmap_base == nullptr) {
     return false; // OOM, or CRC check failure
   } else {
-    size_t ptrmap_size_in_bits = header()->ptrmap_size_in_bits();
-    log_debug(cds, reloc)("mapped relocation bitmap @ " INTPTR_FORMAT " (" SIZE_FORMAT " bits)",
-                          p2i(bitmap_base), ptrmap_size_in_bits);
-
-    BitMapView ptrmap((BitMap::bm_word_t*)bitmap_base, ptrmap_size_in_bits);
-
     // Patch all pointers in the mapped region that are marked by ptrmap.
     address patch_base = (address)mapped_base();
     address patch_end  = (address)mapped_end();
+
+    // Exclude the bits used for the code_cache region (if it exists)
+    size_t max_bits_for_core_regions = pointer_delta(patch_end, patch_base, sizeof(address));
+    size_t ptrmap_size_in_bits = MIN2(header()->ptrmap_size_in_bits(), max_bits_for_core_regions);
 
     // the current value of the pointers to be patched must be within this
     // range (i.e., must be between the requested base address and the address of the current archive).
@@ -1889,6 +1970,10 @@ bool FileMapInfo::relocate_pointers_in_core_regions(intx addr_delta) {
     // (the requested location of the archive, as mapped at runtime).
     address valid_new_base = (address)header()->mapped_base_address();
     address valid_new_end  = (address)mapped_end();
+
+    log_debug(cds, reloc)("mapped relocation bitmap @ " INTPTR_FORMAT " (" SIZE_FORMAT " bits)",
+                          p2i(bitmap_base), ptrmap_size_in_bits);
+    BitMapView ptrmap((BitMap::bm_word_t*)bitmap_base, ptrmap_size_in_bits);
 
     SharedDataRelocator patcher((address*)patch_base, (address*)patch_end, valid_old_base, valid_old_end,
                                 valid_new_base, valid_new_end, addr_delta);

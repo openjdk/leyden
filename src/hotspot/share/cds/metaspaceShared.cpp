@@ -55,6 +55,7 @@
 #include "code/codeCache.hpp"
 #include "code/SCCache.hpp"
 #include "compiler/compileBroker.hpp"
+#include "compiler/precompiler.hpp"
 #include "gc/shared/gcVMOperations.hpp"
 #include "interpreter/bytecodeStream.hpp"
 #include "interpreter/bytecodes.hpp"
@@ -102,7 +103,7 @@ void* MetaspaceShared::_shared_metaspace_static_top = nullptr;
 intx MetaspaceShared::_relocation_delta;
 char* MetaspaceShared::_requested_base_address;
 bool MetaspaceShared::_use_optimized_module_handling = true;
-Array<Method*>* MetaspaceShared::_archived_method_handle_intrinsics = NULL;
+Array<Method*>* MetaspaceShared::_archived_method_handle_intrinsics = nullptr;
 
 // The CDS archive is divided into the following regions:
 //     rw  - read-write metadata
@@ -300,7 +301,7 @@ void MetaspaceShared::post_initialize(TRAPS) {
 
 static GrowableArrayCHeap<OopHandle, mtClassShared>* _extra_interned_strings = nullptr;
 static GrowableArrayCHeap<Symbol*, mtClassShared>* _extra_symbols = nullptr;
-static GrowableArray<Method*>* _method_handle_intrinsics = NULL;
+static GrowableArray<Method*>* _method_handle_intrinsics = nullptr;
 
 void MetaspaceShared::read_extra_data(JavaThread* current, const char* filename) {
   _extra_interned_strings = new GrowableArrayCHeap<OopHandle, mtClassShared>(10000);
@@ -582,10 +583,6 @@ void VM_PopulateDumpSharedSpace::doit() {
   // We don't want to write these addresses into the archive.
   CppVtables::zero_archived_vtables();
 
-  // relocate the data so that it can be mapped to MetaspaceShared::requested_base_address()
-  // without runtime relocation.
-  _builder.relocate_to_requested();
-
   const char* static_archive;
   if (CDSConfig::is_dumping_final_static_archive()) {
     static_archive = CacheDataStore;
@@ -712,133 +709,6 @@ void MetaspaceShared::prepare_for_dumping() {
   Arguments::check_unsupported_dumping_properties();
 
   ClassLoader::initialize_shared_path(JavaThread::current());
-}
-
-class PrecompileIterator : StackObj {
-private:
-  Thread* _thread;
-  GrowableArray<Method*> _methods;
-
-  static nmethod* precompile(Method* m, TRAPS) {
-    assert(m->method_holder()->is_linked(), "required");
-
-    methodHandle mh(THREAD, m);
-    assert(!HAS_PENDING_EXCEPTION, "");
-    return CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0,
-                                         true /*requires_online_comp*/, CompileTask::Reason_Precompile,
-                                         THREAD);
-  }
-
-  static nmethod* precompile(Method* m, ArchiveBuilder* builder, TRAPS) {
-    nmethod* code = precompile(m, THREAD);
-    bool status = (!HAS_PENDING_EXCEPTION) && (code != nullptr);
-
-    static int count = 0;
-    static CompiledMethod* last = nullptr;
-    Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
-    ++count;
-
-    if (log_is_enabled(Info, precompile)) {
-      int isz = 0;
-      int delta = 0;
-      if (status) {
-        isz = code->insts_size();
-        if (last != nullptr) {
-          delta = (int) (address(code) - address(last));
-        }
-        last = code;
-      }
-
-      ResourceMark rm;
-      log_info(precompile)("[%4d] Compiled %s [%p -> %p] (%s) code = %p insts_size = %d delta = %d", count,
-                           m->external_name(), m, requested_m,
-                           status ? "success" : "FAILED", code, isz, delta);
-    }
-    return code;
-  }
-
-public:
-  PrecompileIterator(): _thread(Thread::current()) {
-    assert(TrainingData::have_data(), "sanity");
-  }
-
-  bool include(Method* m) {
-    if (m->is_native() || m->is_abstract()) {
-      return false;
-    }
-    DirectiveSet* directives = DirectivesStack::getMatchingDirective(methodHandle(_thread, m), nullptr);
-    if (directives->DontPrecompileOption) {
-      return false; // excluded
-    } else if (directives->PrecompileRecordedOption > 0) {
-      return true;
-    }
-    int cid = compile_id(m, CompLevel_full_optimization);
-    return (cid < INT_MAX);
-  }
-
-  void do_value(const RunTimeClassInfo* record) {
-    Array<Method*>* methods = record->_klass->methods();
-    for (int i = 0; i < methods->length(); i++) {
-      Method* m = methods->at(i);
-      if (include(m)) {
-        _methods.push(m);
-      }
-    }
-  }
-  void do_value(TrainingData* td) {
-    if (td->is_MethodTrainingData()) {
-      MethodTrainingData* mtd = td->as_MethodTrainingData();
-      if (mtd->has_holder() && include((Method*)mtd->holder())) {
-        _methods.push((Method*)mtd->holder());
-      }
-    }
-  }
-
-  static int compile_id(Method* m, int level) {
-    MethodTrainingData* mtd = TrainingData::lookup_for(m);
-    if (mtd != nullptr) {
-      CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
-      if (ctd != nullptr) {
-        return ctd->compile_id();
-      }
-    }
-    return INT_MAX; // treat as the last compilation
-  }
-
-  static int compare_by_compile_id(Method** m1, Method** m2) {
-    int id1 = compile_id(*m1, CompLevel_full_optimization);
-    int id2 = compile_id(*m2, CompLevel_full_optimization);
-    return (id1 - id2);
-  }
-
-  static void sort_methods_by_compile_id(GrowableArray<Method*>* methods) {
-    methods->sort(&compare_by_compile_id);
-  }
-
-  void precompile(ArchiveBuilder* builder, TRAPS) {
-    sort_methods_by_compile_id(&_methods);
-
-    for (int i = 0; i < _methods.length(); i++) {
-      Method* m = _methods.at(i);
-
-      assert(!HAS_PENDING_EXCEPTION, "");
-      precompile(m, builder, THREAD);
-      if (HAS_PENDING_EXCEPTION) {
-        CLEAR_PENDING_EXCEPTION;
-      }
-    }
-  }
-};
-
-// New workflow only
-void MetaspaceShared::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
-  assert(CDSConfig::is_dumping_final_static_archive() && StoreCachedCode, "sanity");
-  if (TrainingData::have_data()) {
-    ResourceMark rm;
-    PrecompileIterator pi;
-    TrainingData::archived_training_data_dictionary()->iterate(&pi);
-    pi.precompile(builder, THREAD);
-  }
 }
 
 // Preload classes from a list, populate the shared spaces and dump to a
@@ -1024,7 +894,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     fork_and_dump_final_static_archive();
   } else if (CDSConfig::is_dumping_final_static_archive()) {
     RecordTraining = false;
-    if (StoreCachedCode && CachedCodeFile != nullptr) {
+    if (StoreCachedCode && CachedCodeFile != nullptr) { // FIXME: new workflow -- remove the CachedCodeFile flag
       if (log_is_enabled(Info, cds, jit)) {
         CDSAccess::test_heap_access_api();
       }
@@ -1036,7 +906,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       }
 
       CDSConfig::enable_dumping_cached_code();
-      compile_cached_code(&builder, CHECK);
+      {
+        builder.start_cc_region();
+        Precompiler::compile_cached_code(&builder, CHECK);
+        builder.end_cc_region();
+      }
       CDSConfig::disable_dumping_cached_code();
 
       SCCache::close(); // Write final data and close archive
@@ -1048,6 +922,10 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 }
 
 void MetaspaceShared::write_static_archive(ArchiveBuilder* builder, FileMapInfo *mapinfo, ArchiveHeapInfo* heap_info) {
+  // relocate the data so that it can be mapped to MetaspaceShared::requested_base_address()
+  // without runtime relocation.
+  builder->relocate_to_requested();
+
   mapinfo->open_for_write();
   builder->write_archive(mapinfo, heap_info);
 
@@ -1231,7 +1109,7 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
   assert(UseSharedSpaces, "Must be called when UseSharedSpaces is enabled");
   MapArchiveResult result = MAP_ARCHIVE_OTHER_FAILURE;
 
-  FileMapInfo* static_mapinfo = open_static_archive();
+  FileMapInfo* static_mapinfo = FileMapInfo::current_info();
   FileMapInfo* dynamic_mapinfo = nullptr;
 
   if (static_mapinfo != nullptr) {
@@ -1303,15 +1181,21 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
   }
 }
 
-FileMapInfo* MetaspaceShared::open_static_archive() {
+// This is called very early at VM start up to get the size of the cached_code region, which
+// is used in CodeCache::initialize_heaps()
+void MetaspaceShared::open_static_archive() {
+  if (!UseSharedSpaces) {
+    return;
+  }
   const char* static_archive = Arguments::GetSharedArchivePath();
   assert(static_archive != nullptr, "SharedArchivePath is nullptr");
   FileMapInfo* mapinfo = new FileMapInfo(static_archive, true);
   if (!mapinfo->initialize()) {
     delete(mapinfo);
-    return nullptr;
+  } else {
+    FileMapRegion* r = mapinfo->region_at(MetaspaceShared::cc);
+    CDSAccess::set_cached_code_size(r->used());
   }
-  return mapinfo;
 }
 
 FileMapInfo* MetaspaceShared::open_dynamic_archive() {
@@ -1794,6 +1678,8 @@ void MetaspaceShared::initialize_shared_spaces() {
 
   CDS_JAVA_HEAP_ONLY(Universe::update_archived_basic_type_mirrors());
   CDS_JAVA_HEAP_ONLY(Universe::update_exception_instances());
+
+  SCCache::new_workflow_load_cache();
 
   // Close the mapinfo file
   static_mapinfo->close();

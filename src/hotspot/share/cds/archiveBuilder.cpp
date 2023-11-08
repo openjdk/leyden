@@ -160,6 +160,7 @@ ArchiveBuilder::ArchiveBuilder() :
   _buffer_to_requested_delta(0),
   _rw_region("rw", MAX_SHARED_DELTA),
   _ro_region("ro", MAX_SHARED_DELTA),
+  _cc_region("cc", MAX_SHARED_DELTA),
   _ptrmap(mtClassShared),
   _rw_src_objs(),
   _ro_src_objs(),
@@ -940,6 +941,15 @@ uintx ArchiveBuilder::any_to_offset(address p) const {
   return buffer_to_offset(p);
 }
 
+void ArchiveBuilder::start_cc_region() {
+  ro_region()->pack();
+  start_dump_space(&_cc_region);
+}
+
+void ArchiveBuilder::end_cc_region() {
+  _cc_region.pack();
+}
+
 #if INCLUDE_CDS_JAVA_HEAP
 narrowKlass ArchiveBuilder::get_requested_narrow_klass(Klass* k) {
   assert(CDSConfig::is_dumping_static_archive(), "sanity");
@@ -1029,7 +1039,9 @@ class RelocateBufferToRequested : public BitMapClosure {
 
 
 void ArchiveBuilder::relocate_to_requested() {
-  ro_region()->pack();
+  if (!ro_region()->is_packed()) {
+    ro_region()->pack();
+  }
 
   size_t my_archive_size = buffer_top() - buffer_bottom();
 
@@ -1410,6 +1422,7 @@ void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, ArchiveHeapInfo* heap_i
 
   write_region(mapinfo, MetaspaceShared::rw, &_rw_region, /*read_only=*/false,/*allow_exec=*/false);
   write_region(mapinfo, MetaspaceShared::ro, &_ro_region, /*read_only=*/true, /*allow_exec=*/false);
+  write_region(mapinfo, MetaspaceShared::cc, &_cc_region, /*read_only=*/false,/*allow_exec=*/true);
 
   size_t bitmap_size_in_bytes;
   char* bitmap = mapinfo->write_bitmap_region(ArchivePtrMarker::ptrmap(), heap_info,
@@ -1458,6 +1471,7 @@ void ArchiveBuilder::print_region_stats(FileMapInfo *mapinfo, ArchiveHeapInfo* h
 
   _rw_region.print(total_reserved);
   _ro_region.print(total_reserved);
+  _cc_region.print(total_reserved);
 
   print_bitmap_region_stats(bitmap_used, total_reserved);
 

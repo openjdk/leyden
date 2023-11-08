@@ -148,6 +148,7 @@ class CodeCache : AllStatic {
   static const GrowableArray<CodeHeap*>* compiled_heaps() { return _compiled_heaps; }
   static const GrowableArray<CodeHeap*>* nmethod_heaps() { return _nmethod_heaps; }
 
+  static void* map_cached_code();
   // Allocation/administration
   static CodeBlob* allocate(int size, CodeBlobType code_blob_type, bool handle_alloc_failure = true, CodeBlobType orig_code_blob_type = CodeBlobType::All); // allocates a new CodeBlob
   static void commit(CodeBlob* cb);                        // called when the allocated CodeBlob has been filled

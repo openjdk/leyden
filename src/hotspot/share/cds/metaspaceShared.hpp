@@ -67,8 +67,9 @@ class MetaspaceShared : AllStatic {
     ro = 1,  // read-only shared space
     bm = 2,  // relocation bitmaps (freed after file mapping is finished)
     hp = 3,  // heap region
+    cc = 4,  // cached code
     num_core_region = 2,       // rw and ro
-    n_regions = 4              // total number of regions
+    n_regions = 5              // total number of regions
   };
 
   static void prepare_for_dumping() NOT_CDS_RETURN;
@@ -87,6 +88,7 @@ public:
   }
 
   static void initialize_for_static_dump() NOT_CDS_RETURN;
+  static void open_static_archive() NOT_CDS_RETURN;
   static void initialize_runtime_shared_and_meta_spaces() NOT_CDS_RETURN;
   static void post_initialize(TRAPS) NOT_CDS_RETURN;
 
@@ -174,10 +176,8 @@ public:
 
 private:
   static void read_extra_data(JavaThread* current, const char* filename) NOT_CDS_RETURN;
-  static void compile_cached_code(ArchiveBuilder* builder, TRAPS);
   static void write_static_archive(ArchiveBuilder* builder, FileMapInfo *mapinfo, ArchiveHeapInfo* heap_info);
   static void fork_and_dump_final_static_archive();
-  static FileMapInfo* open_static_archive();
   static FileMapInfo* open_dynamic_archive();
   // use_requested_addr: If true (default), attempt to map at the address the
   static MapArchiveResult map_archives(FileMapInfo* static_mapinfo, FileMapInfo* dynamic_mapinfo,

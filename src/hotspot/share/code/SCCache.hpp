@@ -530,6 +530,10 @@ public:
   static void print_on(outputStream* st);
   static void add_C_string(const char* str);
   static void print_timers();
+
+  static void new_workflow_start_writing_cache();
+  static void new_workflow_end_writing_cache();
+  static void new_workflow_load_cache();
 };
 
 #endif // SHARE_CODE_SCCACHE_HPP

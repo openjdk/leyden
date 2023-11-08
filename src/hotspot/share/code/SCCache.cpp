@@ -38,6 +38,7 @@
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
+#include "classfile/vmClasses.hpp"
 #include "classfile/vmIntrinsics.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
@@ -286,6 +287,89 @@ bool SCCache::open_cache(const char* cache_path) {
     _cache = cache;
   }
   return true;
+}
+
+class CachedCodeDirectory {
+public:
+  int _some_number;
+  InstanceKlass* _some_klass;
+  size_t _my_data_length;
+  void* _my_data;
+};
+
+// Skeleton code for including cached code in CDS:
+//
+// [1] Use CachedCodeDirectory to keep track of all of data related to cached code.
+//     E.g., you can build a hashtable to record what methods have been archived.
+//
+// [2] Memory for all data for cached code, including CachedCodeDirectory, should be
+//     allocated using CDSAccess::allocate_from_code_cache().
+//
+// [3] CachedCodeDirectory must be the very first allocation.
+//
+// [4] Two kinds of pointer can be stored:
+//     - A pointer p that points to metadata. CDSAccess::can_generate_cached_code(p) must return true.
+//     - A pointer to a buffer returned by CDSAccess::allocate_from_code_cache().
+//       (It's OK to point to an interior location within this buffer).
+//     Such pointers must be stored using CDSAccess::set_pointer()
+//
+// The buffers allocated by CDSAccess::allocate_from_code_cache() are in a contiguous region. At runtime, this
+// region is mapped to the beginning of the CodeCache (see _cds_code_space in codeCache.cpp). All the pointers
+// in this buffer are relocated as necessary (e.g., to account for the runtime location of the CodeCache).
+//
+// Example:
+//
+// # make sure hw.cds doesn't exist, so that it's regenerated (1.5 step training)
+// $ rm -f hw.cds; java -Xlog:cds,scc::uptime,tags,pid -XX:CacheDataStore=hw.cds -cp ~/tmp/HelloWorld.jar HelloWorld
+//
+// # After training is finish, hw.cds should contain a CachedCodeDirectory. You can see the effect of relocation
+// # from the [scc] log.
+// $ java -Xlog:cds,scc -XX:CacheDataStore=hw.cds -cp ~/tmp/HelloWorld.jar HelloWorld
+// [0.016s][info][scc] new workflow: cached code mapped at 0x7fef97ebc000
+// [0.016s][info][scc] _cached_code_directory->_some_klass     = 0x800009ca8 (java.lang.String)
+// [0.016s][info][scc] _cached_code_directory->_some_number    = 0
+// [0.016s][info][scc] _cached_code_directory->_my_data_length = 0
+// [0.016s][info][scc] _cached_code_directory->_my_data        = 0x7fef97ebc020 (32 bytes offset from base)
+//
+// The 1.5 step training may be hard to debug. If you want to run in a debugger, run the above training step
+// with an additional "-XX:+CDSManualFinalImage" command-line argument.
+
+// This is always at the very beginning of the mmaped CDS "cc" (cached code) region
+static CachedCodeDirectory* _cached_code_directory = nullptr;
+
+void SCCache::new_workflow_start_writing_cache() {
+  CachedCodeDirectory* dir = (CachedCodeDirectory*)CDSAccess::allocate_from_code_cache(sizeof(CachedCodeDirectory));
+  _cached_code_directory = dir;
+
+  CDSAccess::set_pointer(&dir->_some_klass, vmClasses::String_klass()); 
+
+  size_t n = 120;
+  void* d = (void*)CDSAccess::allocate_from_code_cache(n);
+  CDSAccess::set_pointer(&dir->_my_data, d);
+}
+
+void SCCache::new_workflow_end_writing_cache() {
+
+}
+
+void SCCache::new_workflow_load_cache() {
+  void* ptr = CodeCache::map_cached_code();
+  if (ptr != nullptr) {
+    // At this point:
+    // - CodeCache::initialize_heaps() has finished.
+    // - CDS archive is fully mapped ("metadata", "heap" and "cached_code" regions are mapped)
+    // - All pointers in the mapped CDS regions are relocated.
+    // - CDSAccess::get_archived_object() works.
+    ResourceMark rm;
+    _cached_code_directory = (CachedCodeDirectory*)ptr;
+    InstanceKlass* k = _cached_code_directory->_some_klass;
+    log_info(scc)("new workflow: cached code mapped at %p", ptr);
+    log_info(scc)("_cached_code_directory->_some_klass     = %p (%s)", k, k->external_name());
+    log_info(scc)("_cached_code_directory->_some_number    = %d", _cached_code_directory->_some_number);
+    log_info(scc)("_cached_code_directory->_my_data_length = %zu", _cached_code_directory->_my_data_length);
+    log_info(scc)("_cached_code_directory->_my_data        = %p (%zu bytes offset from base)", _cached_code_directory->_my_data,
+                  pointer_delta((address)_cached_code_directory->_my_data, (address)_cached_code_directory, 1));
+  }
 }
 
 #define DATA_ALIGNMENT HeapWordSize

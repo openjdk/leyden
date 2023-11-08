@@ -450,6 +450,7 @@ public:
   MemRegion get_heap_region_requested_range() NOT_CDS_JAVA_HEAP_RETURN_(MemRegion());
   bool  read_region(int i, char* base, size_t size, bool do_commit);
   char* map_bitmap_region();
+  bool map_cached_code_region(ReservedSpace rs);
   void  unmap_region(int i);
   void  close();
   bool  is_open() { return _file_open; }
@@ -548,7 +549,7 @@ public:
   void  init_heap_region_relocation();
   MapArchiveResult map_region(int i, intx addr_delta, char* mapped_base_address, ReservedSpace rs);
   bool  relocate_pointers_in_core_regions(intx addr_delta);
-
+  void  relocate_pointers_in_cached_code_region();
   static MemRegion _mapped_heap_memregion;
 
 public:

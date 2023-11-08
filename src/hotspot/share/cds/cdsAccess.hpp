@@ -25,6 +25,8 @@
 #ifndef SHARE_CDS_CDSACCESS_HPP
 #define SHARE_CDS_CDSACCESS_HPP
 
+#include "cds/archiveBuilder.hpp"
+#include "cds/archiveUtils.hpp"
 #include "memory/allStatic.hpp"
 #include "oops/oopsHierarchy.hpp"
 #include "utilities/globalDefinitions.hpp"
@@ -32,6 +34,7 @@
 class InstanceKlass;
 class Klass;
 class Method;
+class ReservedSpace;
 
 class CDSAccess : AllStatic {
 private:
@@ -52,6 +55,19 @@ public:
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 
   static void test_heap_access_api() NOT_CDS_JAVA_HEAP_RETURN;
+
+  static void* allocate_from_code_cache(size_t size) NOT_CDS_RETURN_(nullptr);
+
+  static size_t get_cached_code_size() NOT_CDS_RETURN_(0);
+  static void set_cached_code_size(size_t sz) NOT_CDS_RETURN;
+
+  static bool map_cached_code(ReservedSpace rs) NOT_CDS_RETURN_(false);
+
+  template <typename T>
+  static void set_pointer(T** ptr, T* value) {
+    set_pointer((address*)ptr, (address)value);
+  }
+  static void set_pointer(address* ptr, address value);
 };
 
 #endif // SHARE_CDS_CDSACCESS_HPP

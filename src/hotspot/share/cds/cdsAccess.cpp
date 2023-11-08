@@ -26,6 +26,7 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/stringTable.hpp"
@@ -33,7 +34,10 @@
 #include "logging/logStream.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "memory/virtualspace.hpp"
 #include "oops/instanceKlass.hpp"
+
+size_t _cached_code_size = 0;
 
 bool CDSAccess::can_generate_cached_code(address addr) {
   if (CDSConfig::is_dumping_final_static_archive()) {
@@ -147,6 +151,35 @@ void CDSAccess::test_heap_access_api() {
 
   log.print_cr("Test %d ======================================== Universe::null_ptr_exception_instance()", i);
   test_cds_heap_access_api_for_object(Universe::null_ptr_exception_instance());
+}
+
+// new workflow only
+void* CDSAccess::allocate_from_code_cache(size_t size) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+  return (void*)ArchiveBuilder::cc_region_alloc(size);
+}
+
+size_t CDSAccess::get_cached_code_size() {
+  return _cached_code_size;
+}
+
+void CDSAccess::set_cached_code_size(size_t sz) {
+  _cached_code_size = sz;
+}
+
+void CDSAccess::set_pointer(address* ptr, address value) {
+  ArchiveBuilder* builder = ArchiveBuilder::current();
+  if (value != nullptr && !builder->is_in_buffer_space(value)) {
+    value = builder->get_buffered_addr(value);
+  }
+  *ptr = value;
+  ArchivePtrMarker::mark_pointer(ptr);
+}
+
+bool CDSAccess::map_cached_code(ReservedSpace rs) {
+  FileMapInfo* static_mapinfo = FileMapInfo::current_info();
+  assert(UseSharedSpaces && static_mapinfo != nullptr, "must be");
+  return static_mapinfo->map_cached_code_region(rs);
 }
 
 #endif // INCLUDE_CDS_JAVA_HEAP

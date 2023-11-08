@@ -208,6 +208,7 @@ private:
 
   DumpRegion _rw_region;
   DumpRegion _ro_region;
+  DumpRegion _cc_region;
   CHeapBitMap _ptrmap;    // bitmap used by ArchivePtrMarker
 
   SourceObjList _rw_src_objs;                 // objs to put in rw region
@@ -349,12 +350,19 @@ public:
 
   DumpRegion* rw_region() { return &_rw_region; }
   DumpRegion* ro_region() { return &_ro_region; }
+  DumpRegion* cc_region() { return &_cc_region; }
+
+  void start_cc_region();
+  void end_cc_region();
 
   static char* rw_region_alloc(size_t num_bytes) {
     return current()->rw_region()->allocate(num_bytes);
   }
   static char* ro_region_alloc(size_t num_bytes) {
     return current()->ro_region()->allocate(num_bytes);
+  }
+  static char* cc_region_alloc(size_t num_bytes) {
+    return current()->cc_region()->allocate(num_bytes);
   }
 
   template <typename T>

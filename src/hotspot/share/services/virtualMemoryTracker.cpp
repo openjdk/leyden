@@ -398,12 +398,16 @@ bool VirtualMemoryTracker::add_reserved_region(address base_addr, size_t size,
         return true;
       }
 
-      // Mapped CDS string region.
-      // The string region(s) is part of the java heap.
+      // Mapped CDS heap region.
       if (reserved_rgn->flag() == mtJavaHeap) {
         log_debug(nmt)("CDS reserved region \'%s\' as a whole (" INTPTR_FORMAT ", " SIZE_FORMAT ")",
                       reserved_rgn->flag_name(), p2i(reserved_rgn->base()), reserved_rgn->size());
         assert(reserved_rgn->contain_region(base_addr, size), "Reserved heap region should contain this mapping region");
+        return true;
+      }
+
+      if (reserved_rgn->flag() == mtCode) {
+        assert(reserved_rgn->contain_region(base_addr, size), "Reserved code region should contain this mapping region");
         return true;
       }
 

@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cdsAccess.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/codeHeapState.hpp"
@@ -171,6 +172,8 @@ address CodeCache::_low_bound = 0;
 address CodeCache::_high_bound = 0;
 volatile int CodeCache::_number_of_nmethods_with_dependencies = 0;
 ExceptionCache* volatile CodeCache::_exception_cache_purge_list = nullptr;
+
+static ReservedSpace _cds_code_space;
 
 // Initialize arrays of CodeHeap subsets
 GrowableArray<CodeHeap*>* CodeCache::_heaps = new(mtCode) GrowableArray<CodeHeap*> (static_cast<int>(CodeBlobType::All), mtCode);
@@ -329,6 +332,9 @@ void CodeCache::initialize_heaps() {
   profiled_size    = align_down(profiled_size, alignment);
   non_profiled_size = align_down(non_profiled_size, alignment);
 
+  const size_t cds_code_size = align_up(CDSAccess::get_cached_code_size(), alignment);
+  cache_size += cds_code_size;
+
   // Reserve one continuous chunk of memory for CodeHeaps and split it into
   // parts for the individual heaps. The memory layout looks like this:
   // ---------- high -----------
@@ -337,10 +343,12 @@ void CodeCache::initialize_heaps() {
   //      Profiled nmethods
   // ---------- low ------------
   ReservedCodeSpace rs = reserve_heap_memory(cache_size, ps);
-  ReservedSpace profiled_space      = rs.first_part(profiled_size);
-  ReservedSpace rest                = rs.last_part(profiled_size);
-  ReservedSpace non_method_space    = rest.first_part(non_nmethod_size);
-  ReservedSpace non_profiled_space  = rest.last_part(non_nmethod_size);
+  _cds_code_space                   = rs.first_part(cds_code_size);
+  ReservedSpace rest                = rs.last_part(cds_code_size);
+  ReservedSpace profiled_space      = rest.first_part(profiled_size);
+  ReservedSpace rest2               = rest.last_part(profiled_size);
+  ReservedSpace non_method_space    = rest2.first_part(non_nmethod_size);
+  ReservedSpace non_profiled_space  = rest2.last_part(non_nmethod_size);
 
   // Register CodeHeaps with LSan as we sometimes embed pointers to malloc memory.
   LSAN_REGISTER_ROOT_REGION(rs.base(), rs.size());
@@ -351,6 +359,14 @@ void CodeCache::initialize_heaps() {
   add_heap(profiled_space, "CodeHeap 'profiled nmethods'", CodeBlobType::MethodProfiled);
   // Tier 1 and tier 4 (non-profiled) methods and native methods
   add_heap(non_profiled_space, "CodeHeap 'non-profiled nmethods'", CodeBlobType::MethodNonProfiled);
+}
+
+void* CodeCache::map_cached_code() {
+  if (_cds_code_space.size() > 0 && CDSAccess::map_cached_code(_cds_code_space)) {
+    return _cds_code_space.base();
+  } else {
+    return nullptr;
+  }
 }
 
 size_t CodeCache::page_size(bool aligned, size_t min_pages) {
