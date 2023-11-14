@@ -65,7 +65,7 @@ public class JavacBenchDynamic extends JavacBenchTestBase {
             args.add(mainClass);
             args.add(count);
 
-            ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(args);
+            ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(args);
             OutputAnalyzer output = CDSTestUtils.executeAndLog(pb, "dump");
             output.shouldHaveExitValue(0);
         }
@@ -82,7 +82,7 @@ public class JavacBenchDynamic extends JavacBenchTestBase {
             args.add(mainClass);
             args.add(count);
 
-            ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(args);
+            ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(args);
             OutputAnalyzer output = CDSTestUtils.executeAndLog(pb, "exec");
             output.shouldHaveExitValue(0);
         }

@@ -30,8 +30,9 @@
 #include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
-#include "cds/classListWriter.hpp"
+#include "cds/cds_globals.hpp"
 #include "cds/classListParser.hpp"
+#include "cds/classListWriter.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/dumpAllocStats.hpp"
@@ -45,9 +46,10 @@
 #include "classfile/classLoaderExt.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/loaderConstraints.hpp"
+#include "classfile/modules.hpp"
 #include "classfile/placeholders.hpp"
-#include "classfile/symbolTable.hpp"
 #include "classfile/stringTable.hpp"
+#include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
@@ -67,6 +69,7 @@
 #include "memory/metaspaceClosure.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "nmt/memTracker.hpp"
 #include "oops/compressedKlass.hpp"
 #include "oops/instanceMirrorKlass.hpp"
 #include "oops/klass.inline.hpp"
@@ -85,14 +88,13 @@
 #include "runtime/os.inline.hpp"
 #include "runtime/safepointVerifiers.hpp"
 #include "runtime/sharedRuntime.hpp"
-#include "runtime/vmThread.hpp"
 #include "runtime/vmOperations.hpp"
+#include "runtime/vmThread.hpp"
 #include "sanitizers/leak.hpp"
-#include "services/memTracker.hpp"
 #include "utilities/align.hpp"
 #include "utilities/bitMap.inline.hpp"
-#include "utilities/ostream.hpp"
 #include "utilities/defaultStream.hpp"
+#include "utilities/ostream.hpp"
 #include "utilities/resourceHash.hpp"
 
 ReservedSpace MetaspaceShared::_symbol_rs;
@@ -416,6 +418,7 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
   SystemDictionaryShared::serialize_vm_classes(soc);
   soc->do_tag(--tag);
 
+  CDS_JAVA_HEAP_ONLY(Modules::serialize(soc);)
   CDS_JAVA_HEAP_ONLY(ClassLoaderDataShared::serialize(soc);)
   soc->do_ptr((void**)&_archived_method_handle_intrinsics);
 
@@ -522,6 +525,8 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
 
   // Write lambform lines into archive
   LambdaFormInvokers::dump_static_archive_invokers();
+  // Write module name into archive
+  CDS_JAVA_HEAP_ONLY(Modules::dump_main_module_name();)
   // Write the other data to the output array.
   DumpRegion* ro_region = ArchiveBuilder::current()->ro_region();
   char* start = ro_region->top();
@@ -837,25 +842,15 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     }
   }
 
-  HeapShared::init_for_dumping(CHECK);
-
 #if INCLUDE_CDS_JAVA_HEAP
-  if (CDSConfig::is_dumping_heap()) {
-    ArchiveHeapWriter::init();
-    if (CDSConfig::is_dumping_full_module_graph()) {
-      HeapShared::reset_archived_object_states(CHECK);
-    }
-
-    if (ArchiveInvokeDynamic) {
-      // Do this just before going into the safepoint.
-      // We also assume no other Java threads are running
-      // This makes sure that the MethodType and MethodTypeForm objects are clean.
-      JavaValue result(T_VOID);
-      JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
-                             vmSymbols::dumpSharedArchive(),
-                             vmSymbols::void_method_signature(),
-                             CHECK);
-    }
+  if (CDSConfig::is_dumping_heap() && ArchiveInvokeDynamic) {
+    // We also assume no other Java threads are running
+    // This makes sure that the MethodType and MethodTypeForm objects are clean.
+    JavaValue result(T_VOID);
+    JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
+                           vmSymbols::dumpSharedArchive(),
+                           vmSymbols::void_method_signature(),
+                           CHECK);
   }
 #endif
 
@@ -881,6 +876,15 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_heap()) {
     StringTable::allocate_shared_strings_array(CHECK);
+    if (!HeapShared::is_archived_boot_layer_available(THREAD)) {
+      log_info(cds)("archivedBootLayer not available, disabling full module graph");
+      CDSConfig::disable_dumping_full_module_graph();
+    }
+    HeapShared::init_for_dumping(CHECK);
+    ArchiveHeapWriter::init();
+    if (CDSConfig::is_dumping_full_module_graph()) {
+      HeapShared::reset_archived_object_states(CHECK);
+    }
   }
 #endif
 
@@ -1378,8 +1382,8 @@ MapArchiveResult MetaspaceShared::map_archives(FileMapInfo* static_mapinfo, File
           static_mapinfo->map_or_load_heap_region();
         }
 #endif // _LP64
-    log_info(cds)("optimized module handling: %s", MetaspaceShared::use_optimized_module_handling() ? "enabled" : "disabled");
-    log_info(cds)("full module graph: %s", CDSConfig::is_loading_full_module_graph() ? "loaded" : "not loaded");
+    log_info(cds)("initial optimized module handling: %s", MetaspaceShared::use_optimized_module_handling() ? "enabled" : "disabled");
+    log_info(cds)("initial full module graph: %s", CDSConfig::is_loading_full_module_graph() ? "loaded" : "not loaded");
   } else {
     unmap_archive(static_mapinfo);
     unmap_archive(dynamic_mapinfo);

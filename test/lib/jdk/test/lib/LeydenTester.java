@@ -155,7 +155,7 @@ abstract public class LeydenTester {
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "classlist");
         listOutputFile(classListFile);
@@ -174,7 +174,7 @@ abstract public class LeydenTester {
                                                    "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:SharedClassListFile=" + classListFile,
                                                    "-cp", classpath(runMode));
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "static");
         listOutputFile(staticArchiveFile);
@@ -193,7 +193,7 @@ abstract public class LeydenTester {
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "dynamic");
         listOutputFile(dynamicArchiveFile);
@@ -213,7 +213,7 @@ abstract public class LeydenTester {
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "code");
         listOutputFile(codeCacheFile);
@@ -234,7 +234,7 @@ abstract public class LeydenTester {
 
 
 
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "old-production");
         listOutputFile(name() + ".old-production.log");
@@ -260,7 +260,7 @@ abstract public class LeydenTester {
                                                    "-Xlog:cds=warning::uptime,level,tags,pid");
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "training");
         listOutputFile(cdsFile);
@@ -283,7 +283,7 @@ abstract public class LeydenTester {
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "training0");
         listOutputFile(cdsFile);
@@ -303,7 +303,7 @@ abstract public class LeydenTester {
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "training1");
         listOutputFile(cdsFile);
@@ -319,7 +319,7 @@ abstract public class LeydenTester {
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(cmdLine);
+        ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "production");
         listOutputFile(name() + ".production.log");

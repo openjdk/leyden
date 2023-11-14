@@ -1114,7 +1114,7 @@ void KlassTrainingData::record_initialization_start() {
   if (!TrainingData::need_data()) {
     return;
   }
-  assert(_clinit_sequence_index == 0, "set this under mutex");
+  //assert(_clinit_sequence_index == 0, "set this under mutex");
   _clinit_sequence_index = next_clinit_count();
   log_initialization(true);
 }

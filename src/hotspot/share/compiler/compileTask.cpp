@@ -161,7 +161,7 @@ void CompileTask::initialize(int compile_id,
 /**
  * Returns the compiler for this task.
  */
-AbstractCompiler* CompileTask::compiler() {
+AbstractCompiler* CompileTask::compiler() const {
   assert(_compiler != nullptr, "should be set");
   return _compiler;
 }

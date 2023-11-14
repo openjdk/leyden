@@ -43,6 +43,7 @@
 #include "logging/logStream.hpp"
 #include "logging/logTag.hpp"
 #include "memory/allocation.inline.hpp"
+#include "nmt/nmtCommon.hpp"
 #include "oops/compressedKlass.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/oop.inline.hpp"
@@ -60,7 +61,6 @@
 #include "runtime/synchronizer.hpp"
 #include "runtime/vm_version.hpp"
 #include "services/management.hpp"
-#include "services/nmtCommon.hpp"
 #include "utilities/align.hpp"
 #include "utilities/checkedCast.hpp"
 #include "utilities/debug.hpp"
@@ -131,6 +131,9 @@ char* Arguments::_ext_dirs = nullptr;
 
 // True if -Xshare:auto option was specified.
 static bool xshare_auto_cmd_line = false;
+
+// True if -Xint/-Xmixed/-Xcomp were specified
+static bool mode_flag_cmd_line = false;
 
 bool PathString::set_value(const char *value, AllocFailType alloc_failmode) {
   char* new_value = AllocateHeap(strlen(value)+1, mtArguments, alloc_failmode);
@@ -1260,10 +1263,7 @@ bool Arguments::add_property(const char* prop, PropertyWriteable writeable, Prop
   }
 
 #if INCLUDE_CDS
-  /*if (strcmp(key, "jdk.module.addmods.0") == 0 && strcmp(value, "jdk.internal.vm.ci") == 0) {
-    // ...
-  } else */ if (is_internal_module_property(key) ||
-      strcmp(key, "jdk.module.main") == 0) {
+  if (is_internal_module_property(key)) {
     MetaspaceShared::disable_optimized_module_handling();
     log_info(cds)("optimized module handling: disabled due to incompatible property: %s=%s", key, value);
   }
@@ -2609,13 +2609,16 @@ jint Arguments::parse_each_vm_init_arg(const JavaVMInitArgs* args, bool* patch_m
     // -Xint
     } else if (match_option(option, "-Xint")) {
           set_mode_flags(_int);
+          mode_flag_cmd_line = true;
     // -Xmixed
     } else if (match_option(option, "-Xmixed")) {
           set_mode_flags(_mixed);
+          mode_flag_cmd_line = true;
     // -Xcomp
     } else if (match_option(option, "-Xcomp")) {
       // for testing the compiler; turn off all flags that inhibit compilation
           set_mode_flags(_comp);
+          mode_flag_cmd_line = true;
     // -Xshare:dump
     } else if (match_option(option, "-Xshare:dump")) {
       DumpSharedSpaces = true;
@@ -3116,16 +3119,17 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
   }
 
   if (CDSConfig::is_dumping_static_archive()) {
-    // Compiler threads may concurrently update the class metadata (such as method entries), so it's
-    // unsafe with -Xshare:dump (which modifies the class metadata in place). Let's disable
-    // compiler just to be safe.
-    //
-    // Note: this is not a concern for dynamically dumping shared spaces, which makes a copy of the
-    // class metadata instead of modifying them in place. The copy is inaccessible to the compiler.
-    // TODO: revisit the following for the static archive case.
-    if (CacheDataStore == nullptr) {
-      // FIXME -- the above comment about "modifies the class metadata in place" is wrong.
+    if (!mode_flag_cmd_line) {
+      // By default, -Xshare:dump runs in interpreter-only mode, which is required for deterministic archive.
+      //
+      // If your classlist is large and you don't care about deterministic dumping, you can use
+      // -Xshare:dump -Xmixed to improve dumping speed.
       set_mode_flags(_int);
+    } else if (_mode == _comp) {
+      // -Xcomp may use excessive CPU for the test tiers. Also, -Xshare:dump runs a small and fixed set of
+      // Java code, so there's not much benefit in running -Xcomp.
+      log_info(cds)("reduced -Xcomp to -Xmixed for static dumping");
+      set_mode_flags(_mixed);
     }
 
     // String deduplication may cause CDS to iterate the strings in different order from one
