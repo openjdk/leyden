@@ -172,6 +172,12 @@ bool CompilationPolicy::must_be_compiled(const methodHandle& m, int comp_level) 
 }
 
 void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
+  if (m->method_holder()->is_not_initialized()) {
+    // 'is_not_initialized' means not only '!is_initialized', but also that
+    // initialization has not been started yet ('!being_initialized')
+    // Do not force compilation of methods in uninitialized classes.
+    return;
+  }
   if (!m->is_native() && MethodTrainingData::have_data()) {
     MethodTrainingData* mtd = MethodTrainingData::find(m);
     if (mtd == nullptr) {
@@ -200,7 +206,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
   }
 }
 
-void CompilationPolicy::compile_if_required_after_init(const methodHandle& m, TRAPS) {
+void CompilationPolicy::maybe_compile_early_after_init(const methodHandle& m, TRAPS) {
   assert(m->method_holder()->is_initialized(), "Should be called after class initialization");
   maybe_compile_early(m, THREAD);
 }
@@ -228,8 +234,6 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
       print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, level);
     }
     CompileBroker::compile_method(m, InvocationEntryBci, level, methodHandle(), 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
-  } else {
-    maybe_compile_early(m, THREAD);
   }
 }
 
@@ -240,25 +244,20 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
     ktd->notice_fully_initialized();
 
     ResourceMark rm;
-    GrowableArray<CompileTrainingData*> ctds;
     ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
       if (ctd->init_deps_left() == 0) {
-        ctds.append(ctd);
+        MethodTrainingData* mtd = ctd->top_method();
+        if (mtd->has_holder()) {
+          const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
+          CompilationPolicy::maybe_compile_early(mh, THREAD);
+        }
       }
     });
-
-    for (int i = 0; i < ctds.length(); i++) {
-      MethodTrainingData* mtd = ctds.at(i)->top_method();
-      if (mtd->has_holder()) {
-        const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
-        CompilationPolicy::compile_if_required(mh, THREAD);
-      }
-    }
   }
-  int len = klass->methods()->length();
-  for (int i = 0; i < len; i++) {
-    const methodHandle mh(THREAD, klass->methods()->at(i));
-    CompilationPolicy::compile_if_required_after_init(mh, THREAD);
+  Array<Method*>* methods = klass->methods();
+  for (int i = 0; i < methods->length(); i++) {
+    const methodHandle mh(THREAD, methods->at(i));
+    CompilationPolicy::maybe_compile_early_after_init(mh, THREAD);
   }
 }
 
