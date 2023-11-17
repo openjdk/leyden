@@ -935,9 +935,8 @@ bool CompilationPolicy::should_delay(const methodHandle& method) {
   }
 
   // It's important to keep this method lock-free and fast as we use
-  // at every event.  We cache the pointer to the MethodTrainingData
-  // in MethodCounters to avoid producing doing a hash table lookup,
-  // which requires a lock.
+  // it at every event.  We cache the pointer to the MethodTrainingData
+  // in MethodCounters to avoid doing a hash table lookup, which requires a lock.
   MethodTrainingData* mtd = MethodTrainingData::find(method);
   if (mtd != nullptr && mtd->saw_level(CompLevel_full_optimization)) {
     return false;
