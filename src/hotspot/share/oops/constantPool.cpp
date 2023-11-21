@@ -308,18 +308,23 @@ objArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
       Array<ResolvedIndyEntry>* indy_entries = cache()->resolved_indy_entries();
       if (indy_entries != nullptr) {
         for (int i = 0; i < indy_entries->length(); i++) {
-          ResolvedIndyEntry *rei = indy_entries->adr_at(i);
-          if (rei->is_resolved() && ClassPrelinker::is_indy_archivable(orig_pool, rei->constant_pool_index())) {
-            int rr_index = rei->resolved_references_index();
+          ResolvedIndyEntry *rie = indy_entries->adr_at(i);
+          if (rie->is_resolved() && ClassPrelinker::is_indy_archivable(orig_pool, rie->constant_pool_index())) {
+            int rr_index = rie->resolved_references_index();
             keep_resolved_refs.at_put(rr_index, true);
           }
         }
       }
 
-      for (int i = 0; i < cache()->length(); i++) {
-        ConstantPoolCacheEntry* cpce = cache()->entry_at(i);
-        if (can_archive_invokehandle(cpce) && cpce->has_appendix()) {
-          keep_resolved_refs.at_put(cpce->f2_as_index(), true);
+      Array<ResolvedMethodEntry>* method_entries = cache()->resolved_method_entries();
+      if (method_entries != nullptr) {
+        for (int i = 0; i < method_entries->length(); i++) {
+          ResolvedMethodEntry* rme = method_entries->adr_at(i);
+          if (rme->is_resolved(Bytecodes::_invokehandle) && rme->has_appendix() &&
+              can_archive_resolved_method(rme)) {
+            int rr_index = rme->resolved_references_index();
+            keep_resolved_refs.at_put(rr_index, true);
+          }
         }
       }
     }
@@ -448,9 +453,7 @@ void ConstantPool::archive_entries() {
   InstanceKlass* src_holder = ArchiveBuilder::current()->get_source_addr(pool_holder());
   assert(src_holder->is_linked(), "must be");
   ResourceMark rm;
-  GrowableArray<bool> keep_cpcache(cache()->length(), cache()->length(), false);
   bool archived = false;
-  int method_cpcache_index = 0; // cpcache index for Methodref/InterfaceMethodref
   bool preresolve = pool_holder()->is_shared_boot_class() || pool_holder()->is_shared_platform_class() ||
                     pool_holder()->is_shared_app_class();
   for (int cp_index = 1; cp_index < length(); cp_index++) { // cp_index 0 is unused
@@ -487,29 +490,6 @@ void ConstantPool::archive_entries() {
       }
       ArchiveBuilder::alloc_stats()->record_klass_cp_entry(archived);
       break;
-    case JVM_CONSTANT_Methodref:
-      if (ArchiveMethodReferences && preresolve) {
-        archived = maybe_archive_resolved_method_ref_at(cp_index, method_cpcache_index, cp_tag);
-      } else {
-        archived = false;
-      }
-      ArchiveBuilder::alloc_stats()->record_method_cp_entry(archived);
-      break;
-    case JVM_CONSTANT_InterfaceMethodref:
-      archived = false; // FIXME: TODO
-      ArchiveBuilder::alloc_stats()->record_method_cp_entry(archived);
-      break;
-    default:
-      break;
-    }
-
-    // The cpcache indices for the method entries are allocated sequentially by
-    // Rewriter::compute_index_maps().
-    switch (tag_at(cp_index).value()) {
-    case JVM_CONSTANT_Methodref:
-    case JVM_CONSTANT_InterfaceMethodref:
-      keep_cpcache.at_put(method_cpcache_index++, archived);
-      break;
     default:
       break;
     }
@@ -517,7 +497,7 @@ void ConstantPool::archive_entries() {
 
   if (cache() != nullptr) {
     // cache() is null if this class is not yet linked.
-    cache()->remove_unshareable_info(&keep_cpcache);
+    cache()->remove_unshareable_info();
   }
 }
 
@@ -588,17 +568,14 @@ bool ConstantPool::maybe_archive_resolved_klass_at(int cp_index) {
   return false;
 }
 
-bool ConstantPool::can_archive_invokehandle(ConstantPoolCacheEntry* cpce) {
-  int cp_index = cpce->constant_pool_index();
+bool ConstantPool::can_archive_invokehandle(ResolvedMethodEntry* rme) {
+  assert(rme->is_resolved(Bytecodes::_invokehandle), "sanity");
 
-  if (!cpce->is_resolved(Bytecodes::_invokehandle)) {
-    return false;
-  }
-
+  int cp_index = rme->constant_pool_index();
   int klass_cp_index = uncached_klass_ref_index_at(cp_index);
   Klass* resolved_klass = resolved_klass_at(klass_cp_index);
   if (!resolved_klass->is_instance_klass()) {
-    // FIXME: can this ever happen
+    // FIXME: can this ever happen?
     return false;
   }
   // FIXME -- any class referenced by the archived CP entries should be added to ArchiveBuilder::classes, or should be
@@ -606,7 +583,7 @@ bool ConstantPool::can_archive_invokehandle(ConstantPoolCacheEntry* cpce) {
   return true;
 }
 
-bool ConstantPool::maybe_archive_resolved_method_ref_at(int cp_index, int cpc_index, int cp_tag) {
+bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry) {
   if (pool_holder()->is_hidden()) { // Not sure how to handle this yet ...
     if (pool_holder()->name()->starts_with("java/lang/invoke/LambdaForm$")) {
       // Hmmm, walking on thin ice here, but maybe we are OK :-)
@@ -615,60 +592,83 @@ bool ConstantPool::maybe_archive_resolved_method_ref_at(int cp_index, int cpc_in
     }
   }
 
+  if (!(pool_holder()->is_shared_boot_class() || pool_holder()->is_shared_platform_class() ||
+        pool_holder()->is_shared_app_class())) {
+    // Archiving resolved cp entries for classes from non-builtin loaders
+    // is not yet supported.
+    return false;
+  }
+
+  if (CDSConfig::is_dumping_dynamic_archive()) {
+    // InstanceKlass::methods() is has been resorted. We need to
+    // update the vtable_index in method_entry (not implemented)
+    return false;
+  }
+
+  if (method_entry->method() == nullptr) {
+    return false;
+  }
+
+  int cp_index = method_entry->constant_pool_index();
   ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
+  if (!src_cp->tag_at(cp_index).is_method()) {
+    // TODO add support for invokeinterface
+    return false;
+  }
+
   if (!ClassPrelinker::can_archive_resolved_method(src_cp, cp_index)) {
     return false;
   }
 
   int klass_cp_index = uncached_klass_ref_index_at(cp_index);
-  Klass* resolved_klass = resolved_klass_at(klass_cp_index);
-  if (!resolved_klass->is_instance_klass()) {
-    // FIXME: is it value to have a non-instance klass in method refs?
+  if (!src_cp->tag_at(klass_cp_index).is_klass()) {
     return false;
   }
-  ConstantPoolCacheEntry* cpce = cache()->entry_at(cpc_index);
-  const char* is_static = "";
-  switch (cp_tag) {
-  case JVM_CONSTANT_Methodref:
-    if (cpce->is_resolved(Bytecodes::_invokehandle)) {
-      if (!ArchiveInvokeDynamic) {
-        // FIXME We don't dump the MethodType tables. This somehow breaks stuff. Why???
-        return false;
-      } else if (!can_archive_invokehandle(cpce)) {
-        return false;
-      }
-    } else if (cpce->is_resolved(Bytecodes::_invokestatic)) {
-      // TODO: allow invokestatic on current class and supertypes??
-      if (!ArchiveInvokeDynamic) {
-        // FIXME We don't dump the MethodType tables. This somehow breaks stuff.
-        return false;
-      }
 
-      InstanceKlass* src_cp_holder = src_cp->pool_holder();
-      if (!resolved_klass->name()->equals("java/lang/invoke/MethodHandle") &&
-          !resolved_klass->name()->equals("java/lang/invoke/MethodHandleNatives") /* ||
-          !LambdaFormInvokers::may_be_regenerated_class(src_cp_holder->name()) */) {
-        // FIXME - allow LambdaForm classes as well??
-        // FIXME - tighten this check??
-        return false;
-      }
-      // Allow static method refs to MethodHandle from the LambdaForm Invoker Holder classes
-      is_static = " *** static";
-    } else if (!cpce->is_resolved(Bytecodes::_invokevirtual) &&
-               !cpce->is_resolved(Bytecodes::_invokespecial)) {
+  Klass* resolved_klass = resolved_klass_at(klass_cp_index);
+  if (!resolved_klass->is_instance_klass()) {
+    // FIXME: is it valid to have a non-instance klass in method refs?
+    return false;
+  }
+  const char* is_static = "";
+  if (method_entry->is_resolved(Bytecodes::_invokehandle)) {
+    if (!ArchiveInvokeDynamic) {
+      // FIXME We don't dump the MethodType tables. This somehow breaks stuff. Why???
+      return false;
+    } else if (!can_archive_invokehandle(method_entry)) {
       return false;
     }
-    if (resolved_klass->is_instance_klass()) {
-      InstanceKlass* ik = InstanceKlass::cast(resolved_klass);
-      if (SystemDictionaryShared::is_jfr_event_class(ik)) {
-        // Some methods in JRF event klasses may be redefined.
-        return false;
-      }
-      if (SystemDictionaryShared::has_been_redefined(ik)) {
-        return false;
-      }
+  } else if (method_entry->is_resolved(Bytecodes::_invokestatic)) {
+    // TODO: allow invokestatic on current class and supertypes??
+    if (!ArchiveInvokeDynamic) {
+      // FIXME We don't dump the MethodType tables. This somehow breaks stuff.
+      return false;
     }
-    break;
+
+    InstanceKlass* src_cp_holder = src_cp->pool_holder();
+    if (!resolved_klass->name()->equals("java/lang/invoke/MethodHandle") &&
+        !resolved_klass->name()->equals("java/lang/invoke/MethodHandleNatives") /* ||
+        !LambdaFormInvokers::may_be_regenerated_class(src_cp_holder->name()) */) {
+      // FIXME - allow LambdaForm classes as well??
+      // FIXME - tighten this check??
+      return false;
+    }
+    // Allow static method refs to MethodHandle from the LambdaForm Invoker Holder classes
+    is_static = " *** static";
+  } else if (!method_entry->is_resolved(Bytecodes::_invokevirtual) &&
+             !method_entry->is_resolved(Bytecodes::_invokespecial)) {
+    return false;
+  }
+
+  if (resolved_klass->is_instance_klass()) {
+    InstanceKlass* ik = InstanceKlass::cast(resolved_klass);
+    if (SystemDictionaryShared::is_jfr_event_class(ik)) {
+      // Some methods in JRF event klasses may be redefined.
+      return false;
+    }
+    if (SystemDictionaryShared::has_been_redefined(ik)) {
+      return false;
+    }
   }
 
   if (log_is_enabled(Debug, cds, resolve)) {
@@ -679,12 +679,8 @@ bool ConstantPool::maybe_archive_resolved_method_ref_at(int cp_index, int cpc_in
                             pool_holder()->name()->as_C_string(), resolved_klass->name()->as_C_string(),
                             name->as_C_string(), signature->as_C_string(), is_static);
   }
-
-  // work-o-in-progress, mark_and_relocate could return false if it doesn't know how to
-  // archive the cpce.
-  return cpce->mark_and_relocate(src_cp);
+  return true;
 }
-
 #endif // INCLUDE_CDS
 
 int ConstantPool::cp_to_object_index(int cp_index) {
@@ -869,14 +865,12 @@ Klass* ConstantPool::klass_at_if_loaded(const constantPoolHandle& this_cp, int w
 Method* ConstantPool::method_at_if_loaded(const constantPoolHandle& cpool,
                                                    int which) {
   if (cpool->cache() == nullptr)  return nullptr;  // nothing to load yet
-  int cache_index = decode_cpcache_index(which, true);
-  if (!(cache_index >= 0 && cache_index < cpool->cache()->length())) {
+  if (!(which >= 0 && which < cpool->resolved_method_entries_length())) {
     // FIXME: should be an assert
     log_debug(class, resolve)("bad operand %d in:", which); cpool->print();
     return nullptr;
   }
-  ConstantPoolCacheEntry* e = cpool->cache()->entry_at(cache_index);
-  return e->method_if_resolved(cpool);
+  return cpool->cache()->method_if_resolved(which);
 }
 
 
@@ -886,9 +880,7 @@ bool ConstantPool::has_appendix_at_if_loaded(const constantPoolHandle& cpool, in
     int indy_index = decode_invokedynamic_index(which);
     return cpool->resolved_indy_entry_at(indy_index)->has_appendix();
   } else {
-    int cache_index = decode_cpcache_index(which, true);
-    ConstantPoolCacheEntry* e = cpool->cache()->entry_at(cache_index);
-    return e->has_appendix();
+    return cpool->resolved_method_entry_at(which)->has_appendix();
   }
 }
 
@@ -898,21 +890,18 @@ oop ConstantPool::appendix_at_if_loaded(const constantPoolHandle& cpool, int whi
     int indy_index = decode_invokedynamic_index(which);
     return cpool->resolved_reference_from_indy(indy_index);
   } else {
-    int cache_index = decode_cpcache_index(which, true);
-    ConstantPoolCacheEntry* e = cpool->cache()->entry_at(cache_index);
-    return e->appendix_if_resolved(cpool);
+    return cpool->cache()->appendix_if_resolved(which);
   }
 }
 
 
 bool ConstantPool::has_local_signature_at_if_loaded(const constantPoolHandle& cpool, int which) {
   if (cpool->cache() == nullptr)  return false;  // nothing to load yet
-  int cache_index = decode_cpcache_index(which, true);
   if (is_invokedynamic_index(which)) {
-    return cpool->resolved_indy_entry_at(cache_index)->has_local_signature();
+    int indy_index = decode_invokedynamic_index(which);
+    return cpool->resolved_indy_entry_at(indy_index)->has_local_signature();
   } else {
-    ConstantPoolCacheEntry* e = cpool->cache()->entry_at(cache_index);
-    return e->has_local_signature();
+    return cpool->resolved_method_entry_at(which)->has_local_signature();
   }
 }
 
@@ -932,10 +921,12 @@ int ConstantPool::to_cp_index(int index, Bytecodes::Code code) {
     case Bytecodes::_invokespecial:
     case Bytecodes::_invokestatic:
     case Bytecodes::_invokevirtual:
-      // TODO: handle resolved method entries with new structure
+    case Bytecodes::_fast_invokevfinal: // Bytecode interpreter uses this
+      return resolved_method_entry_at(index)->constant_pool_index();
     default:
-      // change byte-ordering and go via cache
-      return remap_instruction_operand_from_cache(index);
+      tty->print_cr("Unexpected bytecode: %d", code);
+      ShouldNotReachHere(); // All cases should have been handled
+      return -1;
   }
 }
 
@@ -976,15 +967,6 @@ u2 ConstantPool::klass_ref_index_at(int index, Bytecodes::Code code) {
             "an invokedynamic instruction does not have a klass");
   return uncached_klass_ref_index_at(to_cp_index(index, code));
 }
-
-int ConstantPool::remap_instruction_operand_from_cache(int operand) {
-  int cpc_index = operand;
-  DEBUG_ONLY(cpc_index -= CPCACHE_INDEX_TAG);
-  assert((int)(u2)cpc_index == cpc_index, "clean u2");
-  int member_index = cache()->entry_at(cpc_index)->constant_pool_index();
-  return member_index;
-}
-
 
 void ConstantPool::verify_constant_pool_resolve(const constantPoolHandle& this_cp, Klass* k, TRAPS) {
   if (!(k->is_instance_klass() || k->is_objArray_klass())) {

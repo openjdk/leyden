@@ -107,7 +107,7 @@ void ClassPrelinker::initialize() {
     add_one_vm_class(vmClasses::klass_at(id));
   }
   if (_static_preloaded_klasses._boot != nullptr && !CDSConfig::is_dumping_final_static_archive()) {
-    assert(DynamicDumpSharedSpaces, "must be");
+    assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
     add_preloaded_klasses(_static_preloaded_klasses._boot);
     add_preloaded_klasses(_static_preloaded_klasses._boot2);
     add_preloaded_klasses(_static_preloaded_klasses._platform);
@@ -135,7 +135,7 @@ void ClassPrelinker::add_preloaded_klasses(Array<InstanceKlass*>* klasses) {
 void ClassPrelinker::add_unrecorded_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses) {
   // These initiated classes are already recorded in the static archive. There's no need to
   // record them again for the dynamic archive.
-  assert(DynamicDumpSharedSpaces, "must be");
+  assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
   bool need_to_record = false;
   for (int i = 0; i < klasses->length(); i++) {
     InstanceKlass* ik = klasses->at(i);
@@ -466,7 +466,7 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
       case Bytecodes::_invokespecial:
     //case Bytecodes::_invokevirtual: FIXME - This fails with test/hotspot/jtreg/premain/jmh/run.sh
       case Bytecodes::_invokestatic: // This is only for a few specific cases.
-        maybe_resolve_fmi_ref(ik, m, bc, bcs.get_index_u2_cpcache(), preresolve_list, THREAD);
+        maybe_resolve_fmi_ref(ik, m, bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION; // just ignore
         }
@@ -484,7 +484,6 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   constantPoolHandle cp(THREAD, ik->constants());
   HandleMark hm(THREAD);
   int cp_index;
-  ConstantPoolCacheEntry* cp_cache_entry = nullptr;
 
   assert(bc != Bytecodes::_invokehandle, "this is buggy -- temporarily disabled");
   assert(bc != Bytecodes::_invokevirtual, "this is buggy -- temporarily disabled");
@@ -493,12 +492,11 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
       bc == Bytecodes::_invokestatic ||
       bc == Bytecodes::_invokespecial ||
       bc == Bytecodes::_invokevirtual) {
-    int cpc_index = cp->decode_cpcache_index(raw_index);
-    cp_cache_entry = cp->cache()->entry_at(cpc_index);
-    if (cp_cache_entry->is_resolved(bc)) {
+    ResolvedMethodEntry* method_entry = cp->cache()->resolved_method_entry_at(raw_index);
+    if (method_entry->is_resolved(bc)) {
       return;
     }
-    cp_index = cp_cache_entry->constant_pool_index();
+    cp_index = method_entry->constant_pool_index();
   } else {
     assert(bc == Bytecodes::_getfield || bc == Bytecodes::_putfield, "must be");
     cp_index = cp->cache()->resolved_field_entry_at(raw_index)->constant_pool_index();
@@ -532,7 +530,7 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     ref_kind = "field ";
     break;
   case Bytecodes::_invokevirtual:
-    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, cp_cache_entry, CHECK);
+    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
     ref_kind = "method";
     break;
   case Bytecodes::_invokespecial:
@@ -545,11 +543,11 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   case Bytecodes::_invokestatic:
     if (!resolved_klass->name()->equals("java/lang/invoke/MethodHandle") &&
         !resolved_klass->name()->equals("java/lang/invoke/MethodHandleNatives")
-/* ||
-        !LambdaFormInvokers::may_be_regenerated_class(ik->name())*/) {
+      //TODO || !LambdaFormInvokers::may_be_regenerated_class(ik->name()) 
+        ) {
       return;
     }
-    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, cp_cache_entry, CHECK);
+    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
     ref_kind = "method";
     is_static = " *** static";
     break;
@@ -753,7 +751,7 @@ class ClassPrelinker::PreloadedKlassRecorder : StackObj {
     }
 
     if (MetaspaceObj::is_shared(ik)) {
-      if (DynamicDumpSharedSpaces) {
+      if (CDSConfig::is_dumping_dynamic_archive()) {
         return;
       } else {
         assert(CDSConfig::is_dumping_final_static_archive(), "must be");

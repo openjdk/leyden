@@ -1214,14 +1214,6 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
 
   if (CDSConfig::is_dumping_final_static_archive()) {
     SystemDictionaryShared::init_dumptime_info(ik);
-    if (ik->constants()->cache()) {
-      EXCEPTION_MARK;
-      ik->constants()->cache()->save_for_archive(THREAD);
-      if (HAS_PENDING_EXCEPTION) {
-        vm_exit_during_initialization(err_msg("OOM when loading CDSPreimage"));
-      }
-    }
-
     if (SystemDictionary::is_platform_class_loader(loader_data->class_loader())) {
       ClassLoaderExt::set_has_platform_classes();
     } else if (SystemDictionary::is_system_class_loader(loader_data->class_loader())) {

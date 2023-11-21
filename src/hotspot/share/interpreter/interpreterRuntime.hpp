@@ -95,10 +95,9 @@ class InterpreterRuntime: AllStatic {
   // Used by ClassListParser.
   static void resolve_get_put(Bytecodes::Code bytecode, int field_index,
                               methodHandle& m, constantPoolHandle& pool, TRAPS);
-  static void cds_resolve_invoke(Bytecodes::Code bytecode, int raw_index,
+  static void cds_resolve_invoke(Bytecodes::Code bytecode, int method_index,
                                  methodHandle& m,
-                                 constantPoolHandle& pool,
-                                 ConstantPoolCacheEntry* cp_cache_entry, TRAPS);
+                                 constantPoolHandle& pool, TRAPS);
   static void cds_resolve_invokehandle(int raw_index,
                                        constantPoolHandle& pool, TRAPS);
   static void cds_resolve_invokedynamic(int raw_index,
@@ -114,8 +113,7 @@ class InterpreterRuntime: AllStatic {
 
   static void update_invoke_cp_cache_entry(CallInfo& info, Bytecodes::Code bytecode,
                                            methodHandle& resolved_method,
-                                           constantPoolHandle& pool,
-                                           ConstantPoolCacheEntry* cp_cache_entry);
+                                           constantPoolHandle& pool, int method_index);
  public:
   // Synchronization
   static void    monitorenter(JavaThread* current, BasicObjectLock* elem);

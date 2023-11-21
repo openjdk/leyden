@@ -486,6 +486,7 @@ static bool _seen_system_unnamed_module = false;
 //
 // Returns true iff the oop has an archived ModuleEntry.
 bool Modules::check_archived_module_oop(oop orig_module_obj) {
+  assert(DumpSharedSpaces, "must be");
   assert(CDSConfig::is_dumping_full_module_graph(), "must be");
   assert(java_lang_Module::is_instance(orig_module_obj), "must be");
 

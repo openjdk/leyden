@@ -31,15 +31,15 @@
 #include "classfile/classLoaderDataShared.hpp"
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"
-#include "runtime/arguments.hpp"
 
 bool CDSConfig::_has_preloaded_classes;
-bool CDSConfig::_enable_dumping_full_module_graph = true;
-bool CDSConfig::_enable_loading_full_module_graph = true;
+bool CDSConfig::_is_dumping_dynamic_archive = false;
 
-bool CDSConfig::is_dumping_archive() {
-  return is_dumping_static_archive() || is_dumping_dynamic_archive();
-}
+// The ability to dump the FMG depends on many factors checked by
+// is_dumping_full_module_graph(), but can be unconditionally disabled by
+// _dumping_full_module_graph_disabled. (Ditto for loading the FMG).
+bool CDSConfig::_dumping_full_module_graph_disabled = false;
+bool CDSConfig::_loading_full_module_graph_disabled = false;
 
 bool CDSConfig::is_dumping_static_archive() {
   return DumpSharedSpaces || is_dumping_final_static_archive();
@@ -64,10 +64,6 @@ bool CDSConfig::is_dumping_final_static_archive() {
   }
 }
 
-bool CDSConfig::is_dumping_dynamic_archive() {
-  return DynamicDumpSharedSpaces;
-}
-
 bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
   if (is_dumping_final_static_archive()) {
     // Not yet supported in new workflow -- the training data may point
@@ -90,9 +86,9 @@ bool CDSConfig::is_loading_heap() {
 }
 
 bool CDSConfig::is_dumping_full_module_graph() {
-  if (is_dumping_heap() &&
-      MetaspaceShared::use_optimized_module_handling() &&
-      _enable_dumping_full_module_graph) {
+  if (!_dumping_full_module_graph_disabled &&
+      is_dumping_heap() &&
+      MetaspaceShared::use_optimized_module_handling()) {
     return true;
   } else {
     return false;
@@ -104,10 +100,10 @@ bool CDSConfig::is_loading_full_module_graph() {
     return true;
   }
 
-  if (UseSharedSpaces &&
+  if (!_loading_full_module_graph_disabled &&
+      UseSharedSpaces &&
       ArchiveHeapLoader::can_use() &&
-      MetaspaceShared::use_optimized_module_handling() &&
-      _enable_loading_full_module_graph) {
+      MetaspaceShared::use_optimized_module_handling()) {
     // Classes used by the archived full module graph are loaded in JVMTI early phase.
     assert(!(JvmtiExport::should_post_class_file_load_hook() && JvmtiExport::has_early_class_hook_env()),
            "CDS should be disabled if early class hooks are enabled");
@@ -118,8 +114,8 @@ bool CDSConfig::is_loading_full_module_graph() {
 }
 
 void CDSConfig::disable_dumping_full_module_graph(const char* reason) {
-  if (_enable_dumping_full_module_graph) {
-    _enable_dumping_full_module_graph = false;
+  if (!_dumping_full_module_graph_disabled) {
+    _dumping_full_module_graph_disabled = true;
     if (reason != nullptr) {
       log_info(cds)("full module graph cannot be dumped: %s", reason);
     }
@@ -127,8 +123,9 @@ void CDSConfig::disable_dumping_full_module_graph(const char* reason) {
 }
 
 void CDSConfig::disable_loading_full_module_graph(const char* reason) {
-  if (_enable_loading_full_module_graph) {
-    _enable_loading_full_module_graph = false;
+  assert(!ClassLoaderDataShared::is_full_module_graph_loaded(), "you call this function too late!");
+  if (!_loading_full_module_graph_disabled) {
+    _loading_full_module_graph_disabled = true;
     if (reason != nullptr) {
       log_info(cds)("full module graph cannot be loaded: %s", reason);
     }

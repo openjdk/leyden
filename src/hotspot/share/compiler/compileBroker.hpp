@@ -91,11 +91,23 @@ class CompileQueue : public CHeapObj<mtCompiler> {
   Monitor* _lock;
 
   int _size;
+  int _peak_size;
+  uint _total_added;
+  uint _total_removed;
 
   void purge_stale_tasks();
  public:
-  CompileQueue(const char* name, Monitor* lock)
-  : _name(name), _first(nullptr), _last(nullptr), _first_stale(nullptr), _lock(lock), _size(0) {}
+  CompileQueue(const char* name, Monitor* lock) {
+    _name = name;
+    _lock = lock;
+    _first = nullptr;
+    _last = nullptr;
+    _size = 0;
+    _total_added = 0;
+    _total_removed = 0;
+    _peak_size = 0;
+    _first_stale = nullptr;
+  }
 
   const char*  name() const                      { return _name; }
 
@@ -111,6 +123,10 @@ class CompileQueue : public CHeapObj<mtCompiler> {
   int          size()     const                  { return _size;          }
 
   Monitor* lock() const { return _lock; }
+
+  int         get_peak_size()     const          { return _peak_size; }
+  uint        get_total_added()   const          { return _total_added; }
+  uint        get_total_removed() const          { return _total_removed; }
 
   // Redefine Classes support
   void mark_on_stack();
@@ -317,6 +333,9 @@ public:
                                  bool requires_online_compilation,
                                  CompileTask::CompileReason compile_reason,
                                  TRAPS);
+  static CompileQueue* c1_compile_queue();
+  static CompileQueue* c2_compile_queue();
+
 private:
   static nmethod* compile_method(const methodHandle& method,
                                    int osr_bci,
@@ -428,6 +447,8 @@ public:
 
   static CompileLog* get_log(CompilerThread* ct);
 
+  static int get_c1_thread_count() {                return _compilers[0]->num_compiler_threads(); }
+  static int get_c2_thread_count() {                return _compilers[1]->num_compiler_threads(); }
   static int get_total_compile_count() {            return _total_compile_count; }
   static int get_total_bailout_count() {            return _total_bailout_count; }
   static int get_total_invalidated_count() {        return _total_invalidated_count; }

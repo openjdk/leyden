@@ -744,7 +744,7 @@ void SystemDictionaryShared::dumptime_classes_do(class MetaspaceClosure* it) {
 bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbol* name,
          Symbol* from_name, bool from_field_is_protected, bool from_is_array, bool from_is_object) {
   assert(CDSConfig::is_dumping_archive(), "sanity");
-  if (DynamicDumpSharedSpaces && k->is_shared()) {
+  if (CDSConfig::is_dumping_dynamic_archive() && k->is_shared()) {
     // k is a new class in the static archive, but one of its supertypes is an old class, so k wasn't
     // verified during dump time. No need to record constraints as k won't be included in the dynamic archive.
     return false;
@@ -1052,7 +1052,7 @@ void SystemDictionaryShared::record_linking_constraint(Symbol* name, InstanceKla
   assert(klass_loader != nullptr, "should not be called for boot loader");
   assert(loader1 != loader2, "must be");
 
-  if (DynamicDumpSharedSpaces && Thread::current()->is_VM_thread()) {
+  if (CDSConfig::is_dumping_dynamic_archive() && Thread::current()->is_VM_thread()) {
     // We are re-laying out the vtable/itables of the *copy* of
     // a class during the final stage of dynamic dumping. The
     // linking constraints for this class has already been recorded.

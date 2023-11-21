@@ -268,7 +268,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
   //if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
   //  return;
   //}
-  if (!has_id(ik)) {
+  if (!has_id(ik)) { // do not resolve CP for classes loaded by custom loaders.
     return;
   }
 
@@ -286,25 +286,6 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
           list.at_put(cp_index, true);
         }
       }
-      break;
-    case JVM_CONSTANT_Methodref:
-      if (cp->cache() != nullptr) {
-        ConstantPoolCacheEntry* cpce = cp->cache()->entry_at(methodref_cpcache_index);
-        if (cpce->is_resolved(Bytecodes::_invokevirtual) ||
-            cpce->is_resolved(Bytecodes::_invokespecial)) {
-          list.at_put(cp_index, true);
-        }
-        if (cpce->is_resolved(Bytecodes::_invokehandle)) {
-          list.at_put(cp_index, true); /// TODO Can invokehandle trigger <clinit>??
-        }
-        if (cpce->is_resolved(Bytecodes::_invokestatic)) {
-          list.at_put(cp_index, true); /// TODO Can invokehandle trigger <clinit>??
-        }
-      }
-      methodref_cpcache_index++;
-      break;
-    case JVM_CONSTANT_InterfaceMethodref:
-      methodref_cpcache_index++;
       break;
     }
   }
@@ -332,13 +313,28 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
         }
       }
     }
+
+    Array<ResolvedMethodEntry>* method_entries = cp->cache()->resolved_method_entries();
+    if (method_entries != nullptr) {
+      for (int i = 0; i < method_entries->length(); i++) {
+        ResolvedMethodEntry* rme = method_entries->adr_at(i);
+        int cp_index = rme->constant_pool_index();
+        if (rme->is_resolved(Bytecodes::_invokevirtual) ||
+            rme->is_resolved(Bytecodes::_invokespecial) ||
+            rme->is_resolved(Bytecodes::_invokeinterface) ||
+            rme->is_resolved(Bytecodes::_invokestatic) ||
+            rme->is_resolved(Bytecodes::_invokehandle)) {
+          list.at_put(rme->constant_pool_index(), true);
+        }
+      }
+    }
   }
 
   if (list.length() > 0) {
     outputStream* stream = _classlist_file;
     stream->print("@cp %s", ik->name()->as_C_string());
     for (int i = 0; i < list.length(); i++) {
-      if (list.at(i)) {
+      if (list.at(i) && !cp->tag_at(i).is_interface_method()) { // JVM_CONSTANT_InterfaceMethodref not yet supported
         stream->print(" %d", i);
       }
     }

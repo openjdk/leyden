@@ -24,7 +24,6 @@
 
 #include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "cds/serializeClosure.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoaderDataShared.hpp"
@@ -183,7 +182,7 @@ void ClassLoaderDataShared::serialize(SerializeClosure* f) {
 }
 
 void ClassLoaderDataShared::clear_archived_oops() {
-  assert(UseSharedSpaces && !CDSConfig::is_loading_full_module_graph(), "must be");
+  assert(!CDSConfig::is_loading_full_module_graph(), "must be");
   _archived_boot_loader_data.clear_archived_oops();
   _archived_platform_loader_data.clear_archived_oops();
   _archived_system_loader_data.clear_archived_oops();
