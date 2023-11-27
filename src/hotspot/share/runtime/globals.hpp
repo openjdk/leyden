@@ -1756,7 +1756,7 @@ const int ObjectAlignmentInBytes = 8;
   product(bool, PerfDisableSharedMem, false,                                \
           "Store performance data in standard memory")                      \
                                                                             \
-  product(int, PerfDataMemorySize, 32*K,                                    \
+  product(int, PerfDataMemorySize, 64*K,                                    \
           "Size of performance data memory region. Will be rounded "        \
           "up to a multiple of the native os page size.")                   \
           range(128, 32*64*K)                                               \
