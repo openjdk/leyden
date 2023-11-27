@@ -1424,7 +1424,8 @@ CompLevel CompilationPolicy::common(const methodHandle& method, CompLevel cur_le
   if (force_comp_at_level_simple(method)) {
     next_level = CompLevel_simple;
   } else {
-    if (MethodTrainingData::have_data()) {
+    MethodTrainingData* mtd = MethodTrainingData::find(method);
+    if (MethodTrainingData::have_data() && mtd != nullptr) {
       next_level = trained_transition(method, cur_level, THREAD);
       if (cur_level == next_level) {
         // If the trained transition logic returns the same level check the standard transition function
