@@ -69,7 +69,8 @@ public class PreloadedClassVerification {
                                                      "BadNewClass",
                                                      "BadNewClass2",
                                                      "GoodOldClass"),
-                            bootAppendWhiteBox);
+                            bootAppendWhiteBox,
+                            "-Xlog:cds+class=debug");
 
         TestCommon.run("-cp", app1Jar + File.pathSeparator + app2Jar,
                        "-XX:+UnlockDiagnosticVMOptions",

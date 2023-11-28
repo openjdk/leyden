@@ -29,6 +29,7 @@
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classLoaderDataShared.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"
 
@@ -73,6 +74,16 @@ bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
   } else {
     return is_dumping_archive();
   }
+}
+
+// Preserve all states that were examined used during dumptime verification, such
+// that the verification result (pass or fail) cannot be changed at runtime.
+//
+// For example, if the verification of ik requires that class A must be a subtype of B,
+// then this relationship between A and B cannot be changed at runtime. I.e., the app
+// cannot load alternative versions of A and B such that A is not a subtype of B.
+bool CDSConfig::preserve_all_dumptime_verification_states(const InstanceKlass* ik) {
+  return PreloadSharedClasses && SystemDictionaryShared::is_builtin(ik);
 }
 
 #if INCLUDE_CDS_JAVA_HEAP

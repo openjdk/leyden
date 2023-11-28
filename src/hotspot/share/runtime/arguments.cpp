@@ -3185,7 +3185,13 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
   }
 
   if (!CDSConfig::is_dumping_static_archive() || !PreloadSharedClasses) {
+    // FIXME -- CDSConfig::is_dumping_heap() is not yet callable from here, as UseG1GC is not yet set by ergo!
+    //
+    //
+    // These optimizations require heap dumping and PreloadSharedClasses, or else
+    // the classes of some archived heap objects may be replaced at runtime.
     ArchiveInvokeDynamic = false;
+    ArchiveReflectionData = false;
   }
 #endif
 

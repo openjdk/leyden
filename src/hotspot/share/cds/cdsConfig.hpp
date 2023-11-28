@@ -28,6 +28,8 @@
 #include "memory/allStatic.hpp"
 #include "utilities/macros.hpp"
 
+class InstanceKlass;
+
 class CDSConfig : public AllStatic {
 #if INCLUDE_CDS
   static bool _is_dumping_dynamic_archive;
@@ -48,6 +50,9 @@ public:
   static bool      has_preloaded_classes()                   { CDS_ONLY(return _has_preloaded_classes); NOT_CDS(return false); }
   static void      set_has_preloaded_classes()               { CDS_ONLY(_has_preloaded_classes = true); }
   static bool      is_dumping_regenerated_lambdaform_invokers() NOT_CDS_RETURN_(false);
+
+  // Misc CDS features
+  static bool      preserve_all_dumptime_verification_states(const InstanceKlass* ik);
 
   // CDS archived heap
   static bool      is_dumping_heap()                         NOT_CDS_JAVA_HEAP_RETURN_(false);

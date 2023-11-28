@@ -315,7 +315,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     }
   }
 
-  if (!PreloadSharedClasses || !ArchiveReflectionData || !is_builtin(k)) {
+  if (!CDSConfig::preserve_all_dumptime_verification_states(k)) {
     if (!k->is_linked()) {
       if (has_class_failed_verification(k)) {
         return warn_excluded(k, "Failed verification");
@@ -337,7 +337,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     if (ArchiveInvokeDynamic && HeapShared::is_archivable_hidden_klass(k)) {
       // Allow Lambda Proxy and LambdaForm classes, for ArchiveInvokeDynamic only
     } else {
-      log_debug(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
+      log_info(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
       return true;
     }
   }
