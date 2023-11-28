@@ -172,6 +172,7 @@ abstract public class LeydenTester {
                                                    "-Xshare:dump",
                                                    "-XX:SharedArchiveFile=" + staticArchiveFile,
                                                    "-XX:+ArchiveInvokeDynamic",
+                                                   "-XX:+ArchiveReflectionData",
                                                    "-XX:SharedClassListFile=" + classListFile,
                                                    "-cp", classpath(runMode));
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
@@ -253,6 +254,7 @@ abstract public class LeydenTester {
         f.delete();
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), trainingLog(),
                                                    "-XX:+ArchiveInvokeDynamic",
+                                                 //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
                                                    "-cp", classpath(runMode),
                                                    // Use PID to distinguish the logs of the training process
@@ -279,6 +281,7 @@ abstract public class LeydenTester {
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:+CDSManualFinalImage",
                                                    "-XX:+ArchiveInvokeDynamic",
+                                                 //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
@@ -298,6 +301,7 @@ abstract public class LeydenTester {
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), trainingLog1(),
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:+ArchiveInvokeDynamic",
+                                                 //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
                                                    "-XX:CDSPreimage=" + cdsFile + ".preimage",
                                                    "-cp", classpath(runMode));
