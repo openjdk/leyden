@@ -265,7 +265,6 @@ void print_method_invocation_histogram() {}
 
 // General statistics printing (profiling ...)
 void print_statistics() {
-  ttyLocker ttyl;
   if (ReplayTraining && PrintTrainingInfo) {
     TrainingData::print_archived_training_data_on(tty);
   }
