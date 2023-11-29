@@ -397,12 +397,10 @@ Klass* ClassPrelinker::find_loaded_class(Thread* current, ConstantPool* cp, int 
 
 #if INCLUDE_CDS_JAVA_HEAP
 void ClassPrelinker::resolve_string(constantPoolHandle cp, int cp_index, TRAPS) {
-  if (!CDSConfig::is_dumping_heap()) {
-    return;
+  if (CDSConfig::is_dumping_heap()) {
+    int cache_index = cp->cp_to_object_index(cp_index);
+    ConstantPool::string_at_impl(cp, cp_index, cache_index, CHECK);
   }
-
-  int cache_index = cp->cp_to_object_index(cp_index);
-  ConstantPool::string_at_impl(cp, cp_index, cache_index, CHECK);
 }
 #endif
 

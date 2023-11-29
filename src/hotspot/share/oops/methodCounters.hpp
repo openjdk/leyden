@@ -65,10 +65,8 @@ class MethodCounters : public Metadata {
   u1                  _highest_osr_comp_level;      // Same for OSR level
 
   MethodCounters(const methodHandle& mh);
+  MethodCounters();
 
-  MethodCounters() {
-    assert(DumpSharedSpaces || UseSharedSpaces, "only for CDS");
-  }
  public:
   virtual bool is_methodCounters() const { return true; }
 

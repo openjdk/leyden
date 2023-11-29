@@ -489,7 +489,7 @@ void ModuleEntry::init_as_archived_entry() {
 }
 
 void ModuleEntry::update_oops_in_archived_module(int root_oop_index) {
-  assert(CDSConfig::is_dumping_full_module_graph(), "static dump only");
+  assert(CDSConfig::is_dumping_full_module_graph(), "sanity");
   assert(_archived_module_index == -1, "must be set exactly once");
   assert(root_oop_index >= 0, "sanity");
 
@@ -577,7 +577,7 @@ Array<ModuleEntry*>* ModuleEntryTable::allocate_archived_entries() {
 }
 
 void ModuleEntryTable::init_archived_entries(Array<ModuleEntry*>* archived_modules) {
-  assert(CDSConfig::is_dumping_full_module_graph(), "dump time only");
+  assert(CDSConfig::is_dumping_full_module_graph(), "sanity");
   for (int i = 0; i < archived_modules->length(); i++) {
     ModuleEntry* archived_entry = archived_modules->at(i);
     archived_entry->init_as_archived_entry();

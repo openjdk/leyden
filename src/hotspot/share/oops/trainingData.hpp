@@ -435,10 +435,7 @@ class KlassTrainingData : public TrainingData {
     _clinit_is_done = false;
   }
 
-  KlassTrainingData() {
-    assert(DumpSharedSpaces || UseSharedSpaces, "only for CDS");
-  }
-
+  KlassTrainingData();
   KlassTrainingData(Symbol* klass_name, Symbol* loader_name)
     : TrainingData(klass_name, loader_name)
   {
@@ -742,10 +739,7 @@ public:
 private:
   ciRecords _ci_records;
 
-  CompileTrainingData() : _level(-1), _compile_id (-1) {
-    assert(DumpSharedSpaces || UseSharedSpaces, "only for CDS");
-  }
-
+  CompileTrainingData();
   // (should we also capture counters or MDO state or replay data?)
   CompileTrainingData(MethodTrainingData* method,
                       MethodTrainingData* top_method,
@@ -876,10 +870,7 @@ class MethodTrainingData : public TrainingData {
   MethodCounters* _final_counters;
   MethodData*     _final_profile;
 
-  MethodTrainingData() {
-    assert(DumpSharedSpaces || UseSharedSpaces, "only for CDS");
-  }
-
+  MethodTrainingData();
   MethodTrainingData(KlassTrainingData* klass,
                      Symbol* name, Symbol* signature)
     : TrainingData(klass, name, signature)

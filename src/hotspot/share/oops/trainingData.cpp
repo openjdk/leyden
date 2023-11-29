@@ -64,6 +64,18 @@ volatile bool* TrainingData::_recompilation_status = nullptr;
 int TrainingData::TrainingDataLocker::_lock_mode;
 TrainingData::Options TrainingData::_options;
 
+MethodTrainingData::MethodTrainingData() {
+  assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
+}
+
+KlassTrainingData::KlassTrainingData() {
+  assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
+}
+
+CompileTrainingData::CompileTrainingData() : _level(-1), _compile_id(-1) {
+  assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
+}
+
 void TrainingData::Options::parse() {
   if (TrainingOptions != nullptr) {
     const char delimiter[] = " ,";

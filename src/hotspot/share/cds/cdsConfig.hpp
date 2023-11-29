@@ -32,6 +32,7 @@ class InstanceKlass;
 
 class CDSConfig : public AllStatic {
 #if INCLUDE_CDS
+  static bool _is_dumping_static_archive;
   static bool _is_dumping_dynamic_archive;
   static bool _dumping_full_module_graph_disabled;
   static bool _loading_full_module_graph_disabled;
@@ -41,7 +42,9 @@ class CDSConfig : public AllStatic {
 public:
   // Basic CDS features
   static bool      is_dumping_archive()                      { return is_dumping_static_archive() || is_dumping_dynamic_archive(); }
-  static bool      is_dumping_static_archive()               NOT_CDS_RETURN_(false);
+  static bool      is_dumping_static_archive()               { return (CDS_ONLY(_is_dumping_static_archive) NOT_CDS(false))
+                                                                    || is_dumping_final_static_archive(); }
+  static void  enable_dumping_static_archive()               { CDS_ONLY(_is_dumping_static_archive = true); }
   static bool      is_dumping_preimage_static_archive()      NOT_CDS_RETURN_(false);
   static bool      is_dumping_final_static_archive()         NOT_CDS_RETURN_(false);
   static bool      is_dumping_dynamic_archive()              { return CDS_ONLY(_is_dumping_dynamic_archive) NOT_CDS(false); }

@@ -224,7 +224,7 @@ void CppVtableCloner<T>::init_orig_cpp_vtptr(int kind) {
 CppVtableInfo** CppVtables::_index = nullptr;
 
 char* CppVtables::dumptime_init(ArchiveBuilder* builder) {
-  assert(CDSConfig::is_dumping_static_archive(), "must");
+  assert(CDSConfig::is_dumping_static_archive(), "cpp tables are only dumped into static archive");
   size_t vtptrs_bytes = _num_cloned_vtable_kinds * sizeof(CppVtableInfo*);
   _index = (CppVtableInfo**)builder->rw_region()->allocate(vtptrs_bytes);
 
@@ -302,7 +302,7 @@ intptr_t* CppVtables::get_archived_vtable(MetaspaceObj::Type msotype, address ob
 }
 
 void CppVtables::zero_archived_vtables() {
-  assert(CDSConfig::is_dumping_static_archive(), "dump-time only");
+  assert(CDSConfig::is_dumping_static_archive(), "cpp tables are only dumped into static archive");
   for (int kind = 0; kind < _num_cloned_vtable_kinds; kind ++) {
     _index[kind]->zero();
   }

@@ -2943,7 +2943,7 @@ static void thread_entry(JavaThread* thread, TRAPS) {
 
 JVM_ENTRY_PROF(void, JVM_StartThread, JVM_StartThread(JNIEnv* env, jobject jthread))
 #if INCLUDE_CDS
-  if (DumpSharedSpaces && CacheDataStore == nullptr) {
+  if (CDSConfig::is_dumping_static_archive() && CacheDataStore == nullptr) {
     // During java -Xshare:dump, if we allow multiple Java threads to
     // execute in parallel, symbols and classes may be loaded in
     // random orders which will make the resulting CDS archive
@@ -3584,12 +3584,6 @@ JVM_ENTRY_PROF(jobject, JVM_NewInstanceFromConstructor, JVM_NewInstanceFromConst
   return res;
 JVM_END
 
-// Atomic ///////////////////////////////////////////////////////////////////////////////////////////
-
-JVM_LEAF_PROF(jboolean, JVM_SupportsCX8, JVM_SupportsCX8())
-  return VM_Version::supports_cx8();
-JVM_END
-
 JVM_ENTRY_PROF(void, JVM_InitializeFromArchive, JVM_InitializeFromArchive(JNIEnv* env, jclass cls))
   Klass* k = java_lang_Class::as_Klass(JNIHandles::resolve(cls));
   assert(k->is_klass(), "just checking");
@@ -3701,7 +3695,8 @@ JVM_LEAF_PROF(jboolean, JVM_IsSharingEnabled, JVM_IsSharingEnabled(JNIEnv* env))
 JVM_END
 
 JVM_ENTRY_NO_ENV_PROF(jlong, JVM_GetRandomSeedForDumping, JVM_GetRandomSeedForDumping())
-  if (DumpSharedSpaces) {
+  if (CDSConfig::is_dumping_static_archive()) {
+    // We do this so that the default CDS archive can be deterministic.
     const char* release = VM_Version::vm_release();
     const char* dbg_level = VM_Version::jdk_debug_level();
     const char* version = VM_Version::internal_vm_info_string();
@@ -4222,7 +4217,6 @@ JVM_END
   macro(JVM_InternString) \
   macro(JVM_InvokeMethod) \
   macro(JVM_NewInstanceFromConstructor) \
-  macro(JVM_SupportsCX8) \
   macro(JVM_InitializeFromArchive) \
   macro(JVM_RegisterLambdaProxyClassForArchiving) \
   macro(JVM_LookupLambdaProxyClassFromArchive) \

@@ -22,6 +22,7 @@
  *
  */
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "memory/metaspaceClosure.hpp"
 #include "oops/methodCounters.hpp"
@@ -48,6 +49,10 @@ MethodCounters::MethodCounters(const methodHandle& mh) :
 
   _invoke_mask = right_n_bits(CompilerConfig::scaled_freq_log(Tier0InvokeNotifyFreqLog, scale)) << InvocationCounter::count_shift;
   _backedge_mask = right_n_bits(CompilerConfig::scaled_freq_log(Tier0BackedgeNotifyFreqLog, scale)) << InvocationCounter::count_shift;
+}
+
+MethodCounters::MethodCounters() {
+  assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
 }
 
 MethodCounters* MethodCounters::allocate_no_exception(const methodHandle& mh) {

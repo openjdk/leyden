@@ -726,7 +726,7 @@ void Metaspace::global_initialize() {
 
   metaspace::ChunkHeaderPool::initialize();
 
-  if (DumpSharedSpaces) {
+  if (CDSConfig::is_dumping_static_archive()) {
     if (!CDSConfig::is_dumping_final_static_archive()) {
       assert(!UseSharedSpaces, "sanity");
     }

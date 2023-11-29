@@ -33,7 +33,7 @@
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"
 
-bool CDSConfig::_has_preloaded_classes;
+bool CDSConfig::_is_dumping_static_archive = false;
 bool CDSConfig::_is_dumping_dynamic_archive = false;
 
 // The ability to dump the FMG depends on many factors checked by
@@ -42,12 +42,10 @@ bool CDSConfig::_is_dumping_dynamic_archive = false;
 bool CDSConfig::_dumping_full_module_graph_disabled = false;
 bool CDSConfig::_loading_full_module_graph_disabled = false;
 
-bool CDSConfig::is_dumping_static_archive() {
-  return DumpSharedSpaces || is_dumping_final_static_archive();
-}
+bool CDSConfig::_has_preloaded_classes;
 
 bool CDSConfig::is_dumping_preimage_static_archive() {
-  if (CacheDataStore != nullptr && CDSPreimage == nullptr && DumpSharedSpaces) {
+  if (CacheDataStore != nullptr && CDSPreimage == nullptr && is_dumping_static_archive()) {
     return true;
   } else {
     return false;
@@ -56,9 +54,6 @@ bool CDSConfig::is_dumping_preimage_static_archive() {
 
 bool CDSConfig::is_dumping_final_static_archive() {
   if (CacheDataStore != nullptr && CDSPreimage != nullptr) {
-    // [Temp: refactoring in progress] DumpSharedSpaces is sometimes used in contexts
-    // that are not compatible with is_dumping_final_static_archive().
-    assert(!DumpSharedSpaces, "this flag must not be set");
     return true;
   } else {
     return false;

@@ -488,7 +488,7 @@ bool SystemDictionaryShared::add_unregistered_class(Thread* current, InstanceKla
 InstanceKlass* SystemDictionaryShared::lookup_super_for_unregistered_class(
     Symbol* class_name, Symbol* super_name, bool is_superclass) {
 
-  assert(DumpSharedSpaces, "only when static dumping");
+  assert(CDSConfig::is_dumping_static_archive(), "only when static dumping");
 
   if (!ClassListParser::is_parsing_thread()) {
     // Unregistered classes can be created only by ClassListParser::_parsing_thread.
@@ -778,7 +778,7 @@ bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbo
 }
 
 void SystemDictionaryShared::add_enum_klass_static_field(InstanceKlass* ik, int root_index) {
-  assert(CDSConfig::is_dumping_static_archive(), "static dump only");
+  assert(CDSConfig::is_dumping_heap(), "sanity");
   DumpTimeClassInfo* info = get_info_locked(ik);
   info->add_enum_klass_static_field(root_index);
 }
@@ -907,7 +907,7 @@ InstanceKlass* SystemDictionaryShared::retrieve_lambda_proxy_class(const RunTime
 }
 
 InstanceKlass* SystemDictionaryShared::get_shared_nest_host(InstanceKlass* lambda_ik) {
-  assert(!DumpSharedSpaces && UseSharedSpaces, "called at run time with CDS enabled only");
+  assert(!CDSConfig::is_dumping_static_archive() && UseSharedSpaces, "called at run time with CDS enabled only");
   RunTimeClassInfo* record = RunTimeClassInfo::get_for(lambda_ik);
   return record->nest_host();
 }
@@ -958,7 +958,7 @@ InstanceKlass* SystemDictionaryShared::prepare_shared_lambda_proxy_class(Instanc
 
 void SystemDictionaryShared::check_verification_constraints(InstanceKlass* klass,
                                                             TRAPS) {
-//assert(!DumpSharedSpaces && UseSharedSpaces, "called at run time with CDS enabled only");
+  //assert(!CDSConfig::is_dumping_static_archive() && UseSharedSpaces, "called at run time with CDS enabled only");
   RunTimeClassInfo* record = RunTimeClassInfo::get_for(klass);
 
   int length = record->_num_verifier_constraints;
@@ -1068,7 +1068,7 @@ void SystemDictionaryShared::record_linking_constraint(Symbol* name, InstanceKla
 // returns true IFF there's no need to re-initialize the i/v-tables for klass for
 // the purpose of checking class loader constraints.
 bool SystemDictionaryShared::check_linking_constraints(Thread* current, InstanceKlass* klass) {
-//assert(!DumpSharedSpaces && UseSharedSpaces, "called at run time with CDS enabled only");
+  //assert(!CDSConfig::is_dumping_static_archive() && UseSharedSpaces, "called at run time with CDS enabled only");
   LogTarget(Info, class, loader, constraints) log;
   if (klass->is_shared_boot_class()) {
     // No class loader constraint check performed for boot classes.
@@ -1483,7 +1483,7 @@ InstanceKlass* SystemDictionaryShared::find_builtin_class(Symbol* name) {
 }
 
 void SystemDictionaryShared::update_shared_entry(InstanceKlass* k, int id) {
-  assert(DumpSharedSpaces, "supported only when dumping");
+  assert(CDSConfig::is_dumping_static_archive(), "class ID is used only for static dump (from classlist)");
   DumpTimeClassInfo* info = get_info(k);
   info->_id = id;
 }

@@ -90,6 +90,7 @@
 #include "runtime/safepointVerifiers.hpp"
 #include "runtime/serviceThread.hpp"
 #include "runtime/sharedRuntime.hpp"
+#include "runtime/stackWatermarkSet.inline.hpp"
 #include "runtime/statSampler.hpp"
 #include "runtime/stubCodeGenerator.hpp"
 #include "runtime/thread.inline.hpp"
@@ -870,7 +871,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   _vm_complete = true;
 #endif
 
-  if (DumpSharedSpaces && CacheDataStore == nullptr) {
+  if (CDSConfig::is_dumping_static_archive() && CacheDataStore == nullptr) {
     // Regular -Xshare:dump
     MetaspaceShared::preload_and_dump();
   }
@@ -1302,6 +1303,12 @@ JavaThread *Threads::owning_thread_from_monitor_owner(ThreadsList * t_list,
 JavaThread* Threads::owning_thread_from_object(ThreadsList * t_list, oop obj) {
   assert(LockingMode == LM_LIGHTWEIGHT, "Only with new lightweight locking");
   for (JavaThread* q : *t_list) {
+    // Need to start processing before accessing oops in the thread.
+    StackWatermark* watermark = StackWatermarkSet::get(q, StackWatermarkKind::gc);
+    if (watermark != nullptr) {
+      watermark->start_processing();
+    }
+
     if (q->lock_stack().contains(obj)) {
       return q;
     }

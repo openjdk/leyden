@@ -150,8 +150,9 @@ public:
     assert(value.is_permanent() || (value.refcount() == 1) || (value.refcount() == 0),
            "refcount %d", value.refcount());
 #if INCLUDE_CDS
-    if (DumpSharedSpaces) {
-      // no deallocation is needed
+    if (CDSConfig::is_dumping_static_archive()) {
+      // We have allocated with MetaspaceShared::symbol_space_alloc(). No deallocation is needed.
+      // Unreferenced Symbols will not be copied into the archive.
       return;
     }
 #endif
@@ -178,7 +179,7 @@ private:
   static void* allocate_node_impl(size_t size, Value const& value) {
     size_t alloc_size = size + value.byte_size() + value.effective_length();
 #if INCLUDE_CDS
-    if (DumpSharedSpaces) {
+    if (CDSConfig::is_dumping_static_archive()) {
       MutexLocker ml(DumpRegion_lock, Mutex::_no_safepoint_check_flag);
       // To get deterministic output from -Xshare:dump, we ensure that Symbols are allocated in
       // increasing addresses. When the symbols are copied into the archive, we preserve their

@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/dynamicArchive.hpp"
@@ -451,7 +452,7 @@ void before_exit(JavaThread* thread, bool halt) {
   ClassListWriter::write_reflection_data();
   // Dynamic CDS dumping must happen whilst we can still reliably
   // run Java code.
-  if (DumpSharedSpaces && CacheDataStore != nullptr) {
+  if (CDSConfig::is_dumping_static_archive() && CacheDataStore != nullptr) {
     // Creating the hotspot.cds.preimage file
     MetaspaceShared::preload_and_dump();
   } else {
