@@ -352,6 +352,18 @@ void TemplateTable::ldc(LdcType type)
   __ cmp(r3, (u1)JVM_CONSTANT_Class);
   __ br(Assembler::NE, notClass);
 
+  __ load_resolved_klass_at_offset(r2, r1, r3, rscratch1); // kills r3=tag
+
+  __ cmp(r3, zr); // resolved_klass ?= null
+  __ br(Assembler::EQ, call_ldc);
+
+  const int mirror_offset = in_bytes(Klass::java_mirror_offset());
+  __ ldr(r3, Address(r3, mirror_offset));
+  __ resolve_oop_handle(r3, rscratch1, rscratch2);
+  __ push_ptr(r3);
+
+  __ b(Done);
+
   __ bind(call_ldc);
   __ mov(c_rarg1, is_ldc_wide(type) ? 1 : 0);
   call_VM(r0, CAST_FROM_FN_PTR(address, InterpreterRuntime::ldc), c_rarg1);
@@ -2309,7 +2321,7 @@ void TemplateTable::resolve_cache_and_index_for_field(int byte_no,
   const Register temp = r19;
   assert_different_registers(Rcache, index, temp);
 
-  Label resolved;
+  Label resolved, clinit_barrier_slow;
 
   Bytecodes::Code code = bytecode();
   switch (code) {
@@ -2331,6 +2343,7 @@ void TemplateTable::resolve_cache_and_index_for_field(int byte_no,
   __ br(Assembler::EQ, resolved);
 
   // resolve first time through
+  __ bind(clinit_barrier_slow);
   address entry = CAST_FROM_FN_PTR(address, InterpreterRuntime::resolve_from_cache);
   __ mov(temp, (int) code);
   __ call_VM(noreg, entry, temp);
@@ -2338,6 +2351,13 @@ void TemplateTable::resolve_cache_and_index_for_field(int byte_no,
   // Update registers with resolved info
   __ load_field_entry(Rcache, index);
   __ bind(resolved);
+
+  // Class initialization barrier for static fields
+  if (VM_Version::supports_fast_class_init_checks() &&
+      (bytecode() == Bytecodes::_getstatic || bytecode() == Bytecodes::_putstatic)) {
+    __ ldr(temp, Address(Rcache, ResolvedFieldEntry::field_holder_offset()));
+    __ clinit_barrier(temp, rscratch1, nullptr, &clinit_barrier_slow);
+  }
 }
 
 void TemplateTable::load_resolved_field_entry(Register obj,
@@ -3605,9 +3625,7 @@ void TemplateTable::_new() {
 
   // make sure klass is initialized & doesn't have finalizer
   // make sure klass is fully initialized
-  __ ldrb(rscratch1, Address(r4, InstanceKlass::init_state_offset()));
-  __ cmp(rscratch1, (u1)InstanceKlass::fully_initialized);
-  __ br(Assembler::NE, slow_case);
+  __ clinit_barrier(r4, rscratch1, nullptr, &slow_case);
 
   // get instance_size in InstanceKlass (scaled to a count of bytes)
   __ ldrw(r3,
