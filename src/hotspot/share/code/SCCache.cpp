@@ -194,14 +194,31 @@ void SCCache::preload_code(JavaThread* thread) {
   if ((ClassInitBarrierMode == 0) || !is_on_for_read()) {
     return;
   }
+  if ((DisableCachedCode & (1 << 3)) != 0) {
+    return; // no preloaded code (level 5);
+  }
   _cache->preload_startup_code(thread);
 }
 
 SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) {
-  if (!(comp_level == CompLevel_simple ||
-        comp_level == CompLevel_limited_profile ||
-        comp_level == CompLevel_full_optimization)) {
-    return nullptr; // Level 1, 2, 4 only
+  switch (comp_level) {
+    case CompLevel_simple:
+      if ((DisableCachedCode & (1 << 0)) != 0) {
+        return nullptr;
+      }
+      break;
+    case CompLevel_limited_profile:
+      if ((DisableCachedCode & (1 << 1)) != 0) {
+        return nullptr;
+      }
+      break;
+    case CompLevel_full_optimization:
+      if ((DisableCachedCode & (1 << 2)) != 0) {
+        return nullptr;
+      }
+      break;
+
+    default: return nullptr; // Level 1, 2, and 4 only
   }
   TraceTime t1("SC total find code time", &_t_totalFind, CITime, false);
   if (is_on() && _cache->cache_buffer() != nullptr) {
