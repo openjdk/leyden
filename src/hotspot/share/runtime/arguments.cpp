@@ -4194,6 +4194,11 @@ jint Arguments::apply_ergo() {
       FLAG_SET_DEFAULT(ProfileRuntimeCalls, false);
     }
   }
+  if (FLAG_IS_DEFAULT(PerfDataMemorySize)) {
+    if (ProfileVMLocks || ProfileVMCalls || ProfileRuntimeCalls) {
+      FLAG_SET_DEFAULT(PerfDataMemorySize, 128*K); // reserve more space for extra perf counters
+    }
+  }
 
   if (FLAG_IS_CMDLINE(DiagnoseSyncOnValueBasedClasses)) {
     if (DiagnoseSyncOnValueBasedClasses == ObjectSynchronizer::LOG_WARNING && !log_is_enabled(Info, valuebasedclasses)) {
