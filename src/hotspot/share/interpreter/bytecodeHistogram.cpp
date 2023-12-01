@@ -49,31 +49,25 @@ double BytecodeCounter::frequency() {
 }
 
 void BytecodeCounter::print() {
-  tty->print_cr(
-      "%ld bytecodes executed in %.1fs (%.3fMHz)",
-      counter_value(),
-      elapsed_time(),
-      frequency() / 1000000.0
-  );
+  tty->print_cr("%ld bytecodes executed in %.1fs (%.3fMHz)",
+                counter_value(), elapsed_time(), frequency() / 1000000.0);
 }
 
-// Non-product code
-#ifndef PRODUCT
+
 // Helper class for sorting
 
 class HistoEntry: public ResourceObj {
- private:
+private:
   int             _index;
   int             _count;
 
- public:
+public:
   HistoEntry(int index, int count)                         { _index = index; _count = count; }
   int             index() const                            { return _index; }
   int             count() const                            { return _count; }
 
   static int      compare(HistoEntry** x, HistoEntry** y)  { return (*x)->count() - (*y)->count(); }
 };
-
 
 // Helper functions
 
@@ -137,6 +131,8 @@ void BytecodeHistogram::print(float cutoff) {
   tty->cr();
 }
 
+// Non-product code
+#ifndef PRODUCT
 
 // Implementation of BytecodePairHistogram
 

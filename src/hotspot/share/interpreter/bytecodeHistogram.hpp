@@ -56,17 +56,17 @@ class BytecodeCounter: AllStatic {
 
 class BytecodeHistogram: AllStatic {
  private:
-  NOT_PRODUCT(static int _counters[Bytecodes::number_of_codes];)   // a counter for each bytecode
+  static int _counters[Bytecodes::number_of_codes];   // a counter for each bytecode
 
   friend class TemplateInterpreterGenerator;
   friend class         BytecodeInterpreter;
 
  public:
   // Initialization
-  static void reset()                       PRODUCT_RETURN; // reset counters
+  static void reset(); // reset counters
 
   // Profile printing
-  static void print(float cutoff = 0.01F)   PRODUCT_RETURN; // cutoff in percent
+  static void print(float cutoff); // cutoff in percent
 };
 
 

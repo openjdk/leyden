@@ -1178,8 +1178,12 @@ const int ObjectAlignmentInBytes = 8;
   product(bool, CountBytecodes, false, DIAGNOSTIC,                          \
           "Count number of bytecodes executed")                             \
                                                                             \
-  develop(bool, PrintBytecodeHistogram, false,                              \
+  product(bool, PrintBytecodeHistogram, false, DIAGNOSTIC,                  \
           "Print histogram of the executed bytecodes")                      \
+                                                                            \
+  product(double, PrintBytecodeHistogramCutoff, 0.01,                       \
+          "Print cutoff for histogram of the executed bytecodes")           \
+          range(0.0, 100.0)                                                 \
                                                                             \
   develop(bool, PrintBytecodePairHistogram, false,                          \
           "Print histogram of the executed bytecode pairs")                 \

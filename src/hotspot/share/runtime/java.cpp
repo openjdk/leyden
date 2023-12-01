@@ -510,7 +510,7 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 
   if (PrintBytecodeHistogram) {
-    BytecodeHistogram::print();
+    BytecodeHistogram::print(PrintBytecodeHistogramCutoff);
   }
 
 #ifdef LINUX
