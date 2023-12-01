@@ -36,6 +36,7 @@
 #include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
+#include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/compileLog.hpp"
 #include "compiler/compilerEvent.hpp"
 #include "compiler/compilerOracle.hpp"
@@ -68,9 +69,10 @@
 #include "runtime/safepointVerifiers.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/threads.hpp"
-#include "runtime/threadSMR.hpp"
+#include "runtime/threadSMR.inline.hpp"
 #include "runtime/timerTrace.hpp"
 #include "runtime/vframe.inline.hpp"
+#include "services/management.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/dtrace.hpp"
 #include "utilities/events.hpp"
@@ -185,6 +187,7 @@ elapsedTimer CompileBroker::_t_bailedout_compilation;
 
 uint CompileBroker::_total_bailout_count            = 0;
 uint CompileBroker::_total_invalidated_count        = 0;
+uint CompileBroker::_total_not_entrant_count        = 0;
 uint CompileBroker::_total_compile_count            = 0;
 uint CompileBroker::_total_osr_compile_count        = 0;
 uint CompileBroker::_total_standard_compile_count   = 0;
@@ -355,6 +358,8 @@ void CompileQueue::add(CompileTask* task) {
   // Mark the method as being in the compile queue.
   task->method()->set_queued_for_compilation();
 
+  task->mark_queued(os::elapsed_counter());
+
   if (CIPrintCompileQueue) {
     print_tty();
   }
@@ -375,6 +380,48 @@ void CompileQueue::add(CompileTask* task) {
   _lock->notify_all();
 }
 
+void CompileQueue::add_pending(CompileTask* task) {
+  assert(_lock->owned_by_self() == false, "must NOT own lock");
+  assert(UseLockFreeCompileQueues, "");
+  task->method()->set_queued_for_compilation();
+  _queue.push(*task);
+  // FIXME: additional coordination needed? e.g., is it possible for compiler thread to block w/o processing pending tasks?
+  if (is_empty() && _lock->try_lock()) {
+    _lock->notify_all();
+    _lock->unlock();
+  }
+}
+
+void CompileQueue::transfer_pending() {
+  assert(_lock->owned_by_self(), "must own lock");
+  while (!_queue.empty()) {
+    CompileTask* task = _queue.pop();
+//    guarantee(task->method()->queued_for_compilation(), "");
+    task->method()->set_queued_for_compilation(); // FIXME
+    if (task->method()->pending_queue_processed()) {
+      task->set_next(_first_stale);
+      task->set_prev(nullptr);
+      _first_stale = task;
+      continue; // skip
+    } else {
+      // Mark the method as being in the compile queue.
+      task->method()->set_pending_queue_processed();
+    }
+    if (CompileBroker::compilation_is_complete(task->method(), task->osr_bci(), task->comp_level(),
+                                               task->requires_online_compilation(), task->compile_reason())) {
+      task->set_next(_first_stale);
+      task->set_prev(nullptr);
+      _first_stale = task;
+      continue; // skip
+    }
+    add(task);
+  }
+}
+
+size_t CompileQueue::pending_list_size() {
+  return _queue.length();
+}
+
 /**
  * Empties compilation queue by putting all compilation tasks onto
  * a freelist. Furthermore, the method wakes up all threads that are
@@ -383,6 +430,8 @@ void CompileQueue::add(CompileTask* task) {
  */
 void CompileQueue::free_all() {
   MutexLocker mu(_lock);
+  transfer_pending();
+
   CompileTask* next = _first;
 
   // Iterate over all tasks in the compile queue
@@ -414,6 +463,7 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
   methodHandle save_hot_method;
 
   MonitorLocker locker(_lock);
+  transfer_pending();
 
   CompilationPolicy::sample_load_average();
 
@@ -444,6 +494,8 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
     // is disabled forever. We use 5 seconds wait time; the exiting of compiler threads
     // is not critical and we do not want idle compiler threads to wake up too often.
     locker.wait(5*1000);
+
+    transfer_pending(); // reacquired lock
 
     if (CompilationPolicy::have_recompilation_work()) return nullptr;
 
@@ -499,6 +551,7 @@ void CompileQueue::purge_stale_tasks() {
         task = next_task;
       }
     }
+    transfer_pending(); // transfer pending after reacquiring MCQ lock
   }
 }
 
@@ -1296,7 +1349,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
   // A request has been made for compilation.  Before we do any
   // real work, check to see if the method has been compiled
   // in the meantime with a definitive result.
-  if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation, compile_reason)) {
+  if (compilation_is_complete(method(), osr_bci, comp_level, requires_online_compilation, compile_reason)) {
     return;
   }
 
@@ -1346,7 +1399,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
 
   // Acquire our lock.
   {
-    MutexLocker locker(thread, queue->lock());
+    ConditionalMutexLocker locker(thread, queue->lock(), !UseLockFreeCompileQueues);
 
     // Make sure the method has not slipped into the queues since
     // last we checked; note that those checks were "fast bail-outs".
@@ -1358,7 +1411,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     // We need to check again to see if the compilation has
     // completed.  A previous compilation may have registered
     // some result.
-    if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation, compile_reason)) {
+    if (compilation_is_complete(method(), osr_bci, comp_level, requires_online_compilation, compile_reason)) {
       return;
     }
 
@@ -1450,6 +1503,18 @@ void CompileBroker::compile_method_base(const methodHandle& method,
                                osr_bci, comp_level,
                                hot_method, hot_count, scc_entry, compile_reason,
                                requires_online_compilation, blocking);
+
+    if (task->is_scc() && (_sc_count > 0)) {
+      // Put it on SC queue
+      queue = is_c1_compile(comp_level) ? _sc1_compile_queue : _sc2_compile_queue;
+    }
+
+    if (UseLockFreeCompileQueues) {
+      assert(queue->lock()->owned_by_self() == false, "");
+      queue->add_pending(task);
+    } else {
+      queue->add(task);
+    }
   }
 
   if (blocking) {
@@ -1536,7 +1601,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     // standard compilation
     CompiledMethod* method_code = method->code();
     if (method_code != nullptr && method_code->is_nmethod()) {
-      if (compilation_is_complete(method, osr_bci, comp_level, requires_online_compilation, compile_reason)) {
+      if (compilation_is_complete(method(), osr_bci, comp_level, requires_online_compilation, compile_reason)) {
         return (nmethod*) method_code;
       }
     }
@@ -1655,7 +1720,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
 // CompileBroker::compilation_is_complete
 //
 // See if compilation of this method is already complete.
-bool CompileBroker::compilation_is_complete(const methodHandle&        method,
+bool CompileBroker::compilation_is_complete(Method*                    method,
                                             int                        osr_bci,
                                             int                        comp_level,
                                             bool                       online_only,
@@ -1809,7 +1874,6 @@ CompileTask* CompileBroker::create_compile_task(CompileQueue*       queue,
   new_task->initialize(compile_id, method, osr_bci, comp_level,
                        hot_method, hot_count, scc_entry, compile_reason, queue,
                        requires_online_compilation, blocking);
-  queue->add(new_task);
   return new_task;
 }
 
@@ -2162,6 +2226,7 @@ void CompileBroker::compiler_thread_loop() {
         } else {
           // After compilation is disabled, remove remaining methods from queue
           method->clear_queued_for_compilation();
+          method->set_pending_queue_processed(false);
           task->set_failure_reason("compilation is disabled");
         }
       } else {
@@ -2613,6 +2678,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   // the point somewhat) our clearing of the bits must be occurring
   // only after the setting of the bits. See also 14012000 above.
   method->clear_queued_for_compilation();
+  method->set_pending_queue_processed(false);
 }
 
 /**

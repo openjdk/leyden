@@ -113,10 +113,14 @@ void CompileTask::initialize(int compile_id,
   _is_complete = false;
   _is_success = false;
 
+  _next = nullptr;
+  _prev = nullptr;
+
   _hot_method = nullptr;
   _hot_method_holder = nullptr;
   _hot_count = hot_count;
-  _time_queued = os::elapsed_counter();
+  _time_created = os::elapsed_counter();
+  _time_queued = 0;
   _time_started = 0;
   _compile_reason = compile_reason;
   _nm_content_size = 0;
@@ -243,18 +247,21 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
                              bool is_osr_method, int osr_bci, bool is_blocking, bool is_scc, bool is_preload,
                              const char* compiler_name,
                              const char* msg, bool short_form, bool cr,
-                             jlong time_queued, jlong time_started) {
+                             jlong time_created, jlong time_queued, jlong time_started) {
   if (!short_form) {
     // Print current time
     stringStream ss;
     ss.print("%c" UINT64_FORMAT, (time_started != 0 ? 'F' : 'S'), (uint64_t)tty->time_stamp().milliseconds());
     st->print("%7s ", ss.freeze());
-    if (time_queued != 0) {
+    if (time_created != 0) {
       // Print time in queue and time being processed by compiler thread
       jlong now = os::elapsed_counter();
-      st->print("Q%.0f ", TimeHelper::counter_to_millis(now-time_queued));
-      if (time_started != 0) {
-        st->print("S%.0f ", TimeHelper::counter_to_millis(now-time_started));
+      st->print("C%d ", (int) TimeHelper::counter_to_millis((time_queued != 0 ? time_queued : now) - time_created));
+      if (time_queued != 0) {
+        st->print("Q%d ", (int) TimeHelper::counter_to_millis((time_started != 0 ? time_started : now) - time_queued));
+        if (time_started != 0) {
+          st->print("S%d ", (int) TimeHelper::counter_to_millis(now - time_started));
+        }
       }
     }
   }
@@ -331,7 +338,7 @@ void CompileTask::print_inline_indent(int inline_level, outputStream* st) {
 void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool cr) {
   bool is_osr_method = osr_bci() != InvocationEntryBci;
   print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_scc(), preload(),
-             compiler()->name(), msg, short_form, cr, _time_queued, _time_started);
+             compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started);
 }
 
 // ------------------------------------------------------------------

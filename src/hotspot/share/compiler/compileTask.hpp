@@ -110,9 +110,11 @@ class CompileTask : public CHeapObj<mtCompiler> {
 #endif
   int                  _comp_level;
   int                  _num_inlined_bytecodes;
-  CompileTask*         _next, *_prev;
+  CompileTask*         _next;
+  CompileTask*         _prev;
   bool                 _is_free;
   // Fields used for logging why the compilation was initiated:
+  jlong                _time_created; // time when task was enqueued
   jlong                _time_queued;  // time when task was enqueued
   jlong                _time_started; // time when compilation started
   Method*              _hot_method;   // which method actually triggered this task
@@ -201,6 +203,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
 
   void         mark_complete()                   { _is_complete = true; }
   void         mark_success()                    { _is_success = true; }
+  void         mark_queued(jlong time)           { _time_queued = time; }
   void         mark_started(jlong time)          { _time_started = time; }
 
   int          comp_level()                      { return _comp_level;}
@@ -211,6 +214,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
 
   int          num_inlined_bytecodes() const     { return _num_inlined_bytecodes; }
   void         set_num_inlined_bytecodes(int n)  { _num_inlined_bytecodes = n; }
+
+  static CompileTask* volatile* next_ptr(CompileTask& task) { return &task._next; }
 
   CompileTask* next() const                      { return _next; }
   void         set_next(CompileTask* next)       { _next = next; }
@@ -235,7 +240,7 @@ private:
                                       bool is_scc = false, bool is_preload = false,
                                       const char* compiler_name = nullptr,
                                       const char* msg = nullptr, bool short_form = false, bool cr = true,
-                                      jlong time_queued = 0, jlong time_started = 0);
+                                      jlong time_created = 0, jlong time_queued = 0, jlong time_started = 0);
 
 public:
   void         print(outputStream* st = tty, const char* msg = nullptr, bool short_form = false, bool cr = true);

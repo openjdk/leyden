@@ -485,6 +485,9 @@
                                                                             \
   product(bool, UseGlobalCompileQueueLock, false,                           \
           "Use a global lock for all compilation queues")                   \
+                                                                            \
+  product(bool, UseLockFreeCompileQueues, true,                             \
+          "Use lock free compile queues")                                   \
 // end of COMPILER_FLAGS
 
 DECLARE_FLAGS(COMPILER_FLAGS)

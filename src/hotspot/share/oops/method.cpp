@@ -431,6 +431,7 @@ void Method::restore_unshareable_info(TRAPS) {
     method_counters()->restore_unshareable_info(CHECK);
   }
   assert(!queued_for_compilation(), "method's queued_for_compilation flag should not be set");
+  assert(!pending_queue_processed(), "method's pending_queued_processed flag should not be set");
 }
 #endif
 
@@ -1271,6 +1272,7 @@ void Method::unlink_method() {
   clear_is_not_c2_compilable();
   clear_is_not_c2_osr_compilable();
   clear_queued_for_compilation();
+  set_pending_queue_processed(false);
   remove_unshareable_flags();
 }
 
@@ -1282,6 +1284,7 @@ void Method::remove_unshareable_flags() {
 
   set_is_prefixed_native(false);
   set_queued_for_compilation(false);
+  set_pending_queue_processed(false);
   set_is_not_c2_compilable(false);
   set_is_not_c1_compilable(false);
   set_is_not_c2_osr_compilable(false);

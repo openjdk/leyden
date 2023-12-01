@@ -33,6 +33,7 @@
 #include "runtime/atomic.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/perfDataTypes.hpp"
+#include "utilities/nonblockingQueue.inline.hpp"
 #include "utilities/stack.hpp"
 #if INCLUDE_JVMCI
 #include "jvmci/jvmciCompiler.hpp"
@@ -83,6 +84,8 @@ class CompileQueue : public CHeapObj<mtCompiler> {
  private:
   const char* _name;
 
+  NonblockingQueue<CompileTask, &CompileTask::next_ptr> _queue;
+
   CompileTask* _first;
   CompileTask* _last;
 
@@ -110,6 +113,10 @@ class CompileQueue : public CHeapObj<mtCompiler> {
   }
 
   const char*  name() const                      { return _name; }
+
+  void         add_pending(CompileTask* task);
+  void         transfer_pending();
+  size_t       pending_list_size();
 
   void         add(CompileTask* task);
   void         remove(CompileTask* task);
@@ -230,6 +237,7 @@ class CompileBroker: AllStatic {
   static uint _total_compile_count;
   static uint _total_bailout_count;
   static uint _total_invalidated_count;
+  static uint _total_not_entrant_count;
   static uint _total_native_compile_count;
   static uint _total_osr_compile_count;
   static uint _total_standard_compile_count;
@@ -315,7 +323,7 @@ public:
   }
 
   static bool initialized() { return _initialized; }
-  static bool compilation_is_complete(const methodHandle& method, int osr_bci, int comp_level, bool online_only,
+  static bool compilation_is_complete(Method* method, int osr_bci, int comp_level, bool online_only,
                                       CompileTask::CompileReason compile_reason);
   static bool compilation_is_in_queue(const methodHandle& method);
   static void print_compile_queues(outputStream* st);
