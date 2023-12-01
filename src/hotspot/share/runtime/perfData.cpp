@@ -525,7 +525,7 @@ PerfDataList* PerfDataList::clone() {
 }
 
 PerfTraceTime::~PerfTraceTime() {
-  if (!UsePerfData) return;
+  if (!UsePerfData || !_t.is_active()) return;
   _t.stop();
   _timerp->inc(_t.ticks());
 }

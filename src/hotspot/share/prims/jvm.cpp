@@ -4249,7 +4249,7 @@ JVM_END
 
 void perf_jvm_init() {
   EXCEPTION_MARK;
-  if (UsePerfData) {
+  if (ProfileVMCalls && UsePerfData) {
     DO_COUNTERS(INIT_COUNTER)
   }
   if (HAS_PENDING_EXCEPTION) {

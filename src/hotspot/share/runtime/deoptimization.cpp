@@ -2938,7 +2938,7 @@ const char* Deoptimization::format_trap_state(char* buf, size_t buflen,
 
 void perf_deoptimize_init() {
   EXCEPTION_MARK;
-  if (UsePerfData) {
+  if (ProfileRuntimeCalls && UsePerfData) {
     DO_COUNTERS(INIT_COUNTER)
   }
   if (HAS_PENDING_EXCEPTION) {
