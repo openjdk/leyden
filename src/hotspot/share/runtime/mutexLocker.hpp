@@ -263,7 +263,7 @@ public:
 
  public:
   static void post_initialize();
-  static void init();
+  static void init_counters();
   static void print_counters_on(outputStream* st);
 };
 

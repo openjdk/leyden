@@ -397,7 +397,7 @@ PerfCounter** MutexLockerImpl::_perf_lock_count     = nullptr;
 PerfCounter** MutexLockerImpl::_perf_lock_wait_time = nullptr;
 PerfCounter** MutexLockerImpl::_perf_lock_hold_time = nullptr;
 
-void MutexLockerImpl::init() {
+void MutexLockerImpl::init_counters() {
   if (ProfileVMLocks && UsePerfData) {
     ResourceMark rm;
     EXCEPTION_MARK;
@@ -414,7 +414,7 @@ void MutexLockerImpl::init() {
       NEWPERFEVENTCOUNTER(_perf_lock_hold_time[i + 1], SUN_RT, PerfDataManager::counter_name(_mutex_array[i]->name(), "AfterTime"));
     }
     if (HAS_PENDING_EXCEPTION) {
-      vm_exit_during_initialization("TrainingData::initialize() failed unexpectedly");
+      vm_exit_during_initialization("MutexLockerImpl::init_counters() failed unexpectedly");
     }
   }
 }

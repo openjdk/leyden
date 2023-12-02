@@ -152,6 +152,7 @@ class ClassLoader: AllStatic {
   static PerfCounter* _perf_classes_inited;
   static PerfCounter* _perf_class_init_time;
   static PerfCounter* _perf_class_init_selftime;
+  static PerfCounter* _perf_class_init_bytecodes_count;
   static PerfCounter* _perf_classes_verified;
   static PerfCounter* _perf_class_verify_time;
   static PerfCounter* _perf_class_verify_selftime;
@@ -320,6 +321,8 @@ class ClassLoader: AllStatic {
   static PerfCounter* perf_resolve_method_handle_count() { return _perf_resolve_mh_count; }
   static PerfCounter* perf_resolve_method_type_count() { return _perf_resolve_mt_count; }
 
+  static PerfCounter* perf_class_init_bytecodes_count() { return _perf_class_init_bytecodes_count; }
+
   static void print_counters();
 
   // Record how many calls to Unsafe_DefineClass
@@ -411,6 +414,7 @@ class ClassLoader: AllStatic {
   static jlong class_verify_time_ms();
   static jlong class_link_count();
   static jlong class_link_time_ms();
+  static jlong class_init_bytecodes_count();
 
   // adds a class path to the boot append entries
   static void add_to_boot_append_entries(ClassPathEntry* new_entry);

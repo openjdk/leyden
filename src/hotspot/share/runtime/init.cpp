@@ -107,7 +107,6 @@ void perfMemory_exit();
 void ostream_exit();
 
 void perf_jvm_init();
-void perf_deoptimize_init();
 
 void vm_init_globals() {
   check_ThreadShadow();
@@ -122,7 +121,6 @@ void vm_init_globals() {
 
 jint init_globals() {
   perf_jvm_init();
-  perf_deoptimize_init();
 
   management_init();
   JvmtiExport::initialize_oop_storage();

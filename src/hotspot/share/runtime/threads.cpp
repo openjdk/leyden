@@ -589,7 +589,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   main_thread->set_active_handles(JNIHandleBlock::allocate_block());
   MACOS_AARCH64_ONLY(main_thread->init_wx());
 
-  MutexLockerImpl::init(); // depends on mutex_init(), perfMemory_init(), and Thread::initialize_thread_current().
+  MutexLockerImpl::init_counters(); // depends on mutex_init(), perfMemory_init(), and Thread::initialize_thread_current().
 
   if (!main_thread->set_as_starting_thread()) {
     vm_shutdown_during_initialization(
@@ -606,6 +606,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Initialize Java-Level synchronization subsystem
   ObjectMonitor::Initialize();
   ObjectSynchronizer::initialize();
+
+  Deoptimization::init_counters();
 
   // Initialize global modules
   jint status = init_globals();

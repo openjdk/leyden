@@ -4248,33 +4248,18 @@ JVM_END
     NEWPERFEVENTCOUNTER(_perf_##name##_count, SUN_RT, #name "_count"); \
 
 void perf_jvm_init() {
-  EXCEPTION_MARK;
   if (ProfileVMCalls && UsePerfData) {
+    EXCEPTION_MARK;
+
     DO_COUNTERS(INIT_COUNTER)
-  }
-  if (HAS_PENDING_EXCEPTION) {
-    vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
+
+    if (HAS_PENDING_EXCEPTION) {
+      vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
+    }
   }
 }
 
 #undef INIT_COUNTER
-
-#define RESET_COUNTER(name) \
-    _perf_##name##_timer->reset(); \
-    _perf_##name##_count->reset(); \
-
-void perf_jvm_reset() {
-  EXCEPTION_MARK;
-  if (UsePerfData && log_is_enabled(Info, init)) {
-    log_info(init)("Reset VM call counters");
-    DO_COUNTERS(RESET_COUNTER)
-  }
-  if (HAS_PENDING_EXCEPTION) {
-    vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
-  }
-}
-
-#undef RESET_COUNTER
 
 #define PRINT_COUNTER(name) {\
   jlong count = _perf_##name##_count->get_value(); \

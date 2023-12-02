@@ -2936,13 +2936,15 @@ const char* Deoptimization::format_trap_state(char* buf, size_t buflen,
   NEWPERFTICKCOUNTER (_perf_##sub##_##name##_timer, SUN_RT, #sub "::" #name "_time"); \
   NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_RT, #sub "::" #name "_count");
 
-void perf_deoptimize_init() {
-  EXCEPTION_MARK;
+void Deoptimization::init_counters() {
   if (ProfileRuntimeCalls && UsePerfData) {
+    EXCEPTION_MARK;
+
     DO_COUNTERS(INIT_COUNTER)
-  }
-  if (HAS_PENDING_EXCEPTION) {
-    vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
+
+    if (HAS_PENDING_EXCEPTION) {
+      vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
+    }
   }
 }
 #undef INIT_COUNTER
@@ -2954,7 +2956,7 @@ void perf_deoptimize_init() {
                  Management::ticks_to_ms(_perf_##sub##_##name##_timer->get_value()), count); \
   }}
 
-void perf_deoptimization_print_on(outputStream* st) {
+void Deoptimization::print_counters_on(outputStream* st) {
   if (ProfileRuntimeCalls && UsePerfData) {
     DO_COUNTERS(PRINT_COUNTER)
   } else {

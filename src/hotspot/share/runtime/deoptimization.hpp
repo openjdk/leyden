@@ -490,6 +490,9 @@ class Deoptimization : AllStatic {
 
  public:
   static void update_method_data_from_interpreter(MethodData* trap_mdo, int trap_bci, int reason);
+
+  static void init_counters();
+  static void print_counters_on(outputStream* st);
 };
 
 #endif // SHARE_RUNTIME_DEOPTIMIZATION_HPP

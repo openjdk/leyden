@@ -175,7 +175,7 @@ void log_vm_init_stats() {
     Runtime1::print_counters_on(&log);
     OptoRuntime::print_counters_on(&log);
     InterpreterRuntime::print_counters_on(&log);
-    perf_deoptimization_print_on(&log);
+    Deoptimization::print_counters_on(&log);
     perf_jvm_print_on(&log);
   }
 }
