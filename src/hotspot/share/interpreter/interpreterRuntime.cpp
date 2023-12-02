@@ -666,6 +666,22 @@ JRT_END
 // Fields
 //
 
+PROF_ENTRY(void, InterpreterRuntime, resolve_getfield, InterpreterRuntime::resolve_getfield(JavaThread* current))
+  resolve_get_put(current, Bytecodes::_getfield);
+PROF_END
+
+PROF_ENTRY(void, InterpreterRuntime, resolve_putfield, InterpreterRuntime::resolve_putfield(JavaThread* current))
+  resolve_get_put(current, Bytecodes::_putfield);
+PROF_END
+
+PROF_ENTRY(void, InterpreterRuntime, resolve_getstatic, InterpreterRuntime::resolve_getstatic(JavaThread* current))
+  resolve_get_put(current, Bytecodes::_getstatic);
+PROF_END
+
+PROF_ENTRY(void, InterpreterRuntime, resolve_putstatic, InterpreterRuntime::resolve_putstatic(JavaThread* current))
+  resolve_get_put(current, Bytecodes::_putstatic);
+PROF_END
+
 void InterpreterRuntime::resolve_get_put(JavaThread* current, Bytecodes::Code bytecode) {
   LastFrameAccessor last_frame(current);
   constantPoolHandle pool(current, last_frame.method()->constants());
@@ -836,6 +852,22 @@ JRT_ENTRY_PROF(void, InterpreterRuntime, breakpoint, InterpreterRuntime::_breakp
   JvmtiExport::post_raw_breakpoint(current, method, bcp);
 JRT_END
 
+PROF_ENTRY(void, InterpreterRuntime, resolve_invokevirtual, InterpreterRuntime::resolve_invokevirtual(JavaThread* current))
+  resolve_invoke(current, Bytecodes::_invokevirtual);
+PROF_END
+
+PROF_ENTRY(void, InterpreterRuntime, resolve_invokespecial, InterpreterRuntime::resolve_invokespecial(JavaThread* current))
+  resolve_invoke(current, Bytecodes::_invokespecial);
+PROF_END
+
+PROF_ENTRY(void, InterpreterRuntime, resolve_invokestatic, InterpreterRuntime::resolve_invokestatic(JavaThread* current))
+  resolve_invoke(current, Bytecodes::_invokestatic);
+PROF_END
+
+PROF_ENTRY(void, InterpreterRuntime, resolve_invokeinterface, InterpreterRuntime::resolve_invokeinterface(JavaThread* current))
+  resolve_invoke(current, Bytecodes::_invokeinterface);
+PROF_END
+
 void InterpreterRuntime::resolve_invoke(JavaThread* current, Bytecodes::Code bytecode) {
   LastFrameAccessor last_frame(current);
   // extract receiver from the outgoing argument list if necessary
@@ -963,7 +995,7 @@ void InterpreterRuntime::cds_resolve_invoke(Bytecodes::Code bytecode, int method
 }
 
 // First time execution:  Resolve symbols, create a permanent MethodType object.
-void InterpreterRuntime::resolve_invokehandle(JavaThread* current) {
+PROF_ENTRY(void, InterpreterRuntime, resolve_invokehandle, InterpreterRuntime::resolve_invokehandle(JavaThread* current))
   const Bytecodes::Code bytecode = Bytecodes::_invokehandle;
   LastFrameAccessor last_frame(current);
 
@@ -980,7 +1012,7 @@ void InterpreterRuntime::resolve_invokehandle(JavaThread* current) {
   } // end JvmtiHideSingleStepping
 
   pool->cache()->set_method_handle(method_index, info);
-}
+PROF_END
 
 void InterpreterRuntime::cds_resolve_invokehandle(int raw_index,
                                                   constantPoolHandle& pool, TRAPS) {
@@ -997,7 +1029,7 @@ void InterpreterRuntime::cds_resolve_invokehandle(int raw_index,
 }
 
 // First time execution:  Resolve symbols, create a permanent CallSite object.
-void InterpreterRuntime::resolve_invokedynamic(JavaThread* current) {
+PROF_ENTRY(void, InterpreterRuntime, resolve_invokedynamic, InterpreterRuntime::resolve_invokedynamic(JavaThread* current))
   LastFrameAccessor last_frame(current);
   const Bytecodes::Code bytecode = Bytecodes::_invokedynamic;
 
@@ -1013,7 +1045,7 @@ void InterpreterRuntime::resolve_invokedynamic(JavaThread* current) {
   } // end JvmtiHideSingleStepping
 
   pool->cache()->set_dynamic_call(info, pool->decode_invokedynamic_index(index));
-}
+PROF_END
 
 void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
                                                    constantPoolHandle& pool, TRAPS) {
@@ -1027,26 +1059,20 @@ void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
 // This function is the interface to the assembly code. It returns the resolved
 // cpCache entry.  This doesn't safepoint, but the helper routines safepoint.
 // This function will check for redefinition!
-JRT_ENTRY_PROF(void, InterpreterRuntime, resolve_from_cache, InterpreterRuntime::resolve_from_cache(JavaThread* current, Bytecodes::Code bytecode)) {
+JRT_ENTRY(void, InterpreterRuntime::resolve_from_cache(JavaThread* current, Bytecodes::Code bytecode)) {
   switch (bytecode) {
-  case Bytecodes::_getstatic:
-  case Bytecodes::_putstatic:
-  case Bytecodes::_getfield:
-  case Bytecodes::_putfield:
-    resolve_get_put(current, bytecode);
-    break;
-  case Bytecodes::_invokevirtual:
-  case Bytecodes::_invokespecial:
-  case Bytecodes::_invokestatic:
-  case Bytecodes::_invokeinterface:
-    resolve_invoke(current, bytecode);
-    break;
-  case Bytecodes::_invokehandle:
-    resolve_invokehandle(current);
-    break;
-  case Bytecodes::_invokedynamic:
-    resolve_invokedynamic(current);
-    break;
+  case Bytecodes::_getstatic: resolve_getstatic(current); break;
+  case Bytecodes::_putstatic: resolve_putstatic(current); break;
+  case Bytecodes::_getfield:  resolve_getfield(current);  break;
+  case Bytecodes::_putfield:  resolve_putfield(current);  break;
+
+  case Bytecodes::_invokevirtual:   resolve_invokevirtual(current);   break;
+  case Bytecodes::_invokespecial:   resolve_invokespecial(current);   break;
+  case Bytecodes::_invokestatic:    resolve_invokestatic(current);    break;
+  case Bytecodes::_invokeinterface: resolve_invokeinterface(current); break;
+  case Bytecodes::_invokehandle:    resolve_invokehandle(current);    break;
+  case Bytecodes::_invokedynamic:   resolve_invokedynamic(current);   break;
+
   default:
     fatal("unexpected bytecode: %s", Bytecodes::name(bytecode));
     break;
@@ -1624,7 +1650,16 @@ JRT_END
   macro(InterpreterRuntime, get_original_bytecode_at) \
   macro(InterpreterRuntime, set_original_bytecode_at) \
   macro(InterpreterRuntime, breakpoint) \
-  macro(InterpreterRuntime, resolve_from_cache) \
+  macro(InterpreterRuntime, resolve_getfield) \
+  macro(InterpreterRuntime, resolve_putfield) \
+  macro(InterpreterRuntime, resolve_getstatic) \
+  macro(InterpreterRuntime, resolve_putstatic) \
+  macro(InterpreterRuntime, resolve_invokevirtual) \
+  macro(InterpreterRuntime, resolve_invokespecial) \
+  macro(InterpreterRuntime, resolve_invokestatic) \
+  macro(InterpreterRuntime, resolve_invokeinterface) \
+  macro(InterpreterRuntime, resolve_invokehandle) \
+  macro(InterpreterRuntime, resolve_invokedynamic) \
   macro(InterpreterRuntime, frequency_counter_overflow) \
   macro(InterpreterRuntime, bcp_to_di) \
   macro(InterpreterRuntime, update_mdp_for_ret) \
