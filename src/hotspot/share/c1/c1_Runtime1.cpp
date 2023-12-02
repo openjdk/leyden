@@ -1438,13 +1438,13 @@ int Runtime1::access_field_patching(JavaThread* current) {
 }
 
 
-JRT_LEAF_PROF(void, Runtime1, trace_block_entry, Runtime1::trace_block_entry(jint block_id))
+JRT_LEAF_PROF_NO_THREAD(void, Runtime1, trace_block_entry, Runtime1::trace_block_entry(jint block_id))
   // for now we just print out the block id
   tty->print("%d ", block_id);
 JRT_END
 
 
-JRT_LEAF_PROF(int, Runtime1, is_instance_of, Runtime1::is_instance_of(oopDesc* mirror, oopDesc* obj))
+JRT_LEAF_PROF_NO_THREAD(int, Runtime1, is_instance_of, Runtime1::is_instance_of(oopDesc* mirror, oopDesc* obj))
   // had to return int instead of bool, otherwise there may be a mismatch
   // between the C calling convention and the Java one.
   // e.g., on x86, GCC may clear only %al when returning a bool false, but

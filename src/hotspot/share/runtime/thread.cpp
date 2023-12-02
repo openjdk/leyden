@@ -142,6 +142,8 @@ Thread::Thread() {
   _profile_vm_locks = false;
   _profile_vm_calls = false;
   _profile_rt_calls = false;
+
+  _current_rt_call_timer = nullptr;
 }
 
 void Thread::initialize_tlab() {
@@ -602,3 +604,15 @@ void Thread::SpinRelease(volatile int * adr) {
   // more than covers this on all platforms.
   *adr = 0;
 }
+
+const char* ProfileVMCallContext::name(PerfTraceTime* t) {
+  return t->name();
+}
+
+int ProfileVMCallContext::_perf_nested_runtime_calls_count = 0;
+
+void ProfileVMCallContext::notify_nested_rt_call(PerfTraceTime* outer_timer, PerfTraceTime* inner_timer) {
+  log_debug(init)("Nested runtime call: inner=%s outer=%s", inner_timer->name(), outer_timer->name());
+  Atomic::inc(&ProfileVMCallContext::_perf_nested_runtime_calls_count);
+}
+

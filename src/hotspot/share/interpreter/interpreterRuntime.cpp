@@ -781,7 +781,7 @@ JRT_ENTRY_NO_ASYNC_PROF(void, InterpreterRuntime, monitorenter_obj, InterpreterR
   return;
 JRT_END
 
-JRT_LEAF_PROF(void, InterpreterRuntime, monitorexit, InterpreterRuntime::monitorexit(BasicObjectLock* elem))
+JRT_LEAF_PROF_NO_THREAD(void, InterpreterRuntime, monitorexit, InterpreterRuntime::monitorexit(BasicObjectLock* elem))
   oop obj = elem->obj();
   assert(Universe::heap()->is_in(obj), "must be an object");
   // The object could become unlocked through a JNI call, which we have no other checks for.
@@ -1125,7 +1125,7 @@ JRT_ENTRY_PROF(nmethod*, InterpreterRuntime, frequency_counter_overflow,
   return osr_nm;
 JRT_END
 
-JRT_LEAF_PROF(jint, InterpreterRuntime, bcp_to_di, InterpreterRuntime::bcp_to_di(Method* method, address cur_bcp))
+JRT_LEAF_PROF_NO_THREAD(jint, InterpreterRuntime, bcp_to_di, InterpreterRuntime::bcp_to_di(Method* method, address cur_bcp))
   assert(ProfileInterpreter, "must be profiling interpreter");
   int bci = method->bci_from(cur_bcp);
   MethodData* mdo = method->method_data();
@@ -1314,7 +1314,7 @@ JRT_BLOCK_ENTRY_PROF(void, InterpreterRuntime, post_method_exit, InterpreterRunt
   JvmtiExport::post_method_exit(current, last_frame.method(), last_frame.get_frame());
 JRT_END
 
-JRT_LEAF_PROF(int, InterpreterRuntime, interpreter_contains, InterpreterRuntime::interpreter_contains(address pc))
+JRT_LEAF_PROF_NO_THREAD(int, InterpreterRuntime, interpreter_contains, InterpreterRuntime::interpreter_contains(address pc))
 {
   return (Interpreter::contains(Continuation::get_top_return_pc_post_barrier(JavaThread::current(), pc)) ? 1 : 0);
 }

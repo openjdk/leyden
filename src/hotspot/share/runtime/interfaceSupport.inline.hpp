@@ -344,7 +344,8 @@ class VMNativeEntryWrapper {
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     assert(current == JavaThread::current(), "Must be");             \
-    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->profile_rt_calls()); \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->do_profile_rt_call()); \
+    ProfileVMCallContext pctx(current, &(perf_##sub##_##name), current->do_profile_rt_call()); \
     MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, current));       \
     ThreadInVMfromJava __tiv(current);                               \
     VM_ENTRY_BASE(result_type, header, current)                      \
@@ -355,7 +356,19 @@ class VMNativeEntryWrapper {
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, \
-                                            ProfileRuntimeCalls && Thread::current()->profile_rt_calls()); \
+                                            current->do_profile_rt_call()); \
+    ProfileVMCallContext pctx(current, &(perf_##sub##_##name), current->do_profile_rt_call()); \
+    VM_LEAF_BASE(result_type, header)                                \
+    debug_only(NoSafepointVerifier __nsv;)
+
+#define JRT_LEAF_PROF_NO_THREAD(result_type, sub, name, header)      \
+  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
+  result_type header {                                               \
+    Thread* current = Thread::current();                             \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, \
+                                            current->do_profile_rt_call()); \
+    ProfileVMCallContext pctx(current, &(perf_##sub##_##name), current->do_profile_rt_call()); \
     VM_LEAF_BASE(result_type, header)                                \
     debug_only(NoSafepointVerifier __nsv;)
 
@@ -364,7 +377,8 @@ class VMNativeEntryWrapper {
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     assert(current == JavaThread::current(), "Must be");             \
-    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->profile_rt_calls()); \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->do_profile_rt_call()); \
+    ProfileVMCallContext pctx(current, &(perf_##sub##_##name), current->do_profile_rt_call()); \
     MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, current));       \
     ThreadInVMfromJava __tiv(current, false /* check asyncs */);     \
     VM_ENTRY_BASE(result_type, header, current)                      \
@@ -375,7 +389,8 @@ class VMNativeEntryWrapper {
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     assert(current == JavaThread::current(), "Must be");             \
-    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->profile_rt_calls()); \
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->do_profile_rt_call()); \
+    ProfileVMCallContext pctx(current, &(perf_##sub##_##name), current->do_profile_rt_call()); \
     MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, current));       \
     HandleMarkCleaner __hm(current);
 
@@ -384,7 +399,8 @@ class VMNativeEntryWrapper {
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     assert(current == JavaThread::current(), "must be");             \
-    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->profile_rt_calls());
+    PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, current->do_profile_rt_call()); \
+    ProfileVMCallContext pctx(current, &(perf_##sub##_##name), current->do_profile_rt_call());
 
 #define JRT_BLOCK_END }
 #define JRT_END }

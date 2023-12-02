@@ -845,7 +845,7 @@ static bool falls_through(Bytecodes::Code bc) {
 #endif
 
 // Return BasicType of value being returned
-JRT_LEAF_PROF(BasicType, Deoptimization, unpack_frames, Deoptimization::unpack_frames(JavaThread* thread, int exec_mode))
+JRT_LEAF_PROF_NO_THREAD(BasicType, Deoptimization, unpack_frames, Deoptimization::unpack_frames(JavaThread* thread, int exec_mode))
   assert(thread == JavaThread::current(), "pre-condition");
 
   // We are already active in the special DeoptResourceMark any ResourceObj's we

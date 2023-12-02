@@ -171,11 +171,18 @@ void log_vm_init_stats() {
     log.cr();
     MutexLockerImpl::print_counters_on(&log);
     log.cr();
-    log.print_cr("Runtime events for thread \"main\":");
-    Runtime1::print_counters_on(&log);
-    OptoRuntime::print_counters_on(&log);
-    InterpreterRuntime::print_counters_on(&log);
-    Deoptimization::print_counters_on(&log);
+    log.print("Runtime events for thread \"main\"");
+    if (ProfileRuntimeCalls) {
+      log.print_cr(" (%d nested events):", ProfileVMCallContext::nested_runtime_calls_count());
+
+      Runtime1::print_counters_on(&log);
+      OptoRuntime::print_counters_on(&log);
+      InterpreterRuntime::print_counters_on(&log);
+      Deoptimization::print_counters_on(&log);
+    } else {
+      log.print_cr(": no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
+    }
+    log.cr();
     perf_jvm_print_on(&log);
   }
 }

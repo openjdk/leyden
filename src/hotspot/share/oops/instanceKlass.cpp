@@ -1767,13 +1767,19 @@ void InstanceKlass::call_class_initializer(TRAPS) {
       tdata->record_initialization_start();
     }
 
-    elapsedTimer timer;
     jlong bc_start = BytecodeCounter::counter_value();
-    timer.start();
-    JavaCalls::call(&result, h_method, &args, THREAD); // Static call (no args)
-    timer.stop();
-    jlong bc_executed = (BytecodeCounter::counter_value() - bc_start);
 
+    elapsedTimer timer;
+    {
+      PerfPauseTimer pt(THREAD->current_rt_call_timer(), THREAD->profile_rt_calls());
+      PauseRuntimeCallProfiling prcp(THREAD, THREAD->profile_rt_calls());
+
+      timer.start();
+      JavaCalls::call(&result, h_method, &args, THREAD); // Static call (no args)
+      timer.stop();
+    }
+
+    jlong bc_executed = (BytecodeCounter::counter_value() - bc_start);
     if (CountBytecodes && outer == nullptr) { // outermost clinit
       ClassLoader::perf_class_init_bytecodes_count()->inc(bc_executed);
     }

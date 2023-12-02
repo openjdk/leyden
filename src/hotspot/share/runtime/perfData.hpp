@@ -822,6 +822,7 @@ class PerfDataManager : AllStatic {
  * of this class.
  */
 class PerfTraceTime : public StackObj {
+  friend class PerfPauseTimer;
 
   protected:
     elapsedTimer _t;
@@ -833,7 +834,35 @@ class PerfTraceTime : public StackObj {
       _t.start();
     }
 
+    const char* name() const { return _timerp->name(); }
+
+    jlong active_ticks() {
+      return _t.active_ticks();
+    }
+
     ~PerfTraceTime();
+};
+
+class PerfPauseTimer : public StackObj {
+  protected:
+    bool _is_active;
+    elapsedTimer* _timer;
+
+  public:
+    inline PerfPauseTimer(PerfTraceTime* timer, bool is_on) : _is_active(false), _timer(nullptr) {
+      _is_active = (is_on && timer != nullptr);
+      if (UsePerfData && _is_active) {
+        _timer = &timer->_t;
+        _timer->stop(); // pause
+      }
+    }
+
+    inline ~PerfPauseTimer() {
+      if (UsePerfData && _is_active) {
+        assert(_timer != nullptr, "");
+        _timer->start(); // resume
+      }
+    }
 };
 
 /* The PerfTraceTimedEvent class is responsible for counting the

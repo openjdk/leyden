@@ -61,6 +61,8 @@ class VMErrorCallback;
 class OopClosure;
 class CodeBlobClosure;
 
+class PerfTraceTime;
+
 DEBUG_ONLY(class ResourceMark;)
 
 class WorkerThread;
@@ -651,15 +653,85 @@ protected:
   bool  _profile_vm_locks;
   bool  _profile_vm_calls;
   bool  _profile_rt_calls;
+  bool  _profile_upcalls;
+
+  PerfTraceTime* _current_rt_call_timer;
  public:
   bool     profile_vm_locks() const { return _profile_vm_locks; }
-  void set_profile_vm_locks()       { _profile_vm_locks = true; }
+  void set_profile_vm_locks(bool v) { _profile_vm_locks = v; }
 
   bool     profile_vm_calls() const { return _profile_vm_calls; }
-  void set_profile_vm_calls()       { _profile_vm_calls = true; }
+  void set_profile_vm_calls(bool v) { _profile_vm_calls = v; }
 
   bool     profile_rt_calls() const { return _profile_rt_calls; }
-  void set_profile_rt_calls()       { _profile_rt_calls = true; }
+  void set_profile_rt_calls(bool v) { _profile_rt_calls = v; }
+
+  bool     profile_upcalls() const { return _profile_upcalls; }
+  void set_profile_upcalls(bool v) { _profile_upcalls = v; }
+
+  PerfTraceTime*     current_rt_call_timer() const           { return _current_rt_call_timer;            }
+  void           set_current_rt_call_timer(PerfTraceTime* c) {        _current_rt_call_timer = c;        }
+  bool           has_current_rt_call_timer() const           { return _current_rt_call_timer != nullptr; }
+
+  bool do_profile_rt_call() const {
+    return ProfileRuntimeCalls && profile_rt_calls() && !has_current_rt_call_timer();
+  }
+};
+
+class ProfileVMCallContext : StackObj {
+ private:
+  Thread* _thread;
+  bool _enabled;
+  PerfTraceTime* _timer;
+
+  static int _perf_nested_runtime_calls_count;
+
+  static const char* name(PerfTraceTime* t);
+  static void notify_nested_rt_call(PerfTraceTime* current, PerfTraceTime* inner_timer);
+ public:
+  inline ProfileVMCallContext(Thread* current, PerfTraceTime* timer, bool is_on)
+  : _thread(current), _enabled(is_on), _timer(timer) {
+    if (_enabled) {
+      assert(timer != nullptr, "");
+      assert(_thread->current_rt_call_timer() == nullptr, "%s", name(_thread->current_rt_call_timer()));
+      _thread->set_current_rt_call_timer(timer);
+    } else if (current->profile_rt_calls()) {
+      notify_nested_rt_call(current->current_rt_call_timer(), timer);
+    }
+  }
+
+  inline ~ProfileVMCallContext() {
+    if (_enabled) {
+      assert(_timer == _thread->current_rt_call_timer(),
+             "%s vs %s", name(_timer), name(_thread->current_rt_call_timer()));
+      _thread->set_current_rt_call_timer(nullptr);
+    }
+  }
+
+  static int nested_runtime_calls_count() { return _perf_nested_runtime_calls_count; };
+};
+
+class PauseRuntimeCallProfiling : public StackObj {
+ protected:
+  Thread* _thread;
+  bool _enabled;
+  PerfTraceTime* _timer;
+
+ public:
+  inline PauseRuntimeCallProfiling(Thread* current, bool is_on)
+  : _thread(current), _enabled(is_on), _timer(nullptr) {
+    if (_enabled) {
+      _timer = _thread->current_rt_call_timer();
+      _thread->set_current_rt_call_timer(nullptr);
+    }
+  }
+
+  inline ~PauseRuntimeCallProfiling () {
+    if (_enabled) {
+      guarantee(_thread->current_rt_call_timer() == nullptr, "");
+      _thread->set_current_rt_call_timer(_timer); // restore
+    }
+  }
 };
 
 class ThreadInAsgct {

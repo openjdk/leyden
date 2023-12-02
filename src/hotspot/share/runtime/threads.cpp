@@ -883,13 +883,13 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   if (UsePerfData) {
     if (ProfileVMLocks) {
-      main_thread->set_profile_vm_locks();
+      main_thread->set_profile_vm_locks(true);
     }
     if (ProfileVMCalls) {
-      main_thread->set_profile_vm_calls();
+      main_thread->set_profile_vm_calls(true);
     }
     if (ProfileRuntimeCalls) {
-      main_thread->set_profile_rt_calls();
+      main_thread->set_profile_rt_calls(true);
     }
   }
 
