@@ -159,6 +159,9 @@ void print_method_profiling_data() {
   }
 }
 
+void perf_jvm_print_on(outputStream* st);
+void perf_mhn_print_on(outputStream* st);
+
 void log_vm_init_stats() {
   LogStreamHandle(Info, init) log;
   if (log.is_enabled()) {
@@ -184,6 +187,8 @@ void log_vm_init_stats() {
     }
     log.cr();
     perf_jvm_print_on(&log);
+    log.cr();
+    perf_mhn_print_on(&log);
   }
 }
 
