@@ -146,7 +146,7 @@ void ClassPrelinker::add_unrecorded_initiated_klasses(ClassesTable* table, Array
 void ClassPrelinker::add_extra_initiated_klasses(PreloadedKlasses* table) {
   if (table->_app->length() > 0) {
     // Add all public classes in boot/platform to the app loader. This speeds up
-    // Class.forName() opertaions in frameworks like spring.
+    // Class.forName() operations in frameworks.
     GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
     for (GrowableArrayIterator<Klass*> it = klasses->begin(); it != klasses->end(); ++it) {
       Klass* k = *it;

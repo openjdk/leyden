@@ -335,10 +335,9 @@ ClassPathEntry* ClassLoaderExt::get_class_path_entry(s2 classpath_index) {
   return nullptr;
 }
 
-// Spring can use reflection+setAccessible to call into ClassLoader::defineClass() and dynamically
-// define a class using the same ProtectionDomain as another class which was loaded from a
-// JAR file in the classpath.
-// We cannot archive such dynamically defined classes.
+// It's possible to use reflection+setAccessible to call into ClassLoader::defineClass() to
+// pretend that a dynamically generated class comes from a JAR file in the classpath.
+// Detect such classes and exclude them from the archive.
 void ClassLoaderExt::check_invalid_classpath_index(s2 classpath_index, InstanceKlass* ik) {
   ClassPathEntry *cpe = get_class_path_entry(classpath_index);
   if (cpe != nullptr && cpe->is_jar_file()) {
