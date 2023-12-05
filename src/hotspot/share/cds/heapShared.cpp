@@ -158,6 +158,7 @@ static ArchivableStaticFieldInfo fmg_archive_subgraph_entry_fields[] = {
 };
 
 KlassSubGraphInfo* HeapShared::_default_subgraph_info;
+ArchivedKlassSubGraphInfoRecord* HeapShared::_runtime_default_subgraph_info;
 GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_pending_roots = nullptr;
 GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_trace = nullptr;
 GrowableArrayCHeap<const char*, mtClassShared>* HeapShared::_context = nullptr;
@@ -1052,16 +1053,14 @@ void ArchivedKlassSubGraphInfoRecord::init(KlassSubGraphInfo* info) {
   ArchivePtrMarker::mark_pointer(&_subgraph_object_klasses);
 }
 
-struct CopyKlassSubGraphInfoToArchive : StackObj {
+class HeapShared::CopyKlassSubGraphInfoToArchive : StackObj {
+public:
   CompactHashtableWriter* _writer;
   CopyKlassSubGraphInfoToArchive(CompactHashtableWriter* writer) : _writer(writer) {}
 
   bool do_entry(Klass* klass, KlassSubGraphInfo& info) {
     if (info.subgraph_object_klasses() != nullptr || info.subgraph_entry_fields() != nullptr) {
-      ArchivedKlassSubGraphInfoRecord* record =
-        (ArchivedKlassSubGraphInfoRecord*)ArchiveBuilder::ro_region_alloc(sizeof(ArchivedKlassSubGraphInfoRecord));
-      record->init(&info);
-
+      ArchivedKlassSubGraphInfoRecord* record = HeapShared::archive_subgraph_info(&info);
       Klass* buffered_k = ArchiveBuilder::get_buffered_klass(klass);
       unsigned int hash = SystemDictionaryShared::hash_for_shared_dictionary((address)buffered_k);
       u4 delta = ArchiveBuilder::current()->any_to_offset_u4(record);
@@ -1070,6 +1069,13 @@ struct CopyKlassSubGraphInfoToArchive : StackObj {
     return true; // keep on iterating
   }
 };
+
+ArchivedKlassSubGraphInfoRecord* HeapShared::archive_subgraph_info(KlassSubGraphInfo* info) {
+  ArchivedKlassSubGraphInfoRecord* record =
+      (ArchivedKlassSubGraphInfoRecord*)ArchiveBuilder::ro_region_alloc(sizeof(ArchivedKlassSubGraphInfoRecord));
+  record->init(info);
+  return record;
+}
 
 // Build the records of archived subgraph infos, which include:
 // - Entry points to all subgraphs from the containing class mirror. The entry
@@ -1089,6 +1095,8 @@ void HeapShared::write_subgraph_info_table() {
   CopyKlassSubGraphInfoToArchive copy(&writer);
   d_table->iterate(&copy);
   writer.dump(&_run_time_subgraph_info_table, "subgraphs");
+
+  _runtime_default_subgraph_info = archive_subgraph_info(_default_subgraph_info);
 
 #ifndef PRODUCT
   if (ArchiveHeapTestClass != nullptr) {
@@ -1125,6 +1133,8 @@ void HeapShared::serialize_tables(SerializeClosure* soc) {
 #endif
 
   _run_time_subgraph_info_table.serialize_header(soc);
+  soc->do_ptr(&_runtime_default_subgraph_info);
+
 }
 
 static void verify_the_heap(Klass* k, const char* which) {
@@ -1205,6 +1215,27 @@ void HeapShared::initialize_java_lang_invoke(TRAPS) {
   resolve_or_init("java/lang/invoke/DelegatingMethodHandle$Holder", true, CHECK);
   resolve_or_init("java/lang/invoke/LambdaForm$Holder", true, CHECK);
   resolve_or_init("java/lang/invoke/BoundMethodHandle$Species_L", true, CHECK);
+}
+
+void HeapShared::initialize_default_subgraph_classes(Handle loader, TRAPS) {
+  if (!ArchiveHeapLoader::is_in_use()) {
+    return;
+  }
+
+  assert( _runtime_default_subgraph_info != nullptr, "must be");
+  Array<Klass*>* klasses = _runtime_default_subgraph_info->subgraph_object_klasses();
+  if (klasses != nullptr) {
+    for (int i = 0; i < klasses->length(); i++) {
+      Klass* k = klasses->at(i);
+      if (k->class_loader_data() == nullptr) {
+        // This class is not yet loaded. We will initialize it in a later phase.
+        continue;
+      }
+      if (k->class_loader() == loader()) {
+        resolve_or_init(k, /*do_init*/true, CHECK);
+      }
+    }
+  }
 }
 
 void HeapShared::initialize_from_archived_subgraph(JavaThread* current, Klass* k) {
@@ -1784,13 +1815,11 @@ void HeapShared::check_default_subgraph_classes() {
       Symbol* name = ik->name();
       if (!name->equals("java/lang/Class") &&
           !name->equals("java/lang/String") &&
-          !name->equals("[Ljava/lang/Object;") &&
-          !name->equals("[C") &&
-          !name->equals("[B") &&
           !is_archivable_hidden_klass(ik)) {
         ResourceMark rm;
-        log_info(cds)("TODO: Archived unusual klass (default subgraph %d) => %s",
-                      ++warned, ik->external_name());
+        const char* category = ArchiveUtils::class_category(ik);
+        log_info(cds)("TODO: Archived unusual klass (default subgraph %2d) => %-5s %s",
+                      ++warned, category, ik->external_name());
       }
     }
   }

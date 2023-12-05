@@ -4820,6 +4820,7 @@ public final class Class<T> implements java.io.Serializable,
 
     private native int getClassAccessFlagsRaw0();
 
+    // Support for "OLD" CDS workflow -- {
     private static final int RD_PUBLIC_METHODS          = (1 <<  0);
     private static final int RD_PUBLIC_FIELDS           = (1 <<  1);
     private static final int RD_DECLARED_CTORS          = (1 <<  2);
@@ -4862,4 +4863,5 @@ public final class Class<T> implements java.io.Serializable,
         if ((flags & RD_DECLARED_SIMPLE_NAME   ) != 0) { getSimpleName();                       } // String simpleName;
         if ((flags & RD_DECLARED_CANONICAL_NAME) != 0) { getCanonicalName();                    } // String canonicalName;
     }
+    // -- }
 }

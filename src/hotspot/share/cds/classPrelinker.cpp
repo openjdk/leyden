@@ -1261,6 +1261,10 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
     }
   }
 
+  if (!_preload_javabase_only) {
+    HeapShared::initialize_default_subgraph_classes(loader, CHECK);
+  }
+
   if (UsePerfData) {
     timer.stop();
     _perf_class_preload_time->inc(timer.ticks());
@@ -1307,6 +1311,9 @@ void ClassPrelinker::init_javabase_preloaded_classes(TRAPS) {
       }
     }
   }
+
+  // Initialize java.base classes in the default subgraph.
+  HeapShared::initialize_default_subgraph_classes(Handle(), CHECK);
 }
 
 void ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(TRAPS) {

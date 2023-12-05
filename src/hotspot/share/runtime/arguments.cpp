@@ -3193,7 +3193,10 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
     // These optimizations require heap dumping and PreloadSharedClasses, or else
     // the classes of some archived heap objects may be replaced at runtime.
     ArchiveInvokeDynamic = false;
-    ArchiveReflectionData = false;
+  }
+
+  if (!ArchiveInvokeDynamic) {
+    ArchiveReflectionData = false; // reflection data use LambdaForm classes
   }
 #endif
 

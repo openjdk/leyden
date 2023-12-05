@@ -188,6 +188,8 @@ public:
     return java_lang_String::hash_code(string);
   }
 
+  class CopyKlassSubGraphInfoToArchive;
+
   class CachedOopInfo {
     // See "TEMP notes: What are these?" in archiveHeapWriter.hpp
     oop _orig_referrer;
@@ -238,6 +240,7 @@ private:
   static RunTimeKlassSubGraphInfoTable _run_time_subgraph_info_table;
 
   static CachedOopInfo make_cached_oop_info();
+  static ArchivedKlassSubGraphInfoRecord* archive_subgraph_info(KlassSubGraphInfo* info);
   static void archive_object_subgraphs(ArchivableStaticFieldInfo fields[],
                                        bool is_full_module_graph);
 
@@ -280,6 +283,7 @@ private:
   //    - Klass::java_mirror()
   //    - ConstantPool::resolved_references()
   static KlassSubGraphInfo* _default_subgraph_info;
+  static ArchivedKlassSubGraphInfoRecord* _runtime_default_subgraph_info;
 
   static GrowableArrayCHeap<oop, mtClassShared>* _pending_roots;
   static GrowableArrayCHeap<oop, mtClassShared>* _trace; // for debugging unarchivable objects
@@ -450,6 +454,7 @@ private:
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 
   static void initialize_java_lang_invoke(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
+  static void initialize_default_subgraph_classes(Handle loader, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 
   static bool is_lambda_form_klass(InstanceKlass* ik);
   static bool is_lambda_proxy_klass(InstanceKlass* ik);

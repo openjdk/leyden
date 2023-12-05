@@ -73,6 +73,9 @@ public class LeydenReflection {
 
 class LeydenReflectionApp {
     public static void main(String args[]) throws Exception {
+        // Random.<clinit> calls Random.class.getDeclaredField("seed")
+        Object x = new java.util.Random();
+
         Method m = LeydenReflectionApp.class.getDeclaredMethod("sayHello", String.class);
         m.invoke(null, args[0]);
     }

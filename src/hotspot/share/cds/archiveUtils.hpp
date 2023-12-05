@@ -237,6 +237,7 @@ public:
   static void log_to_classlist(BootstrapInfo* bootstrap_specifier, TRAPS) NOT_CDS_RETURN;
 
   template <typename T> static Array<T>* archive_array(GrowableArray<T>* tmp_array);
+  static const char* class_category(Klass* k);
 };
 
 #endif // SHARE_CDS_ARCHIVEUTILS_HPP
