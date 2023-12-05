@@ -74,6 +74,7 @@ abstract public class LeydenTester {
         return null;
     }
 
+    // ============================== old workflow
     // optional
     public String classListLog() {
         return "-Xlog:class+load=debug:file=" + classListFile + ".log";
@@ -93,24 +94,30 @@ abstract public class LeydenTester {
     public String oldProductionRunLog() {
         return "-Xlog:scc*=warning,cds:file=" + name() + ".old-production.log";
     }
-    // ============================== new workflow
-    public String trainingLog() {
-        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".log:uptime,level,tags,pid";
-    }
-    public String trainingLog0() {
-        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".0.log";
-    }
-    public String trainingLog1() {
-        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".1.log";
-    }
-    public String productionRunLog() {
-        return "-Xlog:scc*=warning,cds:file=" + name() + ".production.log";
-    }
 
     public final String classListFile;
     public final String staticArchiveFile;
     public final String dynamicArchiveFile;
     public final String codeCacheFile;
+
+    // ============================== new workflow
+
+    // optional
+    public String trainingLog() {
+        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".log:uptime,level,tags,pid";
+    }
+    // optional
+    public String trainingLog0() {
+        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".0.log";
+    }
+    // optional
+    public String trainingLog1() {
+        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".1.log";
+    }
+    // optional
+    public String productionRunLog() {
+        return "-Xlog:scc*=warning,cds:file=" + name() + ".production.log";
+    }
 
     public final String cdsFile; // -XX:CacheDataStore=<foo>.cds
     public final String aotFile; // = cdsFile + ".code"
