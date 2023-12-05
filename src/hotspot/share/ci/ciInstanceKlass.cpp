@@ -54,8 +54,16 @@ ciInstanceKlass::ciInstanceKlass(Klass* k) :
   ciKlass(k)
 {
   assert(get_Klass()->is_instance_klass(), "wrong type");
-  assert(get_instanceKlass()->is_loaded(), "must be at least loaded");
+
   InstanceKlass* ik = get_instanceKlass();
+
+#ifdef ASSERT
+  if (!ik->is_loaded()) {
+    ResourceMark rm;
+    ik->print_on(tty);
+    assert(false, "must be at least loaded: %s", ik->name()->as_C_string());
+  }
+#endif // ASSERT
 
   AccessFlags access_flags = ik->access_flags();
   _flags = ciFlags(access_flags);
