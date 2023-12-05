@@ -1225,14 +1225,22 @@ void HeapShared::initialize_default_subgraph_classes(Handle loader, TRAPS) {
   assert( _runtime_default_subgraph_info != nullptr, "must be");
   Array<Klass*>* klasses = _runtime_default_subgraph_info->subgraph_object_klasses();
   if (klasses != nullptr) {
-    for (int i = 0; i < klasses->length(); i++) {
-      Klass* k = klasses->at(i);
-      if (k->class_loader_data() == nullptr) {
-        // This class is not yet loaded. We will initialize it in a later phase.
-        continue;
-      }
-      if (k->class_loader() == loader()) {
-        resolve_or_init(k, /*do_init*/true, CHECK);
+    for (int pass = 0; pass < 2; pass ++) {
+      for (int i = 0; i < klasses->length(); i++) {
+        Klass* k = klasses->at(i);
+        if (k->class_loader_data() == nullptr) {
+          // This class is not yet loaded. We will initialize it in a later phase.
+          continue;
+        }
+        if (k->class_loader() == loader()) {
+          if (pass == 0) {
+            if (k->is_instance_klass()) {
+              InstanceKlass::cast(k)->link_class(CHECK);
+            }
+          } else {
+            resolve_or_init(k, /*do_init*/true, CHECK);
+          }
+        }
       }
     }
   }
