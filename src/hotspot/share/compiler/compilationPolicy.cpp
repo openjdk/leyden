@@ -1460,13 +1460,14 @@ CompLevel CompilationPolicy::standard_transitions(const methodHandle& method, Co
 template<typename Predicate>
 CompLevel CompilationPolicy::transition_from_none(const methodHandle& method, CompLevel cur_level, bool delay_profile, bool disable_feedback) {
   precond(cur_level == CompLevel_none);
+  double scale = delay_profile ? Tier0DelayFactor : 1.0;
   CompLevel next_level = cur_level;
   int i = method->invocation_count();
   int b = method->backedge_count();
   // If we were at full profile level, would we switch to full opt?
   if (transition_from_full_profile<Predicate>(method, CompLevel_full_profile) == CompLevel_full_optimization) {
     next_level = CompLevel_full_optimization;
-  } else if (!CompilationModeFlag::disable_intermediate() && Predicate::apply(method, cur_level, i, b)) {
+  } else if (!CompilationModeFlag::disable_intermediate() && Predicate::apply_scaled(method, cur_level, i, b, scale)) {
     // C1-generated fully profiled code is about 30% slower than the limited profile
     // code that has only invocation and backedge counters. The observation is that
     // if C2 queue is large enough we can spend too much time in the fully profiled code
