@@ -116,7 +116,6 @@ class CompileQueue : public CHeapObj<mtCompiler> {
 
   void         add_pending(CompileTask* task);
   void         transfer_pending();
-  size_t       pending_list_size();
 
   void         add(CompileTask* task);
   void         remove(CompileTask* task);
@@ -472,8 +471,12 @@ public:
   static jlong get_peak_compilation_time() {        return _peak_compilation_time; }
   static jlong get_total_compilation_time() {       return _t_total_compilation.milliseconds(); }
 
+  static void log_not_entrant(nmethod* nm);
+
   // Log that compilation profiling is skipped because metaspace is full.
   static void log_metaspace_failure();
+
+  static void print_statistics_on(outputStream* st);
 
   // CodeHeap State Analytics.
   static void print_info(outputStream *out);

@@ -1416,6 +1416,8 @@ bool nmethod::make_not_entrant(bool make_not_entrant) {
       // otherwise make it not entrant too.
       SCCache::invalidate(_scc_entry);
     }
+
+    CompileBroker::log_not_entrant(this);
   } // leave critical region under CompiledMethod_lock
 
 #if INCLUDE_JVMCI
