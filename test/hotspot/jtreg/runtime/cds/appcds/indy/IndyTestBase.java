@@ -136,7 +136,7 @@ public class IndyTestBase {
         System.out.println("#" + testNumber + ": Create classlist");
         CDSTestUtils.dumpClassList(classList, "-cp", appJar, mainClass, trainingArg);
 
-        // Dump archive
+        // Dump static archive
         System.out.println("#" + testNumber + ": Dump static archive");
         CDSOptions opts = (new CDSOptions())
             .addPrefix("-XX:SharedClassListFile=" + classList,

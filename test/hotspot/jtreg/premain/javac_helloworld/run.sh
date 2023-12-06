@@ -33,6 +33,9 @@ PREMAIN_JAVA=$1; shift
 
 APP=Javac
 
+HEAP_SIZE=
+#HEAP_SIZE=-Xmx512m
+
 if test "$SKIP_SETUP" = "" || test ! -f Javac-mainline.jsa; then
     echo "Set up: create JSA and AOT caches ..."
 
@@ -40,8 +43,8 @@ if test "$SKIP_SETUP" = "" || test ! -f Javac-mainline.jsa; then
     # MAINLINE_JAVA
     # Trial run and create CDS archive
 
-    $MAINLINE_JAVA -Xshare:off -XX:DumpLoadedClassList=$APP-mainline.classlist com.sun.tools.javac.Main HelloWorld.java
-    $MAINLINE_JAVA -Xshare:dump -XX:SharedArchiveFile=$APP-mainline.jsa -XX:SharedClassListFile=$APP-mainline.classlist \
+    $MAINLINE_JAVA ${HEAP_SIZE} -Xshare:off -XX:DumpLoadedClassList=$APP-mainline.classlist com.sun.tools.javac.Main HelloWorld.java
+    $MAINLINE_JAVA ${HEAP_SIZE} -Xshare:dump -XX:SharedArchiveFile=$APP-mainline.jsa -XX:SharedClassListFile=$APP-mainline.classlist \
                    -Xlog:cds=debug,cds+class=debug:file=$APP-mainline-static.dump.log::filesize=0
 
     #----------------------------------------------------------------------
@@ -50,7 +53,7 @@ if test "$SKIP_SETUP" = "" || test ! -f Javac-mainline.jsa; then
     #
     # FIXME: for AOT, we should do a longer and compile more source files, so we can have more optimized AOT code
 
-    JAVA=$PREMAIN_JAVA
+    JAVA="$PREMAIN_JAVA ${HEAP_SIZE}"
     DUMP_EXTRA_ARGS=-XX:+ArchiveInvokeDynamic 
     CMDLINE="-XX:+ArchiveInvokeDynamic com.sun.tools.javac.Main HelloWorld.java"
 
@@ -93,28 +96,28 @@ for i in $(seq 1 $RUNS); do
     echo RUN $i
 
     (set -x;
-     perf stat -r $REPEAT $MAINLINE_JAVA -Xshare:off com.sun.tools.javac.Main HelloWorld.java 2> logs/mainline_xoff.$i
+     perf stat -r $REPEAT $MAINLINE_JAVA ${HEAP_SIZE} -Xshare:off com.sun.tools.javac.Main HelloWorld.java 2> logs/mainline_xoff.$i
     )
     mainline_xoff=$(get_elapsed logs/mainline_xoff.$i)
 
     (set -x;
-     perf stat -r $REPEAT $MAINLINE_JAVA -XX:SharedArchiveFile=$APP-mainline.jsa com.sun.tools.javac.Main HelloWorld.java 2> logs/mainline_xon.$i
+     perf stat -r $REPEAT $MAINLINE_JAVA ${HEAP_SIZE} -XX:SharedArchiveFile=$APP-mainline.jsa com.sun.tools.javac.Main HelloWorld.java 2> logs/mainline_xon.$i
     )
     mainline_xon=$(get_elapsed logs/mainline_xon.$i)
 
     (set -x;
-     perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-static.jsa com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_xon.$i
+     perf stat -r $REPEAT $PREMAIN_JAVA ${HEAP_SIZE} -XX:SharedArchiveFile=$APP-static.jsa com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_xon.$i
     )
     premain_xon=$(get_elapsed logs/premain_xon.$i)
 
     (set -x;
-     perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining \
+     perf stat -r $REPEAT $PREMAIN_JAVA ${HEAP_SIZE} -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining \
         com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_td.$i
     )
     premain_td=$(get_elapsed logs/premain_td.$i)
 
     (set -x;
-     perf stat -r $REPEAT $PREMAIN_JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode \
+     perf stat -r $REPEAT $PREMAIN_JAVA ${HEAP_SIZE} -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode \
         -XX:CachedCodeFile=$APP-dynamic.jsa-sc -Xlog:scc=error \
         com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_aot.$i
     )

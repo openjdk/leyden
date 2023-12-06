@@ -62,7 +62,7 @@ PC_CACHED_CODE   = spring-petclinic.code.jsa
 
 # new workflow
 PC_CDS_PREIMAGE  = spring-petclinic.cds.preimage
-PC_CDS          = spring-petclinic.cds
+PC_CDS           = spring-petclinic.cds
 
 HEAP_SIZE        = -Xmx2g
 UNPACKED_CMDLINE = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath -DautoQuit=true -Dspring.aot.enabled=true -Dspring.output.ansi.enabled=NEVER ${PC_MAIN_CLASS}
