@@ -469,7 +469,7 @@ void before_exit(JavaThread* thread, bool halt) {
   ClassListWriter::write_reflection_data();
   // Dynamic CDS dumping must happen whilst we can still reliably
   // run Java code.
-  if (CDSConfig::is_dumping_static_archive() && CacheDataStore != nullptr) {
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
     // Creating the hotspot.cds.preimage file
     MetaspaceShared::preload_and_dump();
   } else {

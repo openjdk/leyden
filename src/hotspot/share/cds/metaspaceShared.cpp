@@ -593,13 +593,14 @@ void VM_PopulateDumpSharedSpace::doit() {
   // We don't want to write these addresses into the archive.
   CppVtables::zero_archived_vtables();
 
+  // Write the archive file
   const char* static_archive;
   if (CDSConfig::is_dumping_final_static_archive()) {
     static_archive = CacheDataStore;
     assert(FileMapInfo::current_info() != nullptr, "sanity");
     delete FileMapInfo::current_info();
   } else {
-    static_archive = Arguments::GetSharedArchivePath();
+    static_archive = CDSConfig::static_archive_path();
   }
   assert(static_archive != nullptr, "SharedArchiveFile not set?");
   _mapinfo = new FileMapInfo(static_archive, true);
@@ -720,8 +721,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
 
 void MetaspaceShared::prepare_for_dumping() {
   assert(CDSConfig::is_dumping_archive(), "sanity");
-  Arguments::check_unsupported_dumping_properties();
-
+  CDSConfig::check_unsupported_dumping_properties();
   ClassLoader::initialize_shared_path(JavaThread::current());
 }
 
@@ -840,7 +840,7 @@ void MetaspaceShared::preload_classes(TRAPS) {
 }
 
 void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) {
-  if (CacheDataStore == nullptr) {
+  if (CDSConfig::is_dumping_classic_static_archive()) {
     // We are running with -Xshare:dump
     preload_classes(CHECK);
 
@@ -1172,7 +1172,8 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
       MetaspaceShared::unrecoverable_loading_error("Unable to use shared archive.");
     } else if (RequireSharedSpaces) {
       MetaspaceShared::unrecoverable_loading_error("Unable to map shared spaces");
-    } else if (CDSPreimage != nullptr) {
+    } else if (CDSConfig::is_dumping_final_static_archive()) {
+      assert(CDSPreimage != nullptr, "must be");
       log_error(cds)("Unable to map shared spaces for CDSPreimage = %s", CDSPreimage);
       MetaspaceShared::unrecoverable_loading_error();
     }
@@ -1189,11 +1190,8 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
     delete dynamic_mapinfo;
   }
   if (RequireSharedSpaces && has_failed) {
+    // static archive mapped but dynamic archive failed
       MetaspaceShared::unrecoverable_loading_error("Unable to map shared spaces");
-  }
-  if (CDSPreimage != nullptr && has_failed) {
-    log_error(cds)("Unable to map shared spaces for CDSPreimage = %s", CDSPreimage);
-    MetaspaceShared::unrecoverable_loading_error();
   }
 }
 
@@ -1203,8 +1201,8 @@ void MetaspaceShared::open_static_archive() {
   if (!UseSharedSpaces) {
     return;
   }
-  const char* static_archive = Arguments::GetSharedArchivePath();
-  assert(static_archive != nullptr, "SharedArchivePath is nullptr");
+  const char* static_archive = CDSConfig::static_archive_path();
+  assert(static_archive != nullptr, "sanity");
   FileMapInfo* mapinfo = new FileMapInfo(static_archive, true);
   if (!mapinfo->initialize()) {
     delete(mapinfo);
@@ -1218,7 +1216,7 @@ FileMapInfo* MetaspaceShared::open_dynamic_archive() {
   if (CDSConfig::is_dumping_dynamic_archive()) {
     return nullptr;
   }
-  const char* dynamic_archive = Arguments::GetSharedDynamicArchivePath();
+  const char* dynamic_archive = CDSConfig::dynamic_archive_path();
   if (dynamic_archive == nullptr) {
     return nullptr;
   }
@@ -1551,11 +1549,11 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
                                      os::vm_page_size(), (char*) base_address);
     } else {
       // We did not manage to reserve at the preferred address, or were instructed to relocate. In that
-      // case we reserve whereever possible, but the start address needs to be encodable as narrow Klass
-      // encoding base since the archived heap objects contain nKlass IDs precalculated toward the start
+      // case we reserve wherever possible, but the start address needs to be encodable as narrow Klass
+      // encoding base since the archived heap objects contain nKlass IDs pre-calculated toward the start
       // of the shared Metaspace. That prevents us from using zero-based encoding and therefore we won't
       // try allocating in low-address regions.
-      total_space_rs = Metaspace::reserve_address_space_for_compressed_classes(total_range_size, false /* try_in_low_address_ranges */);
+      total_space_rs = Metaspace::reserve_address_space_for_compressed_classes(total_range_size, false /* optimize_for_zero_base */);
     }
 
     if (!total_space_rs.is_reserved()) {
@@ -1714,7 +1712,7 @@ void MetaspaceShared::initialize_shared_spaces() {
   if (PrintSharedArchiveAndExit) {
     // Print archive names
     if (dynamic_mapinfo != nullptr) {
-      tty->print_cr("\n\nBase archive name: %s", Arguments::GetSharedArchivePath());
+      tty->print_cr("\n\nBase archive name: %s", CDSConfig::static_archive_path());
       tty->print_cr("Base archive version %d", static_mapinfo->version());
     } else {
       tty->print_cr("Static archive name: %s", static_mapinfo->full_path());
