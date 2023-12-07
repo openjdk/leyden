@@ -94,7 +94,7 @@ class InterpreterRuntime: AllStatic {
 
   // Used by ClassListParser.
   static void resolve_get_put(Bytecodes::Code bytecode, int field_index,
-                              methodHandle& m, constantPoolHandle& pool, TRAPS);
+                              methodHandle& m, constantPoolHandle& pool, bool initialize_holder, TRAPS);
   static void cds_resolve_invoke(Bytecodes::Code bytecode, int method_index,
                                  methodHandle& m,
                                  constantPoolHandle& pool, TRAPS);

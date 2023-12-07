@@ -435,7 +435,10 @@ void ConstantPoolCache::remove_unshareable_info() {
       ResolvedFieldEntry *rfi = resolved_field_entry_at(i);
       int cp_index = rfi->constant_pool_index();
       bool archived = false;
-      if ((rfi->is_resolved(Bytecodes::_getfield) || rfi->is_resolved(Bytecodes::_putfield)) &&
+      if ((rfi->is_resolved(Bytecodes::_getstatic) ||
+           rfi->is_resolved(Bytecodes::_putstatic) ||
+           rfi->is_resolved(Bytecodes::_putfield) ||
+           rfi->is_resolved(Bytecodes::_putfield)) &&
           ClassPrelinker::can_archive_resolved_field(src_cp, cp_index)) {
         if (log_is_enabled(Debug, cds, resolve)) {
           ResourceMark rm;
