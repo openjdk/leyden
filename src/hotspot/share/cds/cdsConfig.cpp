@@ -44,20 +44,21 @@ bool CDSConfig::_loading_full_module_graph_disabled = false;
 
 bool CDSConfig::_has_preloaded_classes;
 
+bool CDSConfig::is_dumping_classic_static_archive() {
+  return _is_dumping_static_archive && CacheDataStore == nullptr && CDSPreimage == nullptr;
+}
+
 bool CDSConfig::is_dumping_preimage_static_archive() {
-  if (CacheDataStore != nullptr && CDSPreimage == nullptr && is_dumping_static_archive()) {
-    return true;
-  } else {
-    return false;
-  }
+  return _is_dumping_static_archive && CacheDataStore != nullptr && CDSPreimage == nullptr;
 }
 
 bool CDSConfig::is_dumping_final_static_archive() {
-  if (CacheDataStore != nullptr && CDSPreimage != nullptr) {
-    return true;
-  } else {
-    return false;
+  if (CDSPreimage != nullptr) {
+    assert(CacheDataStore != nullptr, "must be"); // should have been properly initialized by arguments.cpp
   }
+
+  // Note: _is_dumping_static_archive is false! // FIXME -- refactor this so it makes more sense!
+  return CacheDataStore != nullptr && CDSPreimage != nullptr;
 }
 
 bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {

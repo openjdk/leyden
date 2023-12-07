@@ -873,8 +873,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   _vm_complete = true;
 #endif
 
-  if (CDSConfig::is_dumping_static_archive() && CacheDataStore == nullptr) {
-    // Regular -Xshare:dump
+  if (CDSConfig::is_dumping_classic_static_archive()) {
+    // Classic -Xshare:dump, aka "old workflow"
     MetaspaceShared::preload_and_dump();
   }
 

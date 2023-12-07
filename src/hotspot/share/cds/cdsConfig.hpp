@@ -45,8 +45,9 @@ public:
   static bool      is_dumping_static_archive()               { return (CDS_ONLY(_is_dumping_static_archive) NOT_CDS(false))
                                                                     || is_dumping_final_static_archive(); }
   static void  enable_dumping_static_archive()               { CDS_ONLY(_is_dumping_static_archive = true); }
-  static bool      is_dumping_preimage_static_archive()      NOT_CDS_RETURN_(false);
-  static bool      is_dumping_final_static_archive()         NOT_CDS_RETURN_(false);
+  static bool      is_dumping_classic_static_archive()       NOT_CDS_RETURN_(false); // -Xshare:dump
+  static bool      is_dumping_preimage_static_archive()      NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping
+  static bool      is_dumping_final_static_archive()         NOT_CDS_RETURN_(false); // 2nd phase of -XX:CacheDataStore dumping
   static bool      is_dumping_dynamic_archive()              { return CDS_ONLY(_is_dumping_dynamic_archive) NOT_CDS(false); }
   static void  enable_dumping_dynamic_archive()              { CDS_ONLY(_is_dumping_dynamic_archive = true); }
   static void disable_dumping_dynamic_archive()              { CDS_ONLY(_is_dumping_dynamic_archive = false); }

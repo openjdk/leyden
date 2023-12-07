@@ -840,7 +840,7 @@ void MetaspaceShared::preload_classes(TRAPS) {
 }
 
 void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) {
-  if (CacheDataStore == nullptr) {
+  if (CDSConfig::is_dumping_classic_static_archive()) {
     // We are running with -Xshare:dump
     preload_classes(CHECK);
 
@@ -1172,7 +1172,8 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
       MetaspaceShared::unrecoverable_loading_error("Unable to use shared archive.");
     } else if (RequireSharedSpaces) {
       MetaspaceShared::unrecoverable_loading_error("Unable to map shared spaces");
-    } else if (CDSPreimage != nullptr) {
+    } else if (CDSConfig::is_dumping_final_static_archive()) {
+      assert(CDSPreimage != nullptr, "must be");
       log_error(cds)("Unable to map shared spaces for CDSPreimage = %s", CDSPreimage);
       MetaspaceShared::unrecoverable_loading_error();
     }
@@ -1189,11 +1190,8 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
     delete dynamic_mapinfo;
   }
   if (RequireSharedSpaces && has_failed) {
+    // static archive mapped but dynamic archive failed
       MetaspaceShared::unrecoverable_loading_error("Unable to map shared spaces");
-  }
-  if (CDSPreimage != nullptr && has_failed) {
-    log_error(cds)("Unable to map shared spaces for CDSPreimage = %s", CDSPreimage);
-    MetaspaceShared::unrecoverable_loading_error();
   }
 }
 
