@@ -470,13 +470,6 @@ extern "C" {                                                         \
     VM_LEAF_BASE(result_type, header)
 
 
-#define JVM_ENTRY_FROM_LEAF(env, result_type, header)                \
-  { {                                                                \
-    JavaThread* thread=JavaThread::thread_from_jni_environment(env); \
-    ThreadInVMfromNative __tiv(thread);                              \
-    debug_only(VMNativeEntryWrapper __vew;)                          \
-    VM_ENTRY_BASE_FROM_LEAF(result_type, header, thread)
-
 #define JVM_ENTRY_PROF(result_type, name, header)                    \
   PerfCounter* _perf_##name##_timer = nullptr;                       \
   PerfCounter* _perf_##name##_count = nullptr;                       \

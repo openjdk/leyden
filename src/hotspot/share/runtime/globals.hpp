@@ -2015,6 +2015,10 @@ const int ObjectAlignmentInBytes = 8;
   product(bool, ProfileRuntimeCalls, false, DIAGNOSTIC,                     \
           "Profile calls into VM runtime on main thread")                   \
                                                                             \
+  develop(bool, SimulateFullAddressSpace, false,                            \
+          "Simulates a very populated, fragmented address space; no "       \
+          "targeted reservations will succeed.")                            \
+                                                                            \
   product(bool, ProfileExceptionHandlers, true,                             \
           "Profile exception handlers")                                     \
 
