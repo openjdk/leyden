@@ -51,6 +51,5 @@ void ResolvedFieldEntry::remove_unshareable_info() {
 }
 
 void ResolvedFieldEntry::mark_and_relocate() {
-  assert(is_resolved(Bytecodes::_getfield), "only this is implemented for now");
   ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_field_holder);
 }

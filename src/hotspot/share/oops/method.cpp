@@ -985,7 +985,8 @@ bool Method::needs_clinit_barrier() const {
 }
 
 bool Method::code_has_clinit_barriers() const {
-  return (_code != nullptr) && _code->has_clinit_barriers();
+  CompiledMethod* nm = code();
+  return (nm != nullptr) && nm->has_clinit_barriers();
 }
 
 objArrayHandle Method::resolved_checked_exceptions_impl(Method* method, TRAPS) {
@@ -2067,7 +2068,8 @@ int Method::backedge_count() const {
 
 int Method::highest_comp_level() const {
   const MethodCounters* mcs = method_counters();
-  int level = (_code != nullptr) ? _code->comp_level() : CompLevel_none;
+  CompiledMethod* nm = code();
+  int level = (nm != nullptr) ? nm->comp_level() : CompLevel_none;
   if (mcs != nullptr) {
     return MAX2(mcs->highest_comp_level(), level);
   } else {

@@ -315,9 +315,7 @@ bool ClassPrelinker::can_archive_resolved_field(ConstantPool* cp, int cp_index) 
   Symbol* field_name = cp->uncached_name_ref_at(cp_index);
   Symbol* field_sig = cp->uncached_signature_ref_at(cp_index);
   fieldDescriptor fd;
-  if (k->find_field(field_name, field_sig, &fd) == NULL || fd.access_flags().is_static()) {
-    // Static field resolution at runtime may trigger initialization, so we can't
-    // archive it.
+  if (k->find_field(field_name, field_sig, &fd) == NULL) {
     return false;
   }
 
@@ -447,11 +445,13 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
     BytecodeStream bcs(methodHandle(THREAD, m));
     while (!bcs.is_last_bytecode()) {
       bcs.next();
-      Bytecodes::Code bc = bcs.raw_code();
-      switch (bc) {
+      Bytecodes::Code raw_bc = bcs.raw_code();
+      switch (raw_bc) {
+      case Bytecodes::_getstatic:
+      case Bytecodes::_putstatic:
       case Bytecodes::_getfield:
       case Bytecodes::_putfield:
-        maybe_resolve_fmi_ref(ik, m, bc, bcs.get_index_u2(), preresolve_list, THREAD);
+        maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION; // just ignore
         }
@@ -464,7 +464,7 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
       case Bytecodes::_invokespecial:
     //case Bytecodes::_invokevirtual: FIXME - This fails with test/hotspot/jtreg/premain/jmh/run.sh
       case Bytecodes::_invokestatic: // This is only for a few specific cases.
-        maybe_resolve_fmi_ref(ik, m, bc, bcs.get_index_u2(), preresolve_list, THREAD);
+        maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION; // just ignore
         }
@@ -496,7 +496,8 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     }
     cp_index = method_entry->constant_pool_index();
   } else {
-    assert(bc == Bytecodes::_getfield || bc == Bytecodes::_putfield, "must be");
+    assert(bc == Bytecodes::_getfield  || bc == Bytecodes::_putfield ||
+           bc == Bytecodes::_getstatic || bc == Bytecodes::_putstatic, "must be");
     cp_index = cp->cache()->resolved_field_entry_at(raw_index)->constant_pool_index();
   }
 
@@ -522,9 +523,11 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   }
 
   switch (bc) {
+  case Bytecodes::_getstatic:
+  case Bytecodes::_putstatic:
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
-    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, CHECK);
+    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
     ref_kind = "field ";
     break;
   case Bytecodes::_invokevirtual:

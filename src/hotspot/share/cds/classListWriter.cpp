@@ -275,7 +275,6 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
   ResourceMark rm;
   ConstantPool* cp = ik->constants();
   GrowableArray<bool> list(cp->length(), cp->length(), false);
-  int methodref_cpcache_index = 0; // cpcache index for Methodref/InterfaceMethodref
 
   for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is unused
     switch (cp->tag_at(cp_index).value()) {
@@ -306,8 +305,9 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
     if (field_entries != nullptr) {
       for (int i = 0; i < field_entries->length(); i++) {
         ResolvedFieldEntry* rfe = field_entries->adr_at(i);
-        int cp_index = rfe->constant_pool_index();
-        if (rfe->is_resolved(Bytecodes::_getfield) ||
+        if (rfe->is_resolved(Bytecodes::_getstatic) ||
+            rfe->is_resolved(Bytecodes::_putstatic) ||
+            rfe->is_resolved(Bytecodes::_getfield) ||
             rfe->is_resolved(Bytecodes::_putfield)) {
           list.at_put(rfe->constant_pool_index(), true);
         }
@@ -318,7 +318,6 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
     if (method_entries != nullptr) {
       for (int i = 0; i < method_entries->length(); i++) {
         ResolvedMethodEntry* rme = method_entries->adr_at(i);
-        int cp_index = rme->constant_pool_index();
         if (rme->is_resolved(Bytecodes::_invokevirtual) ||
             rme->is_resolved(Bytecodes::_invokespecial) ||
             rme->is_resolved(Bytecodes::_invokeinterface) ||
