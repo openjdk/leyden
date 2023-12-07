@@ -174,7 +174,8 @@ void ConstantPoolCache::set_direct_or_vtable_call(Bytecodes::Code invoke_code,
     }
     if (invoke_code == Bytecodes::_invokestatic) {
       assert(method->method_holder()->is_initialized() ||
-             method->method_holder()->is_init_thread(JavaThread::current()),
+             method->method_holder()->is_init_thread(JavaThread::current()) ||
+             (CDSConfig::is_dumping_archive() && VM_Version::supports_fast_class_init_checks()),
              "invalid class initialization state for invoke_static");
 
       if (!VM_Version::supports_fast_class_init_checks() && method->needs_clinit_barrier()) {
@@ -462,7 +463,6 @@ void ConstantPoolCache::remove_unshareable_info() {
   if (_resolved_method_entries != nullptr) {
     for (int i = 0; i < _resolved_method_entries->length(); i++) {
       ResolvedMethodEntry *rme = resolved_method_entry_at(i);
-      int cp_index = rme->constant_pool_index();
       bool archived = false;
       if (cp->can_archive_resolved_method(rme)) {
         rme->mark_and_relocate(src_cp);

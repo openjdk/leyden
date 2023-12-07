@@ -478,6 +478,8 @@ JavaThread::JavaThread() :
   _held_monitor_count(0),
   _jni_monitor_count(0),
 
+  _can_call_java(true),
+
   _handshake(this),
 
   _popframe_preserved_args(nullptr),

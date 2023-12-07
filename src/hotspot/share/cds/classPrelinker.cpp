@@ -463,7 +463,7 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
         // fall-through
       case Bytecodes::_invokespecial:
     //case Bytecodes::_invokevirtual: FIXME - This fails with test/hotspot/jtreg/premain/jmh/run.sh
-      case Bytecodes::_invokestatic: // This is only for a few specific cases.
+      case Bytecodes::_invokestatic:
         maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION; // just ignore
@@ -542,11 +542,8 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     ref_kind = "method";
     break;
   case Bytecodes::_invokestatic:
-    if (!resolved_klass->name()->equals("java/lang/invoke/MethodHandle") &&
-        !resolved_klass->name()->equals("java/lang/invoke/MethodHandleNatives")
-      //TODO || !LambdaFormInvokers::may_be_regenerated_class(ik->name()) 
-        ) {
-      return;
+    if (!VM_Version::supports_fast_class_init_checks()) {
+      return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
     ref_kind = "method";

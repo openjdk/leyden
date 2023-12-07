@@ -984,15 +984,26 @@ void InterpreterRuntime::cds_resolve_invoke(Bytecodes::Code bytecode, int method
                                             methodHandle& m, constantPoolHandle& pool, TRAPS) {
   LinkInfo link_info(pool, method_index, bytecode, CHECK);
   CallInfo call_info;
-  if (bytecode == Bytecodes::_invokevirtual) {
-    LinkResolver::cds_resolve_virtual_call(call_info, link_info, CHECK);
-  } else {
-    assert(bytecode == Bytecodes::_invokestatic, "other bytecodes aren't supported yet");
-    LinkResolver::resolve_invoke(call_info, Handle(), pool, method_index, bytecode, CHECK);
+  switch (bytecode) {
+    case Bytecodes::_invokevirtual: LinkResolver::cds_resolve_virtual_call(call_info, link_info, CHECK); break;
+    case Bytecodes::_invokestatic:  LinkResolver::cds_resolve_static_call (call_info, link_info, CHECK); break;
+
+    default: fatal("NYI: %s", Bytecodes::name(bytecode));
   }
 
   methodHandle resolved_method(THREAD, call_info.resolved_method());
-  update_invoke_cp_cache_entry(call_info, bytecode, resolved_method, pool, method_index);
+  InstanceKlass* holder = resolved_method->method_holder();
+  if (holder->is_linked()) {
+    update_invoke_cp_cache_entry(call_info, bytecode, resolved_method, pool, method_index);
+  } else {
+    // FIXME: why a shared class is not linked yet?
+    // Can't link it here since there are no guarantees it'll be prelinked on the next run.
+    ResourceMark rm;
+    log_info(cds, resolve)("Not resolved: class not linked: %s %s %s",
+                           holder->is_shared() ? "is_shared" : "",
+                           holder->init_state_name(),
+                           holder->external_name());
+  }
 }
 
 // First time execution:  Resolve symbols, create a permanent MethodType object.

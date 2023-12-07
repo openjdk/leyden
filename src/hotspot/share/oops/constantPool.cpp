@@ -643,21 +643,6 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
       return false;
     }
   } else if (method_entry->is_resolved(Bytecodes::_invokestatic)) {
-    // TODO: allow invokestatic on current class and supertypes??
-    if (!ArchiveInvokeDynamic) {
-      // FIXME We don't dump the MethodType tables. This somehow breaks stuff.
-      return false;
-    }
-
-    InstanceKlass* src_cp_holder = src_cp->pool_holder();
-    if (!resolved_klass->name()->equals("java/lang/invoke/MethodHandle") &&
-        !resolved_klass->name()->equals("java/lang/invoke/MethodHandleNatives") /* ||
-        !LambdaFormInvokers::may_be_regenerated_class(src_cp_holder->name()) */) {
-      // FIXME - allow LambdaForm classes as well??
-      // FIXME - tighten this check??
-      return false;
-    }
-    // Allow static method refs to MethodHandle from the LambdaForm Invoker Holder classes
     is_static = " *** static";
   } else if (!method_entry->is_resolved(Bytecodes::_invokevirtual) &&
              !method_entry->is_resolved(Bytecodes::_invokespecial)) {

@@ -839,6 +839,7 @@ void ClassListParser::parse_constant_pool_tag() {
       // ignore
     case JVM_CONSTANT_Fieldref:
     case JVM_CONSTANT_Methodref:
+    case JVM_CONSTANT_InterfaceMethodref:
       preresolve_fmi = true;
       break;
     case JVM_CONSTANT_InvokeDynamic:
@@ -855,6 +856,7 @@ void ClassListParser::parse_constant_pool_tag() {
     ClassPrelinker::preresolve_class_cp_entries(THREAD, ik, &preresolve_list);
   }
   if (preresolve_fmi) {
+    JavaThread::NoJavaCodeMark no_java_code(THREAD); // ensure no clinits are exectued
     ClassPrelinker::preresolve_field_and_method_cp_entries(THREAD, ik, &preresolve_list);
   }
   if (preresolve_indy) {

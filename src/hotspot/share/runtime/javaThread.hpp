@@ -455,6 +455,8 @@ class JavaThread: public Thread {
   intx _held_monitor_count;  // used by continuations for fast lock detection
   intx _jni_monitor_count;
 
+  bool _can_call_java;
+
 private:
 
   friend class VMThread;
@@ -505,9 +507,22 @@ private:
 
   void cleanup_failed_attach_current_thread(bool is_daemon);
 
+  class NoJavaCodeMark : public StackObj {
+    friend JavaThread;
+    JavaThread* _target;
+    bool _orig;
+   public:
+    NoJavaCodeMark(JavaThread* t) : _target(t), _orig(t->_can_call_java) {
+      _target->_can_call_java = false;
+    }
+    ~NoJavaCodeMark() {
+      _target->_can_call_java = _orig;
+    }
+  };
+
   // Testers
   virtual bool is_Java_thread() const            { return true;  }
-  virtual bool can_call_java() const             { return true; }
+  virtual bool can_call_java() const             { return _can_call_java; }
 
   virtual bool is_active_Java_thread() const;
 

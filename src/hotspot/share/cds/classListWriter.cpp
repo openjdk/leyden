@@ -333,7 +333,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
     outputStream* stream = _classlist_file;
     stream->print("@cp %s", ik->name()->as_C_string());
     for (int i = 0; i < list.length(); i++) {
-      if (list.at(i) && !cp->tag_at(i).is_interface_method()) { // JVM_CONSTANT_InterfaceMethodref not yet supported
+      if (list.at(i)) {
         stream->print(" %d", i);
       }
     }
