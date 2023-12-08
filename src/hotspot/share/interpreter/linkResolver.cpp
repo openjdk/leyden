@@ -1146,6 +1146,10 @@ void LinkResolver::resolve_special_call(CallInfo& result,
   runtime_resolve_special_method(result, link_info, methodHandle(THREAD, resolved_method), recv, CHECK);
 }
 
+void LinkResolver::cds_resolve_special_call(CallInfo& result, const LinkInfo& link_info, TRAPS) {
+  resolve_special_call(result, Handle(), link_info, CHECK);
+}
+
 // throws linktime exceptions
 Method* LinkResolver::linktime_resolve_special_method(const LinkInfo& link_info, TRAPS) {
 

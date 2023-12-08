@@ -527,30 +527,32 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     if (!VM_Version::supports_fast_class_init_checks()) {
       return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
+    is_static = " *** static";
+    // fall-through
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
     InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
     ref_kind = "field ";
     break;
-  case Bytecodes::_invokevirtual:
-    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
-    ref_kind = "method";
-    break;
-  case Bytecodes::_invokespecial:
-    // TODO Not implemented yet.
-    return;
-  case Bytecodes::_invokehandle:
-    InterpreterRuntime::cds_resolve_invokehandle(raw_index, cp, CHECK);
-    ref_kind = "method";
-    break;
+
   case Bytecodes::_invokestatic:
     if (!VM_Version::supports_fast_class_init_checks()) {
       return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
+    is_static = " *** static";
+    // fall-through
+  case Bytecodes::_invokevirtual:
+  case Bytecodes::_invokespecial:
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
     ref_kind = "method";
-    is_static = " *** static";
     break;
+
+  case Bytecodes::_invokehandle:
+    InterpreterRuntime::cds_resolve_invokehandle(raw_index, cp, CHECK);
+    ref_kind = "method";
+    break;
+    break;
+
   default:
     ShouldNotReachHere();
   }

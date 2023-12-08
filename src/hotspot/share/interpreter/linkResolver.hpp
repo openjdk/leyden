@@ -320,6 +320,7 @@ class LinkResolver: AllStatic {
 
   static void cds_resolve_virtual_call(CallInfo& result, const LinkInfo& link_info, TRAPS);
   static void cds_resolve_static_call (CallInfo& result, const LinkInfo& link_info, TRAPS);
+  static void cds_resolve_special_call(CallInfo& result, const LinkInfo& link_info, TRAPS);
 
   // same as above for compile-time resolution; but returns null handle instead of throwing
   // an exception on error also, does not initialize klass (i.e., no side effects)
