@@ -57,9 +57,10 @@ void ResolvedMethodEntry::remove_unshareable_info() {
 
 #if INCLUDE_CDS
 void ResolvedMethodEntry::mark_and_relocate(ConstantPool* src_cp) {
-  assert(_bytecode1 != Bytecodes::_invokeinterface, "Invokeinterface not supported for archiving yet");
   ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_method);
-
+  if (bytecode1() == Bytecodes::_invokeinterface) {
+    ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_entry_specific._interface_klass);
+  }
 #if 0
   // OLD CODE ... some of it may need to be salvaged.
   Bytecodes::Code invoke_code = bytecode_1();

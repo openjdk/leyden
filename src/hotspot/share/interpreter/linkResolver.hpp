@@ -249,7 +249,8 @@ class LinkResolver: AllStatic {
                                                  Klass* resolved_klass,
                                                  Handle recv,
                                                  Klass* recv_klass,
-                                                 bool check_null_and_abstract, TRAPS);
+                                                 bool check_null_and_abstract,
+                                                 bool needs_selected_methods, TRAPS);
 
   static bool resolve_previously_linked_invokehandle(CallInfo& result,
                                                      const LinkInfo& link_info,
@@ -318,9 +319,10 @@ class LinkResolver: AllStatic {
   static void resolve_dynamic_call  (CallInfo& result,
                                      BootstrapInfo& bootstrap_specifier, TRAPS);
 
-  static void cds_resolve_virtual_call(CallInfo& result, const LinkInfo& link_info, TRAPS);
-  static void cds_resolve_static_call (CallInfo& result, const LinkInfo& link_info, TRAPS);
-  static void cds_resolve_special_call(CallInfo& result, const LinkInfo& link_info, TRAPS);
+  static void cds_resolve_virtual_call  (CallInfo& result, const LinkInfo& link_info, TRAPS);
+  static void cds_resolve_interface_call(CallInfo& result, const LinkInfo& link_info, TRAPS);
+  static void cds_resolve_static_call   (CallInfo& result, const LinkInfo& link_info, TRAPS);
+  static void cds_resolve_special_call  (CallInfo& result, const LinkInfo& link_info, TRAPS);
 
   // same as above for compile-time resolution; but returns null handle instead of throwing
   // an exception on error also, does not initialize klass (i.e., no side effects)

@@ -300,7 +300,8 @@ Klass* ClassPrelinker::get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, i
 }
 
 bool ClassPrelinker::can_archive_resolved_method(ConstantPool* cp, int cp_index) {
-  assert(cp->tag_at(cp_index).is_method(), "must be");
+  assert(cp->tag_at(cp_index).is_method() ||
+         cp->tag_at(cp_index).is_interface_method(), "must be");
   return get_fmi_ref_resolved_archivable_klass(cp, cp_index) != nullptr;
 }
 
@@ -463,6 +464,7 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
         // fall-through
       case Bytecodes::_invokespecial:
       case Bytecodes::_invokevirtual:
+      case Bytecodes::_invokeinterface:
       case Bytecodes::_invokestatic:
         maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
@@ -485,10 +487,11 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
 
   assert(bc != Bytecodes::_invokehandle, "this is buggy -- temporarily disabled");
 
-  if (bc == Bytecodes::_invokehandle ||
-      bc == Bytecodes::_invokestatic ||
+  if (bc == Bytecodes::_invokehandle  ||
+      bc == Bytecodes::_invokestatic  ||
       bc == Bytecodes::_invokespecial ||
-      bc == Bytecodes::_invokevirtual) {
+      bc == Bytecodes::_invokevirtual ||
+      bc == Bytecodes::_invokeinterface) {
     ResolvedMethodEntry* method_entry = cp->cache()->resolved_method_entry_at(raw_index);
     if (method_entry->is_resolved(bc)) {
       return;
@@ -527,8 +530,10 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     if (!VM_Version::supports_fast_class_init_checks()) {
       return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
+    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
+    ref_kind = "field ";
     is_static = " *** static";
-    // fall-through
+    break;
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
     InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
@@ -539,12 +544,20 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     if (!VM_Version::supports_fast_class_init_checks()) {
       return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
+    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
+    ref_kind = "method";
     is_static = " *** static";
-    // fall-through
+    break;
+
   case Bytecodes::_invokevirtual:
   case Bytecodes::_invokespecial:
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
     ref_kind = "method";
+    break;
+
+  case Bytecodes::_invokeinterface:
+    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
+    ref_kind = "interface method";
     break;
 
   case Bytecodes::_invokehandle:

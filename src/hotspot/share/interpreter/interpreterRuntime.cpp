@@ -987,9 +987,10 @@ void InterpreterRuntime::cds_resolve_invoke(Bytecodes::Code bytecode, int method
   if (!link_info.resolved_klass()->is_instance_klass() || InstanceKlass::cast(link_info.resolved_klass())->is_linked()) {
     CallInfo call_info;
     switch (bytecode) {
-      case Bytecodes::_invokevirtual: LinkResolver::cds_resolve_virtual_call(call_info, link_info, CHECK); break;
-      case Bytecodes::_invokestatic:  LinkResolver::cds_resolve_static_call (call_info, link_info, CHECK); break;
-      case Bytecodes::_invokespecial: LinkResolver::cds_resolve_special_call(call_info, link_info, CHECK); break;
+      case Bytecodes::_invokevirtual:   LinkResolver::cds_resolve_virtual_call  (call_info, link_info, CHECK); break;
+      case Bytecodes::_invokeinterface: LinkResolver::cds_resolve_interface_call(call_info, link_info, CHECK); break;
+      case Bytecodes::_invokestatic:    LinkResolver::cds_resolve_static_call   (call_info, link_info, CHECK); break;
+      case Bytecodes::_invokespecial:   LinkResolver::cds_resolve_special_call  (call_info, link_info, CHECK); break;
 
       default: fatal("NYI: %s", Bytecodes::name(bytecode));
     }

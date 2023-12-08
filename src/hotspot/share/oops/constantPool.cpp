@@ -615,8 +615,8 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
 
   int cp_index = method_entry->constant_pool_index();
   ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
-  if (!src_cp->tag_at(cp_index).is_method()) {
-    // TODO add support for invokeinterface
+  if (!src_cp->tag_at(cp_index).is_method() &&
+      !src_cp->tag_at(cp_index).is_interface_method()) {
     return false;
   }
 
@@ -635,6 +635,7 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
     return false;
   }
   const char* is_static = "";
+  const char* is_interface = "";
   if (method_entry->is_resolved(Bytecodes::_invokehandle)) {
     if (!ArchiveInvokeDynamic) {
       // FIXME We don't dump the MethodType tables. This somehow breaks stuff. Why???
@@ -644,6 +645,8 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
     }
   } else if (method_entry->is_resolved(Bytecodes::_invokestatic)) {
     is_static = " *** static";
+  } else if (method_entry->is_resolved(Bytecodes::_invokeinterface)) {
+    is_interface = "interface";
   } else if (!method_entry->is_resolved(Bytecodes::_invokevirtual) &&
              !method_entry->is_resolved(Bytecodes::_invokespecial)) {
     return false;
@@ -664,7 +667,7 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
     ResourceMark rm;
     Symbol* name = uncached_name_ref_at(cp_index);
     Symbol* signature = uncached_signature_ref_at(cp_index);
-    log_debug(cds, resolve)("archived method CP entry [%3d]: %s => %s.%s:%s%s", cp_index,
+    log_debug(cds, resolve)("archived %s method CP entry [%3d]: %s => %s.%s:%s%s", is_interface, cp_index,
                             pool_holder()->name()->as_C_string(), resolved_klass->name()->as_C_string(),
                             name->as_C_string(), signature->as_C_string(), is_static);
   }

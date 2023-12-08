@@ -224,8 +224,10 @@ class ResolvedMethodEntry {
   void reset_entry();
 
   // CDS
+#if INCLUDE_CDS
   void remove_unshareable_info();
   void mark_and_relocate(ConstantPool* src_cp);
+#endif // INCLUDE_CDS
 
   // Offsets
   static ByteSize klass_offset()                     { return byte_offset_of(ResolvedMethodEntry, _entry_specific._interface_klass); }
