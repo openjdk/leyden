@@ -462,7 +462,7 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
         }
         // fall-through
       case Bytecodes::_invokespecial:
-    //case Bytecodes::_invokevirtual: FIXME - This fails with test/hotspot/jtreg/premain/jmh/run.sh
+      case Bytecodes::_invokevirtual:
       case Bytecodes::_invokestatic:
         maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
@@ -484,7 +484,6 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   int cp_index;
 
   assert(bc != Bytecodes::_invokehandle, "this is buggy -- temporarily disabled");
-  assert(bc != Bytecodes::_invokevirtual, "this is buggy -- temporarily disabled");
 
   if (bc == Bytecodes::_invokehandle ||
       bc == Bytecodes::_invokestatic ||

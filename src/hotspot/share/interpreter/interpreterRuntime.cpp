@@ -983,26 +983,27 @@ void InterpreterRuntime::update_invoke_cp_cache_entry(CallInfo& info, Bytecodes:
 void InterpreterRuntime::cds_resolve_invoke(Bytecodes::Code bytecode, int method_index,
                                             methodHandle& m, constantPoolHandle& pool, TRAPS) {
   LinkInfo link_info(pool, method_index, bytecode, CHECK);
-  CallInfo call_info;
-  switch (bytecode) {
-    case Bytecodes::_invokevirtual: LinkResolver::cds_resolve_virtual_call(call_info, link_info, CHECK); break;
-    case Bytecodes::_invokestatic:  LinkResolver::cds_resolve_static_call (call_info, link_info, CHECK); break;
 
-    default: fatal("NYI: %s", Bytecodes::name(bytecode));
-  }
+  if (!link_info.resolved_klass()->is_instance_klass() || InstanceKlass::cast(link_info.resolved_klass())->is_linked()) {
+    CallInfo call_info;
+    switch (bytecode) {
+      case Bytecodes::_invokevirtual: LinkResolver::cds_resolve_virtual_call(call_info, link_info, CHECK); break;
+      case Bytecodes::_invokestatic:  LinkResolver::cds_resolve_static_call (call_info, link_info, CHECK); break;
 
-  methodHandle resolved_method(THREAD, call_info.resolved_method());
-  InstanceKlass* holder = resolved_method->method_holder();
-  if (holder->is_linked()) {
+      default: fatal("NYI: %s", Bytecodes::name(bytecode));
+    }
+    methodHandle resolved_method(THREAD, call_info.resolved_method());
+    guarantee(resolved_method->method_holder()->is_linked(), "");
     update_invoke_cp_cache_entry(call_info, bytecode, resolved_method, pool, method_index);
   } else {
     // FIXME: why a shared class is not linked yet?
     // Can't link it here since there are no guarantees it'll be prelinked on the next run.
     ResourceMark rm;
+    InstanceKlass* resolved_iklass = InstanceKlass::cast(link_info.resolved_klass());
     log_info(cds, resolve)("Not resolved: class not linked: %s %s %s",
-                           holder->is_shared() ? "is_shared" : "",
-                           holder->init_state_name(),
-                           holder->external_name());
+                           resolved_iklass->is_shared() ? "is_shared" : "",
+                           resolved_iklass->init_state_name(),
+                           resolved_iklass->external_name());
   }
 }
 
