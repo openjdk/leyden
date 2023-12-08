@@ -830,7 +830,8 @@ void ClassListParser::parse_constant_pool_tag() {
     } else {
       preresolve_list.at_put(cp_index, true);
     }
-    switch (cp->tag_at(cp_index).value()) {
+    constantTag cp_tag = cp->tag_at(cp_index);
+    switch (cp_tag.value()) {
     case JVM_CONSTANT_UnresolvedClass:
       preresolve_class = true;
       break;
@@ -846,8 +847,8 @@ void ClassListParser::parse_constant_pool_tag() {
       preresolve_indy = true;
       break;
     default:
-      constant_pool_resolution_warning("Unsupported constant pool index %d (type=%d)",
-                                       cp_index, cp->tag_at(cp_index).value());
+      constant_pool_resolution_warning("Unsupported constant pool index %d: %s (type=%d)",
+                                       cp_index, cp_tag.internal_name(), cp_tag.value());
       return;
     }
   }

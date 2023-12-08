@@ -334,6 +334,21 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
     stream->print("@cp %s", ik->name()->as_C_string());
     for (int i = 0; i < list.length(); i++) {
       if (list.at(i)) {
+        constantTag cp_tag = cp->tag_at(i).value();
+        switch (cp_tag.value()) {
+//          case JVM_CONSTANT_UnresolvedClass:        break;
+//          case JVM_CONSTANT_UnresolvedClassInError: break;
+          case JVM_CONSTANT_Class:                  break;
+          case JVM_CONSTANT_Fieldref:               break;
+          case JVM_CONSTANT_Methodref:              break;
+          case JVM_CONSTANT_InterfaceMethodref:     break;
+          case JVM_CONSTANT_InvokeDynamic:          break;
+
+          default:
+            log_warning(cds, resolve)("Unsupported constant pool index %d: %s (type=%d)",
+                                      i, cp_tag.internal_name(), cp_tag.value());
+        }
+
         stream->print(" %d", i);
       }
     }
