@@ -124,6 +124,123 @@ public:
   frame& get_frame()                             { return _last_frame; }
 };
 
+static bool is_resolved(JavaThread* current) {
+  LastFrameAccessor last_frame(current);
+  ConstantPool* constants = last_frame.method()->constants();
+  Bytecodes::Code bc = last_frame.code();
+
+  if (bc == Bytecodes::_ldc || bc == Bytecodes::_ldc_w || bc == Bytecodes::_ldc2_w ||
+      bc == Bytecodes::_fast_aldc || bc == Bytecodes::_fast_aldc_w) {
+    bool is_wide = (bc != Bytecodes::_ldc) && (bc != Bytecodes::_fast_aldc);
+    int index = (is_wide ? last_frame.get_index_u1(bc) : last_frame.get_index_u2(bc));
+    constantTag tag = constants->tag_at(index);
+    assert(tag.is_klass_or_reference(), "unknown tag: %s", tag.internal_name());
+    return constants->tag_at(index).is_klass();
+  } else if (bc == Bytecodes::_invokedynamic) {
+    int index = last_frame.get_index_u4(bc);
+    int indy_index = constants->decode_invokedynamic_index(index);
+    ResolvedIndyEntry* indy_entry = constants->resolved_indy_entry_at(indy_index);
+    return indy_entry->is_resolved();
+  } else if (Bytecodes::is_invoke(bc)) {
+    int index = last_frame.get_index_u2(bc);
+    ResolvedMethodEntry* rme = constants->resolved_method_entry_at(index);
+    return rme->is_resolved(bc);
+  } else if (Bytecodes::is_field_code(bc) || bc == Bytecodes::_nofast_getfield || bc == Bytecodes::_nofast_putfield) {
+    if (bc == Bytecodes::_nofast_getfield) {
+      bc = Bytecodes::_getfield;
+    } else if (bc == Bytecodes::_nofast_putfield) {
+      bc = Bytecodes::_putfield;
+    }
+    int index = last_frame.get_index_u2(bc);
+    ResolvedFieldEntry* field_entry = constants->cache()->resolved_field_entry_at(index);
+    return field_entry->is_resolved(bc);
+  } else if (bc == Bytecodes::_new) {
+    int index = last_frame.get_index_u2(bc);
+    constantTag tag = constants->tag_at(index);
+    assert(tag.is_klass_or_reference(), "unknown tag: %s", tag.internal_name());
+    return constants->tag_at(index).is_klass();
+  }
+  return false;
+}
+
+static void trace_current_location(JavaThread* current) {
+  LogStreamHandle(Debug, init, interpreter) log;
+  if (current->profile_rt_calls() && log.is_enabled()) {
+    ResourceMark rm(current);
+    LastFrameAccessor last_frame(current);
+    Method* caller = last_frame.method();
+    ConstantPool* constants = caller->constants();
+    Bytecodes::Code bc = last_frame.code();
+    log.print("InterpreterRuntime: " INTPTR_FORMAT ": %s: " INTPTR_FORMAT,
+              p2i(current), Bytecodes::name(bc), p2i(caller));
+    if (caller->is_shared()) {
+      log.print(" shared");
+    }
+    if (is_resolved(current)) {
+      log.print(" resolved");
+    }
+    log.print(" ");
+    caller->print_short_name(&log);
+    log.print(" @ %d:", last_frame.bci());
+    int instruction_size = last_frame.bytecode().instruction_size();
+
+    if (Bytecodes::is_invoke(bc) && bc != Bytecodes::_invokedynamic) {
+      int index = last_frame.get_index_u2(bc);
+      ResolvedMethodEntry* rme = constants->resolved_method_entry_at(index);
+      if (rme->is_resolved(bc)) {
+        Method* m = rme->method();
+        if (m != nullptr) {
+          log.print(" %s", m->method_holder()->init_state_name());
+        } else {
+          log.print(" null");
+        }
+      }
+    } else if (Bytecodes::is_field_code(bc) || bc == Bytecodes::_nofast_getfield || bc == Bytecodes::_nofast_putfield) {
+      if (bc == Bytecodes::_nofast_getfield) {
+        bc = Bytecodes::_getfield;
+      } else if (bc == Bytecodes::_nofast_putfield) {
+        bc = Bytecodes::_putfield;
+      }
+      int index = last_frame.get_index_u2(bc);
+      ResolvedFieldEntry* field_entry = constants->cache()->resolved_field_entry_at(index);
+
+      if (field_entry->is_resolved(bc)) {
+        log.print(" %s", field_entry->field_holder()->init_state_name());
+      }
+    } else if (bc == Bytecodes::_new) {
+      int index = last_frame.get_index_u2(bc);
+      constantTag tag = constants->tag_at(index);
+      assert(tag.is_klass_or_reference(), "unknown tag: %s", tag.internal_name());
+      if (constants->tag_at(index).is_klass()) {
+        CPKlassSlot kslot = constants->klass_slot_at(index);
+        int resolved_klass_index = kslot.resolved_klass_index();
+        Klass* k = constants->resolved_klasses()->at(resolved_klass_index);
+        log.print(": %s", InstanceKlass::cast(k)->init_state_name());
+      }
+    }
+    log.print(" ");
+    caller->print_codes_on(last_frame.bci(), last_frame.bci() + instruction_size, &log, /*flags*/ 0);
+
+    LogStreamHandle(Trace, init, interpreter) log1;
+    if (log1.is_enabled()) {
+      if (bc == Bytecodes::_invokedynamic) {
+        int index = last_frame.get_index_u4(bc);
+        int indy_index = constants->decode_invokedynamic_index(index);
+        ResolvedIndyEntry* indy_entry = constants->resolved_indy_entry_at(indy_index);
+        indy_entry->print_on(&log1);
+      } else if (Bytecodes::is_invoke(bc)) {
+        int index = last_frame.get_index_u2(bc);
+        ResolvedMethodEntry* rme = constants->resolved_method_entry_at(index);
+        rme->print_on(&log1);
+      } else if (Bytecodes::is_field_code(bc) || bc == Bytecodes::_nofast_getfield || bc == Bytecodes::_nofast_putfield) {
+        int index = last_frame.get_index_u2(bc);
+        ResolvedFieldEntry* field_entry = constants->cache()->resolved_field_entry_at(index);
+        field_entry->print_on(&log1);
+      }
+    }
+  }
+}
+
 //------------------------------------------------------------------------------------------------------------------------
 // State accessors
 
@@ -1071,6 +1188,8 @@ void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
 // cpCache entry.  This doesn't safepoint, but the helper routines safepoint.
 // This function will check for redefinition!
 JRT_ENTRY(void, InterpreterRuntime::resolve_from_cache(JavaThread* current, Bytecodes::Code bytecode)) {
+  trace_current_location(current);
+
   switch (bytecode) {
   case Bytecodes::_getstatic: resolve_getstatic(current); break;
   case Bytecodes::_putstatic: resolve_putstatic(current); break;

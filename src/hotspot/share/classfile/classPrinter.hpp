@@ -52,6 +52,7 @@ public:
     PRINT_BYTECODE_ADDR     = 1 << 2,
     PRINT_DYNAMIC           = 1 << 3, // extra information for invokedynamic (and dynamic constant ...)
     PRINT_METHOD_HANDLE     = 1 << 4, // extra information for invokehandle
+    PRINT_PROFILE           = 1 << 5, // print MDO contents
   };
   static bool has_mode(int flags, Mode mode) {
     return (flags & static_cast<int>(mode)) != 0;

@@ -168,7 +168,9 @@ class BytecodePrinter {
     }
     _next_pc = is_wide() ? bcp+2 : bcp+1;
     print_attributes(bci, st);
-    bytecode_epilog(bci, st);
+    if (ClassPrinter::has_mode(_flags, ClassPrinter::PRINT_PROFILE)) {
+      bytecode_epilog(bci, st);
+    }
   }
 };
 

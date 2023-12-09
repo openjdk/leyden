@@ -55,6 +55,7 @@ public:
       _always_print_class_name(always_print_class_name),
       _flags(flags), _st(st), _num(0), _has_printed_methods(false)
   {
+    _flags |= (PRINT_PROFILE);
     if (has_mode(_flags, PRINT_METHOD_HANDLE)) {
       _flags |= (PRINT_METHOD_NAME | PRINT_BYTECODE);
     }
