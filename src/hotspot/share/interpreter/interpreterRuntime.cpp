@@ -1035,12 +1035,8 @@ void InterpreterRuntime::cds_resolve_invokehandle(int raw_index,
   CallInfo info;
   LinkResolver::resolve_invoke(info, Handle(), pool,
                                raw_index, bytecode, CHECK);
-  Unimplemented();
-#if 0 // FIXME
-  int cpc_index = ConstantPool::decode_cpcache_index(raw_index);
-  ConstantPoolCacheEntry* cp_cache_entry = pool->cache()->entry_at(cpc_index);
-  cp_cache_entry->set_method_handle(pool, info);
-#endif
+
+  pool->cache()->set_method_handle(raw_index, info);
 }
 
 // First time execution:  Resolve symbols, create a permanent CallSite object.
