@@ -1266,11 +1266,12 @@ static void check_live_nmethods_dependencies(DepChange& changes) {
         // Determine if dependency is already checked. table->put(...) returns
         // 'true' if the dependency is added (i.e., was not in the hashtable).
         if (table->put(*current_sig, 1)) {
-          if (deps.check_dependency() != nullptr) {
+          Klass* witness = deps.check_dependency();
+          if (witness != nullptr) {
             // Dependency checking failed. Print out information about the failed
             // dependency and finally fail with an assert. We can fail here, since
             // dependency checking is never done in a product build.
-            tty->print_cr("Failed dependency:");
+            deps.print_dependency(tty, witness, true);
             changes.print();
             nm->print();
             nm->print_dependencies_on(tty);
@@ -1296,6 +1297,13 @@ void CodeCache::mark_for_deoptimization(DeoptimizationScope* deopt_scope, KlassD
   NoSafepointVerifier nsv;
   for (DepChange::ContextStream str(changes, nsv); str.next(); ) {
     InstanceKlass* d = str.klass();
+    {
+      LogStreamHandle(Trace, dependencies) log;
+      if (log.is_enabled()) {
+        log.print("Processing context ");
+        d->name()->print_value_on(&log);
+      }
+    }
     d->mark_dependent_nmethods(deopt_scope, changes);
   }
 

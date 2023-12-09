@@ -67,9 +67,21 @@ void DependencyContext::init() {
 // are dependent on the changes that were passed in and mark them for
 // deoptimization.
 //
-void DependencyContext::mark_dependent_nmethods(DeoptimizationScope* deopt_scope, DepChange& changes) {
+void DependencyContext::mark_dependent_nmethods(DeoptimizationScope* deopt_scope, DepChange& changes, InstanceKlass* context) {
   for (nmethodBucket* b = dependencies_not_unloading(); b != nullptr; b = b->next_not_unloading()) {
     nmethod* nm = b->get_nmethod();
+    {
+      LogStreamHandle(Trace, dependencies) log;
+      if (log.is_enabled()) {
+        log.print("Processing ");
+        if (context != nullptr) {
+          log.print(" ctx=");
+          context->name()->print_value_on(&log);
+          log.print(" ");
+        }
+        nm->print_value_on(&log);
+      }
+    }
     if (nm->is_marked_for_deoptimization()) {
       deopt_scope->dependent(nm);
     } else if (nm->check_dependency_on(changes)) {

@@ -2692,7 +2692,7 @@ inline DependencyContext InstanceKlass::dependencies() {
 }
 
 void InstanceKlass::mark_dependent_nmethods(DeoptimizationScope* deopt_scope, KlassDepChange& changes) {
-  dependencies().mark_dependent_nmethods(deopt_scope, changes);
+  dependencies().mark_dependent_nmethods(deopt_scope, changes, this);
 }
 
 void InstanceKlass::add_dependent_nmethod(nmethod* nm) {

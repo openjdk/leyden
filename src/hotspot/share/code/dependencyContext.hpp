@@ -111,7 +111,7 @@ class DependencyContext : public StackObj {
 
   static void init();
 
-  void mark_dependent_nmethods(DeoptimizationScope* deopt_scope, DepChange& changes);
+  void mark_dependent_nmethods(DeoptimizationScope* deopt_scope, DepChange& changes, InstanceKlass* context = nullptr);
   void add_dependent_nmethod(nmethod* nm);
   void remove_all_dependents();
   void remove_and_mark_for_deoptimization_all_dependents(DeoptimizationScope* deopt_scope);
