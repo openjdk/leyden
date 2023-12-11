@@ -50,6 +50,7 @@
 #include "oops/klass.inline.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/javaCalls.hpp"
 #include "runtime/perfData.hpp"
 #include "runtime/timer.hpp"
 #include "runtime/signature.hpp"
@@ -674,31 +675,6 @@ bool ClassPrelinker::is_indy_archivable(ConstantPool* cp, int cp_index) {
   return false;
 }
 
-static Array<InstanceKlass*>* _klasses_for_indy_resolution = nullptr;
-static Array<Array<int>*>* _cp_index_lists_for_indy_resolution = nullptr;
-
-void ClassPrelinker::preresolve_indys_from_preimage(TRAPS) {
-  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-
-  if (_klasses_for_indy_resolution != nullptr) {
-    assert(_cp_index_lists_for_indy_resolution != nullptr, "must be");
-    for (int i = 0; i < _klasses_for_indy_resolution->length(); i++) {
-      InstanceKlass* ik = _klasses_for_indy_resolution->at(i);
-      ConstantPool* cp = ik->constants();
-      Array<int>* cp_indices = _cp_index_lists_for_indy_resolution->at(i);
-      GrowableArray<bool> preresolve_list(cp->length(), cp->length(), false);
-      for (int j = 0; j < cp_indices->length(); j++) {
-        preresolve_list.at_put(cp_indices->at(j), true);
-      }
-      preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
-    }
-  }
-
-  // These aren't needed in the final CDS image
-  _klasses_for_indy_resolution = nullptr;
-  _cp_index_lists_for_indy_resolution = nullptr;
-}
-
 #ifdef ASSERT
 bool ClassPrelinker::is_in_archivebuilder_buffer(address p) {
   if (!Thread::current()->is_VM_thread() || ArchiveBuilder::current() == nullptr) {
@@ -915,11 +891,65 @@ void ClassPrelinker::record_unregistered_klasses() {
   }
 }
 
-void ClassPrelinker::record_resolved_indys() {
+// This class is used only by the "one step training workflow". An instance of this
+// this class is stored in the pre-image. It contains information about the
+// class metadata that can be eagerly linked inside the final-image.
+class FinalImageEagerLinkage {
+  // The klasses who have resolved at least one indy CP entry during the training run.
+  // _indy_cp_indices[i] is a list of all resolved CP entries for _indy_klasses[i].
+  Array<InstanceKlass*>* _indy_klasses;
+  Array<Array<int>*>*    _indy_cp_indices;
+
+  // The RefectionData for  _reflect_klasses[i] should be initialized with _reflect_flags[i]
+  Array<InstanceKlass*>* _reflect_klasses;
+  Array<int>*            _reflect_flags;
+
+  static GrowableArray<InstanceKlass*>* _tmp_reflect_klasses;
+  static GrowableArray<int>* _tmp_reflect_flags;
+
+public:
+  FinalImageEagerLinkage() : _indy_klasses(nullptr), _indy_cp_indices(nullptr),
+                             _reflect_klasses(nullptr), _reflect_flags(nullptr)
+    {} // FIXME - use operator new to allocate FinalImageEagerLinkage
+
+  // These are called when dumping preimage
+  static void record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS);
+  void record_linkage_in_preimage();
+
+  // Called when dumping final image
+  void resolve_indys_in_final_image(TRAPS);
+  void archive_reflection_data_in_final_image(JavaThread* current);
+};
+
+static FinalImageEagerLinkage* _final_image_eager_linkage = nullptr;
+GrowableArray<InstanceKlass*>* FinalImageEagerLinkage::_tmp_reflect_klasses = nullptr;
+GrowableArray<int>* FinalImageEagerLinkage::_tmp_reflect_flags = nullptr;
+
+void FinalImageEagerLinkage::record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS) {
+  assert(CDSConfig::is_dumping_preimage_static_archive(), "must be");
+  if (SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->is_hidden() &&
+      java_lang_Class::has_reflection_data(ik->java_mirror())) {
+    int rd_flags = ClassPrelinker::class_reflection_data_flags(ik, CHECK);
+    if (_tmp_reflect_klasses == nullptr) {
+      _tmp_reflect_klasses = new (mtClassShared) GrowableArray<InstanceKlass*>(100, mtClassShared);
+      _tmp_reflect_flags = new (mtClassShared) GrowableArray<int>(100, mtClassShared);
+    }
+    _tmp_reflect_klasses->append(ik);
+    _tmp_reflect_flags->append(rd_flags);
+  }
+}
+
+void FinalImageEagerLinkage::record_linkage_in_preimage() {
+  assert(CDSConfig::is_dumping_preimage_static_archive(), "must be");
   ResourceMark rm;
   GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
-  GrowableArray<InstanceKlass*> tmp_klasses;
-  GrowableArray<Array<int>*> tmp_cp_index_lists;
+
+  // ArchiveInvokeDynamic
+  GrowableArray<InstanceKlass*> tmp_indy_klasses;
+  GrowableArray<Array<int>*> tmp_indy_cp_indices;
+
+  // ArchiveReflectionData
+
   int total_indys_to_resolve = 0;
   for (int i = 0; i < klasses->length(); i++) {
     Klass* k = klasses->at(i);
@@ -928,10 +958,10 @@ void ClassPrelinker::record_resolved_indys() {
       GrowableArray<int> indices;
 
       if (ik->constants()->cache() != nullptr) {
-        Array<ResolvedIndyEntry>* indy_entries = ik->constants()->cache()->resolved_indy_entries();
-        if (indy_entries != nullptr) {
-          for (int i = 0; i < indy_entries->length(); i++) {
-            ResolvedIndyEntry* rie = indy_entries->adr_at(i);
+        Array<ResolvedIndyEntry>* tmp_indy_entries = ik->constants()->cache()->resolved_indy_entries();
+        if (tmp_indy_entries != nullptr) {
+          for (int i = 0; i < tmp_indy_entries->length(); i++) {
+            ResolvedIndyEntry* rie = tmp_indy_entries->adr_at(i);
             int cp_index = rie->constant_pool_index();
             if (rie->is_resolved()) {
               indices.append(cp_index);
@@ -941,23 +971,139 @@ void ClassPrelinker::record_resolved_indys() {
       }
 
       if (indices.length() > 0) {
-        tmp_klasses.append(ArchiveBuilder::current()->get_buffered_addr(ik));
-        tmp_cp_index_lists.append(ArchiveUtils::archive_array(&indices));
+        tmp_indy_klasses.append(ArchiveBuilder::current()->get_buffered_addr(ik));
+        tmp_indy_cp_indices.append(ArchiveUtils::archive_array(&indices));
         total_indys_to_resolve += indices.length();
       }
     }
   }
 
-  assert(tmp_klasses.length() == tmp_cp_index_lists.length(), "must be");
-  if (tmp_klasses.length() > 0) {
-    _klasses_for_indy_resolution = ArchiveUtils::archive_array(&tmp_klasses);
-    _cp_index_lists_for_indy_resolution = ArchiveUtils::archive_array(&tmp_cp_index_lists);
+  assert(tmp_indy_klasses.length() == tmp_indy_cp_indices.length(), "must be");
+  if (tmp_indy_klasses.length() > 0) {
+    _indy_klasses = ArchiveUtils::archive_array(&tmp_indy_klasses);
+    _indy_cp_indices = ArchiveUtils::archive_array(&tmp_indy_cp_indices);
+
+    ArchivePtrMarker::mark_pointer(&_indy_klasses);
+    ArchivePtrMarker::mark_pointer(&_indy_cp_indices);
   }
-  log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_klasses.length());
+  log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_indy_klasses.length());
+
+  int reflect_count = 0;
+  if (_tmp_reflect_klasses != nullptr) {
+    for (int i = _tmp_reflect_klasses->length() - 1; i >= 0; i--) {
+      InstanceKlass* ik = _tmp_reflect_klasses->at(i);
+      if (SystemDictionaryShared::is_excluded_class(ik)) {
+        _tmp_reflect_klasses->remove_at(i);
+        _tmp_reflect_flags->remove_at(i);
+      } else {
+        _tmp_reflect_klasses->at_put(i, ArchiveBuilder::current()->get_buffered_addr(ik));
+      }
+    }
+    if (_tmp_reflect_klasses->length() > 0) {
+      _reflect_klasses = ArchiveUtils::archive_array(_tmp_reflect_klasses);
+      _reflect_flags = ArchiveUtils::archive_array(_tmp_reflect_flags);
+
+      ArchivePtrMarker::mark_pointer(&_reflect_klasses);
+      ArchivePtrMarker::mark_pointer(&_reflect_flags);
+      reflect_count = _tmp_reflect_klasses->length();
+    }
+  }
+  log_info(cds)("ReflectionData of %d classes will be archived in final CDS image", reflect_count);
+}
+
+void FinalImageEagerLinkage::resolve_indys_in_final_image(TRAPS) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+
+  if (_indy_klasses != nullptr) {
+    assert(_indy_cp_indices != nullptr, "must be");
+    for (int i = 0; i < _indy_klasses->length(); i++) {
+      InstanceKlass* ik = _indy_klasses->at(i);
+      ConstantPool* cp = ik->constants();
+      Array<int>* cp_indices = _indy_cp_indices->at(i);
+      GrowableArray<bool> preresolve_list(cp->length(), cp->length(), false);
+      for (int j = 0; j < cp_indices->length(); j++) {
+        preresolve_list.at_put(cp_indices->at(j), true);
+      }
+      ClassPrelinker::preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
+    }
+  }
+}
+
+void FinalImageEagerLinkage::archive_reflection_data_in_final_image(JavaThread* current) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+
+  if (_reflect_klasses != nullptr) {
+    assert(_reflect_flags != nullptr, "must be");
+    for (int i = 0; i < _reflect_klasses->length(); i++) {
+      InstanceKlass* ik = _reflect_klasses->at(i);
+      int rd_flags = _reflect_flags->at(i);
+      ClassPrelinker::generate_reflection_data(current, ik, rd_flags);
+    }
+  }
+}
+
+void ClassPrelinker::record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS) {
+  FinalImageEagerLinkage::record_reflection_data_flags_for_preimage(ik, THREAD);
+}
+
+void ClassPrelinker::record_final_image_eager_linkage() {
+  _final_image_eager_linkage = ArchiveBuilder::current()->ro_region_alloc<FinalImageEagerLinkage>();
+  _final_image_eager_linkage->record_linkage_in_preimage();
+}
+
+void ClassPrelinker::apply_final_image_eager_linkage(TRAPS) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+
+  if (_final_image_eager_linkage != nullptr) {
+    _final_image_eager_linkage->resolve_indys_in_final_image(CHECK);
+    _final_image_eager_linkage->archive_reflection_data_in_final_image(THREAD);
+  }
+
+  // Set it to null as we don't need to write this table into the final image.
+  _final_image_eager_linkage = nullptr;
+}
+
+int ClassPrelinker::class_reflection_data_flags(InstanceKlass* ik, TRAPS) {
+  assert(java_lang_Class::has_reflection_data(ik->java_mirror()), "must be");
+
+  HandleMark hm(THREAD);
+  JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
+  JavaValue result(T_INT);
+  JavaCalls::call_special(&result,
+                          vmClasses::Class_klass(),
+                          vmSymbols::encodeReflectionData_name(),
+                          vmSymbols::void_int_signature(),
+                          &args, CHECK_0);
+  int flags = result.get_jint();
+  log_info(cds)("Encode ReflectionData: %s (flags=0x%x)", ik->external_name(), flags);
+  return flags;
+}
+
+void ClassPrelinker::generate_reflection_data(JavaThread* current, InstanceKlass* ik, int rd_flags) {
+  log_info(cds)("Generate ReflectionData: %s (flags=" INT32_FORMAT_X ")", ik->external_name(), rd_flags);
+  JavaThread* THREAD = current; // for exception macros
+  JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
+  args.push_int(rd_flags);
+  JavaValue result(T_OBJECT);
+  JavaCalls::call_special(&result,
+                          vmClasses::Class_klass(),
+                          vmSymbols::generateReflectionData_name(),
+                          vmSymbols::int_void_signature(),
+                          &args, THREAD);
+  if (HAS_PENDING_EXCEPTION) {
+    Handle exc_handle(THREAD, PENDING_EXCEPTION);
+    CLEAR_PENDING_EXCEPTION;
+
+    log_warning(cds)("Exception during Class::generateReflectionData() call for %s", ik->external_name());
+    LogStreamHandle(Debug, cds) log;
+    if (log.is_enabled()) {
+      java_lang_Throwable::print_stack_trace(exc_handle, &log);
+    }
+  }
 }
 
 // Warning -- this is fragile!!!
-// This is a hard-coded list of classes that are safely to preinitialize at dump time. It needs
+// This is a hard-coded list of classes that are safe to preinitialize at dump time. It needs
 // to be updated if the Java source code changes.
 class ForcePreinitClosure : public CLDClosure {
 public:
@@ -1061,9 +1207,8 @@ void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {
   soc->do_ptr((void**)&table->_app_initiated);
 
   if (is_static_archive) {
-    soc->do_ptr((void**)&_klasses_for_indy_resolution);
+    soc->do_ptr((void**)&_final_image_eager_linkage);
     soc->do_ptr((void**)&_unregistered_klasses_from_preimage);
-    soc->do_ptr((void**)&_cp_index_lists_for_indy_resolution);
   }
 
   if (table->_boot != nullptr && table->_boot->length() > 0) {

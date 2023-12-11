@@ -571,7 +571,7 @@ void VM_PopulateDumpSharedSpace::doit() {
     ArchiveBuilder::OtherROAllocMark mark;
     ClassPrelinker::record_preloaded_klasses(true);
     if (CDSConfig::is_dumping_preimage_static_archive()) {
-      ClassPrelinker::record_resolved_indys();
+      ClassPrelinker::record_final_image_eager_linkage();
     }
   }
 
@@ -710,12 +710,15 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
       if (klass->is_instance_klass()) {
         InstanceKlass* ik = InstanceKlass::cast(klass);
         ClassPrelinker::dumptime_resolve_constants(ik, CHECK);
+        if (CDSConfig::is_dumping_preimage_static_archive()) {
+          ClassPrelinker::record_reflection_data_flags_for_preimage(ik, CHECK);
+        }
       }
     }
   }
 
   if (CDSConfig::is_dumping_final_static_archive()) {
-    ClassPrelinker::preresolve_indys_from_preimage(CHECK);
+    ClassPrelinker::apply_final_image_eager_linkage(CHECK);
   }
 }
 

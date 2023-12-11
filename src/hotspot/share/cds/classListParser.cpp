@@ -56,7 +56,6 @@
 const char* ClassListParser::LAMBDA_PROXY_TAG = "@lambda-proxy";
 const char* ClassListParser::LAMBDA_FORM_TAG  = "@lambda-form-invoker";
 const char* ClassListParser::CLASS_REFLECTION_DATA_TAG  = "@class-reflection-data";
-
 const char* ClassListParser::CONSTANT_POOL_TAG  = "@cp";
 volatile Thread* ClassListParser::_parsing_thread = nullptr;
 ClassListParser* ClassListParser::_instance = nullptr;
@@ -907,24 +906,6 @@ void ClassListParser::parse_class_reflection_data_tag() {
   }
 
   if (ArchiveReflectionData) {
-    log_info(cds)("Generate ReflectionData: %s (flags=" INT32_FORMAT_X ")", ik->external_name(), rd_flags);
-    JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
-    args.push_int(rd_flags);
-    JavaValue result(T_OBJECT);
-    JavaCalls::call_special(&result,
-                            vmClasses::Class_klass(),
-                            vmSymbols::generateReflectionData_name(),
-                            vmSymbols::int_void_signature(),
-                            &args, THREAD);
-    if (HAS_PENDING_EXCEPTION) {
-      Handle exc_handle(THREAD, PENDING_EXCEPTION);
-      CLEAR_PENDING_EXCEPTION;
-
-      log_warning(cds)("Exception during Class::generateReflectionData() call for %s", ik->external_name());
-      LogStreamHandle(Debug, cds) log;
-      if (log.is_enabled()) {
-        java_lang_Throwable::print_stack_trace(exc_handle, &log);
-      }
-    }
+    ClassPrelinker::generate_reflection_data(THREAD, ik, rd_flags);
   }
 }

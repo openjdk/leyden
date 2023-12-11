@@ -1243,9 +1243,11 @@ JVM_ENTRY_PROF(void, MHN_checkArchivable, MHN_checkArchivable(JNIEnv *env, jobje
       InstanceKlass* ik = InstanceKlass::cast(klass);
       ik->link_class(THREAD); // exception will be thrown if unverifiable
       if (!ik->is_linked()) {
+        assert(HAS_PENDING_EXCEPTION, "must be");
         ResourceMark rm;
         log_warning(cds)("Cannot use unverifiable class %s in MethodType",
                          klass->external_name());
+        return;
       }
 
       if (SystemDictionaryShared::is_jfr_event_class(ik)) {

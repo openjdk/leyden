@@ -366,6 +366,11 @@ public:
   }
 
   template <typename T>
+  static T* ro_region_alloc() {
+    return (T*)ro_region_alloc(sizeof(T));
+  }
+
+  template <typename T>
   static Array<T>* new_ro_array(int length) {
     size_t byte_size = Array<T>::byte_sizeof(length, sizeof(T));
     Array<T>* array = (Array<T>*)ro_region_alloc(byte_size);

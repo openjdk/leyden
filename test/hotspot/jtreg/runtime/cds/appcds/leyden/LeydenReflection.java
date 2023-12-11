@@ -67,6 +67,11 @@ public class LeydenReflection {
             if (!runMode.isStaticDump()) {
                 out.shouldContain("Hello Leyden Reflection " + runMode.name());
             }
+
+            if (runMode == RunMode.DUMP_STATIC || runMode == RunMode.TRAINING || runMode == RunMode.TRAINING1) {
+              out.shouldContain("Generate ReflectionData: LeydenReflectionApp");
+              out.shouldContain("Generate ReflectionData: java.util.Random");
+            }
         }
     }
 }

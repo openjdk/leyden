@@ -26,6 +26,7 @@
 #include "cds/cds_globals.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
+#include "cds/classPrelinker.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.hpp"
@@ -36,7 +37,6 @@
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
-#include "runtime/javaCalls.hpp"
 #include "runtime/mutexLocker.hpp"
 
 fileStream* ClassListWriter::_classlist_file = nullptr;
@@ -242,19 +242,10 @@ void ClassListWriter::write_reflection_data_for(InstanceKlass* ik) {
   }
   if (java_lang_Class::has_reflection_data(ik->java_mirror())) {
     EXCEPTION_MARK;
-    HandleMark hm(THREAD);
-    log_info(cds)("Encode ReflectionData: %s", ik->external_name());
-    JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
-    JavaValue result(T_INT);
-    JavaCalls::call_special(&result,
-                            vmClasses::Class_klass(),
-                            vmSymbols::encodeReflectionData_name(),
-                            vmSymbols::void_int_signature(),
-                            &args, THREAD);
-
-    { // FIXME: can't hold the lock when doing the upcall
+    int rd_flags = ClassPrelinker::class_reflection_data_flags(ik, THREAD);
+    if (!HAS_PENDING_EXCEPTION) {
+      // We can't hold the lock when doing the upcall inside class_reflection_data_flags()
       MutexLocker lock2(ClassListFile_lock, Mutex::_no_safepoint_check_flag);
-      int rd_flags = result.get_jint();
       stream->print_cr("%s %s %d", ClassListParser::CLASS_REFLECTION_DATA_TAG, ik->name()->as_C_string(), rd_flags);
     }
   }

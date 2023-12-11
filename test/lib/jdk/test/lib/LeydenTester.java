@@ -266,7 +266,7 @@ abstract public class LeydenTester {
                                                    "-cp", classpath(runMode),
                                                    // Use PID to distinguish the logs of the training process
                                                    // and the forked final image dump process.
-                                                   "-Xlog:cds=warning::uptime,level,tags,pid");
+                                                   "-Xlog:cds::uptime,level,tags,pid");
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);

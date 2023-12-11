@@ -126,9 +126,14 @@ public:
   static void preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_invoker_class(JavaThread* current, InstanceKlass* ik);
-  static void preresolve_indys_from_preimage(TRAPS);
+  static void apply_final_image_eager_linkage(TRAPS);
 
   static bool is_indy_archivable(ConstantPool* cp, int cp_index);
+
+  // java/lang/Class$ReflectionData caching
+  static void record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS);
+  static int class_reflection_data_flags(InstanceKlass* ik, TRAPS);
+  static void generate_reflection_data(JavaThread* current, InstanceKlass* ik, int rd_flags);
 
   // Is this class resolved as part of vmClasses::resolve_all()? If so, these
   // classes are guatanteed to be loaded at runtime (and cannot be replaced by JVMTI)
@@ -156,7 +161,7 @@ public:
   static void record_preloaded_klasses(bool is_static_archive);
   static void record_initiated_klasses(bool is_static_archive);
   static void record_unregistered_klasses();
-  static void record_resolved_indys();
+  static void record_final_image_eager_linkage();
   static void serialize(SerializeClosure* soc, bool is_static_archive);
 
   static void runtime_preload(JavaThread* current, Handle loader) NOT_CDS_RETURN;
