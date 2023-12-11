@@ -11,6 +11,7 @@ import java.lang.invoke.MethodHandle;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.RandomAccess;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -425,12 +426,18 @@ public sealed interface ComputedConstant<V>
      * @param mappingProvider to invoke when computing and binding element values
      */
     static <V> List<ComputedConstant<V>> of(int size,
-                                            IntFunction<? extends V> mappingProvider) {
+                          IntFunction<? extends V> mappingProvider) {
         if (size < 0) {
             throw new IllegalArgumentException();
         }
         Objects.requireNonNull(mappingProvider);
         return OnDemandComputedConstantList.create(size, mappingProvider);
     }
+
+    /**
+     * To document
+     * @param <V> v
+     */
+    interface ComputedConstantList<V> extends List<ComputedConstant<V>>, RandomAccess {}
 
 }

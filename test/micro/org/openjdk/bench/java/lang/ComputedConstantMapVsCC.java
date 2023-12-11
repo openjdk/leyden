@@ -133,7 +133,7 @@ public class ComputedConstantMapVsCC {
 
     }
 
-    static class FibonacciCC {
+    static final class FibonacciCC {
 
         private final List<ComputedConstant<Integer>> list;
 

@@ -253,6 +253,20 @@ static bool trust_final_non_static_fields(ciInstanceKlass* holder) {
   return TrustFinalNonStaticFields;
 }
 
+const char* CC_NAME = "java/lang/ComputedConstant";
+const char* C_NAME = "java/lang/Constant";
+const char* CC_IMPL_PACKAGE = "jdk/internal/constant";
+
+static bool trust_final_non_static_fields_of_type(Symbol* signature) {
+  if (signature->equals(CC_NAME) == 0) {
+    return true;
+  }
+  if (signature->equals(C_NAME) == 0) {
+    return true;
+  }
+  return false;
+}
+
 void ciField::initialize_from(fieldDescriptor* fd) {
   // Get the flags, offset, and canonical holder of the field.
   _flags = ciFlags(fd->access_flags(), fd->field_flags().is_stable(), fd->field_status().is_initialized_final_update());
@@ -285,7 +299,9 @@ void ciField::initialize_from(fieldDescriptor* fd) {
       // An instance field can be constant if it's a final static field or if
       // it's a final non-static field of a trusted class (classes in
       // java.lang.invoke and sun.invoke packages and subpackages).
-      _is_constant = is_stable_field || trust_final_non_static_fields(_holder);
+      _is_constant = is_stable_field ||
+                     trust_final_non_static_fields(_holder) ||
+                     trust_final_non_static_fields_of_type(fd->signature());
     }
   } else {
     // For CallSite objects treat the target field as a compile time constant.

@@ -30,7 +30,6 @@ import jdk.internal.misc.VM;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 
-import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.util.Set;
 
@@ -653,6 +652,13 @@ public final class Unsafe {
         }
         if (declaringClass.isRecord()) {
             throw new UnsupportedOperationException("can't get field offset on a record class: " + f);
+        }
+        // Todo: Add checks for List<ComputedConstant>
+        if (f.getType().getName().equals("java.lang.ComputedConstant")) {
+            throw new UnsupportedOperationException("can't get field offset for a java.lang.ComputedConstant: " + f);
+        }
+        if (f.getType().getName().equals("java.lang.Constant")) {
+            throw new UnsupportedOperationException("can't get field offset for a java.lang.Constant: " + f);
         }
         return theInternalUnsafe.objectFieldOffset(f);
     }

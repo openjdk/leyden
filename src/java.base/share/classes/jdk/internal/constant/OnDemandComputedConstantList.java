@@ -11,9 +11,7 @@ import java.util.function.IntFunction;
 // Unfortunately, `AbstractList` declares `protected transient int modCount = 0;` preventing us
 // from annotating a `List` `@ValueBased`
 public final class OnDemandComputedConstantList<V>
-        extends AbstractList<ComputedConstant<V>>
-        implements List<ComputedConstant<V>>,
-        RandomAccess {
+        extends AbstractList<ComputedConstant<V>> implements RandomAccess {
 
     private static final long ARRAY_BASE_OFFSET = Unsafe.getUnsafe().arrayBaseOffset(ComputedConstant[].class);
     private static final long ARRAY_INDEX_SCALE = Unsafe.getUnsafe().arrayIndexScale(ComputedConstant[].class);
