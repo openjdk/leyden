@@ -100,6 +100,13 @@ final class ConstantTest {
         assertTrue(constant.isBound());
     }
 
+    @Test
+    void setOrDiscard() {
+        Constant<Integer> constant = Constant.of(1);
+        constant.setOrDiscard(2);
+        assertEquals(1, constant.get());
+    }
+
     // Support methods
 
     static void assertCannotSet(Constant<Integer> constant) {

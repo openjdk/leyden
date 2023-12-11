@@ -103,6 +103,27 @@ public sealed interface Constant<V>
     void set(V value);
 
     /**
+     * Sets the bound value of this constant. If a value is already bound, does nothing
+     * <p>
+     * The most common usage is to set a memoized result, as in:
+     * <p>
+     * {@snippet lang = java:
+     *    Constant<V> constant = Constant.of();
+     *    // ...
+     *    V initialValue = new V();
+     *    constant.setOrDiscard(initialValue);
+     *    // ...
+     *    V value = constant.get();
+     *    assertSame(initialValue, value); // Values are the same
+     *}
+     * <p>
+     * This method is guaranteed to be lock-free.
+     *
+     * @param value the value to bind
+     */
+    void setOrDiscard(V value);
+
+    /**
      * {@return a new {@link Constant } that will use this constant's bound value
      * and then apply the provided {@code mapper} as a new value}
      *

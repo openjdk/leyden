@@ -108,6 +108,17 @@ public final class StandardConstant<V>
         if (!casSetInvokedVolatile()) {
             throw new IllegalStateException("Value already bound: " + get());
         }
+        set0(value);
+    }
+
+    @Override
+    public void setOrDiscard(V value) {
+        if (casSetInvokedVolatile()) {
+            set0(value);
+        }
+    }
+
+    private void set0(V value) {
         if (value == null) {
             casState(State.NULL);
         } else {
