@@ -19,11 +19,11 @@
 # or visit www.oracle.com if you need additional information or have any
 # questions.
 
-# javac_helloworld.sh
+# run.sh
 #
 # Usage:
 #
-# bash javac_helloworld.sh $MAINLINE_JAVA $PREMAIN_JAVA
+# bash run.sh $MAINLINE_JAVA $PREMAIN_JAVA
 #
 # $MAINLINE_JAVA - the java executable of a product build from the JDK mainline repo
 # $PREMAIN_JAVA  - the java executable of a product build from the leyden-premain branch
