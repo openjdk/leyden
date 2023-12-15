@@ -1206,7 +1206,6 @@ void CodeCache::initialize() {
 
 void codeCache_init() {
   CodeCache::initialize();
-  SCCache::initialize();
 }
 
 //------------------------------------------------------------------------------------------------

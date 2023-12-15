@@ -95,6 +95,9 @@ static elapsedTimer _t_totalStore;
 SCCache* SCCache::_cache = nullptr;
 
 void SCCache::initialize() {
+  if (LoadCachedCode && !UseSharedSpaces) {
+    return;
+  }
   if (StoreCachedCode || LoadCachedCode) {
     if (FLAG_IS_DEFAULT(ClassInitBarrierMode)) {
       FLAG_SET_DEFAULT(ClassInitBarrierMode, 1);

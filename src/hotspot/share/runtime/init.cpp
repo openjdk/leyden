@@ -137,7 +137,7 @@ jint init_globals() {
                                   // initial_stubs_init and metaspace_init.
   if (status != JNI_OK)
     return status;
-
+  SCCache::initialize();
 #ifdef LEAK_SANITIZER
   {
     // Register the Java heap with LSan.
