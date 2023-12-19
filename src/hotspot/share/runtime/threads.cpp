@@ -876,6 +876,12 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   if (CDSConfig::is_dumping_classic_static_archive()) {
     // Classic -Xshare:dump, aka "old workflow"
     MetaspaceShared::preload_and_dump();
+  } else if (CDSConfig::is_dumping_final_static_archive()) {
+    // TODO: copy the verification and loader constraints from preimage to final image
+    // TODO: load archived classes for custom loaders as well.
+    log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
+    MetaspaceShared::preload_and_dump();
+    vm_direct_exit(0, "CacheDataStore dumping is complete");
   }
 
   log_info(init)("Before main:");
