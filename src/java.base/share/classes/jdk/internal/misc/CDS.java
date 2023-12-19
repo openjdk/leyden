@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -41,15 +41,15 @@ import java.util.stream.Stream;
 import jdk.internal.access.SharedSecrets;
 
 public class CDS {
-    private static final boolean isDumpingClassList;
     private static final boolean isDumpingArchive;
-    private static final boolean isSharingEnabled;
+    private static final boolean isDumpingClassList;
     private static final boolean isDumpingStaticArchive;
+    private static final boolean isSharingEnabled;
     static {
-        isDumpingClassList = isDumpingClassList0();
         isDumpingArchive = isDumpingArchive0();
+        isDumpingClassList = isDumpingClassList0();
+        isDumpingStaticArchive = isDumpingStaticArchive0();
         isSharingEnabled = isSharingEnabled0();
-        isDumpingStaticArchive = isDumpingArchive && !isSharingEnabled;
     }
 
     /**
@@ -80,9 +80,11 @@ public class CDS {
         return isDumpingStaticArchive;
     }
 
-    private static native boolean isDumpingClassList0();
     private static native boolean isDumpingArchive0();
+    private static native boolean isDumpingClassList0();
+    private static native boolean isDumpingStaticArchive0();
     private static native boolean isSharingEnabled0();
+
     private static native void logLambdaFormInvoker(String line);
 
     /**

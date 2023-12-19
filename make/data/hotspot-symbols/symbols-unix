@@ -150,9 +150,10 @@ JVM_InternString
 JVM_Interrupt
 JVM_InvokeMethod
 JVM_IsArrayClass
-JVM_IsCDSDumpingEnabled
 JVM_IsConstructorIx
+JVM_IsDumpingArchive
 JVM_IsDumpingClassList
+JVM_IsDumpingStaticArchive
 JVM_IsFinalizationEnabled
 JVM_IsHiddenClass
 JVM_IsInterface

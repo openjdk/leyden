@@ -3686,8 +3686,12 @@ JVM_ENTRY_PROF(jclass, JVM_LookupLambdaProxyClassFromArchive, JVM_LookupLambdaPr
 #endif // INCLUDE_CDS
 JVM_END
 
-JVM_LEAF_PROF(jboolean, JVM_IsCDSDumpingEnabled, JVM_IsCDSDumpingEnabled(JNIEnv* env))
+JVM_LEAF_PROF(jboolean, JVM_IsDumpingArchive, JVM_IsDumpingArchive(JNIEnv* env))
   return CDSConfig::is_dumping_archive();
+JVM_END
+
+JVM_LEAF_PROF(jboolean, JVM_IsDumpingStaticArchive, JVM_IsDumpingStaticArchive(JNIEnv* env))
+  return CDSConfig::is_dumping_static_archive();
 JVM_END
 
 JVM_LEAF_PROF(jboolean, JVM_IsSharingEnabled, JVM_IsSharingEnabled(JNIEnv* env))
@@ -4220,7 +4224,8 @@ JVM_END
   macro(JVM_InitializeFromArchive) \
   macro(JVM_RegisterLambdaProxyClassForArchiving) \
   macro(JVM_LookupLambdaProxyClassFromArchive) \
-  macro(JVM_IsCDSDumpingEnabled) \
+  macro(JVM_IsDumpingArchive) \
+  macro(JVM_IsDumpingStaticArchive) \
   macro(JVM_IsSharingEnabled) \
   macro(JVM_GetRandomSeedForDumping) \
   macro(JVM_IsDumpingClassList) \
