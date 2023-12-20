@@ -237,7 +237,15 @@ public:
   static void log_to_classlist(BootstrapInfo* bootstrap_specifier, TRAPS) NOT_CDS_RETURN;
 
   template <typename T> static Array<T>* archive_array(GrowableArray<T>* tmp_array);
+
+  // Used in logging: "boot", "boot2", "plat", "app" and "unreg";
   static const char* class_category(Klass* k);
+
+  static const char* builtin_loader_name_or_null(oop loader); // "boot", "platform", "app", or nullptr
+  static const char* builtin_loader_name(oop loader); // "boot", "platform", or "app". Asserts if not a built-in-loader.
+
+  static bool builtin_loader_from_type(const char* loader_type, oop* value_ret);
+  static oop builtin_loader_from_type(int loader_type);
 };
 
 #endif // SHARE_CDS_ARCHIVEUTILS_HPP

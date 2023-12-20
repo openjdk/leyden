@@ -143,6 +143,7 @@ static ArchivableStaticFieldInfo archive_subgraph_entry_fields[] = {
   {"java/lang/invoke/DirectMethodHandle",         "archivedObjects"},
   {"java/lang/invoke/MethodType",                 "archivedObjects"},
   {"java/lang/invoke/LambdaForm$NamedFunction",   "archivedObjects"},
+  {"java/lang/reflect/Proxy$ProxyBuilder",        "archivedData"},
 #ifndef PRODUCT
   {nullptr, nullptr}, // Extra slot for -XX:ArchiveHeapTestClass
 #endif
@@ -1203,18 +1204,15 @@ void HeapShared::resolve_classes_for_subgraph_of(JavaThread* current, Klass* k) 
 }
 
 void HeapShared::initialize_java_lang_invoke(TRAPS) {
-  if (!UseSharedSpaces) {
-    return;
+  if (CDSConfig::is_loading_invokedynamic() || ArchiveInvokeDynamic) {
+    resolve_or_init("java/lang/invoke/Invokers$Holder", true, CHECK);
+    resolve_or_init("java/lang/invoke/MethodHandle", true, CHECK);
+    resolve_or_init("java/lang/invoke/MethodHandleNatives", true, CHECK);
+    resolve_or_init("java/lang/invoke/DirectMethodHandle$Holder", true, CHECK);
+    resolve_or_init("java/lang/invoke/DelegatingMethodHandle$Holder", true, CHECK);
+    resolve_or_init("java/lang/invoke/LambdaForm$Holder", true, CHECK);
+    resolve_or_init("java/lang/invoke/BoundMethodHandle$Species_L", true, CHECK);
   }
-
-  // FIXME - the following should be called only if we have archived MethodType table.
-  resolve_or_init("java/lang/invoke/Invokers$Holder", true, CHECK);
-  resolve_or_init("java/lang/invoke/MethodHandle", true, CHECK);
-  resolve_or_init("java/lang/invoke/MethodHandleNatives", true, CHECK);
-  resolve_or_init("java/lang/invoke/DirectMethodHandle$Holder", true, CHECK);
-  resolve_or_init("java/lang/invoke/DelegatingMethodHandle$Holder", true, CHECK);
-  resolve_or_init("java/lang/invoke/LambdaForm$Holder", true, CHECK);
-  resolve_or_init("java/lang/invoke/BoundMethodHandle$Species_L", true, CHECK);
 }
 
 void HeapShared::initialize_default_subgraph_classes(Handle loader, TRAPS) {

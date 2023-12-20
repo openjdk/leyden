@@ -204,6 +204,12 @@ JNIEXPORT jboolean JNICALL
 JVM_IsDumpingStaticArchive(JNIEnv* env);
 
 JNIEXPORT jboolean JNICALL
+JVM_IsDumpingHeap(JNIEnv* env);
+
+JNIEXPORT jboolean JNICALL
+JVM_IsTracingDynamicProxy(JNIEnv* env);
+
+JNIEXPORT jboolean JNICALL
 JVM_IsSharingEnabled(JNIEnv* env);
 
 JNIEXPORT jboolean JNICALL
@@ -214,6 +220,9 @@ JVM_GetRandomSeedForDumping();
 
 JNIEXPORT void JNICALL
 JVM_LogLambdaFormInvoker(JNIEnv* env, jstring line);
+
+JNIEXPORT void JNICALL
+JVM_LogDynamicProxy(JNIEnv *env, jobject loader, jstring proxy_name, jobjectArray interfaces, jint accessFlags);
 
 JNIEXPORT void JNICALL
 JVM_DumpClassListToFile(JNIEnv* env, jstring fileName);

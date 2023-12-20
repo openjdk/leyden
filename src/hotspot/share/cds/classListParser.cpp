@@ -24,12 +24,12 @@
 
 #include "precompiled.hpp"
 #include "cds/archiveUtils.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/lambdaFormInvokers.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/unregisteredClasses.hpp"
-#include "classfile/classLoaderExt.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -43,6 +43,7 @@
 #include "jvm.h"
 #include "logging/log.hpp"
 #include "logging/logTag.hpp"
+#include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/cpCache.inline.hpp"
@@ -53,10 +54,12 @@
 #include "utilities/defaultStream.hpp"
 #include "utilities/macros.hpp"
 
+const char* ClassListParser::CLASS_REFLECTION_DATA_TAG = "@class-reflection-data";
+const char* ClassListParser::CONSTANT_POOL_TAG = "@cp";
+const char* ClassListParser::DYNAMIC_PROXY_TAG = "@dynamic-proxy";
+const char* ClassListParser::LAMBDA_FORM_TAG = "@lambda-form-invoker";
 const char* ClassListParser::LAMBDA_PROXY_TAG = "@lambda-proxy";
-const char* ClassListParser::LAMBDA_FORM_TAG  = "@lambda-form-invoker";
-const char* ClassListParser::CLASS_REFLECTION_DATA_TAG  = "@class-reflection-data";
-const char* ClassListParser::CONSTANT_POOL_TAG  = "@cp";
+
 volatile Thread* ClassListParser::_parsing_thread = nullptr;
 ClassListParser* ClassListParser::_instance = nullptr;
 
@@ -336,6 +339,11 @@ bool ClassListParser::parse_at_tags() {
     _token = _line + offset;
     _class_reflection_data_line = true;
     parse_class_reflection_data_tag();
+    return true;
+  } else if (strcmp(_token, DYNAMIC_PROXY_TAG) == 0) {
+    _token = _line + offset;
+    _constant_pool_line = true;
+    parse_dynamic_proxy_tag();
     return true;
   } else {
     error("Invalid @ tag at the beginning of line \"%s\" line #%d", _token, _line_no);
@@ -907,5 +915,76 @@ void ClassListParser::parse_class_reflection_data_tag() {
 
   if (ArchiveReflectionData) {
     ClassPrelinker::generate_reflection_data(THREAD, ik, rd_flags);
+  }
+}
+
+oop ClassListParser::loader_from_type(const char* loader_type) {
+  oop loader;
+  if (!ArchiveUtils::builtin_loader_from_type(loader_type, &loader)) {
+    error("Unknown loader %s", loader_type);
+  }
+  return loader;
+}
+
+void ClassListParser::parse_dynamic_proxy_tag() {
+  if (_parse_mode == _parse_lambda_forms_invokers_only) {
+    return;
+  }
+
+  skip_whitespaces();
+  char* loader_type = _token;
+  skip_non_whitespaces();
+  *_token = '\0';
+  _token ++;
+
+  skip_whitespaces();
+  char* proxy_name_str = _token;
+  skip_non_whitespaces();
+  *_token = '\0';
+  _token ++;
+
+  skip_whitespaces();
+  int access_flags;
+  parse_uint(&access_flags);
+
+  skip_whitespaces();
+  int num_intfs;
+  parse_uint(&num_intfs);
+
+  JavaThread* THREAD = JavaThread::current();
+  Handle loader(THREAD, loader_from_type(loader_type));
+  Handle proxy_name(THREAD, java_lang_String::create_oop_from_str(proxy_name_str, THREAD));
+  if (HAS_PENDING_EXCEPTION) {
+    error("Out of memory");
+  }
+
+  objArrayHandle interfaces(THREAD, oopFactory::new_objArray(vmClasses::Class_klass(), num_intfs, THREAD));
+  if (HAS_PENDING_EXCEPTION) {
+    error("Out of memory");
+  }
+
+  for (int i = 0; i < num_intfs; i++) {
+    skip_whitespaces();
+    char* intf_name = _token;
+    skip_non_whitespaces();
+    *_token = '\0';
+    _token ++;
+
+    InstanceKlass* ik = find_builtin_class(THREAD, intf_name);
+    if (ik != nullptr) {
+      interfaces()->obj_at_put(i, ik->java_mirror());
+    } else {
+      error("Unknown class %s", intf_name);
+    }
+  }
+
+  if (strncmp("jdk.proxy", proxy_name_str, 9) != 0) {
+    return;
+  }
+
+  ClassPrelinker::define_dynamic_proxy_class(loader, proxy_name, interfaces, access_flags, THREAD);
+  if (HAS_PENDING_EXCEPTION) {
+    PENDING_EXCEPTION->print_on(tty);
+    error("defineProxyClassForCDS failed");
   }
 }

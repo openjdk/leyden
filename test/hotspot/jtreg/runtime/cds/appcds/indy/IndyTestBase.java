@@ -141,6 +141,8 @@ public class IndyTestBase {
         CDSOptions opts = (new CDSOptions())
             .addPrefix("-XX:SharedClassListFile=" + classList,
                        "-XX:+ArchiveInvokeDynamic",
+                       "-XX:+ArchiveDynamicProxies",
+                       "-XX:+ArchiveReflectionData",
                        "-cp", appJar,
                        "-Xlog:cds+heap",
                        "-Xlog:cds+resolve=trace",

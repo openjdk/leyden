@@ -215,6 +215,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _use_optimized_module_handling = MetaspaceShared::use_optimized_module_handling();
   _has_preloaded_classes = PreloadSharedClasses;
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
+  _has_archived_invokedynamic = CDSConfig::is_dumping_invokedynamic();
 
   // The following fields are for sanity checks for whether this archive
   // will function correctly with this JVM and the bootclasspath it's
@@ -293,6 +294,7 @@ void FileMapHeader::print(outputStream* st) {
   st->print_cr("- allow_archiving_with_java_agent:%d", _allow_archiving_with_java_agent);
   st->print_cr("- use_optimized_module_handling:  %d", _use_optimized_module_handling);
   st->print_cr("- has_full_module_graph           %d", _has_full_module_graph);
+  st->print_cr("- has_archived_invokedynamic      %d", _has_archived_invokedynamic);
   st->print_cr("- ptrmap_size_in_bits:            " SIZE_FORMAT, _ptrmap_size_in_bits);
 }
 
@@ -558,6 +560,9 @@ int FileMapInfo::num_non_existent_class_paths() {
 }
 
 int FileMapInfo::get_module_shared_path_index(Symbol* location) {
+  if (location == nullptr) {
+    return 0; // Used by java/lang/reflect/Proxy$ProxyBuilder
+  }
   if (location->starts_with("jrt:", 4) && get_number_of_shared_paths() > 0) {
     assert(shared_path(0)->is_modules_image(), "first shared_path must be the modules image");
     return 0;
@@ -2487,9 +2492,15 @@ bool FileMapHeader::validate() {
     log_info(cds)("optimized module handling: disabled because archive was created without optimized module handling");
   }
 
-  if (is_static() && !_has_full_module_graph) {
+  if (is_static()) {
     // Only the static archive can contain the full module graph.
-    CDSConfig::disable_loading_full_module_graph("archive was created without full module graph");
+    if (!_has_full_module_graph) {
+      CDSConfig::disable_loading_full_module_graph("archive was created without full module graph");
+    }
+
+    if (_has_archived_invokedynamic) {
+      CDSConfig::set_is_loading_invokedynamic();
+    }
   }
 
   return true;

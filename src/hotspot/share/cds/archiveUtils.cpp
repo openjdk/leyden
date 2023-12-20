@@ -33,6 +33,7 @@
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
+#include "classfile/classLoader.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "interpreter/bootstrapInfo.hpp"
@@ -379,5 +380,54 @@ const char* ArchiveUtils::class_category(Klass* k) {
         return "unreg";
       }
     }
+  }
+}
+
+// "boot", "platform", "app" or nullptr
+const char* ArchiveUtils::builtin_loader_name_or_null(oop loader) {
+  if (loader == nullptr) {
+    return "boot";
+  } else if (loader == SystemDictionary::java_platform_loader()) {
+    return "platform";
+  } else if (loader == SystemDictionary::java_system_loader()) {
+    return "app";
+  } else {
+    return nullptr;
+  }
+}
+
+// "boot", "platform", "app". Asserts if not a built-in-loader
+const char* ArchiveUtils::builtin_loader_name(oop loader) {
+  const char* name = builtin_loader_name_or_null(loader);
+  assert(name != nullptr, "must be a built-in loader");
+  return name;
+}
+
+bool ArchiveUtils::builtin_loader_from_type(const char* loader_type, oop* value_ret) {
+  if (strcmp(loader_type, "boot") == 0) {
+    *value_ret = nullptr;
+    return true;
+  } else if (strcmp(loader_type, "platform") == 0) {
+    *value_ret = SystemDictionary::java_platform_loader();
+    return true;
+  } else if (strcmp(loader_type, "app") == 0) {
+    *value_ret = SystemDictionary::java_system_loader();
+    return true;
+  } else {
+    DEBUG_ONLY(*value_ret = cast_to_oop((void*)badOopVal));
+    return false;
+  }
+}
+
+oop ArchiveUtils::builtin_loader_from_type(int loader_type) {
+  if (loader_type == ClassLoader::BOOT_LOADER) {
+    return nullptr;
+  } else if (loader_type == ClassLoader::PLATFORM_LOADER)  {
+    return SystemDictionary::java_platform_loader();
+  } else if (loader_type == ClassLoader::APP_LOADER) {
+    return SystemDictionary::java_system_loader();
+  } else {
+    ShouldNotReachHere();
+    return nullptr;
   }
 }

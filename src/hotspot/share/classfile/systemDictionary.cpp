@@ -37,6 +37,7 @@
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/klassFactory.hpp"
 #include "classfile/loaderConstraints.hpp"
+#include "classfile/modules.hpp"
 #include "classfile/packageEntry.hpp"
 #include "classfile/placeholders.hpp"
 #include "classfile/protectionDomainCache.hpp"
@@ -1013,7 +1014,11 @@ bool SystemDictionary::is_shared_class_visible_impl(Symbol* class_name,
   bool was_archived_from_named_module = scp_entry->in_named_module();
   bool visible;
 
-  if (was_archived_from_named_module) {
+  if (mod_entry != nullptr && mod_entry->location() == nullptr && mod_entry->is_named()) {
+    // Archived module for dynamic proxies. It's always visible.
+    assert(Modules::is_dynamic_proxy_module(mod_entry), "must be");
+    visible = true;
+  } else if (was_archived_from_named_module) {
     if (should_be_in_named_module) {
       // Is the module loaded from the same location as during dump time?
       visible = mod_entry->shared_path_index() == scp_index;

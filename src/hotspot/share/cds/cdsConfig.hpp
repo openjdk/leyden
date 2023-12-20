@@ -42,6 +42,7 @@ class CDSConfig : public AllStatic {
   static char*  _default_archive_path;
   static char*  _static_archive_path;
   static char*  _dynamic_archive_path;
+  static bool _is_loading_invokedynamic;
 #endif
 
   static void extract_shared_archive_paths(const char* archive_path,
@@ -71,6 +72,7 @@ public:
   static bool      has_preloaded_classes()                   { CDS_ONLY(return _has_preloaded_classes); NOT_CDS(return false); }
   static void      set_has_preloaded_classes()               { CDS_ONLY(_has_preloaded_classes = true); }
   static bool      is_dumping_regenerated_lambdaform_invokers() NOT_CDS_RETURN_(false);
+  static bool      is_tracing_dynamic_proxy()                NOT_CDS_RETURN_(false);
 
   // Misc CDS features
   static bool      preserve_all_dumptime_verification_states(const InstanceKlass* ik);
@@ -94,6 +96,9 @@ public:
   static void disable_loading_full_module_graph(const char* reason = nullptr) NOT_CDS_JAVA_HEAP_RETURN;
   static bool      is_loading_full_module_graph()            NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool      is_dumping_invokedynamic()                NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool      is_loading_invokedynamic()                NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static void  set_is_loading_invokedynamic()                { CDS_JAVA_HEAP_ONLY(_is_loading_invokedynamic = true); }
+  static bool      is_dumping_dynamic_proxy()                NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool      is_initing_classes_at_dump_time()         NOT_CDS_JAVA_HEAP_RETURN_(false);
 
   // AOT compiler

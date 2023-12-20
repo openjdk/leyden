@@ -153,6 +153,7 @@ JVM_IsArrayClass
 JVM_IsConstructorIx
 JVM_IsDumpingArchive
 JVM_IsDumpingClassList
+JVM_IsDumpingHeap
 JVM_IsDumpingStaticArchive
 JVM_IsFinalizationEnabled
 JVM_IsHiddenClass
@@ -164,12 +165,14 @@ JVM_IsRecord
 JVM_IsSameClassPackage
 JVM_IsSharingEnabled
 JVM_IsSupportedJNIVersion
+JVM_IsTracingDynamicProxy
 JVM_IsVMGeneratedMethodIx
 JVM_LatestUserDefinedLoader
 JVM_LoadZipLibrary
 JVM_LoadLibrary
 JVM_LookupDefineClass
 JVM_LookupLambdaProxyClassFromArchive
+JVM_LogDynamicProxy
 JVM_LogLambdaFormInvoker
 JVM_MaxMemory
 JVM_MaxObjectInspectionAge

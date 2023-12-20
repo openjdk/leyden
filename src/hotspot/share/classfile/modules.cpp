@@ -274,7 +274,6 @@ void throw_dup_pkg_exception(const char* module_name, PackageEntry* package, TRA
 
 void Modules::define_module(Handle module, jboolean is_open, jstring version,
                             jstring location, jobjectArray packages, TRAPS) {
-  check_cds_restrictions(CHECK);
   ResourceMark rm(THREAD);
 
   if (module.is_null()) {
@@ -296,6 +295,9 @@ void Modules::define_module(Handle module, jboolean is_open, jstring version,
   // Resolve packages
   objArrayHandle packages_h(THREAD, objArrayOop(JNIHandles::resolve(packages)));
   int num_packages = (packages_h.is_null() ? 0 : packages_h->length());
+  if (strncmp(module_name, "jdk.proxy", 9) != 0) {
+    check_cds_restrictions(Handle(), Handle(), CHECK);
+  }
 
   // Special handling of java.base definition
   if (strcmp(module_name, JAVA_BASE_NAME) == 0) {
@@ -639,12 +641,29 @@ void Modules::define_archived_modules(Handle h_platform_loader, Handle h_system_
   ClassLoaderDataShared::restore_java_system_loader_from_archive(system_loader_data);
 }
 
-void Modules::check_cds_restrictions(TRAPS) {
+void Modules::check_cds_restrictions(Handle module1, Handle module2, TRAPS) {
   if (CDSConfig::is_dumping_full_module_graph() && Universe::is_module_initialized()) {
-    THROW_MSG(vmSymbols::java_lang_UnsupportedOperationException(),
-              "During -Xshare:dump, module system cannot be modified after it's initialized");
+    if (ArchiveDynamicProxies && (is_dynamic_proxy_module(module1) || is_dynamic_proxy_module(module2))) {
+      // The only the we allow is to add or modify the jdk.proxy?? modules that are used for dynamic proxies.
+    } else {
+      THROW_MSG(vmSymbols::java_lang_UnsupportedOperationException(),
+                "During -Xshare:dump, module system cannot be modified after it's initialized");
+    }
   }
 }
+
+bool Modules::is_dynamic_proxy_module(Handle module) {
+  if (!module.is_null()) {
+    ModuleEntry* module_entry = java_lang_Module::module_entry(module());
+    return is_dynamic_proxy_module(module_entry);
+  }
+  return false;
+}
+
+bool Modules::is_dynamic_proxy_module(ModuleEntry* module_entry) {
+  return (module_entry != nullptr && module_entry->is_named() && module_entry->name()->starts_with("jdk.proxy"));
+}
+
 #endif // INCLUDE_CDS_JAVA_HEAP
 
 void Modules::set_bootloader_unnamed_module(Handle module, TRAPS) {
@@ -684,7 +703,7 @@ void Modules::set_bootloader_unnamed_module(Handle module, TRAPS) {
 }
 
 void Modules::add_module_exports(Handle from_module, jstring package_name, Handle to_module, TRAPS) {
-  check_cds_restrictions(CHECK);
+  check_cds_restrictions(from_module, to_module, CHECK);
 
   if (package_name == nullptr) {
     THROW_MSG(vmSymbols::java_lang_NullPointerException(),
@@ -752,7 +771,7 @@ void Modules::add_module_exports(Handle from_module, jstring package_name, Handl
 
 void Modules::add_module_exports_qualified(Handle from_module, jstring package,
                                            Handle to_module, TRAPS) {
-  check_cds_restrictions(CHECK);
+  check_cds_restrictions(from_module, to_module, CHECK);
   if (to_module.is_null()) {
     THROW_MSG(vmSymbols::java_lang_NullPointerException(),
               "to_module is null");
@@ -761,7 +780,7 @@ void Modules::add_module_exports_qualified(Handle from_module, jstring package,
 }
 
 void Modules::add_reads_module(Handle from_module, Handle to_module, TRAPS) {
-  check_cds_restrictions(CHECK);
+  check_cds_restrictions(from_module, to_module, CHECK);
   if (from_module.is_null()) {
     THROW_MSG(vmSymbols::java_lang_NullPointerException(),
               "from_module is null");
@@ -867,7 +886,7 @@ oop Modules::get_named_module(Handle h_loader, const char* package_name) {
 
 // Export package in module to all unnamed modules.
 void Modules::add_module_exports_to_all_unnamed(Handle module, jstring package_name, TRAPS) {
-  check_cds_restrictions(CHECK);
+  check_cds_restrictions(Handle(), module, CHECK);
   if (module.is_null()) {
     THROW_MSG(vmSymbols::java_lang_NullPointerException(),
               "module is null");

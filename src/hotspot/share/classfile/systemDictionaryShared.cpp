@@ -108,7 +108,9 @@ InstanceKlass* SystemDictionaryShared::load_shared_class_for_builtin_loader(
       SharedClassLoadingMark slm(THREAD, ik);
       PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
       Handle protection_domain;
-      if (!CDSConfig::is_dumping_final_static_archive()) { // Why this check??
+      if (!CDSConfig::is_dumping_final_static_archive() && // Why this check??
+          !class_name->starts_with("jdk/proxy")) // java/lang/reflect/Proxy$ProxyBuilder defines the proxy classes with a null protection domain.
+      {
         protection_domain = CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK_NULL);
       }
       return load_shared_class(ik, class_loader, protection_domain, nullptr, pkg_entry, THREAD);

@@ -29,12 +29,15 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/classPrelinker.hpp"
+#include "cds/classListWriter.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
+#include "classfile/classLoaderExt.hpp"
 #include "classfile/dictionary.hpp"
+#include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
@@ -44,6 +47,7 @@
 #include "interpreter/bytecodeStream.hpp"
 #include "interpreter/interpreterRuntime.hpp"
 #include "interpreter/linkResolver.hpp"
+#include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
@@ -151,7 +155,8 @@ void ClassPrelinker::add_extra_initiated_klasses(PreloadedKlasses* table) {
     GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
     for (GrowableArrayIterator<Klass*> it = klasses->begin(); it != klasses->end(); ++it) {
       Klass* k = *it;
-      if (k->is_instance_klass()) {
+      if (k->is_instance_klass() && !k->name()->starts_with("jdk/proxy")) { // FIXME add SystemDictionaryShared::is_archived_dynamic_proxy_class(ik)
+        // TODO: only add classes that are visible to unnamed module in app loader.
         InstanceKlass* ik = InstanceKlass::cast(k);
         if (ik->is_public() && (ik->is_shared_boot_class() || ik->is_shared_platform_class())) {
           add_initiated_klass(_app_initiated_classes, "app", ik);
@@ -907,23 +912,49 @@ class FinalImageEagerLinkage {
   static GrowableArray<InstanceKlass*>* _tmp_reflect_klasses;
   static GrowableArray<int>* _tmp_reflect_flags;
 
+  struct TmpDynamicProxyClassInfo {
+    int _loader_type;
+    int _access_flags;
+    const char* _proxy_name;
+    GrowableArray<Klass*>* _interfaces;
+  };
+
+  struct DynamicProxyClassInfo {
+    int _loader_type;
+    int _access_flags;
+    const char* _proxy_name;
+    Array<Klass*>* _interfaces;
+  };
+
+  Array<DynamicProxyClassInfo>* _dynamic_proxy_classes;
+
+  static GrowableArray<TmpDynamicProxyClassInfo>* _tmp_dynamic_proxy_classes;
+
 public:
   FinalImageEagerLinkage() : _indy_klasses(nullptr), _indy_cp_indices(nullptr),
-                             _reflect_klasses(nullptr), _reflect_flags(nullptr)
-    {} // FIXME - use operator new to allocate FinalImageEagerLinkage
+                             _reflect_klasses(nullptr), _reflect_flags(nullptr),
+                             _dynamic_proxy_classes(nullptr) {}
+
+  void* operator new(size_t size) throw() {
+    return ArchiveBuilder::current()->ro_region_alloc(size);
+  }
 
   // These are called when dumping preimage
   static void record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS);
+  static void record_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags);
   void record_linkage_in_preimage();
 
   // Called when dumping final image
   void resolve_indys_in_final_image(TRAPS);
   void archive_reflection_data_in_final_image(JavaThread* current);
+  void archive_dynamic_proxies(TRAPS);
 };
 
 static FinalImageEagerLinkage* _final_image_eager_linkage = nullptr;
+
 GrowableArray<InstanceKlass*>* FinalImageEagerLinkage::_tmp_reflect_klasses = nullptr;
 GrowableArray<int>* FinalImageEagerLinkage::_tmp_reflect_flags = nullptr;
+GrowableArray<FinalImageEagerLinkage::TmpDynamicProxyClassInfo>* FinalImageEagerLinkage::_tmp_dynamic_proxy_classes = nullptr;
 
 void FinalImageEagerLinkage::record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS) {
   assert(CDSConfig::is_dumping_preimage_static_archive(), "must be");
@@ -947,9 +978,6 @@ void FinalImageEagerLinkage::record_linkage_in_preimage() {
   // ArchiveInvokeDynamic
   GrowableArray<InstanceKlass*> tmp_indy_klasses;
   GrowableArray<Array<int>*> tmp_indy_cp_indices;
-
-  // ArchiveReflectionData
-
   int total_indys_to_resolve = 0;
   for (int i = 0; i < klasses->length(); i++) {
     Klass* k = klasses->at(i);
@@ -988,6 +1016,7 @@ void FinalImageEagerLinkage::record_linkage_in_preimage() {
   }
   log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_indy_klasses.length());
 
+  // ArchiveReflectionData
   int reflect_count = 0;
   if (_tmp_reflect_klasses != nullptr) {
     for (int i = _tmp_reflect_klasses->length() - 1; i >= 0; i--) {
@@ -1009,6 +1038,31 @@ void FinalImageEagerLinkage::record_linkage_in_preimage() {
     }
   }
   log_info(cds)("ReflectionData of %d classes will be archived in final CDS image", reflect_count);
+
+  // Dynamic Proxies
+  if (_tmp_dynamic_proxy_classes != nullptr && ArchiveDynamicProxies) {
+    int len = _tmp_dynamic_proxy_classes->length();
+    _dynamic_proxy_classes = ArchiveBuilder::new_ro_array<DynamicProxyClassInfo>(len);
+    ArchivePtrMarker::mark_pointer(&_dynamic_proxy_classes);
+    for (int i = 0; i < len; i++) {
+      TmpDynamicProxyClassInfo* tmp_info = _tmp_dynamic_proxy_classes->adr_at(i);
+      DynamicProxyClassInfo* info = _dynamic_proxy_classes->adr_at(i);
+      info->_loader_type = tmp_info->_loader_type;
+      info->_access_flags = tmp_info->_access_flags;
+      info->_proxy_name = ArchiveBuilder::current()->ro_strdup(tmp_info->_proxy_name);
+
+      ResourceMark rm;
+      GrowableArray<Klass*> buffered_interfaces;
+      for (int j = 0; j < tmp_info->_interfaces->length(); j++) {
+        buffered_interfaces.append(ArchiveBuilder::current()->get_buffered_addr(tmp_info->_interfaces->at(j)));
+      }
+      info->_interfaces = ArchiveUtils::archive_array(&buffered_interfaces);
+
+      ArchivePtrMarker::mark_pointer(&info->_proxy_name);
+      ArchivePtrMarker::mark_pointer(&info->_interfaces);
+      ArchiveBuilder::alloc_stats()->record_dynamic_proxy_class();
+    }
+  }
 }
 
 void FinalImageEagerLinkage::resolve_indys_in_final_image(TRAPS) {
@@ -1042,12 +1096,64 @@ void FinalImageEagerLinkage::archive_reflection_data_in_final_image(JavaThread* 
   }
 }
 
+void FinalImageEagerLinkage::record_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags) {
+  int loader_type;
+  if (loader == nullptr) {
+    loader_type = ClassLoader::BOOT_LOADER;
+  } else if (loader == SystemDictionary::java_platform_loader()) {
+    loader_type = ClassLoader::PLATFORM_LOADER;
+  } else if (loader == SystemDictionary::java_system_loader()) {
+    loader_type = ClassLoader::APP_LOADER;
+  } else {
+    return;
+  }
+
+  if (_tmp_dynamic_proxy_classes == nullptr) {
+    _tmp_dynamic_proxy_classes = new (mtClassShared) GrowableArray<TmpDynamicProxyClassInfo>(32, mtClassShared);
+  }
+
+  TmpDynamicProxyClassInfo info;
+  info._loader_type = loader_type;
+  info._access_flags = access_flags;
+  info._proxy_name = os::strdup(proxy_name);
+  info._interfaces = new (mtClassShared) GrowableArray<Klass*>(interfaces->length(), mtClassShared);
+  for (int i = 0; i < interfaces->length(); i++) {
+    Klass* intf = java_lang_Class::as_Klass(interfaces->obj_at(i));
+    info._interfaces->append(intf);
+  }
+  _tmp_dynamic_proxy_classes->append(info);
+}
+
+void FinalImageEagerLinkage::archive_dynamic_proxies(TRAPS) {
+  if (ArchiveDynamicProxies && _dynamic_proxy_classes != nullptr) {
+    for (int proxy_index = 0; proxy_index < _dynamic_proxy_classes->length(); proxy_index++) {
+      DynamicProxyClassInfo* info = _dynamic_proxy_classes->adr_at(proxy_index);
+
+      Handle loader(THREAD, ArchiveUtils::builtin_loader_from_type(info->_loader_type));
+
+      oop proxy_name_oop = java_lang_String::create_oop_from_str(info->_proxy_name, CHECK);
+      Handle proxy_name(THREAD, proxy_name_oop);
+
+      int num_intfs = info->_interfaces->length();
+      objArrayOop interfaces_oop = oopFactory::new_objArray(vmClasses::Class_klass(), num_intfs, CHECK);
+      objArrayHandle interfaces(THREAD, interfaces_oop);
+      for (int intf_index = 0; intf_index < num_intfs; intf_index++) {
+        Klass* k = info->_interfaces->at(intf_index);
+        assert(k->java_mirror() != nullptr, "must be loaded");
+        interfaces()->obj_at_put(intf_index, k->java_mirror());
+      }
+
+      ClassPrelinker::define_dynamic_proxy_class(loader, proxy_name, interfaces, info->_access_flags, CHECK);
+    }
+  }
+}
+
 void ClassPrelinker::record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS) {
   FinalImageEagerLinkage::record_reflection_data_flags_for_preimage(ik, THREAD);
 }
 
 void ClassPrelinker::record_final_image_eager_linkage() {
-  _final_image_eager_linkage = ArchiveBuilder::current()->ro_region_alloc<FinalImageEagerLinkage>();
+  _final_image_eager_linkage = new FinalImageEagerLinkage();
   _final_image_eager_linkage->record_linkage_in_preimage();
 }
 
@@ -1057,6 +1163,7 @@ void ClassPrelinker::apply_final_image_eager_linkage(TRAPS) {
   if (_final_image_eager_linkage != nullptr) {
     _final_image_eager_linkage->resolve_indys_in_final_image(CHECK);
     _final_image_eager_linkage->archive_reflection_data_in_final_image(THREAD);
+    _final_image_eager_linkage->archive_dynamic_proxies(CHECK);
   }
 
   // Set it to null as we don't need to write this table into the final image.
@@ -1102,12 +1209,125 @@ void ClassPrelinker::generate_reflection_data(JavaThread* current, InstanceKlass
   }
 }
 
+Klass* ClassPrelinker::resolve_boot_klass_or_fail(const char* class_name, TRAPS) {
+  Handle class_loader;
+  Handle protection_domain;
+  TempNewSymbol class_name_sym = SymbolTable::new_symbol(class_name);
+  return SystemDictionary::resolve_or_fail(class_name_sym, class_loader, protection_domain, true, THREAD);
+}
+
+void ClassPrelinker::trace_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags) {
+  if (interfaces->length() < 1) {
+    return;
+  }
+  if (ClassListWriter::is_enabled()) {
+    const char* loader_name = ArchiveUtils::builtin_loader_name_or_null(loader);
+    if (loader_name != nullptr) {
+      stringStream ss;
+      ss.print("%s %s %d %d", loader_name, proxy_name, access_flags, interfaces->length());
+      for (int i = 0; i < interfaces->length(); i++) {
+        oop mirror = interfaces->obj_at(i);
+        Klass* k = java_lang_Class::as_Klass(mirror);
+        ss.print(" %s", k->name()->as_C_string());
+      }
+      ClassListWriter w;
+      w.stream()->print_cr("@dynamic-proxy %s", ss.freeze());
+    }
+  }
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    FinalImageEagerLinkage::record_dynamic_proxy_class(loader, proxy_name, interfaces, access_flags);
+  }
+}
+
+void ClassPrelinker::init_dynamic_proxy_cache(TRAPS) {
+  static bool inited = false;
+  if (inited) {
+    return;
+  }
+  inited = true;
+
+  Klass* klass = resolve_boot_klass_or_fail("java/lang/reflect/Proxy", CHECK);
+  TempNewSymbol method = SymbolTable::new_symbol("initCacheForCDS");
+  TempNewSymbol signature = SymbolTable::new_symbol("(Ljava/lang/ClassLoader;Ljava/lang/ClassLoader;)V");
+
+  JavaCallArguments args;
+  args.push_oop(Handle(THREAD, SystemDictionary::java_platform_loader()));
+  args.push_oop(Handle(THREAD, SystemDictionary::java_system_loader()));
+  JavaValue result(T_VOID);
+  JavaCalls::call_static(&result,
+                         klass,
+                         method,
+                         signature,
+                         &args, CHECK);
+}
+
+
+void ClassPrelinker::define_dynamic_proxy_class(Handle loader, Handle proxy_name, Handle interfaces, int access_flags, TRAPS) {
+  if (!CDSConfig::is_dumping_dynamic_proxy() || !ArchiveDynamicProxies) {
+    return;
+  }
+  init_dynamic_proxy_cache(CHECK);
+
+  Klass* klass = resolve_boot_klass_or_fail("java/lang/reflect/Proxy$ProxyBuilder", CHECK);
+  TempNewSymbol method = SymbolTable::new_symbol("defineProxyClassForCDS");
+  TempNewSymbol signature = SymbolTable::new_symbol("(Ljava/lang/ClassLoader;Ljava/lang/String;[Ljava/lang/Class;I)Ljava/lang/Class;");
+
+  JavaCallArguments args;
+  args.push_oop(Handle(THREAD, loader()));
+  args.push_oop(Handle(THREAD, proxy_name()));
+  args.push_oop(Handle(THREAD, interfaces()));
+  args.push_int(access_flags);
+  JavaValue result(T_OBJECT);
+  JavaCalls::call_static(&result,
+                         klass,
+                         method,
+                         signature,
+                         &args, CHECK);
+
+  // Assumptions:
+  // FMG is archived, which means -modulepath and -Xbootclasspath are both not specified.
+  // All named modules are loaded from the system modules files.
+  // TODO: test support for -Xbootclasspath after JDK-8322322. Some of the code below need to be changed.
+  // TODO: we just give dummy shared_classpath_index for the generated class so that it will be archived.
+  //       The index is not used at runtime (see SystemDictionaryShared::load_shared_class_for_builtin_loader, which
+  //       uses a null ProtectionDomain for this class)
+  oop mirror = result.get_oop();
+  assert(mirror != nullptr, "class must have been generated if not OOM");
+  InstanceKlass* ik = InstanceKlass::cast(java_lang_Class::as_Klass(mirror));
+  if (ik->is_shared_boot_class() || ik->is_shared_platform_class()) {
+    assert(ik->module()->is_named(), "dynamic proxies defined in unnamed modules for boot/platform loaders not supported");
+    ik->set_shared_classpath_index(0);
+  } else {
+    assert(ik->is_shared_app_class(), "must be");
+    ik->set_shared_classpath_index(ClassLoaderExt::app_class_paths_start_index());
+  }
+
+  ArchiveBuilder::alloc_stats()->record_dynamic_proxy_class();
+  if (log_is_enabled(Info, cds, dynamic, proxy)) {
+    ResourceMark rm(THREAD);
+    stringStream ss;
+    const char* prefix = "";
+    ss.print("%s (%-7s, cp index = %d) implements ", ik->external_name(),
+             ArchiveUtils::builtin_loader_name(loader()), ik->shared_classpath_index());
+    objArrayOop intfs = (objArrayOop)interfaces();
+    for (int i = 0; i < intfs->length(); i++) {
+      oop intf_mirror = intfs->obj_at(i);
+      ss.print("%s%s", prefix, java_lang_Class::as_Klass(intf_mirror)->external_name());
+      prefix = ", ";
+    }
+
+    log_info(cds, dynamic, proxy)("%s", ss.freeze());
+  }
+}
+
 // Warning -- this is fragile!!!
 // This is a hard-coded list of classes that are safe to preinitialize at dump time. It needs
 // to be updated if the Java source code changes.
 class ForcePreinitClosure : public CLDClosure {
 public:
   void do_cld(ClassLoaderData* cld) {
+    assert(CDSConfig::is_dumping_invokedynamic(), "sanity");
+
     static const char* forced_preinit_classes[] = {
       "java/util/HexFormat",
       "jdk/internal/util/ClassFileDumper",
@@ -1126,6 +1346,10 @@ public:
       "java/lang/invoke/DirectMethodHandle$Holder",
       "java/lang/invoke/BoundMethodHandle$Specializer",
       "java/lang/invoke/MethodHandles$Lookup",
+
+    //TODO: these use java.lang.ClassValue$Entry which is a subtype of WeakReference
+    //"java/lang/reflect/Proxy$ProxyBuilder",
+    //"java/lang/reflect/Proxy",
 
     // TODO -- need to clear internTable, etc
     //"java/lang/invoke/MethodType",
@@ -1153,7 +1377,7 @@ public:
 };
 
 void ClassPrelinker::setup_forced_preinit_classes() {
-  if (!ArchiveInvokeDynamic) {
+  if (!CDSConfig::is_dumping_invokedynamic()) {
     return;
   }
 
@@ -1385,6 +1609,8 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
         log_info(cds, preload)("%s %s%s", loader_name, ik->external_name(),
                                ik->is_loaded() ? " (already loaded)" : "");
       }
+      // FIXME Do not load proxy classes if FMG is disabled.
+
       if (!ik->is_loaded()) {
         if (ik->is_hidden()) {
           preload_archived_hidden_class(loader, ik, loader_name, CHECK);
@@ -1404,6 +1630,8 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
           assert(actual->is_loaded(), "must be");
         }
       }
+
+      // FIXME assert - if FMG, package must be archived
     }
 
     if (!_preload_javabase_only) {

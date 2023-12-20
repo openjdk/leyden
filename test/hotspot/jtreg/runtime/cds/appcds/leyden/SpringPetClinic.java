@@ -133,9 +133,10 @@ public class SpringPetClinic {
                 "-DautoQuit=true",
                 "-Dspring.output.ansi.enabled=NEVER",
                 "-Dserver.port=0", // use system-assigned port
-                "--add-opens", "java.base/java.io=ALL-UNNAMED",
-                "--add-opens", "java.base/java.lang=ALL-UNNAMED",
-                "--add-opens", "java.rmi/sun.rmi.transport=ALL-UNNAMED"
+              //These don't seem necessary when pet-clinic is run in "Spring AOT" mode
+              //"--add-opens", "java.base/java.io=ALL-UNNAMED",
+              //"--add-opens", "java.base/java.lang=ALL-UNNAMED",
+              //"--add-opens", "java.rmi/sun.rmi.transport=ALL-UNNAMED"
             };
         }
 

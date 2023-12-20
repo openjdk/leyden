@@ -225,6 +225,7 @@ private:
                                         // some expensive operations.
   bool   _has_preloaded_classes;        // Does the CDS archive have preloaded classes?
   bool   _has_full_module_graph;        // Does this CDS archive contain the full archived module graph?
+  bool   _has_archived_invokedynamic;   // Does the archive have preresolved invokedynamic CP entries?
   size_t _ptrmap_size_in_bits;          // Size of pointer relocation bitmap
   size_t _heap_roots_offset;            // Offset of the HeapShared::roots() object, from the bottom
                                         // of the archived heap objects, in bytes.

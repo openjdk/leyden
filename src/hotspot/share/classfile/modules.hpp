@@ -32,7 +32,7 @@ class ModuleEntryTable;
 class Symbol;
 
 class Modules : AllStatic {
-  static void check_cds_restrictions(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
+  static void check_cds_restrictions(Handle module1, Handle module2, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 
 public:
   // define_module defines a module containing the specified packages. It binds the
@@ -61,7 +61,8 @@ public:
   static void verify_archived_modules() NOT_CDS_JAVA_HEAP_RETURN;
   static void dump_main_module_name() NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
-
+  static bool is_dynamic_proxy_module(Handle module);
+  static bool is_dynamic_proxy_module(ModuleEntry* module_entry);
 #if INCLUDE_CDS_JAVA_HEAP
   static char* _archived_main_module_name;
 #endif

@@ -162,6 +162,7 @@ class outputStream;
   LOG_TAG(profiling) \
   LOG_TAG(promotion) \
   LOG_TAG(protectiondomain) /* "Trace protection domain verification" */ \
+  LOG_TAG(proxy) \
   LOG_TAG(ptrqueue) \
   LOG_TAG(purge) \
   LOG_TAG(record) \

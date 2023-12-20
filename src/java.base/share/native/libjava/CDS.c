@@ -64,9 +64,25 @@ Java_jdk_internal_misc_CDS_isDumpingClassList0(JNIEnv *env, jclass jcls) {
     return JVM_IsDumpingClassList(env);
 }
 
+JNIEXPORT jboolean JNICALL
+Java_jdk_internal_misc_CDS_isDumpingHeap0(JNIEnv *env, jclass jcls) {
+    return JVM_IsDumpingHeap(env);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_jdk_internal_misc_CDS_isTracingDynamicProxy0(JNIEnv *env, jclass jcls) {
+    return JVM_IsTracingDynamicProxy(env);
+}
+
 JNIEXPORT void JNICALL
 Java_jdk_internal_misc_CDS_logLambdaFormInvoker(JNIEnv *env, jclass jcls, jstring line) {
     JVM_LogLambdaFormInvoker(env, line);
+}
+
+JNIEXPORT void JNICALL
+Java_jdk_internal_misc_CDS_logDynamicProxy(JNIEnv *env, jclass jcls, jobject loader, jstring proxy_name,
+                                           jobjectArray interfaces, jint accessFlags) {
+    JVM_LogDynamicProxy(env, loader, proxy_name, interfaces, accessFlags);
 }
 
 JNIEXPORT void JNICALL

@@ -100,6 +100,18 @@ void ClassLoaderExt::process_module_table(JavaThread* current, ModuleEntryTable*
     ModulePathsGatherer(JavaThread* current, GrowableArray<char*>* module_paths) :
       _current(current), _module_paths(module_paths) {}
     void do_module(ModuleEntry* m) {
+      if (m->location() == nullptr) {
+        // This is a dynamic generated module (which we loaded from the static archive) for supporting
+        // dynamic proxies. We don't archive any other such modules.
+        // No need to include such modules in _module_path.
+        assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
+        assert(Modules::is_dynamic_proxy_module(m), "must be");
+        if (log_is_enabled(Info, cds, dynamic, proxy)) {
+          ResourceMark rm;
+          log_info(cds, dynamic, proxy)("Archived dynamic module: %s", m->name()->as_C_string());
+        }
+        return;
+      }
       char* path = m->location()->as_C_string();
       if (strncmp(path, "file:", 5) == 0) {
         path = ClassLoader::skip_uri_protocol(path);

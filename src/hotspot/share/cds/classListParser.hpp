@@ -65,9 +65,10 @@ public:
 };
 
 class ClassListParser : public StackObj {
+  static const char* CONSTANT_POOL_TAG;
+  static const char* DYNAMIC_PROXY_TAG;
   static const char* LAMBDA_PROXY_TAG;
   static const char* LAMBDA_FORM_TAG;
-  static const char* CONSTANT_POOL_TAG;
 public:
   static const char* CLASS_REFLECTION_DATA_TAG;
 
@@ -141,6 +142,7 @@ private:
   Klass* load_current_class(Symbol* class_name_symbol, TRAPS);
   void parse_constant_pool_tag();
   void parse_class_reflection_data_tag();
+  void parse_dynamic_proxy_tag();
 
   ClassListParser(const char* file, ParseMode _parse_mode);
   ~ClassListParser();
@@ -148,7 +150,7 @@ private:
   void print_diagnostic_info(outputStream* st, const char* msg, ...) ATTRIBUTE_PRINTF(3, 0);
   void constant_pool_resolution_warning(const char* msg, ...) ATTRIBUTE_PRINTF(2, 0);
   void error(const char* msg, ...) ATTRIBUTE_PRINTF(2, 0);
-
+  oop loader_from_type(const char* loader_name);
 public:
   static int parse_classlist(const char* classlist_path, ParseMode parse_mode, TRAPS) {
     ClassListParser parser(classlist_path, parse_mode);

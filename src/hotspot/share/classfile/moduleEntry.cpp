@@ -32,6 +32,7 @@
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/moduleEntry.hpp"
+#include "classfile/modules.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "jni.h"
 #include "logging/log.hpp"
@@ -430,9 +431,16 @@ ModuleEntry* ModuleEntry::get_archived_entry(ModuleEntry* orig_entry) {
 // This function is used to archive ModuleEntry::_reads and PackageEntry::_qualified_exports.
 // GrowableArray cannot be directly archived, as it needs to be expandable at runtime.
 // Write it out as an Array, and convert it back to GrowableArray at runtime.
-Array<ModuleEntry*>* ModuleEntry::write_growable_array(GrowableArray<ModuleEntry*>* array) {
+Array<ModuleEntry*>* ModuleEntry::write_growable_array(ModuleEntry* module, GrowableArray<ModuleEntry*>* array) {
   Array<ModuleEntry*>* archived_array = nullptr;
   int length = (array == nullptr) ? 0 : array->length();
+  if (module->is_named()) {
+    if (Modules::is_dynamic_proxy_module(module)) {
+      // This is a dynamically generated module. Its opens and exports will be
+      // restored at runtime in the Java code. See comments in ArchivedData::restore().
+      return nullptr;
+    }
+  }
   if (length > 0) {
     archived_array = ArchiveBuilder::new_ro_array<ModuleEntry*>(length);
     for (int i = 0; i < length; i++) {
@@ -466,7 +474,7 @@ void ModuleEntry::iterate_symbols(MetaspaceClosure* closure) {
 }
 
 void ModuleEntry::init_as_archived_entry() {
-  Array<ModuleEntry*>* archived_reads = write_growable_array(_reads);
+  Array<ModuleEntry*>* archived_reads = write_growable_array(this, _reads);
 
   _loader_data = nullptr;  // re-init at runtime
   _shared_path_index = FileMapInfo::get_module_shared_path_index(_location);

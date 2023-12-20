@@ -113,18 +113,21 @@
           "Load all shared classes for the boot/platform/app loaders "      \
           "immediately at VM start-up")                                     \
                                                                             \
+  product(bool, ArchiveDynamicProxies, false,                               \
+          "Archive classes generated for java/lang/reflect/Proxy")          \
+                                                                            \
   product(bool, ArchiveFieldReferences, true,                               \
           "Archive resolved JVM_CONSTANT_Fieldref in ConstantPool")         \
                                                                             \
   product(bool, ArchiveInvokeDynamic, false,                                \
           "Archive resolved JVM_CONSTANT_InvokeDynamic in ConstantPool")    \
                                                                             \
-  product(bool, ArchiveReflectionData, false,                               \
-          "Archive Class::reflectionData field")                            \
-                                                                            \
   product(bool, ArchiveMethodReferences, true,                              \
           "Archive resolved JVM_CONSTANT_Methodref and "                    \
           "JVM_CONSTANT_InterfaceMethodref in ConstantPool")                \
+                                                                            \
+  product(bool, ArchiveReflectionData, false,                               \
+          "Archive Class::reflectionData field")                            \
                                                                             \
   product(bool, TempDisableAddJVMCIModule, false,                           \
           "Do not add jdk.internal.vm.ci module even for -XX:+EnableJVMCI") \

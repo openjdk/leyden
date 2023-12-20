@@ -43,13 +43,17 @@ import jdk.internal.access.SharedSecrets;
 public class CDS {
     private static final boolean isDumpingArchive;
     private static final boolean isDumpingClassList;
+    private static final boolean isDumpingHeap;
     private static final boolean isDumpingStaticArchive;
     private static final boolean isSharingEnabled;
+    private static final boolean isTracingDynamicProxy;
     static {
         isDumpingArchive = isDumpingArchive0();
         isDumpingClassList = isDumpingClassList0();
+        isDumpingHeap = isDumpingHeap0();
         isDumpingStaticArchive = isDumpingStaticArchive0();
         isSharingEnabled = isSharingEnabled0();
+        isTracingDynamicProxy = isTracingDynamicProxy0();
     }
 
     /**
@@ -80,10 +84,20 @@ public class CDS {
         return isDumpingStaticArchive;
     }
 
+    public static boolean isDumpingHeap() {
+        return isDumpingHeap;
+    }
+
+    public static boolean isTracingDynamicProxy() {
+        return isTracingDynamicProxy;
+    }
+
     private static native boolean isDumpingArchive0();
     private static native boolean isDumpingClassList0();
+    private static native boolean isDumpingHeap0();
     private static native boolean isDumpingStaticArchive0();
     private static native boolean isSharingEnabled0();
+    private static native boolean isTracingDynamicProxy0();
 
     private static native void logLambdaFormInvoker(String line);
 
@@ -128,6 +142,15 @@ public class CDS {
             logLambdaFormInvoker(prefix + " " + cn);
         }
     }
+
+    public static void traceDynamicProxy(ClassLoader loader, String proxyName,
+                                         Class<?>[] interfaces, int accessFlags) {
+        Objects.requireNonNull(proxyName);
+        Objects.requireNonNull(interfaces);
+        logDynamicProxy(loader, proxyName, interfaces, accessFlags);
+    }
+    private static native void logDynamicProxy(ClassLoader loader, String proxyName,
+                                               Class<?>[] interfaces, int accessFlags);
 
     static final String DIRECT_HOLDER_CLASS_NAME  = "java.lang.invoke.DirectMethodHandle$Holder";
     static final String DELEGATING_HOLDER_CLASS_NAME = "java.lang.invoke.DelegatingMethodHandle$Holder";

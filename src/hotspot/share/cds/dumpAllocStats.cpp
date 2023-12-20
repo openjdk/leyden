@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "logging/log.hpp"
@@ -117,4 +118,6 @@ void DumpAllocStats::print_stats(int ro_all, int rw_all) {
            percent_of(_num_indy_cp_entries_archived, _num_indy_cp_entries));
   msg.info("Platform loader initiated classes = %5d", ClassPrelinker::num_platform_initiated_classes());
   msg.info("App      loader initiated classes = %5d", ClassPrelinker::num_app_initiated_classes());
+  msg.info("Dynamic proxy classes             = %5d%s", _num_dynamic_proxy_classes,
+           CDSConfig::is_dumping_full_module_graph() ? "" : " (not archiving FMG)");
 }

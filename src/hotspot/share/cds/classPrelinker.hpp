@@ -115,6 +115,12 @@ class ClassPrelinker :  AllStatic {
   static bool is_in_javabase(InstanceKlass* ik);
   class RecordResolveIndysCLDClosure;
   class RecordInitiatedClassesClosure;
+
+  // helper
+  static Klass* resolve_boot_klass_or_fail(const char* class_name, TRAPS);
+
+  // java/lang/reflect/Proxy caching
+  static void init_dynamic_proxy_cache(TRAPS);
 public:
   static void initialize();
   static void dispose();
@@ -134,6 +140,10 @@ public:
   static void record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS);
   static int class_reflection_data_flags(InstanceKlass* ik, TRAPS);
   static void generate_reflection_data(JavaThread* current, InstanceKlass* ik, int rd_flags);
+
+  // java/lang/reflect/Proxy caching
+  static void trace_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags);
+  static void define_dynamic_proxy_class(Handle loader, Handle proxy_name, Handle interfaces, int access_flags, TRAPS);
 
   // Is this class resolved as part of vmClasses::resolve_all()? If so, these
   // classes are guatanteed to be loaded at runtime (and cannot be replaced by JVMTI)

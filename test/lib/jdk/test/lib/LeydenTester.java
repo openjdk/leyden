@@ -57,8 +57,8 @@ abstract public class LeydenTester {
     // must override
     abstract public String name();
 
-    // must override
-    abstract public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception;
+    // optional
+    public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {}
 
     // must override
     // main class, followed by arguments to the main class
@@ -81,18 +81,18 @@ abstract public class LeydenTester {
     }
     // optional
     public String staticDumpLog() {
-        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + staticArchiveFile + ".log";
+        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + staticArchiveFile + ".log::filesize=0";
     }
     // optional
     public String dynamicDumpLog() {
-        return "-Xlog:cds=debug,cds+class=debug,cds+resolve=debug,class+load=debug:file=" + dynamicArchiveFile + ".log";
+        return "-Xlog:cds=debug,cds+class=debug,cds+resolve=debug,class+load=debug:file=" + dynamicArchiveFile + ".log::filesize=0";
     }
     // optional
     public String codeCacheDumpLog() {
-        return "-Xlog:scc:file=" + codeCacheFile + ".log";
+        return "-Xlog:scc:file=" + codeCacheFile + ".log::filesize=0";
     }
     public String oldProductionRunLog() {
-        return "-Xlog:scc*=warning,cds:file=" + name() + ".old-production.log";
+        return "-Xlog:scc*=warning,cds:file=" + name() + ".old-production.log::filesize=0";
     }
 
     public final String classListFile;
@@ -104,19 +104,19 @@ abstract public class LeydenTester {
 
     // optional
     public String trainingLog() {
-        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".log:uptime,level,tags,pid";
+        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".log:uptime,level,tags,pid:filesize=0";
     }
     // optional
     public String trainingLog0() {
-        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".0.log";
+        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".training0.log::filesize=0";
     }
     // optional
     public String trainingLog1() {
-        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".1.log";
+        return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".training1.log::filesize=0";
     }
     // optional
     public String productionRunLog() {
-        return "-Xlog:scc*=warning,cds:file=" + name() + ".production.log";
+        return "-Xlog:scc*=warning,cds:file=" + name() + ".production.log::filesize=0";
     }
 
     public final String cdsFile; // -XX:CacheDataStore=<foo>.cds
@@ -179,6 +179,7 @@ abstract public class LeydenTester {
                                                    "-Xshare:dump",
                                                    "-XX:SharedArchiveFile=" + staticArchiveFile,
                                                    "-XX:+ArchiveInvokeDynamic",
+                                                   "-XX:+ArchiveDynamicProxies",
                                                    "-XX:+ArchiveReflectionData",
                                                    "-XX:SharedClassListFile=" + classListFile,
                                                    "-cp", classpath(runMode));
@@ -261,6 +262,7 @@ abstract public class LeydenTester {
         f.delete();
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), trainingLog(),
                                                    "-XX:+ArchiveInvokeDynamic",
+                                                   "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
                                                    "-cp", classpath(runMode),
@@ -288,6 +290,7 @@ abstract public class LeydenTester {
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:+CDSManualFinalImage",
                                                    "-XX:+ArchiveInvokeDynamic",
+                                                   "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
                                                    "-cp", classpath(runMode));
@@ -308,6 +311,7 @@ abstract public class LeydenTester {
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), trainingLog1(),
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:+ArchiveInvokeDynamic",
+                                                   "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
                                                    "-XX:CDSPreimage=" + cdsFile + ".preimage",

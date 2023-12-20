@@ -1356,7 +1356,12 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
         int array_len = arrayOop(source_oop)->length();
         st->print_cr("%s length: %d", source_oop->klass()->external_name(), array_len);
       } else {
-        st->print_cr("%s", source_oop->klass()->external_name());
+        st->print("%s", source_oop->klass()->external_name());
+        if (java_lang_invoke_MethodType::is_instance(source_oop)) {
+          st->print(" ");
+          java_lang_invoke_MethodType::print_signature(source_oop, st);
+        }
+        st->cr();
       }
     }
   }
