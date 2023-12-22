@@ -19,146 +19,44 @@
 # or visit www.oracle.com if you need additional information or have any
 # questions.
 
-# run.sh
+# This script measure the performance of "javac HelloWorld.java"
 #
-# Usage:
+# Specify one or more jvms:
 #
-# bash run.sh $MAINLINE_JAVA $PREMAIN_JAVA
+#     bash run.sh $jvm1
+#     bash run.sh $jvm1 $jvm2 ...
 #
-# $MAINLINE_JAVA - the java executable of a product build from the JDK mainline repo
-# $PREMAIN_JAVA  - the java executable of a product build from the leyden-premain branch
-
-MAINLINE_JAVA=$1; shift 
-PREMAIN_JAVA=$1; shift 
+# It's possible to specify extra parameters for the jvms. E.g.
+#
+#     bash run.sh a/bin/java 'b/bin/java -Xint'  'c/bin/java -Xmixed'
+#
+# See ../lib/bench-lib.sh for sample timing data and more information.
 
 APP=Javac
+CMDLINE="com.sun.tools.javac.Main HelloWorld.java"
 
-HEAP_SIZE=
-#HEAP_SIZE=-Xmx512m
+source ../lib/bench-lib.sh
 
-if test "$SKIP_SETUP" = "" || test ! -f Javac-mainline.jsa; then
-    echo "Set up: create JSA and AOT caches ..."
-
-    #----------------------------------------------------------------------
-    # MAINLINE_JAVA
-    # Trial run and create CDS archive
-
-    $MAINLINE_JAVA ${HEAP_SIZE} -Xshare:off -XX:DumpLoadedClassList=$APP-mainline.classlist com.sun.tools.javac.Main HelloWorld.java
-    $MAINLINE_JAVA ${HEAP_SIZE} -Xshare:dump -XX:SharedArchiveFile=$APP-mainline.jsa -XX:SharedClassListFile=$APP-mainline.classlist \
-                   -Xlog:cds=debug,cds+class=debug:file=$APP-mainline-static.dump.log::filesize=0
-
-    #----------------------------------------------------------------------
-    # PREMAIN_JAVA
-    # Run the "5 steps" to generate CDS archive, training data and AOT code cache
-    #
-    # FIXME: for AOT, we should do a longer and compile more source files, so we can have more optimized AOT code
-
-    JAVA="$PREMAIN_JAVA ${HEAP_SIZE}"
-    DUMP_EXTRA_ARGS=-XX:+ArchiveInvokeDynamic 
-    CMDLINE="-XX:+ArchiveInvokeDynamic com.sun.tools.javac.Main HelloWorld.java"
-
-    source ../lib/premain-run.sh
-fi
-
-
-# The number of the outer loop
-if test "$RUNS" = ""; then
-    RUNS=10
-fi
-
-# The number passed to "perf stat -r"
-if test "$REPEAT" = ""; then
-    REPEAT=16
-fi
-
-function get_elapsed () {
-    elapsed=$(bc <<< "scale=3; $(cat $1 | grep elapsed | sed -e 's/[+].*//') * 1000")
-    echo $elapsed >> $1.elapsed
-    echo $elapsed
-}
-
-rm -rf logs
-mkdir -p logs
-rm -f report.csv
-
-function report () {
-    echo $@
-    echo $@ >> report.csv
-}
-
-function geomean () {
-    printf "%6.2f ms" $(awk 'BEGIN{E = exp(1);} $1>0{tot+=log($1); c++} END{m=tot/c; printf "%.2f\n", E^m}' $*)
-}
-
-report "mainline_xoff,mainline_xon,premain_xon,premain_td,premain_aot"
-
-for i in $(seq 1 $RUNS); do
-    echo RUN $i
-
-    (set -x;
-     perf stat -r $REPEAT $MAINLINE_JAVA ${HEAP_SIZE} -Xshare:off com.sun.tools.javac.Main HelloWorld.java 2> logs/mainline_xoff.$i
-    )
-    mainline_xoff=$(get_elapsed logs/mainline_xoff.$i)
-
-    (set -x;
-     perf stat -r $REPEAT $MAINLINE_JAVA ${HEAP_SIZE} -XX:SharedArchiveFile=$APP-mainline.jsa com.sun.tools.javac.Main HelloWorld.java 2> logs/mainline_xon.$i
-    )
-    mainline_xon=$(get_elapsed logs/mainline_xon.$i)
-
-    (set -x;
-     perf stat -r $REPEAT $PREMAIN_JAVA ${HEAP_SIZE} -XX:SharedArchiveFile=$APP-static.jsa com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_xon.$i
-    )
-    premain_xon=$(get_elapsed logs/premain_xon.$i)
-
-    (set -x;
-     perf stat -r $REPEAT $PREMAIN_JAVA ${HEAP_SIZE} -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining \
-        com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_td.$i
-    )
-    premain_td=$(get_elapsed logs/premain_td.$i)
-
-    (set -x;
-     perf stat -r $REPEAT $PREMAIN_JAVA ${HEAP_SIZE} -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode \
-        -XX:CachedCodeFile=$APP-dynamic.jsa-sc -Xlog:scc=error \
-        com.sun.tools.javac.Main HelloWorld.java 2> logs/premain_aot.$i
-    )
-    premain_aot=$(get_elapsed logs/premain_aot.$i)
-
-    report $mainline_xoff,$mainline_xon,$premain_xon,$premain_td,$premain_aot
-done
-
-echo ===report.csv================================================
-cat report.csv
-echo ===geomean===================================================
-echo "Wall clock time - geomean over $RUNS runs of 'perf stat -r $REPEAT javac HelloWorld.java'"
-echo "Mainline JDK (CDS disabled)                   $(geomean logs/mainline_xoff.*.elapsed)"
-echo "Mainline JDK (CDS enabled)                    $(geomean logs/mainline_xon.*.elapsed)"
-echo "Premain Prototype (CDS )                      $(geomean logs/premain_xon.*.elapsed)"
-echo "Premain Prototype (CDS + Training Data)       $(geomean logs/premain_td.*.elapsed)"
-echo "Premain Prototype (CDS + Training Data + AOT) $(geomean logs/premain_aot.*.elapsed)"
-echo =============================================================
-
-exit
-
-FYI: Results I got on 2023/08/28, Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz, 32MB RAM
-With JDK mainline repo and leyden-premain branch that are pretty up to date
-
-
-===report.csv================================================
-mainline_xoff,mainline_xon,premain_xon,premain_aot
-302.57000,158.881000,127.616000,93.34000
-301.18000,160.397000,127.330000,93.08000
-303.43000,159.058000,128.77000,91.753000
-301.60000,160.08000,131.301000,92.185000
-305.96000,159.434000,133.06000,94.40000
-301.41000,159.534000,132.756000,91.443000
-300.04000,162.88000,133.691000,92.67000
-305.89000,163.226000,133.414000,93.74000
-303.10000,164.616000,133.968000,92.899000
-303.48000,165.50000,135.500000,92.915000
-===geomean===================================================
-Wall clock time - geomean over 10 runs of 'perf stat -r 16 javac HelloWorld.java'
-Mainline JDK (CDS disabled)     302.86 ms
-Mainline JDK (CDS enabled)      161.34 ms
-Premain Prototype (CDS only)    131.71 ms
-Premain Prototype (CDS + AOT)    92.84 ms
-=============================================================
+# Example of comparing two leyden builds
+#
+# $ bash run.sh /bld/leyden/new/bin/java /bld/leyden/old/bin/java
+# ===report.csv================================================
+# Run,1_xon,1_td,1_aot,2_xon,2_td,2_aot
+# 1,118.68000,95.003000,91.050000,118.69000,99.08000,94.664000
+# 2,117.96000,95.262000,91.223000,120.73000,96.863000,96.67000
+# 3,118.43000,96.11000,90.455000,121.16000,98.138000,94.71000
+# 4,115.742000,98.342000,91.075000,120.956000,99.306000,93.407000
+# 5,118.60000,98.172000,90.635000,121.783000,100.952000,95.33000
+# 6,119.958000,99.836000,90.052000,122.60000,101.492000,94.346000
+# 7,118.391000,99.28000,91.158000,121.96000,101.476000,93.113000
+# 8,121.36000,100.026000,90.705000,124.63000,101.697000,94.93000
+# 9,119.84000,100.23000,91.469000,122.93000,102.776000,96.37000
+# 10,121.15000,101.35000,92.78000,124.60000,103.405000,95.88000
+# ==============================jvm1 /bld/leyden/new/bin/java
+# [1_xon ] Premain Prototype (CDS )                      119.00 ms
+# [1_td  ] Premain Prototype (CDS + Training Data)        98.34 ms
+# [1_aot ] Premain Prototype (CDS + Training Data + AOT)  91.06 ms
+# ==============================jvm2 /bld/leyden/old/bin/java
+# [2_xon ] Premain Prototype (CDS )                      121.99 ms
+# [2_td  ] Premain Prototype (CDS + Training Data)       100.50 ms
+# [2_aot ] Premain Prototype (CDS + Training Data + AOT)  94.94 ms
