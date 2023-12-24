@@ -46,8 +46,8 @@ public class LeydenReflection {
     }
 
     static class Tester extends LeydenTester {
-        public String name() {
-            return mainClass;
+        public Tester() {
+            super(mainClass);
         }
 
         @Override

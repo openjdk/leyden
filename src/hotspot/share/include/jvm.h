@@ -1166,6 +1166,9 @@ JVM_VirtualThreadUnmount(JNIEnv* env, jobject vthread, jboolean hide);
 JNIEXPORT void JNICALL
 JVM_VirtualThreadHideFrames(JNIEnv* env, jobject vthread, jboolean hide);
 
+JNIEXPORT void JNICALL
+JVM_VirtualThreadDisableSuspend(JNIEnv* env, jobject vthread, jboolean enter);
+
 /*
  * Core reflection support.
  */

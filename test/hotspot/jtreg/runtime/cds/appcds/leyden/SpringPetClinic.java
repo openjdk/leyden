@@ -118,12 +118,8 @@ public class SpringPetClinic {
         String cp;
 
         SpringPetClinicTester(String cp) {
+            super("SpringPetClinic");
             this.cp = cp;
-        }
-
-        @Override
-        public String name() {
-            return "SpringPetClinic";
         }
 
         @Override

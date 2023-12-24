@@ -64,9 +64,8 @@ public class DynamicProxyTest {
     }
 
     static class Tester extends LeydenTester {
-        @Override
-        public String name() {
-            return "DynamicProxyTest";
+        public Tester() {
+            super("DynamicProxyTest");
         }
 
         @Override

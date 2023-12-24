@@ -55,7 +55,9 @@ abstract public class LeydenTester {
     };
 
     // must override
-    abstract public String name();
+    public final String name() {
+        return this.name;
+    }
 
     // optional
     public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {}
@@ -95,6 +97,7 @@ abstract public class LeydenTester {
         return "-Xlog:scc*=warning,cds:file=" + name() + ".old-production.log::filesize=0";
     }
 
+    public final String name;
     public final String classListFile;
     public final String staticArchiveFile;
     public final String dynamicArchiveFile;
@@ -122,8 +125,9 @@ abstract public class LeydenTester {
     public final String cdsFile; // -XX:CacheDataStore=<foo>.cds
     public final String aotFile; // = cdsFile + ".code"
 
-    public LeydenTester() {
+    public LeydenTester(String name) {
         // Old workflow
+        this.name = name;
         classListFile = name() + ".classlist";
         staticArchiveFile = name() + ".static.jsa";
         dynamicArchiveFile = name() + ".dynamic.jsa";

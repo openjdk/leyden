@@ -504,6 +504,7 @@ ShenandoahHeap::ShenandoahHeap(ShenandoahCollectorPolicy* policy) :
   _num_regions(0),
   _regions(nullptr),
   _update_refs_iterator(this),
+  _gc_state_changed(false),
   _gc_no_progress_count(0),
   _control_thread(nullptr),
   _shenandoah_policy(policy),
@@ -1741,16 +1742,21 @@ void ShenandoahHeap::prepare_update_heap_references(bool concurrent) {
   _update_refs_iterator.reset();
 }
 
-void ShenandoahHeap::set_gc_state_all_threads(char state) {
-  for (JavaThreadIteratorWithHandle jtiwh; JavaThread *t = jtiwh.next(); ) {
-    ShenandoahThreadLocalData::set_gc_state(t, state);
+void ShenandoahHeap::set_gc_state_all_threads() {
+  assert(ShenandoahSafepoint::is_at_shenandoah_safepoint(), "Must be at Shenandoah safepoint");
+  if (_gc_state_changed) {
+    _gc_state_changed = false;
+    char state = gc_state();
+    for (JavaThreadIteratorWithHandle jtiwh; JavaThread *t = jtiwh.next(); ) {
+      ShenandoahThreadLocalData::set_gc_state(t, state);
+    }
   }
 }
 
 void ShenandoahHeap::set_gc_state_mask(uint mask, bool value) {
-  assert(ShenandoahSafepoint::is_at_shenandoah_safepoint(), "Should really be Shenandoah safepoint");
+  assert(ShenandoahSafepoint::is_at_shenandoah_safepoint(), "Must be at Shenandoah safepoint");
   _gc_state.set_cond(mask, value);
-  set_gc_state_all_threads(_gc_state.raw_value());
+  _gc_state_changed = true;
 }
 
 void ShenandoahHeap::set_concurrent_mark_in_progress(bool in_progress) {
@@ -1822,6 +1828,7 @@ void ShenandoahHeap::stop() {
 void ShenandoahHeap::stw_unload_classes(bool full_gc) {
   if (!unload_classes()) return;
   ClassUnloadingContext ctx(_workers->active_workers(),
+                            true /* unregister_nmethods_during_purge */,
                             false /* lock_codeblob_free_separately */);
 
   // Unload classes and purge SystemDictionary.
@@ -2018,19 +2025,13 @@ void ShenandoahHeap::assert_gc_workers(uint nworkers) {
   assert(nworkers > 0 && nworkers <= max_workers(), "Sanity");
 
   if (ShenandoahSafepoint::is_at_shenandoah_safepoint()) {
-    if (UseDynamicNumberOfGCThreads) {
-      assert(nworkers <= ParallelGCThreads, "Cannot use more than it has");
-    } else {
-      // Use ParallelGCThreads inside safepoints
-      assert(nworkers == ParallelGCThreads, "Use ParallelGCThreads within safepoints");
-    }
+    // Use ParallelGCThreads inside safepoints
+    assert(nworkers == ParallelGCThreads, "Use ParallelGCThreads (%u) within safepoint, not %u",
+           ParallelGCThreads, nworkers);
   } else {
-    if (UseDynamicNumberOfGCThreads) {
-      assert(nworkers <= ConcGCThreads, "Cannot use more than it has");
-    } else {
-      // Use ConcGCThreads outside safepoints
-      assert(nworkers == ConcGCThreads, "Use ConcGCThreads outside safepoints");
-    }
+    // Use ConcGCThreads outside safepoints
+    assert(nworkers == ConcGCThreads, "Use ConcGCThreads (%u) outside safepoints, %u",
+           ConcGCThreads, nworkers);
   }
 }
 #endif
