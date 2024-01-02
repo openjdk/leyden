@@ -1,19 +1,12 @@
 package java.lang;
 
-import jdk.internal.constant.AbstractComputedConstant;
-import jdk.internal.constant.ListElementComputedConstant;
-import jdk.internal.constant.MethodHandleComputedConstant;
-import jdk.internal.constant.OnDemandComputedConstantList;
-import jdk.internal.constant.StandardComputedConstant;
 import jdk.internal.constant.StandardConstant;
 import jdk.internal.javac.PreviewFeature;
 
-import java.lang.invoke.MethodHandle;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 /**
@@ -80,7 +73,7 @@ public sealed interface Constant<V>
 
     /**
      * Sets the bound value of this constant. If a value is already bound, throws a
-     *          {@link IllegalStateException}}
+     *          {@link IllegalStateException}}.
      * <p>
      * The most common usage is to set a memoized result, as in:
      * <p>
@@ -103,7 +96,7 @@ public sealed interface Constant<V>
     void set(V value);
 
     /**
-     * Sets the bound value of this constant. If a value is already bound, does nothing
+     * Sets the bound value of this constant. If a value is already bound, does nothing.
      * <p>
      * The most common usage is to set a memoized result, as in:
      * <p>
