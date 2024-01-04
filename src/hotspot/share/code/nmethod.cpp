@@ -2208,9 +2208,6 @@ bool nmethod::check_dependency_on(DepChange& changes) {
   // 1) a new class dependee has been added
   // 2) dependee and all its super classes have been marked
   bool found_check = false;  // set true if we are upset
-  if (preloaded()) {
-    return false; // Skip checka for pre-loaded code
-  }
   for (Dependencies::DepStream deps(this); deps.next(); ) {
     // Evaluate only relevant dependencies.
     if (deps.spot_check_dependency_at(changes) != nullptr) {

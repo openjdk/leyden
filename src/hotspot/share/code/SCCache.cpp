@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1368,9 +1368,9 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
       set_lookup_failed();
       log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not loaded", compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
-    } else if (!InstanceKlass::cast(k)->is_linked() && !_preload) {
+    } else if (!InstanceKlass::cast(k)->is_linked()) {
       set_lookup_failed();
-      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not linked", compile_id(), comp_name, comp_level(), k->external_name());
+      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not linked%s", compile_id(), comp_name, comp_level(), k->external_name(), (_preload ? " for code preload" : ""));
       return nullptr;
     }
     log_info(scc)("%d (L%d): Shared method lookup: %s", compile_id(), comp_level(), m->name_and_sig_as_C_string());

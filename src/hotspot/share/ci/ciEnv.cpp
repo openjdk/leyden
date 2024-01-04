@@ -989,7 +989,7 @@ bool ciEnv::is_in_vm() {
 // Check for changes during compilation (e.g. class loads, evolution,
 // breakpoints, call site invalidation).
 void ciEnv::validate_compile_task_dependencies(ciMethod* target) {
-  if (failing())  return;  // no need for further checks
+  assert(!failing(), "should not call this when failing");
 
   Dependencies::DepType result = dependencies()->validate_dependencies(_task);
   if (result != Dependencies::end_marker) {
@@ -1087,9 +1087,14 @@ void ciEnv::register_method(ciMethod* target,
       dependencies()->encode_content_bytes();
     }
     // Check for {class loads, evolution, breakpoints, ...} during compilation
-    if (install_code && !preload) {
+    if (!failing() && install_code) {
       // Check for {class loads, evolution, breakpoints, ...} during compilation
       validate_compile_task_dependencies(target);
+      if (failing() && preload) {
+        ResourceMark rm;
+        char *method_name = method->name_and_sig_as_C_string();
+        log_warning(scc)("preload code for '%s' failed dependency check", method_name);
+      }
     }
 #if INCLUDE_RTM_OPT
     if (!failing() && (rtm_state != NoRTM) &&
