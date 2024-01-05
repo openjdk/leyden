@@ -39,6 +39,7 @@ class outputStream;
   LOG_TAG(alloc) \
   LOG_TAG(annotation) \
   LOG_TAG(arguments) \
+  LOG_TAG(array) \
   LOG_TAG(attach) \
   LOG_TAG(barrier) \
   LOG_TAG(blocks) \
@@ -89,12 +90,14 @@ class outputStream;
   LOG_TAG(handshake) \
   LOG_TAG(hashtables) \
   LOG_TAG(heap) \
+  LOG_TAG(heapdump) \
   NOT_PRODUCT(LOG_TAG(heapsampling)) \
   LOG_TAG(humongous) \
   LOG_TAG(ihop) \
   LOG_TAG(iklass) \
   LOG_TAG(indy) \
   LOG_TAG(init) \
+  LOG_TAG(inlinecache)\
   LOG_TAG(inlining) \
   LOG_TAG(install) \
   LOG_TAG(interpreter) \

@@ -57,9 +57,12 @@ public class NestedClassWriter extends AbstractMemberWriter {
         throw new UnsupportedOperationException();
     }
 
+    protected void buildSignature(Content target) { }
+    protected void buildDeprecationInfo(Content target) { }
+    protected void buildPreviewInfo(Content target) { }
+
     @Override
-    public Content getMemberSummaryHeader(TypeElement typeElement,
-            Content content) {
+    public Content getMemberSummaryHeader(Content content) {
         content.add(MarkerComments.START_OF_NESTED_CLASS_SUMMARY);
         Content memberContent = new ContentBuilder();
         writer.addSummaryHeader(this, memberContent);
@@ -111,7 +114,7 @@ public class NestedClassWriter extends AbstractMemberWriter {
                     ? resources.getText("doclet.Nested_Classes_Interfaces_Inherited_From_Interface")
                     : resources.getText("doclet.Nested_Classes_Interfaces_Inherited_From_Class"));
         }
-        var labelHeading = HtmlTree.HEADING(Headings.TypeDeclaration.SUMMARY_HEADING, label);
+        var labelHeading = HtmlTree.HEADING(Headings.TypeDeclaration.INHERITED_SUMMARY_HEADING, label);
         labelHeading.setId(htmlIds.forInheritedClasses(typeElement));
         labelHeading.add(Entity.NO_BREAK_SPACE);
         labelHeading.add(classLink);

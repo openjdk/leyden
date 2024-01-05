@@ -29,7 +29,6 @@ import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.Stable;
 
-import java.lang.invoke.VarHandle;
 import java.util.NoSuchElementException;
 import java.util.function.Supplier;
 
@@ -42,20 +41,17 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     // `Unsafe` is used rather than the supported API of `VarHandle` to allow
     // the use of `ComputedConstant` constructs early in the boot process.
-    private static final long VALUE_OFFSET =
-            Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "value");
-
-    private static final long STATE_OFFSET =
-            Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "state");
-
-    private static final long BINDING_OFFSET =
-            Unsafe.getUnsafe().objectFieldOffset(AbstractComputedConstant.class, "binding");
+    private static final long VALUE_OFFSET = ConstantUtil.offset(AbstractComputedConstant.class, "value");
+    private static final long STATE_OFFSET = ConstantUtil.offset(AbstractComputedConstant.class, "state");
+    private static final long BINDING_OFFSET = ConstantUtil.offset(AbstractComputedConstant.class, "binding");
 
     private final P provider;
 
     /**
      * This field holds a bound lazy value.
      * If != null, a value is bound, otherwise the state field needs to be consulted.
+     * <p>
+     * This field is accessed indirectly via Unsafe operations
      */
     @Stable
     private V value;
@@ -66,12 +62,16 @@ public abstract sealed class AbstractComputedConstant<V, P>
      *   1) Flagging if a non-null value is bound (State.BOUND_NON_NULL)
      *   2) if the value was actually evaluated to null (State.BOUND_NULL)
      *   3) if the initial supplier threw an exception (State.ERROR)
+     * <p>
+     * This field is accessed indirectly via Unsafe operations
      */
     @Stable
     private byte state;
 
     /**
      * This variable indicates if we are trying to bind (1) or not (0).
+     * <p>
+     * This field is accessed indirectly via Unsafe operations
      */
     private byte binding;
 
@@ -131,12 +131,33 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     @ForceInline
     @Override
+    public V orElseGet(Supplier<? extends V> supplier) {
+        V v = orElse(null);
+        if (state == State.ERROR.ordinalAsByte()) {
+            return supplier.get();
+        }
+        return v;
+    }
+
+    @ForceInline
+    @Override
     public final <X extends Throwable> V orElseThrow(Supplier<? extends X> exceptionSupplier) throws X {
         V v = orElse(null);
         if (state == State.ERROR.ordinalAsByte()) {
             throw exceptionSupplier.get();
         }
         return v;
+    }
+
+    @Override
+    public final String toString() {
+        String v = switch (stateVolatileAsEnum()) {
+            case UNBOUND -> isBindingVolatile() ? ".binding" : ".unbound"; // Racy
+            case NON_NULL -> "[" + valueVolatile().toString() + "]";
+            case NULL -> "[null]";
+            case ERROR -> ".error";
+        };
+        return toStringDescription() + v;
     }
 
     private synchronized V slowPath(V other,
@@ -148,7 +169,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
         // Under synchronization, visibility and atomicy is guaranteed for
         // the fields "value" and "state" as they only change within this block.
-        return switch (stateVolatileAsEnum()) {
+        return switch (stateAsEnum()) {
             case UNBOUND -> bindValue(rethrow, other);
             case NON_NULL -> value;
             case NULL -> null;
@@ -171,7 +192,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
             } else {
                 casValue(v);
                 // Insert a memory barrier for store/store operations
-                freeze();
+                ConstantUtil.freeze();
                 casState(State.NON_NULL);
             }
             return v;
@@ -194,28 +215,6 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     abstract String toStringDescription();
 
-    @Override
-    public final String toString() {
-        String v = switch (stateVolatileAsEnum()) {
-            case UNBOUND -> isBindingVolatile() ? ".binding" : ".unbound"; // Racy
-            case NON_NULL -> "[" + valueVolatile().toString() + "]";
-            case NULL -> "null";
-            case ERROR -> ".error";
-        };
-        return toStringDescription() + v;
-    }
-
-    /**
-     * Performs a "freeze" operation, required to ensure safe publication under plain memory read semantics.
-     * <p>
-     * This inserts a memory barrier, thereby establishing a happens-before constraint.
-     * This prevents the reordering of store operations across the freeze boundary.
-     */
-    private static void freeze() {
-        // Issue a store fence, which is sufficient
-        // to provide protection against store/store reordering.
-        VarHandle.releaseFence();
-    }
 
     // Accessors
 
@@ -226,6 +225,10 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     private byte stateVolatile() {
         return Unsafe.getUnsafe().getByteVolatile(this, STATE_OFFSET);
+    }
+
+    private State stateAsEnum() {
+        return State.of(state);
     }
 
     private State stateVolatileAsEnum() {
@@ -244,7 +247,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     private void casState(State state) {
         if (!Unsafe.getUnsafe().compareAndSetByte(this, STATE_OFFSET, (byte) 0, state.ordinalAsByte())) {
-            throw new InternalError("Value was not zero: " + stateVolatile());
+            throw new InternalError("State was not zero: " + stateVolatile());
         }
     }
 

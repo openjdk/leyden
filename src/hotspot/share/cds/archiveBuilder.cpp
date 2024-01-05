@@ -26,8 +26,10 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveUtils.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/dumpAllocStats.hpp"
+#include "cds/dynamicArchive.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
@@ -186,10 +188,6 @@ ArchiveBuilder::~ArchiveBuilder() {
   }
 }
 
-bool ArchiveBuilder::is_dumping_full_module_graph() {
-  return DumpSharedSpaces && MetaspaceShared::use_full_module_graph();
-}
-
 class GatherKlassesAndSymbols : public UniqueMetaspaceClosure {
   ArchiveBuilder* _builder;
 
@@ -235,13 +233,13 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
   GatherKlassesAndSymbols doit(this);
   iterate_roots(&doit);
 #if INCLUDE_CDS_JAVA_HEAP
-  if (is_dumping_full_module_graph()) {
+  if (CDSConfig::is_dumping_full_module_graph()) {
     ClassLoaderDataShared::iterate_symbols(&doit);
   }
 #endif
   doit.finish();
 
-  if (DumpSharedSpaces) {
+  if (CDSConfig::is_dumping_static_archive()) {
     // To ensure deterministic contents in the static archive, we need to ensure that
     // we iterate the MetaspaceObjs in a deterministic order. It doesn't matter where
     // the MetaspaceObjs are located originally, as they are copied sequentially into
@@ -261,7 +259,8 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
     // TODO: in the future, if we want to produce deterministic contents in the
     // dynamic archive, we might need to sort the symbols alphabetically (also see
     // DynamicArchiveBuilder::sort_methods()).
-    sort_symbols_and_fix_hash();
+    log_info(cds)("Sorting symbols ... ");
+    _symbols->sort(compare_symbols_by_address);
     sort_klasses();
 
     // TODO -- we need a proper estimate for the archived modules, etc,
@@ -276,16 +275,6 @@ int ArchiveBuilder::compare_symbols_by_address(Symbol** a, Symbol** b) {
   } else {
     assert(a[0] > b[0], "Duplicated symbol %s unexpected", (*a)->as_C_string());
     return 1;
-  }
-}
-
-void ArchiveBuilder::sort_symbols_and_fix_hash() {
-  log_info(cds)("Sorting symbols and fixing identity hash ... ");
-  os::init_random(0x12345678);
-  _symbols->sort(compare_symbols_by_address);
-  for (int i = 0; i < _symbols->length(); i++) {
-    assert(_symbols->at(i)->is_permanent(), "archived symbols must be permanent");
-    _symbols->at(i)->update_identity_hash();
   }
 }
 
@@ -350,7 +339,7 @@ address ArchiveBuilder::reserve_buffer() {
   // The bottom of the archive (that I am writing now) should be mapped at this address by default.
   address my_archive_requested_bottom;
 
-  if (DumpSharedSpaces) {
+  if (CDSConfig::is_dumping_static_archive()) {
     my_archive_requested_bottom = _requested_static_archive_bottom;
   } else {
     _mapped_static_archive_bottom = (address)MetaspaceObj::shared_metaspace_base();
@@ -378,7 +367,7 @@ address ArchiveBuilder::reserve_buffer() {
     MetaspaceShared::unrecoverable_writing_error();
   }
 
-  if (DumpSharedSpaces) {
+  if (CDSConfig::is_dumping_static_archive()) {
     // We don't want any valid object to be at the very bottom of the archive.
     // See ArchivePtrMarker::mark_pointer().
     rw_region()->allocate(16);
@@ -520,12 +509,12 @@ bool ArchiveBuilder::is_excluded(Klass* klass) {
     InstanceKlass* ik = InstanceKlass::cast(klass);
     return SystemDictionaryShared::is_excluded_class(ik);
   } else if (klass->is_objArray_klass()) {
-    if (DynamicDumpSharedSpaces) {
-      // Don't support archiving of array klasses for now (WHY???)
-      return true;
-    }
     Klass* bottom = ObjArrayKlass::cast(klass)->bottom_klass();
-    if (bottom->is_instance_klass()) {
+    if (MetaspaceShared::is_shared_static(bottom)) {
+      // The bottom class is in the static archive so it's clearly not excluded.
+      assert(CDSConfig::is_dumping_dynamic_archive(), "sanity");
+      return false;
+    } else if (bottom->is_instance_klass()) {
       return SystemDictionaryShared::is_excluded_class(InstanceKlass::cast(bottom));
     }
   }
@@ -581,13 +570,19 @@ void ArchiveBuilder::verify_estimate_size(size_t estimate, const char* which) {
   _other_region_used_bytes = 0;
 }
 
+char* ArchiveBuilder::ro_strdup(const char* s) {
+  char* archived_str = ro_region_alloc((int)strlen(s) + 1);
+  strcpy(archived_str, s);
+  return archived_str;
+}
+
 void ArchiveBuilder::dump_rw_metadata() {
   ResourceMark rm;
   log_info(cds)("Allocating RW objects ... ");
   make_shallow_copies(&_rw_region, &_rw_src_objs);
 
 #if INCLUDE_CDS_JAVA_HEAP
-  if (is_dumping_full_module_graph()) {
+  if (CDSConfig::is_dumping_full_module_graph()) {
     // Archive the ModuleEntry's and PackageEntry's of the 3 built-in loaders
     char* start = rw_region()->top();
     ClassLoaderDataShared::allocate_archived_tables();
@@ -604,7 +599,7 @@ void ArchiveBuilder::dump_ro_metadata() {
   make_shallow_copies(&_ro_region, &_ro_src_objs);
 
 #if INCLUDE_CDS_JAVA_HEAP
-  if (is_dumping_full_module_graph()) {
+  if (CDSConfig::is_dumping_full_module_graph()) {
     char* start = ro_region()->top();
     ClassLoaderDataShared::init_archived_tables();
     alloc_stats()->record_modules(ro_region()->top() - start, /*read_only*/true);
@@ -645,6 +640,14 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
   newtop = dump_region->top();
 
   memcpy(dest, src, bytes);
+
+  // Update the hash of buffered sorted symbols for static dump so that the symbols have deterministic contents
+  if (CDSConfig::is_dumping_static_archive() && (src_info->msotype() == MetaspaceObj::SymbolType)) {
+    Symbol* buffered_symbol = (Symbol*)dest;
+    assert(((Symbol*)src)->is_permanent(), "archived symbols must be permanent");
+    buffered_symbol->update_identity_hash();
+  }
+
   {
     bool created;
     _buffered_to_src_table.put_if_absent((address)dest, src, &created);
@@ -737,7 +740,7 @@ void ArchiveBuilder::make_klasses_shareable() {
       assert(k->is_instance_klass(), " must be");
       num_instance_klasses ++;
       InstanceKlass* ik = InstanceKlass::cast(k);
-      if (DynamicDumpSharedSpaces) {
+      if (CDSConfig::is_dumping_dynamic_archive()) {
         // For static dump, class loader type are already set.
         ik->assign_class_loader_type();
       }
@@ -792,6 +795,14 @@ void ArchiveBuilder::make_klasses_shareable() {
   log_info(cds)("    obj array classes  = %5d", num_obj_array_klasses);
   log_info(cds)("    type array classes = %5d", num_type_array_klasses);
   log_info(cds)("               symbols = %5d", _symbols->length());
+
+  DynamicArchive::make_array_klasses_shareable();
+}
+
+void ArchiveBuilder::serialize_dynamic_archivable_items(SerializeClosure* soc) {
+  SymbolTable::serialize_shared_table_header(soc, false);
+  SystemDictionaryShared::serialize_dictionary_headers(soc, false);
+  DynamicArchive::serialize_array_klasses(soc);
 }
 
 uintx ArchiveBuilder::buffer_to_offset(address p) const {
@@ -802,7 +813,7 @@ uintx ArchiveBuilder::buffer_to_offset(address p) const {
 
 uintx ArchiveBuilder::any_to_offset(address p) const {
   if (is_in_mapped_static_archive(p)) {
-    assert(DynamicDumpSharedSpaces, "must be");
+    assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
     return p - _mapped_static_archive_bottom;
   }
   if (!is_in_buffer_space(p)) {
@@ -814,7 +825,7 @@ uintx ArchiveBuilder::any_to_offset(address p) const {
 
 #if INCLUDE_CDS_JAVA_HEAP
 narrowKlass ArchiveBuilder::get_requested_narrow_klass(Klass* k) {
-  assert(DumpSharedSpaces, "sanity");
+  assert(CDSConfig::is_dumping_heap(), "sanity");
   k = get_buffered_klass(k);
   Klass* requested_k = to_requested(k);
   address narrow_klass_base = _requested_static_archive_bottom; // runtime encoding base == runtime mapping start
@@ -905,12 +916,12 @@ void ArchiveBuilder::relocate_to_requested() {
 
   size_t my_archive_size = buffer_top() - buffer_bottom();
 
-  if (DumpSharedSpaces) {
+  if (CDSConfig::is_dumping_static_archive()) {
     _requested_static_archive_top = _requested_static_archive_bottom + my_archive_size;
     RelocateBufferToRequested<true> patcher(this);
     patcher.doit();
   } else {
-    assert(DynamicDumpSharedSpaces, "must be");
+    assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
     _requested_dynamic_archive_top = _requested_dynamic_archive_bottom + my_archive_size;
     RelocateBufferToRequested<false> patcher(this);
     patcher.doit();
@@ -1125,6 +1136,7 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
       // The address of _source_obj at runtime
       oop requested_obj = ArchiveHeapWriter::source_obj_to_requested_obj(_source_obj);
       // The address of this field in the requested space
+      assert(requested_obj != nullptr, "Attempting to load field from null oop");
       address requested_field_addr = cast_from_oop<address>(requested_obj) + fd->offset();
 
       fd->print_on(_st);
@@ -1226,7 +1238,7 @@ public:
   static void log(ArchiveBuilder* builder, FileMapInfo* mapinfo,
                   ArchiveHeapInfo* heap_info,
                   char* bitmap, size_t bitmap_size_in_bytes) {
-    log_info(cds, map)("%s CDS archive map for %s", DumpSharedSpaces ? "Static" : "Dynamic", mapinfo->full_path());
+    log_info(cds, map)("%s CDS archive map for %s", CDSConfig::is_dumping_static_archive() ? "Static" : "Dynamic", mapinfo->full_path());
 
     address header = address(mapinfo->header());
     address header_end = header + mapinfo->header()->header_size();

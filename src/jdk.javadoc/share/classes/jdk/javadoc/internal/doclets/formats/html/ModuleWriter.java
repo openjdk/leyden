@@ -165,12 +165,8 @@ public class ModuleWriter extends HtmlDocletWriter {
         computeModulesData();
     }
 
-    /**
-     * Build the module summary.
-     *
-     * @throws DocletException if there is a problem while building the documentation
-     */
-    public void build() throws DocletException {
+    @Override
+    public void buildPage() throws DocletException {
         buildModuleDoc();
     }
 
@@ -195,9 +191,11 @@ public class ModuleWriter extends HtmlDocletWriter {
      */
     protected void buildContent() {
         Content moduleContent = getContentHeader();
-
-        addModuleSignature(moduleContent);
-        buildModuleDescription(moduleContent);
+        moduleContent.add(new HtmlTree(TagName.HR));
+        Content div = HtmlTree.DIV(HtmlStyle.horizontalScroll);
+        addModuleSignature(div);
+        buildModuleDescription(div);
+        moduleContent.add(div);
         buildSummary(moduleContent);
 
         addModuleContent(moduleContent);
@@ -681,6 +679,7 @@ public class ModuleWriter extends HtmlDocletWriter {
                 row.add(getPackageExportOpensTo(entry.openedTo));
             }
             Content summary = new ContentBuilder();
+            // TODO: consider deprecation info, addPackageDeprecationInfo
             addPreviewSummary(pkg, summary);
             addSummaryComment(pkg, summary);
             row.add(summary);
@@ -885,7 +884,6 @@ public class ModuleWriter extends HtmlDocletWriter {
     }
 
     protected void addModuleSignature(Content moduleContent) {
-        moduleContent.add(new HtmlTree(TagName.HR));
         moduleContent.add(Signatures.getModuleSignature(mdle, this));
     }
 
@@ -924,5 +922,10 @@ public class ModuleWriter extends HtmlDocletWriter {
             }
             li.add(deprDiv);
         }
+    }
+
+    @Override
+    public boolean isIndexable() {
+        return true;
     }
 }

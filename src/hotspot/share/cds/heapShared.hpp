@@ -43,11 +43,14 @@
 class DumpedInternedStrings;
 class FileMapInfo;
 class KlassSubGraphInfo;
-class KlassToOopHandleTable;
+class MetaspaceObjToOopHandleTable;
 class ResourceBitMap;
 
 struct ArchivableStaticFieldInfo;
 class ArchiveHeapInfo;
+
+#define ARCHIVED_BOOT_LAYER_CLASS "jdk/internal/module/ArchivedBootLayer"
+#define ARCHIVED_BOOT_LAYER_FIELD "archivedBootLayer"
 
 // A dump time sub-graph info for Klass _k. It includes the entry points
 // (static fields in _k's mirror) of the archived sub-graphs reachable
@@ -160,6 +163,7 @@ public:
   // Scratch objects for archiving Klass::java_mirror()
   static oop scratch_java_mirror(BasicType t) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   static oop scratch_java_mirror(Klass* k)    NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
+  static bool is_archived_boot_layer_available(JavaThread* current) NOT_CDS_JAVA_HEAP_RETURN_(false);
 
 private:
 #if INCLUDE_CDS_JAVA_HEAP
@@ -280,7 +284,8 @@ private:
   static GrowableArrayCHeap<oop, mtClassShared>* _pending_roots;
   static OopHandle _roots;
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
-  static KlassToOopHandleTable* _scratch_java_mirror_table;
+  static MetaspaceObjToOopHandleTable* _scratch_java_mirror_table;
+  static MetaspaceObjToOopHandleTable* _scratch_references_table;
 
   static void init_seen_objects_table() {
     assert(_seen_objects_table == nullptr, "must be");
@@ -394,6 +399,8 @@ private:
 #endif // INCLUDE_CDS_JAVA_HEAP
 
  public:
+  static objArrayOop scratch_resolved_references(ConstantPool* src);
+  static void add_scratch_resolved_references(ConstantPool* src, objArrayOop dest) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_scratch_objects(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static bool is_heap_region(int idx) {
     CDS_JAVA_HEAP_ONLY(return (idx == MetaspaceShared::hp);)

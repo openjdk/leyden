@@ -24,9 +24,15 @@
  */
 package java.lang.snippet;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.ResourceBundle;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 /**
  * Snippets for the ComputedConstant class
@@ -135,6 +141,133 @@ public final class ComputedConstantSnippets {
         }
     }
     // @end
+
+
+    static
+
+    class GermanLabels {
+
+        private static final ResourceBundle BUNDLE =
+                ResourceBundle.getBundle("LabelsBundle", Locale.GERMAN);
+
+        public static String get(int i) {
+            return BUNDLE.getString(Integer.toString(i));
+        }
+    /*
+    # This is the LabelsBundle_de.properties file
+    #file: LabelsBundle_de.properties
+    0 = Rechner
+    1 = Festplatte
+    2 = Monitor
+    3 = Tastatur
+     */
+
+        public static void main(String[] args) {
+            var keyboard = GermanLabels.get(3); // Tastatur
+        }
+
+    }
+
+
+    static
+
+    class GermanLabels2 {
+
+        private static final ComputedConstant<ResourceBundle> BUNDLE =
+                ComputedConstant.of(
+                        () -> ResourceBundle.getBundle("LabelsBundle", Locale.GERMAN)
+                );
+
+        private static final List<ComputedConstant<String>> LABELS = ComputedConstant.of(
+                4,
+                i -> BUNDLE.get().getString(Integer.toString(i)));
+
+        public static String get(int i) {
+            return LABELS.get(i) // Gets the i-th ComputedConstant
+                    .get();      // Gets its bound value
+        }
+
+    /*
+    # This is the LabelsBundle_de.properties file
+    0 = Rechner
+    1 = Festplatte
+    2 = Monitor
+    3 = Tastatur
+     */
+
+        public static void main(String[] args) {
+                var keyboard = GermanLabels.get(3); // Tastatur
+        }
+
+    }
+
+
+    static
+
+    class Fibonacci {
+
+        private final Map<Integer, Integer> map;
+
+        public Fibonacci(int upperBound) {
+            map = new ConcurrentHashMap<>(upperBound);
+        }
+
+        public int number(int n) {
+                return (n < 2)
+                        ? n
+                        : map.computeIfAbsent(n, nk -> number(nk - 1) + number(nk - 2) );
+        }
+
+    }
+
+    static
+
+    class Fibonacci2 {
+
+        private final List<ComputedConstant<Integer>> list;
+
+        public Fibonacci2(int upperBound) {
+            list = ComputedConstant.of(upperBound, this::number);
+        }
+
+        public int number(int n) {
+            return (n < 2)
+                    ? n
+                    : list.get(n - 1).get() + list.get(n - 2).get();
+        }
+
+
+        public static void main(String[] args) {
+            Fibonacci fibonacci = new Fibonacci(20);
+            int[] fibs = IntStream.range(0, 10)
+                    .map(fibonacci::number)
+                    .toArray(); // { 0, 1, 1, 2, 3, 5, 8, 13, 21, 34 }
+        }
+
+    }
+
+    static final
+
+    class Fibonacci3 {
+
+        private static final List<ComputedConstant<Integer>> LIST
+                = ComputedConstant.of(40, Fibonacci3::number);
+
+        public static int number(int n) {
+            return (n < 2)
+                    ? n
+                    : LIST.get(n - 1).get() + LIST.get(n - 2).get();
+        }
+
+        public static void main(String[] args) {
+            int[] fibs = IntStream.range(0, 10)
+                    .map(Fibonacci3::number)
+                    .toArray(); // { 0, 1, 1, 2, 3, 5, 8, 13, 21, 34 }
+        }
+
+    }
+
+
 
     // Dummy classes
     static final class Foo {}

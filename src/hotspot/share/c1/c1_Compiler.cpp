@@ -77,7 +77,7 @@ void Compiler::initialize() {
   }
 }
 
-int Compiler::code_buffer_size() {
+uint Compiler::code_buffer_size() {
   return Compilation::desired_max_code_buffer_size() + Compilation::desired_max_constant_size();
 }
 
@@ -104,10 +104,12 @@ bool Compiler::is_intrinsic_supported(const methodHandle& method) {
     // C1 does not support intrinsification of synchronized methods.
     return false;
   }
+  return Compiler::is_intrinsic_supported(id);
+}
 
+bool Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   switch (id) {
   case vmIntrinsics::_compareAndSetLong:
-    if (!VM_Version::supports_cx8()) return false;
     break;
   case vmIntrinsics::_getAndAddInt:
     if (!VM_Version::supports_atomic_getadd4()) return false;

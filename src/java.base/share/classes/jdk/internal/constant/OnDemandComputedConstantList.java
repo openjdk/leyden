@@ -11,9 +11,7 @@ import java.util.function.IntFunction;
 // Unfortunately, `AbstractList` declares `protected transient int modCount = 0;` preventing us
 // from annotating a `List` `@ValueBased`
 public final class OnDemandComputedConstantList<V>
-        extends AbstractList<ComputedConstant<V>>
-        implements List<ComputedConstant<V>>,
-        RandomAccess {
+        extends AbstractList<ComputedConstant<V>> implements RandomAccess {
 
     private static final long ARRAY_BASE_OFFSET = Unsafe.getUnsafe().arrayBaseOffset(ComputedConstant[].class);
     private static final long ARRAY_INDEX_SCALE = Unsafe.getUnsafe().arrayIndexScale(ComputedConstant[].class);
@@ -50,14 +48,7 @@ public final class OnDemandComputedConstantList<V>
             return v;
         }
 
-        // Several candidates might be created ...
-        v = ListElementComputedConstant.create(index, provider);
-        // ... but only one will be selected
-        if (!casElement(index, v)) {
-            // Someone else created the selected element
-            v = elementVolatile(index);
-        }
-        return v;
+        return caeElement(index, ListElementComputedConstant.create(index, provider));
     }
 
     // Accessors
@@ -67,8 +58,13 @@ public final class OnDemandComputedConstantList<V>
         return (ComputedConstant<V>) Unsafe.getUnsafe().getReferenceVolatile(values, offset(index));
     }
 
-    private boolean casElement(int index, Object o) {
-        return Unsafe.getUnsafe().compareAndSetReference(values, offset(index), null, o);
+    private ComputedConstant<V> caeElement(int index, ComputedConstant<V> created) {
+        // try to store our newly-created CC
+        @SuppressWarnings("unchecked")
+        var witness = (ComputedConstant<V>) Unsafe.getUnsafe()
+                .compareAndExchangeReference(values, offset(index), null, created);
+        // will use the witness CC someone else created if it exists
+        return witness == null ? created : witness;
     }
 
     private static long offset(int index) {
