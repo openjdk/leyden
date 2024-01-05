@@ -28,7 +28,7 @@ import java.util.function.Supplier;
  *
  * Providers of constant values are guaranteed to be invoked at most one time. In other words,
  * a provider can only run once and in the first-calling thread and so, there is no race across threads
- * which guarantees the at-most-once evaluation.  The life cycle of a computed constant is said
+ * which guarantees the at-most-once evaluation. The life cycle of a computed constant is said
  * to be <em>monotonic</em> where it can go from the initial state of <em>unbound</em>
  * (when it is not associated with any value) eventually to the terminal state of <em>bound</em> (when it is
  * permanently associated with a fixed value). The value can be {@code null}.
@@ -81,7 +81,7 @@ import java.util.function.Supplier;
  *}
  * The performance of the {@code get()} method in the example above is on par with using an
  * inner/private class holding a lazily initialized variable but with no overhead imposed by
- * the extra holder class.  Such a holder class might implement a lazy value as follows:
+ * the extra holder class. Such a holder class might implement a lazy value as follows:
  *
  {@snippet lang = java :
   *     class DemoHolder {
@@ -204,8 +204,9 @@ import java.util.function.Supplier;
  * All methods of this class will throw a {@link java.lang.NullPointerException}
  * if a reference parameter is {@code null} unless otherwise specified.
  *
- * All computed constant constructs are "null-friendly" meaning a value can be bound to {@code null}.  As usual, values of type
- * Optional may also express optionality, without using {@code null}, as exemplified here:
+ * All computed constant constructs are "null-friendly" meaning a value can be bound to {@code null}.
+ * As usual, values of type Optional may also express optionality, without using {@code null}, as
+ * exemplified here:
  * {@snippet lang = java:
  *     class DemoNull {
  *
@@ -251,18 +252,19 @@ public sealed interface ComputedConstant<V>
 
     /**
      * {@return {@code true} if an attempt was made to bind a value but
-     * a value could not be bound to this constant}
+     *          a value could not be bound to this constant}
      */
     boolean isError();
 
     /**
      * {@return the bound value of this computed constant. If no value is bound, atomically attempts
-     * to compute and record a bound value using the pre-set <em> {@linkplain ComputedConstant#of(Supplier) provider}</em>}
+     *          to compute and record a bound value using the pre-set
+     *          <em>{@linkplain ComputedConstant#of(Supplier) provider}</em>}
      * <p>
      * If the provider returns {@code null}, {@code null} is bound and returned.
      * If the provider throws an (unchecked) exception, the exception is wrapped into
-     * a {@link NoSuchElementException} which is thrown, and no value is bound.  If an Error
-     * is thrown by the provider, the Error is relayed to the caller.  If an Exception
+     * a {@link NoSuchElementException} which is thrown, and no value is bound. If an Error
+     * is thrown by the provider, the Error is relayed to the caller. If an Exception
      * or an Error is thrown by the provider, no further attempt is made to bind the value and all
      * subsequent invocations of this method will throw a new {@link NoSuchElementException}.
      * <p>
@@ -275,51 +277,73 @@ public sealed interface ComputedConstant<V>
      *    assertNotNull(value); // Value is non-null
      *}
      * <p>
-     * If a thread calls this method while being bound by another thread, the current thread will be suspended until
-     * the binding completes (successfully or not).  Otherwise, this method is guaranteed to be lock-free.
+     * If a thread calls this method while being bound by another thread, the current thread will
+     * be suspended until the binding completes (successfully or not). Otherwise, this method is
+     * guaranteed to be lock-free.
      *
      * @throws NoSuchElementException if a value cannot be bound
      * @throws StackOverflowError     if a circular dependency is detected (i.e. the provider calls itself
-     *                                directly or indirectly in the same thread).
+     *                                directly or indirectly in the same thread)
      * @throws Error                  if the provider throws an Error
      */
     @Override
     V get();
 
     /**
-     * {@return the bound value of this computed constant.  If no value is bound, atomically attempts
-     * to compute and record a bound value using the pre-set <em>{@linkplain ComputedConstant#of(Supplier) provider}</em>
-     * or, if the provider throws an unchecked exception, returns the provided {@code other} value}
+     * {@return the bound value of this computed constant. If no value is bound, atomically attempts
+     *          to compute and record a bound value using the pre-set
+     *          <em>{@linkplain ComputedConstant#of(Supplier) provider}</em> or, if the provider throws
+     *          an unchecked exception, returns the provided {@code other} value}
      * <p>
-     * If a thread calls this method while being bound by another thread, the current thread will be suspended until
-     * the binding completes (successfully or not).  Otherwise, this method is guaranteed to be lock-free.
+     * If a thread calls this method while being bound by another thread, the current thread will
+     * be suspended until the binding completes (successfully or not). Otherwise, this method is
+     * guaranteed to be lock-free.
      *
      * @param other to use if no value neither is bound nor can be bound (can be null)
-     * @throws StackOverflowError     if a circular dependency is detected (i.e. the provider calls itself
-     *                                directly or indirectly in the same thread).
-     * @throws Error                  if the provider throws an Error
+     * @throws StackOverflowError if a circular dependency is detected (i.e. the provider calls itself
+     *                            directly or indirectly in the same thread)
+     * @throws Error              if the provider throws an Error
      */
     V orElse(V other);
 
     /**
      * {@return the bound value of this computed constant. If no value is bound, atomically attempts
-     * to compute and record a bound value using the pre-set <em>{@linkplain ComputedConstant#of(Supplier) provider}</em>
-     * or, if the provider throws an unchecked exception, throws an exception produced by invoking the
-     * provided {@code exceptionSupplier} function}
+     *          to compute and record a bound value using the pre-set
+     *          <em>{@linkplain ComputedConstant#of(Supplier) provider}</em> or, if the provider throws
+     *          an unchecked exception, returns the result of the provided {@code supplier}}
      * <p>
-     * If a thread calls this method while being bound by another thread, the current thread will be suspended until
-     * the binding completes (successfully or not).  Otherwise, this method is guaranteed to be lock-free.
+     * If a thread calls this method while being bound by another thread, the current thread will
+     * be suspended until the binding completes (successfully or not). Otherwise, this method is
+     * guaranteed to be lock-free.
+     *
+     * @param supplier to use if no value neither is bound nor can be bound (can be null)
+     * @throws StackOverflowError if a circular dependency is detected (i.e. the provider calls itself
+     *                            directly or indirectly in the same thread)
+     * @throws Error              if the provider throws an Error
+     */
+    V orElseGet(Supplier<? extends V> supplier);
+
+    /**
+     * {@return the bound value of this computed constant. If no value is bound, atomically attempts
+     *          to compute and record a bound value using the pre-set
+     *          <em>{@linkplain ComputedConstant#of(Supplier) provider}</em> or, if the provider throws
+     *          an unchecked exception, throws an exception produced by invoking the provided
+     *          {@code exceptionSupplier} function}
+     * <p>
+     * If a thread calls this method while being bound by another thread, the current thread will
+     * be suspended until the binding completes (successfully or not).  Otherwise, this method is
+     * guaranteed to be lock-free.
      *
      * @param <X>               the type of the exception that may be thrown
      * @param exceptionSupplier the supplying function that produces the exception to throw
-     * @throws X                if a value cannot be bound.
+     * @throws X                if a value cannot be bound
      * @throws Error            if the provider throws an Error
      */
     <X extends Throwable> V orElseThrow(Supplier<? extends X> exceptionSupplier) throws X;
 
     /**
-     * {@return a new {@link ComputedConstant } that will use this computed constant's eventually bound value
-     * and then apply the provided {@code mapper} as the pre-set provider}
+     * {@return a new {@link ComputedConstant } that will use this computed constant's eventually
+     *          bound value and then apply the provided {@code mapper} as the pre-set provider}
      *
      * @param mapper to apply to this computed constant
      * @param <R>    the return type of the provided {@code mapper}
@@ -330,11 +354,12 @@ public sealed interface ComputedConstant<V>
     }
 
     /**
-     * {@return a new {@link ComputedConstant } with the given pre-set {@code provider} to be used to compute a value}
+     * {@return a new {@link ComputedConstant } with the given pre-set {@code provider} to be used
+     *          to compute a value}
      * <p>
-     * If a later attempt is made to invoke any of the
-     * {@link #get()}, {@link #orElse(Object)} or {@link #orElseThrow(Supplier)} methods
-     * when this computed constant is unbound, the {@code provider} will automatically be invoked.
+     * If a later attempt is made to invoke any of the {@link #get()}, {@link #orElse(Object)} or
+     * {@link #orElseThrow(Supplier)} methods when this computed constant is unbound, the
+     * {@code provider} will automatically be invoked.
      * <p>
      * {@snippet lang = java:
      *     class DemoPreset {
@@ -357,8 +382,9 @@ public sealed interface ComputedConstant<V>
     }
 
     /**
-     * {@return a new {@link ComputedConstant } with the given pre-set {@code provider} to be used to compute a value
-     * and provided {@code superType} indicating the most specific return type that can be expressed}
+     * {@return a new {@link ComputedConstant } with the given pre-set {@code provider} to be used
+     *          to compute a value and provided {@code returnType} indicating the most specific return
+     *          type that can be expressed}
      * <p>
      * If a later attempt is made to invoke any of the
      * {@link #get()}, {@link #orElse(Object)} or {@link #orElseThrow(Supplier)} methods
@@ -377,25 +403,25 @@ public sealed interface ComputedConstant<V>
      *}
      *
      * @param <V>        the type of the value
-     * @param <T>        a superclass of the value
-     * @param superType  a class indicating the most specific return type (that can be expressed) of the provider
+     * @param <R>        the return type
+     * @param returnType a class indicating the most specific return type (that can be expressed) of the provider
      *                   (which is used for type inference and method handle validation)
      * @param provider   to invoke when computing a value
      * @throws IllegalArgumentException if the given MethodHandle {@code provider} has a call signature
      *                                  return type that is not assignable from the provided
-     *                                  {@code superType} or if it takes any parameters.
+     *                                  {@code returnType} or if it takes any parameters.
      */
-    static <V, T extends V> ComputedConstant<V> of(Class<T> superType, MethodHandle provider) {
-        Objects.requireNonNull(superType);
+    static <V, R extends V> ComputedConstant<V> of(Class<R> returnType, MethodHandle provider) {
+        Objects.requireNonNull(returnType);
         Objects.requireNonNull(provider);
         if (provider.type().parameterCount() != 0) {
             throw new IllegalArgumentException(
                     "The provider must not take parameters: " + provider);
         }
-        if (!superType.isAssignableFrom(provider.type().returnType())) {
+        if (!returnType.isAssignableFrom(provider.type().returnType())) {
             throw new IllegalArgumentException(
                     "The provider return type " + provider.type().returnType().getName() +
-                            "is not assignable from " + superType.getName() + ": " + provider);
+                            "is not assignable from " + returnType.getName() + ": " + provider);
         }
         return MethodHandleComputedConstant.create(provider);
     }
@@ -426,7 +452,7 @@ public sealed interface ComputedConstant<V>
      * @param mappingProvider to invoke when computing and binding element values
      */
     static <V> List<ComputedConstant<V>> of(int size,
-                          IntFunction<? extends V> mappingProvider) {
+                                            IntFunction<? extends V> mappingProvider) {
         if (size < 0) {
             throw new IllegalArgumentException();
         }

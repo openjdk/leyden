@@ -23,22 +23,35 @@
 
 /*
  * @test
- * @summary Verify basic java.lang.Constant operations
+ * @summary Verify basic java.lang.SettableConstant operations
  * @enablePreview
- * @run junit ConstantTest
+ * @run junit SettableConstantTest
  */
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.NoSuchElementException;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-final class ConstantTest {
+final class SettableConstantTest {
 
     @Test
-    void unbound() {
-        Constant<Integer> constant = Constant.of();
+    void superTypeValidation() {
+        SettableConstant<Integer> constant = SettableConstant.of(int.class);
+        SettableConstant<Integer> constant2 = SettableConstant.of(Integer.class);
+        SettableConstant<Integer> constant3 = SettableConstant.of(Number.class);
+        SettableConstant<Integer> constant4 = SettableConstant.of(Object.class);
+    }
+
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void unbound(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType);
         assertThrows(NoSuchElementException.class, constant::get);
 
         assertEquals(1, constant.orElse(1));
@@ -46,29 +59,31 @@ final class ConstantTest {
                 constant.orElseThrow(ArrayIndexOutOfBoundsException::new));
     }
 
-    @Test
-    void boundViaConstructor() {
-        Constant<Integer> constant = Constant.of(1);
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void boundViaConstructor(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType, 1);
         assertEquals(1, constant.get());
         assertEquals(1, constant.orElse(2));
         assertEquals(1, constant.orElseThrow(ArrayIndexOutOfBoundsException::new));
         assertCannotSet(constant);
     }
 
-    @Test
-    void setValue() {
-        Constant<Integer> constant = Constant.of();
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void setValue(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType);
         constant.set(1);
-
         assertEquals(1, constant.get());
         assertEquals(1, constant.orElse(2));
         assertEquals(1, constant.orElseThrow(ArrayIndexOutOfBoundsException::new));
         assertCannotSet(constant);
     }
 
-    @Test
-    void nullValue() {
-        Constant<Integer> constant = Constant.of(null);
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void nullValue(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType, null);
 
         assertNull(constant.get());
         assertNull(constant.orElse(2));
@@ -76,42 +91,53 @@ final class ConstantTest {
         assertCannotSet(constant);
     }
 
-    @Test
-    void testToString() {
-        Constant<Integer> constant = Constant.of();
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void testToString(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType);
         assertEquals("StandardConstant.unbound", constant.toString());
         constant.set(1);
         assertEquals("StandardConstant[1]", constant.toString());
     }
 
-    @Test
-    void testToStringNull() {
-        Constant<Integer> constant = Constant.of(null);
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void testToStringNull(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType, null);
         assertEquals("StandardConstant[null]", constant.toString());
     }
 
-    @Test
-    void predicates() {
-        Constant<Integer> constant = Constant.of();
-        assertTrue(constant.isUnbound());
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void predicates(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType);
         assertFalse(constant.isBound());
         constant.set(1);
-        assertFalse(constant.isUnbound());
         assertTrue(constant.isBound());
     }
 
-    @Test
-    void setOrDiscard() {
-        Constant<Integer> constant = Constant.of(1);
-        constant.setOrDiscard(2);
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void setIfUnbound(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType, 1);
+        constant.setIfUnbound(2);
         assertEquals(1, constant.get());
     }
 
     // Support methods
 
-    static void assertCannotSet(Constant<Integer> constant) {
+    static void assertCannotSet(SettableConstant<Integer> constant) {
         assertThrows(IllegalStateException.class, () ->
                 constant.set(2)
+        );
+    }
+
+    static Stream<Arguments> storageTypes() {
+        return Stream.of(
+                Arguments.of(int.class),
+                Arguments.of(Integer.class),
+                Arguments.of(Number.class),
+                Arguments.of(Object.class)
         );
     }
 

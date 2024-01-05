@@ -29,7 +29,6 @@ import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.Stable;
 
-import java.lang.invoke.VarHandle;
 import java.util.NoSuchElementException;
 import java.util.function.Supplier;
 
@@ -131,12 +130,33 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     @ForceInline
     @Override
+    public V orElseGet(Supplier<? extends V> supplier) {
+        V v = orElse(null);
+        if (state == State.ERROR.ordinalAsByte()) {
+            return supplier.get();
+        }
+        return v;
+    }
+
+    @ForceInline
+    @Override
     public final <X extends Throwable> V orElseThrow(Supplier<? extends X> exceptionSupplier) throws X {
         V v = orElse(null);
         if (state == State.ERROR.ordinalAsByte()) {
             throw exceptionSupplier.get();
         }
         return v;
+    }
+
+    @Override
+    public final String toString() {
+        String v = switch (stateVolatileAsEnum()) {
+            case UNBOUND -> isBindingVolatile() ? ".binding" : ".unbound"; // Racy
+            case NON_NULL -> "[" + valueVolatile().toString() + "]";
+            case NULL -> "[null]";
+            case ERROR -> ".error";
+        };
+        return toStringDescription() + v;
     }
 
     private synchronized V slowPath(V other,
@@ -148,7 +168,7 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
         // Under synchronization, visibility and atomicy is guaranteed for
         // the fields "value" and "state" as they only change within this block.
-        return switch (stateVolatileAsEnum()) {
+        return switch (stateAsEnum()) {
             case UNBOUND -> bindValue(rethrow, other);
             case NON_NULL -> value;
             case NULL -> null;
@@ -194,16 +214,6 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     abstract String toStringDescription();
 
-    @Override
-    public final String toString() {
-        String v = switch (stateVolatileAsEnum()) {
-            case UNBOUND -> isBindingVolatile() ? ".binding" : ".unbound"; // Racy
-            case NON_NULL -> "[" + valueVolatile().toString() + "]";
-            case NULL -> "[null]";
-            case ERROR -> ".error";
-        };
-        return toStringDescription() + v;
-    }
 
     // Accessors
 
@@ -214,6 +224,10 @@ public abstract sealed class AbstractComputedConstant<V, P>
 
     private byte stateVolatile() {
         return Unsafe.getUnsafe().getByteVolatile(this, STATE_OFFSET);
+    }
+
+    private State stateAsEnum() {
+        return State.of(state);
     }
 
     private State stateVolatileAsEnum() {

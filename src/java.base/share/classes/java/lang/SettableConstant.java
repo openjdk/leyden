@@ -1,12 +1,12 @@
 package java.lang;
 
-import jdk.internal.constant.StandardConstant;
+import jdk.internal.constant.IntSettableConstant;
+import jdk.internal.constant.StandardSettableConstant;
 import jdk.internal.javac.PreviewFeature;
 
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -17,13 +17,8 @@ import java.util.function.Supplier;
  * @since 23
  */
 @PreviewFeature(feature = PreviewFeature.Feature.COMPUTED_CONSTANTS)
-public sealed interface Constant<V>
-        permits StandardConstant {
-
-    /**
-     * {@return {@code true} if no attempt has been made to bind a value to this constant}
-     */
-    boolean isUnbound();
+public sealed interface SettableConstant<V>
+        permits StandardSettableConstant, IntSettableConstant {
 
     /**
      * {@return {@code true} if a value is bound to this constant}
@@ -37,7 +32,7 @@ public sealed interface Constant<V>
      * The most common usage is to get a memoized result, as in:
      * <p>
      * {@snippet lang = java:
-     *    Constant<V> constant = Constant.of(initialValue);
+     *    SettableConstant<V> constant = SettableConstant.of(Object.class, initialValue);
      *    // ...
      *    V value = constant.get();
      *    assertSame(initialValue, value); // Values are the same
@@ -59,6 +54,18 @@ public sealed interface Constant<V>
     V orElse(V other);
 
     /**
+     * If a value is bound, returns the value, otherwise returns the result
+     * produced by the supplying function.
+     * <p>
+     * This method is guaranteed to be lock-free.
+     *
+     * @param supplier the supplying function that produces a value to be returned
+     * @return the value, if bound, otherwise the result produced by the
+     *         supplying function
+     */
+    V orElseGet(Supplier<? extends V> supplier);
+
+    /**
      * {@return the bound value of this constant. If no value is bound throws an exception produced by
      *          invoking the provided {@code exceptionSupplier} function}
      * <p>
@@ -66,10 +73,9 @@ public sealed interface Constant<V>
      *
      * @param <X>               the type of the exception that may be thrown
      * @param exceptionSupplier the supplying function that produces the exception to throw
-     * @throws X                if a value cannot be bound.
+     * @throws X                if a value is not bound
      */
     <X extends Throwable> V orElseThrow(Supplier<? extends X> exceptionSupplier) throws X;
-
 
     /**
      * Sets the bound value of this constant. If a value is already bound, throws a
@@ -78,16 +84,14 @@ public sealed interface Constant<V>
      * The most common usage is to set a memoized result, as in:
      * <p>
      * {@snippet lang = java:
-     *    Constant<V> constant = Constant.of();
+     *    SettableConstant<Value> constant = SettableConstant.of();
      *    // ...
-     *    V initialValue = new V();
+     *    Value initialValue = new Value();
      *    constant.set(initialValue);
      *    // ...
-     *    V value = constant.get();
+     *    Value value = constant.get();
      *    assertSame(initialValue, value); // Values are the same
      *}
-     * <p>
-     * This method is guaranteed to be lock-free.
      *
      * @param value the value to bind
      *
@@ -96,43 +100,52 @@ public sealed interface Constant<V>
     void set(V value);
 
     /**
+     * If a value is not already bound, attempts to compute a value using the given
+     * supplier and binds it, otherwise returns the bound value.
+     * <p>
+     * If the mapping function itself throws an (unchecked) exception, the
+     * exception is rethrown, and no value is bound. The most
+     * common usage is to construct a new object serving as an initial
+     * mapped value or memoized result, as in:
+     * <p>
+     * {@snippet lang = java:
+     *    SettableConstant<Value> constant = SettableConstant.of();
+     *    // ...
+     *    constant.computeIfUnbound(Value::new);
+     *    // ...
+     *    Value value = constant.get();
+     *}
+     *
+     * @param supplier the supplier to bind a value
+     * @return the bound (existing or computed) value
+     */
+    V computeIfUnbound(Supplier<? extends V> supplier);
+
+    /**
      * Sets the bound value of this constant. If a value is already bound, does nothing.
      * <p>
      * The most common usage is to set a memoized result, as in:
      * <p>
      * {@snippet lang = java:
-     *    Constant<V> constant = Constant.of();
+     *    SettableConstant<V> constant = SettableConstant.of();
      *    // ...
      *    V initialValue = new V();
-     *    constant.setOrDiscard(initialValue);
+     *    constant.setIfUnbound(initialValue);
      *    // ...
      *    V value = constant.get();
      *    assertSame(initialValue, value); // Values are the same
      *}
-     * <p>
-     * This method is guaranteed to be lock-free.
      *
      * @param value the value to bind
      */
-    void setOrDiscard(V value);
+    void setIfUnbound(V value);
 
     /**
-     * {@return a new {@link Constant } that will use this constant's bound value
-     * and then apply the provided {@code mapper} as a new value}
-     *
-     * @param mapper to apply to this constant
-     * @param <R>    the return type of the provided {@code mapper}
-     */
-    default <R> Constant<R> map(Function<? super V, ? extends R> mapper) {
-        Objects.requireNonNull(mapper);
-        return of(mapper.apply(this.get()));
-    }
-
-    /**
-     * {@return a new {@link Constant } with no given pre-set value}
+     * {@return a new {@link SettableConstant } with no given pre-set value that stores its bound value
+     *          as an Object}
      * <p>
      * {@snippet lang = java:
-     *    Constant<V> constant = Constant.of();
+     *    SettableConstant<V> constant = SettableConstant.of();
      *    // ...
      *    V initialValue = new V();
      *    constant.set(initialValue);
@@ -143,16 +156,46 @@ public sealed interface Constant<V>
      *
      * @param <V>      the type of the value
      */
-    static <V> Constant<V> of() {
-        return StandardConstant.create();
+    static <V> SettableConstant<V> of() {
+        return StandardSettableConstant.create();
     }
+
     /**
-     * {@return a new {@link Constant } with the given pre-bound {@code value}}
+     * {@return a new {@link SettableConstant } with no given pre-set value that may optionally store its
+     *          bound value using a field of the same type as the provided {@code storageType}}
+     * <p>
+     * The method can optionally use the provided {@code storageType} to return implementations that
+     * are optimized with respect to storage and performance.
+     * <p>
+     * {@snippet lang = java:
+     *    SettableConstant<V> constant = SettableConstant.of();
+     *    // ...
+     *    V initialValue = new V();
+     *    constant.set(initialValue);
+     *    // ...
+     *    V value = constant.get();
+     *    assertSame(initialValue, value); // Values are the same
+     *}
+     *
+     * @param storageType a class literal representing an optional storage type of the bound value
+     * @param <V>         the type of the value
+     */
+    @SuppressWarnings("unchecked")
+    static <V> SettableConstant<V> of(Class<? super V> storageType) {
+        Objects.requireNonNull(storageType);
+        if (storageType.equals(Integer.class) || storageType.equals(int.class)) {
+            return (SettableConstant<V>) IntSettableConstant.create();
+        }
+        return StandardSettableConstant.create();
+    }
+
+    /**
+     * {@return a new {@link SettableConstant } with the given pre-bound {@code value}}
      * <p>
      * {@snippet lang = java:
      *     class DemoPreset {
      *
-     *         private static final Constant<Foo> FOO = Constant.of(new Foo());
+     *         private static final SettableConstant<Foo> FOO = SettableConstant.of(Foo.class, new Foo());
      *
      *         public Foo theFoo() {
      *             // Foo is obtained here
@@ -161,15 +204,19 @@ public sealed interface Constant<V>
      *     }
      *}
      *
-     * @param <V>      the type of the value
-     * @param value    to bind (can be null)
+     * @param <V>         the type of the value
+     * @param storageType a class literal representing an optional storage type of the bound value
+     * @param value       to bind (can be null)
      */
-    static <V> Constant<V> of(V value) {
-        return StandardConstant.create(value);
+    static <V> SettableConstant<V> of(Class<? super V> storageType, V value) {
+        Objects.requireNonNull(storageType);
+        SettableConstant<V> constant = of(storageType);
+        constant.set(value);
+        return constant;
     }
 
     /**
-     * {@return a new List of {@link Constant } elements with the provided
+     * {@return a new List of {@link SettableConstant } elements with the provided
      * {@code size}}
      * <p>
      * The List and its elements are eligible for constant folding optimizations by the JVM.
@@ -178,8 +225,8 @@ public sealed interface Constant<V>
      * {@snippet lang = java:
      *     class DemoList {
      *
-     *         private static final List<Constant<Long>> CONSTANTS =
-     *                 Constant.of(32);
+     *         private static final List<SettableConstant<Long>> CONSTANTS =
+     *                 SettableConstant.of(32);
      *          static {
      *             // Compute values in the CONSTANTS list
      *          }
@@ -195,7 +242,7 @@ public sealed interface Constant<V>
      * @param <V>             the type of the values
      * @param size            the size of the List
          */
-    static <V> List<Constant<V>> ofList(int size) {
+    static <V> List<SettableConstant<V>> ofList(int size) {
         if (size < 0) {
             throw new IllegalArgumentException();
         }

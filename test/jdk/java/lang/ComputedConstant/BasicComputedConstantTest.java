@@ -203,6 +203,17 @@ final class BasicComputedConstantTest {
         assertEquals(42, c.orElse(42));
     }
 
+    @Test
+    void testOrElseGet() {
+        ComputedConstant<Integer> c = ComputedConstant.of(() -> {
+            throw new UnsupportedOperationException();
+        });
+
+        int actual = c.orElseGet(() -> 42);
+        assertEquals(42, actual);
+        // Try again
+        assertEquals(42, c.orElseGet(() -> 42));
+    }
 
     @Test
     void testOrElseThrow() {

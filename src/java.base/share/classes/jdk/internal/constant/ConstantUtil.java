@@ -26,4 +26,14 @@ final class ConstantUtil {
         return Unsafe.getUnsafe().objectFieldOffset(c, name);
     }
 
+    static void sneakyThrow(Throwable t) {
+        ConstantUtil.sneakyThrow0(t);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends Throwable> void sneakyThrow0(Throwable t) throws T {
+        throw (T) t;
+    }
+
+
 }
