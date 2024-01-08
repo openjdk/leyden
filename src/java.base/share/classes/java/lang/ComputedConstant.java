@@ -238,7 +238,11 @@ import java.util.function.Supplier;
 @PreviewFeature(feature = PreviewFeature.Feature.COMPUTED_CONSTANTS)
 public sealed interface ComputedConstant<V>
         extends Supplier<V>
-        permits AbstractComputedConstant, ClassProvidedComputedConstant, ListElementComputedConstant, MethodHandleComputedConstant, StandardComputedConstant {
+        permits AbstractComputedConstant,
+        ClassProvidedComputedConstant,
+        ListElementComputedConstant,
+        MethodHandleComputedConstant,
+        StandardComputedConstant {
 
     /**
      * {@return {@code true} if no attempt has been made to bind a value to this constant}
