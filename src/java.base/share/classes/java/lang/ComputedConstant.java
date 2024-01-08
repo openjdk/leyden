@@ -58,7 +58,7 @@ import java.util.function.Supplier;
  *     </li>
  *     <li>Collections
  *         <ul>
- *             <li>{@linkplain ComputedConstant#of(int, IntFunction) ComputedConstant.of(int length, IntFunction&lt;? super V&gt; mappingProvider)}
+ *             <li>{@linkplain ComputedConstant#of(Class, int, IntFunction) ComputedConstant.of(Class&lt;? super V&gt, int length, IntFunction&lt;? super V&gt; mappingProvider)}
  *             providing a new List of ComputedConstant elements</li>
  *         </ul>
  *     </li>
@@ -428,7 +428,8 @@ public sealed interface ComputedConstant<V>
 
     /**
      * {@return a new unmodifiable List of {@link ComputedConstant } elements with the provided
-     * {@code size} and given pre-set {@code mappingProvider} to be used to compute element values}
+     *          {@code size} and given pre-set {@code mappingProvider} to be used to compute
+     *          element values}
      * <p>
      * The List and its elements are eligible for constant folding optimizations by the JVM.
      * <p>
@@ -448,11 +449,14 @@ public sealed interface ComputedConstant<V>
      *          ComputedConstant elements that has no valid identity.
      *
      * @param <V>             the type of the values
+     * @param storageType     a class literal representing an optional storage type of the bound values
      * @param size            the size of the List
      * @param mappingProvider to invoke when computing and binding element values
      */
-    static <V> List<ComputedConstant<V>> of(int size,
+    static <V> List<ComputedConstant<V>> of(Class<? super V> storageType,
+                                            int size,
                                             IntFunction<? extends V> mappingProvider) {
+        Objects.requireNonNull(storageType);
         if (size < 0) {
             throw new IllegalArgumentException();
         }

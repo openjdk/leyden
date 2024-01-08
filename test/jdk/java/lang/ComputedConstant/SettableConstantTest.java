@@ -118,6 +118,24 @@ final class SettableConstantTest {
 
     @ParameterizedTest
     @MethodSource("storageTypes")
+    void computeIfUnbound(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType);
+        Integer actual = constant.computeIfUnbound(() -> 2);
+        assertEquals(2, actual);
+        assertEquals(2, constant.get());
+    }
+
+    @ParameterizedTest
+    @MethodSource("storageTypes")
+    void computeIfUnboundBound(Class<? super Integer> storageType) {
+        SettableConstant<Integer> constant = SettableConstant.of(storageType, 1);
+        Integer actual = constant.computeIfUnbound(() -> 2);
+        assertEquals(1, actual);
+        assertEquals(1, constant.get());
+    }
+
+    @ParameterizedTest
+    @MethodSource("storageTypes")
     void setIfUnbound(Class<? super Integer> storageType) {
         SettableConstant<Integer> constant = SettableConstant.of(storageType, 1);
         constant.setIfUnbound(2);

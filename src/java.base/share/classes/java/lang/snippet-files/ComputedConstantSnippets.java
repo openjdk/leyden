@@ -227,7 +227,7 @@ public final class ComputedConstantSnippets {
         private final List<ComputedConstant<Integer>> list;
 
         public Fibonacci2(int upperBound) {
-            list = ComputedConstant.of(upperBound, this::number);
+            list = ComputedConstant.of(int.class, upperBound, this::number);
         }
 
         public int number(int n) {
@@ -251,7 +251,7 @@ public final class ComputedConstantSnippets {
     class Fibonacci3 {
 
         private static final List<ComputedConstant<Integer>> LIST
-                = ComputedConstant.of(40, Fibonacci3::number);
+                = ComputedConstant.of(int.class, 40, Fibonacci3::number);
 
         public static int number(int n) {
             return (n < 2)
