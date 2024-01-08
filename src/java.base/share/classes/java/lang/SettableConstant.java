@@ -243,7 +243,7 @@ public sealed interface SettableConstant<V>
      * @param storageType a class literal representing an optional storage type of the bound value
      * @param size        the size of the List
      */
-    static <V> List<SettableConstant<V>> of(Class<? super V> storageType, int size) {
+    static <V> List<SettableConstant<V>> list(Class<? super V> storageType, int size) {
         Objects.requireNonNull(storageType);
         if (size < 0) {
             throw new IllegalArgumentException();

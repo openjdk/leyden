@@ -28,8 +28,15 @@
  * @run junit BasicComputedConstantTest
  */
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.Collection;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -38,34 +45,39 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 final class BasicComputedConstantTest {
 
-    private CountingIntegerSupplier supplier;
+    static final int MAGIC_VALUE = 42;
+
+    private CountingIntegerSupplierSingleton supplier;
     private ComputedConstant<Integer> constant;
 
     @BeforeEach
     void setup() {
-        supplier = new CountingIntegerSupplier();
+        supplier = new CountingIntegerSupplierSingleton();
         constant = ComputedConstant.of(supplier);
     }
 
-    @Test
-    void get() {
-        Integer val = constant.get();
-        assertEquals(CountingIntegerSupplier.MAGIC_VALUE, val);
-        assertEquals(1, supplier.invocations());
-        Integer val2 = constant.get();
-        assertEquals(CountingIntegerSupplier.MAGIC_VALUE, val2);
-        assertEquals(1, supplier.invocations());
+    @ParameterizedTest
+    @MethodSource("computedConstantTypes")
+    void get(ComputedConstant<Integer> cc) {
+        int inv = invocations();
+        Integer val = cc.get();
+        assertEquals(MAGIC_VALUE, val);
+        assertEquals(inv + 1, invocations());
+        Integer val2 = cc.get();
+        assertEquals(MAGIC_VALUE, val2);
+        assertEquals(inv + 1, invocations());
     }
 
     @Test
     void nullSupplier() {
         assertThrows(NullPointerException.class, () ->
-                ComputedConstant.of(null)
+                ComputedConstant.of((Supplier<?>) null)
         );
     }
 
@@ -241,8 +253,18 @@ final class BasicComputedConstantTest {
         }
     }
 
-    private static final class CountingIntegerSupplier implements Supplier<Integer> {
-        static final int MAGIC_VALUE = 42;
+    public static final class CountingIntegerSupplier implements Supplier<Integer> {
+        @Override
+        public Integer get() {
+            return CountingIntegerSupplierSingleton.INSTANCE.get();
+        }
+    }
+
+    private static final class CountingIntegerSupplierSingleton implements Supplier<Integer> {
+
+        private static final CountingIntegerSupplierSingleton INSTANCE = new CountingIntegerSupplierSingleton();
+
+
         private final AtomicInteger invocations = new AtomicInteger();
 
         @Override
@@ -254,6 +276,26 @@ final class BasicComputedConstantTest {
         int invocations() {
             return invocations.get();
         }
+    }
+
+    static int invocations() {
+        return CountingIntegerSupplierSingleton.INSTANCE.invocations();
+    }
+
+    static Stream<Arguments> computedConstantTypes() {
+        MethodHandle mh;
+        try {
+            mh = MethodHandles.lookup()
+                    .findVirtual(CountingIntegerSupplierSingleton.class, "get", MethodType.methodType(Integer.class))
+                    .bindTo(CountingIntegerSupplierSingleton.INSTANCE);
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+        return Stream.of(
+                Arguments.of(ComputedConstant.of(new CountingIntegerSupplier())),
+                Arguments.of(ComputedConstant.of(CountingIntegerSupplier.class)),
+                Arguments.of(ComputedConstant.of(Integer.class, mh))
+        );
     }
 
 }

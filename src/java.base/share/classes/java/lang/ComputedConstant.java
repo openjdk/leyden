@@ -1,6 +1,7 @@
 package java.lang;
 
 import jdk.internal.constant.AbstractComputedConstant;
+import jdk.internal.constant.ClassProvidedComputedConstant;
 import jdk.internal.constant.ListElementComputedConstant;
 import jdk.internal.constant.MethodHandleComputedConstant;
 import jdk.internal.constant.OnDemandComputedConstantList;
@@ -8,6 +9,8 @@ import jdk.internal.constant.StandardComputedConstant;
 import jdk.internal.javac.PreviewFeature;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -58,7 +61,7 @@ import java.util.function.Supplier;
  *     </li>
  *     <li>Collections
  *         <ul>
- *             <li>{@linkplain ComputedConstant#of(Class, int, IntFunction) ComputedConstant.of(Class&lt;? super V&gt, int length, IntFunction&lt;? super V&gt; mappingProvider)}
+ *             <li>{@linkplain ComputedConstant#of(Class, int, IntFunction) ComputedConstant.of(Class&lt;? super V&gt;, int length, IntFunction&lt;? super V&gt; mappingProvider)}
  *             providing a new List of ComputedConstant elements</li>
  *         </ul>
  *     </li>
@@ -235,10 +238,7 @@ import java.util.function.Supplier;
 @PreviewFeature(feature = PreviewFeature.Feature.COMPUTED_CONSTANTS)
 public sealed interface ComputedConstant<V>
         extends Supplier<V>
-        permits AbstractComputedConstant,
-        ListElementComputedConstant,
-        MethodHandleComputedConstant,
-        StandardComputedConstant {
+        permits AbstractComputedConstant, ClassProvidedComputedConstant, ListElementComputedConstant, MethodHandleComputedConstant, StandardComputedConstant {
 
     /**
      * {@return {@code true} if no attempt has been made to bind a value to this constant}
@@ -379,6 +379,39 @@ public sealed interface ComputedConstant<V>
     static <V> ComputedConstant<V> of(Supplier<? extends V> provider) {
         Objects.requireNonNull(provider);
         return StandardComputedConstant.create(provider);
+    }
+
+    /**
+     * {@return a new {@link ComputedConstant } with the given pre-set {@code provider} type to be used
+     *          to compute a value}
+     * <p>
+     * The given provider type must be a public concrete class with a default constructor or else
+     * an IllegalArgumentException will be thrown upon attempting to bind a value. During binding
+     * the default constructor is invoked thereby producing a Supplier. Said Supplier
+     * will then subsequently be invoked to yield a a result that will become the bound value.
+     *
+     * If a later attempt is made to invoke any of the {@link #get()}, {@link #orElse(Object)} or
+     * {@link #orElseThrow(Supplier)} methods when this computed constant is unbound, the
+     * {@code provider} will automatically be invoked.
+     * <p>
+     * {@snippet lang = java:
+     *     class DemoPreset {
+     *
+     *         private static final ComputedConstant<Foo> FOO = ComputedConstant.of(Foo.class);
+     *
+     *         public Foo theBar() {
+     *             // Foo is lazily constructed and recorded here upon first invocation
+     *             return FOO.get();
+     *         }
+     *     }
+     *}
+     *
+     * @param <V>      the type of the value
+     * @param provider to invoke when computing a value
+     */
+    static <V> ComputedConstant<V> of(Class<? extends Supplier<? extends V>> provider) {
+        Objects.requireNonNull(provider);
+        return ClassProvidedComputedConstant.create(provider);
     }
 
     /**
