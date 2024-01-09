@@ -625,8 +625,7 @@ class CompileTrainingData : public TrainingData {
   template <class T> friend class CppVtableTesterB;
   template <class T> friend class CppVtableCloner;
 
-  MethodTrainingData* _method;  // inlined method, or same as top method
-  MethodTrainingData* _top_method;
+  MethodTrainingData* _method;
   CompileTrainingData* _next;   // singly linked list, latest first
   const short _level;
   const int _compile_id;
@@ -742,12 +741,10 @@ private:
   CompileTrainingData();
   // (should we also capture counters or MDO state or replay data?)
   CompileTrainingData(MethodTrainingData* method,
-                      MethodTrainingData* top_method,
                       int level,
                       int compile_id)
       : TrainingData(),  // empty key
-        _method(method), _top_method(top_method),
-        _level(level), _compile_id(compile_id)
+        _method(method), _level(level), _compile_id(compile_id)
   {
     _next = nullptr;
     _qtime = _stime = _etime = 0;
@@ -760,21 +757,12 @@ public:
   // Record a use of a method in a given task.  If non-null, the given
   // method is not the top-level method of the task, but instead it is
   // inlined into the top-level method.
-  static CompileTrainingData* make(CompileTask* task,
-                                   Method* inlined_method = nullptr);
-  static CompileTrainingData* make(MethodTrainingData* this_method,
-                                   MethodTrainingData* top_method,
-                                   int level, int compile_id);
-  static CompileTrainingData* make(MethodTrainingData* method,
-                                   int level, int compile_id) {
-    return make(method, method, level, compile_id);
-  }
+  static CompileTrainingData* make(CompileTask* task);
+  static CompileTrainingData* make(MethodTrainingData* m, int level, int compile_id);
 
   virtual CompileTrainingData* as_CompileTrainingData() const { return const_cast<CompileTrainingData*>(this); };
 
   MethodTrainingData* method()      const { return _method; }
-  MethodTrainingData* top_method()  const { return _top_method; }
-  bool                is_inlined()  const { return _method != _top_method; }
 
   CompileTrainingData* next() const { return _next; }
 
@@ -843,9 +831,7 @@ public:
 
   void cleanup();
 
-  static CompileTrainingData* allocate(MethodTrainingData* this_method,
-                                       MethodTrainingData* top_method,
-                                       int level, int compile_id);
+  static CompileTrainingData* allocate(MethodTrainingData* mtd, int level, int compile_id);
 };
 
 // Record information about a method at the time compilation is requested.

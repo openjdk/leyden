@@ -281,66 +281,29 @@ void MethodTrainingData::refresh_from(const Method* method) {
   _holder = method;
 }
 
-CompileTrainingData* CompileTrainingData::make(CompileTask* task,
-                                               Method* inlined_method) {
+CompileTrainingData* CompileTrainingData::make(CompileTask* task) {
   int level = task->comp_level();
   int compile_id = task->compile_id();
   Thread* thread = Thread::current();
-  methodHandle top_method(thread, task->method());
-  methodHandle this_method;
-  if (inlined_method == nullptr || inlined_method == top_method()) {
-    this_method = top_method;
-  } else {
-    this_method = methodHandle(thread, inlined_method);
-  }
-  MethodTrainingData* topm = MethodTrainingData::make(top_method);
-  MethodTrainingData* thism = topm;
-  if (inlined_method != top_method()) {
-    thism = MethodTrainingData::make(this_method);
-  }
-  auto tdata = CompileTrainingData::make(thism, topm, level, compile_id);
-  return tdata;
+  methodHandle m(thread, task->method());
+  MethodTrainingData* mtd = MethodTrainingData::make(m);
+  CompileTrainingData* ctd = CompileTrainingData::make(mtd, level, compile_id);
+  return ctd;
 }
 
-CompileTrainingData* CompileTrainingData::make(MethodTrainingData* this_method,
-                                               MethodTrainingData* top_method,
-                                               int level, int compile_id) {
+CompileTrainingData* CompileTrainingData::make(MethodTrainingData* mtd, int level, int compile_id) {
   assert(level > CompLevel_none, "not a compiled level");
-  top_method->notice_compilation(level);
-  if (this_method != top_method) {
-    this_method->notice_compilation(level, true);
-  }
+  mtd->notice_compilation(level);
 
-  // Find the insertion point.  Also check for duplicate records.
-  CompileTrainingData* *insp = &this_method->_compile;
-  while ((*insp) != nullptr && (*insp)->compile_id() > compile_id) {
-    insp = &(*insp)->_next;
-  }
-  while ((*insp) != nullptr && (*insp)->compile_id() == compile_id) {
-    if ((*insp)->method() == this_method &&
-        (*insp)->top_method() == top_method) {
-      break;
-    }
-  }
-
-  auto tdata = CompileTrainingData::allocate(this_method, top_method, level, compile_id);
-
-  // Link it into the method, under a lock.
+  CompileTrainingData* ctd = CompileTrainingData::allocate(mtd, level, compile_id);
   TrainingDataLocker l;
-  while ((*insp) != nullptr && (*insp)->compile_id() == compile_id) {
-    if ((*insp)->method() == this_method &&
-        (*insp)->top_method() == top_method) {
-      delete tdata;
-      return (*insp);
-    }
+  ctd->_next = mtd->_compile;
+  mtd->_compile = ctd;
+  if (mtd->_last_toplevel_compiles[level - 1] == nullptr || mtd->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
+    mtd->_last_toplevel_compiles[level - 1] = ctd;
+    mtd->_highest_top_level = MAX2(mtd->_highest_top_level, level);
   }
-  tdata->_next = (*insp);
-  (*insp) = tdata;
-  if (top_method->_last_toplevel_compiles[level - 1] == nullptr || top_method->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
-    top_method->_last_toplevel_compiles[level - 1] = tdata;
-    top_method->_highest_top_level = MAX2(top_method->_highest_top_level, level);
-  }
-  return tdata;
+  return ctd;
 }
 
 void CompileTrainingData::dec_init_deps_left(KlassTrainingData* ktd) {
@@ -358,10 +321,6 @@ void CompileTrainingData::dec_init_deps_left(KlassTrainingData* ktd) {
 
 void CompileTrainingData::print_on(outputStream* st, bool name_only) const {
   _method->print_on(st, true);
-  if (is_inlined()) {
-    st->print("/");
-    _top_method->print_on(st, true);
-  }
   st->print("#%dL%d", _compile_id, _level);
   if (name_only)  return;
   if (_do_not_dump)  st->print("[DND]");
@@ -444,7 +403,7 @@ int CompileTrainingData::cmp(const TrainingData* tdata) const {
   if (this == tdata)  return 0;
   if (tdata->is_CompileTrainingData()) {
     const CompileTrainingData* that = tdata->as_CompileTrainingData();
-    if (this->method() == that->method()) {  // (or top_method?)
+    if (this->method() == that->method()) {
       int cmp = cmp_zeroes_to_end(this->level(),
                                   that->level());
       if (cmp != 0)  return cmp;
@@ -705,10 +664,8 @@ bool MethodTrainingData::dump(TrainingDataDumper& tdd, DumpPhase dp) {
 
 bool CompileTrainingData::dump(TrainingDataDumper& tdd, DumpPhase dp) {
   auto md = method();
-  auto td = top_method();
   if (dp == DP_prepare) {
     tdd.prepare(md);
-    tdd.prepare(td);
     _init_deps.prepare(_method->klass()->class_loader_data());
     _ci_records.prepare(_method->klass()->class_loader_data());
     return true;
@@ -716,13 +673,9 @@ bool CompileTrainingData::dump(TrainingDataDumper& tdd, DumpPhase dp) {
   auto out = tdd.out();
   int cid = tdd.id_of(this);
   int mid = tdd.identify(md);
-  int tid = tdd.identify(td);
   if (dp == DP_identify) {
     out->begin_elem("compile id='%d' compile_id='%d' level='%d' method='%d'",
                     cid, compile_id(), level(), mid);
-    if (is_inlined()) {
-      out->print(" is_inlined='1' top_method='%d'", tid);
-    }
     if (md->_compile == this) {
       out->print(" last='1'");
     }
@@ -872,7 +825,7 @@ void TrainingData::load_profiles() {
     typedef char* cstr;
     cstr name, sig, lname;
     int nlen, slen, lnlen;
-    int kid, mid, cid, tid, did;
+    int kid, mid, cid, did;
     if (line == nullptr)  break;
     if (str_starts(line, "<training_data>") ||
         str_starts(line, "</training_data>")) {
@@ -925,17 +878,13 @@ void TrainingData::load_profiles() {
           !str_scan(line, " method='%d'", &mid)) {
         break;
       }
-      if (!str_scan(line, " top_method='%d'", &tid))  tid = mid;
       int task = 0;
       str_scan(line, " compile_id='%d'", &task);
       int level = 0;
       str_scan(line, " level='%d'", &level);
       auto md = ID2TD(mid);
-      auto td = ID2TD(tid);
-      if (md == nullptr || td == nullptr)  break;
-      auto tdata = CompileTrainingData::make(md->as_MethodTrainingData(),
-                                             td->as_MethodTrainingData(),
-                                             level, task);
+      if (md == nullptr)  break;
+      auto tdata = CompileTrainingData::make(md->as_MethodTrainingData(), level, task);
       ADD_ID2TD(cid, tdata);
     } else if (str_starts(line, "<init_dep ")) {
       // <init_dep klass='1040' dep='14'/>
@@ -1562,17 +1511,11 @@ void MethodTrainingData::cleanup() {
     if (ctd->method() != this) {
       ctd->method()->cleanup();
     }
-    if (ctd->is_inlined() && ctd->top_method() != this) {
-      ctd->top_method()->cleanup();
-    }
   }
 }
 
 void CompileTrainingData::cleanup() {
   method()->cleanup();
-  if (is_inlined()) {
-    top_method()->cleanup();
-  }
 }
 
 void TrainingData::serialize_training_data(SerializeClosure* soc) {
@@ -1766,7 +1709,6 @@ void CompileTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
   _init_deps.metaspace_pointers_do(iter);
   _ci_records.metaspace_pointers_do(iter);
   iter->push(&_method);
-  iter->push(&_top_method);
   iter->push(&_next);
 }
 
@@ -1827,17 +1769,14 @@ MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Method*
       MethodTrainingData(ktd, m->name(), m->signature());
 }
 
-CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* this_method,
-                                                   MethodTrainingData* top_method,
-                                                   int level,
-                                                   int compile_id) {
+CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int level, int compile_id) {
   assert(need_data() || have_data(), "");
   JavaThread* THREAD = JavaThread::current();
   size_t size = align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
-      CompileTrainingData(this_method, top_method, level, compile_id);
+      CompileTrainingData(mtd, level, compile_id);
 }
 
 static const char* tag(void* p) {
