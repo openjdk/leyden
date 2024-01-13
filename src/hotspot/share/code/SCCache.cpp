@@ -804,7 +804,7 @@ bool skip_preload(Method* m) {
   return false;
 }
 
-void SCCache::preload_startup_code(JavaThread* thread) {
+void SCCache::preload_startup_code(TRAPS) {
   assert(_for_read, "sanity");
   uint count = _load_header->entries_count();
   if (_load_entries == nullptr) {
@@ -829,14 +829,31 @@ void SCCache::preload_startup_code(JavaThread* thread) {
       if (skip_preload(m)) {
         continue; // Exclude preloading for this method
       }
-      methodHandle mh(thread, m);
+      assert(m->method_holder()->is_loaded(), "");
+      if (!m->method_holder()->is_linked()) {
+        assert(!HAS_PENDING_EXCEPTION, "");
+        m->method_holder()->link_class(THREAD);
+        if (HAS_PENDING_EXCEPTION) {
+          LogStreamHandle(Warning, scc) log;
+          if (log.is_enabled()) {
+            ResourceMark rm;
+            log.print("Linkage failed for %s: ", m->method_holder()->external_name());
+            THREAD->pending_exception()->print_value_on(&log);
+            if (log_is_enabled(Debug, scc)) {
+              THREAD->pending_exception()->print_on(&log);
+            }
+          }
+          CLEAR_PENDING_EXCEPTION;
+        }
+      }
+      methodHandle mh(THREAD, m);
       if (mh->scc_entry() != nullptr) {
         // Second C2 compilation of the same method could happen for
         // different reasons without marking first entry as not entrant.
         continue; // Keep old entry to avoid issues
       }
       mh->set_scc_entry(entry);
-      CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0, false, CompileTask::Reason_Preload, thread);
+      CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0, false, CompileTask::Reason_Preload, CHECK);
     }
     if (exclude_line != nullptr) {
       os::free(exclude_line);

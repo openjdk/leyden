@@ -445,7 +445,7 @@ public:
     _store_entries -= 1;
     return _store_entries;
   }
-  void preload_startup_code(JavaThread* thread);
+  void preload_startup_code(TRAPS);
 
   SCCEntry* find_entry(SCCEntry::Kind kind, uint id, uint comp_level = 0, uint decomp = 0);
   void invalidate_entry(SCCEntry* entry);
