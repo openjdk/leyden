@@ -1797,7 +1797,8 @@ void ciEnv::dump_replay_data_version(outputStream* out) {
 }
 
 bool ciEnv::is_precompiled() {
-  return (task() != nullptr) && (task()->compile_reason() == CompileTask::Reason_Precompile);
+  return (task() != nullptr) && (task()->compile_reason() == CompileTask::Reason_Precompile          ||
+                                 task()->compile_reason() == CompileTask::Reason_PrecompileForPreload);
 }
 
 bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
@@ -1805,10 +1806,36 @@ bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
   if (task()->method()->method_holder() == ik) {
     return true; // FIXME: may be too strong; being_initialized, at least
   }
-  if (task()->comp_level() == CompLevel_full_optimization && // C2 only
-//      (SystemDictionaryShared::lookup_init_state(ik) == InstanceKlass::ClassState::fully_initialized)
-      ik->is_shared() /* && do_clinit_barriers */) { // FIXME: assumes that all shared classes are initialized by default
-    return true; // class init barriers in C2 code
+  switch (task()->compile_reason()) {
+    case CompileTask::Reason_Precompile: {
+      // check init dependencies
+      MethodTrainingData* mtd = TrainingData::lookup_for(task()->method());
+      if (mtd != nullptr) {
+        CompileTrainingData* ctd = mtd->last_toplevel_compile(task()->comp_level());
+        if (ctd != nullptr) {
+          for (int i = 0; i < ctd->init_dep_count(); i++) {
+            KlassTrainingData* ktd = ctd->init_dep(i);
+            if (ktd->has_holder() && (ktd->holder() == ik)) {
+              log_trace(precompile)("%d: init_dependency: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+              return true; // init dependency present
+            }
+          }
+        }
+      }
+      return false; // no init dependency
+    }
+    case CompileTask::Reason_PrecompileForPreload: {
+      // FIXME: assumes that all shared classes are initialized
+      if (ik->is_shared()) {
+        return true; // class init barriers
+      }
+      if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active() &&
+          ArchiveBuilder::current()->has_been_archived((address)ik)) {
+        return true; // class init barriers
+      }
+      return false;
+    }
+    default: fatal("%s", CompileTask::reason_name(task()->compile_reason()));
   }
   return false;
 }

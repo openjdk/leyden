@@ -1044,7 +1044,6 @@ bool ciMethod::ensure_method_data(bool training_data_only) {
 // ciMethod::method_data
 //
 ciMethodData* ciMethod::method_data() {
-  CompileTask::CompileReason reason = CURRENT_ENV->task()->compile_reason();
   if (CURRENT_ENV->task()->is_precompiled() && CURRENT_ENV->task()->comp_level() == CompLevel_full_optimization) {
     if (_method_data_recorded == nullptr) {
       VM_ENTRY_MARK;

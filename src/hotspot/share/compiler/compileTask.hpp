@@ -67,6 +67,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
       Reason_Bootstrap,        // JVMCI bootstrap
       Reason_Preload,          // pre-load SC code
       Reason_Precompile,
+      Reason_PrecompileForPreload,
       Reason_Count
   };
 
@@ -185,10 +186,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
     }
   }
 
-  bool is_precompiled() {
-    return compile_reason() == CompileTask::Reason_Precompile;
-  }
-
   bool         has_waiter() const                { return _has_waiter; }
   void         clear_waiter()                    { _has_waiter = false; }
   JVMCICompileState* blocking_jvmci_compile_state() const { return _blocking_jvmci_compile_state; }
@@ -196,6 +193,11 @@ class CompileTask : public CHeapObj<mtCompiler> {
     _blocking_jvmci_compile_state = state;
   }
 #endif
+
+  bool is_precompiled() {
+    return (compile_reason() == CompileTask::Reason_Precompile)         ||
+           (compile_reason() == CompileTask::Reason_PrecompileForPreload);
+  }
 
   Monitor*     lock() const                      { return _lock; }
 

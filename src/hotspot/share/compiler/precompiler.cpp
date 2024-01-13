@@ -31,25 +31,31 @@
 #include "compiler/compiler_globals.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/precompiler.hpp"
+#include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
 #include "oops/trainingData.hpp"
 
 class PrecompileIterator : StackObj {
 private:
+  CompLevel _comp_level;
+  CompLevel _search_level;
+  bool _for_preload;
   Thread* _thread;
   GrowableArray<Method*> _methods;
 
-  static nmethod* precompile(Method* m, TRAPS) {
+  nmethod* precompile(Method* m, TRAPS) {
     assert(m->method_holder()->is_linked(), "required");
 
     methodHandle mh(THREAD, m);
     assert(!HAS_PENDING_EXCEPTION, "");
-    return CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0,
-                                         true /*requires_online_comp*/, CompileTask::Reason_Precompile,
+    CompileTask::CompileReason compile_reason = (_for_preload ? CompileTask::Reason_PrecompileForPreload
+                                                              : CompileTask::Reason_Precompile);
+    return CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level, methodHandle(), 0,
+                                         true /*requires_online_comp*/, compile_reason,
                                          THREAD);
   }
 
-  static nmethod* precompile(Method* m, ArchiveBuilder* builder, TRAPS) {
+  nmethod* precompile(Method* m, ArchiveBuilder* builder, TRAPS) {
     nmethod* code = precompile(m, THREAD);
     bool status = (!HAS_PENDING_EXCEPTION) && (code != nullptr);
 
@@ -58,27 +64,26 @@ private:
     Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
     ++count;
 
-    if (log_is_enabled(Info, precompile)) {
-      int isz = 0;
-      int delta = 0;
-      if (status) {
-        isz = code->insts_size();
-        if (last != nullptr) {
-          delta = (int) (address(code) - address(last));
-        }
-        last = code;
-      }
-
+    LogStreamHandle(Info, precompile) log;
+    if (log.is_enabled()) {
       ResourceMark rm;
-      log_info(precompile)("[%4d] Compiled %s [%p -> %p] (%s) code = %p insts_size = %d delta = %d", count,
-                           m->external_name(), m, requested_m,
-                           status ? "success" : "FAILED", code, isz, delta);
+      log.print("[%4d] T%d Compiled %s [%p -> %p] (%s)",
+                count, _comp_level + (_for_preload ? 1 : 0), m->external_name(), m, requested_m,
+                             status ? "success" : "FAILED");
+      if (status) {
+        int isz = code->insts_size();
+        int delta = (last != nullptr ? (int) (address(code) - address(last)) : 0);
+        last = code;
+
+        log.print(" code = %p insts_size = %d delta = %d", code, isz, delta);
+      }
     }
     return code;
   }
 
 public:
-  PrecompileIterator(): _thread(Thread::current()) {
+  PrecompileIterator(CompLevel comp_level, bool for_preload, CompLevel search_level, JavaThread* thread)
+  : _comp_level(comp_level), _search_level(search_level), _for_preload(for_preload), _thread(thread) {
     assert(TrainingData::have_data(), "sanity");
   }
 
@@ -92,7 +97,7 @@ public:
     } else if (directives->PrecompileRecordedOption > 0) {
       return true;
     }
-    int cid = compile_id(m, CompLevel_full_optimization);
+    int cid = compile_id(m, _search_level);
     return (cid < INT_MAX);
   }
 
@@ -116,7 +121,7 @@ public:
 
   static int compile_id(Method* m, int level) {
     MethodTrainingData* mtd = TrainingData::lookup_for(m);
-    if (mtd != nullptr) {
+    if (mtd != nullptr && mtd->highest_level() == level) {
       CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
       if (ctd != nullptr) {
         return ctd->compile_id();
@@ -125,14 +130,37 @@ public:
     return INT_MAX; // treat as the last compilation
   }
 
-  static int compare_by_compile_id(Method** m1, Method** m2) {
-    int id1 = compile_id(*m1, CompLevel_full_optimization);
-    int id2 = compile_id(*m2, CompLevel_full_optimization);
+  static int compare_by_compile_id(Method** m1, Method** m2, CompLevel comp_level) {
+    int id1 = compile_id(*m1, comp_level);
+    int id2 = compile_id(*m2, comp_level);
     return (id1 - id2);
   }
 
-  static void sort_methods_by_compile_id(GrowableArray<Method*>* methods) {
-    methods->sort(&compare_by_compile_id);
+  static int compare_by_compile_id_tier1(Method** m1, Method** m2) {
+    return compare_by_compile_id(m1, m2, CompLevel_simple);
+  }
+
+  static int compare_by_compile_id_tier2(Method** m1, Method** m2) {
+    return compare_by_compile_id(m1, m2, CompLevel_limited_profile);
+  }
+
+  static int compare_by_compile_id_tier3(Method** m1, Method** m2) {
+    return compare_by_compile_id(m1, m2, CompLevel_full_profile);
+  }
+
+  static int compare_by_compile_id_tier4(Method** m1, Method** m2) {
+    return compare_by_compile_id(m1, m2, CompLevel_full_optimization);
+  }
+
+  void sort_methods_by_compile_id(GrowableArray<Method*>* methods) {
+    switch(_search_level) {
+      case CompLevel_simple:            methods->sort(&compare_by_compile_id_tier1); break;
+      case CompLevel_limited_profile:   methods->sort(&compare_by_compile_id_tier2); break;
+      case CompLevel_full_profile:      methods->sort(&compare_by_compile_id_tier3); break;
+      case CompLevel_full_optimization: methods->sort(&compare_by_compile_id_tier4); break;
+
+      default: fatal("%d", _search_level);
+    }
   }
 
   void precompile(ArchiveBuilder* builder, TRAPS) {
@@ -155,12 +183,24 @@ void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
   assert(CDSConfig::is_dumping_final_static_archive() && StoreCachedCode, "sanity");
   if (TrainingData::have_data()) {
     ResourceMark rm;
-    PrecompileIterator pi;
 
     SCCache::new_workflow_start_writing_cache();
 
-    TrainingData::archived_training_data_dictionary()->iterate(&pi);
-    pi.precompile(builder, THREAD);
+    {
+      PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, CompLevel_full_optimization, THREAD);
+      TrainingData::archived_training_data_dictionary()->iterate(&pi);
+      pi.precompile(builder, THREAD);
+    }
+
+    for (int level = CompLevel_simple; level <= CompLevel_full_optimization; level++) {
+      CompLevel comp_level = (CompLevel)level;
+      if (comp_level == CompLevel_full_profile) {
+        comp_level = CompLevel_limited_profile;
+      }
+      PrecompileIterator pi(comp_level, false /*for_preload*/, (CompLevel)level, THREAD);
+      TrainingData::archived_training_data_dictionary()->iterate(&pi);
+      pi.precompile(builder, THREAD);
+    }
 
     SCCache::new_workflow_end_writing_cache();
   }

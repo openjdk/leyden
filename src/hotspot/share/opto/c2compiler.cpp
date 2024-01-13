@@ -144,8 +144,9 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
   bool do_superword = UseSuperWord;
-  bool for_preload = SCCache::gen_preload_code(target, entry_bci);
-  if (task->is_precompiled()) {
+  bool for_preload = (task->compile_reason() != CompileTask::Reason_Precompile) && // non-preload version is requested
+                     SCCache::gen_preload_code(target, entry_bci);
+  if (task->compile_reason() == CompileTask::Reason_PrecompileForPreload) {
     assert(for_preload, "required");
   }
   while (!env->failing()) {
