@@ -1,8 +1,8 @@
 diff --git a/pom.xml b/pom.xml
-index ce92ea5..07a81c8 100644
+index 8a3d6f1..cdea0a8 100644
 --- a/pom.xml
 +++ b/pom.xml
-@@ -220,17 +220,19 @@
+@@ -209,10 +209,12 @@
            </execution>
          </executions>
        </plugin>
@@ -15,36 +15,24 @@ index ce92ea5..07a81c8 100644
        <plugin>
          <groupId>org.springframework.boot</groupId>
          <artifactId>spring-boot-maven-plugin</artifactId>
-         <executions>
-           <execution>
-             <!-- Spring Boot Actuator displays build-related information
--              if a META-INF/build-info.properties file is present -->
-+            if a META-INF/build-info.properties file is present -->
-             <goals>
-               <goal>build-info</goal>
-             </goals>
-@@ -241,8 +243,24 @@
+@@ -230,8 +232,20 @@
                  <java.source>${java.version}</java.source>
                  <java.target>${java.version}</java.target>
                </additionalProperties>
-+
 +              <image>
 +                <builder>paketobuildpacks/builder:tiny</builder>
 +                <env>
 +                  <BP_NATIVE_IMAGE>true</BP_NATIVE_IMAGE>
 +                </env>
 +              </image>
-+
              </configuration>
            </execution>
-+
 +          <execution>
 +            <id>process-aot</id>
 +            <goals>
 +              <goal>process-aot</goal>
 +            </goals>
 +          </execution>
-+
          </executions>
        </plugin>
        <plugin>
