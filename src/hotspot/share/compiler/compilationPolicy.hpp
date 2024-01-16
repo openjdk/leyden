@@ -301,21 +301,22 @@ class CompilationPolicy : AllStatic {
   // Clamp the request level according to various constraints.
   inline static CompLevel limit_level(CompLevel level);
   // Common transition function. Given a predicate determines if a method should transition to another level.
-    template<typename Predicate>
+  template<typename Predicate>
   static CompLevel common(const methodHandle& method, CompLevel cur_level, JavaThread* THREAD, bool disable_feedback = false);
+
   template<typename Predicate>
-  static CompLevel transition_from_none(const methodHandle& method, CompLevel cur_level, bool delay_profile, bool disable_feedback);
+  static CompLevel transition_from_none(const methodHandle& method, CompLevel cur_level, bool delay_profiling, bool disable_feedback);
   template<typename Predicate>
-  static CompLevel transition_from_limited_profile(const methodHandle& method, CompLevel cur_level, bool delay_profile, bool disable_feedback);
+  static CompLevel transition_from_limited_profile(const methodHandle& method, CompLevel cur_level, bool delay_profiling, bool disable_feedback);
   template<typename Predicate>
   static CompLevel transition_from_full_profile(const methodHandle& method, CompLevel cur_level);
   template<typename Predicate>
-  static CompLevel standard_transitions(const methodHandle& method, CompLevel cur_level, bool delay_profile, bool disable_feedback);
+  static CompLevel standard_transition(const methodHandle& method, CompLevel cur_level, bool delayprof, bool disable_feedback);
 
   static CompLevel trained_transition_from_none(const methodHandle& method, CompLevel cur_level, MethodTrainingData* mtd, JavaThread* THREAD);
   static CompLevel trained_transition_from_limited_profile(const methodHandle& method, CompLevel cur_level, MethodTrainingData* mtd, JavaThread* THREAD);
   static CompLevel trained_transition_from_full_profile(const methodHandle& method, CompLevel cur_level, MethodTrainingData* mtd, JavaThread* THREAD);
-  static CompLevel trained_transition(const methodHandle& method, CompLevel cur_level, JavaThread* THREAD);
+  static CompLevel trained_transition(const methodHandle& method, CompLevel cur_level, MethodTrainingData* mtd, JavaThread* THREAD);
 
   // Transition functions.
   // call_event determines if a method should be compiled at a different

@@ -185,7 +185,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
     }
     bool recompile = m->code_has_clinit_barriers();
     CompLevel cur_level = static_cast<CompLevel>(m->highest_comp_level());
-    CompLevel next_level = trained_transition(m, cur_level, THREAD);
+    CompLevel next_level = trained_transition(m, cur_level, mtd, THREAD);
     if ((next_level != cur_level || recompile) && can_be_compiled(m, next_level) && !CompileBroker::compilation_is_in_queue(m)) {
       bool requires_online_compilation = false;
       CompileTrainingData* ctd = mtd->last_toplevel_compile(next_level);
@@ -1341,10 +1341,9 @@ CompLevel CompilationPolicy::trained_transition_from_full_profile(const methodHa
   return CompLevel_full_profile;
 }
 
-CompLevel CompilationPolicy::trained_transition(const methodHandle& method, CompLevel cur_level, JavaThread* THREAD) {
+CompLevel CompilationPolicy::trained_transition(const methodHandle& method, CompLevel cur_level, MethodTrainingData* mtd, JavaThread* THREAD) {
   precond(MethodTrainingData::have_data());
 
-  MethodTrainingData* mtd = MethodTrainingData::find(method);
   // If there is no training data recorded for this method, bail out.
   if (mtd == nullptr) {
     return cur_level;
@@ -1423,16 +1422,24 @@ CompLevel CompilationPolicy::common(const methodHandle& method, CompLevel cur_le
     next_level = CompLevel_simple;
   } else {
     if (MethodTrainingData::have_data()) {
-      next_level = trained_transition(method, cur_level, THREAD);
-      if (cur_level == next_level) {
-        // If the trained transition logic returns the same level check the standard transition function
-        // but switch the delay on.
-        next_level = standard_transitions<Predicate>(method, cur_level, /*delay_profile*/ true, disable_feedback);
+      MethodTrainingData* mtd = MethodTrainingData::find(method);
+      if (mtd == nullptr) {
+        // We haven't see compilations of this method in training. It's either very cold or the behavior changed.
+        // Feed it to the standard TF with no profiling delay.
+        next_level = standard_transition<Predicate>(method, cur_level, false /*delay_profiling*/, disable_feedback);
+      } else {
+        next_level = trained_transition(method, cur_level, mtd, THREAD);
+        if (cur_level == next_level) {
+          // trained_transtion() is going to return the same level if no startup/warmup optimizations apply.
+          // In order to catch possible pathologies due to behavior change we feed the event to the regular
+          // TF but with profiling delay.
+          next_level = standard_transition<Predicate>(method, cur_level, true /*delay_profiling*/, disable_feedback);
+        }
       }
     } else if (is_trivial(method)) {
       next_level = CompilationModeFlag::disable_intermediate() ? CompLevel_full_optimization : CompLevel_simple;
     } else {
-      next_level = standard_transitions<Predicate>(method, cur_level, /*delay_profile*/ false, disable_feedback);
+      next_level = standard_transition<Predicate>(method, cur_level, false /*delay_profiling*/, disable_feedback);
     }
   }
   return (next_level != cur_level) ? limit_level(next_level) : next_level;
@@ -1440,15 +1447,15 @@ CompLevel CompilationPolicy::common(const methodHandle& method, CompLevel cur_le
 
 
 template<typename Predicate>
-CompLevel CompilationPolicy::standard_transitions(const methodHandle& method, CompLevel cur_level, bool delay_profile, bool disable_feedback) {
+CompLevel CompilationPolicy::standard_transition(const methodHandle& method, CompLevel cur_level, bool delay_profiling, bool disable_feedback) {
   CompLevel next_level = cur_level;
   switch(cur_level) {
   default: break;
   case CompLevel_none:
-    next_level = transition_from_none<Predicate>(method, cur_level, delay_profile, disable_feedback);
+    next_level = transition_from_none<Predicate>(method, cur_level, delay_profiling, disable_feedback);
     break;
   case CompLevel_limited_profile:
-    next_level = transition_from_limited_profile<Predicate>(method, cur_level, delay_profile, disable_feedback);
+    next_level = transition_from_limited_profile<Predicate>(method, cur_level, delay_profiling, disable_feedback);
     break;
   case CompLevel_full_profile:
     next_level = transition_from_full_profile<Predicate>(method, cur_level);
@@ -1458,12 +1465,12 @@ CompLevel CompilationPolicy::standard_transitions(const methodHandle& method, Co
 }
 
 template<typename Predicate>
-CompLevel CompilationPolicy::transition_from_none(const methodHandle& method, CompLevel cur_level, bool delay_profile, bool disable_feedback) {
+CompLevel CompilationPolicy::transition_from_none(const methodHandle& method, CompLevel cur_level, bool delay_profiling, bool disable_feedback) {
   precond(cur_level == CompLevel_none);
-  double scale = delay_profile ? Tier0DelayFactor : 1.0;
   CompLevel next_level = cur_level;
   int i = method->invocation_count();
   int b = method->backedge_count();
+  double scale = delay_profiling ? Tier0ProfileDelayFactor : 1.0;
   // If we were at full profile level, would we switch to full opt?
   if (transition_from_full_profile<Predicate>(method, CompLevel_full_profile) == CompLevel_full_optimization) {
     next_level = CompLevel_full_optimization;
@@ -1475,7 +1482,7 @@ CompLevel CompilationPolicy::transition_from_none(const methodHandle& method, Co
     // we introduce a feedback on the C2 queue size. If the C2 queue is sufficiently long
     // we choose to compile a limited profiled version and then recompile with full profiling
     // when the load on C2 goes down.
-    if (delay_profile || (!disable_feedback && CompileBroker::queue_size(CompLevel_full_optimization) > Tier3DelayOn * compiler_count(CompLevel_full_optimization))) {
+    if (delay_profiling || (!disable_feedback && CompileBroker::queue_size(CompLevel_full_optimization) > Tier3DelayOn * compiler_count(CompLevel_full_optimization))) {
       next_level = CompLevel_limited_profile;
     } else {
       next_level = CompLevel_full_profile;
@@ -1504,12 +1511,12 @@ CompLevel CompilationPolicy::transition_from_full_profile(const methodHandle& me
 }
 
 template<typename Predicate>
-CompLevel CompilationPolicy::transition_from_limited_profile(const methodHandle& method, CompLevel cur_level, bool delay_profile, bool disable_feedback) {
+CompLevel CompilationPolicy::transition_from_limited_profile(const methodHandle& method, CompLevel cur_level, bool delay_profiling, bool disable_feedback) {
   precond(cur_level == CompLevel_limited_profile);
-  double scale = delay_profile ? Tier2DelayFactor : 1.0;
   CompLevel next_level = cur_level;
   int i = method->invocation_count();
   int b = method->backedge_count();
+  double scale = delay_profiling ? Tier2ProfileDelayFactor : 1.0;
   MethodData* mdo = method->method_data();
   if (mdo != nullptr) {
     if (mdo->would_profile()) {
