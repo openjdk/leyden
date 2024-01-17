@@ -128,6 +128,7 @@ public class SpringPetClinic {
                 "-Xlog:init",
                 "-DautoQuit=true",
                 "-Dspring.output.ansi.enabled=NEVER",
+                "-Dspring.aot.enabled=true",
                 "-Dserver.port=0", // use system-assigned port
               //These don't seem necessary when pet-clinic is run in "Spring AOT" mode
               //"--add-opens", "java.base/java.io=ALL-UNNAMED",
