@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -21,50 +21,52 @@
  * questions.
  */
 
-package jdk.test.lib;
+package jdk.test.lib.cds;
 
 import java.io.File;
 import jdk.test.lib.cds.CDSTestUtils;
 import jdk.test.lib.process.ProcessTools;
 import jdk.test.lib.process.OutputAnalyzer;
+import jdk.test.lib.StringArrayUtils;
 
-// Note: to debug the new workflow, run jtreg with -vmoption:-DLeydenTester.split.new.workflow=true
-// This will run the new workflow in two separate processes that you can rerun easily inside a debugger.
-// Also, the log files are easier to read.
-abstract public class LeydenTester {
+/*
+ * This is a base class used for testing CDS functionalities with complex applications.
+ * You can define the application by overridding the vmArgs(), classpath() and appCommandLine()
+ * methods. Application-specific validation checks can be implemented with checkExecution().
+ *
+ * Note: to debug the new workflow, run jtreg with -vmoption:-DCDSAppTester.split.new.workflow=true
+ * This will run the new workflow in two separate processes that you can rerun easily inside a debugger.
+ * Also, the log files are easier to read.
+*/
+abstract public class CDSAppTester {
+    private enum Workflow {
+        STATIC,        // classic -Xshare:dump workflow, without any Leyden optimizations
+        DYNAMIC,       // classic -XX:ArchiveClassesAtExit, without any Leyden optimizations
+        LEYDEN_OLD,    // The old "5 step workflow", to be phased out
+        LEYDEN,        // The new "one step training workflow" -- see JDK-8320264
+    }
+
     public enum RunMode {
-        // OLD workflow
         CLASSLIST,
         DUMP_STATIC,
         DUMP_DYNAMIC,
-        DUMP_CODECACHE,
-        OLD_PRODUCTION,
-
-        // New workflow
-        TRAINING,
-        TRAINING0,
-        TRAINING1,
+        DUMP_CODECACHE,    // LEYDEN_OLD only
+        TRAINING,          // LEYDEN only
+        TRAINING0,         // LEYDEN only
+        TRAINING1,         // LEYDEN only
         PRODUCTION;
 
         public boolean isStaticDump() {
             return this == TRAINING1 || this == DUMP_STATIC;
         }
         public boolean isProductionRun() {
-            return this == OLD_PRODUCTION || this == PRODUCTION;
+            return this == PRODUCTION;
         }
-    };
+    }
 
-    // must override
     public final String name() {
         return this.name;
     }
-
-    // optional
-    public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {}
-
-    // must override
-    // main class, followed by arguments to the main class
-    abstract public String[] appCommandLine(RunMode runMode);
 
     // optional
     public String[] vmArgs(RunMode runMode) {
@@ -76,56 +78,73 @@ abstract public class LeydenTester {
         return null;
     }
 
-    // ============================== old workflow
+    // must override
+    // main class, followed by arguments to the main class
+    abstract public String[] appCommandLine(RunMode runMode);
+
     // optional
-    public String classListLog() {
+    public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {}
+
+    private Workflow workflow;
+
+    public final boolean isStaticWorkflow() {
+        return workflow == Workflow.STATIC;
+    }
+
+    public final boolean isDynamicWorkflow() {
+        return workflow == Workflow.DYNAMIC;
+    }
+
+    public final boolean isLeydenOldWorkflow() {
+        return workflow == Workflow.LEYDEN_OLD;
+    }
+
+    public final boolean isLeydenWorkflow() {
+        return workflow == Workflow.LEYDEN;
+    }
+
+    private String classListLog() {
         return "-Xlog:class+load=debug:file=" + classListFile + ".log";
     }
-    // optional
-    public String staticDumpLog() {
+    private String staticDumpLog() {
         return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + staticArchiveFile + ".log::filesize=0";
     }
-    // optional
-    public String dynamicDumpLog() {
+    private String dynamicDumpLog() {
         return "-Xlog:cds=debug,cds+class=debug,cds+resolve=debug,class+load=debug:file=" + dynamicArchiveFile + ".log::filesize=0";
     }
-    // optional
-    public String codeCacheDumpLog() {
+    private String codeCacheDumpLog() {
         return "-Xlog:scc:file=" + codeCacheFile + ".log::filesize=0";
     }
-    public String oldProductionRunLog() {
+    private String oldProductionRunLog() {
         return "-Xlog:scc*=warning,cds:file=" + name() + ".old-production.log::filesize=0";
     }
 
-    public final String name;
-    public final String classListFile;
-    public final String staticArchiveFile;
-    public final String dynamicArchiveFile;
-    public final String codeCacheFile;
+    private final String name;
+    private final String classListFile;
+    private final String staticArchiveFile;
+    private final String dynamicArchiveFile;
+    private final String codeCacheFile;
 
-    // ============================== new workflow
-
-    // optional
-    public String trainingLog() {
+    private String trainingLog() {
         return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".log:uptime,level,tags,pid:filesize=0";
     }
-    // optional
-    public String trainingLog0() {
+
+    private String trainingLog0() {
         return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".training0.log::filesize=0";
     }
-    // optional
-    public String trainingLog1() {
+
+    private String trainingLog1() {
         return "-Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=" + cdsFile + ".training1.log::filesize=0";
     }
-    // optional
-    public String productionRunLog() {
+
+    private String productionRunLog() {
         return "-Xlog:scc*=warning,cds:file=" + name() + ".production.log::filesize=0";
     }
 
-    public final String cdsFile; // -XX:CacheDataStore=<foo>.cds
-    public final String aotFile; // = cdsFile + ".code"
+    private final String cdsFile; // -XX:CacheDataStore=<foo>.cds
+    private final String aotFile; // = cdsFile + ".code"
 
-    public LeydenTester(String name) {
+    public CDSAppTester(String name) {
         // Old workflow
         this.name = name;
         classListFile = name() + ".classlist";
@@ -153,12 +172,7 @@ abstract public class LeydenTester {
         checkExecution(output, runMode);
     }
 
-
-    //========================================
-    // Old workflow
-    //========================================
-
-    public OutputAnalyzer createClassList() throws Exception {
+    private OutputAnalyzer createClassList() throws Exception {
         RunMode runMode = RunMode.CLASSLIST;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), classListLog(),
                                                    "-Xshare:off",
@@ -175,18 +189,22 @@ abstract public class LeydenTester {
         return output;
     }
 
-    public OutputAnalyzer dumpStaticArchive() throws Exception {
+    private OutputAnalyzer dumpStaticArchive() throws Exception {
         RunMode runMode = RunMode.DUMP_STATIC;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), staticDumpLog(),
                                                    "-Xlog:cds",
                                                    "-Xlog:cds+heap=error",
                                                    "-Xshare:dump",
                                                    "-XX:SharedArchiveFile=" + staticArchiveFile,
-                                                   "-XX:+ArchiveInvokeDynamic",
-                                                   "-XX:+ArchiveDynamicProxies",
-                                                   "-XX:+ArchiveReflectionData",
                                                    "-XX:SharedClassListFile=" + classListFile,
                                                    "-cp", classpath(runMode));
+        if (isLeydenOldWorkflow()) {
+            cmdLine = StringArrayUtils.concat(cmdLine,
+                                              "-XX:+ArchiveInvokeDynamic",
+                                              "-XX:+ArchiveDynamicProxies",
+                                              "-XX:+ArchiveReflectionData");
+        }
+
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
         OutputAnalyzer output = CDSTestUtils.executeAndLog(process, "static");
@@ -196,14 +214,24 @@ abstract public class LeydenTester {
         return output;
     }
 
-    public OutputAnalyzer dumpDynamicArchive() throws Exception {
+    private OutputAnalyzer dumpDynamicArchive() throws Exception {
         RunMode runMode = RunMode.DUMP_DYNAMIC;
-        String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), dynamicDumpLog(),
-                                                   "-Xlog:cds",
-                                                   "-XX:ArchiveClassesAtExit=" + dynamicArchiveFile,
-                                                   "-XX:SharedArchiveFile=" + staticArchiveFile,
-                                                   "-XX:+RecordTraining",
-                                                   "-cp", classpath(runMode));
+        String[] cmdLine;
+        if (isDynamicWorkflow()) {
+          // "classic" dynamic archive
+          cmdLine = StringArrayUtils.concat(vmArgs(runMode), dynamicDumpLog(),
+                                            "-Xlog:cds",
+                                            "-XX:ArchiveClassesAtExit=" + dynamicArchiveFile,
+                                            "-cp", classpath(runMode));
+        } else {
+          // Leyden "OLD" workflow step 3
+          cmdLine = StringArrayUtils.concat(vmArgs(runMode), dynamicDumpLog(),
+                                            "-Xlog:cds",
+                                            "-XX:ArchiveClassesAtExit=" + dynamicArchiveFile,
+                                            "-XX:SharedArchiveFile=" + staticArchiveFile,
+                                            "-XX:+RecordTraining",
+                                            "-cp", classpath(runMode));
+        }
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
@@ -215,7 +243,7 @@ abstract public class LeydenTester {
         return output;
     }
 
-    public OutputAnalyzer dumpCodeCache() throws Exception {
+    private OutputAnalyzer dumpCodeCache() throws Exception {
         RunMode runMode = RunMode.DUMP_CODECACHE;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), codeCacheDumpLog(),
                                                    "-XX:SharedArchiveFile=" + dynamicArchiveFile,
@@ -235,8 +263,8 @@ abstract public class LeydenTester {
         return output;
     }
 
-    public OutputAnalyzer oldProductionRun() throws Exception {
-        RunMode runMode = RunMode.OLD_PRODUCTION;
+    private OutputAnalyzer oldProductionRun() throws Exception {
+        RunMode runMode = RunMode.PRODUCTION;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), oldProductionRunLog(),
                                                    "-XX:SharedArchiveFile=" + dynamicArchiveFile,
                                                    "-XX:+ReplayTraining",
@@ -244,8 +272,6 @@ abstract public class LeydenTester {
                                                    "-XX:CachedCodeFile=" + codeCacheFile,
                                                    "-cp", classpath(runMode));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
-
-
 
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
         Process process = pb.start();
@@ -255,12 +281,8 @@ abstract public class LeydenTester {
         return output;
     }
 
-    //========================================
-    // New workflow
-    //========================================
-
     // normal training workflow (main JVM process spawns child process)
-    public OutputAnalyzer trainingRun() throws Exception {
+    private OutputAnalyzer trainingRun() throws Exception {
         RunMode runMode = RunMode.TRAINING;
         File f = new File(cdsFile);
         f.delete();
@@ -286,7 +308,7 @@ abstract public class LeydenTester {
     }
 
     // "split" training workflow (launch the two processes manually, for easier debugging);
-    public OutputAnalyzer trainingRun0() throws Exception {
+    private OutputAnalyzer trainingRun0() throws Exception {
         RunMode runMode = RunMode.TRAINING0;
         File f = new File(cdsFile);
         f.delete();
@@ -308,7 +330,7 @@ abstract public class LeydenTester {
         checkExecutionHelper(output, runMode);
         return output;
     }
-    public OutputAnalyzer trainingRun1() throws Exception {
+    private OutputAnalyzer trainingRun1() throws Exception {
         RunMode runMode = RunMode.TRAINING1;
         File f = new File(cdsFile);
         f.delete();
@@ -331,11 +353,18 @@ abstract public class LeydenTester {
         return output;
     }
 
-    public OutputAnalyzer productionRun() throws Exception {
+    private OutputAnalyzer productionRun() throws Exception {
         RunMode runMode = RunMode.PRODUCTION;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), productionRunLog(),
-                                                   "-XX:CacheDataStore=" + cdsFile,
                                                    "-cp", classpath(runMode));
+        if (isStaticWorkflow()) {
+            cmdLine = StringArrayUtils.concat(cmdLine, "-XX:SharedArchiveFile=" + staticArchiveFile);
+        } else if (isDynamicWorkflow()) {
+            cmdLine = StringArrayUtils.concat(cmdLine, "-XX:SharedArchiveFile=" + dynamicArchiveFile);
+        } else {
+            cmdLine = StringArrayUtils.concat(cmdLine, "-XX:CacheDataStore=" + cdsFile);
+        }
+
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
 
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(cmdLine);
@@ -346,24 +375,44 @@ abstract public class LeydenTester {
         return output;
     }
 
-    public void run() throws Exception {
-        runNew();
-        runOld();
-    }
-
     public void run(String args[]) throws Exception {
-        if (args.length == 1 && args[0].equals("NEW")) {
-            runNew();
-        } else if (args[0].equals("OLD")) {
-            runOld();
-        } else {
-            throw new RuntimeException("command line argument must be OLD or NEW");
+        if (args.length == 1) {
+            if (args[0].equals("STATIC")) {
+                runStaticWorkflow();
+                return;
+            }
+            if (args[0].equals("DYNAMIC")) {
+                runDynamicWorkflow();
+                return;
+            }
+            if (args[0].equals("LEYDEN_OLD")) {
+                runLeydenOldWorkflow();
+                return;
+            }
+            if (args[0].equals("LEYDEN")) {
+                runLeydenWorkflow();
+                return;
+            }
         }
 
+        throw new RuntimeException("Must have exactly one command line argument: STATIC, DYNAMIC, LEYDEN_OLD or LEYDEN");
     }
 
-    public void runOld() throws Exception {
-        // Old Workflow
+    private void runStaticWorkflow() throws Exception {
+        this.workflow = Workflow.STATIC;
+        createClassList();
+        dumpStaticArchive();
+        productionRun();
+    }
+
+    private void runDynamicWorkflow() throws Exception {
+        this.workflow = Workflow.DYNAMIC;
+        dumpDynamicArchive();
+        productionRun();
+    }
+
+    private void runLeydenOldWorkflow() throws Exception {
+        this.workflow = Workflow.LEYDEN_OLD;
         createClassList();
         dumpStaticArchive();
         dumpDynamicArchive();
@@ -371,9 +420,9 @@ abstract public class LeydenTester {
         oldProductionRun();
     }
 
-    public void runNew() throws Exception {
-        // New Workflow
-        if (System.getProperty("LeydenTester.split.new.workflow") != null) {
+    private void runLeydenWorkflow() throws Exception {
+        this.workflow = Workflow.LEYDEN;
+        if (System.getProperty("CDSAppTester.split.new.workflow") != null) {
             trainingRun0();
             trainingRun1();
         } else {

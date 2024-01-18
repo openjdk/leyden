@@ -22,31 +22,26 @@
  *
  */
 
-/*
- * @test
- * @requires vm.cds.write.archived.java.heap
- * @library /test/jdk/lib/testlibrary /test/lib
- * @build LeydenHello
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar LeydenHelloApp
- * @run driver LeydenHello LEYDEN
- */
-
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
 
-public class LeydenHello {
-    static final String appJar = ClassFileInstaller.getJarPath("app.jar");
-    static final String mainClass = "LeydenHelloApp";
+public class JavacBench {
+    static String appJar;
 
-    public static void main(String[] args) throws Exception {
-        Tester t = new Tester();
-        t.run(args);
+    public static void main(String args[]) throws Exception {
+        appJar = ClassFileInstaller.writeJar("JavacBenchApp.jar",
+                                             "JavacBenchApp",
+                                             "JavacBenchApp$ClassFile",
+                                             "JavacBenchApp$FileManager",
+                                             "JavacBenchApp$SourceFile");
+        JavacBenchTester tester = new JavacBenchTester();
+        tester.run(args);
     }
 
-    static class Tester extends CDSAppTester {
-        public Tester() {
-            super(mainClass);
+    static class JavacBenchTester extends CDSAppTester {
+        public JavacBenchTester() {
+            super("JavacBench");
         }
 
         @Override
@@ -57,21 +52,9 @@ public class LeydenHello {
         @Override
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
-                mainClass, runMode.name()
+                "JavacBenchApp",
+                "30",
             };
         }
-
-        @Override
-        public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (!runMode.isStaticDump()) {
-                out.shouldContain("Hello Leyden " + runMode.name());
-            }
-        }
-    }
-}
-
-class LeydenHelloApp {
-    public static void main(String args[]) {
-        System.out.println("Hello Leyden " + args[0]);
     }
 }

@@ -22,14 +22,6 @@
  *
  */
 
-/*
- * @test
- * @requires vm.cds
- * @summary run Spring Pet Clinic demo with leyden-premain
- * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic NEW
- */
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -40,16 +32,21 @@ import java.util.Enumeration;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import jdk.test.lib.StringArrayUtils;
 import jdk.test.lib.artifacts.Artifact;
 import jdk.test.lib.artifacts.ArtifactResolver;
-import jdk.test.lib.LeydenTester;
-import jdk.test.lib.StringArrayUtils;
+import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.process.OutputAnalyzer;
 
 // NOTE: if you have not set up an artifactory, you can create spring-petclinic-3.2.0.zip by:
 //
-// (cd ../../../../premain/spring-petclinic/; echo edit ./Makefile ...; make unpack)
-// jtreg .... -vmoption:-Djdk.test.lib.artifacts.spring-petclinic=/path/to/test/hotspot/jtreg/premain/spring-petclinic/petclinic-snapshot/target/spring-petclinic-3.2.0.zip SpringPetClinic.java
+// - Make a clone of https://github.com/openjdk/leyden/tree/premain
+// - Change to the directory test/hotspot/jtreg/premain/spring-petclinic
+// - Edit the Makefile
+// - Run the command "make unpack"
+//
+// Then, you can add the following to your jtreg command-line to run the test cases in this directory:
+// -vmoption:-Djdk.test.lib.artifacts.spring-petclinic=/repo/test/hotspot/jtreg/premain/spring-petclinic/petclinic-snapshot/target/spring-petclinic-3.2.0.zip
 
 @Artifact(organization = "org.springframework.samples", name = "spring-petclinic", revision = "3.2.0", extension = "zip", unpack = false)
 public class SpringPetClinic {
@@ -114,7 +111,7 @@ public class SpringPetClinic {
     }
 
 
-    static class SpringPetClinicTester extends LeydenTester {
+    static class SpringPetClinicTester extends CDSAppTester {
         String cp;
 
         SpringPetClinicTester(String cp) {

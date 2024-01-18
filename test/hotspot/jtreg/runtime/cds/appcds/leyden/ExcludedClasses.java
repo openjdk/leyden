@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -38,7 +38,7 @@
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
  *                 Custy
  * @run driver jdk.test.lib.helpers.ClassFileInstaller TestApp$Foo$NotInJar
- * @run driver ExcludedClasses NEW
+ * @run driver ExcludedClasses LEYDEN
  */
 
 import java.io.File;
@@ -55,8 +55,8 @@ import java.security.ProtectionDomain;
 import java.util.Map;
 
 import jdk.jfr.Event;
+import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
-import jdk.test.lib.LeydenTester;
 import jdk.test.lib.process.OutputAnalyzer;
 
 public class ExcludedClasses {
@@ -68,7 +68,7 @@ public class ExcludedClasses {
         t.run(args);
     }
 
-    static class Tester extends LeydenTester {
+    static class Tester extends CDSAppTester {
         public Tester() {
             super(mainClass);;
         }
