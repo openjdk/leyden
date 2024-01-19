@@ -34,6 +34,7 @@
 #include "code/scopeDesc.hpp"
 #include "code/vtableStubs.hpp"
 #include "compiler/compileBroker.hpp"
+#include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/oopMap.hpp"
 #include "gc/g1/heapRegion.hpp"
 #include "gc/shared/barrierSet.hpp"
@@ -1916,6 +1917,8 @@ static void trace_exception(outputStream* st, oop exception_oop, address excepti
   NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_CI, #sub "::" #name "_count");
 
 void OptoRuntime::init_counters() {
+  assert(CompilerConfig::is_c2_enabled(), "");
+
   if (UsePerfData) {
     EXCEPTION_MARK;
 
@@ -1943,10 +1946,11 @@ void OptoRuntime::init_counters() {
   }}
 
 void OptoRuntime::print_counters_on(outputStream* st) {
-  if (UsePerfData && ProfileRuntimeCalls) {
+  if (UsePerfData && ProfileRuntimeCalls && CompilerConfig::is_c2_enabled()) {
     DO_COUNTERS2(PRINT_COUNTER_TIME_AND_CNT, PRINT_COUNTER_CNT)
   } else {
-    st->print_cr("  OptoRuntime: no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
+    st->print_cr("  OptoRuntime: no info (%s is disabled)",
+                 (!CompilerConfig::is_c2_enabled() ? "C2" : (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData")));
   }
 }
 

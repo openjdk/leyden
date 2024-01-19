@@ -39,6 +39,7 @@
 #include "code/scopeDesc.hpp"
 #include "code/vtableStubs.hpp"
 #include "compiler/compilationPolicy.hpp"
+#include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/disassembler.hpp"
 #include "compiler/oopMap.hpp"
 #include "gc/shared/barrierSet.hpp"
@@ -1537,6 +1538,8 @@ JRT_END
   NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_CI, #sub "::" #name "_count");
 
 void Runtime1::init_counters() {
+  assert(CompilerConfig::is_c1_enabled(), "");
+
   if (UsePerfData) {
     EXCEPTION_MARK;
 
@@ -1559,10 +1562,11 @@ void Runtime1::init_counters() {
 
 
 void Runtime1::print_counters_on(outputStream* st) {
-  if (UsePerfData && ProfileRuntimeCalls) {
+  if (UsePerfData && ProfileRuntimeCalls && CompilerConfig::is_c1_enabled()) {
     DO_COUNTERS(PRINT_COUNTER)
   } else {
-    st->print_cr("  Runtime1: no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
+    st->print_cr("  Runtime1: no info (%s is disabled)",
+                 (!CompilerConfig::is_c1_enabled() ? "C1" : (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData")));
   }
 }
 
