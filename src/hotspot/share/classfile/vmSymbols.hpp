@@ -163,6 +163,9 @@ class SerializeClosure;
   template(jdk_internal_loader_ClassLoaders_AppClassLoader,      "jdk/internal/loader/ClassLoaders$AppClassLoader")      \
   template(jdk_internal_loader_ClassLoaders_PlatformClassLoader, "jdk/internal/loader/ClassLoaders$PlatformClassLoader") \
                                                                                                   \
+  /* JavaHome */                                                                                  \
+  template(jdk_internal_misc_JavaHome,                "jdk/internal/misc/JavaHome")               \
+                                                                                                  \
   /* Java runtime version access */                                                               \
   template(java_lang_VersionProps,                    "java/lang/VersionProps")                   \
   template(java_version_name,                         "java_version")                             \

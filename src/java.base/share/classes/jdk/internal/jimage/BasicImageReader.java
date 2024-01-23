@@ -179,6 +179,13 @@ public class BasicImageReader implements AutoCloseable {
         this(imagePath, ByteOrder.nativeOrder());
     }
 
+    public static boolean hasNativeMap(Path imagePath) {
+        if (USE_JVM_MAP && BasicImageReader.class.getClassLoader() == null) {
+            return (NativeImageBuffer.getNativeMap(imagePath.toString()) != null);
+        }
+        return false;
+    }
+
     public static BasicImageReader open(Path imagePath) throws IOException {
         return new BasicImageReader(imagePath, ByteOrder.nativeOrder());
     }

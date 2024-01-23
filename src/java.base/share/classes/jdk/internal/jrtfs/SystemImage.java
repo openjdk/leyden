@@ -37,6 +37,8 @@ import java.security.AccessController;
 import java.security.CodeSource;
 import java.security.PrivilegedAction;
 
+import jdk.internal.jimage.BasicImageReader;
+import jdk.internal.jimage.HermeticImageHelper;
 import jdk.internal.jimage.ImageReader;
 import jdk.internal.jimage.ImageReader.Node;
 
@@ -74,6 +76,8 @@ abstract class SystemImage {
                 }
             };
         }
+        if (explodedModulesDir == null)
+            throw new FileSystemNotFoundException("No exploded modules dir");
         if (Files.notExists(explodedModulesDir))
             throw new FileSystemNotFoundException(explodedModulesDir.toString());
         return new ExplodedImage(explodedModulesDir);
@@ -87,13 +91,51 @@ abstract class SystemImage {
     // <JAVA_HOME>/modules directory Path
     static final Path explodedModulesDir;
 
-    static {
-        PrivilegedAction<String> pa = SystemImage::findHome;
-        RUNTIME_HOME = AccessController.doPrivileged(pa);
+    static final CodeSource systemImageCodeSource;
 
-        FileSystem fs = FileSystems.getDefault();
-        moduleImageFile = fs.getPath(RUNTIME_HOME, "lib", "modules");
-        explodedModulesDir = fs.getPath(RUNTIME_HOME, "modules");
+    static {
+        PrivilegedAction<CodeSource> getCodeSourceAction =
+            () -> SystemImage.class.getProtectionDomain().getCodeSource();
+        systemImageCodeSource = AccessController.doPrivileged(getCodeSourceAction);
+
+        Path hermeticModuleImageFile = null;
+
+        // When the SystemImage's CodeSource is null (null loader) then jrt:/
+        // is the current runtime, otherwise the JDK home is located relative
+        // to jrt-fs.jar.
+        if (systemImageCodeSource == null) {
+            if (HermeticImageHelper.isHermetic()) {
+                // Current execution runs in hermetic Java mode, modules image
+                // file is embedded in a hermetic JAR. The native
+                // ImageFileReader knows how to access the embedded modules at
+                // a specific offset (see JIMAGE_Open()).
+                RUNTIME_HOME = HermeticImageHelper.getImagePath();
+                hermeticModuleImageFile = Paths.get(HermeticImageHelper.getImagePath());
+
+                if (!BasicImageReader.hasNativeMap(hermeticModuleImageFile)) {
+                    throw new InternalError("No mapping for: " + hermeticModuleImageFile.toString());
+                }
+            } else {
+                // jrt:/ is the current runtime in non-hermetic mode.
+                PrivilegedAction<String> getJavaHomeAction = () -> System.getProperty("java.home");
+                RUNTIME_HOME = AccessController.doPrivileged(getJavaHomeAction);
+            }
+        } else {
+            // SystemImage is loaded from target jrt-fs.jar. Find the JDK home
+            // located relative to jrt-fs.jar.
+            PrivilegedAction<String> findJrtFsHomeAction = SystemImage::findJrtFsRelativeHome;
+            RUNTIME_HOME = AccessController.doPrivileged(findJrtFsHomeAction);
+        }
+
+        if (hermeticModuleImageFile != null) {
+           moduleImageFile = hermeticModuleImageFile;
+           // Exploded modules is not supported in hermetic Java mode.
+           explodedModulesDir = null;
+        } else {
+            FileSystem fs = FileSystems.getDefault();
+            moduleImageFile = fs.getPath(RUNTIME_HOME, "lib", "modules");
+            explodedModulesDir = fs.getPath(RUNTIME_HOME, "modules");
+        }
 
         modulesImageExists = AccessController.doPrivileged(
             new PrivilegedAction<Boolean>() {
@@ -105,17 +147,10 @@ abstract class SystemImage {
     }
 
     /**
-     * Returns the appropriate JDK home for this usage of the FileSystemProvider.
-     * When the CodeSource is null (null loader) then jrt:/ is the current runtime,
-     * otherwise the JDK home is located relative to jrt-fs.jar.
+     * Returns the appropriate JDK home located relative to jrt-fs.jar.
      */
-    private static String findHome() {
-        CodeSource cs = SystemImage.class.getProtectionDomain().getCodeSource();
-        if (cs == null)
-            return System.getProperty("java.home");
-
-        // assume loaded from $TARGETJDK/lib/jrt-fs.jar
-        URL url = cs.getLocation();
+    private static String findJrtFsRelativeHome() {
+        URL url = systemImageCodeSource.getLocation();
         if (!url.getProtocol().equalsIgnoreCase("file"))
             throw new InternalError(url + " loaded in unexpected way");
         try {

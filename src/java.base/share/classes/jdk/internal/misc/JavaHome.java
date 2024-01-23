@@ -37,6 +37,7 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.ServiceLoader;
+import jdk.internal.jimage.HermeticImageHelper;
 import sun.security.action.GetPropertyAction;
 
 /**
@@ -94,6 +95,9 @@ public class JavaHome {
                 System.out.println("Hermetic JAR JDK resource directory: " +
                                    HERMETIC_JAR_JDK_RESOURCES_HOME);
             }
+
+            // Initialize JavaHome explicitly.
+            HermeticImageHelper.init(JAVA_HOME);
         } else {
             isHermetic = false;
             jarFileSystem = null;
