@@ -72,6 +72,8 @@
 
 #include "jni_util.h"
 
+DEF_STATIC_Agent_OnLoad
+DEF_STATIC_JNI_OnLoad
 
 /*
  * Class:     sun_jvm_hotspot_asm_Disassembler
