@@ -24,18 +24,19 @@
  */
 package jdk.internal.misc;
 
+import java.nio.file.spi.FileSystemProvider;
 import java.io.File;
 import java.io.InputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Properties;
+import java.util.ServiceLoader;
 import sun.security.action.GetPropertyAction;
 
 /**
@@ -135,16 +136,34 @@ public class JavaHome {
         }
 
         if (jarFileSystem == null) {
-            try {
-                jarFileSystem = FileSystems.newFileSystem(
-                    URI.create("jar:file:" + JAVA_HOME), Collections.emptyMap());
+            // Load the ZipFileSystemProvider using a ServiceLoader directly.
+            // Create the jarFileSystem using the ZipFileSystemProvider.
+            //
+            // This is to avoid calling FileSystems.newFileSystem() here.
+            // FileSystems.newFileSystem() calls FileSystemProvider.loadInstalledProviders(),
+            // which tries to load and instantiate all installed file system
+            // providers. If a custom file system provider is installed, it's
+            // also loaded and instantiated. Initialization of some custom
+            // providers may cause circular loading problem before we finish
+            // creating the jarFileSystem.
+            ServiceLoader<FileSystemProvider> sl = ServiceLoader.load(
+                FileSystemProvider.class, ClassLoader.getPlatformClassLoader());
+            for (FileSystemProvider provider : sl) {
+                if (provider.getScheme().equalsIgnoreCase("jar")) {
+                    try {
+                        jarFileSystem = provider.newFileSystem(
+                            URI.create("jar:file:" + JAVA_HOME), Collections.emptyMap());
+                        break;
+                    } catch (IOException ex) {
+                        // The JAVA_HOME jar file should always exist.
+                        throw new IllegalStateException(ex);
+                    }
+                }
+
                 if (DEBUG) {
                     System.out.println(
                         "Create hermetic java.home file system: " + jarFileSystem);
                 }
-            } catch (IOException ex) {
-                // The JAVA_HOME jar file should always exist.
-                throw new IllegalStateException(ex);
             }
         }
 
