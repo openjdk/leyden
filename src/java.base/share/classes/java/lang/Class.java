@@ -545,6 +545,11 @@ public final class Class<T> implements java.io.Serializable,
                                    ClassLoader loader)
         throws ClassNotFoundException
     {
+        if (BuiltinClassLoader.useNegativeCache && loader instanceof BuiltinClassLoader bcl) {
+            if (bcl.checkNegativeLookupCache(name)) {
+                throw new ClassNotFoundException(name);
+            }
+        }
         Class<?> caller = null;
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();

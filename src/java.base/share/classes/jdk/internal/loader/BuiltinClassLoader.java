@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.jar.Attributes;
@@ -105,6 +106,10 @@ public class BuiltinClassLoader
 
     // the URL class path, or null if there is no class path
     private @Stable URLClassPath ucp;
+
+    private Set<String> negativeLookupCache;
+
+    public static final boolean useNegativeCache;
 
     /**
      * A module defined/loaded by a built-in class loader.
@@ -167,6 +172,7 @@ public class BuiltinClassLoader
         } else {
             packageToModule = new ConcurrentHashMap<>(1024);
         }
+        useNegativeCache = Boolean.getBoolean("loader.negativeCache");
     }
 
     /**
@@ -198,6 +204,7 @@ public class BuiltinClassLoader
 
         this.nameToModule = new ConcurrentHashMap<>(32);
         this.moduleToReader = new ConcurrentHashMap<>();
+        this.negativeLookupCache = ConcurrentHashMap.newKeySet();
     }
 
     /**
@@ -637,8 +644,12 @@ public class BuiltinClassLoader
         throws ClassNotFoundException
     {
         Class<?> c = loadClassOrNull(cn, resolve);
-        if (c == null)
+        if (c == null) {
+            if (useNegativeCache) {
+                addToNegativeLookupCache(cn);
+            }
             throw new ClassNotFoundException(cn);
+        }
         return c;
     }
 
@@ -1084,5 +1095,13 @@ public class BuiltinClassLoader
     private void resetArchivedStates() {
         ucp = null;
         resourceCache = null;
+    }
+
+    public boolean checkNegativeLookupCache(String className) {
+        return negativeLookupCache.contains(className);
+    }
+
+    public void addToNegativeLookupCache(String className) {
+        negativeLookupCache.add(className);
     }
 }
