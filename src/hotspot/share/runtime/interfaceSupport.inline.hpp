@@ -472,11 +472,12 @@ extern "C" {                                                         \
 
 #define JVM_ENTRY_PROF(result_type, name, header)                    \
   PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfCounter* _perf_##name##_thread_timer = nullptr;                \
   PerfCounter* _perf_##name##_count = nullptr;                       \
 extern "C" {                                                         \
   result_type JNICALL header {                                       \
     JavaThread* thread=JavaThread::thread_from_jni_environment(env); \
-    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_count, thread->profile_vm_calls()); \
+    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_thread_timer, _perf_##name##_count, thread->profile_vm_calls()); \
     MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, thread));        \
     ThreadInVMfromNative __tiv(thread);                              \
     debug_only(VMNativeEntryWrapper __vew;)                          \
@@ -485,11 +486,12 @@ extern "C" {                                                         \
 
 #define JVM_ENTRY_NO_ENV_PROF(result_type, name, header)             \
   PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfCounter* _perf_##name##_thread_timer = nullptr;                \
   PerfCounter* _perf_##name##_count = nullptr;                       \
 extern "C" {                                                         \
   result_type JNICALL header {                                       \
     JavaThread* thread = JavaThread::current();                      \
-    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_count, thread->profile_vm_calls()); \
+    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_thread_timer, _perf_##name##_count, thread->profile_vm_calls()); \
     MACOS_AARCH64_ONLY(ThreadWXEnable __wx(WXWrite, thread));        \
     ThreadInVMfromNative __tiv(thread);                              \
     debug_only(VMNativeEntryWrapper __vew;)                          \
@@ -498,10 +500,11 @@ extern "C" {                                                         \
 
 #define JVM_LEAF_PROF(result_type, name, header)                     \
   PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfCounter* _perf_##name##_thread_timer = nullptr;                \
   PerfCounter* _perf_##name##_count = nullptr;                       \
 extern "C" {                                                         \
   result_type JNICALL header {                                       \
-    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_count, \
+    PerfTraceTimedEvent perf_##name(_perf_##name##_timer, _perf_##name##_thread_timer, _perf_##name##_count, \
                                     ProfileVMCalls && Thread::current()->profile_vm_calls()); \
     VM_Exit::block_if_vm_exited();                                   \
     VM_LEAF_BASE(result_type, header)

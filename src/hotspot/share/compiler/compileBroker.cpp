@@ -2793,7 +2793,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
   // account all time, including bailouts and failures in this counter;
   // C1 and C2 counters are counting both successful and unsuccessful compiles
-  _t_total_compilation.add(time);
+  _t_total_compilation.add(&time);
 
   if (!success) {
     _total_bailout_count++;
@@ -2802,7 +2802,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
       _perf_last_failed_type->set_value(counters->compile_type());
       _perf_total_bailout_count->inc();
     }
-    _t_bailedout_compilation.add(time);
+    _t_bailedout_compilation.add(&time);
 
     if (CITime || log_is_enabled(Info, init)) {
       CompilerStatistics* stats = nullptr;
@@ -2821,7 +2821,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
       _perf_total_invalidated_count->inc();
     }
     _total_invalidated_count++;
-    _t_invalidated_compilation.add(time);
+    _t_invalidated_compilation.add(&time);
 
     if (CITime || log_is_enabled(Info, init)) {
       CompilerStatistics* stats = nullptr;
@@ -2844,10 +2844,10 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
     if (CITime || log_is_enabled(Info, init)) {
       int bytes_compiled = method->code_size() + task->num_inlined_bytecodes();
       if (is_osr) {
-        _t_osr_compilation.add(time);
+        _t_osr_compilation.add(&time);
         _sum_osr_bytes_compiled += bytes_compiled;
       } else {
-        _t_standard_compilation.add(time);
+        _t_standard_compilation.add(&time);
         _sum_standard_bytes_compiled += method->code_size() + task->num_inlined_bytecodes();
       }
 
