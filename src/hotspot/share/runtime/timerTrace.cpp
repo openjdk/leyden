@@ -73,7 +73,7 @@ TraceTime::~TraceTime() {
   }
   _t.stop();
   if (_accum != nullptr) {
-    _accum->add(_t);
+    _accum->add(&_t);
   }
   if (!_verbose) {
     return;

@@ -797,6 +797,10 @@ class PerfDataManager : AllStatic {
   {counter = PerfDataManager::create_counter(counter_ns, counter_name, \
                                              PerfData::U_Ticks,CHECK);}
 
+#define NEWPERFTHREADTICKCOUNTER(counter, counter_ns, counter_name)  \
+  {counter = PerfDataManager::create_counter(counter_ns, counter_name, \
+                                             PerfData::U_Ticks,CHECK);}
+
 #define NEWPERFEVENTCOUNTER(counter, counter_ns, counter_name)  \
   {counter = PerfDataManager::create_counter(counter_ns, counter_name, \
                                              PerfData::U_Events,CHECK);}
@@ -829,18 +833,27 @@ class PerfTraceTime : public StackObj {
 
   protected:
     elapsedTimer _t;
+    ThreadTimer _thread_t;
     PerfLongCounter* _timerp;
+    PerfLongCounter* _thread_timerp;
 
   public:
-    inline PerfTraceTime(PerfLongCounter* timerp, bool is_on = true) : _timerp(timerp) {
+    inline PerfTraceTime(PerfLongCounter* timerp, PerfLongCounter* thread_timerp = nullptr, bool is_on = true) : _timerp(timerp), _thread_timerp(thread_timerp) {
       if (!UsePerfData || !is_on) return;
       _t.start();
+      if (_thread_timerp != nullptr) {
+        _thread_t.start();
+      }
     }
 
     const char* name() const { return _timerp->name(); }
 
     jlong active_ticks() {
       return _t.active_ticks();
+    }
+
+    jlong thread_timer_active_ticks() {
+      return _thread_t.active_ticks();
     }
 
     ~PerfTraceTime();
@@ -850,13 +863,18 @@ class PerfPauseTimer : public StackObj {
   protected:
     bool _is_active;
     elapsedTimer* _timer;
+    ThreadTimer* _thread_timer;
 
   public:
-    inline PerfPauseTimer(PerfTraceTime* timer, bool is_on) : _is_active(false), _timer(nullptr) {
+    inline PerfPauseTimer(PerfTraceTime* timer, bool is_on) : _is_active(false), _timer(nullptr), _thread_timer(nullptr) {
       _is_active = (is_on && timer != nullptr);
       if (UsePerfData && _is_active) {
         _timer = &timer->_t;
         _timer->stop(); // pause
+        _thread_timer = &timer->_thread_t;
+        if (_thread_timer != nullptr) {
+          _thread_timer->stop();
+        }
       }
     }
 
@@ -864,6 +882,9 @@ class PerfPauseTimer : public StackObj {
       if (UsePerfData && _is_active) {
         assert(_timer != nullptr, "");
         _timer->start(); // resume
+        if (_thread_timer != nullptr) {
+          _thread_timer->start();
+        }
       }
     }
 };
@@ -893,11 +914,12 @@ class PerfTraceTimedEvent : public PerfTraceTime {
     PerfLongCounter* _eventp;
 
   public:
-    inline PerfTraceTimedEvent(PerfLongCounter* timerp, PerfLongCounter* eventp, bool is_on = true): PerfTraceTime(timerp, is_on), _eventp(eventp) {
+    inline PerfTraceTimedEvent(PerfLongCounter* timerp, PerfLongCounter* eventp, bool is_on = true): PerfTraceTimedEvent(timerp, nullptr, eventp, is_on) {}
+
+    inline PerfTraceTimedEvent(PerfLongCounter* timerp, PerfLongCounter* thread_timerp, PerfLongCounter* eventp, bool is_on = true) : PerfTraceTime(timerp, thread_timerp, is_on), _eventp(eventp) {
       if (!UsePerfData || !is_on) return;
       _eventp->inc();
     }
 
 };
-
 #endif // SHARE_RUNTIME_PERFDATA_HPP

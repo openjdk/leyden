@@ -531,4 +531,8 @@ PerfTraceTime::~PerfTraceTime() {
   if (!UsePerfData || !_t.is_active()) return;
   _t.stop();
   _timerp->inc(_t.ticks());
+  if (_thread_timerp != nullptr) {
+    _thread_t.stop();
+    _thread_timerp->inc(_thread_t.ticks());
+  }
 }
