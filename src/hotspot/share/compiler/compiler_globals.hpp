@@ -395,9 +395,6 @@
   product(bool, RecordTraining, false,                                      \
           "Request output of training data for improved deployment.")       \
                                                                             \
-  product(ccstrlist, TrainingOptions, nullptr,                              \
-          "Options for what training data to record [default all]")         \
-                                                                            \
   product(bool, ReplayTraining, false,                                      \
           "Read training data, if available, for use in this execution")    \
                                                                             \

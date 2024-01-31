@@ -580,7 +580,7 @@ ArchiveBuilder::FollowMode ArchiveBuilder::get_follow_mode(MetaspaceClosure::Ref
              ref->msotype() == MetaspaceObj::KlassTrainingDataType ||
              ref->msotype() == MetaspaceObj::MethodTrainingDataType ||
              ref->msotype() == MetaspaceObj::CompileTrainingDataType) {
-      return (TrainingData::need_data() && TrainingData::use_cds()) ? make_a_copy : set_to_null;
+      return TrainingData::need_data() ? make_a_copy : set_to_null;
   } else {
     if (ref->msotype() == MetaspaceObj::ClassType) {
       Klass* klass = (Klass*)ref->obj();

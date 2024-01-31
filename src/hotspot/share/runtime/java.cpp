@@ -550,10 +550,6 @@ void before_exit(JavaThread* thread, bool halt) {
   // Note: we don't wait until it actually dies.
   os::terminate_signal_thread();
 
-  if (TrainingData::need_data() && TrainingData::use_xml()) {
-    TrainingData::store_results();
-  }
-
   print_statistics();
   Universe::heap()->print_tracing_info();
 

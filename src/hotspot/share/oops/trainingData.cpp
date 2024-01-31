@@ -62,7 +62,6 @@ Array<MethodTrainingData*>* TrainingData::_recompilation_schedule = nullptr;
 Array<MethodTrainingData*>* TrainingData::_recompilation_schedule_for_dumping = nullptr;
 volatile bool* TrainingData::_recompilation_status = nullptr;
 int TrainingData::TrainingDataLocker::_lock_mode;
-TrainingData::Options TrainingData::_options;
 
 MethodTrainingData::MethodTrainingData() {
   assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
@@ -74,47 +73,6 @@ KlassTrainingData::KlassTrainingData() {
 
 CompileTrainingData::CompileTrainingData() : _level(-1), _compile_id(-1) {
   assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
-}
-
-void TrainingData::Options::parse() {
-  if (TrainingOptions != nullptr) {
-    const char delimiter[] = " ,";
-    size_t length = strlen(TrainingOptions);
-    char* options_list = NEW_C_HEAP_ARRAY(char, length + 1, mtCompiler);
-    strncpy(options_list, TrainingOptions, length + 1);
-    char* save_ptr;
-    char* token = strtok_r(options_list, delimiter, &save_ptr);
-    while (token != nullptr) {
-      if (strcmp(token, "xml") == 0) {
-        set_boolean_option(BooleanOption::XML);
-      } else if (strcmp(token, "cds") == 0) {
-        set_boolean_option(BooleanOption::CDS);
-      } else {
-        vm_exit_during_initialization(err_msg("TrainingOptions: \'%s\' flag unknown, please correct it", token));
-      }
-      token = strtok_r(nullptr, delimiter, &save_ptr);
-    }
-    FREE_C_HEAP_ARRAY(char, options_list);
-  }
-  // Don't allow both XML and CDS options
-  if (get_boolean_option(BooleanOption::CDS) && get_boolean_option(BooleanOption::XML)) {
-    vm_exit_during_initialization(err_msg("TrainingOptions: cds and xml options cannot be specified together"));
-  }
-  // If neither XML nor CDS are specified, choose CDS.
-  if (!get_boolean_option(BooleanOption::CDS) && !get_boolean_option(BooleanOption::XML)) {
-    set_boolean_option(BooleanOption::CDS);
-  }
-}
-
-void TrainingData::Options::print_on(outputStream* st) {
-  st->print("TrainingData::Options:");
-  if (get_boolean_option(BooleanOption::CDS)) {
-    st->print(" cds");
-  }
-  if (get_boolean_option(BooleanOption::XML)) {
-    st->print(" xml");
-  }
-  st->cr();
 }
 
 #if INCLUDE_CDS
@@ -142,12 +100,7 @@ void TrainingData::initialize() {
   if (have_data() || need_data()) {
     TrainingDataLocker::initialize();
   }
-  options()->parse();
-
   if (have_data()) {
-    if (use_xml()) {
-      load_profiles();
-    }
     // Initialize dependency tracking
     training_data_set()->iterate_all([](const Key* k, TrainingData* td) {
       if (td->is_MethodTrainingData()) {
@@ -379,10 +332,6 @@ void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what)
         InstanceKlass* ik = md->as_instance_klass()->get_instanceKlass();
         KlassTrainingData* ktd = ik->training_data_or_null();
         if (ktd != nullptr) {
-          ktd->record_touch_common(env->log(), "jit", task,
-                                   compiling_klass, nullptr,
-                                   method->name(), method->signature(),
-                                   nullptr);
           // This JIT task is (probably) requesting that ik be initialized,
           // so add him to my _init_deps list.
           TrainingDataLocker l;
@@ -693,228 +642,6 @@ bool CompileTrainingData::dump(TrainingDataDumper& tdd, DumpPhase dp) {
 
 static int qsort_compare_tdata(TrainingData** p1, TrainingData** p2) {
   return (*p1)->cmp(*p2);
-}
-
-void TrainingData::store_results() {
-  if (!need_data() && !have_data())  return;
-
-  ResourceMark rm;
-  TrainingDataDumper tdd;
-
-  // Collect all the training data and prepare to dump or archive.
-  // The first dump phase is preparation, which can mark nodes as
-  // do_not_dump, and/or can generate additional nodes.  The second
-  // phase is identification, where every time a node ID is required,
-  // we call identify; the first such call for each node runs its
-  // identification dump.  The third phase is detail dumping, which
-  // potentially dumps more besides than the one-line summary that
-  // comes out of the identity phase.  The last two phases are
-  // necessary because of the potential for circular references.
-  // Cycles must inherently be broken by first defining nodes and then
-  // defining edges between them, such as (in this case)
-  // initialization dependencies.  The detail phase is where the
-  // edges appear, after the identify phase which assigns id
-  // numbers to nodes.
-  int prev_len = -1, len = 0;
-  while (prev_len != len) {
-    assert(prev_len < len, "must not shrink the worklist");
-    prev_len = len; len = tdd.node_count();
-    // Since dump(DP_prepare) might have entered new items into the
-    // global TD table, we need to enumerate again from scratch.
-    {
-      TrainingDataLocker l;
-      training_data_set()->iterate_all([&](const Key* k, TrainingData* td) {
-        if (td->do_not_dump())  return;
-        tdd.prepare(td);
-      });
-    }
-  }
-
-  auto tda = tdd.hand_off_node_list();
-  tda.sort(qsort_compare_tdata);
-  // Data is ready to dump now.
-
-  const char* file_name = TrainingFile;
-  if (file_name == nullptr)  file_name = "hs_training_%p.log";
-  if (strstr(file_name, "%p")) {
-    const char* tmplt = file_name;
-    size_t buf_len = strlen(tmplt) + 100;
-    char* buf = NEW_RESOURCE_ARRAY(char, buf_len);
-    if (buf != nullptr) {
-      Arguments::copy_expand_pid(tmplt, strlen(tmplt), buf, buf_len);
-      // (if copy_expand_pid fails, we will be OK with its partial output)
-      file_name = buf;
-    }
-  }
-  fileStream file(file_name);
-  if (!file.is_open()) {
-    warning("Training data failed: cannot open file %s", file_name);
-    return;
-  }
-  xmlStream out(&file);
-  tdd.set_out(&out);
-  for (int i = 0; i < tda.length(); i++) {
-    auto td = tda.at(i);
-    if (td->do_not_dump())  continue;
-    tdd.identify(td);
-    td->dump(tdd, DP_detail);
-  }
-  tdd.close();
-}
-
-static bool str_starts(const char* str, const char* start) {
-  return !strncmp(str, start, strlen(start));
-}
-
-static bool str_scan(const char* str, const char* fmt, ...)
-  ATTRIBUTE_SCANF(2, 3);
-static bool str_scan(const char* str, const char* fmt, ...) {
-  bool res = false;
-  va_list args;
-  va_start(args, fmt);
-  const char* pct = strchr(fmt, '%');
-  assert(pct != nullptr, "");
-  size_t pfxlen = pct - fmt;  // length of prefix before %
-  const char* sp = str;
-  while ((sp = strchr(sp, fmt[0])) != nullptr) {
-    if (!strncmp(sp, fmt, pfxlen)) {
-      sp += pfxlen;
-      fmt += pfxlen;
-      break;
-    }
-    ++sp;
-  }
-  if (sp != nullptr) {
-    if (str_starts(fmt, "%p%n")) {
-      const char* endq = fmt + strlen("%p%n");
-      const char* ep = *endq ? strstr(sp, endq) : sp + strlen(sp);
-      if (ep != nullptr) {
-        *va_arg(args, const char**) = sp;
-        *va_arg(args, int*) = (int)(ep - sp);
-        res = true;
-      }
-    } else {
-      res = (vsscanf(sp, fmt, args) > 0);
-    }
-  }
-  va_end(args);
-  return res;
-}
-
-void TrainingData::load_profiles() {
-  if (!have_data())  return;
-  const char* file_name = TrainingFile;
-  if (file_name == nullptr)  file_name = "hs_training.log";
-  fileStream file(file_name, "r");
-  if (!file.is_open()) {
-    warning("Training data not found: cannot open file %s", file_name);
-    return;
-  }
-  // FIXME: add a line-oriented stream API for reading config files
-  const size_t buflen = 4096;
-  char buffer[buflen];
-  GrowableArrayCHeap<TrainingData*, mtCompiler> id2td;
-  #define ID2TD(id) (id >= 0 && id < id2td.length() ? id2td.at(id) : nullptr)
-  #define ADD_ID2TD(id, tdata) {                                 \
-      while (id2td.length() <= id)  id2td.append(nullptr);       \
-      id2td.at_put(id, tdata);                                   \
-    }
-  char* line;
-  while ((line = file.readln(buffer, buflen)) != nullptr) {
-    if (line == nullptr)  break;
-    typedef char* cstr;
-    cstr name, sig, lname;
-    int nlen, slen, lnlen;
-    int kid, mid, cid, did;
-    if (line == nullptr)  break;
-    if (str_starts(line, "<training_data>") ||
-        str_starts(line, "</training_data>")) {
-      continue;
-    } else if (str_starts(line, "<klass ")) {
-      // <klass id='10' name='Foo' loader_name='bar'/>
-      if (!str_scan(line, " id='%d'", &kid) ||
-          !str_scan(line, " name='%p%n'", &name, &nlen)) {
-        break;
-      }
-      if (!str_scan(line, " loader_name='%p%n'", &lname, &lnlen)) {
-        lname = nullptr;
-      }
-      name[nlen] = '\0';
-      if (lname != nullptr) {
-        lname[lnlen] = '\0';
-        const char* qapos = "&apos;";  //FIXME: do proper unescaping
-        if (str_starts(lname, qapos)) {
-          lname += strlen(qapos);
-          *--lname = '\'';
-        }
-        for (char* sp; (sp = strstr(lname, qapos)); ) {
-          *sp++ = '\'';
-          strcpy(sp, sp + strlen(qapos) - 1);
-        }
-      }
-      auto tdata = KlassTrainingData::make(name, lname);
-      ADD_ID2TD(kid, tdata);
-    } else if (str_starts(line, "<method ")) {
-      // <method id='14' klass='13' name='m' signature='()V' level='3'/>
-      if (!str_scan(line, " id='%d'", &mid) ||
-          !str_scan(line, " klass='%d'", &kid) ||
-          !str_scan(line, " name='%p%n'", &name, &nlen) ||
-          !str_scan(line, " signature='%p%n'", &sig, &slen)) {
-        break;
-      }
-      auto kdata = ID2TD(kid);
-      if (kdata == nullptr || !kdata->is_KlassTrainingData())  break;
-      name[nlen] = '\0';
-      if (!strcmp(name, "&lt;init&gt;")) {
-        name = (char*) "<init>";  //FIXME: do proper unescaping
-      }
-      sig[slen] = '\0';
-      auto tdata = MethodTrainingData::make(kdata->as_KlassTrainingData(),
-                                            name, sig);
-      ADD_ID2TD(mid, tdata);
-    } else if (str_starts(line, "<compile ")) {
-      // <compile id='42' compile_id='1283' level='3' method='1005'/>
-      if (!str_scan(line, " id='%d'", &cid) ||
-          !str_scan(line, " method='%d'", &mid)) {
-        break;
-      }
-      int task = 0;
-      str_scan(line, " compile_id='%d'", &task);
-      int level = 0;
-      str_scan(line, " level='%d'", &level);
-      auto md = ID2TD(mid);
-      if (md == nullptr)  break;
-      auto tdata = CompileTrainingData::make(md->as_MethodTrainingData(), level, task);
-      ADD_ID2TD(cid, tdata);
-    } else if (str_starts(line, "<init_dep ")) {
-      // <init_dep klass='1040' dep='14'/>
-      // <init_dep compile='1041' dep='14'/>
-      kid = cid = -1;
-      if (!str_scan(line, " dep='%d'", &did) ||
-          (!str_scan(line, " klass='%d'", &kid) &&
-           !str_scan(line, " compile='%d'", &cid))) {
-        break;
-      }
-      auto kd = ID2TD(kid);
-      auto cd = ID2TD(cid);
-      auto dd = ID2TD(did);
-      if ((kd == nullptr && cd == nullptr) || dd == nullptr)  break;
-      if (kd != nullptr) {
-        TrainingDataLocker l;
-        kd->as_KlassTrainingData()
-          ->add_init_dep(dd->as_KlassTrainingData());
-      } else {
-        TrainingDataLocker l;
-        cd->as_CompileTrainingData()
-          ->add_init_dep(dd->as_KlassTrainingData());
-      }
-    } else {
-      break;
-    }
-  }
-  if (line != nullptr) {
-    warning("unrecognized training line: %s", line);
-  }
 }
 
 using FieldData = KlassTrainingData::FieldData;
@@ -1309,42 +1036,6 @@ bool KlassTrainingData::record_static_field_init(fieldDescriptor* fd,
   return record_static_field_init(fdp, reason);
 }
 
-void KlassTrainingData::record_touch_common(xmlStream* xtty,
-                                            const char* reason,
-                                            CompileTask* jit_task,
-                                            Klass* init_klass,
-                                            Klass* requesting_klass,
-                                            Symbol* name,
-                                            Symbol* sig,
-                                            const char* context) {
-  if (xtty == nullptr)  return;  // no detailed logging
-  xtty->begin_elem("initialization_touch reason='%s'", reason);
-  if (context)  xtty->print(" context='%s'", context);
-  print_klass_attrs(xtty, holder());
-  if (name)  xtty->name(name);
-  if (sig)   xtty->signature(sig);
-  // report up to two requesting parties
-  for (int pass = 0; pass <= 1; pass++) {
-    Klass* k = !pass ? init_klass : requesting_klass;
-    if (!k)  continue;
-    if (pass && k == init_klass)  break;
-    const char* prefix = !pass ? "init_" : "requesting_";
-    if (k == holder()) {
-      xtty->print(" %sklass='//self'", prefix); continue;
-    }
-    print_klass_attrs(xtty, k, prefix);
-  }
-  if (!init_klass && !requesting_klass) {
-    xtty->print_raw(" requesting_klass=''");
-  }
-  if (jit_task != nullptr) {
-    xtty->print(" compile_id='%d'", jit_task->compile_id());
-  }
-  xtty->thread();
-  xtty->stamp();
-  xtty->end_elem();
-}
-
 void KlassTrainingData::record_initialization_touch(const char* reason,
                                                     Symbol* name,
                                                     Symbol* sig,
@@ -1359,10 +1050,6 @@ void KlassTrainingData::record_initialization_touch(const char* reason,
     requesting_klass = nullptr;  // ignore any real <clinit> on stack
   }
   add_initialization_touch(init_klass ? init_klass : requesting_klass);
-  ttyLocker ttyl;
-  record_touch_common(xtty, reason, /*jit_env*/ nullptr,
-                      init_klass, requesting_klass,
-                      name, sig, context);
 }
 
 void KlassTrainingData::log_initialization(bool is_start) {

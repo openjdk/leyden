@@ -53,8 +53,6 @@ class TrainingDataDictionary;
 class RunTimeClassInfo;
 class RunTimeMethodDataInfo;
 
-// Options are a list of comma-separated booleans (for now)
-// For example: TrainingOptions=xml
 
 class TrainingData : public Metadata {
   friend KlassTrainingData;
@@ -210,21 +208,9 @@ class TrainingData : public Metadata {
     }
   };
 
-  class Options {
-  public:
-    enum BooleanOption { XML, CDS };
-  private:
-    int _boolean_options;
-  public:
-    void set_boolean_option(BooleanOption o) { _boolean_options |= 1 << o; }
-    bool get_boolean_option(BooleanOption o) { return _boolean_options & (1 << o); }
-    void parse();
-    void print_on(outputStream* st);
-  };
 private:
   Key _key;
   bool _do_not_dump;
-  static Options _options;
 
   // just forward all constructor arguments to the embedded key
   template<typename... Arg>
@@ -242,8 +228,6 @@ private:
   static volatile bool* _recompilation_status;
   static void prepare_recompilation_schedule(TRAPS);
 
-  static Options* options() { return &_options; }
-
   class Transfer;
 
 public:
@@ -256,8 +240,6 @@ public:
 
   static bool have_data() { return ReplayTraining;  } // Going to read
   static bool need_data() { return RecordTraining;  } // Going to write
-  static bool use_cds()   { return options()->get_boolean_option(Options::BooleanOption::CDS); }
-  static bool use_xml()   { return options()->get_boolean_option(Options::BooleanOption::XML); }
 
   static TrainingDataSet* training_data_set() { return &_training_data_set; }
   static TrainingDataDictionary* archived_training_data_dictionary() { return &_archived_training_data_dictionary; }
@@ -285,13 +267,6 @@ public:
   // dump_detail(TrainingDataDumper& tdd) { return dump(tdd, DP_detail); }
 
   static void initialize();
-
-  // Store results to a file, and/or mark them for retention by CDS,
-  // if RecordTraining is enabled.
-  static void store_results();
-
-  // Load stored results from a file if ReplayTraining is enabled.
-  static void load_profiles();
 
   // Widget for recording dependencies, as an N-to-M graph relation,
   // possibly cyclic.
@@ -525,15 +500,6 @@ class KlassTrainingData : public TrainingData {
                                 xmlStream* xtty,
                                 int fieldinit_index = -1,
                                 const char* prefix = "");
-
-  void record_touch_common(xmlStream* xtty,
-                           const char* reason,
-                           CompileTask* jit_task,
-                           Klass* init_klass,
-                           Klass* requesting_klass,
-                           Symbol* name,
-                           Symbol* sig,
-                           const char* context);
 
   // A 1-based global order in which <clinit> was called, or zero if
   // that never did happen, or has not yet happened.
