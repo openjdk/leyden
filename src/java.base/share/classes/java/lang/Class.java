@@ -458,6 +458,11 @@ public final class Class<T> implements java.io.Serializable,
             throws ClassNotFoundException {
         ClassLoader loader = (caller == null) ? ClassLoader.getSystemClassLoader()
                                               : ClassLoader.getClassLoader(caller);
+        if (BuiltinClassLoader.useNegativeCache && loader instanceof BuiltinClassLoader bcl) {
+            if (bcl.checkNegativeLookupCache(name)) {
+                throw new ClassNotFoundException(name);
+            }
+        }
         return forName0(className, true, loader, caller);
     }
 
@@ -545,11 +550,6 @@ public final class Class<T> implements java.io.Serializable,
                                    ClassLoader loader)
         throws ClassNotFoundException
     {
-        if (BuiltinClassLoader.useNegativeCache && loader instanceof BuiltinClassLoader bcl) {
-            if (bcl.checkNegativeLookupCache(name)) {
-                throw new ClassNotFoundException(name);
-            }
-        }
         Class<?> caller = null;
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
@@ -577,6 +577,11 @@ public final class Class<T> implements java.io.Serializable,
                     sm.checkPermission(
                             SecurityConstants.GET_CLASSLOADER_PERMISSION);
                 }
+            }
+        }
+        if (BuiltinClassLoader.useNegativeCache && loader instanceof BuiltinClassLoader bcl) {
+            if (bcl.checkNegativeLookupCache(name)) {
+                throw new ClassNotFoundException(name);
             }
         }
         return forName0(name, initialize, loader, caller);

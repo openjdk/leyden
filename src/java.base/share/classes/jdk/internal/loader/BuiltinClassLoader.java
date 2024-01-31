@@ -172,7 +172,7 @@ public class BuiltinClassLoader
         } else {
             packageToModule = new ConcurrentHashMap<>(1024);
         }
-        useNegativeCache = Boolean.getBoolean("loader.negativeCache");
+        useNegativeCache = Boolean.parseBoolean(VM.getSavedProperty("loader.negativeCache"));
     }
 
     /**
@@ -643,6 +643,9 @@ public class BuiltinClassLoader
     protected Class<?> loadClass(String cn, boolean resolve)
         throws ClassNotFoundException
     {
+        if (useNegativeCache && checkNegativeLookupCache(cn)) {
+            throw new ClassNotFoundException(cn);
+        }
         Class<?> c = loadClassOrNull(cn, resolve);
         if (c == null) {
             if (useNegativeCache) {
@@ -1103,5 +1106,25 @@ public class BuiltinClassLoader
 
     public void addToNegativeLookupCache(String className) {
         negativeLookupCache.add(className);
+    }
+
+    public String negativeLookupCacheContents() {
+        String[] contents = negativeLookupCache.toArray(new String[]{});
+        StringBuilder builder = new StringBuilder();
+        if (contents.length != 0) {
+            for (String name: contents) {
+                builder.append(" " + name);
+            }
+            return builder.toString();
+        } else {
+            return null;
+        }
+    }
+
+    public void restoreNegativeLookupCache(String contents) {
+        String[] tokens = contents.split(" ");
+        for (String token: tokens) {
+            negativeLookupCache.add(token);
+        }
     }
 }

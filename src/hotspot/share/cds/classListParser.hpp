@@ -71,6 +71,7 @@ class ClassListParser : public StackObj {
   static const char* LAMBDA_FORM_TAG;
 public:
   static const char* CLASS_REFLECTION_DATA_TAG;
+  static const char* LOADER_NEGATIVE_CACHE_TAG;
 
   enum ParseMode {
     _parse_all,
@@ -120,6 +121,7 @@ private:
   bool                _lambda_form_line;
   bool                _constant_pool_line;
   bool                _class_reflection_data_line;
+  bool                _loader_negative_cache_line;
   ParseMode           _parse_mode;
 
   bool parse_int_option(const char* option_name, int* value);
@@ -143,6 +145,7 @@ private:
   void parse_constant_pool_tag();
   void parse_class_reflection_data_tag();
   void parse_dynamic_proxy_tag();
+  void parse_loader_negative_cache_tag();
 
   ClassListParser(const char* file, ParseMode _parse_mode);
   ~ClassListParser();

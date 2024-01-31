@@ -59,6 +59,7 @@ const char* ClassListParser::CONSTANT_POOL_TAG = "@cp";
 const char* ClassListParser::DYNAMIC_PROXY_TAG = "@dynamic-proxy";
 const char* ClassListParser::LAMBDA_FORM_TAG = "@lambda-form-invoker";
 const char* ClassListParser::LAMBDA_PROXY_TAG = "@lambda-proxy";
+const char* ClassListParser::LOADER_NEGATIVE_CACHE_TAG = "@loader-negative-cache";
 
 volatile Thread* ClassListParser::_parsing_thread = nullptr;
 ClassListParser* ClassListParser::_instance = nullptr;
@@ -120,6 +121,9 @@ int ClassListParser::parse(TRAPS) {
       continue;
     }
     if (_class_reflection_data_line) {
+      continue;
+    }
+    if (_loader_negative_cache_line) {
       continue;
     }
     if (_parse_mode == _parse_lambda_forms_invokers_only) {
@@ -228,6 +232,7 @@ bool ClassListParser::parse_one_line() {
   _lambda_form_line = false;
   _constant_pool_line = false;
   _class_reflection_data_line = false;
+  _loader_negative_cache_line = false;
 
   if (_line[0] == '@') {
     return parse_at_tags();
@@ -344,6 +349,11 @@ bool ClassListParser::parse_at_tags() {
     _token = _line + offset;
     _constant_pool_line = true;
     parse_dynamic_proxy_tag();
+    return true;
+  } else if (strcmp(_token, LOADER_NEGATIVE_CACHE_TAG) == 0) {
+    _token = _line + offset;
+    _loader_negative_cache_line = true;
+    parse_loader_negative_cache_tag();
     return true;
   } else {
     error("Invalid @ tag at the beginning of line \"%s\" line #%d", _token, _line_no);
@@ -987,4 +997,45 @@ void ClassListParser::parse_dynamic_proxy_tag() {
     PENDING_EXCEPTION->print_on(tty);
     error("defineProxyClassForCDS failed");
   }
+}
+
+void ClassListParser::parse_loader_negative_cache_tag() {
+  skip_whitespaces();
+  char* loader_type = _token;
+  skip_non_whitespaces();
+  *_token = '\0';
+  _token ++;
+
+  oop loader;
+  Klass* loader_klass;
+  if (!strcmp(loader_type, "app")) {
+    loader = SystemDictionary::java_system_loader();
+    loader_klass = vmClasses::jdk_internal_loader_ClassLoaders_AppClassLoader_klass();
+  } else if (!strcmp(loader_type, "platform")) {
+    loader = SystemDictionary::java_platform_loader();
+    loader_klass = vmClasses::jdk_internal_loader_ClassLoaders_PlatformClassLoader_klass();
+  } else {
+    warning("%s: unrecognized loader type %s is ignored", LOADER_NEGATIVE_CACHE_TAG, loader_type);
+    return;
+  }
+
+  char* contents = _token;
+  skip_non_whitespaces();
+  *_token = '\0';
+  _token ++;
+
+  TempNewSymbol method = SymbolTable::new_symbol("restoreNegativeLookupCache");
+  TempNewSymbol signature = SymbolTable::new_symbol("(Ljava/lang/String;)V");
+
+  EXCEPTION_MARK;
+  HandleMark hm(THREAD);
+  JavaCallArguments args(Handle(THREAD, loader));
+  Handle contents_h = java_lang_String::create_from_str(contents, THREAD);
+  args.push_oop(contents_h);
+  JavaValue result(T_VOID);
+  JavaCalls::call_virtual(&result,
+                          loader_klass,
+                          method,
+                          signature,
+                          &args, THREAD);
 }

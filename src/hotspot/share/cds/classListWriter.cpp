@@ -33,10 +33,12 @@
 #include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/moduleEntry.hpp"
+#include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
+#include "runtime/javaCalls.hpp"
 #include "runtime/mutexLocker.hpp"
 
 fileStream* ClassListWriter::_classlist_file = nullptr;
@@ -345,4 +347,45 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
     }
     stream->cr();
   }
+}
+
+void ClassListWriter::write_loader_negative_lookup_cache_for(oop loader, const char* loader_type) {
+  TempNewSymbol method = SymbolTable::new_symbol("negativeLookupCacheContents");
+  TempNewSymbol signature = SymbolTable::new_symbol("()Ljava/lang/String;");
+
+  EXCEPTION_MARK;
+
+  JavaValue result(T_OBJECT);
+  JavaCalls::call_virtual(&result,
+                          Handle(THREAD, loader),
+                          loader->klass(),
+                          method,
+                          signature,
+                          CHECK);
+
+  if (HAS_PENDING_EXCEPTION || result.get_oop() == nullptr) {
+    return;
+  }
+
+  ResourceMark rm;
+  const char* cache_contents = java_lang_String::as_utf8_string(result.get_oop());
+  log_debug(cds)("%s loader negative cache: %s", loader_type, cache_contents);
+
+  outputStream* stream = _classlist_file;
+  int buffer_size = strlen(ClassListParser::LOADER_NEGATIVE_CACHE_TAG) + strlen(loader_type) + strlen(cache_contents) + 1;
+  char buffer[buffer_size];
+  _classlist_file->set_scratch_buffer(buffer, buffer_size);
+  MutexLocker lock2(ClassListFile_lock, Mutex::_no_safepoint_check_flag);
+  stream->print("%s %s%s", ClassListParser::LOADER_NEGATIVE_CACHE_TAG, loader_type, cache_contents);
+  stream->cr();
+  _classlist_file->set_scratch_buffer(nullptr, 0);
+}
+
+void ClassListWriter::write_loader_negative_lookup_cache() {
+  if (!is_enabled()) {
+    return;
+  }
+
+  write_loader_negative_lookup_cache_for(SystemDictionary::java_platform_loader(), "platform");
+  write_loader_negative_lookup_cache_for(SystemDictionary::java_system_loader(), "app");
 }
