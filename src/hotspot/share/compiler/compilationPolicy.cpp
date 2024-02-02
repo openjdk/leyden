@@ -929,22 +929,6 @@ void CompilationPolicy::reprofile(ScopeDesc* trap_scope, bool is_osr) {
   }
 }
 
-bool CompilationPolicy::should_delay(const methodHandle& method) {
-  if (!TrainingData::have_data()) {
-    return false;
-  }
-
-  // It's important to keep this method lock-free and fast as we use
-  // it at every event.  We cache the pointer to the MethodTrainingData
-  // in MethodCounters to avoid doing a hash table lookup, which requires a lock.
-  MethodTrainingData* mtd = MethodTrainingData::find(method);
-  if (mtd != nullptr && mtd->saw_level(CompLevel_full_optimization)) {
-    return false;
-  }
-
-  return true;
-}
-
 nmethod* CompilationPolicy::event(const methodHandle& method, const methodHandle& inlinee,
                                       int branch_bci, int bci, CompLevel comp_level, CompiledMethod* nm, TRAPS) {
   if (PrintTieredEvents) {
@@ -1189,9 +1173,18 @@ bool CompilationPolicy::is_mature(MethodData* mdo) {
 // start profiling without waiting for the compiled method to arrive.
 // We also take the load on compilers into the account.
 bool CompilationPolicy::should_create_mdo(const methodHandle& method, CompLevel cur_level) {
-  if (cur_level != CompLevel_none || force_comp_at_level_simple(method) || CompilationModeFlag::quick_only() || !ProfileInterpreter || should_delay(method)) {
+  if (cur_level != CompLevel_none || force_comp_at_level_simple(method) || CompilationModeFlag::quick_only() || !ProfileInterpreter) {
     return false;
   }
+
+  if (TrainingData::have_data()) {
+    MethodTrainingData* mtd = MethodTrainingData::find(method);
+    if (mtd != nullptr && mtd->saw_level(CompLevel_full_optimization)) {
+      return true;
+    }
+    return false;
+  }
+
   if (is_old(method)) {
     return true;
   }

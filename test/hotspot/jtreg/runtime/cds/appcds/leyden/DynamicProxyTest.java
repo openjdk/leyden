@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -36,7 +36,7 @@
  *                 jdk.test.lib.Asserts 
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app2.jar
  *                 Fruit Apple
- * @run driver DynamicProxyTest NEW
+ * @run driver DynamicProxyTest LEYDEN
  */
 
 
@@ -49,8 +49,8 @@ import java.util.logging.Filter;
 import java.util.Map;
 
 import jdk.test.lib.Asserts;
+import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
-import jdk.test.lib.LeydenTester;
 import jdk.test.lib.process.OutputAnalyzer;
 
 public class DynamicProxyTest {
@@ -63,7 +63,7 @@ public class DynamicProxyTest {
         t.run(args);
     }
 
-    static class Tester extends LeydenTester {
+    static class Tester extends CDSAppTester {
         public Tester() {
             super("DynamicProxyTest");
         }

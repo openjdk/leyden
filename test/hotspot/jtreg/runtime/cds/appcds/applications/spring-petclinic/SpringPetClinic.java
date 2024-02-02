@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,14 +22,6 @@
  *
  */
 
-/*
- * @test
- * @requires vm.cds
- * @summary run Spring Pet Clinic demo with leyden-premain
- * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic NEW
- */
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -40,18 +32,23 @@ import java.util.Enumeration;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import jdk.test.lib.StringArrayUtils;
 import jdk.test.lib.artifacts.Artifact;
 import jdk.test.lib.artifacts.ArtifactResolver;
-import jdk.test.lib.LeydenTester;
-import jdk.test.lib.StringArrayUtils;
+import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.process.OutputAnalyzer;
 
-// NOTE: if you have not set up an artifactory, you can create spring-petclinic-3.1.0.zip by:
+// NOTE: if you have not set up an artifactory, you can create spring-petclinic-3.2.0.zip by:
 //
-// (cd ../../../../premain/spring-petclinic/; echo edit ./Makefile ...; make unpack)
-// jtreg .... -vmoption:-Djdk.test.lib.artifacts.spring-petclinic=/path/to/test/hotspot/jtreg/premain/spring-petclinic/petclinic-snapshot/target/spring-petclinic-3.1.0.zip SpringPetClinic.java
+// - Make a clone of https://github.com/openjdk/leyden/tree/premain
+// - Change to the directory test/hotspot/jtreg/premain/spring-petclinic
+// - Edit the Makefile
+// - Run the command "make unpack"
+//
+// Then, you can add the following to your jtreg command-line to run the test cases in this directory:
+// -vmoption:-Djdk.test.lib.artifacts.spring-petclinic=/repo/test/hotspot/jtreg/premain/spring-petclinic/petclinic-snapshot/target/spring-petclinic-3.2.0.zip
 
-@Artifact(organization = "org.springframework.samples", name = "spring-petclinic", revision = "3.1.0", extension = "zip", unpack = false)
+@Artifact(organization = "org.springframework.samples", name = "spring-petclinic", revision = "3.2.0", extension = "zip", unpack = false)
 public class SpringPetClinic {
     public static void main(String args[]) throws Exception {
         String cp = getArtifact();
@@ -67,7 +64,7 @@ public class SpringPetClinic {
 
             Map<String, Path> artifacts = ArtifactResolver.resolve(SpringPetClinic.class);
             System.out.println(artifacts);
-            Path zip = artifacts.get("org.springframework.samples.spring-petclinic-3.1.0");
+            Path zip = artifacts.get("org.springframework.samples.spring-petclinic-3.2.0");
 
             long elapsed = System.currentTimeMillis() - started;
             System.out.println("Resolved artifacts in " + elapsed + " ms");
@@ -114,7 +111,7 @@ public class SpringPetClinic {
     }
 
 
-    static class SpringPetClinicTester extends LeydenTester {
+    static class SpringPetClinicTester extends CDSAppTester {
         String cp;
 
         SpringPetClinicTester(String cp) {
@@ -128,6 +125,7 @@ public class SpringPetClinic {
                 "-Xlog:init",
                 "-DautoQuit=true",
                 "-Dspring.output.ansi.enabled=NEVER",
+                "-Dspring.aot.enabled=true",
                 "-Dserver.port=0", // use system-assigned port
               //These don't seem necessary when pet-clinic is run in "Spring AOT" mode
               //"--add-opens", "java.base/java.io=ALL-UNNAMED",

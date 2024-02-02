@@ -24,11 +24,8 @@
 
 /*
  * @test
- * @requires vm.cds.write.archived.java.heap
- * @library /test/jdk/lib/testlibrary /test/lib
- * @build LeydenHello
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar LeydenHelloApp
- * @run driver LeydenHello LEYDEN_OLD
+ * @requires vm.cds
+ * @summary run Spring Pet Clinic demo with leyden-premain "new workflow"
+ * @library /test/lib
+ * @run driver/timeout=120 SpringPetClinic LEYDEN
  */
-
-// Old workflow

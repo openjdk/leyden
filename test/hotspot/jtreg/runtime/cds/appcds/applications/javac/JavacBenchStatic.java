@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -29,56 +29,5 @@
  * @library /test/lib
  * @build JavacBenchApp 
  *
- * @run driver JavacBenchStatic
+ * @run driver JavacBench STATIC
  */
-
-import java.util.List;
-import jdk.test.lib.cds.CDSOptions;
-import jdk.test.lib.cds.CDSTestUtils;
-import jdk.test.lib.helpers.ClassFileInstaller;
-
-public class JavacBenchStatic extends JavacBenchTestBase {
-    static String appJar;
-    public static void main(String[] args) throws Exception {
-        appJar = getAppJar();
-        List<String> empty = List.of();
-        run(List.of("-XX:+ArchiveInvokeDynamic"), empty);
-        run(List.of("-XX:+PreloadSharedClasses"), empty);
-        run(List.of("-XX:-PreloadSharedClasses"), empty);
-    }
-
-    static void run(List<String> dumpArgs, List<String> execArgs) throws Exception {
-        String classList = "JavacBenchApp.classlist";
-        String commandLine[] = {
-            "-cp", appJar,
-            "JavacBenchApp",
-            "30",
-        };
-
-        // Get classlist
-        CDSTestUtils.dumpClassList(classList, commandLine)
-            .assertNormalExit();
-
-        // Dump the static archive
-        CDSOptions opts = (new CDSOptions())
-            .addPrefix("-cp", appJar,
-                       "-XX:SharedClassListFile=" + classList);
-        for (String arg : dumpArgs) {
-            opts.addPrefix(arg);
-        }
-        opts.addSuffix("-Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=dump.log");
-        CDSTestUtils.createArchiveAndCheck(opts);
-
-        // Use the dumped static archive
-        opts = (new CDSOptions())
-            .setUseVersion(false)
-            .addPrefix("-cp", appJar)
-            .addSuffix(commandLine);
-        for (String arg : execArgs) {
-            opts.addPrefix(arg);
-        }
-        opts.addSuffix("-Xlog:cds");
-        CDSTestUtils.run(opts)
-            .assertNormalExit();
-    }
-}

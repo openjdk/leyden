@@ -352,7 +352,6 @@ class CompilationPolicy : AllStatic {
   static void create_mdo(const methodHandle& mh, JavaThread* THREAD);
   // Is method profiled enough?
   static bool is_method_profiled(const methodHandle& method);
-  static bool should_delay(const methodHandle& m);
 
   static void set_c1_count(int x) { _c1_count = x;    }
   static void set_c2_count(int x) { _c2_count = x;    }

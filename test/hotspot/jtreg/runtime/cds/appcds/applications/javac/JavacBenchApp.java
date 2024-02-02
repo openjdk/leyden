@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -175,6 +175,7 @@ public class JavacBenchApp {
     }
 
     public static void main(String args[]) throws Throwable {
+        long started = System.currentTimeMillis();
         JavacBenchApp bench = new JavacBenchApp();
         bench.setup();
         int count = 0;
@@ -184,7 +185,11 @@ public class JavacBenchApp {
                 bench.compile(count);
             }
         }
-        System.out.println("Generated source code for " + bench.sources.size() + " classes and compiled them for " + count + " times");
+        long elapsed = System.currentTimeMillis() - started;
+        if (System.getProperty("JavacBenchApp.silent") == null) {
+            // Set this property when running with "perf stat", etc
+            System.out.println("Generated source code for " + bench.sources.size() + " classes and compiled them for " + count + " times in " + elapsed + " ms");
+        }
     }
 }
 
