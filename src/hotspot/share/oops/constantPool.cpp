@@ -612,6 +612,9 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
   if (method_entry->method() == nullptr) {
     return false;
   }
+  if (method_entry->method()->is_continuation_native_intrinsic()) {
+    return false; // FIXME: corresponding stub is generated on demand during method resolution (see LinkResolver::resolve_static_call).
+  }
 
   int cp_index = method_entry->constant_pool_index();
   ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
