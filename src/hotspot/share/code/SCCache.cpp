@@ -244,6 +244,17 @@ SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) 
       }
 #endif
     }
+
+    DirectiveSet* directives = DirectivesStack::getMatchingDirective(method, nullptr);
+    if (directives->IgnorePrecompiledOption) {
+      LogStreamHandle(Info, scc, compilation) log;
+      if (log.is_enabled()) {
+        log.print("Ignore cached code entry on level %d for ", comp_level);
+        method->print_value_on(&log);
+      }
+      return nullptr;
+    }
+
     return entry;
   }
   return nullptr;
@@ -767,39 +778,18 @@ void* SCCEntry::operator new(size_t x, SCCache* cache) {
   return (void*)(cache->add_entry());
 }
 
-static char* exclude_names[42];
-static uint exclude_count = 0;
-static char* exclude_line = nullptr;
-
-bool skip_preload(Method* m) {
-  if (!m->method_holder()->is_loaded()) {
+bool skip_preload(methodHandle mh) {
+  if (!mh->method_holder()->is_loaded()) {
     return true;
   }
-  const char* line = SCExclude;
-  if (exclude_line == nullptr && line != nullptr && line[0] != '\0') {
-    exclude_line = os::strdup(line);
-    char* ptr;
-    char* tok = strtok_r(exclude_line, ",", &ptr);
-    while (tok != nullptr && exclude_count < 42) {
-      exclude_names[exclude_count++] = tok;
-      tok = strtok_r(nullptr, ",", &ptr);
+  DirectiveSet* directives = DirectivesStack::getMatchingDirective(mh, nullptr);
+  if (directives->DontPreloadOption) {
+    LogStreamHandle(Info, scc, init) log;
+    if (log.is_enabled()) {
+      log.print("Exclude preloading code for ");
+      mh->print_value_on(&log);
     }
-    for(uint i = 0; i < exclude_count; i++) {
-      log_info(scc, init)("Exclude preloading code for '%s'", exclude_names[i]);
-    }
-  }
-  if (exclude_line != nullptr) {
-    char buf[256];
-    stringStream namest(buf, sizeof(buf));
-    m->print_short_name(&namest);
-    const char* name = namest.base() + 1;
-    size_t len = namest.size();
-    for(uint i = 0; i < exclude_count; i++) {
-      if (strncmp(exclude_names[i], name, len) == 0) {
-        log_info(scc, init)("Preloading code for %s excluded by SCExclude", name);
-        return true; // Exclude preloading for this method
-      }
-    }
+    return true;
   }
   return false;
 }
@@ -824,20 +814,20 @@ void SCCache::preload_startup_code(TRAPS) {
       if (entry->not_entrant()) {
         continue;
       }
-      Method* m = entry->method();
-      assert(((m != nullptr) && MetaspaceShared::is_in_shared_metaspace((address)m)), "sanity");
-      if (skip_preload(m)) {
+      methodHandle mh(THREAD, entry->method());
+      assert((mh.not_null() && MetaspaceShared::is_in_shared_metaspace((address)mh())), "sanity");
+      if (skip_preload(mh)) {
         continue; // Exclude preloading for this method
       }
-      assert(m->method_holder()->is_loaded(), "");
-      if (!m->method_holder()->is_linked()) {
+      assert(mh->method_holder()->is_loaded(), "");
+      if (!mh->method_holder()->is_linked()) {
         assert(!HAS_PENDING_EXCEPTION, "");
-        m->method_holder()->link_class(THREAD);
+        mh->method_holder()->link_class(THREAD);
         if (HAS_PENDING_EXCEPTION) {
           LogStreamHandle(Warning, scc) log;
           if (log.is_enabled()) {
             ResourceMark rm;
-            log.print("Linkage failed for %s: ", m->method_holder()->external_name());
+            log.print("Linkage failed for %s: ", mh->method_holder()->external_name());
             THREAD->pending_exception()->print_value_on(&log);
             if (log_is_enabled(Debug, scc)) {
               THREAD->pending_exception()->print_on(&log);
@@ -846,7 +836,6 @@ void SCCache::preload_startup_code(TRAPS) {
           CLEAR_PENDING_EXCEPTION;
         }
       }
-      methodHandle mh(THREAD, m);
       if (mh->scc_entry() != nullptr) {
         // Second C2 compilation of the same method could happen for
         // different reasons without marking first entry as not entrant.
@@ -854,10 +843,6 @@ void SCCache::preload_startup_code(TRAPS) {
       }
       mh->set_scc_entry(entry);
       CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0, false, CompileTask::Reason_Preload, CHECK);
-    }
-    if (exclude_line != nullptr) {
-      os::free(exclude_line);
-      exclude_line = nullptr;
     }
   }
 }

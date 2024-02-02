@@ -455,9 +455,6 @@
   product(uint, SCLoadStop, max_jint,                                       \
           "The id of the last cached code to load")                         \
                                                                             \
-  product(ccstrlist, SCExclude, "",                                         \
-          "Exlcude startup code caching for specified method")              \
-                                                                            \
   product(ccstr, CachedCodeFile, "code.jsa",                                \
           "File with cached compiled code")                                 \
                                                                             \

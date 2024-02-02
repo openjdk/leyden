@@ -93,6 +93,8 @@ NOT_PRODUCT(option(IGVPrintLevel, "IGVPrintLevel", Intx)) \
   option(MaxNodeLimit, "MaxNodeLimit", Intx)  \
   option(PrecompileRecorded, "PrecompileRecorded", Uintx) \
   option(DontPrecompile, "DontPrecompile", Bool) \
+  option(DontPreload, "DontPreload", Bool) \
+  option(IgnorePrecompiled, "IgnorePrecompiled", Bool) \
   option(IgnoreRecordedProfile, "IgnoreRecordedProfile", Bool) \
   option(TooManyTrapsAtBCI, "TooManyTrapsAtBCI", Ccstrlist) \
 NOT_PRODUCT(option(TestOptionInt,    "TestOptionInt",    Intx)) \
