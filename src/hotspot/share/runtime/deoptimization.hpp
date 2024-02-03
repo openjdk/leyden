@@ -157,7 +157,7 @@ class Deoptimization : AllStatic {
     _action_shift = 0,
     _reason_shift = _action_shift+_action_bits,
     _debug_id_shift = _reason_shift+_reason_bits,
-    BC_CASE_LIMIT = PRODUCT_ONLY(1) NOT_PRODUCT(4) // for _deoptimization_hist
+    BC_CASE_LIMIT = 4 // for _deoptimization_hist
   };
 
   enum UnpackType {

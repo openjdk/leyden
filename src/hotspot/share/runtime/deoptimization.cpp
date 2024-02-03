@@ -1745,12 +1745,14 @@ void Deoptimization::pop_frames_failed_reallocs(JavaThread* thread, vframeArray*
 void Deoptimization::deoptimize_single_frame(JavaThread* thread, frame fr, Deoptimization::DeoptReason reason) {
   assert(fr.can_be_deoptimized(), "checking frame type");
 
-  gather_statistics(reason, Action_none, Bytecodes::_illegal);
+  CompiledMethod* cm = fr.cb()->as_compiled_method_or_null();
+  assert(cm != nullptr, "only compiled methods can deopt");
+  DeoptAction action = (cm->is_not_entrant() ? Action_make_not_entrant : Action_none);
+  ScopeDesc* cur_sd = cm->scope_desc_at(fr.pc());
+  Bytecodes::Code bc = cur_sd->method()->java_code_at(cur_sd->bci());
+  gather_statistics(reason, action, bc);
 
   if (LogCompilation && xtty != nullptr) {
-    CompiledMethod* cm = fr.cb()->as_compiled_method_or_null();
-    assert(cm != nullptr, "only compiled methods can deopt");
-
     ttyLocker ttyl;
     xtty->begin_head("deoptimized thread='" UINTX_FORMAT "' reason='%s' pc='" INTPTR_FORMAT "'",(uintx)thread->osthread()->thread_id(), trap_reason_name(reason), p2i(fr.pc()));
     cm->log_identity(xtty);
@@ -2893,10 +2895,16 @@ void Deoptimization::print_statistics_on(outputStream* st) {
           if (counter != 0) {
             char name[1*K];
             Bytecodes::Code bc = (Bytecodes::Code)(counter & LSB_MASK);
+            const char* bc_name = "other";
+            if (bc_case == (BC_CASE_LIMIT-1) && bc == Bytecodes::_nop) {
+              // overwritten
+            } else if (Bytecodes::is_defined(bc)) {
+              bc_name = Bytecodes::name(bc);
+            }
             os::snprintf_checked(name, sizeof(name), "%-34s %16s %16s",
                     trap_reason_name(reason),
                     trap_action_name(action),
-                    Bytecodes::is_defined(bc)? Bytecodes::name(bc): "other");
+                    bc_name);
             juint r = counter >> LSB_BITS;
             st->print_cr("  %s: " UINT32_FORMAT_W(5) " (%4.1f%%)", name, r, (r * 100.0) / total);
             account -= r;
