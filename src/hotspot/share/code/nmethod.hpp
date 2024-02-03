@@ -263,6 +263,8 @@ class nmethod : public CompiledMethod {
   // used by jvmti to track if an event has been posted for this nmethod.
   bool _load_reported;
 
+  bool _used; // has this nmethod ever been invoked?
+
   // Protected by CompiledMethod_lock
   volatile signed char _state;         // {not_installed, in_use, not_used, not_entrant}
 
@@ -608,6 +610,9 @@ public:
 
   SCCEntry* scc_entry() const { return _scc_entry; }
   bool is_scc() const { return scc_entry() != nullptr; }
+
+  bool     used() const { return _used; }
+  void set_used()       { _used = true; }
 
   // Post successful compilation
   void post_compiled_method(CompileTask* task);

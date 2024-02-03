@@ -1563,14 +1563,22 @@ void CodeCache::print_memory_overhead() {
   tty->print_cr("Segment map size:               " SSIZE_FORMAT "kB",  allocated_segments()/K); // 1 byte per segment
 }
 
+static void print_helper1(outputStream* st, const char* prefix, int total, int not_entrant, int used) {
+  if (total > 0) {
+    double ratio = (100.0 * used) / total;
+    st->print("%s %3d nmethods: %3d not_entrant, %d used (%2.1f%%);", prefix, total, not_entrant, used, ratio);
+  }
+}
+
 void CodeCache::print_nmethod_statistics_on(outputStream* st) {
-  int stats[2][6][3][2] = {0};
+  int stats     [2][6][3][2] = {0};
+  int stats_used[2][6][3][2] = {0};
 
   int total_osr = 0;
-
   int total_entrant = 0;
   int total_non_entrant = 0;
   int total_other = 0;
+  int total_used = 0;
 
   NMethodIterator iter(NMethodIterator::all_blobs);
   while (iter.next()) {
@@ -1585,6 +1593,9 @@ void CodeCache::print_nmethod_statistics_on(outputStream* st) {
     if (nm->is_osr_method()) {
       ++total_osr;
     }
+    if (nm->used()) {
+      ++total_used;
+    }
     assert(!nm->preloaded() || nm->comp_level() == CompLevel_full_optimization, "");
 
     int idx1 = nm->is_scc() ? 1 : 0;
@@ -1594,6 +1605,9 @@ void CodeCache::print_nmethod_statistics_on(outputStream* st) {
                                        2));
     int idx4 = (nm->is_osr_method() ? 1 : 0);
     stats[idx1][idx2][idx3][idx4] += 1;
+    if (nm->used()) {
+      stats_used[idx1][idx2][idx3][idx4] += 1;
+    }
   }
 
   st->print("Total: %d methods (%d entrant / %d not_entrant; osr: %d ",
@@ -1607,15 +1621,10 @@ void CodeCache::print_nmethod_statistics_on(outputStream* st) {
   for (int i = CompLevel_simple; i <= CompLevel_full_optimization; i++) {
     int total_normal = stats[0][i][0][0] + stats[0][i][1][0] + stats[0][i][2][0];
     int total_osr    = stats[0][i][0][1] + stats[0][i][1][1] + stats[0][i][2][1];
-
     if (total_normal + total_osr > 0) {
       st->print("  Tier%d:", i);
-      if (total_normal > 0) {
-        st->print(" %5d entrant / %3d not_entrant;", stats[0][i][0][0], stats[0][i][1][0]);
-      }
-      if (total_osr > 0) {
-        st->print(" osr: %d entrant / %d not_entrant;", stats[0][i][0][1], stats[0][i][1][1]);
-      }
+      print_helper1(st,      "", total_normal, stats[0][i][1][0], stats_used[0][i][0][0] + stats_used[0][i][1][0]);
+      print_helper1(st, " osr:", total_osr,    stats[0][i][1][1], stats_used[0][i][0][1] + stats_used[0][i][1][1]);
       st->cr();
     }
   }
@@ -1626,12 +1635,8 @@ void CodeCache::print_nmethod_statistics_on(outputStream* st) {
     assert(total_osr == 0, "sanity");
     if (total_normal + total_osr > 0) {
       st->print("  SC T%d:", i);
-      if (total_normal > 0) {
-        st->print(" %5d entrant / %3d not_entrant;", stats[1][i][0][0], stats[1][i][1][0]);
-      }
-      if (total_osr > 0) {
-        st->print(" osr: %d entrant / %d not_entrant;", stats[1][i][0][1], stats[1][i][1][1]);
-      }
+      print_helper1(st,      "", total_normal, stats[1][i][1][0], stats_used[1][i][0][0] + stats_used[1][i][1][0]);
+      print_helper1(st, " osr:", total_osr,    stats[1][i][1][1], stats_used[1][i][0][1] + stats_used[1][i][1][1]);
       st->cr();
     }
   }

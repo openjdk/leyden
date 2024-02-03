@@ -183,6 +183,7 @@ int BarrierSetNMethod::nmethod_stub_entry_barrier(address* return_address_ptr) {
   }
 
   assert(!nm->is_osr_method(), "Should not reach here");
+  log_trace(nmethod, barrier)("Running nmethod entry barrier: %d " PTR_FORMAT, nm->compile_id(), p2i(nm));
   // Called upon first entry after being armed
   bool may_enter = bs_nm->nmethod_entry_barrier(nm);
 
@@ -203,7 +204,9 @@ int BarrierSetNMethod::nmethod_stub_entry_barrier(address* return_address_ptr) {
     }
   }
 
-  if (!may_enter) {
+  if (may_enter) {
+    nm->set_used();
+  } else {
     log_trace(nmethod, barrier)("Deoptimizing nmethod: " PTR_FORMAT, p2i(nm));
     bs_nm->deoptimize(nm, return_address_ptr);
   }
@@ -221,8 +224,11 @@ bool BarrierSetNMethod::nmethod_osr_entry_barrier(nmethod* nm) {
   }
 
   assert(nm->is_osr_method(), "Should not reach here");
-  log_trace(nmethod, barrier)("Running osr nmethod entry barrier: " PTR_FORMAT, p2i(nm));
+  log_trace(nmethod, barrier)("Running osr nmethod entry barrier: %d " PTR_FORMAT, nm->compile_id(), p2i(nm));
   bool result = nmethod_entry_barrier(nm);
+  if (result) {
+    nm->set_used();
+  }
   OrderAccess::cross_modify_fence();
   return result;
 }

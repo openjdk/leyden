@@ -51,6 +51,7 @@
 #include "compiler/compileTask.hpp"
 #include "compiler/disassembler.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
+#include "gc/shared/barrierSetNMethod.hpp"
 #include "interpreter/bytecodeStream.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "jfr/jfrEvents.hpp"
@@ -1203,6 +1204,12 @@ void ciEnv::register_method(ciMethod* target,
         // Allow the code to be executed
         MutexLocker ml(CompiledMethod_lock, Mutex::_no_safepoint_check_flag);
         if (nm->make_in_use()) {
+#ifdef ASSERT
+          BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
+          if (bs_nm != nullptr && bs_nm->supports_entry_barrier(nm)) {
+            assert(bs_nm->is_armed(nm), "");
+          }
+#endif // ASSERT
           if (preload) {
             method->set_preload_code(nm);
           }
