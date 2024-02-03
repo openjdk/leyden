@@ -657,6 +657,7 @@ protected:
 
   bool  _profile_vm_locks;
   bool  _profile_vm_calls;
+  bool  _profile_vm_ops;
   bool  _profile_rt_calls;
   bool  _profile_upcalls;
 
@@ -667,6 +668,9 @@ protected:
 
   bool     profile_vm_calls() const { return _profile_vm_calls; }
   void set_profile_vm_calls(bool v) { _profile_vm_calls = v; }
+
+  bool     profile_vm_ops() const { return _profile_vm_ops; }
+  void set_profile_vm_ops(bool v) { _profile_vm_ops = v; }
 
   bool     profile_rt_calls() const { return _profile_rt_calls; }
   void set_profile_rt_calls(bool v) { _profile_rt_calls = v; }

@@ -608,6 +608,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   ObjectSynchronizer::initialize();
 
   Deoptimization::init_counters();
+  VMThread::init_counters();
 
   // Initialize global modules
   jint status = init_globals();
@@ -896,6 +897,9 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     }
     if (ProfileRuntimeCalls) {
       main_thread->set_profile_rt_calls(true);
+    }
+    if (ProfileVMOps) {
+      main_thread->set_profile_vm_ops(true);
     }
   }
 

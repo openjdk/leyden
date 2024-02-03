@@ -136,6 +136,9 @@ class VMThread: public NamedThread {
   // Printing
   const char* type_name() const { return "VMThread"; }
 
+  static void init_counters();
+  static void print_counters_on(outputStream* st);
+
  private:
   // VM_Operation support
   static VM_Operation*     _cur_vm_operation;   // Current VM operation
@@ -145,6 +148,9 @@ class VMThread: public NamedThread {
 
   // Pointer to single-instance of VM thread
   static VMThread*     _vm_thread;
+
+  static PerfCounter* get_perf_timer_for(VM_Operation* op);
+  static PerfCounter* get_perf_counter_for(VM_Operation* op);
 };
 
 #endif // SHARE_RUNTIME_VMTHREAD_HPP

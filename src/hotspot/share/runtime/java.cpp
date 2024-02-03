@@ -198,6 +198,8 @@ void log_vm_init_stats() {
       SCCache::print_timers_on(&log);
     }
 
+    VMThread::print_counters_on(&log);
+    log.cr();
     MutexLockerImpl::print_counters_on(&log);
     log.cr();
     log.print("Runtime events for thread \"main\"");

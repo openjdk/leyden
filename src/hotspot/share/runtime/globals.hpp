@@ -2016,6 +2016,9 @@ const int ObjectAlignmentInBytes = 8;
   product(bool, ProfileVMCalls, false, DIAGNOSTIC,                          \
           "Profile VM calls on main thread")                                \
                                                                             \
+  product(bool, ProfileVMOps, true, DIAGNOSTIC,                             \
+          "Profile VM operations on main thread")                           \
+                                                                            \
   product(bool, ProfileRuntimeCalls, false, DIAGNOSTIC,                     \
           "Profile calls into VM runtime on main thread")                   \
                                                                             \

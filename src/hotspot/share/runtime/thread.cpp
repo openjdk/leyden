@@ -142,7 +142,9 @@ Thread::Thread() {
 
   _profile_vm_locks = false;
   _profile_vm_calls = false;
+  _profile_vm_ops   = false;
   _profile_rt_calls = false;
+  _profile_upcalls  = false;
 
   _current_rt_call_timer = nullptr;
 }
