@@ -1546,14 +1546,6 @@ void nmethod::flush_dependencies() {
   }
 }
 
-bool nmethod::preloaded() const {
-  return SCCache::is_on() && (_scc_entry != nullptr) && (_scc_entry->preloaded());
-}
-
-bool nmethod::has_clinit_barriers() const {
-  return SCCache::is_on() && (_scc_entry != nullptr) && (_scc_entry->has_clinit_barriers());
-}
-
 void nmethod::post_compiled_method(CompileTask* task) {
   task->mark_success();
   task->set_nm_content_size(content_size());

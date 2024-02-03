@@ -1563,6 +1563,80 @@ void CodeCache::print_memory_overhead() {
   tty->print_cr("Segment map size:               " SSIZE_FORMAT "kB",  allocated_segments()/K); // 1 byte per segment
 }
 
+void CodeCache::print_nmethod_statistics_on(outputStream* st) {
+  int stats[2][6][3][2] = {0};
+
+  int total_osr = 0;
+
+  int total_entrant = 0;
+  int total_non_entrant = 0;
+  int total_other = 0;
+
+  NMethodIterator iter(NMethodIterator::all_blobs);
+  while (iter.next()) {
+    nmethod* nm = iter.method();
+    if (nm->is_in_use()) {
+      ++total_entrant;
+    } else if (nm->is_not_entrant()) {
+      ++total_non_entrant;
+    } else {
+      ++total_other;
+    }
+    if (nm->is_osr_method()) {
+      ++total_osr;
+    }
+    assert(!nm->preloaded() || nm->comp_level() == CompLevel_full_optimization, "");
+
+    int idx1 = nm->is_scc() ? 1 : 0;
+    int idx2 = nm->comp_level() + (nm->preloaded() ? 1 : 0);
+    int idx3 = (nm->is_in_use()      ? 0 :
+               (nm->is_not_entrant() ? 1 :
+                                       2));
+    int idx4 = (nm->is_osr_method() ? 1 : 0);
+    stats[idx1][idx2][idx3][idx4] += 1;
+  }
+
+  st->print("Total: %d methods (%d entrant / %d not_entrant; osr: %d ",
+               total_entrant + total_non_entrant + total_other,
+               total_entrant, total_non_entrant, total_osr);
+  if (total_other > 0) {
+    st->print("; %d other", total_other);
+  }
+  st->print_cr(")");
+
+  for (int i = CompLevel_simple; i <= CompLevel_full_optimization; i++) {
+    int total_normal = stats[0][i][0][0] + stats[0][i][1][0] + stats[0][i][2][0];
+    int total_osr    = stats[0][i][0][1] + stats[0][i][1][1] + stats[0][i][2][1];
+
+    if (total_normal + total_osr > 0) {
+      st->print("  Tier%d:", i);
+      if (total_normal > 0) {
+        st->print(" %5d entrant / %3d not_entrant;", stats[0][i][0][0], stats[0][i][1][0]);
+      }
+      if (total_osr > 0) {
+        st->print(" osr: %d entrant / %d not_entrant;", stats[0][i][0][1], stats[0][i][1][1]);
+      }
+      st->cr();
+    }
+  }
+  st->cr();
+  for (int i = CompLevel_simple; i <= CompLevel_full_optimization + 1; i++) {
+    int total_normal = stats[1][i][0][0] + stats[1][i][1][0] + stats[1][i][2][0];
+    int total_osr    = stats[1][i][0][1] + stats[1][i][1][1] + stats[1][i][2][1];
+    assert(total_osr == 0, "sanity");
+    if (total_normal + total_osr > 0) {
+      st->print("  SC T%d:", i);
+      if (total_normal > 0) {
+        st->print(" %5d entrant / %3d not_entrant;", stats[1][i][0][0], stats[1][i][1][0]);
+      }
+      if (total_osr > 0) {
+        st->print(" osr: %d entrant / %d not_entrant;", stats[1][i][0][1], stats[1][i][1][1]);
+      }
+      st->cr();
+    }
+  }
+}
+
 //------------------------------------------------------------------------------------------------
 // Non-product version
 

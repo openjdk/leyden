@@ -233,6 +233,8 @@ class CodeCache : AllStatic {
   static const char* get_code_heap_name(CodeBlobType code_blob_type)  { return (heap_available(code_blob_type) ? get_code_heap(code_blob_type)->name() : "Unused"); }
   static void report_codemem_full(CodeBlobType code_blob_type, bool print);
 
+  static void print_nmethod_statistics_on(outputStream* st);
+
   // Dcmd (Diagnostic commands)
   static void print_codelist(outputStream* st);
   static void print_layout(outputStream* st);

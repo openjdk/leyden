@@ -86,6 +86,8 @@ void CompiledMethod::init_defaults() {
   _has_method_handle_invokes  = 0;
   _has_wide_vectors           = 0;
   _has_monitors               = 0;
+  _preloaded                  = 0;
+  _has_clinit_barriers        = 0;
 }
 
 bool CompiledMethod::is_method_handle_return(address return_pc) {

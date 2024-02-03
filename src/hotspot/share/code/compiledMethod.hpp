@@ -159,6 +159,8 @@ protected:
   unsigned int _has_method_handle_invokes:1; // Has this method MethodHandle invokes?
   unsigned int _has_wide_vectors:1;          // Preserve wide vectors at safepoints
   unsigned int _has_monitors:1;              // Fastpath monitor detection for continuations
+  unsigned int _preloaded:1;
+  unsigned int _has_clinit_barriers:1;
 
   Method*   _method;
   address _scopes_data_begin;
@@ -206,6 +208,12 @@ public:
   bool  has_wide_vectors() const                  { return _has_wide_vectors; }
   void  set_has_wide_vectors(bool z)              { _has_wide_vectors = z; }
 
+  bool  has_clinit_barriers() const               { return _has_clinit_barriers; }
+  void  set_has_clinit_barriers(bool z)           { _has_clinit_barriers = z; }
+
+  bool  preloaded() const                         { return _preloaded; }
+  void  set_preloaded(bool z)                     { _preloaded = z; }
+
   enum : signed char { not_installed = -1, // in construction, only the owner doing the construction is
                                            // allowed to advance state
                        in_use        = 0,  // executable nmethod
@@ -217,8 +225,6 @@ public:
   virtual int   comp_level() const = 0;
   virtual int   compile_id() const = 0;
   virtual bool  is_scc() const = 0;
-  virtual bool  preloaded() const = 0;
-  virtual bool  has_clinit_barriers() const = 0;
 
   virtual address verified_entry_point() const = 0;
   virtual void log_identity(xmlStream* log) const = 0;

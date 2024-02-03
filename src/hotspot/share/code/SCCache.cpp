@@ -94,6 +94,10 @@ static elapsedTimer _t_totalStore;
 
 SCCache* SCCache::_cache = nullptr;
 
+static bool enable_timers() {
+  return CITime || log_is_enabled(Info, init);
+}
+
 void SCCache::initialize() {
   if (LoadCachedCode && !UseSharedSpaces) {
     return;
@@ -142,14 +146,14 @@ void SCCache::init2() {
   }
 }
 
-void SCCache::print_timers() {
+void SCCache::print_timers_on(outputStream* st) {
   if (LoadCachedCode) {
-    tty->print_cr ("    SC Load Time:         %7.3f s", _t_totalLoad.seconds());
-    tty->print_cr ("      nmethod register:     %7.3f s", _t_totalRegister.seconds());
-    tty->print_cr ("      find cached code:     %7.3f s", _t_totalFind.seconds());
+    st->print_cr ("    SC Load Time:         %7.3f s", _t_totalLoad.seconds());
+    st->print_cr ("      nmethod register:     %7.3f s", _t_totalRegister.seconds());
+    st->print_cr ("      find cached code:     %7.3f s", _t_totalFind.seconds());
   }
   if (StoreCachedCode) {
-    tty->print_cr ("    SC Store Time:        %7.3f s", _t_totalStore.seconds());
+    st->print_cr ("    SC Store Time:        %7.3f s", _t_totalStore.seconds());
   }
 }
 
@@ -174,6 +178,16 @@ bool SCCache::gen_preload_code(ciMethod* m, int entry_bci) {
 
 void SCCache::close() {
   if (is_on()) {
+    if (SCCache::is_on_for_read()) {
+      LogStreamHandle(Info, init) log;
+      if (log.is_enabled()) {
+        log.print_cr("Startup Code Cache statistics (when closed): ");
+        SCCache::print_statistics_on(&log);
+        log.cr();
+        SCCache::print_timers_on(&log);
+      }
+    }
+
     delete _cache; // Free memory
     _cache = nullptr;
   }
@@ -223,7 +237,7 @@ SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) 
 
     default: return nullptr; // Level 1, 2, and 4 only
   }
-  TraceTime t1("SC total find code time", &_t_totalFind, CITime, false);
+  TraceTime t1("SC total find code time", &_t_totalFind, enable_timers(), false);
   if (is_on() && _cache->cache_buffer() != nullptr) {
     MethodData* md = method->method_data();
     uint decomp = (md == nullptr) ? 0 : md->decompile_count();
@@ -771,7 +785,12 @@ void SCCEntry::update_method_for_writing() {
 }
 
 void SCCEntry::print(outputStream* st) const {
-  st->print_cr(" SCA entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s]", p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id, _decompile, (_not_entrant? "not_entrant" : "entrant"), (_preloaded ? ", preloaded" : ""), (_has_clinit_barriers ? ", has clinit barriers" : (_for_preload ? ", preload ready" : "")));
+  st->print_cr(" SCA entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s%s]",
+               p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id, _decompile,
+               (_not_entrant? "not_entrant" : "entrant"),
+               (_loaded ? ", loaded" : ""),
+               (_has_clinit_barriers ? ", has_clinit_barriers" : ""),
+               (_for_preload ? ", for_preload" : ""));
 }
 
 void* SCCEntry::operator new(size_t x, SCCache* cache) {
@@ -2760,7 +2779,7 @@ bool SCCReader::read_dependencies(Dependencies* dependencies) {
 }
 
 bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) {
-  TraceTime t1("SC total load time", &_t_totalLoad, CITime, false);
+  TraceTime t1("SC total load time", &_t_totalLoad, enable_timers(), false);
   CompileTask* task = env->task();
   SCCEntry* entry = task->scc_entry();
   bool preload = task->preload();
@@ -2924,7 +2943,7 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
   }
 
   // Register nmethod
-  TraceTime t1("SC total nmethod register time", &_t_totalRegister, CITime, false);
+  TraceTime t1("SC total nmethod register time", &_t_totalRegister, enable_timers(), false);
   env->register_method(target, entry_bci,
                        offsets, orig_pc_offset,
                        &buffer, frame_size,
@@ -2939,8 +2958,8 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
                        (SCCEntry *)_entry);
   CompileTask* task = env->task();
   bool success = task->is_success();
-  if (success && task->preload()) {
-    ((SCCEntry *)_entry)->set_preloaded();
+  if (success) {
+    ((SCCEntry *)_entry)->set_loaded();
   }
   return success;
 }
@@ -2979,7 +2998,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
   } else if (!compiler->is_c2()) {
     return nullptr; // Only C2 now
   }
-  TraceTime t1("SC total store time", &_t_totalStore, CITime, false);
+  TraceTime t1("SC total store time", &_t_totalStore, enable_timers(), false);
   SCCache* cache = open_for_write();
   if (cache == nullptr) {
     return nullptr; // Cache file is closed
@@ -3210,6 +3229,76 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
   return entry;
 }
 
+static void print_helper1(outputStream* st, const char* name, int count) {
+  if (count > 0) {
+    st->print(" %s=%d", name, count);
+  }
+}
+static void print_helper(outputStream* st, const char* name, int stats[6+3][6], int idx) {
+  int total = stats[idx][0];
+  if (total > 0) {
+    st->print("  %s:", name);
+    print_helper1(st, "total",               stats[idx][0]);
+    //print_helper1(st, "for_preload",         stats[idx][2]); // implied by Tier5
+    print_helper1(st, "loaded",              stats[idx][3]);
+    print_helper1(st, "invalidated",         stats[idx][4]);
+    print_helper1(st, "failed",              stats[idx][5]);
+    print_helper1(st, "has_clinit_barriers", stats[idx][1]);
+    st->cr();
+  }
+}
+
+void SCCache::print_statistics_on(outputStream* st) {
+  SCCache* cache = open_for_read();
+  if (cache != nullptr) {
+    ReadingMark rdmk;
+
+    uint count = cache->_load_header->entries_count();
+    uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
+    SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
+
+    int stats[6 + 3][6] = {0};
+    for (uint i = 0; i < count; i++) {
+      int index = search_entries[2*i + 1];
+      SCCEntry* entry = &(load_entries[index]);
+
+      int lvl = entry->kind();
+      if (entry->kind() == SCCEntry::Code) {
+        lvl += entry->comp_level() + (entry->for_preload() ? 1 : 0);
+      }
+      ++stats[lvl][0]; // total
+      if (entry->has_clinit_barriers()) {
+        ++stats[lvl][1];
+      }
+      if (entry->for_preload()) {
+        ++stats[lvl][2];
+      }
+      if (entry->is_loaded()) {
+        ++stats[lvl][3];
+      }
+      if (entry->not_entrant()) {
+        ++stats[lvl][4];
+      }
+      if (entry->load_fail()) {
+        ++stats[lvl][5];
+      }
+    }
+
+    print_helper(st, "None", stats, SCCEntry::None);
+    print_helper(st, "Stub", stats, SCCEntry::Stub);
+    print_helper(st, "Blob", stats, SCCEntry::Blob);
+    for (int lvl = 0; lvl <= CompLevel_full_optimization + 1; lvl++) {
+      ResourceMark rm;
+      stringStream ss;
+      ss.print("SC T%d", lvl);
+      print_helper(st, ss.freeze(), stats, SCCEntry::Code + lvl);
+    }
+
+  } else {
+    st->print_cr("failed to open SCA at %s", CachedCodeFile);
+  }
+}
+
 void SCCache::print_on(outputStream* st) {
   SCCache* cache = open_for_read();
   if (cache != nullptr) {
@@ -3228,7 +3317,7 @@ void SCCache::print_on(outputStream* st) {
                 entry->decompile(), entry->size(), entry->code_size(),
                 entry->has_clinit_barriers() ? " has_clinit_barriers" : "",
                 entry->for_preload()         ? " for_preload"         : "",
-                entry->preloaded()           ? " preloaded"           : "",
+                entry->is_loaded()           ? " loaded"              : "",
                 entry->not_entrant()         ? " not_entrant"         : "");
       st->print_raw("         ");
       SCCReader reader(cache, entry, nullptr);

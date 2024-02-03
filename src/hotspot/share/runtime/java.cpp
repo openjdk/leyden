@@ -184,6 +184,20 @@ void log_vm_init_stats() {
     CompileBroker::print_statistics_on(&log);
     log.cr();
 
+    {
+      MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+      log.print("Code cache statistics: ");
+      CodeCache::print_nmethod_statistics_on(&log);
+      log.cr();
+    }
+
+    if (SCCache::is_on_for_read()) {
+      log.print_cr("Startup Code Cache: ");
+      SCCache::print_statistics_on(&log);
+      log.cr();
+      SCCache::print_timers_on(&log);
+    }
+
     MutexLockerImpl::print_counters_on(&log);
     log.cr();
     log.print("Runtime events for thread \"main\"");

@@ -608,8 +608,6 @@ public:
 
   SCCEntry* scc_entry() const { return _scc_entry; }
   bool is_scc() const { return scc_entry() != nullptr; }
-  bool preloaded() const;
-  bool has_clinit_barriers() const;
 
   // Post successful compilation
   void post_compiled_method(CompileTask* task);

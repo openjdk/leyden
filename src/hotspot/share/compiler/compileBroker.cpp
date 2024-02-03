@@ -3167,7 +3167,7 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
 
   if (StoreCachedCode || LoadCachedCode) { // Check flags because SC cache could be closed already
     tty->cr();
-    SCCache::print_timers();
+    SCCache::print_timers_on(tty);
   }
   AbstractCompiler *comp = compiler(CompLevel_simple);
   if (comp != nullptr) {

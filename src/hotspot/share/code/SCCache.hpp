@@ -172,7 +172,7 @@ private:
   uint   _decompile;   // Decompile count for this nmethod
   bool   _has_clinit_barriers; // Generated code has class init checks
   bool   _for_preload; // Code can be used for preload
-  bool   _preloaded;   // Code was pre-loaded
+  bool   _loaded;      // Code was loaded
   bool   _not_entrant; // Deoptimized
   bool   _load_fail;   // Failed to load due to some klass state
 
@@ -204,7 +204,7 @@ public:
     _decompile    = decomp;
     _has_clinit_barriers = has_clinit_barriers;
     _for_preload  = for_preload;
-    _preloaded    = false;
+    _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
   }
@@ -241,8 +241,8 @@ public:
   uint decompile()    const { return _decompile; }
   bool has_clinit_barriers() const { return _has_clinit_barriers; }
   bool for_preload()  const { return _for_preload; }
-  bool preloaded()    const { return _preloaded; }
-  void set_preloaded()      { _preloaded = true; }
+  bool is_loaded()    const { return _loaded; }
+  void set_loaded()         { _loaded = true; }
 
   bool not_entrant()  const { return _not_entrant; }
   void set_not_entrant()    { _not_entrant = true; }
@@ -323,8 +323,8 @@ class SCCache;
 class SCCReader { // Concurent per compilation request
 private:
   const SCCache*  _cache;
-  const SCCEntry*    _entry;
-  const char*        _load_buffer; // Loaded cached code buffer
+  const SCCEntry* _entry;
+  const char*     _load_buffer; // Loaded cached code buffer
   uint  _read_position;            // Position in _load_buffer
   uint  read_position() const { return _read_position; }
   void  set_read_position(uint pos);
@@ -527,9 +527,11 @@ public:
   static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level);
   static void preload_code(JavaThread* thread);
 
-  static void print_on(outputStream* st);
   static void add_C_string(const char* str);
-  static void print_timers();
+
+  static void print_on(outputStream* st);
+  static void print_statistics_on(outputStream* st);
+  static void print_timers_on(outputStream* st);
 
   static void new_workflow_start_writing_cache();
   static void new_workflow_end_writing_cache();
