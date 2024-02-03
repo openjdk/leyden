@@ -224,7 +224,6 @@ void MethodTrainingData::print_on(outputStream* st, bool name_only) const {
   signature()->print_symbol_on(st);
   if (name_only)  return;
   if (!has_holder())  st->print("[SYM]");
-  if (_do_not_dump)  st->print("[DND]");
   if (_level_mask)  st->print(" LM%d", _level_mask);
   st->print(" mc=%p mdo=%p", _final_counters, _final_profile);
 }
@@ -276,7 +275,6 @@ void CompileTrainingData::print_on(outputStream* st, bool name_only) const {
   _method->print_on(st, true);
   st->print("#%dL%d", _compile_id, _level);
   if (name_only)  return;
-  if (_do_not_dump)  st->print("[DND]");
   #define MAYBE_TIME(Q, _qtime) \
     if (_qtime != 0)  st->print(" " #Q "%.3f", _qtime)
   MAYBE_TIME(Q, _qtime);
@@ -313,7 +311,6 @@ void CompileTrainingData::notice_inlined_method(CompileTask* task,
   if (mtd != nullptr)  mtd->notice_compilation(task->comp_level(), true);
 }
 
-
 void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what) {
   // A JIT is starting to look at class k.
   // We could follow the queries that it is making, but it is
@@ -342,306 +339,51 @@ void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what)
   }
 }
 
-static int cmp_zeroes_to_end(int id1, int id2) {
-  int cmp = id1 - id2;
-  // sort zeroes to the end, not the start
-  return (id1 == 0 || id2 == 0) ? -cmp : cmp;
+void KlassTrainingData::prepare(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
+  ClassLoaderData* loader_data = nullptr;
+  if (_holder != nullptr) {
+    loader_data = _holder->class_loader_data();
+  } else {
+    loader_data = java_lang_ClassLoader::loader_data(SystemDictionary::java_system_loader()); // default CLD
+  }
+  _init_deps.prepare(loader_data);
+  _comp_deps.prepare(loader_data);
 }
 
-int CompileTrainingData::cmp(const TrainingData* tdata) const {
-  if (this == tdata)  return 0;
-  if (tdata->is_CompileTrainingData()) {
-    const CompileTrainingData* that = tdata->as_CompileTrainingData();
-    if (this->method() == that->method()) {
-      int cmp = cmp_zeroes_to_end(this->level(),
-                                  that->level());
-      if (cmp != 0)  return cmp;
-      cmp = cmp_zeroes_to_end(this->compile_id(),
-                              that->compile_id());
-      return cmp != 0 ? cmp : this->key()->cmp(that->key());
-    }
-    tdata = that->method();
+void MethodTrainingData::prepare(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
   }
-  return this->method()->cmp(tdata) | 1;
+  visitor.visit(this);
+  klass()->prepare(visitor);
+  if (has_holder()) {
+    _final_counters = holder()->method_counters();
+    _final_profile  = holder()->method_data();
+    assert(_final_profile == nullptr || _final_profile->method() == holder(), "");
+  }
+  if (_compile != nullptr) {
+    // Just prepare the first one, or prepare them all?  This needs
+    // an option, because it's useful to dump them all for analysis,
+    // but it is likely only the first one (= most recent) matters.
+    for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
+      ctd->prepare(visitor);
+    }
+  }
 }
 
-int MethodTrainingData::cmp(const TrainingData* tdata) const {
-  if (this == tdata)  return 0;
-  if (tdata->is_CompileTrainingData()) {
-    return this->cmp(tdata->as_CompileTrainingData()->method()) | 1;
+void CompileTrainingData::prepare(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
   }
-  if (tdata->is_MethodTrainingData()) {
-    const MethodTrainingData* that = tdata->as_MethodTrainingData();
-    if (this->klass() == that->klass()) {
-      int cmp = cmp_zeroes_to_end(this->last_compile_id(),
-                                  that->last_compile_id());
-      return cmp != 0 ? cmp : this->key()->cmp(that->key());
-    }
-    tdata = that->klass();
-  }
-  return this->klass()->cmp(tdata) | 1;
-}
-
-int KlassTrainingData::cmp(const TrainingData* tdata) const {
-  if (this == tdata)  return 0;
-  if (tdata->is_KlassTrainingData()) {
-    const KlassTrainingData* that = tdata->as_KlassTrainingData();
-    int cmp = cmp_zeroes_to_end(this->clinit_sequence_index_or_zero(),
-                                that->clinit_sequence_index_or_zero());
-    return cmp != 0 ? cmp : this->key()->cmp(that->key());
-  }
-  if (tdata->is_CompileTrainingData()) {
-    tdata = tdata->as_CompileTrainingData()->method();
-  }
-  assert(tdata->is_MethodTrainingData(), "");
-  return (0 - tdata->cmp(this)) | 1;
-}
-
-// State machine for dumping.  There are three phases for each node:
-// prepare, identify, detail.  All nodes prepare before any of the
-// other phases execute.  A node can recursively prepare another node
-// to ensure it is in the output set.  A node outputs its identify the
-// first time identify is called on it.  Later on it outputs its
-// details.
-class TrainingDataDumper {
-  xmlStream* _out;
-  GrowableArray<TrainingData*> _index;
-  GrowableArray<TrainingData*> _nodes;
-
- public:
-  TrainingDataDumper() {
-    _out = nullptr;
-  }
-
-  void set_out(xmlStream* out) {
-    assert(_out == nullptr && out != nullptr, "");
-    _out = out;
-    _out->head("training_data");
-  }
-
-  void close() {
-    if (_out != nullptr) {
-      _out->tail("training_data");
-      _out->flush();
-      _out = nullptr;
-    }
-  }
-
-  ~TrainingDataDumper() { close(); }
-
-  xmlStream* out() { return _out; }
-
-  // Return -1 if not yet dumped, else index it was dumped under.
-  // Second argument enables allocation of a new index if needed.
-  // Yes, this is quadratic.  No, we don't care about that at the
-  // end of a training run.  When deserializing, the corresponding
-  // operation uses a similar temporary GrowableArray but is O(1).
-  int id_of(TrainingData* tdata) {
-    return _index.find(tdata);
-  }
-
-  TrainingData* node_at(int i) {
-    assert(_out == nullptr, "");
-    return _index.at(i);
-  }
-
-  int node_count() {
-    assert(_out == nullptr, "");
-    return _index.length();
-  }
-
-  GrowableArray<TrainingData*> &hand_off_node_list() {
-    assert(_out == nullptr, "");
-    _nodes.swap(&_index);
-    _index.clear();  // for reassigning id numbers in the future
-    return _nodes;
-  }
-
-  void prepare(TrainingData::TrainingDataSet* tds, TRAPS) {
-    TrainingData::TrainingDataLocker l;
-    int prev_len = -1, len = 0;
-    while (prev_len != len) {
-      assert(prev_len < len, "must not shrink the worklist");
-      prev_len = len; len = node_count();
-      tds->iterate_all([&](const TrainingData::Key* k, TrainingData* td) {
-        if (!td->do_not_dump()) {
-          prepare(td); // FIXME: may allocate in metaspace and hence throw an exception
-        }
-      });
-    }
-  }
-
-  void prepare(TrainingData* tdata) {
-    assert(_out == nullptr, "");
-    identify_or_prepare(tdata);
-  }
-
-  // Make sure this guy get line printed with id='%d'.
-  int identify(TrainingData* tdata) {
-    assert(_out != nullptr, "");
-    return identify_or_prepare(tdata);
-  }
-
- private:
-  int identify_or_prepare(TrainingData* tdata) {
-    bool prepare_only = (_out == nullptr);
-    if (tdata == nullptr)  return -1;
-    int len = _index.length();
-    int id = id_of(tdata);
-    if (id >= 0) {  // already assigned
-      return id;
-    }
-    id = _index.append(tdata);
-    if (prepare_only) {
-      // This can cause recursive calls to prepare,
-      // which will add to the index list.
-      tdata->dump(*this, TrainingData::DP_prepare);
-      return 0;
-    }
-    // At this point we are doing real output, so commit to each ID.
-    if (tdata->dump(*this, TrainingData::DP_identify)) {
-      return id;
-    }
-    // this tdata refused to identify itself
-    if (id == _index.length() - 1) {
-      _index.remove_at(id);
-    } else {
-      _index.at_put(id, nullptr);
-    }
-    return -1;
-  }
-};
-
-using ClassState = InstanceKlass::ClassState;
-#define EACH_CLASS_STATE(FN) \
-    FN(allocated, "A") \
-    FN(loaded, "O") \
-    FN(being_linked, "BL") \
-    FN(linked, "L") \
-    FN(being_initialized, "BI") \
-    FN(fully_initialized, "I") \
-    FN(initialization_error, "IE") \
-    /**/
-static const char* ClassState_to_name(ClassState state) {
-  #define SWITCH_CASE(x, y) \
-    case ClassState::x: return y;
-  switch (state) { EACH_CLASS_STATE(SWITCH_CASE) }
-  #undef SWITCH_CASE
-  return "?";
-}
-#if 0
-static int name_to_ClassState(const char* n) {
-  #define NAME_CASE(x, y) \
-    if (!strcmp(n, y))  return (int)ClassState::x;
-  EACH_CLASS_STATE(NAME_CASE);
-  #undef NAME_CASE
-  return -1;
-}
-#endif
-bool KlassTrainingData::dump(TrainingDataDumper& tdd, DumpPhase dp) {
-  if (dp == DP_prepare) {
-    // FIXME: Decide if we should set _do_not_dump on some records.
-    ClassLoaderData* loader_data = nullptr;
-    if (_holder != nullptr) {
-      loader_data = _holder->class_loader_data();
-    } else {
-      loader_data = java_lang_ClassLoader::loader_data(SystemDictionary::java_system_loader()); // default CLD
-    }
-    _init_deps.prepare(loader_data);
-    _comp_deps.prepare(loader_data);
-    return true;
-  }
-  auto out = tdd.out();
-  int kid = tdd.id_of(this);
-  if (dp == DP_identify) {
-    out->begin_elem("klass id='%d'", kid);
-    out->name(this->name());
-    Symbol* ln = this->loader_name();
-    if (ln != nullptr)  out->name(ln, "loader_");
-    ClassState state = ClassState::allocated;
-    if (has_holder())  state = holder()->init_state();
-    out->print(" state='%s'", ClassState_to_name(state));
-    out->end_elem();
-    return true;
-  }
-  assert(dp == DP_detail, "");
-  TrainingDataLocker l;
-  for (int i = 0, depc = init_dep_count(); i < depc; i++) {
-    int did = tdd.identify(init_dep(i));
-    out->elem("init_dep klass='%d' dep='%d'", kid, did);
-  }
-  return true;
-}
-
-bool MethodTrainingData::dump(TrainingDataDumper& tdd, DumpPhase dp) {
-  auto kd = klass();
-  if (dp == DP_prepare) {
-    tdd.prepare(kd);
-    // FIXME: Decide if we should set _do_not_dump on some records.
-    if (has_holder()) {
-      // FIXME: we might need to clone these two things
-      _final_counters = holder()->method_counters();
-      _final_profile  = holder()->method_data();
-      assert(_final_profile == nullptr || _final_profile->method() == holder(), "");
-    }
-    if (_compile != nullptr) {
-      // Just prepare the first one, or prepare them all?  This needs
-      // an option, because it's useful to dump them all for analysis,
-      // but it is likely only the first one (= most recent) matters.
-      for (auto cd = _compile; cd != nullptr; cd = cd->next()) {
-        tdd.prepare(cd);
-      }
-    }
-    return true;
-  }
-  auto out = tdd.out();
-  int mid = tdd.id_of(this);
-  if (dp == DP_identify) {
-    int kid = tdd.identify(kd);
-    out->begin_elem("method id='%d' klass='%d'", mid, kid);
-    out->name(this->name());
-    out->signature(this->signature());
-    out->print(" level_mask='%d'", _level_mask);
-    if (last_compile_id() != 0) out->print(" compile_id='%d'", last_compile_id());
-    // FIXME: dump counters, MDO, list of classes depended on
-    out->end_elem();
-    return true;
-  }
-  assert(dp == DP_detail, "");
-  return true;
-}
-
-bool CompileTrainingData::dump(TrainingDataDumper& tdd, DumpPhase dp) {
-  auto md = method();
-  if (dp == DP_prepare) {
-    tdd.prepare(md);
-    _init_deps.prepare(_method->klass()->class_loader_data());
-    _ci_records.prepare(_method->klass()->class_loader_data());
-    return true;
-  }
-  auto out = tdd.out();
-  int cid = tdd.id_of(this);
-  int mid = tdd.identify(md);
-  if (dp == DP_identify) {
-    out->begin_elem("compile id='%d' compile_id='%d' level='%d' method='%d'",
-                    cid, compile_id(), level(), mid);
-    if (md->_compile == this) {
-      out->print(" last='1'");
-    }
-    out->end_elem();
-    return true;
-  }
-  assert(dp == DP_detail, "");
-  TrainingDataLocker l;
-  for (int i = 0, depc = init_dep_count(); i < depc; i++) {
-    int did = tdd.identify(init_dep(i));
-    out->elem("init_dep compile='%d' dep='%d'", cid, did);
-  }
-  return true;
-}
-
-static int qsort_compare_tdata(TrainingData** p1, TrainingData** p2) {
-  return (*p1)->cmp(*p2);
+  visitor.visit(this);
+  method()->prepare(visitor);
+  ClassLoaderData* loader_data = _method->klass()->class_loader_data();
+  _init_deps.prepare(loader_data);
+  _ci_records.prepare(loader_data);
 }
 
 using FieldData = KlassTrainingData::FieldData;
@@ -729,7 +471,6 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
   } else {
     st->print("[SYM]");
   }
-  if (_do_not_dump)  st->print("[DND]");
   if (name_only)  return;
   if (_clinit_sequence_index)  st->print("IC%d", _clinit_sequence_index);
   for (int i = 0, len = _init_deps.length(); i < len; i++) {
@@ -1072,42 +813,28 @@ void KlassTrainingData::log_initialization(bool is_start) {
   }
 }
 
-// CDS support
-
-class TrainingData::Transfer : StackObj {
-public:
-  void do_value(TrainingData* record) {
-    _dumptime_training_data_dictionary->append(record);
-  }
-};
-
-
 void TrainingData::init_dumptime_table(TRAPS) {
   if (!need_data()) {
     return;
   }
+  _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>();
   if (CDSConfig::is_dumping_final_static_archive()) {
-    _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>();
-    Transfer transfer;
+    class Transfer {
+    public:
+      void do_value(TrainingData* record) {
+        _dumptime_training_data_dictionary->append(record);
+      }
+    } transfer;
     _archived_training_data_dictionary.iterate(&transfer);
   } else {
     ResourceMark rm;
-    TrainingDataDumper tdd;
-    tdd.prepare(training_data_set(), CHECK);
-    GrowableArray<TrainingData*>& tda = tdd.hand_off_node_list();
-    tda.sort(qsort_compare_tdata); // FIXME: needed?
-    int num_of_entries = tda.length();
-    _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>(num_of_entries);
-    for (int i = 0; i < num_of_entries; i++) {
-      TrainingData* td = tda.at(i);
-      if (td->is_CompileTrainingData()) {
-        continue; // skip CTDs; discoverable through corresponding MTD
-      } else {
-        // TODO: filter TD
-        // if (SystemDictionaryShared::check_for_exclusion(), nullptr);
+    Visitor visitor(training_data_set()->size());
+    training_data_set()->iterate_all([&](const TrainingData::Key* k, TrainingData* td) {
+      td->prepare(visitor);
+      if (!td->is_CompileTrainingData()) {
         _dumptime_training_data_dictionary->append(td);
       }
-    }
+    });
   }
 
   prepare_recompilation_schedule(CHECK);
@@ -1161,15 +888,21 @@ void TrainingData::dump_training_data() {
 
 void TrainingData::cleanup_training_data() {
   if (_dumptime_training_data_dictionary != nullptr) {
+    ResourceMark rm;
+    Visitor visitor(_dumptime_training_data_dictionary->length());
     for (int i = 0; i < _dumptime_training_data_dictionary->length(); i++) {
       TrainingData* td = _dumptime_training_data_dictionary->at(i).training_data();
-      td->cleanup();
+      td->cleanup(visitor);
     }
   }
   _recompilation_status = nullptr;
 }
 
-void KlassTrainingData::cleanup() {
+void KlassTrainingData::cleanup(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
   if (holder() != nullptr) {
     bool is_excluded = !holder()->is_loaded() || SystemDictionaryShared::check_for_exclusion(holder(), nullptr);
     if (is_excluded) {
@@ -1179,11 +912,15 @@ void KlassTrainingData::cleanup() {
     }
   }
   for (int i = 0; i < _comp_deps.length(); i++) {
-    _comp_deps.at(i)->cleanup();
+    _comp_deps.at(i)->cleanup(visitor);
   }
 }
 
-void MethodTrainingData::cleanup() {
+void MethodTrainingData::cleanup(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
   if (has_holder()) {
     if (SystemDictionaryShared::check_for_exclusion(holder()->method_holder(), nullptr)) {
       log_debug(cds)("Cleanup MTD %s::%s", name()->as_klass_external_name(), signature()->as_utf8());
@@ -1196,13 +933,17 @@ void MethodTrainingData::cleanup() {
   }
   for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
     if (ctd->method() != this) {
-      ctd->method()->cleanup();
+      ctd->method()->cleanup(visitor);
     }
   }
 }
 
-void CompileTrainingData::cleanup() {
-  method()->cleanup();
+void CompileTrainingData::cleanup(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
+  method()->cleanup(visitor);
 }
 
 void TrainingData::serialize_training_data(SerializeClosure* soc) {

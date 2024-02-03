@@ -206,18 +206,29 @@ class TrainingData : public Metadata {
     void iterate_all(FN fn) const { // lambda enabled API
       return _table.iterate_all(fn);
     }
+    int size() const { return _table.number_of_entries(); }
+  };
+
+  class Visitor {
+    ResizeableResourceHashtable<TrainingData*, bool> _visited;
+  public:
+    Visitor(unsigned size) : _visited(size, 0x3fffffff) { }
+    bool is_visited(TrainingData* td) {
+      return _visited.contains(td);
+    }
+    void visit(TrainingData* td) {
+      bool created;
+      _visited.put_if_absent(td, &created);
+    }
   };
 
 private:
   Key _key;
-  bool _do_not_dump;
 
   // just forward all constructor arguments to the embedded key
   template<typename... Arg>
   TrainingData(Arg... arg)
-    : _key(arg...) {
-    _do_not_dump = false;
-  }
+    : _key(arg...) { }
 
   static TrainingDataSet _training_data_set;
   static TrainingDataDictionary _archived_training_data_dictionary;
@@ -228,15 +239,10 @@ private:
   static volatile bool* _recompilation_status;
   static void prepare_recompilation_schedule(TRAPS);
 
-  class Transfer;
-
 public:
   // Returns the key under which this TD is installed, or else
   // Key::EMPTY if it is not installed.
   const Key* key() const { return &_key; }
-
-  bool do_not_dump() const { return _do_not_dump; }
-  void set_do_not_dump(bool z) { _do_not_dump = z; }
 
   static bool have_data() { return ReplayTraining;  } // Going to read
   static bool need_data() { return RecordTraining;  } // Going to write
@@ -254,17 +260,8 @@ public:
   bool is_KlassTrainingData()   const { return as_KlassTrainingData()  != nullptr; }
   bool is_CompileTrainingData() const { return as_CompileTrainingData()  != nullptr; }
 
-  virtual int cmp(const TrainingData* that) const = 0;
-
-  enum DumpPhase {
-    DP_prepare,   // no output, set final structure
-    DP_identify,  // output only an id='%d' element
-    DP_detail,    // output any additional information
-  };
-  virtual bool dump(TrainingDataDumper& tdd, DumpPhase dp) = 0;
-  // prepare_to_dump(TrainingDataDumper& tdd) { return dump(tdd, DP_prepare); }
-  // dump_identity(TrainingDataDumper& tdd) { return dump(tdd, DP_identify); }
-  // dump_detail(TrainingDataDumper& tdd) { return dump(tdd, DP_detail); }
+  virtual void prepare(Visitor& visitor) = 0;
+  virtual void cleanup(Visitor& visitor) = 0;
 
   static void initialize();
 
@@ -347,8 +344,6 @@ public:
   static void print_archived_training_data_on(outputStream* st);
   static void write_training_data_dictionary(TrainingDataDictionary* dictionary);
   static size_t estimate_size_for_archive();
-
-  virtual void cleanup() = 0;
 
   static TrainingData* lookup_archived_training_data(const Key* k);
 
@@ -480,7 +475,6 @@ class KlassTrainingData : public TrainingData {
   static KlassTrainingData* find(InstanceKlass* holder) {
     return make(holder, true);
   }
-  virtual int cmp(const TrainingData* that) const;
 
   virtual KlassTrainingData* as_KlassTrainingData() const { return const_cast<KlassTrainingData*>(this); };
 
@@ -545,13 +539,12 @@ class KlassTrainingData : public TrainingData {
   // safe to call this inside the initializing thread.
   bool record_static_field_init(fieldDescriptor* fd, const char* reason);
 
-  void cleanup();
-
   void print_on(outputStream* st, bool name_only) const;
   virtual void print_on(outputStream* st) const { print_on(st, false); }
   virtual void print_value_on(outputStream* st) const { print_on(st, true); }
 
-  virtual bool dump(TrainingDataDumper& tdd, DumpPhase dp);
+  virtual void prepare(Visitor& visitor);
+  virtual void cleanup(Visitor& visitor);
 
   MetaspaceObj::Type type() const {
     return KlassTrainingDataType;
@@ -771,9 +764,8 @@ public:
   // These simple calls just report the *possibility* of an observation.
   void notice_jit_observation(ciEnv* env, ciBaseObject* what);
 
-  virtual int cmp(const TrainingData* that) const;
-
-  virtual bool dump(TrainingDataDumper& tdd, DumpPhase dp);
+  virtual void prepare(Visitor& visitor);
+  virtual void cleanup(Visitor& visitor);
 
   void print_on(outputStream* st, bool name_only) const;
   virtual void print_on(outputStream* st) const { print_on(st, false); }
@@ -795,7 +787,6 @@ public:
     return (int)align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord)/BytesPerWord);
   }
 
-  void cleanup();
 
   static CompileTrainingData* allocate(MethodTrainingData* mtd, int level, int compile_id);
 };
@@ -889,17 +880,14 @@ class MethodTrainingData : public TrainingData {
     return make(method, true);
   }
 
-  virtual int cmp(const TrainingData* that) const;
-
   virtual MethodTrainingData* as_MethodTrainingData() const { return const_cast<MethodTrainingData*>(this); };
 
   void print_on(outputStream* st, bool name_only) const;
   virtual void print_on(outputStream* st) const { print_on(st, false); }
   virtual void print_value_on(outputStream* st) const { print_on(st, true); }
 
-  virtual bool dump(TrainingDataDumper& tdd, DumpPhase dp);
-
-  void cleanup();
+  virtual void prepare(Visitor& visitor);
+  virtual void cleanup(Visitor& visitor);
 
   template<typename FN>
   void iterate_all_compiles(FN fn) const { // lambda enabled API
