@@ -661,6 +661,9 @@ protected:
   bool  _profile_rt_calls;
   bool  _profile_upcalls;
 
+  jlong    _all_bc_counter_value;
+  jlong _clinit_bc_counter_value;
+
   PerfTraceTime* _current_rt_call_timer;
  public:
   bool     profile_vm_locks() const { return _profile_vm_locks; }
@@ -685,6 +688,14 @@ protected:
   bool do_profile_rt_call() const {
     return ProfileRuntimeCalls && profile_rt_calls() && !has_current_rt_call_timer();
   }
+
+  jlong        bc_counter_value() const { return    _all_bc_counter_value; }
+
+  jlong clinit_bc_counter_value() const { return _clinit_bc_counter_value; }
+
+  void inc_clinit_bc_counter_value(jlong l) { _clinit_bc_counter_value += l; }
+
+  static ByteSize bc_counter_offset() { return byte_offset_of(Thread, _all_bc_counter_value); }
 };
 
 class ProfileVMCallContext : StackObj {

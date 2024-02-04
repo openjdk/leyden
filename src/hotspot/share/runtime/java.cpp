@@ -175,7 +175,24 @@ void log_vm_init_stats() {
     ClassLoader::print_counters();
     ClassPrelinker::print_counters();
     log.cr();
-
+    if (CountBytecodesPerThread) {
+      log.print_cr("Thread info:");
+      class PrintThreadInfo : public ThreadClosure {
+        outputStream* _st;
+      public:
+        PrintThreadInfo(outputStream* st) : ThreadClosure(), _st(st) {}
+        void do_thread(Thread* thread) {
+          JavaThread* jt = JavaThread::cast(thread);
+          if (jt->bc_counter_value() > 0) {
+            _st->print_cr("  Thread " INTPTR_FORMAT "'%20s': %ld bytecodes executed (clinit: %ld)",
+                          p2i(jt), jt->name(), jt->bc_counter_value(), jt->clinit_bc_counter_value());
+          }
+        }
+      };
+      PrintThreadInfo cl(&log);
+      Threads::java_threads_do(&cl);
+    }
+    log.cr();
     log.print("Deoptimization events: ");
     Deoptimization::print_statistics_on(&log);
     log.cr();

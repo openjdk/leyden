@@ -147,7 +147,7 @@ void ClassLoader::print_counters() {
       log.print_cr("ClassLoader:");
       log.print(   "  clinit:               %ldms / %ld events",
                    ClassLoader::class_init_time_ms(), ClassLoader::class_init_count());
-      if (CountBytecodes) {
+      if (CountBytecodes || CountBytecodesPerThread) {
         log.print("; executed %ld bytecodes", ClassLoader::class_init_bytecodes_count());
       }
       log.cr();
@@ -1524,7 +1524,7 @@ jlong ClassLoader::classloader_time_ms() {
 }
 
 jlong ClassLoader::class_init_bytecodes_count() {
-  return UsePerfData && CountBytecodes ? _perf_class_init_bytecodes_count->get_value() : -1;
+  return UsePerfData ? _perf_class_init_bytecodes_count->get_value() : -1;
 }
 
 jlong ClassLoader::class_init_count() {

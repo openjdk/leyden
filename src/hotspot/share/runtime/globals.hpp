@@ -1182,6 +1182,9 @@ const int ObjectAlignmentInBytes = 8;
   product(bool, CountBytecodes, false, DIAGNOSTIC,                          \
           "Count number of bytecodes executed")                             \
                                                                             \
+  product(bool, CountBytecodesPerThread, false, DIAGNOSTIC,                 \
+          "Count number of bytecodes executed per thread")                  \
+                                                                            \
   product(bool, PrintBytecodeHistogram, false, DIAGNOSTIC,                  \
           "Print histogram of the executed bytecodes")                      \
                                                                             \

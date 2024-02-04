@@ -1767,7 +1767,7 @@ void InstanceKlass::call_class_initializer(TRAPS) {
       tdata->record_initialization_start();
     }
 
-    jlong bc_start = BytecodeCounter::counter_value();
+    jlong bc_start = (CountBytecodesPerThread ? THREAD->bc_counter_value() : BytecodeCounter::counter_value());
 
     elapsedTimer timer;
     {
@@ -1779,8 +1779,11 @@ void InstanceKlass::call_class_initializer(TRAPS) {
       timer.stop();
     }
 
-    jlong bc_executed = (BytecodeCounter::counter_value() - bc_start);
-    if (CountBytecodes && outer == nullptr) { // outermost clinit
+    jlong bc_end = (CountBytecodesPerThread ? THREAD->bc_counter_value() : BytecodeCounter::counter_value());
+
+    jlong bc_executed = (bc_end - bc_start);
+    if (outer == nullptr) { // outermost clinit
+      THREAD->inc_clinit_bc_counter_value(bc_executed);
       ClassLoader::perf_class_init_bytecodes_count()->inc(bc_executed);
     }
 
@@ -1795,7 +1798,7 @@ void InstanceKlass::call_class_initializer(TRAPS) {
       ResourceMark rm(THREAD);
       log.print("%d Initialized in %.3fms (total: %ldms); ",
                 init_id, timer.seconds() * 1000.0, ClassLoader::class_init_time_ms());
-      if (CountBytecodes) {
+      if (CountBytecodes || CountBytecodesPerThread) {
         log.print("executed %ld bytecodes; ", bc_executed);
       }
       name()->print_value_on(&log);
