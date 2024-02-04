@@ -248,6 +248,10 @@ public:
       assert_lock_strong(_mutex);
       _mutex->unlock();
 
+      if (_mutex->id() == -1) {
+        log_trace(init)("Unnamed unclassified lock: %s", _mutex->name());
+      }
+
       if (_prof) {
         assert(UsePerfData, "required");
         _after.stop();
@@ -259,9 +263,11 @@ public:
   }
 
  private:
-  static void print_counter_on(outputStream* st, const char* name, int idx);
+  static void print_counter_on(outputStream* st, const char* name, bool is_unique, int idx);
 
  public:
+  static int name2id(const char* name);
+
   static void post_initialize();
   static void init_counters();
   static void print_counters_on(outputStream* st);

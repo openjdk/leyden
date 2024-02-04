@@ -1566,7 +1566,7 @@ void CodeCache::print_memory_overhead() {
 static void print_helper1(outputStream* st, const char* prefix, int total, int not_entrant, int used) {
   if (total > 0) {
     double ratio = (100.0 * used) / total;
-    st->print("%s %3d nmethods: %3d not_entrant, %d used (%2.1f%%);", prefix, total, not_entrant, used, ratio);
+    st->print("%s %3d nmethods: %3d not_entrant, %d used (%2.1f%%)", prefix, total, not_entrant, used, ratio);
   }
 }
 
@@ -1624,7 +1624,7 @@ void CodeCache::print_nmethod_statistics_on(outputStream* st) {
     if (total_normal + total_osr > 0) {
       st->print("  Tier%d:", i);
       print_helper1(st,      "", total_normal, stats[0][i][1][0], stats_used[0][i][0][0] + stats_used[0][i][1][0]);
-      print_helper1(st, " osr:", total_osr,    stats[0][i][1][1], stats_used[0][i][0][1] + stats_used[0][i][1][1]);
+      print_helper1(st, "; osr:", total_osr,    stats[0][i][1][1], stats_used[0][i][0][1] + stats_used[0][i][1][1]);
       st->cr();
     }
   }
@@ -1636,7 +1636,7 @@ void CodeCache::print_nmethod_statistics_on(outputStream* st) {
     if (total_normal + total_osr > 0) {
       st->print("  SC T%d:", i);
       print_helper1(st,      "", total_normal, stats[1][i][1][0], stats_used[1][i][0][0] + stats_used[1][i][1][0]);
-      print_helper1(st, " osr:", total_osr,    stats[1][i][1][1], stats_used[1][i][0][1] + stats_used[1][i][1][1]);
+      print_helper1(st, "; osr:", total_osr,    stats[1][i][1][1], stats_used[1][i][0][1] + stats_used[1][i][1][1]);
       st->cr();
     }
   }

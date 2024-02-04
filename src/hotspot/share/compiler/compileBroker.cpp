@@ -2063,6 +2063,8 @@ void CompileBroker::free_buffer_blob_if_allocated(CompilerThread* thread) {
 void CompileBroker::shutdown_compiler_runtime(AbstractCompiler* comp, CompilerThread* thread) {
   free_buffer_blob_if_allocated(thread);
 
+  log_info(compilation)("shutdown_compiler_runtime: " INTPTR_FORMAT, p2i(thread));
+
   if (comp->should_perform_shutdown()) {
     // There are two reasons for shutting down the compiler
     // 1) compiler runtime initialization failed

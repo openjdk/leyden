@@ -195,7 +195,9 @@ class Mutex : public CHeapObj<mtSynchronizer> {
   const char *name() const                  { return _name; }
 
   int      id() const { return _id; }
-  void set_id(int id) { _id = id; }
+//  void set_id(int id) { _id = id; }
+
+  static const char* id2name(int id);
 
   void print_on_error(outputStream* st) const;
   #ifndef PRODUCT
