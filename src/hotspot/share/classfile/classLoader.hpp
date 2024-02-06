@@ -179,10 +179,10 @@ class ClassLoader: AllStatic {
   static PerfCounter* _perf_ik_link_methods_count;
   static PerfCounter* _perf_method_adapters_count;
 
-  static PerfCounter* _perf_resolve_indy_time;
-  static PerfCounter* _perf_resolve_invokehandle_time;
-  static PerfCounter* _perf_resolve_mh_time;
-  static PerfCounter* _perf_resolve_mt_time;
+  static PerfTickCounters* _perf_resolve_indy_time;
+  static PerfTickCounters* _perf_resolve_invokehandle_time;
+  static PerfTickCounters* _perf_resolve_mh_time;
+  static PerfTickCounters* _perf_resolve_mt_time;
 
   static PerfCounter* _perf_resolve_indy_count;
   static PerfCounter* _perf_resolve_invokehandle_count;
@@ -311,10 +311,10 @@ class ClassLoader: AllStatic {
   static PerfCounter* perf_ik_link_methods_count() { return _perf_ik_link_methods_count; }
   static PerfCounter* perf_method_adapters_count() { return _perf_method_adapters_count; }
 
-  static PerfCounter* perf_resolve_invokedynamic_time() { return _perf_resolve_indy_time; }
-  static PerfCounter* perf_resolve_invokehandle_time() { return _perf_resolve_invokehandle_time; }
-  static PerfCounter* perf_resolve_method_handle_time() { return _perf_resolve_mh_time; }
-  static PerfCounter* perf_resolve_method_type_time() { return _perf_resolve_mt_time; }
+  static PerfTickCounters* perf_resolve_invokedynamic_time() { return _perf_resolve_indy_time; }
+  static PerfTickCounters* perf_resolve_invokehandle_time() { return _perf_resolve_invokehandle_time; }
+  static PerfTickCounters* perf_resolve_method_handle_time() { return _perf_resolve_mh_time; }
+  static PerfTickCounters* perf_resolve_method_type_time() { return _perf_resolve_mt_time; }
 
   static PerfCounter* perf_resolve_invokedynamic_count() { return _perf_resolve_indy_count; }
   static PerfCounter* perf_resolve_invokehandle_count() { return _perf_resolve_invokehandle_count; }

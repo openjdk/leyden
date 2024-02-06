@@ -340,7 +340,7 @@ class VMNativeEntryWrapper {
     debug_only(VMEntryWrapper __vew;)
 
 #define JRT_ENTRY_PROF(result_type, sub, name, header)               \
-  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfTickCounters* _perf_##sub##_##name##_timer = nullptr;          \
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     assert(current == JavaThread::current(), "Must be");             \
@@ -352,7 +352,7 @@ class VMNativeEntryWrapper {
     debug_only(VMEntryWrapper __vew;)
 
 #define JRT_LEAF_PROF(result_type, sub, name, header)                \
-  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfTickCounters* _perf_##sub##_##name##_timer = nullptr;          \
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     PerfTraceTimedEvent perf_##sub##_##name(_perf_##sub##_##name##_timer, _perf_##sub##_##name##_count, \
@@ -362,7 +362,7 @@ class VMNativeEntryWrapper {
     debug_only(NoSafepointVerifier __nsv;)
 
 #define JRT_LEAF_PROF_NO_THREAD(result_type, sub, name, header)      \
-  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfTickCounters* _perf_##sub##_##name##_timer = nullptr;          \
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     Thread* current = Thread::current();                             \
@@ -373,7 +373,7 @@ class VMNativeEntryWrapper {
     debug_only(NoSafepointVerifier __nsv;)
 
 #define JRT_ENTRY_NO_ASYNC_PROF(result_type, sub, name, header)      \
-  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfTickCounters* _perf_##sub##_##name##_timer = nullptr;          \
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     assert(current == JavaThread::current(), "Must be");             \
@@ -385,7 +385,7 @@ class VMNativeEntryWrapper {
     debug_only(VMEntryWrapper __vew;)
 
 #define JRT_BLOCK_ENTRY_PROF(result_type, sub, name, header)         \
-  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfTickCounters* _perf_##sub##_##name##_timer = nullptr;          \
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     assert(current == JavaThread::current(), "Must be");             \
@@ -395,7 +395,7 @@ class VMNativeEntryWrapper {
     HandleMarkCleaner __hm(current);
 
 #define PROF_ENTRY(result_type, sub, name, header)                   \
-  PerfCounter* _perf_##sub##_##name##_timer = nullptr;               \
+  PerfTickCounters* _perf_##sub##_##name##_timer = nullptr;          \
   PerfCounter* _perf_##sub##_##name##_count = nullptr;               \
   result_type header {                                               \
     assert(current == JavaThread::current(), "must be");             \
@@ -471,7 +471,7 @@ extern "C" {                                                         \
 
 
 #define JVM_ENTRY_PROF(result_type, name, header)                    \
-  PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfTickCounters* _perf_##name##_timer = nullptr;                  \
   PerfCounter* _perf_##name##_count = nullptr;                       \
 extern "C" {                                                         \
   result_type JNICALL header {                                       \
@@ -484,7 +484,7 @@ extern "C" {                                                         \
 
 
 #define JVM_ENTRY_NO_ENV_PROF(result_type, name, header)             \
-  PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfTickCounters* _perf_##name##_timer = nullptr;                  \
   PerfCounter* _perf_##name##_count = nullptr;                       \
 extern "C" {                                                         \
   result_type JNICALL header {                                       \
@@ -497,7 +497,7 @@ extern "C" {                                                         \
 
 
 #define JVM_LEAF_PROF(result_type, name, header)                     \
-  PerfCounter* _perf_##name##_timer = nullptr;                       \
+  PerfTickCounters* _perf_##name##_timer = nullptr;                  \
   PerfCounter* _perf_##name##_count = nullptr;                       \
 extern "C" {                                                         \
   result_type JNICALL header {                                       \

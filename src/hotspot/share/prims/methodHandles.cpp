@@ -1488,7 +1488,7 @@ JVM_END
   macro(JVM_RegisterMethodHandleMethods)
 
 #define INIT_COUNTER(name) \
-    NEWPERFTICKCOUNTER(_perf_##name##_timer, SUN_RT, #name "_time"); \
+    NEWPERFTICKCOUNTERS(_perf_##name##_timer, SUN_RT, #name); \
     NEWPERFEVENTCOUNTER(_perf_##name##_count, SUN_RT, #name "_count"); \
 
 void perf_mhn_init() {
@@ -1521,8 +1521,10 @@ void perf_mhn_reset() {
 #define PRINT_COUNTER(name) {\
   jlong count = _perf_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-40s = %4ldms (%5ld events)", #name, \
-                 Management::ticks_to_ms(_perf_##name##_timer->get_value()), count); \
+    st->print_cr("  %-40s = %4ldms (elapsed) %4ldms (thread) (%5ld events)", #name, \
+                 _perf_##name##_timer->elapsed_counter_value_ms(), \
+                 _perf_##name##_timer->thread_counter_value_ms(), \
+                 count); \
   }}
 
 void perf_mhn_print_on(outputStream* st) {

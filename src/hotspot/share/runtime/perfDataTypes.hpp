@@ -36,6 +36,7 @@ class PerfLongConstant;
 class PerfLongCounter;
 class PerfLongVariable;
 class PerfStringVariable;
+class PerfTickCounters;
 
 typedef PerfLongSampleHelper PerfSampleHelper;
 typedef PerfLongConstant PerfConstant;

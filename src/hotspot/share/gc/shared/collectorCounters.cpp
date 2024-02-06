@@ -67,7 +67,7 @@ CollectorCounters::~CollectorCounters() {
 }
 
 TraceCollectorStats::TraceCollectorStats(CollectorCounters* c) :
-    PerfTraceTimedEvent(c->time_counter(), c->invocation_counter()),
+    PerfTraceElapsedTimeEvent(c->time_counter(), c->invocation_counter()),
     _c(c) {
 
   if (UsePerfData) {

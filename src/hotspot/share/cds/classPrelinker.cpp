@@ -74,7 +74,7 @@ ClassPrelinker::PreloadedKlasses ClassPrelinker::_dynamic_preloaded_klasses;
 Array<InstanceKlass*>* ClassPrelinker::_unregistered_klasses_from_preimage = nullptr;
 
 static PerfCounter* _perf_classes_preloaded = nullptr;
-static PerfCounter* _perf_class_preload_time = nullptr;
+static PerfTickCounters* _perf_class_preload_counters = nullptr;
 
 bool ClassPrelinker::is_vm_class(InstanceKlass* ik) {
   return (_vm_classes->get(ik) != nullptr);
@@ -1442,7 +1442,7 @@ void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {
   if (is_static_archive && soc->reading() && UsePerfData) {
     JavaThread* THREAD = JavaThread::current();
     NEWPERFEVENTCOUNTER(_perf_classes_preloaded, SUN_CLS, "preloadedClasses");
-    NEWPERFTICKCOUNTER(_perf_class_preload_time, SUN_CLS, "classPreloadTime");
+    NEWPERFTICKCOUNTERS(_perf_class_preload_counters, SUN_CLS, "classPreload");
   }
 }
 
@@ -1552,10 +1552,7 @@ void ClassPrelinker::jvmti_agent_error(InstanceKlass* expected, InstanceKlass* a
 }
 
 void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS) {
-  elapsedTimer timer;
-  if (UsePerfData) {
-    timer.start();
-  }
+  PerfTraceTime timer(_perf_class_preload_counters);
   Array<InstanceKlass*>* preloaded_klasses;
   Array<InstanceKlass*>* initiated_klasses = nullptr;
   const char* loader_name;
@@ -1649,11 +1646,6 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
     HeapShared::initialize_default_subgraph_classes(loader, CHECK);
   }
 
-  if (UsePerfData) {
-    timer.stop();
-    _perf_class_preload_time->inc(timer.ticks());
-  }
-
 #if 0
   // Hmm, does JavacBench crash if this block is enabled??
   if (VerifyDuringStartup) {
@@ -1717,11 +1709,14 @@ void ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(TRAP
 }
 
 void ClassPrelinker::print_counters() {
-  if (UsePerfData && _perf_class_preload_time != nullptr) {
+  if (UsePerfData && _perf_class_preload_counters != nullptr) {
     LogStreamHandle(Info, init) log;
     if (log.is_enabled()) {
       log.print_cr("ClassPrelinker:");
-      log.print_cr("  preload:           %ldms / %ld events", Management::ticks_to_ms(_perf_class_preload_time->get_value()), _perf_classes_preloaded->get_value());
+      log.print_cr("  preload:           %ldms (elapsed) %ld (thread) / %ld events",
+                   _perf_class_preload_counters->elapsed_counter_value_ms(),
+                   _perf_class_preload_counters->thread_counter_value_ms(),
+                   _perf_classes_preloaded->get_value());
     }
   }
 }

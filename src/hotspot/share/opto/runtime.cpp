@@ -1910,7 +1910,7 @@ static void trace_exception(outputStream* st, oop exception_oop, address excepti
   macro1(OptoRuntime, class_init_barrier_redundant)
 
 #define INIT_COUNTER_TIME_AND_CNT(sub, name) \
-  NEWPERFTICKCOUNTER (_perf_##sub##_##name##_timer, SUN_CI, #sub "::" #name "_time"); \
+  NEWPERFTICKCOUNTERS(_perf_##sub##_##name##_timer, SUN_CI, #sub "::" #name); \
   NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_CI, #sub "::" #name "_count");
 
 #define INIT_COUNTER_CNT(sub, name) \
@@ -1935,8 +1935,10 @@ void OptoRuntime::init_counters() {
 #define PRINT_COUNTER_TIME_AND_CNT(sub, name) { \
   jlong count = _perf_##sub##_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-30s = %4ldms (%5ld events)", #sub "::" #name, \
-                 Management::ticks_to_ms(_perf_##sub##_##name##_timer->get_value()), count); \
+    st->print_cr("  %-30s = %4ldms (elapsed) %4ldms (thread) (%5ld events)", #sub "::" #name, \
+                 _perf_##sub##_##name##_timer->elapsed_counter_value_ms(), \
+                 _perf_##sub##_##name##_timer->thread_counter_value_ms(), \
+                 count); \
   }}
 
 #define PRINT_COUNTER_CNT(sub, name) { \

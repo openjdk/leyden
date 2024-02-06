@@ -1291,7 +1291,7 @@ InstanceKlass* SystemDictionary::load_instance_class_impl(Symbol* class_name, Ha
 #if INCLUDE_CDS
     if (UseSharedSpaces)
     {
-      PerfTraceTime vmtimer(ClassLoader::perf_shared_classload_time());
+      PerfTraceElapsedTime vmtimer(ClassLoader::perf_shared_classload_time());
       InstanceKlass* ik = SystemDictionaryShared::find_builtin_class(class_name);
       if (ik != nullptr && ik->is_shared_boot_class() && !ik->shared_loading_failed()) {
         SharedClassLoadingMark slm(THREAD, ik);
@@ -1302,7 +1302,7 @@ InstanceKlass* SystemDictionary::load_instance_class_impl(Symbol* class_name, Ha
 
     if (k == nullptr) {
       // Use VM class loader
-      PerfTraceTime vmtimer(ClassLoader::perf_sys_classload_time());
+      PerfTraceElapsedTime vmtimer(ClassLoader::perf_sys_classload_time());
       k = ClassLoader::load_class(class_name, search_only_bootloader_append, CHECK_NULL);
     }
 

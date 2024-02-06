@@ -130,10 +130,10 @@ PerfCounter*    ClassLoader::_perf_ik_link_methods_count = nullptr;
 PerfCounter*    ClassLoader::_perf_method_adapters_count = nullptr;
 PerfCounter*    ClassLoader::_unsafe_defineClassCallCounter = nullptr;
 
-PerfCounter*    ClassLoader::_perf_resolve_indy_time = nullptr;
-PerfCounter*    ClassLoader::_perf_resolve_invokehandle_time = nullptr;
-PerfCounter*    ClassLoader::_perf_resolve_mh_time = nullptr;
-PerfCounter*    ClassLoader::_perf_resolve_mt_time = nullptr;
+PerfTickCounters*    ClassLoader::_perf_resolve_indy_time = nullptr;
+PerfTickCounters*    ClassLoader::_perf_resolve_invokehandle_time = nullptr;
+PerfTickCounters*    ClassLoader::_perf_resolve_mh_time = nullptr;
+PerfTickCounters*    ClassLoader::_perf_resolve_mt_time = nullptr;
 
 PerfCounter*    ClassLoader::_perf_resolve_indy_count = nullptr;
 PerfCounter*    ClassLoader::_perf_resolve_invokehandle_count = nullptr;
@@ -152,10 +152,22 @@ void ClassLoader::print_counters() {
       }
       log.cr();
       log.print_cr("  resolve...");
-      log.print_cr("    invokedynamic:   %ldms / %ld events", Management::ticks_to_ms(_perf_resolve_indy_time->get_value())         , _perf_resolve_indy_count->get_value());
-      log.print_cr("    invokehandle:    %ldms / %ld events", Management::ticks_to_ms(_perf_resolve_invokehandle_time->get_value()) , _perf_resolve_invokehandle_count->get_value());
-      log.print_cr("    CP_MethodHandle: %ldms / %ld events", Management::ticks_to_ms(_perf_resolve_mh_time->get_value())           , _perf_resolve_mh_count->get_value());
-      log.print_cr("    CP_MethodType:   %ldms / %ld events", Management::ticks_to_ms(_perf_resolve_mt_time->get_value())           , _perf_resolve_mt_count->get_value());
+      log.print_cr("    invokedynamic:   %ldms (elapsed) %ldms (thread) / %ld events",
+                   _perf_resolve_indy_time->elapsed_counter_value_ms(),
+                   _perf_resolve_indy_time->thread_counter_value_ms(),
+                   _perf_resolve_indy_count->get_value());
+      log.print_cr("    invokehandle:    %ldms (elapsed) %ldms (thread) / %ld events",
+                   _perf_resolve_invokehandle_time->elapsed_counter_value_ms(),
+                   _perf_resolve_invokehandle_time->thread_counter_value_ms(),
+                   _perf_resolve_invokehandle_count->get_value());
+      log.print_cr("    CP_MethodHandle: %ldms (elapsed) %ldms (thread) / %ld events",
+                   _perf_resolve_mh_time->elapsed_counter_value_ms(),
+                   _perf_resolve_mh_time->thread_counter_value_ms(),
+                   _perf_resolve_mh_count->get_value());
+      log.print_cr("    CP_MethodType:   %ldms (elapsed) %ldms (thread) / %ld events",
+                   _perf_resolve_mt_time->elapsed_counter_value_ms(),
+                   _perf_resolve_mt_time->thread_counter_value_ms(),
+                   _perf_resolve_mt_count->get_value());
     }
   }
 }
@@ -1416,10 +1428,10 @@ void ClassLoader::initialize(TRAPS) {
     NEWPERFEVENTCOUNTER(_perf_ik_link_methods_count, SUN_CLS, "linkMethodsCount");
     NEWPERFEVENTCOUNTER(_perf_method_adapters_count, SUN_CLS, "makeAdaptersCount");
 
-    NEWPERFTICKCOUNTER(_perf_resolve_indy_time, SUN_CLS, "resolve_invokedynamic_time");
-    NEWPERFTICKCOUNTER(_perf_resolve_invokehandle_time, SUN_CLS, "resolve_invokehandle_time");
-    NEWPERFTICKCOUNTER(_perf_resolve_mh_time, SUN_CLS, "resolve_MethodHandle_time");
-    NEWPERFTICKCOUNTER(_perf_resolve_mt_time, SUN_CLS, "resolve_MethodType_time");
+    NEWPERFTICKCOUNTERS(_perf_resolve_indy_time, SUN_CLS, "resolve_invokedynamic");
+    NEWPERFTICKCOUNTERS(_perf_resolve_invokehandle_time, SUN_CLS, "resolve_invokehandle");
+    NEWPERFTICKCOUNTERS(_perf_resolve_mh_time, SUN_CLS, "resolve_MethodHandle");
+    NEWPERFTICKCOUNTERS(_perf_resolve_mt_time, SUN_CLS, "resolve_MethodType");
 
     NEWPERFEVENTCOUNTER(_perf_resolve_indy_count, SUN_CLS, "resolve_invokedynamic_count");
     NEWPERFEVENTCOUNTER(_perf_resolve_invokehandle_count, SUN_CLS, "resolve_invokehandle_count");

@@ -527,12 +527,10 @@ PerfDataList* PerfDataList::clone() {
   return copy;
 }
 
-PerfTraceTime::~PerfTraceTime() {
-  if (!UsePerfData || !_t.is_active()) return;
-  _t.stop();
-  _timerp->inc(_t.ticks());
-  if (_thread_timerp != nullptr) {
-    _thread_t.stop();
-    _thread_timerp->inc(_thread_t.ticks());
+PerfTraceTimeBase::~PerfTraceTimeBase() {
+  if (!UsePerfData || !_t->is_active()) return;
+  if (_counter != nullptr) {
+    _t->stop();
+    _counter->inc(_t->ticks());
   }
 }

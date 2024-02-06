@@ -62,7 +62,7 @@ class CollectorCounters: public CHeapObj<mtGC> {
     const char* name_space() const                  { return _name_space; }
 };
 
-class TraceCollectorStats: public PerfTraceTimedEvent {
+class TraceCollectorStats: public PerfTraceElapsedTimeEvent {
 
   protected:
     CollectorCounters* _c;

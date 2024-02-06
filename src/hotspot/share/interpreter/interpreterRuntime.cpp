@@ -1805,7 +1805,7 @@ JRT_END
   macro(InterpreterRuntime, member_name_arg_or_null)
 
 #define INIT_COUNTER(sub, name) \
-  NEWPERFTICKCOUNTER (_perf_##sub##_##name##_timer, SUN_CI, #sub "::" #name "_time"); \
+  NEWPERFTICKCOUNTERS(_perf_##sub##_##name##_timer, SUN_CI, #sub "::" #name); \
   NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_CI, #sub "::" #name "_count");
 
 void InterpreterRuntime::init_counters() {
@@ -1824,8 +1824,10 @@ void InterpreterRuntime::init_counters() {
 #define PRINT_COUNTER(sub, name) { \
   jlong count = _perf_##sub##_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-50s = %4ldms (%5ld events)", #sub "::" #name, \
-                 Management::ticks_to_ms(_perf_##sub##_##name##_timer->get_value()), count); \
+    st->print_cr("  %-50s = %4ldms (elapsed) %4ldms (thread) (%5ld events)", #sub "::" #name, \
+                 _perf_##sub##_##name##_timer->elapsed_counter_value_ms(), \
+                 _perf_##sub##_##name##_timer->thread_counter_value_ms(), \
+                 count); \
   }}
 
 void InterpreterRuntime::print_counters_on(outputStream* st) {

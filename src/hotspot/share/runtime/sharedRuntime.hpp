@@ -517,11 +517,11 @@ class SharedRuntime: AllStatic {
   static address handle_unsafe_access(JavaThread* thread, address next_pc);
 
  private:
-  static PerfCounter* _perf_resolve_opt_virtual_total_time;
-  static PerfCounter* _perf_resolve_virtual_total_time;
-  static PerfCounter* _perf_resolve_static_total_time;
-  static PerfCounter* _perf_handle_wrong_method_total_time;
-  static PerfCounter* _perf_ic_miss_total_time;
+  static PerfTickCounters* _perf_resolve_opt_virtual_total_time;
+  static PerfTickCounters* _perf_resolve_virtual_total_time;
+  static PerfTickCounters* _perf_resolve_static_total_time;
+  static PerfTickCounters* _perf_handle_wrong_method_total_time;
+  static PerfTickCounters* _perf_ic_miss_total_time;
  public:
   static uint _ic_miss_ctr;                      // total # of IC misses
   static uint _wrong_method_ctr;

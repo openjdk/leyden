@@ -108,11 +108,11 @@ UncommonTrapBlob*   SharedRuntime::_uncommon_trap_blob;
 
 nmethod*            SharedRuntime::_cont_doYield_stub;
 
-PerfCounter* SharedRuntime::_perf_resolve_opt_virtual_total_time = nullptr;
-PerfCounter* SharedRuntime::_perf_resolve_virtual_total_time     = nullptr;
-PerfCounter* SharedRuntime::_perf_resolve_static_total_time      = nullptr;
-PerfCounter* SharedRuntime::_perf_handle_wrong_method_total_time = nullptr;
-PerfCounter* SharedRuntime::_perf_ic_miss_total_time             = nullptr;
+PerfTickCounters* SharedRuntime::_perf_resolve_opt_virtual_total_time = nullptr;
+PerfTickCounters* SharedRuntime::_perf_resolve_virtual_total_time     = nullptr;
+PerfTickCounters* SharedRuntime::_perf_resolve_static_total_time      = nullptr;
+PerfTickCounters* SharedRuntime::_perf_handle_wrong_method_total_time = nullptr;
+PerfTickCounters* SharedRuntime::_perf_ic_miss_total_time             = nullptr;
 
 //----------------------------generate_stubs-----------------------------------
 void SharedRuntime::generate_stubs() {
@@ -143,11 +143,11 @@ void SharedRuntime::generate_stubs() {
 #endif // COMPILER2
   if (UsePerfData) {
     EXCEPTION_MARK;
-    NEWPERFTICKCOUNTER(_perf_resolve_opt_virtual_total_time, SUN_CI, "resovle_opt_virtual_call");
-    NEWPERFTICKCOUNTER(_perf_resolve_virtual_total_time,     SUN_CI, "resovle_virtual_call");
-    NEWPERFTICKCOUNTER(_perf_resolve_static_total_time,      SUN_CI, "resovle_static_call");
-    NEWPERFTICKCOUNTER(_perf_handle_wrong_method_total_time, SUN_CI, "handle_wrong_method");
-    NEWPERFTICKCOUNTER(_perf_ic_miss_total_time ,            SUN_CI, "ic_miss");
+    NEWPERFTICKCOUNTERS(_perf_resolve_opt_virtual_total_time, SUN_CI, "resovle_opt_virtual_call");
+    NEWPERFTICKCOUNTERS(_perf_resolve_virtual_total_time,     SUN_CI, "resovle_virtual_call");
+    NEWPERFTICKCOUNTERS(_perf_resolve_static_total_time,      SUN_CI, "resovle_static_call");
+    NEWPERFTICKCOUNTERS(_perf_handle_wrong_method_total_time, SUN_CI, "handle_wrong_method");
+    NEWPERFTICKCOUNTERS(_perf_ic_miss_total_time ,            SUN_CI, "ic_miss");
     if (HAS_PENDING_EXCEPTION) {
       vm_exit_during_initialization("SharedRuntime::generate_stubs() failed unexpectedly");
     }
@@ -157,18 +157,38 @@ void SharedRuntime::generate_stubs() {
 void SharedRuntime::print_counters_on(outputStream* st) {
   st->print_cr("SharedRuntime:");
   if (UsePerfData) {
-    st->print_cr("  resolve_opt_virtual_call: %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->get_value()), _resolve_opt_virtual_ctr);
-    st->print_cr("  resolve_virtual_call:     %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_virtual_total_time->get_value()),     _resolve_virtual_ctr);
-    st->print_cr("  resolve_static_call:      %5ldms / %5d events", Management::ticks_to_ms(_perf_resolve_static_total_time->get_value()),      _resolve_static_ctr);
-    st->print_cr("  handle_wrong_method:      %5ldms / %5d events", Management::ticks_to_ms(_perf_handle_wrong_method_total_time->get_value()), _wrong_method_ctr);
-    st->print_cr("  ic_miss:                  %5ldms / %5d events", Management::ticks_to_ms(_perf_ic_miss_total_time->get_value()),             _ic_miss_ctr);
+    st->print_cr("  resolve_opt_virtual_call: %5ldms (elapsed) %5ldms (thread) / %5d events",
+                 _perf_resolve_opt_virtual_total_time->elapsed_counter_value_ms(),
+                 _perf_resolve_opt_virtual_total_time->thread_counter_value_ms(),
+                 _resolve_opt_virtual_ctr);
+    st->print_cr("  resolve_virtual_call:     %5ldms (elapsed) %5ldms (thread) / %5d events",
+                 _perf_resolve_virtual_total_time->elapsed_counter_value_ms(),
+                 _perf_resolve_virtual_total_time->thread_counter_value_ms(),
+                 _resolve_virtual_ctr);
+    st->print_cr("  resolve_static_call:      %5ldms (elapsed) %5ldms (thread) / %5d events",
+                 _perf_resolve_static_total_time->elapsed_counter_value_ms(),
+                 _perf_resolve_static_total_time->thread_counter_value_ms(),
+                 _resolve_static_ctr);
+    st->print_cr("  handle_wrong_method:      %5ldms (elapsed) %5ldms (thread) / %5d events",
+                 _perf_handle_wrong_method_total_time->elapsed_counter_value_ms(),
+                 _perf_handle_wrong_method_total_time->thread_counter_value_ms(),
+                 _wrong_method_ctr);
+    st->print_cr("  ic_miss:                  %5ldms (elapsed) %5ldms (thread) / %5d events",
+                 _perf_ic_miss_total_time->elapsed_counter_value_ms(),
+                 _perf_ic_miss_total_time->thread_counter_value_ms(),
+                 _ic_miss_ctr);
 
-    jlong total_ms = Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->get_value() +
-                                             _perf_resolve_virtual_total_time->get_value() +
-                                             _perf_resolve_static_total_time->get_value() +
-                                             _perf_handle_wrong_method_total_time->get_value() +
-                                             _perf_ic_miss_total_time->get_value());
-    st->print_cr("Total:                      %5ldms", total_ms);
+    jlong total_elapsed_time_ms = Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->elapsed_counter_value() +
+                                                          _perf_resolve_virtual_total_time->elapsed_counter_value() +
+                                                          _perf_resolve_static_total_time->elapsed_counter_value() +
+                                                          _perf_handle_wrong_method_total_time->elapsed_counter_value() +
+                                                          _perf_ic_miss_total_time->elapsed_counter_value());
+    jlong total_thread_time_ms = Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->thread_counter_value() +
+                                                          _perf_resolve_virtual_total_time->thread_counter_value() +
+                                                          _perf_resolve_static_total_time->thread_counter_value() +
+                                                          _perf_handle_wrong_method_total_time->thread_counter_value() +
+                                                          _perf_ic_miss_total_time->thread_counter_value());
+    st->print_cr("Total:                      %5ldms (elapsed) %5ldms (thread)", total_elapsed_time_ms, total_thread_time_ms);
   } else {
     st->print_cr("  no data (UsePerfData is turned off)");
   }

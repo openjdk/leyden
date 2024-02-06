@@ -2933,7 +2933,7 @@ const char* Deoptimization::format_trap_state(char* buf, size_t buflen,
   macro(Deoptimization, uncommon_trap)
 
 #define INIT_COUNTER(sub, name) \
-  NEWPERFTICKCOUNTER (_perf_##sub##_##name##_timer, SUN_RT, #sub "::" #name "_time"); \
+  NEWPERFTICKCOUNTERS(_perf_##sub##_##name##_timer, SUN_RT, #sub "::" #name) \
   NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_RT, #sub "::" #name "_count");
 
 void Deoptimization::init_counters() {
@@ -2952,8 +2952,10 @@ void Deoptimization::init_counters() {
 #define PRINT_COUNTER(sub, name) { \
   jlong count = _perf_##sub##_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-50s = %4ldms (%5ld events)", #sub "::" #name, \
-                 Management::ticks_to_ms(_perf_##sub##_##name##_timer->get_value()), count); \
+    st->print_cr("  %-50s = %4ldms (elapsed) %4ldms (thread) (%5ld events)", #sub "::" #name, \
+                 _perf_##sub##_##name##_timer->elapsed_counter_value_ms(), \
+                 _perf_##sub##_##name##_timer->thread_counter_value_ms(), \
+                 count); \
   }}
 
 void Deoptimization::print_counters_on(outputStream* st) {

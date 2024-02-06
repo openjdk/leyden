@@ -1349,7 +1349,7 @@ void Method::link_method(const methodHandle& h_method, TRAPS) {
 }
 
 address Method::make_adapters(const methodHandle& mh, TRAPS) {
-  PerfTraceTime timer(ClassLoader::perf_method_adapters_time());
+  PerfTraceElapsedTime timer(ClassLoader::perf_method_adapters_time());
 
   // Adapters for compiled code are made eagerly here.  They are fairly
   // small (generally < 100 bytes) and quick to make (and cached and shared)

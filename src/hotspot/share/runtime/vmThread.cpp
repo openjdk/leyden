@@ -274,7 +274,7 @@ void VMThread::evaluate_operation(VM_Operation* op) {
   ResourceMark rm;
 
   {
-    PerfTraceTime vm_op_timer(perf_accumulated_vm_operation_time());
+    PerfTraceElapsedTime vm_op_timer(perf_accumulated_vm_operation_time());
     HOTSPOT_VMOPS_BEGIN(
                      (char *) op->name(), strlen(op->name()),
                      op->evaluate_at_safepoint() ? 0 : 1);
