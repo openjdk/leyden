@@ -169,7 +169,9 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
   MethodCounters* mcs = method->method_counters();
   if (mcs != nullptr) {
     mtd = mcs->method_training_data();
-    if (mtd != nullptr)  return mtd;
+    if (mtd != nullptr) {
+      return mtd;
+    }
   } else {
     mcs = Method::build_method_counters(Thread::current(), method());
   }
@@ -222,14 +224,22 @@ void MethodTrainingData::print_on(outputStream* st, bool name_only) const {
   st->print(".");
   name()->print_symbol_on(st);
   signature()->print_symbol_on(st);
-  if (name_only)  return;
-  if (!has_holder())  st->print("[SYM]");
-  if (_level_mask)  st->print(" LM%d", _level_mask);
+  if (name_only) {
+    return;
+  }
+  if (!has_holder()) {
+    st->print("[SYM]");
+  }
+  if (_level_mask) {
+    st->print(" LM%d", _level_mask);
+  }
   st->print(" mc=%p mdo=%p", _final_counters, _final_profile);
 }
 
 void MethodTrainingData::refresh_from(const Method* method) {
-  if (method == nullptr || method == _holder)  return;
+  if (method == nullptr || method == _holder) {
+    return;
+  }
   _holder = method;
 }
 
@@ -274,9 +284,11 @@ void CompileTrainingData::dec_init_deps_left(KlassTrainingData* ktd) {
 void CompileTrainingData::print_on(outputStream* st, bool name_only) const {
   _method->print_on(st, true);
   st->print("#%dL%d", _compile_id, _level);
-  if (name_only)  return;
+  if (name_only) {
+    return;
+  }
   #define MAYBE_TIME(Q, _qtime) \
-    if (_qtime != 0)  st->print(" " #Q "%.3f", _qtime)
+    if (_qtime != 0) st->print(" " #Q "%.3f", _qtime)
   MAYBE_TIME(Q, _qtime);
   MAYBE_TIME(S, _stime);
   MAYBE_TIME(E, _etime);
@@ -305,10 +317,10 @@ void CompileTrainingData::record_compilation_end(CompileTask* task) {
 }
 void CompileTrainingData::notice_inlined_method(CompileTask* task,
                                                 const methodHandle& method) {
-  //CompileTrainingData::make(task, method);
-  // all this does is put a mark on the method:
-  auto mtd = MethodTrainingData::make(method);
-  if (mtd != nullptr)  mtd->notice_compilation(task->comp_level(), true);
+  MethodTrainingData* mtd = MethodTrainingData::make(method);
+  if (mtd != nullptr) {
+    mtd->notice_compilation(task->comp_level(), true);
+  }
 }
 
 void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what) {
@@ -471,8 +483,12 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
   } else {
     st->print("[SYM]");
   }
-  if (name_only)  return;
-  if (_clinit_sequence_index)  st->print("IC%d", _clinit_sequence_index);
+  if (name_only) {
+    return;
+  }
+  if (_clinit_sequence_index) {
+    st->print("IC%d", _clinit_sequence_index);
+  }
   for (int i = 0, len = _init_deps.length(); i < len; i++) {
     st->print(" dep:");
     _init_deps.at(i)->print_on(st, true);
@@ -1177,7 +1193,6 @@ KlassTrainingData* KlassTrainingData::allocate(Symbol* name, Symbol* loader_name
 MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Symbol* name, Symbol* signature) {
   assert(need_data() || have_data(), "");
   JavaThread* THREAD = JavaThread::current();
-//  assert(!THREAD->owns_locks(), "Should not own any locks"); // FIXME
 
   size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
 
