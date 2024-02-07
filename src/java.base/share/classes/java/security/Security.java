@@ -103,8 +103,8 @@ public final class Security {
 
         // first load the system properties file
         // to determine the value of security.overridePropertiesFile
-        Path propPath = securityPropFile("java.security");
-        boolean success = loadProps(propPath, null, false);
+        InputStream propStream = securityPropStream("java.security");
+        boolean success = loadProps(propStream, null, false);
         if (!success) {
             throw new InternalError("Error loading java.security file");
         }
@@ -130,11 +130,11 @@ public final class Security {
 
     }
 
-    private static boolean loadProps(Path masterFile, String extraPropFile, boolean overrideAll) {
+    private static boolean loadProps(InputStream masterResource, String extraPropFile, boolean overrideAll) {
         InputStream is = null;
         try {
-            if (masterFile != null) {
-                is = Files.newInputStream(masterFile);
+            if (masterResource != null) {
+                is = masterResource;
             } else if (extraPropFile != null) {
                 // TODO (jiangli): Hermetic support for extraPropFile? 
                 extraPropFile = PropertyExpander.expand(extraPropFile);
@@ -161,16 +161,16 @@ public final class Security {
             }
             props.load(is);
             if (sdebug != null) {
-                // ExceptionInInitializerError if masterFile.getName() is
-                // called here (NPE!). Leave as is (and few lines down)
+                // ExceptionInInitializerError if masterResource is used
+                // here (NPE!). Leave as is (and few lines down)
                 sdebug.println("reading security properties file: " +
-                        masterFile == null ? extraPropFile : "java.security");
+                        masterResource == null ? extraPropFile : "java.security");
             }
             return true;
         } catch (IOException | PropertyExpander.ExpandException e) {
             if (sdebug != null) {
                 sdebug.println("unable to load security properties from " +
-                        masterFile == null ? extraPropFile : "java.security");
+                        masterResource == null ? extraPropFile : "java.security");
                 e.printStackTrace();
             }
             return false;
@@ -193,24 +193,36 @@ public final class Security {
     private Security() {
     }
 
-    private static Path securityPropFile(String filename) {
+    private static InputStream securityPropStream(String filename) {
         // maybe check for a system property which will specify where to
         // look. Someday.
-        Path res = null;
-        try {
-            res = JavaHome.getJDKResource(StaticProperty.javaHome(),
-                                          "conf", "security", filename);
-        } catch (InvalidPathException e) {
-            // Returns null in this case. And, the caller initialize()
-            // method will load the default properties when it cannot load
-            // the security properties file.
-            if (sdebug != null) {
-                sdebug.println("unable to find security property file " +
-                               filename);
-                e.printStackTrace();
+        InputStream is = null;
+        if (JavaHome.isHermetic()) {
+            is = Security.class.getResourceAsStream(filename);
+        } else {
+            String sep = File.separator;
+            File securityFile = new File(StaticProperty.javaHome() + sep +
+                                         "conf" + sep + "security" + sep +
+                                         filename);
+            try {
+                // Returns null if the file is not found. In that case,
+                // the default properties will be loaded by the caller,
+                // initialize().
+                if (securityFile != null && securityFile.exists()) {
+                    is = new FileInputStream(securityFile);
+                }
+            } catch (IOException e) {
+                // Returns null in this case. And, the caller initialize()
+                // method will load the default properties when it cannot load
+                // the security properties file.
+                if (sdebug != null) {
+                    sdebug.println("unable to find security property file " +
+                                   filename);
+                    e.printStackTrace();
+                }
             }
         }
-        return res;
+        return is;
     }
 
     /**

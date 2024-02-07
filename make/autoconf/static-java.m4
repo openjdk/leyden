@@ -31,4 +31,5 @@ AC_DEFUN_ONCE([STATIC_JAVA_SETUP],
   AC_ARG_WITH(static-java, [AS_HELP_STRING([--with-static-java],
       [fully statically link java executable])],
       [STATIC_JAVA=true])
+  AC_SUBST(STATIC_JAVA)
 ])

@@ -74,12 +74,18 @@ JLINK_ORDER_RESOURCES += \
     /jdk.localedata/** \
     #
 
+HERMETIC_RESOURCES :=
+ifeq ($(STATIC_JAVA), true)
+  HERMETIC_RESOURCES := --hermetic-resources /java.base/conf/security/java.security=/java.base/java/security/java.security
+endif
+
 JLINK_TOOL := $(JLINK) -J-Djlink.debug=true \
     --module-path $(call PathList, $(JMODS_DIRS)) \
     --endian $(OPENJDK_TARGET_CPU_ENDIAN) \
     --release-info $(BASE_RELEASE_FILE) \
     --order-resources=$(call CommaList, $(JLINK_ORDER_RESOURCES)) \
     --dedup-legal-notices=error-if-not-same-content \
+    $(HERMETIC_RESOURCES) \
     $(JLINK_JLI_CLASSES) \
     #
 
