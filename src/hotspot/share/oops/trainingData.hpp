@@ -862,8 +862,11 @@ class MethodTrainingData : public TrainingData {
   inline int last_compile_id() const;
 
   void notice_compilation(int level, bool inlined = false) {
-    if (inlined)  _was_inlined = true;
-    else          _was_toplevel = true;
+    if (inlined) {
+      _was_inlined = true;
+    } else {
+      _was_toplevel = true;
+    }
     _level_mask |= level_mask(level);
   }
 
@@ -880,7 +883,9 @@ class MethodTrainingData : public TrainingData {
     return make(method, true);
   }
 
-  virtual MethodTrainingData* as_MethodTrainingData() const { return const_cast<MethodTrainingData*>(this); };
+  virtual MethodTrainingData* as_MethodTrainingData() const {
+    return const_cast<MethodTrainingData*>(this);
+  };
 
   void print_on(outputStream* st, bool name_only) const;
   virtual void print_on(outputStream* st) const { print_on(st, false); }
@@ -921,7 +926,7 @@ class MethodTrainingData : public TrainingData {
 };
 
 inline int MethodTrainingData::last_compile_id() const {
-  return (_compile == nullptr ? 0 : _compile->compile_id());
+  return (_compile == nullptr) ? 0 : _compile->compile_id();
 }
 
 // CDS support
