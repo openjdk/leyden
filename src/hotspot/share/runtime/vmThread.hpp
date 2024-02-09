@@ -149,7 +149,7 @@ class VMThread: public NamedThread {
   // Pointer to single-instance of VM thread
   static VMThread*     _vm_thread;
 
-  static PerfCounter* get_perf_timer_for(VM_Operation* op);
+  static PerfTickCounters* get_perf_timer_for(VM_Operation* op);
   static PerfCounter* get_perf_counter_for(VM_Operation* op);
 };
 

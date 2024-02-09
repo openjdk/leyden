@@ -576,8 +576,8 @@ void VMThread::verify() {
 }
 
 #define DECLARE_COUNTER(name) \
-PerfCounter* _perf_##name##_timer = nullptr; \
-PerfCounter* _perf_##name##_count = nullptr;
+PerfTickCounters* _perf_##name##_timer = nullptr; \
+PerfCounter*      _perf_##name##_count = nullptr;
 
 VM_OPS_DO(DECLARE_COUNTER)
 
@@ -586,7 +586,7 @@ VM_OPS_DO(DECLARE_COUNTER)
 #define SWITCH_TIMER(name) \
 case VM_Operation::VMOp_##name: return _perf_##name##_timer;
 
-PerfCounter* VMThread::get_perf_timer_for(VM_Operation *op) {
+PerfTickCounters* VMThread::get_perf_timer_for(VM_Operation *op) {
   switch(op->type()) {
     VM_OPS_DO(SWITCH_TIMER)
     default: ShouldNotReachHere();
@@ -608,7 +608,7 @@ PerfCounter* VMThread::get_perf_counter_for(VM_Operation *op) {
 #undef SWITCH_COUNT
 
 #define INIT_COUNTER(name) \
-    NEWPERFTICKCOUNTER(_perf_##name##_timer, SUN_RT, #name "_time"); \
+    NEWPERFTICKCOUNTERS(_perf_##name##_timer, SUN_RT, #name "_time"); \
     NEWPERFEVENTCOUNTER(_perf_##name##_count, SUN_RT, #name "_count"); \
 
 void VMThread::init_counters() {
@@ -633,24 +633,24 @@ static jlong total_count() {
   return total;
 }
 
-static jlong total_time_in_ms() {
-  jlong total_ticks = 0;
-#define ACC_COUNT(name) total_ticks += _perf_##name##_timer->get_value();
+static jlong total_elapsed_time_in_ms() {
+  jlong total_elapsed_ticks = 0;
+#define ACC_COUNT(name) total_elapsed_ticks += _perf_##name##_timer->elapsed_counter_value();
   VM_OPS_DO(ACC_COUNT)
 #undef ACC_COUNT
-  return Management::ticks_to_ms(total_ticks);
+  return Management::ticks_to_ms(total_elapsed_ticks);
 }
 
 #define PRINT_COUNTER(name) {\
   jlong count = _perf_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-40s = %4ldms (%5ld events)", #name, \
-                 Management::ticks_to_ms(_perf_##name##_timer->get_value()), count); \
+    st->print_cr("  %-40s = %4ldms (%5ld events)", #name, _perf_##name##_timer->elapsed_counter_value_ms(), count); \
   }}
 
 void VMThread::print_counters_on(outputStream* st) {
   if (ProfileVMOps && UsePerfData) {
-    st->print_cr("VMOperation: Total: %ld events (%ldms) for thread \"main\":", total_count(), total_time_in_ms());
+    st->print_cr("VMOperation: Total: %ld events (elapsed %ldms) for thread \"main\":",
+                 total_count(), total_elapsed_time_in_ms());
     VM_OPS_DO(PRINT_COUNTER)
   } else {
     st->print_cr("  VMOperations:  no info (%s is disabled)", (UsePerfData ? "ProfileVMCalls" : "UsePerfData"));
