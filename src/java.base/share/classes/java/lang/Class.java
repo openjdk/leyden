@@ -458,9 +458,15 @@ public final class Class<T> implements java.io.Serializable,
             throws ClassNotFoundException {
         ClassLoader loader = (caller == null) ? ClassLoader.getSystemClassLoader()
                                               : ClassLoader.getClassLoader(caller);
-        if (BuiltinClassLoader.useNegativeCache && loader instanceof BuiltinClassLoader bcl) {
-            if (bcl.checkNegativeLookupCache(name)) {
-                throw new ClassNotFoundException(name);
+        if (loader instanceof BuiltinClassLoader bcl) {
+            if (bcl.usePositiveCache) {
+                Class<?> result = bcl.checkPositiveLookupCache(className);
+                if (result != null) {
+                    return result;
+                }
+            }
+	    if (bcl.useNegativeCache && bcl.checkNegativeLookupCache(className)) {
+                throw new ClassNotFoundException(className);
             }
         }
         return forName0(className, true, loader, caller);
@@ -579,8 +585,14 @@ public final class Class<T> implements java.io.Serializable,
                 }
             }
         }
-        if (BuiltinClassLoader.useNegativeCache && loader instanceof BuiltinClassLoader bcl) {
-            if (bcl.checkNegativeLookupCache(name)) {
+        if (loader instanceof BuiltinClassLoader bcl) {
+            if (bcl.usePositiveCache) {
+                Class<?> result = bcl.checkPositiveLookupCache(name);
+                if (result != null) {
+                    return result;
+                }
+            }
+	    if (bcl.useNegativeCache && bcl.checkNegativeLookupCache(name)) {
                 throw new ClassNotFoundException(name);
             }
         }
@@ -4903,5 +4915,6 @@ public final class Class<T> implements java.io.Serializable,
         if ((flags & RD_DECLARED_SIMPLE_NAME   ) != 0) { getSimpleName();                       } // String simpleName;
         if ((flags & RD_DECLARED_CANONICAL_NAME) != 0) { getCanonicalName();                    } // String canonicalName;
     }
+
     // -- }
 }

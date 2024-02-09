@@ -134,6 +134,9 @@
                                                                             \
   product(bool, UsePermanentHeapObjects, true, DIAGNOSTIC,                  \
           "Allow AOT code to access permanent archived heap objects")       \
+                                                                            \
+  product(bool, ArchiveLoaderLookupCache, false,                            \
+          "Archive app loader's positive and negative lookup cache")        \
 
 
 // end of CDS_FLAGS

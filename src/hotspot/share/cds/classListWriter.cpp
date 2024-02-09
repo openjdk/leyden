@@ -354,6 +354,7 @@ void ClassListWriter::write_loader_negative_lookup_cache_for(oop loader, const c
   TempNewSymbol signature = SymbolTable::new_symbol("()Ljava/lang/String;");
 
   EXCEPTION_MARK;
+  HandleMark hm(THREAD);
 
   JavaValue result(T_OBJECT);
   JavaCalls::call_virtual(&result,
@@ -363,7 +364,11 @@ void ClassListWriter::write_loader_negative_lookup_cache_for(oop loader, const c
                           signature,
                           CHECK);
 
-  if (HAS_PENDING_EXCEPTION || result.get_oop() == nullptr) {
+  if (HAS_PENDING_EXCEPTION) {
+    log_warning(cds)("Error during BuiltinClassLoader::negativeLookupCacheContents() call for %s loader", loader_type);
+    CLEAR_PENDING_EXCEPTION;
+    return;
+  } else if (result.get_oop() == nullptr) {
     return;
   }
 

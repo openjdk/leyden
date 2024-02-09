@@ -897,6 +897,10 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       HeapShared::reset_archived_object_states(CHECK);
     }
 
+    if (ArchiveLoaderLookupCache) {
+      SystemDictionaryShared::create_loader_positive_lookup_cache(CHECK);
+    }
+
     // Do this at the very end, when no Java code will be executed. Otherwise
     // some new strings may be added to the intern table.
     StringTable::allocate_shared_strings_array(CHECK);

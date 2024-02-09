@@ -59,6 +59,7 @@ import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.misc.CDS;
 import jdk.internal.misc.VM;
 import jdk.internal.module.ModulePatcher.PatchedModuleReader;
 import jdk.internal.module.Resources;
@@ -108,8 +109,10 @@ public class BuiltinClassLoader
     private @Stable URLClassPath ucp;
 
     private Set<String> negativeLookupCache;
+    private Map<String, Class<? extends Object>> positiveLookupCache;
 
-    public static final boolean useNegativeCache;
+    public boolean useNegativeCache = false;
+    public boolean usePositiveCache = false;
 
     /**
      * A module defined/loaded by a built-in class loader.
@@ -172,7 +175,6 @@ public class BuiltinClassLoader
         } else {
             packageToModule = new ConcurrentHashMap<>(1024);
         }
-        useNegativeCache = Boolean.parseBoolean(VM.getSavedProperty("loader.negativeCache"));
     }
 
     /**
@@ -205,6 +207,7 @@ public class BuiltinClassLoader
         this.nameToModule = new ConcurrentHashMap<>(32);
         this.moduleToReader = new ConcurrentHashMap<>();
         this.negativeLookupCache = ConcurrentHashMap.newKeySet();
+        this.positiveLookupCache = new ConcurrentHashMap<>();
     }
 
     /**
@@ -648,11 +651,10 @@ public class BuiltinClassLoader
         }
         Class<?> c = loadClassOrNull(cn, resolve);
         if (c == null) {
-            if (useNegativeCache) {
-                addToNegativeLookupCache(cn);
-            }
+            addToNegativeLookupCache(cn);
             throw new ClassNotFoundException(cn);
         }
+
         return c;
     }
 
@@ -1121,10 +1123,26 @@ public class BuiltinClassLoader
         }
     }
 
-    public void restoreNegativeLookupCache(String contents) {
+    public void generateNegativeLookupCache(String contents) {
         String[] tokens = contents.split(" ");
-        for (String token: tokens) {
-            negativeLookupCache.add(token);
+        if (tokens.length > 0) {
+	    for (String token: tokens) {
+		negativeLookupCache.add(token);
+	    }
+	    useNegativeCache = true;
+        }
+    }
+
+    public Class<?> checkPositiveLookupCache(String className) {
+        return positiveLookupCache.get(className);
+    }
+
+    public void generatePositiveLookupCache(Class<?>[] cls) {
+        if (cls.length > 0) {
+            for (Class<?> c: cls) {
+                positiveLookupCache.put(c.getName(), c);
+            }
+            usePositiveCache = true;
         }
     }
 }

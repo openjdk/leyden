@@ -1837,3 +1837,61 @@ static Array<InstanceKlass*>* copy_klass_array(GrowableArray<InstanceKlass*>* sr
   return dst;
 }
 #endif
+
+class GatherSharedClasses : StackObj {
+private:
+  GrowableArray<InstanceKlass*> _list;
+
+public:
+  void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
+    if (!SystemDictionaryShared::check_for_exclusion(k, &info)) {
+      _list.append(k);
+    }
+  }
+
+  GrowableArray<InstanceKlass*>* list() { return &_list; }
+  int count() { return _list.length(); }
+};
+
+void SystemDictionaryShared::create_loader_positive_lookup_cache(TRAPS) {
+  GatherSharedClasses shared_classes;
+  {
+    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+    _dumptime_table->iterate_all_live_classes(&shared_classes);
+  }
+
+  InstanceKlass* ik = vmClasses::Class_klass();
+  objArrayOop r = oopFactory::new_objArray(ik, shared_classes.count(), CHECK);
+  objArrayHandle array_h(THREAD, r);
+
+  for (int i = 0; i < shared_classes.count(); i++) {
+    oop mirror = shared_classes.list()->at(i)->java_mirror();
+    Handle mirror_h(THREAD, mirror);
+    array_h->obj_at_put(i, mirror_h());
+  }
+
+  TempNewSymbol method = SymbolTable::new_symbol("generatePositiveLookupCache");
+  TempNewSymbol signature = SymbolTable::new_symbol("([Ljava/lang/Class;)V");
+
+  JavaCallArguments args(Handle(THREAD, SystemDictionary::java_system_loader()));
+  args.push_oop(array_h);
+  JavaValue result(T_VOID);
+  JavaCalls::call_virtual(&result,
+                          vmClasses::jdk_internal_loader_ClassLoaders_AppClassLoader_klass(),
+                          method,
+                          signature,
+                          &args,
+                          CHECK);
+
+  if (HAS_PENDING_EXCEPTION) {
+    Handle exc_handle(THREAD, PENDING_EXCEPTION);
+    CLEAR_PENDING_EXCEPTION;
+
+    log_warning(cds)("Exception during AppClassLoader::generatePositiveLookupCache() call");
+    LogStreamHandle(Debug, cds) log;
+    if (log.is_enabled()) {
+      java_lang_Throwable::print_stack_trace(exc_handle, &log);
+    }
+    return;
+  }
+}

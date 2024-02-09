@@ -1024,18 +1024,30 @@ void ClassListParser::parse_loader_negative_cache_tag() {
   *_token = '\0';
   _token ++;
 
-  TempNewSymbol method = SymbolTable::new_symbol("restoreNegativeLookupCache");
-  TempNewSymbol signature = SymbolTable::new_symbol("(Ljava/lang/String;)V");
+  if (ArchiveLoaderLookupCache) {
+    TempNewSymbol method = SymbolTable::new_symbol("generateNegativeLookupCache");
+    TempNewSymbol signature = SymbolTable::new_symbol("(Ljava/lang/String;)V");
 
-  EXCEPTION_MARK;
-  HandleMark hm(THREAD);
-  JavaCallArguments args(Handle(THREAD, loader));
-  Handle contents_h = java_lang_String::create_from_str(contents, THREAD);
-  args.push_oop(contents_h);
-  JavaValue result(T_VOID);
-  JavaCalls::call_virtual(&result,
-                          loader_klass,
-                          method,
-                          signature,
-                          &args, THREAD);
+    EXCEPTION_MARK;
+    HandleMark hm(THREAD);
+    JavaCallArguments args(Handle(THREAD, loader));
+    Handle contents_h = java_lang_String::create_from_str(contents, THREAD);
+    args.push_oop(contents_h);
+    JavaValue result(T_VOID);
+    JavaCalls::call_virtual(&result,
+                            loader_klass,
+                            method,
+                            signature,
+                            &args, THREAD);
+    if (HAS_PENDING_EXCEPTION) {
+      Handle exc_handle(THREAD, PENDING_EXCEPTION);
+      CLEAR_PENDING_EXCEPTION;
+
+      log_warning(cds)("Exception during BuiltinClassLoader::generateNegativeLookupCache() call for %s loader", loader_type);
+      LogStreamHandle(Debug, cds) log;
+      if (log.is_enabled()) {
+	java_lang_Throwable::print_stack_trace(exc_handle, &log);
+      }
+    }
+  }
 }

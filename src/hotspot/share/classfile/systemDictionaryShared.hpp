@@ -375,6 +375,7 @@ public:
 
   static unsigned int hash_for_shared_dictionary(address ptr);
   static const char* class_loader_name_for_shared(Klass* k);
+  static void create_loader_positive_lookup_cache(TRAPS);
 };
 
 #endif // SHARE_CLASSFILE_SYSTEMDICTIONARYSHARED_HPP
