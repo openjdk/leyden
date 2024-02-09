@@ -390,6 +390,10 @@
           "Don't compile methods larger than this if "                      \
           "+DontCompileHugeMethods")                                        \
                                                                             \
+  product(bool, CaptureBailoutInformation, trueInDebug, DIAGNOSTIC,         \
+          "If compilation is stopped with an error, capture diagnostic "    \
+          "information at the bailout point")                               \
+                                                                            \
   /* flags to control training and deployment modes  */                     \
                                                                             \
   product(bool, RecordTraining, false,                                      \
@@ -486,6 +490,7 @@
                                                                             \
   product(bool, UseLockFreeCompileQueues, true,                             \
           "Use lock free compile queues")                                   \
+
 // end of COMPILER_FLAGS
 
 DECLARE_FLAGS(COMPILER_FLAGS)

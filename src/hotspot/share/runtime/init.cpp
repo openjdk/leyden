@@ -126,6 +126,12 @@ jint init_globals() {
 
   management_init();
   JvmtiExport::initialize_oop_storage();
+#if INCLUDE_JVMTI
+  if (AlwaysRecordEvolDependencies) {
+    JvmtiExport::set_can_hotswap_or_post_breakpoint(true);
+    JvmtiExport::set_all_dependencies_are_recorded(true);
+  }
+#endif
   bytecodes_init();
   classLoader_init1();
   compilationPolicy_init();
