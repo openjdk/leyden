@@ -70,7 +70,8 @@ public:
 
   bool is_live(Method* m) {
     Klass* holder = m->method_holder();
-    if (holder->class_loader_data() == nullptr ||
+    if (holder == nullptr || // premain: not yet loaded
+        holder->class_loader_data() == nullptr ||
         !holder->is_loader_alive() ||
         (holder->is_instance_klass() && !InstanceKlass::cast(holder)->is_loaded())) {
       return false;
