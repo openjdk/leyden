@@ -4859,9 +4859,11 @@ public final class Class<T> implements java.io.Serializable,
     private static final int RD_DECLARED_INTERFACES     = (1 <<  8);
     private static final int RD_DECLARED_SIMPLE_NAME    = (1 <<  9);
     private static final int RD_DECLARED_CANONICAL_NAME = (1 << 10);
+    private static final int CLS_NAME = (1 << 10);
+
 
     private int encodeReflectionData() {
-        int flags = 0;
+        int flags = CLS_NAME;
         if (reflectionData != null) {
             flags = (reflectionData.publicMethods         != null ? RD_PUBLIC_METHODS          : 0) |
                     (reflectionData.publicFields          != null ? RD_PUBLIC_FIELDS           : 0) |
@@ -4878,6 +4880,7 @@ public final class Class<T> implements java.io.Serializable,
         return flags;
     }
     private void generateReflectionData(int flags) {
+        if ((flags & CLS_NAME                  ) != 0) { getName();                             } // String name
         if ((flags & RD_PUBLIC_METHODS         ) != 0) { privateGetPublicMethods();             } // Method[] publicMethods;
         if ((flags & RD_PUBLIC_FIELDS          ) != 0) { privateGetPublicFields();              } // Field[] publicFields;
         if ((flags & RD_DECLARED_CTORS         ) != 0) { privateGetDeclaredConstructors(false); } // Constructor<T>[] declaredConstructors;
