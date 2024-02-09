@@ -161,8 +161,6 @@ public final class Security {
             }
             props.load(is);
             if (sdebug != null) {
-                // ExceptionInInitializerError if masterResource is used
-                // here (NPE!). Leave as is (and few lines down)
                 sdebug.println("reading security properties file: " +
                         masterResource == null ? extraPropFile : "java.security");
             }
@@ -205,16 +203,15 @@ public final class Security {
                                          "conf" + sep + "security" + sep +
                                          filename);
             try {
-                // Returns null if the file is not found. In that case,
-                // the default properties will be loaded by the caller,
-                // initialize().
+                // Returns null if the file is not found. An InternalError
+                // would be thrown by the the caller initialize()
+                // method when the security property cannot be loaded
+                // successfully.
                 if (securityFile != null && securityFile.exists()) {
                     is = new FileInputStream(securityFile);
                 }
             } catch (IOException e) {
-                // Returns null in this case. And, the caller initialize()
-                // method will load the default properties when it cannot load
-                // the security properties file.
+                // Returns null in this case.
                 if (sdebug != null) {
                     sdebug.println("unable to find security property file " +
                                    filename);
