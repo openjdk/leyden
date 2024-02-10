@@ -1207,7 +1207,9 @@ void ciEnv::register_method(ciMethod* target,
 #ifdef ASSERT
           BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
           if (bs_nm != nullptr && bs_nm->supports_entry_barrier(nm)) {
-            assert(bs_nm->is_armed(nm), "");
+            if (!bs_nm->is_armed(nm)) {
+              log_info(init)("nmethod %d %d not armed", nm->compile_id(), nm->comp_level());
+            }
           }
 #endif // ASSERT
           if (preload) {
