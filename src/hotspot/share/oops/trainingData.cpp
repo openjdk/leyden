@@ -1197,7 +1197,7 @@ MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Symbol*
   size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
+  return new (loader_data, size, MetaspaceObj::MethodTrainingDataType, THREAD)
       MethodTrainingData(ktd, name, signature);
 }
 
@@ -1208,7 +1208,7 @@ MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Method*
   size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
+  return new (loader_data, size, MetaspaceObj::MethodTrainingDataType, THREAD)
       MethodTrainingData(ktd, m->name(), m->signature());
 }
 
@@ -1218,7 +1218,7 @@ CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int 
   size_t size = align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
+  return new (loader_data, size, MetaspaceObj::CompileTrainingDataType, THREAD)
       CompileTrainingData(mtd, level, compile_id);
 }
 
