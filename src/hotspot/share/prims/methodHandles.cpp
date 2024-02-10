@@ -1490,7 +1490,7 @@ JVM_END
     NEWPERFTICKCOUNTERS(_perf_##name##_timer, SUN_RT, #name); \
     NEWPERFEVENTCOUNTER(_perf_##name##_count, SUN_RT, #name "_count"); \
 
-void perf_mhn_init() {
+void MethodHandles::init_counters() {
   if (UsePerfData) {
     EXCEPTION_MARK;
 
@@ -1504,19 +1504,6 @@ void perf_mhn_init() {
 
 #undef INIT_COUNTER
 
-#define RESET_COUNTER(name) \
-    _perf_##name##_timer->reset(); \
-    _perf_##name##_count->reset(); \
-
-void perf_mhn_reset() {
-  if (ProfileVMCalls && UsePerfData) {
-    log_debug(init)("Reset MHN interface calls counters");
-    DO_COUNTERS(RESET_COUNTER)
-  }
-}
-
-#undef RESET_COUNTER
-
 #define PRINT_COUNTER(name) {\
   jlong count = _perf_##name##_count->get_value(); \
   if (count > 0) { \
@@ -1526,7 +1513,7 @@ void perf_mhn_reset() {
                  count); \
   }}
 
-void perf_mhn_print_on(outputStream* st) {
+void MethodHandles::print_counters_on(outputStream* st) {
   if (ProfileVMCalls && UsePerfData) {
     DO_COUNTERS(PRINT_COUNTER)
   } else {

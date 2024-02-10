@@ -187,6 +187,9 @@ public:
   // Tracing
   static void trace_method_handle(MacroAssembler* _masm, const char* adaptername) PRODUCT_RETURN;
   static void trace_method_handle_interpreter_entry(MacroAssembler* _masm, vmIntrinsics::ID iid);
+
+  static void init_counters();
+  static void print_counters_on(outputStream* st);
 };
 
 //------------------------------------------------------------------------------

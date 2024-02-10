@@ -67,6 +67,7 @@
 #include "oops/trainingData.hpp"
 #include "prims/jvmtiAgentList.hpp"
 #include "prims/jvmtiExport.hpp"
+#include "prims/methodHandles.hpp"
 #include "runtime/continuation.hpp"
 #include "runtime/deoptimization.hpp"
 #include "runtime/flags/flagSetting.hpp"
@@ -166,7 +167,6 @@ void print_method_profiling_data() {
 }
 
 void perf_jvm_print_on(outputStream* st);
-void perf_mhn_print_on(outputStream* st);
 
 void log_vm_init_stats() {
   LogStreamHandle(Info, init) log;
@@ -234,7 +234,7 @@ void log_vm_init_stats() {
     log.cr();
     perf_jvm_print_on(&log);
     log.cr();
-    perf_mhn_print_on(&log);
+    MethodHandles::print_counters_on(&log);
   }
 }
 
