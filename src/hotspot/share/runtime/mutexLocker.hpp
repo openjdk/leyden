@@ -25,6 +25,7 @@
 #ifndef SHARE_RUNTIME_MUTEXLOCKER_HPP
 #define SHARE_RUNTIME_MUTEXLOCKER_HPP
 
+#include "logging/log.hpp"
 #include "memory/allocation.hpp"
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/mutex.hpp"
