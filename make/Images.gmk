@@ -76,7 +76,7 @@ JLINK_ORDER_RESOURCES += \
 
 HERMETIC_RESOURCES :=
 ifeq ($(STATIC_JAVA), true)
-  HERMETIC_RESOURCES := --hermetic-resources /java.base/conf/security/java.security=/java.base/java/security/java.security
+  HERMETIC_RESOURCES := --hermetic-resources /java.base/conf/security/java.security=/java.base/java/security/java.security,/java.logging/conf/logging.properties=/java.logging/java/util/logging/logging.properties
 endif
 
 JLINK_TOOL := $(JLINK) -J-Djlink.debug=true \
