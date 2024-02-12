@@ -1782,7 +1782,7 @@ void InstanceKlass::call_class_initializer(TRAPS) {
     jlong bc_end = (CountBytecodesPerThread ? THREAD->bc_counter_value() : BytecodeCounter::counter_value());
 
     jlong bc_executed = (bc_end - bc_start);
-    if (outer == nullptr) { // outermost clinit
+    if (UsePerfData && outer == nullptr) { // outermost clinit
       THREAD->inc_clinit_bc_counter_value(bc_executed);
       ClassLoader::perf_class_init_bytecodes_count()->inc(bc_executed);
     }
