@@ -945,7 +945,7 @@ void JavaThread::exit(bool destroy_vm, ExitType exit_type) {
 #endif // INCLUDE_JVMCI
 
   if (bc_counter_value() > 0) {
-    log_info(init)("Thread '%s': %ld bytecodes executed (clinit: %ld)",
+    log_info(init)("Thread '%s': " JLONG_FORMAT " bytecodes executed (during clinit: " JLONG_FORMAT ")",
                    thread_name, bc_counter_value(), clinit_bc_counter_value());
   }
 

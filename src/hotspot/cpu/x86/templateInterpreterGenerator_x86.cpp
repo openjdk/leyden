@@ -1788,7 +1788,7 @@ void TemplateInterpreterGenerator::set_vtos_entry_points(Template* t,
 //-----------------------------------------------------------------------------
 
 void TemplateInterpreterGenerator::count_bytecode() {
-  __ incrementl(ExternalAddress((address) &BytecodeCounter::_counter_value), rscratch1);
+  __ incrementq(ExternalAddress((address) &BytecodeCounter::_counter_value), rscratch1);
 }
 
 void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
