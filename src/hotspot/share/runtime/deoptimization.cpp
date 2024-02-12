@@ -1749,7 +1749,8 @@ void Deoptimization::deoptimize_single_frame(JavaThread* thread, frame fr, Deopt
   assert(cm != nullptr, "only compiled methods can deopt");
   DeoptAction action = (cm->is_not_entrant() ? Action_make_not_entrant : Action_none);
   ScopeDesc* cur_sd = cm->scope_desc_at(fr.pc());
-  Bytecodes::Code bc = cur_sd->method()->java_code_at(cur_sd->bci());
+  Bytecodes::Code bc = (cur_sd->bci() == -1 ? Bytecodes::_nop // deopt on method entry
+                                            : cur_sd->method()->java_code_at(cur_sd->bci()));
   gather_statistics(reason, action, bc);
 
   if (LogCompilation && xtty != nullptr) {
