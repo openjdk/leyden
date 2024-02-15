@@ -386,9 +386,9 @@ void CompileQueue::add_pending(CompileTask* task) {
   task->method()->set_queued_for_compilation();
   _queue.push(*task);
   // FIXME: additional coordination needed? e.g., is it possible for compiler thread to block w/o processing pending tasks?
-  if (is_empty() && _lock->try_lock()) {
+  if (is_empty()) {
+    MutexLocker ml(_lock);
     _lock->notify_all();
-    _lock->unlock();
   }
 }
 
