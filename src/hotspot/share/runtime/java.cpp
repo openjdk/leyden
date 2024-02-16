@@ -314,16 +314,9 @@ static void print_method_invocation_histogram() {
   SharedRuntime::print_call_statistics_on(tty);
 }
 
-static void print_bytecode_count() {
-  if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
-    tty->print_cr("[BytecodeCounter::counter_value = %d]", BytecodeCounter::counter_value());
-  }
-}
-
 #else
 
 static void print_method_invocation_histogram() {}
-static void print_bytecode_count() {}
 
 #endif // PRODUCT
 
