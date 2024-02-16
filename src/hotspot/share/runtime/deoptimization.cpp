@@ -1449,7 +1449,7 @@ public:
   }
 };
 
-int compare(ReassignedField* left, ReassignedField* right) {
+static int compare(ReassignedField* left, ReassignedField* right) {
   return left->_offset - right->_offset;
 }
 

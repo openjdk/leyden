@@ -88,7 +88,6 @@ void jni_handles_init();
 void vmStructs_init() NOT_DEBUG_RETURN;
 
 void vtableStubs_init();
-void InlineCacheBuffer_init();
 bool compilerOracle_init();
 bool compileBroker_init();
 void dependencyContext_init();
@@ -174,7 +173,6 @@ jint init_globals2() {
 #endif // INCLUDE_VM_STRUCTS
 
   vtableStubs_init();
-  InlineCacheBuffer_init();
   if (!compilerOracle_init()) {
     return JNI_EINVAL;
   }
