@@ -1046,7 +1046,7 @@ void ClassListParser::parse_loader_negative_cache_tag() {
       log_warning(cds)("Exception during BuiltinClassLoader::generateNegativeLookupCache() call for %s loader", loader_type);
       LogStreamHandle(Debug, cds) log;
       if (log.is_enabled()) {
-	java_lang_Throwable::print_stack_trace(exc_handle, &log);
+        java_lang_Throwable::print_stack_trace(exc_handle, &log);
       }
     }
   }

@@ -1126,10 +1126,10 @@ public class BuiltinClassLoader
     public void generateNegativeLookupCache(String contents) {
         String[] tokens = contents.split(" ");
         if (tokens.length > 0) {
-	    for (String token: tokens) {
-		negativeLookupCache.add(token);
-	    }
-	    useNegativeCache = true;
+            for (String token : tokens) {
+                negativeLookupCache.add(token);
+            }
+            useNegativeCache = true;
         }
     }
 
@@ -1139,7 +1139,7 @@ public class BuiltinClassLoader
 
     public void generatePositiveLookupCache(Class<?>[] cls) {
         if (cls.length > 0) {
-            for (Class<?> c: cls) {
+            for (Class<?> c : cls) {
                 positiveLookupCache.put(c.getName(), c);
             }
             usePositiveCache = true;

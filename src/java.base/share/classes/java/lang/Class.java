@@ -465,7 +465,7 @@ public final class Class<T> implements java.io.Serializable,
                     return result;
                 }
             }
-	    if (bcl.useNegativeCache && bcl.checkNegativeLookupCache(className)) {
+            if (bcl.useNegativeCache && bcl.checkNegativeLookupCache(className)) {
                 throw new ClassNotFoundException(className);
             }
         }
@@ -592,7 +592,7 @@ public final class Class<T> implements java.io.Serializable,
                     return result;
                 }
             }
-	    if (bcl.useNegativeCache && bcl.checkNegativeLookupCache(name)) {
+           if (bcl.useNegativeCache && bcl.checkNegativeLookupCache(name)) {
                 throw new ClassNotFoundException(name);
             }
         }
