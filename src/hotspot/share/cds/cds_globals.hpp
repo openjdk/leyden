@@ -113,6 +113,10 @@
           "Load all shared classes for the boot/platform/app loaders "      \
           "immediately at VM start-up")                                     \
                                                                             \
+  product(bool, PrelinkSharedClasses, true,                                 \
+          "Link all shared classes for the boot/platform/app loaders "      \
+          "immediately at VM start-up")                                     \
+                                                                            \
   product(bool, ArchiveDynamicProxies, false,                               \
           "Archive classes generated for java/lang/reflect/Proxy")          \
                                                                             \

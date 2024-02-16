@@ -1637,6 +1637,8 @@ void ClassPrelinker::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
         InstanceKlass* ik = preloaded_klasses->at(i);
         if (ik->has_preinitialized_mirror()) {
           ik->initialize_from_cds(CHECK);
+        } else if (PrelinkSharedClasses && ik->verified_at_dump_time()) {
+          ik->link_class(CHECK);
         }
       }
     }
