@@ -111,7 +111,7 @@ public final class ComputedConstantSnippets {
 
         // 1. Declare a List of ComputedConstant elements of size 32
         private static final List<ComputedConstant<Long>> VALUE_PO2_CACHE =
-                ComputedConstant.of(32, index -> 1L << index); // mappingProvider = index -> 1L << index
+                ComputedConstant.of(long.class, 32, index -> 1L << index); // mappingProvider = index -> 1L << index
 
         public long powerOfTwo(int n) {
             // 2. The n:th slot is computed and bound here before
@@ -179,6 +179,7 @@ public final class ComputedConstantSnippets {
                 );
 
         private static final List<ComputedConstant<String>> LABELS = ComputedConstant.of(
+                String.class,
                 4,
                 i -> BUNDLE.get().getString(Integer.toString(i)));
 
@@ -227,7 +228,7 @@ public final class ComputedConstantSnippets {
         private final List<ComputedConstant<Integer>> list;
 
         public Fibonacci2(int upperBound) {
-            list = ComputedConstant.of(upperBound, this::number);
+            list = ComputedConstant.of(int.class, upperBound, this::number);
         }
 
         public int number(int n) {
@@ -251,7 +252,7 @@ public final class ComputedConstantSnippets {
     class Fibonacci3 {
 
         private static final List<ComputedConstant<Integer>> LIST
-                = ComputedConstant.of(40, Fibonacci3::number);
+                = ComputedConstant.of(int.class, 40, Fibonacci3::number);
 
         public static int number(int n) {
             return (n < 2)

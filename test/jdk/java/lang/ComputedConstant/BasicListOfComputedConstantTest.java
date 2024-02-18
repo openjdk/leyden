@@ -52,7 +52,7 @@ final class BasicListOfComputedConstantTest {
     @BeforeEach
     void setup() {
         mapper = new CountingIntegerMapper(SIZE);
-        constants = ComputedConstant.of(SIZE, mapper);
+        constants = ComputedConstant.of(int.class, SIZE, mapper);
     }
 
     @Test
@@ -67,11 +67,15 @@ final class BasicListOfComputedConstantTest {
 
     @Test
     void nulls() {
+        // Storage type is null
+        assertThrows(NullPointerException.class,
+                () -> ComputedConstant.of(null, SIZE, i -> null));
+
         // Mapper is null
         assertThrows(NullPointerException.class,
-                () -> ComputedConstant.of(SIZE, null));
+                () -> ComputedConstant.of(int.class, SIZE, null));
         // Mapper returns null
-        List<ComputedConstant<Integer>> l = ComputedConstant.of(SIZE, i -> null);
+        List<ComputedConstant<Integer>> l = ComputedConstant.of(int.class, SIZE, i -> null);
         assertNull(l.get(INDEX).get());
     }
 
@@ -84,7 +88,7 @@ final class BasicListOfComputedConstantTest {
             default -> 13;
         };
 
-        List<ComputedConstant<Integer>> l = ComputedConstant.of(3, special);
+        List<ComputedConstant<Integer>> l = ComputedConstant.of(int.class, 3, special);
 
         l.get(1).get();
         try {
@@ -110,7 +114,7 @@ final class BasicListOfComputedConstantTest {
             }
 
             // Non-final fields
-            int one,two,three;
+            int one, two, three;
 
             void isValid() {
                 assertEquals(3, three);
@@ -144,12 +148,12 @@ final class BasicListOfComputedConstantTest {
     @Test
     void fibTest() {
         class A {
-            final List<ComputedConstant<Integer>> fibonacci = ComputedConstant.of(20, this::fib);
+            final List<ComputedConstant<Integer>> fibonacci = ComputedConstant.of(int.class, 20, this::fib);
 
             int fib(int n) {
                 return (n < 2) ? n
                         : fibonacci.get(n - 1).get() +
-                          fibonacci.get(n - 2).get();
+                        fibonacci.get(n - 2).get();
             }
         }
 
@@ -163,7 +167,7 @@ final class BasicListOfComputedConstantTest {
 
         assertArrayEquals(new int[]{1, 1, 2, 3, 5, 8, 13, 21, 34}, array);
 
-        for (int i = 0; i  < a.fibonacci.size(); i++) {
+        for (int i = 0; i < a.fibonacci.size(); i++) {
             boolean isBound = i < 9; // fib(10) does not get memoized
             assertEquals(!isBound, a.fibonacci.get(i).isUnbound());
             assertEquals(isBound, a.fibonacci.get(i).isBound());

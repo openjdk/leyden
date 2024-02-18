@@ -1,6 +1,7 @@
 package java.lang;
 
 import jdk.internal.constant.AbstractComputedConstant;
+import jdk.internal.constant.ClassProvidedComputedConstant;
 import jdk.internal.constant.IndexedComputedConstantMap;
 import jdk.internal.constant.ListElementComputedConstant;
 import jdk.internal.constant.MapElementComputedConstant;
@@ -11,6 +12,8 @@ import jdk.internal.constant.StandardComputedConstant;
 import jdk.internal.javac.PreviewFeature;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -64,7 +67,7 @@ import java.util.function.ToIntFunction;
  *     </li>
  *     <li>Collections
  *         <ul>
- *             <li>{@linkplain ComputedConstant#of(int, IntFunction) ComputedConstant.of(int length, IntFunction&lt;? super V&gt; mappingProvider)}
+ *             <li>{@linkplain ComputedConstant#of(Class, int, IntFunction) ComputedConstant.of(Class&lt;? super V&gt;, int length, IntFunction&lt;? super V&gt; mappingProvider)}
  *             providing a new List of ComputedConstant elements</li>
  *         </ul>
  *     </li>
@@ -242,6 +245,7 @@ import java.util.function.ToIntFunction;
 public sealed interface ComputedConstant<V>
         extends Supplier<V>
         permits AbstractComputedConstant,
+        ClassProvidedComputedConstant,
         ListElementComputedConstant,
         MapElementComputedConstant,
         MethodHandleComputedConstant,
@@ -389,6 +393,39 @@ public sealed interface ComputedConstant<V>
     }
 
     /**
+     * {@return a new {@link ComputedConstant } with the given pre-set {@code provider} type to be used
+     *          to compute a value}
+     * <p>
+     * The given provider type must be a public concrete class with a default constructor or else
+     * an IllegalArgumentException will be thrown upon attempting to bind a value. During binding
+     * the default constructor is invoked thereby producing a Supplier. Said Supplier
+     * will then subsequently be invoked to yield a a result that will become the bound value.
+     *
+     * If a later attempt is made to invoke any of the {@link #get()}, {@link #orElse(Object)} or
+     * {@link #orElseThrow(Supplier)} methods when this computed constant is unbound, the
+     * {@code provider} will automatically be invoked.
+     * <p>
+     * {@snippet lang = java:
+     *     class DemoPreset {
+     *
+     *         private static final ComputedConstant<Foo> FOO = ComputedConstant.of(Foo.class);
+     *
+     *         public Foo theBar() {
+     *             // Foo is lazily constructed and recorded here upon first invocation
+     *             return FOO.get();
+     *         }
+     *     }
+     *}
+     *
+     * @param <V>      the type of the value
+     * @param provider to invoke when computing a value
+     */
+    static <V> ComputedConstant<V> of(Class<? extends Supplier<? extends V>> provider) {
+        Objects.requireNonNull(provider);
+        return ClassProvidedComputedConstant.create(provider);
+    }
+
+    /**
      * {@return a new {@link ComputedConstant } with the given pre-set {@code provider} to be used
      *          to compute a value and provided {@code returnType} indicating the most specific return
      *          type that can be expressed}
@@ -435,7 +472,8 @@ public sealed interface ComputedConstant<V>
 
     /**
      * {@return a new unmodifiable List of {@link ComputedConstant } elements with the provided
-     * {@code size} and given pre-set {@code mappingProvider} to be used to compute element values}
+     *          {@code size} and given pre-set {@code mappingProvider} to be used to compute
+     *          element values}
      * <p>
      * The List and its elements are eligible for constant folding optimizations by the JVM.
      * <p>
@@ -455,11 +493,14 @@ public sealed interface ComputedConstant<V>
      *          ComputedConstant elements that has no valid identity.
      *
      * @param <V>             the type of the values
+     * @param storageType     a class literal representing an optional storage type of the bound values
      * @param size            the size of the List
      * @param mappingProvider to invoke when computing and binding element values
      */
-    static <V> List<ComputedConstant<V>> of(int size,
+    static <V> List<ComputedConstant<V>> of(Class<? super V> storageType,
+                                            int size,
                                             IntFunction<? extends V> mappingProvider) {
+        Objects.requireNonNull(storageType);
         if (size < 0) {
             throw new IllegalArgumentException();
         }

@@ -226,7 +226,7 @@ public sealed interface SettableConstant<V>
      *     class DemoList {
      *
      *         private static final List<SettableConstant<Long>> CONSTANTS =
-     *                 SettableConstant.of(32);
+     *                 SettableConstant.of(long.class, 32);
      *          static {
      *             // Compute values in the CONSTANTS list
      *          }
@@ -239,10 +239,12 @@ public sealed interface SettableConstant<V>
      * @apiNote The list is free to return <a href="{@docRoot}/java.base/java/lang/doc-files/ValueBased.html">value-based</a>
      *          ComputedConstant elements that has no valid identity.
      *
-     * @param <V>             the type of the values
-     * @param size            the size of the List
-         */
-    static <V> List<SettableConstant<V>> ofList(int size) {
+     * @param <V>         the type of the values
+     * @param storageType a class literal representing an optional storage type of the bound value
+     * @param size        the size of the List
+     */
+    static <V> List<SettableConstant<V>> list(Class<? super V> storageType, int size) {
+        Objects.requireNonNull(storageType);
         if (size < 0) {
             throw new IllegalArgumentException();
         }
