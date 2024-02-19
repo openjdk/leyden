@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -29,7 +29,6 @@
 #include "runtime/perfDataTypes.hpp"
 #include "runtime/perfMemory.hpp"
 #include "runtime/timer.hpp"
-#include "services/management.hpp"
 
 template <typename T> class GrowableArray;
 
@@ -643,9 +642,7 @@ public:
   long elapsed_counter_value() const {
     return _elapsed_counter->get_value();
   }
-  long elapsed_counter_value_ms() const {
-    return Management::ticks_to_ms(_elapsed_counter->get_value());
-  }
+  inline long elapsed_counter_value_ms() const;
 
   PerfCounter* thread_counter() const {
     return _thread_counter;
@@ -653,9 +650,8 @@ public:
   long thread_counter_value() const {
     return _thread_counter->get_value();
   }
-  long thread_counter_value_ms() const {
-    return Management::ticks_to_ms(_thread_counter->get_value());
-  }
+  inline long thread_counter_value_ms() const;
+
   void reset() {
     _elapsed_counter->reset();
     _thread_counter->reset();

@@ -56,6 +56,7 @@
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/jniHandles.inline.hpp"
+#include "runtime/perfData.inline.hpp"
 #include "runtime/timerTrace.hpp"
 #include "runtime/reflection.hpp"
 #include "runtime/safepointVerifiers.hpp"

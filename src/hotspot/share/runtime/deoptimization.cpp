@@ -76,6 +76,7 @@
 #include "runtime/keepStackGCProcessed.hpp"
 #include "runtime/objectMonitor.inline.hpp"
 #include "runtime/osThread.hpp"
+#include "runtime/perfData.inline.hpp"
 #include "runtime/safepointVerifiers.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/signature.hpp"

@@ -86,7 +86,7 @@
 #include "runtime/jniHandles.inline.hpp"
 #include "runtime/os.inline.hpp"
 #include "runtime/osThread.hpp"
-#include "runtime/perfData.hpp"
+#include "runtime/perfData.inline.hpp"
 #include "runtime/reflection.hpp"
 #include "runtime/synchronizer.hpp"
 #include "runtime/threadIdentifier.hpp"

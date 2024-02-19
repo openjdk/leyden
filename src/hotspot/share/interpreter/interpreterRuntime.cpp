@@ -68,6 +68,7 @@
 #include "runtime/javaCalls.hpp"
 #include "runtime/jfieldIDWorkaround.hpp"
 #include "runtime/osThread.hpp"
+#include "runtime/perfData.inline.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stackWatermarkSet.hpp"
 #include "runtime/stubRoutines.hpp"
