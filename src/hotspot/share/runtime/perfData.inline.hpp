@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2002, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,6 +27,7 @@
 
 #include "runtime/perfData.hpp"
 
+#include "services/management.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/growableArray.hpp"
 
@@ -48,6 +49,14 @@ inline bool PerfDataManager::exists(const char* name) {
   } else {
     return false;
   }
+}
+
+inline long PerfTickCounters::elapsed_counter_value_ms() const {
+  return Management::ticks_to_ms(_elapsed_counter->get_value());
+}
+
+inline long PerfTickCounters::thread_counter_value_ms() const {
+  return Management::ticks_to_ms(_thread_counter->get_value());
 }
 
 #endif // SHARE_RUNTIME_PERFDATA_INLINE_HPP

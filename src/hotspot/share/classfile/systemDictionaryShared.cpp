@@ -1844,7 +1844,8 @@ private:
 
 public:
   void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (!SystemDictionaryShared::check_for_exclusion(k, &info)) {
+    if ((k->is_shared_boot_class() || k->is_shared_platform_class() || k->is_shared_app_class())
+        && !SystemDictionaryShared::check_for_exclusion(k, &info)) {
       _list.append(k);
     }
   }
