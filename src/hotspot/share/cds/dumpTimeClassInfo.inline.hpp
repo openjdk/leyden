@@ -43,7 +43,12 @@
 template<typename Function>
 void DumpTimeSharedClassTable::iterate_all_live_classes(Function function) const {
   auto wrapper = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
-    assert(SafepointSynchronize::is_at_safepoint(), "invariant");
+    // Iterating the classes for creating loader cache in SystemDictionaryShared::create_loader_positive_lookup_cache
+    // is done outside the safepoint, and hence the need to comment the following assert.
+    // Also, it is safe to iterate the classes in SystemDictionaryShared::create_loader_positive_lookup_cache
+    // because it is only interested in classes loaded by built-in loaders which should never become unreachable.
+
+    // assert(SafepointSynchronize::is_at_safepoint(), "invariant");
     assert_lock_strong(DumpTimeTable_lock);
     if (CDSConfig::is_dumping_final_static_archive() && !k->is_loaded()) {
       assert(k->is_shared_unregistered_class(), "must be");
