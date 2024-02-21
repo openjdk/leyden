@@ -738,6 +738,18 @@ JRT_LEAF(int, SharedRuntime::rc_trace_method_entry(
     ResourceMark rm;
     log_trace(redefine, class, obsolete)("calling obsolete method '%s'", method->name_and_sig_as_C_string());
   }
+
+  LogStreamHandle(Trace, interpreter, bytecode) log;
+  if (log.is_enabled()) {
+    ResourceMark rm;
+    log.print("method entry: " INTPTR_FORMAT " %s %s%s%s%s",
+              p2i(thread),
+              (method->is_static() ? "static" : "virtual"),
+              method->name_and_sig_as_C_string(),
+              (method->is_native() ? " native" : ""),
+              (thread->class_being_initialized() != nullptr ? " clinit" : ""),
+              (method->method_holder()->is_initialized() ? "" : " being_initialized"));
+  }
   return 0;
 JRT_END
 

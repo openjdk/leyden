@@ -1431,7 +1431,8 @@ void InterpreterMacroAssembler::notify_method_entry() {
   }
 
   // RedefineClasses() tracing support for obsolete method entry
-  if (log_is_enabled(Trace, redefine, class, obsolete)) {
+  if (log_is_enabled(Trace, redefine, class, obsolete) ||
+      log_is_enabled(Trace, interpreter, bytecode)) {
     get_method(c_rarg1);
     call_VM_leaf(
       CAST_FROM_FN_PTR(address, SharedRuntime::rc_trace_method_entry),
