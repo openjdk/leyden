@@ -25,11 +25,8 @@
 #include "precompiled.hpp"
 #include "asm/assembler.hpp"
 #include "asm/assembler.inline.hpp"
-<<<<<<< HEAD
 #include "code/SCCache.hpp"
-=======
 #include "code/compiledIC.hpp"
->>>>>>> upstream/master
 #include "compiler/compiler_globals.hpp"
 #include "compiler/disassembler.hpp"
 #include "crc32c.h"
