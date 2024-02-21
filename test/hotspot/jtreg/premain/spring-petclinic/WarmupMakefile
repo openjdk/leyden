@@ -1,0 +1,331 @@
+# Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+#
+# This code is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License version 2 only, as
+# published by the Free Software Foundation.
+#
+# This code is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+# version 2 for more details (a copy is included in the LICENSE file that
+# accompanied this code).
+#
+# You should have received a copy of the GNU General Public License version
+# 2 along with this work; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+# or visit www.oracle.com if you need additional information or have any
+# questions.
+
+#===============================================================================
+# Leyden-premain + spring-petclinic warmup (https://github.com/spring-projects/spring-petclinic)
+#
+# Build spring-petclinic:
+#    make app
+#
+# Build all leyden optimization artifacts (this is using the older "4 step training run" which will be simplified):
+#    make aot
+#
+# Uses JMeter to drive the load to the petclinic application.
+# Duration of the load and number of threads used by JMeter to drive the load
+# is controlled by JMETER_DURATION and JMETER_THREADS variables respectively.
+# JMETER_CPUS and APP_CPUS variables control the cpus to be used for running the jmeter and app respectively.
+#
+# Run warmup with baseline
+#    make warmup-bl
+#
+# Run warmup with only preload optimizations
+#    make warmup-preload
+#
+# Run warmup with only training data
+#    make warmup-training
+#
+# Run with training data and aot
+#    make warmup-aot
+#
+# Set the following to point to JDK 17 and your Leyden JDK build.
+#
+#  *** NOTE: JDK 17 (or 21??) is needed to build spring-petclinic-3.2.0-SNAPSHOT.jar
+JDK17_HOME   = /jdk3/official/jdk17
+#baseline java
+BL_HOME      = /jdk3/official/jdk-latest
+PREMAIN_HOME = /jdk3/bld/le4/images/jdk
+#===============================================================================
+
+# Usually there's no need to change the following
+JAR_CMD          = ${JDK17_HOME}/bin/jar
+JDK17_JAVA       = ${JDK17_HOME}/bin/java
+PREMAIN_JAVA     = ${PREMAIN_HOME}/bin/java
+BL_JAVA          = ${BL_HOME}/bin/java
+PC_REPO          = petclinic-snapshot
+PC_JAVA_SOURCES = ${PC_REPO}/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
+PC_APP_JAR       = ${PC_REPO}/target/spring-petclinic-3.2.0-SNAPSHOT.jar
+PC_APP_UNPACKED  = ${PC_REPO}/target/unpacked
+JMETER_DIR       = apache-jmeter-5.5
+JMETER_BIN       = ${JMETER_DIR}/bin/jmeter
+JMETER_ZIP       = ${JMETER_DIR}.zip
+JMETER_URL       = https://archive.apache.org/dist/jmeter/binaries/${JMETER_ZIP}
+
+# This is for uploading to artifactory, to be tested with
+# ../../runtime/cds/appcds/leyden/SpringPetClinic.java
+PC_APP_UNPACKED_ZIP = ${PC_REPO}/target/spring-petclinic-3.2.0.zip
+
+PC_MAIN_CLASS    = org.springframework.samples.petclinic.PetClinicApplication
+PC_CLASSLIST     = spring-petclinic.classlist
+PC_STATIC_JSA    = spring-petclinic.static.jsa
+PC_DYNAMIC_ST_JSA   = spring-petclinic.dynamic-st.jsa
+PC_DYNAMIC_LT_JSA   = spring-petclinic.dynamic-lt.jsa
+PC_DYNAMIC_NOTRAINING_JSA = spring-petclinic.dynamic-notraining.jsa
+PC_ST_CACHED_CODE   = spring-petclinic.code-st.jsa
+PC_LT_CACHED_CODE   = spring-petclinic.code-lt.jsa
+
+PC_BL_CLASSLIST     = spring-petclinic.bl_classlist
+PC_STATIC_BL_JSA    = spring-petclinic.static_bl.jsa
+PC_DYNAMIC_BL_JSA   = spring-petclinic.dynamic_bl.jsa
+
+JMETER_DURATION = 15
+JMETER_THREADS = 1
+JMETER_CPUS = 12-13
+APP_CPUS = 14-19
+
+# TODO: should we add -Dspring.context.exit=onRefresh to command line??
+# This will make the JVM quit after printing this line:
+#
+#    4:21.639 ... o.s.b.a.e.web.EndpointLinksResolver      : Exposing 13 endpoint(s) beneath base path '/actuator'
+#
+# Whereas -DautoQuit=true will make it exit after printing the following (a little bit of application code is executed)
+#
+#    4:21.665 ... o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path ''
+#    4:21.666 ... o.s.s.petclinic.PetClinicApplication     : Started PetClinicApplication in 1.358 seconds (process running for 1.584)
+#    #### Booted and returned in 1453ms
+#    4:21.692 ... j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+#    4:21.693 ... com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+#    4:21.694 ... com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+HEAP_SIZE        = -Xmx2g
+UNPACKED_CMDLINE = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath -DautoQuit=true -Dspring.aot.enabled=true -Dspring.output.ansi.enabled=NEVER ${PC_MAIN_CLASS}
+
+all: check git app aot
+
+check:
+	@if ${JDK17_JAVA} --version | grep -q '17.*LTS'; then \
+	    true; \
+	else \
+	    echo JDK17_HOME should point to JDK 17; \
+	    exit 1; \
+	fi
+	@if ${PREMAIN_JAVA} -XX:+PrintFlagsFinal --version | grep -q ArchiveInvokeDynamic; then \
+	    true; \
+	else \
+	    echo PREMAIN_HOME should point to your build of https://github.com/openjdk/leyden/tree/premain; \
+	    exit 1; \
+	fi
+
+# A bunch of quick targets so you can type "make list" to create the classlist, etc
+git: ${PC_JAVA_SOURCES}
+app: ${PC_APP_JAR}
+jmeter: ${JMETER_BIN}
+unpack: ${PC_APP_UNPACKED}
+
+# The "4 step training run" workflow -- this will soon be replaced with the new workflow in ../javac_new_workflow/
+list: ${PC_CLASSLIST}
+static: ${PC_STATIC_JSA}
+dynamic: ${PC_DYNAMIC_ST_JSA}
+aot: ${PC_ST_CACHED_CODE}
+
+# Check out this specific version of spring-petclinic that we have been testing with.
+# https://github.com/spring-projects/spring-petclinic/commit/80fd11067c4662486e4c635deceba927375b621c
+#    Author: Dave Syer <dsyer@vmware.com>
+#    Date:   Wed Jan 10 05:01:00 2024
+#        Upgrade to Boot 3.2.1
+${PC_JAVA_SOURCES}:
+	rm -rf ${PC_REPO}
+	git clone https://github.com/spring-projects/spring-petclinic ${PC_REPO}
+	cd ${PC_REPO}; git reset --hard 80fd11067c4662486e4c635deceba927375b621c
+	cd ${PC_REPO}; git apply ../premain-patch-noautoquit.diff
+
+${JMETER_BIN}:
+	rm -fr ${JMETER_DIR}
+	wget ${JMETER_URL}
+	unzip -q ${JMETER_ZIP}
+	ls -l $@
+
+# Need to touch ${PC_APP_JAR} as mvn wants to set it the release date of 3.2.0-SNAPSHOT
+${PC_APP_JAR}: ${PC_JAVA_SOURCES}
+	cd ${PC_REPO}; JAVA_HOME=${JDK17_HOME} mvn -Dmaven.test.skip=true package
+	if test -f ${PC_APP_JAR}; then \
+	    touch ${PC_APP_JAR}; \
+	fi
+
+${PC_APP_UNPACKED}: ${PC_APP_JAR}
+	rm -rf ${PC_APP_UNPACKED}
+	mkdir -p ${PC_APP_UNPACKED}
+	cd ${PC_APP_UNPACKED} && \
+	    ${JAR_CMD} xf ../spring-petclinic-3.2.0-SNAPSHOT.jar && \
+	    ${JAR_CMD} cf classes.jar META-INF org && \
+            cd BOOT-INF/classes/ && \
+	    ${JAR_CMD} cf classes.jar *
+	echo ${PC_APP_UNPACKED}/classes.jar $$(find ${PC_APP_UNPACKED}/BOOT-INF -name \*.jar | sort) \
+	    | sed -e 's/ /:/g' > ${PC_APP_UNPACKED}/classpath
+	${JAR_CMD} cf0 ${PC_APP_UNPACKED_ZIP} ${PC_APP_UNPACKED}
+	$(MAKE) -f WarmupMakefile run17
+
+#uncomment this to see the generated classes for dynamic proxies
+#SAVE_GEN_FILES=-Djdk.proxy.ProxyGenerator.saveGeneratedFiles=true
+
+define wait-for-startup
+tail -n+0 -f $@.out | sed '/Booted/ q'
+endef
+
+define exit-app
+cp application.pid app.pid
+curl -X POST localhost:8080/actuator/shutdown
+tail -f --pid=`cat app.pid` /dev/null
+endef
+
+define run-jmeter
+taskset -c "${JMETER_CPUS}" /home/asmehra/data/ashu-mehra/apache-jmeter-5.5/bin/jmeter -JDURATION=${JMETER_DURATION} -JTHREADS=${JMETER_THREADS} -Dsummariser.interval=6 -n -t petclinic_test_plan.jmx | tee tput-$@.log
+endef
+
+${PC_BL_CLASSLIST}: ${PC_APP_UNPACKED}
+	${BL_JAVA} -Xshare:off -XX:DumpLoadedClassList=${PC_BL_CLASSLIST} \
+	    -Xlog:class+load=debug:file=$@.log ${SAVE_GEN_FILES} \
+	    ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(exit-app)
+	wc -lc $@
+
+${PC_CLASSLIST}: ${PC_APP_UNPACKED}
+	${PREMAIN_JAVA} -Xshare:off -XX:DumpLoadedClassList=${PC_CLASSLIST} \
+	    -Xlog:class+load=debug:file=$@.log ${SAVE_GEN_FILES} \
+	    ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(exit-app)
+	$(call wait-for-startup,$@.out)
+	wc -lc $@
+
+${PC_STATIC_BL_JSA}: ${PC_BL_CLASSLIST}
+	rm -f ${PC_STATIC_BL_JSA}.log
+	${BL_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_BL_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
+	    -XX:SharedArchiveFile=${PC_STATIC_BL_JSA} -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log
+	ls -l $@
+
+${PC_STATIC_JSA}: ${PC_CLASSLIST}
+	rm -f ${PC_STATIC_JSA}.log
+	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
+	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log
+	ls -l $@
+
+${PC_DYNAMIC_BL_JSA}: ${PC_STATIC_BL_JSA}
+	rm -f ${PC_DYNAMIC_BL_JSA} ${PC_DYNAMIC_BL_JSA}.log
+	${BL_JAVA} -XX:SharedArchiveFile=${PC_STATIC_BL_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_BL_JSA} \
+	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=$@.log \
+	    ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(exit-app)
+	ls -l $@
+
+${PC_DYNAMIC_NOTRAINING_JSA}: ${PC_STATIC_JSA}
+	rm -f ${PC_DYNAMIC_NOTRAINING_JSA} ${PC_DYNAMIC_NOTRAINING_JSA}.log
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_NOTRAINING_JSA} \
+	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=$@.log \
+	    ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(exit-app)
+	ls -l $@
+
+${PC_DYNAMIC_ST_JSA}: ${PC_STATIC_JSA}
+	rm -f ${PC_DYNAMIC_ST_JSA} ${PC_DYNAMIC_ST_JSA}.log
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_ST_JSA} \
+	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=$@.log \
+	    -XX:+RecordTraining ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(exit-app)
+	ls -l $@
+
+${PC_DYNAMIC_LT_JSA}: ${PC_STATIC_JSA}
+	rm -f ${PC_DYNAMIC_LT_JSA} ${PC_DYNAMIC_LT_JSA}.log
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_LT_JSA} \
+	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=$@.log \
+	    -XX:+RecordTraining ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+	ls -l $@
+
+${PC_ST_CACHED_CODE}: ${PC_DYNAMIC_ST_JSA}
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+ReplayTraining -XX:+StoreCachedCode \
+	     -XX:CachedCodeFile=${PC_ST_CACHED_CODE} -XX:CachedCodeMaxSize=512M ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(exit-app)
+	ls -l $@
+
+${PC_LT_CACHED_CODE}: ${PC_DYNAMIC_LT_JSA}
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining -XX:+StoreCachedCode \
+	     -XX:CachedCodeFile=${PC_LT_CACHED_CODE} -XX:CachedCodeMaxSize=512M ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(exit-app)
+	ls -l $@
+
+warmup-bl: ${PC_DYNAMIC_BL_JSA} ${JMETER_BIN}
+	time taskset -c "${APP_CPUS}" ${BL_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_BL_JSA} \
+		${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+
+# run with dynamic archive without training data
+warmup-preload: ${PC_DYNAMIC_NOTRAINING_JSA} ${JMETER_BIN}
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_NOTRAINING_JSA} \
+		${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+
+# run with dynamic archive with startup training data
+warmup-st: ${PC_DYNAMIC_ST_JSA} ${JMETER_BIN}
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+ReplayTraining \
+		${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+
+# run with dynamic archive with load training data
+warmup-lt: ${PC_DYNAMIC_LT_JSA} ${JMETER_BIN}
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining \
+		${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+
+# run with startup training data and aot code
+warmup-st-aot: ${PC_ST_CACHED_CODE} ${JMETER_BIN}
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
+		-XX:CachedCodeFile=${PC_ST_CACHED_CODE} ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+
+# run with load training data and aot code
+warmup-lt-aot: ${PC_LT_CACHED_CODE} ${JMETER_BIN}
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
+		-XX:CachedCodeFile=${PC_LT_CACHED_CODE} ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+
+run: warmup-bl warmup-preload warmup-st warmup-lt warmup-st-aot warmup-lt-aot
+
+run17: ${PC_APP_UNPACKED}
+	time ${JDK17_JAVA} ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(exit-app)
+
+
+clean: clean0
+	rm -rf *~ ${PC_REPO}
+
+# clean the the leyden artifacts
+clean0:
+	rm -fv spring-petclinic.* *.out tput-*.log app.pid
