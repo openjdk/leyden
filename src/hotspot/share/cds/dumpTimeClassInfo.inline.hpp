@@ -43,12 +43,7 @@
 template<typename Function>
 void DumpTimeSharedClassTable::iterate_all_live_classes(Function function) const {
   auto wrapper = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
-    // Iterating the classes for creating loader cache in SystemDictionaryShared::create_loader_positive_lookup_cache
-    // is done outside the safepoint, and hence the need to comment the following assert.
-    // Also, it is safe to iterate the classes in SystemDictionaryShared::create_loader_positive_lookup_cache
-    // because it is only interested in classes loaded by built-in loaders which should never become unreachable.
-
-    // assert(SafepointSynchronize::is_at_safepoint(), "invariant");
+    assert(SafepointSynchronize::is_at_safepoint(), "invariant");
     assert_lock_strong(DumpTimeTable_lock);
     if (CDSConfig::is_dumping_final_static_archive() && !k->is_loaded()) {
       assert(k->is_shared_unregistered_class(), "must be");
@@ -61,6 +56,19 @@ void DumpTimeSharedClassTable::iterate_all_live_classes(Function function) const
         SystemDictionaryShared::warn_excluded(k, "Class loader not alive");
         SystemDictionaryShared::set_excluded_locked(k);
       }
+    }
+  };
+  DumpTimeSharedClassTableBaseType::iterate_all(wrapper);
+}
+
+template<typename Function>
+void DumpTimeSharedClassTable::iterate_all_classes_in_builtin_loaders(Function function) const {
+  auto wrapper = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
+    assert_lock_strong(DumpTimeTable_lock);
+    if (SystemDictionaryShared::is_builtin_loader(k->class_loader_data())) {
+       assert(k->is_loader_alive(), "must be");
+       function(k, info);
+       assert(k->is_loader_alive(), "must be");
     }
   };
   DumpTimeSharedClassTableBaseType::iterate_all(wrapper);

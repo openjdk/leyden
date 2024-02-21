@@ -280,6 +280,7 @@ public:
 
   template<class ITER> void iterate_all_live_classes(ITER* iter) const;
   template<typename Function> void iterate_all_live_classes(Function function) const;
+  template<typename Function> void iterate_all_classes_in_builtin_loaders(Function function) const;
 
 private:
   // It's unsafe to iterate on classes whose loader is dead.

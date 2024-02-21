@@ -1838,35 +1838,24 @@ static Array<InstanceKlass*>* copy_klass_array(GrowableArray<InstanceKlass*>* sr
 }
 #endif
 
-class GatherSharedClasses : StackObj {
-private:
-  GrowableArray<InstanceKlass*> _list;
-
-public:
-  void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
-    if ((k->is_shared_boot_class() || k->is_shared_platform_class() || k->is_shared_app_class())
-        && !SystemDictionaryShared::check_for_exclusion(k, &info)) {
-      _list.append(k);
-    }
-  }
-
-  GrowableArray<InstanceKlass*>* list() { return &_list; }
-  int count() { return _list.length(); }
-};
-
 void SystemDictionaryShared::create_loader_positive_lookup_cache(TRAPS) {
-  GatherSharedClasses shared_classes;
+  GrowableArray<InstanceKlass*> shared_classes_list;
   {
     MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
-    _dumptime_table->iterate_all_live_classes(&shared_classes);
+    _dumptime_table->iterate_all_classes_in_builtin_loaders([&](InstanceKlass* k, DumpTimeClassInfo& info) {
+        if (!check_for_exclusion(k, &info)) {
+          shared_classes_list.append(k);
+        }
+      }
+    );
   }
 
   InstanceKlass* ik = vmClasses::Class_klass();
-  objArrayOop r = oopFactory::new_objArray(ik, shared_classes.count(), CHECK);
+  objArrayOop r = oopFactory::new_objArray(ik, shared_classes_list.length(), CHECK);
   objArrayHandle array_h(THREAD, r);
 
-  for (int i = 0; i < shared_classes.count(); i++) {
-    oop mirror = shared_classes.list()->at(i)->java_mirror();
+  for (int i = 0; i < shared_classes_list.length(); i++) {
+    oop mirror = shared_classes_list.at(i)->java_mirror();
     Handle mirror_h(THREAD, mirror);
     array_h->obj_at_put(i, mirror_h());
   }
@@ -1887,6 +1876,7 @@ void SystemDictionaryShared::create_loader_positive_lookup_cache(TRAPS) {
   if (HAS_PENDING_EXCEPTION) {
     Handle exc_handle(THREAD, PENDING_EXCEPTION);
     CLEAR_PENDING_EXCEPTION;
+    ResourceMark rm(THREAD);
 
     log_warning(cds)("Exception during AppClassLoader::generatePositiveLookupCache() call");
     LogStreamHandle(Debug, cds) log;
