@@ -50,6 +50,7 @@
 #include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
+#include "oops/fieldStreams.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/trainingData.hpp"
@@ -1323,88 +1324,107 @@ void ClassPrelinker::define_dynamic_proxy_class(Handle loader, Handle proxy_name
 // Warning -- this is fragile!!!
 // This is a hard-coded list of classes that are safe to preinitialize at dump time. It needs
 // to be updated if the Java source code changes.
-class ForcePreinitClosure : public CLDClosure {
-public:
-  void do_cld(ClassLoaderData* cld) {
-    assert(CDSConfig::is_dumping_invokedynamic(), "sanity");
+bool ClassPrelinker::is_forced_preinit_class(InstanceKlass* ik) {
+  if (!CDSConfig::is_dumping_invokedynamic()) {
+    return false;
+  }
 
-    static const char* forced_preinit_classes[] = {
-      "java/util/HexFormat",
-      "jdk/internal/util/ClassFileDumper",
-      "java/lang/reflect/ClassFileFormatVersion",
-      "java/lang/Character$CharacterCache",
-      "java/lang/invoke/Invokers",
-      "java/lang/invoke/Invokers$Holder",
-      "java/lang/invoke/MethodHandle",
-      "java/lang/invoke/MethodHandleStatics",
-      "java/lang/invoke/DelegatingMethodHandle",
-      "java/lang/invoke/DelegatingMethodHandle$Holder",
-      "java/lang/invoke/LambdaForm",
-      "java/lang/invoke/LambdaForm$NamedFunction",
-      "java/lang/invoke/ClassSpecializer",
-      "java/lang/invoke/DirectMethodHandle",
-      "java/lang/invoke/DirectMethodHandle$Holder",
-      "java/lang/invoke/BoundMethodHandle$Specializer",
-      "java/lang/invoke/MethodHandles$Lookup",
+  static const char* forced_preinit_classes[] = {
+    "java/util/HexFormat",
+    "jdk/internal/util/ClassFileDumper",
+    "java/lang/reflect/ClassFileFormatVersion",
+    "java/lang/Character$CharacterCache",
+    "java/lang/invoke/Invokers",
+    "java/lang/invoke/Invokers$Holder",
+    "java/lang/invoke/MethodHandle",
+    "java/lang/invoke/MethodHandleStatics",
+    "java/lang/invoke/DelegatingMethodHandle",
+    "java/lang/invoke/DelegatingMethodHandle$Holder",
+    "java/lang/invoke/LambdaForm",
+    "java/lang/invoke/LambdaForm$NamedFunction",
+    "java/lang/invoke/ClassSpecializer",
+    "java/lang/invoke/DirectMethodHandle",
+    "java/lang/invoke/DirectMethodHandle$Holder",
+    "java/lang/invoke/BoundMethodHandle$Specializer",
+    "java/lang/invoke/MethodHandles$Lookup",
 
-    //TODO: these use java.lang.ClassValue$Entry which is a subtype of WeakReference
-    //"java/lang/reflect/Proxy$ProxyBuilder",
-    //"java/lang/reflect/Proxy",
+  //TODO: these use java.lang.ClassValue$Entry which is a subtype of WeakReference
+  //"java/lang/reflect/Proxy$ProxyBuilder",
+  //"java/lang/reflect/Proxy",
 
-    // TODO -- need to clear internTable, etc
-    //"java/lang/invoke/MethodType",
+  // TODO -- need to clear internTable, etc
+  //"java/lang/invoke/MethodType",
 
-    // TODO -- these need to link to native code
-    //"java/lang/invoke/BoundMethodHandle",
-    //"java/lang/invoke/BoundMethodHandle$Holder",
-    //"java/lang/invoke/MemberName",
-    //"java/lang/invoke/MethodHandleNatives",
-      nullptr
-    };
-    for (Klass* k = cld->klasses(); k != nullptr; k = k->next_link()) {
-      if (k->is_instance_klass()) {
-        for (const char** classes = forced_preinit_classes; *classes != nullptr; classes++) {
-          const char* class_name = *classes;
-          if (k->name()->equals(class_name)) {
-            ResourceMark rm;
-            log_info(cds, init)("Force initialization %s", k->external_name());
-            SystemDictionaryShared::force_preinit(InstanceKlass::cast(k));
-          }
-        }
+  // TODO -- these need to link to native code
+  //"java/lang/invoke/BoundMethodHandle",
+  //"java/lang/invoke/BoundMethodHandle$Holder",
+  //"java/lang/invoke/MemberName",
+  //"java/lang/invoke/MethodHandleNatives",
+    nullptr
+  };
+
+  for (int i = 0; ; i++) {
+    const char* class_name = forced_preinit_classes[i];
+    if (class_name == nullptr) {
+      return false;
+    }
+    if (ik->name()->equals(class_name)) {
+      if (log_is_enabled(Info, cds, init)) {
+        ResourceMark rm;
+        log_info(cds, init)("Force initialization %s", ik->external_name());
       }
+      return true;
     }
   }
-};
-
-void ClassPrelinker::setup_forced_preinit_classes() {
-  if (!CDSConfig::is_dumping_invokedynamic()) {
-    return;
-  }
-
-  // Collect all loaded ClassLoaderData.
-  ForcePreinitClosure closure;
-  MutexLocker lock(ClassLoaderDataGraph_lock);
-  ClassLoaderDataGraph::loaded_cld_do(&closure);
 }
 
 // Initialize a class at dump time, if possible.
 void ClassPrelinker::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
-  if (ik->is_initialized()) {
-    return;
+  if (!ik->is_initialized() && SystemDictionaryShared::can_be_preinited(ik)) {
+    if (log_is_enabled(Info, cds, init)) {
+      ResourceMark rm;
+      log_info(cds, init)("preinitializing %s", ik->external_name());
+    }
+    ik->initialize(CHECK);
+  }
+}
+
+bool ClassPrelinker::check_can_be_preinited(InstanceKlass* ik) {
+  ResourceMark rm;
+
+  if (!SystemDictionaryShared::is_builtin(ik)) {
+    log_info(cds, init)("cannot initialize %s (not built-in loader)", ik->external_name());
+    return false;
   }
 
-  {
-    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
-    if (!SystemDictionaryShared::can_be_preinited(ik)) {
-      return;
+  InstanceKlass* super = ik->java_super();
+  if (super != nullptr && !SystemDictionaryShared::can_be_preinited_locked(super)) {
+    log_info(cds, init)("cannot initialize %s (super %s not initable)", ik->external_name(), super->external_name());
+    return false;
+  }
+
+  Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+  for (int i = 0; i < interfaces->length(); i++) {
+    if (!SystemDictionaryShared::can_be_preinited_locked(interfaces->at(i))) {
+      log_info(cds, init)("cannot initialize %s (interface %s not initable)",
+                          ik->external_name(), interfaces->at(i)->external_name());
+      return false;
     }
   }
 
-  if (log_is_enabled(Info, cds, init)) {
-    ResourceMark rm;
-    log_info(cds, init)("preinitializing %s", ik->external_name());
+  if (HeapShared::is_lambda_form_klass(ik) || ClassPrelinker::is_forced_preinit_class(ik)) {
+    // We allow only these to have <clinit> or non-default static fields
+  } else {
+    if (ik->class_initializer() != nullptr) {
+      log_info(cds, init)("cannot initialize %s (has <clinit>)", ik->external_name());
+      return false;
+    }
+    if (ik->is_initialized() && !has_non_default_static_fields(ik)) {
+      return false;
+    }
   }
-  ik->initialize(CHECK);
+
+  return true;
 }
 
 bool ClassPrelinker::can_archive_preinitialized_mirror(InstanceKlass* ik) {
@@ -1416,8 +1436,61 @@ bool ClassPrelinker::can_archive_preinitialized_mirror(InstanceKlass* ik) {
   if (ik->is_hidden()) {
     return HeapShared::is_archivable_hidden_klass(ik);
   } else {
-    return SystemDictionaryShared::can_be_preinited(ik);
+    return SystemDictionaryShared::can_be_preinited_locked(ik);
   }
+}
+
+bool ClassPrelinker::has_non_default_static_fields(InstanceKlass* ik) {
+  oop mirror = ik->java_mirror();
+
+  for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
+    if (fs.access_flags().is_static()) {
+      fieldDescriptor& fd = fs.field_descriptor();
+      int offset = fd.offset();
+      bool is_default = true;
+      bool has_initval = fd.has_initial_value();
+      switch (fd.field_type()) {
+      case T_OBJECT:
+      case T_ARRAY:
+        is_default = mirror->obj_field(offset) == nullptr;
+        break;
+      case T_BOOLEAN:
+        is_default = mirror->bool_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_BYTE:
+        is_default = mirror->byte_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_SHORT:
+        is_default = mirror->short_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_CHAR:
+        is_default = mirror->char_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_INT:
+        is_default = mirror->int_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_LONG:
+        is_default = mirror->long_field(offset) == (has_initval ? fd.long_initial_value() : 0);
+        break;
+      case T_FLOAT:
+        is_default = mirror->float_field(offset) == (has_initval ? fd.float_initial_value() : 0);
+        break;
+      case T_DOUBLE:
+        is_default = mirror->double_field(offset) == (has_initval ? fd.double_initial_value() : 0);
+        break;
+      default:
+        ShouldNotReachHere();
+      }
+
+      if (!is_default) {
+        log_info(cds, init)("cannot initialize %s (static field %s has non-default value)",
+                            ik->external_name(), fd.name()->as_C_string());
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 void ClassPrelinker::serialize(SerializeClosure* soc, bool is_static_archive) {

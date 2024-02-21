@@ -29,6 +29,7 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
+#include "cds/classPrelinker.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
@@ -62,7 +63,6 @@
 #include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
-#include "oops/fieldStreams.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/methodData.hpp"
@@ -1703,10 +1703,10 @@ void SystemDictionaryShared::cleanup_method_info_dictionary() {
 }
 
 // SystemDictionaryShared::can_be_preinited() is called in two different phases
-//   [1] SystemDictionaryShared::try_init_class()
+//   [1] ClassPrelinker::try_preinit_class()
 //   [2] HeapShared::archive_java_mirrors()
 // Between the two phases, some Java code may have been executed to contaminate the
-// initialized mirror of X. So we call reset_preinit_check() at the beginning of the
+// some initialized mirrors. So we call reset_preinit_check() at the beginning of the
 // [2] so that we will re-run has_non_default_static_fields() on all the classes.
 void SystemDictionaryShared::reset_preinit_check() {
   auto iterator = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
@@ -1717,14 +1717,12 @@ void SystemDictionaryShared::reset_preinit_check() {
   _dumptime_table->iterate_all_live_classes(iterator);
 }
 
-// Called by ClassPrelinker before we get into VM_PopulateDumpSharedSpace
-void SystemDictionaryShared::force_preinit(InstanceKlass* ik) {
+bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
   MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
-  DumpTimeClassInfo* info = get_info_locked(ik);
-  info->force_preinit();
+  return can_be_preinited_locked(ik);
 }
 
-bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
+bool SystemDictionaryShared::can_be_preinited_locked(InstanceKlass* ik) {
   if (!CDSConfig::is_initing_classes_at_dump_time()) {
     return false;
   }
@@ -1732,111 +1730,10 @@ bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
   assert_lock_strong(DumpTimeTable_lock);
   DumpTimeClassInfo* info = get_info_locked(ik);
   if (!info->has_done_preinit_check()) {
-    info->set_can_be_preinited(check_can_be_preinited(ik, info));
+    info->set_can_be_preinited(ClassPrelinker::check_can_be_preinited(ik));
   }
   return info->can_be_preinited();
 }
-
-bool SystemDictionaryShared::has_non_default_static_fields(InstanceKlass* ik) {
-  oop mirror = ik->java_mirror();
-
-  for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
-    if (fs.access_flags().is_static()) {
-      fieldDescriptor& fd = fs.field_descriptor();
-      int offset = fd.offset();
-      bool is_default = true;
-      bool has_initval = fd.has_initial_value();
-      switch (fd.field_type()) {
-      case T_OBJECT:
-      case T_ARRAY:
-        is_default = mirror->obj_field(offset) == nullptr;
-        break;
-      case T_BOOLEAN:
-        is_default = mirror->bool_field(offset) == (has_initval ? fd.int_initial_value() : 0);
-        break;
-      case T_BYTE:
-        is_default = mirror->byte_field(offset) == (has_initval ? fd.int_initial_value() : 0);
-        break;
-      case T_SHORT:
-        is_default = mirror->short_field(offset) == (has_initval ? fd.int_initial_value() : 0);
-        break;
-      case T_CHAR:
-        is_default = mirror->char_field(offset) == (has_initval ? fd.int_initial_value() : 0);
-        break;
-      case T_INT:
-        is_default = mirror->int_field(offset) == (has_initval ? fd.int_initial_value() : 0);
-        break;
-      case T_LONG:
-        is_default = mirror->long_field(offset) == (has_initval ? fd.long_initial_value() : 0);
-        break;
-      case T_FLOAT:
-        is_default = mirror->float_field(offset) == (has_initval ? fd.float_initial_value() : 0);
-        break;
-      case T_DOUBLE:
-        is_default = mirror->double_field(offset) == (has_initval ? fd.double_initial_value() : 0);
-        break;
-      default:
-        ShouldNotReachHere();
-      }
-
-      if (!is_default) {
-        log_info(cds, init)("cannot initialize %s (static field %s has non-default value)",
-                            ik->external_name(), fd.name()->as_C_string());
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-bool SystemDictionaryShared::check_can_be_preinited(InstanceKlass* ik, DumpTimeClassInfo* info) {
-  ResourceMark rm;
-
-  if (!is_builtin(ik)) {
-    log_info(cds, init)("cannot initialize %s (not built-in loader)", ik->external_name());
-    return false;
-  }
-
-  InstanceKlass* super = ik->java_super();
-  if (super != nullptr && !can_be_preinited(super)) {
-    log_info(cds, init)("cannot initialize %s (super %s not initable)", ik->external_name(), super->external_name());
-    return false;
-  }
-
-  Array<InstanceKlass*>* interfaces = ik->local_interfaces();
-  for (int i = 0; i < interfaces->length(); i++) {
-    if (!can_be_preinited(interfaces->at(i))) {
-      log_info(cds, init)("cannot initialize %s (interface %s not initable)",
-                          ik->external_name(), interfaces->at(i)->external_name());
-      return false;
-    }
-  }
-
-  if (HeapShared::is_lambda_form_klass(ik) || info->is_forced_preinit()) {
-    // We allow only these to have <clinit> and non-default static fields
-  } else {
-    if (ik->class_initializer() != nullptr) {
-      log_info(cds, init)("cannot initialize %s (has <clinit>)", ik->external_name());
-      return false;
-    }
-    if (ik->is_initialized() && !has_non_default_static_fields(ik)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-#if 0
-static Array<InstanceKlass*>* copy_klass_array(GrowableArray<InstanceKlass*>* src) {
-  Array<InstanceKlass*>* dst = ArchiveBuilder::new_ro_array<InstanceKlass*>(src->length());
-  for (int i = 0; i < src->length(); i++) {
-    ArchiveBuilder::current()->write_pointer_in_buffer(dst->adr_at(i), src->at(i));
-  }
-  return dst;
-}
-#endif
 
 void SystemDictionaryShared::create_loader_positive_lookup_cache(TRAPS) {
   GrowableArray<InstanceKlass*> shared_classes_list;

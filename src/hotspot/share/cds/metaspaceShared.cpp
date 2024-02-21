@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -665,8 +665,6 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
     // it for dynamic archive for now.
     LambdaFormInvokers::regenerate_holder_classes(CHECK);
   }
-
-  ClassPrelinker::setup_forced_preinit_classes();
 
   // Collect all loaded ClassLoaderData.
   CollectCLDClosure collect_cld(THREAD);

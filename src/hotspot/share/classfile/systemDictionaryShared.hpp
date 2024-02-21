@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -208,8 +208,6 @@ private:
   static void reset_registered_lambda_proxy_class(InstanceKlass* ik);
   static bool is_registered_lambda_proxy_class(InstanceKlass* ik);
   static bool check_for_exclusion_impl(InstanceKlass* k);
-  static bool check_can_be_preinited(InstanceKlass* ik, DumpTimeClassInfo* info);
-  static bool has_non_default_static_fields(InstanceKlass* ik);
   static void remove_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static InstanceKlass* retrieve_lambda_proxy_class(const RunTimeLambdaProxyClassInfo* info) NOT_CDS_RETURN_(nullptr);
 
@@ -249,8 +247,8 @@ public:
   static void init_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static void handle_class_unloading(InstanceKlass* k) NOT_CDS_RETURN;
 
-  static void force_preinit(InstanceKlass* ik);
   static bool can_be_preinited(InstanceKlass* ik);
+  static bool can_be_preinited_locked(InstanceKlass* ik);
   static void reset_preinit_check();
 
   static Dictionary* boot_loader_dictionary() {

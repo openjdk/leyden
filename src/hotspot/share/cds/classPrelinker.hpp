@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -121,11 +121,17 @@ class ClassPrelinker :  AllStatic {
 
   // java/lang/reflect/Proxy caching
   static void init_dynamic_proxy_cache(TRAPS);
+
+  // Preinitialize classes during dump time
+  static bool has_non_default_static_fields(InstanceKlass* ik);
+  static bool is_forced_preinit_class(InstanceKlass* ik);
+
 public:
   static void initialize();
   static void dispose();
 
-  static void setup_forced_preinit_classes();
+  // Preinitialize classes during dump time
+  static bool check_can_be_preinited(InstanceKlass* ik);
   static void maybe_preinit_class(InstanceKlass* ik, TRAPS);
 
   static void preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
