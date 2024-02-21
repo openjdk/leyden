@@ -377,11 +377,12 @@ void ClassListWriter::write_loader_negative_lookup_cache_for(oop loader, const c
   log_debug(cds)("%s loader negative cache: %s", loader_type, cache_contents);
 
   outputStream* stream = _classlist_file;
-  int buffer_size = strlen(ClassListParser::LOADER_NEGATIVE_CACHE_TAG) + strlen(loader_type) + strlen(cache_contents) + 1;
+  int buffer_size = strlen(ClassListParser::LOADER_NEGATIVE_CACHE_TAG) + 1 /* for space*/
+                    + strlen(loader_type) + 1 /* for space */ + strlen(cache_contents) + 1 /* for null character */;
   char buffer[buffer_size];
   _classlist_file->set_scratch_buffer(buffer, buffer_size);
   MutexLocker lock2(ClassListFile_lock, Mutex::_no_safepoint_check_flag);
-  stream->print("%s %s%s", ClassListParser::LOADER_NEGATIVE_CACHE_TAG, loader_type, cache_contents);
+  stream->print("%s %s %s", ClassListParser::LOADER_NEGATIVE_CACHE_TAG, loader_type, cache_contents);
   stream->cr();
   _classlist_file->set_scratch_buffer(nullptr, 0);
 }

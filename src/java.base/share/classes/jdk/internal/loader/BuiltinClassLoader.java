@@ -1115,7 +1115,10 @@ public class BuiltinClassLoader
         StringBuilder builder = new StringBuilder();
         if (contents.length != 0) {
             for (String name: contents) {
-                builder.append(" " + name);
+                if (builder.length() != 0) {
+                    builder.append(" ");
+                }
+                builder.append(name);
             }
             return builder.toString();
         } else {
