@@ -1,0 +1,85 @@
+diff --git a/pom.xml b/pom.xml
+index 8a3d6f1..2d0f914 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -209,10 +209,12 @@
+           </execution>
+         </executions>
+       </plugin>
++<!--
+       <plugin>
+         <groupId>org.graalvm.buildtools</groupId>
+         <artifactId>native-maven-plugin</artifactId>
+       </plugin>
++-->
+       <plugin>
+         <groupId>org.springframework.boot</groupId>
+         <artifactId>spring-boot-maven-plugin</artifactId>
+@@ -230,8 +232,20 @@
+                 <java.source>${java.version}</java.source>
+                 <java.target>${java.version}</java.target>
+               </additionalProperties>
++              <image>
++                <builder>paketobuildpacks/builder:tiny</builder>
++                <env>
++                  <BP_NATIVE_IMAGE>true</BP_NATIVE_IMAGE>
++                </env>
++              </image>
+             </configuration>
+           </execution>
++          <execution>
++            <id>process-aot</id>
++            <goals>
++              <goal>process-aot</goal>
++            </goals>
++          </execution>
+         </executions>
+       </plugin>
+       <plugin>
+@@ -434,4 +448,4 @@
+     </profile>
+   </profiles>
+ 
+-</project>
+\ No newline at end of file
++</project>
+diff --git a/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java b/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
+index ac6e150..491ec02 100644
+--- a/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
++++ b/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
+@@ -18,6 +18,8 @@ package org.springframework.samples.petclinic;
+ 
+ import org.springframework.boot.SpringApplication;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
++import org.springframework.boot.context.ApplicationPidFileWriter;
++import org.springframework.boot.context.event.ApplicationStartedEvent;
+ import org.springframework.context.annotation.ImportRuntimeHints;
+ 
+ /**
+@@ -31,7 +33,13 @@ import org.springframework.context.annotation.ImportRuntimeHints;
+ public class PetClinicApplication {
+ 
+ 	public static void main(String[] args) {
+-		SpringApplication.run(PetClinicApplication.class, args);
++		SpringApplication application = new SpringApplication(PetClinicApplication.class);
++		ApplicationPidFileWriter pidWriter = new ApplicationPidFileWriter();
++		application.addListeners(pidWriter);
++		long begin = System.currentTimeMillis();
++		application.run(args);
++		long end = System.currentTimeMillis();
++		System.out.println("#### Booted and returned in " + (end - begin) + "ms");
+ 	}
+ 
+ }
+diff --git a/src/main/resources/application.properties b/src/main/resources/application.properties
+index 5d3eeed..404f06e 100644
+--- a/src/main/resources/application.properties
++++ b/src/main/resources/application.properties
+@@ -23,3 +23,7 @@ logging.level.org.springframework=INFO
+ 
+ # Maximum time static resources should be cached
+ spring.web.resources.cache.cachecontrol.max-age=12h
++
++management.endpoints.web.exposure.include=*
++management.endpoint.shutdown.enabled=true
++endpoints.shutdown.enabled=true
