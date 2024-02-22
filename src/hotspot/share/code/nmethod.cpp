@@ -755,7 +755,7 @@ nmethod::nmethod(
 #if defined(SUPPORT_DATA_STRUCTS)
     if (AbstractDisassembler::show_structs()) {
       if (PrintRelocations) {
-        print_relocations();
+        print_relocations_on(tty);
         tty->print_cr("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ");
       }
     }
@@ -1065,7 +1065,7 @@ void nmethod::print_nmethod(bool printmethod) {
       tty->print_cr("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ");
     }
     if (printmethod || PrintRelocations || CompilerOracle::has_option(mh, CompileCommand::PrintRelocations)) {
-      print_relocations();
+      print_relocations_on(tty);
       tty->print_cr("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ");
     }
     if (printmethod || PrintDependencies || CompilerOracle::has_option(mh, CompileCommand::PrintDependencies)) {
@@ -2591,11 +2591,11 @@ void nmethod::print_scopes_on(outputStream* st) {
 #endif
 
 #ifndef PRODUCT  // RelocIterator does support printing only then.
-void nmethod::print_relocations() {
+void nmethod::print_relocations_on(outputStream* st) {
   ResourceMark m;       // in case methods get printed via the debugger
-  tty->print_cr("relocations:");
+  st->print_cr("relocations:");
   RelocIterator iter(this);
-  iter.print();
+  iter.print_on(st);
 }
 #endif
 

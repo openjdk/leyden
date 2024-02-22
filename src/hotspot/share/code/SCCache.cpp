@@ -1254,7 +1254,7 @@ bool SCCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* 
         case relocInfo::none:
           break;
         default: {
-          iter.print_current();
+          iter.print_current_on(tty);
           fatal("stub's relocation %d unimplemented", (int)iter.type());
           break;
         }
@@ -1720,10 +1720,9 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
     uint* reloc_data = (uint*)addr(code_offset);
     code_offset += data_size;
     set_read_position(code_offset);
-    LogTarget(Info, scc, reloc) log;
+    LogStreamHandle(Info, scc, reloc) log;
     if (log.is_enabled()) {
-      LogStream ls(log);
-      ls.print_cr("======== read code section %d relocations [%d]:", i, reloc_count);
+      log.print_cr("======== read code section %d relocations [%d]:", i, reloc_count);
     }
     RelocIterator iter(cs);
     int j = 0;
@@ -1843,11 +1842,9 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
           fatal("relocation %d unimplemented", (int)iter.type());
           break;
       }
-#ifdef ASSERT
       if (success && log.is_enabled()) {
-        iter.print_current();
+        iter.print_current_on(&log);
       }
-#endif
       j++;
     }
     assert(j <= (int)reloc_count, "sanity");
@@ -1896,10 +1893,10 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
 
 bool SCCache::load_exception_blob(CodeBuffer* buffer, int* pc_offset) {
 #ifdef ASSERT
-  LogTarget(Debug, scc, nmethod) log;
+  LogStreamHandle(Debug, scc, nmethod) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
-    buffer->print();
+    buffer->print_on(&log);
   }
 #endif
   SCCache* cache = open_for_read();
@@ -1954,10 +1951,10 @@ bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
   log_info(scc, stubs)("%d (L%d): Read blob '%s' from Startup Code Cache '%s'",
                        compile_id(), comp_level(), name, _cache->cache_path());
 #ifdef ASSERT
-  LogTarget(Debug, scc, nmethod) log;
+  LogStreamHandle(Debug, scc, nmethod) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
-    buffer->print();
+    buffer->print_on(&log);
     buffer->decode();
   }
 #endif
@@ -1999,10 +1996,9 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
       success = false;
       break;
     }
-    LogTarget(Info, scc, reloc) log;
+    LogStreamHandle(Info, scc, reloc) log;
     if (log.is_enabled()) {
-      LogStream ls(log);
-      ls.print_cr("======== write code section %d relocations [%d]:", i, reloc_count);
+      log.print_cr("======== write code section %d relocations [%d]:", i, reloc_count);
     }
     // Collect additional data
     RelocIterator iter(cs);
@@ -2082,11 +2078,9 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
           fatal("relocation %d unimplemented", (int)iter.type());
           break;
       }
-#ifdef ASSERT
       if (log.is_enabled()) {
-        iter.print_current();
+        iter.print_current_on(&log);
       }
-#endif
       j++;
     }
     assert(j <= (int)reloc_count, "sanity");
@@ -2196,10 +2190,10 @@ bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
   log_info(scc, stubs)("Writing blob '%s' to Startup Code Cache '%s'", buffer->name(), cache->_cache_path);
 
 #ifdef ASSERT
-  LogTarget(Debug, scc, nmethod) log;
+  LogStreamHandle(Debug, scc, nmethod) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
-    buffer->print();
+    buffer->print_on(&log);
     buffer->decode();
   }
 #endif
@@ -2456,18 +2450,17 @@ bool SCCReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
       } else {
         oop_recorder->allocate_oop_index(jo);
       }
-      LogTarget(Debug, scc, oops) log;
+      LogStreamHandle(Debug, scc, oops) log;
       if (log.is_enabled()) {
-        LogStream ls(log);
-        ls.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
+        log.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
         if (jo == (jobject)Universe::non_oop_word()) {
-          ls.print("non-oop word");
+          log.print("non-oop word");
         } else if (jo == nullptr) {
-          ls.print("nullptr-oop");
+          log.print("nullptr-oop");
         } else {
-          JNIHandles::resolve(jo)->print_value_on(&ls);
+          JNIHandles::resolve(jo)->print_value_on(&log);
         }
-        ls.cr();
+        log.cr();
       }
     }
   }
@@ -2672,18 +2665,17 @@ bool SCCache::write_oops(OopRecorder* oop_recorder) {
 
   for (int i = 1; i < oop_count; i++) { // skip first virtual nullptr
     jobject jo = oop_recorder->oop_at(i);
-    LogTarget(Info, scc, oops) log;
+    LogStreamHandle(Info, scc, oops) log;
     if (log.is_enabled()) {
-      LogStream ls(log);
-      ls.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
+      log.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
       if (jo == (jobject)Universe::non_oop_word()) {
-        ls.print("non-oop word");
+        log.print("non-oop word");
       } else if (jo == nullptr) {
-        ls.print("nullptr-oop");
+        log.print("nullptr-oop");
       } else {
-        JNIHandles::resolve(jo)->print_value_on(&ls);
+        JNIHandles::resolve(jo)->print_value_on(&log);
       }
-      ls.cr();
+      log.cr();
     }
     if (!write_oop(jo)) {
       return false;
@@ -2742,18 +2734,17 @@ bool SCCache::write_metadata(OopRecorder* oop_recorder) {
 
   for (int i = 1; i < metadata_count; i++) { // skip first virtual nullptr
     Metadata* m = oop_recorder->metadata_at(i);
-    LogTarget(Debug, scc, metadata) log;
+    LogStreamHandle(Debug, scc, metadata) log;
     if (log.is_enabled()) {
-      LogStream ls(log);
-      ls.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
+      log.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
       if (m == (Metadata*)Universe::non_oop_word()) {
-        ls.print("non-metadata word");
+        log.print("non-metadata word");
       } else if (m == nullptr) {
-        ls.print("nillptr-oop");
+        log.print("nullptr-oop");
       } else {
-        Metadata::print_value_on_maybe_null(&ls, m);
+        Metadata::print_value_on_maybe_null(&log, m);
       }
-      ls.cr();
+      log.cr();
     }
     if (!write_metadata(m)) {
       return false;
@@ -2930,10 +2921,10 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
 
   log_info(scc, nmethod)("%d (L%d): Read nmethod '%s' from Startup Code Cache '%s'", compile_id(), comp_level(), name, _cache->cache_path());
 #ifdef ASSERT
-  LogTarget(Debug, scc, nmethod) log;
+  LogStreamHandle(Debug, scc, nmethod) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
-    buffer.print();
+    buffer.print_on(&log);
     buffer.decode();
   }
 #endif
@@ -3014,11 +3005,11 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
     return nullptr;
   }
 #ifdef ASSERT
-  LogTarget(Debug, scc, nmethod) log;
+  LogStreamHandle(Debug, scc, nmethod) log;
   if (log.is_enabled()) {
     tty->print_cr(" == store_nmethod");
     FlagSetting fs(PrintRelocations, true);
-    buffer->print();
+    buffer->print_on(&log);
     buffer->decode();
   }
 #endif
@@ -3063,26 +3054,25 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
                            task->compile_id(), task->comp_level(), name, comp_level, decomp,
                            (has_clinit_barriers ? ", has clinit barriers" : ""), cache->_cache_path);
 
-    LogTarget(Info, scc, loader) log;
+    LogStreamHandle(Info, scc, loader) log;
     if (log.is_enabled()) {
-      LogStream ls(log);
       oop loader = holder->class_loader();
       oop domain = holder->protection_domain();
-      ls.print("Holder: ");
-      holder->print_value_on(&ls);
-      ls.print(" loader: ");
+      log.print("Holder: ");
+      holder->print_value_on(&log);
+      log.print(" loader: ");
       if (loader == nullptr) {
-        ls.print("nullptr");
+        log.print("nullptr");
       } else {
-        loader->print_value_on(&ls);
+        loader->print_value_on(&log);
       }
-      ls.print(" domain: ");
+      log.print(" domain: ");
       if (domain == nullptr) {
-        ls.print("nullptr");
+        log.print("nullptr");
       } else {
-        domain->print_value_on(&ls);
+        domain->print_value_on(&log);
       }
-      ls.cr();
+      log.cr();
     }
     name_offset = cache->_write_position  - entry_position;
     name_size   = (uint)strlen(name) + 1; // Includes '/0'
@@ -3963,9 +3953,9 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
           fatal("Address " INTPTR_FORMAT " for runtime target '%s+%d' is missing in SCA table", p2i(addr), func_name, offset);
         } else {
           os::print_location(tty, p2i(addr), true);
+          reloc.print_current_on(tty);
 #ifndef PRODUCT
-          reloc.print_current();
-          buffer->print();
+          buffer->print_on(tty);
           buffer->decode();
 #endif // !PRODUCT
           fatal("Address " INTPTR_FORMAT " for <unknown> is missing in SCA table", p2i(addr));

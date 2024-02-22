@@ -641,7 +641,7 @@ public:
 
 #if defined(SUPPORT_DATA_STRUCTS)
   // print output in opt build for disassembler library
-  void print_relocations()                        PRODUCT_RETURN;
+  void print_relocations_on(outputStream* st)     PRODUCT_RETURN;
   void print_pcs_on(outputStream* st);
   void print_scopes() { print_scopes_on(tty); }
   void print_scopes_on(outputStream* st)          PRODUCT_RETURN;

@@ -284,7 +284,7 @@ class CodeSection {
 
 #ifndef PRODUCT
   void decode();
-  void print(const char* name);
+  void print_on(outputStream* st, const char* name);
 #endif //PRODUCT
 };
 
@@ -735,7 +735,7 @@ class CodeBuffer: public StackObj DEBUG_ONLY(COMMA private Scrubber) {
   // Printing / Decoding
   // decodes from decode_begin() to code_end() and sets decode_begin to end
   void    decode();
-  void    print();
+  void    print_on(outputStream* st);
 #endif
   // Directly disassemble code buffer.
   void    decode(address start, address end);
