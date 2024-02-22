@@ -439,7 +439,7 @@ private:
 
   static void init_for_dumping(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void write_subgraph_info_table() NOT_CDS_JAVA_HEAP_RETURN;
-  static void serialize_misc_info(SerializeClosure* soc);
+  static void serialize_misc_info(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_roots(oop roots_oop) NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize_tables(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
 
@@ -456,11 +456,9 @@ private:
   static void initialize_java_lang_invoke(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void initialize_default_subgraph_classes(Handle loader, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 
-  static bool is_lambda_form_klass(InstanceKlass* ik);
-  static bool is_lambda_proxy_klass(InstanceKlass* ik);
-  static bool is_archivable_hidden_klass(InstanceKlass* ik) {
-    return is_lambda_form_klass(ik) || is_lambda_proxy_klass(ik);
-  }
+  static bool is_lambda_form_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_lambda_proxy_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_archivable_hidden_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
 };
 
 #if INCLUDE_CDS_JAVA_HEAP

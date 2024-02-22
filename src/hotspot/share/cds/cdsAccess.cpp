@@ -91,7 +91,7 @@ Method* CDSAccess::method_in_cached_code(Method* m) {
   }
 }
 
-#ifdef INCLUDE_CDS_JAVA_HEAP
+#if INCLUDE_CDS_JAVA_HEAP
 int CDSAccess::get_archived_object_permanent_index(oop obj) {
   return HeapShared::get_archived_object_permanent_index(obj);
 }

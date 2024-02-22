@@ -382,6 +382,7 @@ public:
 // This is always at the very beginning of the mmaped CDS "cc" (cached code) region
 static CachedCodeDirectory* _cached_code_directory = nullptr;
 
+#if INCLUDE_CDS_JAVA_HEAP
 void SCCache::new_workflow_start_writing_cache() {
   CachedCodeDirectory* dir = (CachedCodeDirectory*)CDSAccess::allocate_from_code_cache(sizeof(CachedCodeDirectory));
   _cached_code_directory = dir;
@@ -416,6 +417,7 @@ void SCCache::new_workflow_load_cache() {
                   pointer_delta((address)_cached_code_directory->_my_data, (address)_cached_code_directory, 1));
   }
 }
+#endif // INCLUDE_CDS_JAVA_HEAP
 
 #define DATA_ALIGNMENT HeapWordSize
 
