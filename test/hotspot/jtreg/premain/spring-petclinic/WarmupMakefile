@@ -71,7 +71,7 @@ JAR_CMD          = ${JDK17_HOME}/bin/jar
 JDK17_JAVA       = ${JDK17_HOME}/bin/java
 PREMAIN_JAVA     = ${PREMAIN_HOME}/bin/java
 BL_JAVA          = ${BL_HOME}/bin/java
-PC_REPO          = petclinic-snapshot
+PC_REPO          = petclinic-snapshot-warmup
 PC_JAVA_SOURCES = ${PC_REPO}/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
 PC_APP_JAR       = ${PC_REPO}/target/spring-petclinic-3.2.0-SNAPSHOT.jar
 PC_APP_UNPACKED  = ${PC_REPO}/target/unpacked
@@ -97,7 +97,7 @@ PC_BL_CLASSLIST     = spring-petclinic.bl_classlist
 PC_STATIC_BL_JSA    = spring-petclinic.static_bl.jsa
 PC_DYNAMIC_BL_JSA   = spring-petclinic.dynamic_bl.jsa
 
-JMETER_DURATION = 15
+JMETER_DURATION = 180
 JMETER_THREADS = 1
 JMETER_CPUS = 12-13
 APP_CPUS = 14-19
@@ -187,7 +187,7 @@ ${PC_APP_UNPACKED}: ${PC_APP_JAR}
 #SAVE_GEN_FILES=-Djdk.proxy.ProxyGenerator.saveGeneratedFiles=true
 
 define wait-for-startup
-tail -n+0 -f $@.out | sed '/Booted/ q'
+tail -n+0 -f $@.out | sed --quiet '/Booted and returned/ q'
 endef
 
 define exit-app
@@ -196,6 +196,7 @@ curl -X POST localhost:8080/actuator/shutdown
 tail -f --pid=`cat app.pid` /dev/null
 endef
 
+# petclinic_test_plan.jmx is derived from https://github.com/spring-projects/spring-petclinic/blob/main/src/test/jmeter/petclinic_test_plan.jmx
 define run-jmeter
 taskset -c "${JMETER_CPUS}" /home/asmehra/data/ashu-mehra/apache-jmeter-5.5/bin/jmeter -JDURATION=${JMETER_DURATION} -JTHREADS=${JMETER_THREADS} -Dsummariser.interval=6 -n -t petclinic_test_plan.jmx | tee tput-$@.log
 endef
