@@ -363,7 +363,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
       log_info(cds)("Generate CacheDataStore %s from CDSPreimage %s", CacheDataStore, CDSPreimage);
       // Force -Xbatch for AOT compilation.
       if (FLAG_SET_CMDLINE(BackgroundCompilation, false) != JVMFlag::SUCCESS) {
-        return JNI_EINVAL;
+        return false;
       }
       Inline = false; // FIXME: this is just for temp debugging.
       RecordTraining = false; // This will be updated inside MetaspaceShared::preload_and_dump()
@@ -569,6 +569,14 @@ bool CDSConfig::is_loading_invokedynamic() {
 bool CDSConfig::is_dumping_dynamic_proxy() {
   return is_dumping_full_module_graph() && is_dumping_invokedynamic();
 }
+
+bool CDSConfig::is_initing_classes_at_dump_time() {
+  return is_dumping_heap() && PreloadSharedClasses;
+}
+
+bool CDSConfig::is_dumping_invokedynamic() {
+  return ArchiveInvokeDynamic && is_dumping_heap();
+}
 #endif // INCLUDE_CDS_JAVA_HEAP
 
 // This is allowed by default. We disable it only in the final image dump before the
@@ -585,12 +593,4 @@ void CDSConfig::disable_dumping_cached_code() {
 
 void CDSConfig::enable_dumping_cached_code() {
   _is_dumping_cached_code = true;
-}
-
-bool CDSConfig::is_initing_classes_at_dump_time() {
-  return is_dumping_heap() && PreloadSharedClasses;
-}
-
-bool CDSConfig::is_dumping_invokedynamic() {
-  return ArchiveInvokeDynamic && is_dumping_heap();
 }

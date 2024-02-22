@@ -276,6 +276,8 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
   }
 }
 
+#if INCLUDE_CDS_JAVA_HEAP
+
 void ArchiveBuilder::update_hidden_class_loader_type(InstanceKlass* ik) {
   s2 classloader_type;
   if (HeapShared::is_lambda_form_klass(ik)) {
@@ -303,6 +305,8 @@ void ArchiveBuilder::update_hidden_class_loader_type(InstanceKlass* ik) {
     ik->set_shared_classpath_index(nest_host->shared_classpath_index());
   }
 }
+
+#endif //INCLUDE_CDS_JAVA_HEAP
 
 int ArchiveBuilder::compare_symbols_by_address(Symbol** a, Symbol** b) {
   if (a[0] < b[0]) {

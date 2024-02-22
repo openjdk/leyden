@@ -652,6 +652,8 @@ void Modules::check_cds_restrictions(Handle module1, Handle module2, TRAPS) {
   }
 }
 
+#endif // INCLUDE_CDS_JAVA_HEAP
+
 bool Modules::is_dynamic_proxy_module(Handle module) {
   if (!module.is_null()) {
     ModuleEntry* module_entry = java_lang_Module::module_entry(module());
@@ -663,8 +665,6 @@ bool Modules::is_dynamic_proxy_module(Handle module) {
 bool Modules::is_dynamic_proxy_module(ModuleEntry* module_entry) {
   return (module_entry != nullptr && module_entry->is_named() && module_entry->name()->starts_with("jdk.proxy"));
 }
-
-#endif // INCLUDE_CDS_JAVA_HEAP
 
 void Modules::set_bootloader_unnamed_module(Handle module, TRAPS) {
   ResourceMark rm(THREAD);
