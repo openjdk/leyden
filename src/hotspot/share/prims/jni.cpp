@@ -364,14 +364,6 @@ JNI_END
 DT_RETURN_MARK_DECL(FromReflectedMethod, jmethodID
                     , HOTSPOT_JNI_FROMREFLECTEDMETHOD_RETURN((uintptr_t)_ret_ref));
 
-#define NOTE_JNI_CLASSINIT(k1, reason)                                  \
-  if (RecordTraining && k1->is_instance_klass()) {                      \
-    InstanceKlass::cast(k1)                                             \
-      ->record_initialization_touch(reason, nullptr, nullptr,           \
-                                    nullptr, "jni", CHECK_0);           \
-  }
-
-
 JNI_ENTRY(jmethodID, jni_FromReflectedMethod(JNIEnv *env, jobject method))
   HOTSPOT_JNI_FROMREFLECTEDMETHOD_ENTRY(env, method);
 
@@ -394,7 +386,6 @@ JNI_ENTRY(jmethodID, jni_FromReflectedMethod(JNIEnv *env, jobject method))
   Klass* k1 = java_lang_Class::as_Klass(mirror);
 
   // Make sure class is initialized before handing id's out to methods
-  NOTE_JNI_CLASSINIT(k1, "reflect");
   k1->initialize(CHECK_NULL);
   Method* m = InstanceKlass::cast(k1)->method_with_idnum(slot);
   ret = m==nullptr? nullptr : m->jmethod_id();  // return null if reflected method deleted
@@ -418,7 +409,6 @@ JNI_ENTRY(jfieldID, jni_FromReflectedField(JNIEnv *env, jobject field))
   int modifiers   = java_lang_reflect_Field::modifiers(reflected);
 
   // Make sure class is initialized before handing id's out to fields
-  NOTE_JNI_CLASSINIT(k1, "reflect");
   k1->initialize(CHECK_NULL);
 
   // First check if this is a static field
@@ -1099,7 +1089,6 @@ static jmethodID get_method_id(JNIEnv *env, jclass clazz, const char *name_str,
 
   // Make sure class is linked and initialized before handing id's out to
   // Method*s.
-  NOTE_JNI_CLASSINIT(klass, "resolve");
   klass->initialize(CHECK_NULL);
 
   Method* m;
@@ -1620,7 +1609,6 @@ JNI_ENTRY(ResultType, \
   JNI_ArgumentPusherVaArg ap(methodID, args); \
   /* Make sure class is initialized before trying to invoke its method */ \
   Klass* k = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(cls)); \
-  NOTE_JNI_CLASSINIT(k, "invokestatic"); \
   k->initialize(CHECK_0); \
   jni_invoke_static(env, &jvalue, nullptr, JNI_STATIC, methodID, &ap, CHECK_0); \
   va_end(args); \
@@ -1778,7 +1766,6 @@ JNI_ENTRY(jfieldID, jni_GetFieldID(JNIEnv *env, jclass clazz,
   }
 
   // Make sure class is initialized before handing id's out to fields
-  NOTE_JNI_CLASSINIT(k, "resolve");
   k->initialize(CHECK_NULL);
 
   fieldDescriptor fd;
@@ -2003,7 +1990,6 @@ JNI_ENTRY(jfieldID, jni_GetStaticFieldID(JNIEnv *env, jclass clazz,
   }
   Klass* k = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(clazz));
   // Make sure class is initialized before handing id's out to static fields
-  NOTE_JNI_CLASSINIT(k, "resolve");
   k->initialize(CHECK_NULL);
 
   fieldDescriptor fd;

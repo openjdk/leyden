@@ -533,8 +533,6 @@ public:
     assert(tdata != nullptr, "call alloc_training_data first");
     return tdata;
   }
-  // return existing if there is one, else allocate
-  KlassTrainingData* alloc_training_data(TRAPS);
 
   static const char* state2name(ClassState state);
 
@@ -859,13 +857,6 @@ public:
   // initialization
   void call_class_initializer(TRAPS);
   void set_initialization_state_and_notify(ClassState state, JavaThread* current);
-  void record_initialization_touch(const char* request,
-                                   Symbol* name,  // or nullptr if not a member
-                                   Symbol* sig,   // or nullptr if not a method
-                                   Klass* requesting_klass,  // or nullptr
-                                   const char* context,      // or nullptr
-                                   TRAPS);
-  bool has_initialization_touch() const;
 
   // OopMapCache support
   OopMapCache* oop_map_cache()               { return _oop_map_cache; }
@@ -1130,7 +1121,7 @@ private:
   bool link_class_impl                           (TRAPS);
   bool verify_code                               (TRAPS);
   void initialize_impl                           (TRAPS);
-  void initialize_super_interfaces(Klass* requester, TRAPS);
+  void initialize_super_interfaces(TRAPS);
 
   void add_initialization_error(JavaThread* current, Handle exception);
   oop get_initialization_error(JavaThread* current);

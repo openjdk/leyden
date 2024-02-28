@@ -559,11 +559,6 @@ UNSAFE_ENTRY(void, Unsafe_EnsureClassInitialized0(JNIEnv *env, jobject unsafe, j
 
   Klass* klass = java_lang_Class::as_Klass(mirror);
   if (klass != nullptr && klass->should_be_initialized()) {
-    if (RecordTraining) {
-      InstanceKlass* k = InstanceKlass::cast(klass);
-      k->record_initialization_touch("ensure", nullptr, nullptr, nullptr,
-                                     "unsafe", CHECK);
-    }
     InstanceKlass* k = InstanceKlass::cast(klass);
     k->initialize(CHECK);
   }

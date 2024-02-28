@@ -351,8 +351,6 @@ public:
   static MethodTrainingData* lookup_for(Method* m);
 };
 
-
-
 class KlassTrainingData : public TrainingData {
   friend TrainingData;
   friend CompileTrainingData;
@@ -362,47 +360,15 @@ class KlassTrainingData : public TrainingData {
   template <class T> friend class CppVtableTesterB;
   template <class T> friend class CppVtableCloner;
 
- public:
-  // Tracking field initialization, when RecordTraining is enabled.
-  struct FieldData {
-    Symbol*   _name;    // name of field, for making reports (no refcount)
-    int      _index;    // index in the field stream (a unique id)
-    BasicType _type;    // what kind of field is it?
-    int     _offset;    // offset of field storage, within mirror
-    int _fieldinit_sequence_index;  // 1-based local initialization order
-    void init_from(fieldDescriptor& fd) {
-      _name = fd.name();
-      _index = fd.index();
-      _offset = fd.offset();
-      _type = fd.field_type();
-      _fieldinit_sequence_index = 0;
-    }
-  };
-
- private:
   // cross-link to live klass, or null if not loaded or encountered yet
   InstanceKlass* _holder;
   jobject _holder_mirror;   // extra link to prevent unloading by GC
 
-  // initialization tracking state
-  bool _has_initialization_touch;
-  int _clinit_sequence_index;       // 1-based global initialization order
-  GrowableArrayCHeap<FieldData, mtCompiler>* _static_fields;  //do not CDS
-  int _fieldinit_count;  // count <= _static_fields.length()
-  bool _clinit_is_done;
-  DepList<KlassTrainingData*> _init_deps;  // classes to initialize before me
   DepList<CompileTrainingData*> _comp_deps; // compiles that depend on me
-  static GrowableArrayCHeap<FieldData, mtCompiler>* _no_static_fields;
-  static int _clinit_count;  // global count (so far) of clinit events
 
   void init() {
     _holder_mirror = nullptr;
     _holder = nullptr;
-    _has_initialization_touch = false;
-    _clinit_sequence_index = 0;
-    _static_fields = nullptr;
-    _fieldinit_count = 0;
-    _clinit_is_done = false;
   }
 
   KlassTrainingData();
@@ -416,21 +382,6 @@ class KlassTrainingData : public TrainingData {
   {
     init();
   }
-
-  int init_dep_count() const {
-    TrainingDataLocker::assert_locked();
-    return _init_deps.length();
-  }
-  KlassTrainingData* init_dep(int i) const {
-    TrainingDataLocker::assert_locked();
-    return _init_deps.at(i);
-  }
-  void add_init_dep(KlassTrainingData* ktd) {
-    TrainingDataLocker::assert_locked();
-    guarantee(ktd != this, "");
-    _init_deps.append_if_missing(ktd);
-  }
-
   int comp_dep_count() const {
     TrainingDataLocker::assert_locked();
     return _comp_deps.length();
@@ -443,17 +394,6 @@ class KlassTrainingData : public TrainingData {
     TrainingDataLocker::assert_locked();
      _comp_deps.append_if_missing(ctd);
   }
-
-  static GrowableArrayCHeap<FieldData, mtCompiler>* no_static_fields();
-  static int next_clinit_count() {
-    return Atomic::add(&_clinit_count, 1);
-  }
-  int next_fieldinit_count() {
-    return Atomic::add(&_fieldinit_count, 1);
-  }
-  void log_initialization(bool is_start);
-
-  bool record_static_field_init(FieldData* fdata, const char* reason);
 
  public:
   Symbol* name()                const { return _key.name1(); }
@@ -482,62 +422,7 @@ class KlassTrainingData : public TrainingData {
     assert(has_holder(), "");
     return holder()->class_loader_data();
   }
-  void setup_static_fields(const InstanceKlass* holder);
-  bool field_state_is_clean(FieldData* fdata);
-  FieldData* check_field_states_and_find_field(Symbol* name);
-  bool all_field_states_done() {
-    return _static_fields != nullptr && _static_fields->length() == _fieldinit_count;
-  }
-  static void print_klass_attrs(xmlStream* xtty,
-                                Klass* klass, const char* prefix = "");
-  static void print_iclock_attr(InstanceKlass* klass,
-                                xmlStream* xtty,
-                                int fieldinit_index = -1,
-                                const char* prefix = "");
-
-  // A 1-based global order in which <clinit> was called, or zero if
-  // that never did happen, or has not yet happened.
-  int clinit_sequence_index_or_zero() const {
-    return _clinit_sequence_index;
-  }
-
-  // Has this class been the subject of an initialization touch?
-  bool has_initialization_touch() { return _has_initialization_touch; }
-  // Add such a touch to the history of this class.
-  bool add_initialization_touch(Klass* requester);
-
-  // For some reason, somebody is touching my class (this->holder())
-  // and that might be relevant to my class's initialization state.
-  // We collect these events even after my class is fully initialized.
-  //
-  // The requesting class, if not null, is the class which is causing
-  // the event, somehow (depending on the reason).
-  //
-  // The name and signature, if not null, are somehow relevant to
-  // the event; depending on the reason, they might refer to a
-  // member of my class, or else to a member of the requesting class.
-  //
-  // The context is a little extra information.
-  //
-  // The record that will be emitted records all this information,
-  // plus extra stuff, notably whether there is a <clinit> execution
-  // on stack, and if so, who that is.  Often, the class running its
-  // <clinit> is even more interesting than the requesting class.
-  void record_initialization_touch(const char* reason,
-                                   Symbol* name,
-                                   Symbol* sig,
-                                   Klass* requesting_klass,
-                                   const char* context,
-                                   TRAPS);
-
-  void record_initialization_start();
-  void record_initialization_end();
   void notice_fully_initialized();
-  // Record that we have witnessed the initialization of the name.
-  // This is called when we know we are doing a `putstatic` or equivalent.
-  // It can be called either just before or just after.  It is only
-  // safe to call this inside the initializing thread.
-  bool record_static_field_init(fieldDescriptor* fd, const char* reason);
 
   void print_on(outputStream* st, bool name_only) const;
   virtual void print_on(outputStream* st) const { print_on(st, false); }
@@ -786,7 +671,6 @@ public:
   virtual int size() const {
     return (int)align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord)/BytesPerWord);
   }
-
 
   static CompileTrainingData* allocate(MethodTrainingData* mtd, int level, int compile_id);
 };

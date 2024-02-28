@@ -1085,7 +1085,7 @@ void InstanceKlass::link_methods(TRAPS) {
 }
 
 // Eagerly initialize superinterfaces that declare default methods (concrete instance: any access)
-void InstanceKlass::initialize_super_interfaces(Klass* requester, TRAPS) {
+void InstanceKlass::initialize_super_interfaces(TRAPS) {
   assert (has_nonstatic_concrete_methods(), "caller should have checked this");
   for (int i = 0; i < local_interfaces()->length(); ++i) {
     InstanceKlass* ik = local_interfaces()->at(i);
@@ -1094,18 +1094,11 @@ void InstanceKlass::initialize_super_interfaces(Klass* requester, TRAPS) {
     // has_nonstatic_concrete_methods drives searching superinterfaces since it
     // means has_nonstatic_concrete_methods in its superinterface hierarchy
     if (ik->has_nonstatic_concrete_methods()) {
-      ik->initialize_super_interfaces(requester, CHECK);
+      ik->initialize_super_interfaces(CHECK);
     }
 
     // Only initialize() interfaces that "declare" concrete methods.
     if (ik->should_be_initialized() && ik->declares_nonstatic_concrete_methods()) {
-      if (RecordTraining && requester != nullptr) {
-        ik->record_initialization_touch("super", nullptr, nullptr, requester,
-                                        nullptr, THREAD);
-        if (HAS_PENDING_EXCEPTION) {
-          CLEAR_PENDING_EXCEPTION;  // could not allocate training data
-        }
-      }
       ik->initialize(CHECK);
     }
   }
@@ -1291,15 +1284,6 @@ void InstanceKlass::initialize_impl(TRAPS) {
   if (!is_interface()) {
     Klass* super_klass = super();
     if (super_klass != nullptr && super_klass->should_be_initialized()) {
-      // do not bother to report touches from an untouched subclass
-      if (RecordTraining && has_initialization_touch()) {
-        InstanceKlass::cast(super_klass)
-          ->record_initialization_touch("super", nullptr, nullptr, this,
-                                        nullptr, THREAD);
-        if (HAS_PENDING_EXCEPTION) {
-          CLEAR_PENDING_EXCEPTION;  // could not allocate training data
-        }
-      }
       super_klass->initialize(THREAD);
     }
     // If C implements any interface that declares a non-static, concrete method,
@@ -1307,9 +1291,7 @@ void InstanceKlass::initialize_impl(TRAPS) {
     // Only need to recurse if has_nonstatic_concrete_methods which includes declaring and
     // having a superinterface that declares, non-static, concrete methods
     if (!HAS_PENDING_EXCEPTION && has_nonstatic_concrete_methods()) {
-      // do not bother to report touches from an untouched implementer
-      Klass* requester = has_initialization_touch() ? this : nullptr;
-      initialize_super_interfaces(requester, THREAD);
+      initialize_super_interfaces(THREAD);
     }
 
     // If any exceptions, complete abruptly, throwing the same exception as above.
@@ -1654,9 +1636,6 @@ instanceOop InstanceKlass::allocate_instance(oop java_class,
   }
   InstanceKlass* ik = cast(k);
   ik->check_valid_for_instantiation(false, CHECK_NULL);
-  if (RecordTraining) {
-    ik->record_initialization_touch("new", nullptr, nullptr, nullptr, who, CHECK_NULL);
-  }
   ik->initialize(CHECK_NULL);
   return ik->allocate_instance(THREAD);
 }
@@ -1755,18 +1734,7 @@ void InstanceKlass::call_class_initializer(TRAPS) {
   if (h_method() != nullptr) {
     JavaCallArguments args; // No arguments
     JavaValue result(T_VOID);
-    KlassTrainingData* tdata = nullptr;
-    if (RecordTraining) {
-      tdata = alloc_training_data(CHECK);
-      if (HAS_PENDING_EXCEPTION) {
-        CLEAR_PENDING_EXCEPTION;  // could not allocate training data
-      }
-    }
     InstanceKlass* outer = THREAD->set_class_being_initialized(this);
-    if (tdata != nullptr) {
-      tdata->record_initialization_start();
-    }
-
     jlong bc_start = (CountBytecodesPerThread ? THREAD->bc_counter_value() : BytecodeCounter::counter_value());
 
     elapsedTimer timer;
@@ -1789,10 +1757,6 @@ void InstanceKlass::call_class_initializer(TRAPS) {
 
     THREAD->set_class_being_initialized(outer);
 
-    if (tdata != nullptr) {
-      tdata->record_initialization_end();
-    }
-
     LogStreamHandle(Debug, init) log;
     if (log.is_enabled()) {
       ResourceMark rm(THREAD);
@@ -1814,42 +1778,6 @@ void InstanceKlass::call_class_initializer(TRAPS) {
     name()->print_value_on(&ls);
     ls.print_cr("%s (" PTR_FORMAT ")", h_method() == nullptr ? "(no method)" : "", p2i(this));
   }
-}
-
-void InstanceKlass::record_initialization_touch(const char* reason,
-                                                Symbol* name,
-                                                Symbol* sig,
-                                                Klass* requesting_klass,
-                                                const char* context,
-                                                TRAPS) {
-  if (requesting_klass == this) {
-    return;  // self-initialization is never interesting
-  }
-  if (is_initialized() && !has_initialization_touch()) {
-    // initialized by some hardwired JVM logic; not interesting
-    return;
-  }
-  KlassTrainingData* tdata = alloc_training_data(CHECK);
-  if (tdata == nullptr)  return;
-  tdata->record_initialization_touch(reason, name, sig,
-                                     requesting_klass, context, THREAD);
-}
-
-
-bool InstanceKlass::has_initialization_touch() const {
-  KlassTrainingData* tdata = training_data_or_null();
-  if (tdata == nullptr)  return false;
-  return tdata->has_initialization_touch();
-}
-
-KlassTrainingData* InstanceKlass::alloc_training_data(TRAPS) {
-  guarantee(RecordTraining || ReplayTraining, "caller resp.");
-  KlassTrainingData* tdata = training_data_or_null();
-  if (tdata == nullptr) {
-    tdata = KlassTrainingData::make(this);
-    assert(tdata == training_data_or_null(), "");
-  }
-  return tdata;
 }
 
 void InstanceKlass::mask_for(const methodHandle& method, int bci,

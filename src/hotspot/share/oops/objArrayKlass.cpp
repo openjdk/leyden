@@ -338,11 +338,6 @@ GrowableArray<Klass*>* ObjArrayKlass::compute_secondary_supers(int num_extra_slo
 }
 
 void ObjArrayKlass::initialize(TRAPS) {
-  if (RecordTraining && bottom_klass()->is_instance_klass()) {
-    InstanceKlass* bk = InstanceKlass::cast(bottom_klass());
-    bk->record_initialization_touch("array", nullptr, nullptr,
-                                    this, nullptr, CHECK);
-  }
   bottom_klass()->initialize(THREAD);  // dispatches to either InstanceKlass or TypeArrayKlass
 }
 
