@@ -101,13 +101,6 @@ void TrainingData::initialize() {
     TrainingDataLocker::initialize();
   }
   if (have_data()) {
-    // Initialize dependency tracking
-    training_data_set()->iterate_all([](const Key* k, TrainingData* td) {
-      if (td->is_MethodTrainingData()) {
-        td->as_MethodTrainingData()->initialize_deps_tracking();
-      }
-    });
-
     if (_recompilation_schedule != nullptr && _recompilation_schedule->length() > 0) {
       const int size = _recompilation_schedule->length();
       _recompilation_status = NEW_C_HEAP_ARRAY(bool, size, mtCompiler);
@@ -117,6 +110,17 @@ void TrainingData::initialize() {
     }
   }
 }
+
+void TrainingData::verify() {
+  if (TrainingData::have_data()) {
+    archived_training_data_dictionary()->iterate([&](TrainingData* td) {
+      if (td->is_MethodTrainingData()) {
+        td->as_MethodTrainingData()->verify();
+      }
+    });
+  }
+}
+
 
 TrainingData::Key::Key(const KlassTrainingData* klass, Symbol* method_name, Symbol* signature)
   : Key(method_name, signature, klass) {}
@@ -278,7 +282,27 @@ void CompileTrainingData::dec_init_deps_left(KlassTrainingData* ktd) {
   assert(_init_deps.contains(ktd), "");
   assert(_init_deps_left > 0, "");
 
-  Atomic::sub(&_init_deps_left, 1);
+  uint init_deps_left1 = Atomic::sub(&_init_deps_left, 1);
+
+  if (log.is_enabled()) {
+    uint init_deps_left2 = compute_init_deps_left();
+    log.print("init_deps_left: %d (%d)", init_deps_left1, init_deps_left2);
+    ktd->print_on(&log, true);
+  }
+}
+
+uint CompileTrainingData::compute_init_deps_left(bool count_initialized) {
+  int left = 0;
+  for (int i = 0; i < _init_deps.length(); i++) {
+    KlassTrainingData* ktd = _init_deps.at(i);
+    // Ignore symbolic refs and already initialized classes (unless explicitly requested).
+    if (ktd->has_holder()) {
+      if (!ktd->holder()->is_initialized() || count_initialized) {
+        ++left;
+      }
+    }
+  }
+  return left;
 }
 
 void CompileTrainingData::print_on(outputStream* st, bool name_only) const {
@@ -1037,18 +1061,19 @@ void MethodTrainingData::restore_unshareable_info(TRAPS) {
   if (_final_profile != nullptr) {
     _final_profile->restore_unshareable_info(CHECK);
   }
-  initialize_deps_tracking();
 }
 
 void CompileTrainingData::remove_unshareable_info() {
   TrainingData::remove_unshareable_info();
   _init_deps.remove_unshareable_info();
   _ci_records.remove_unshareable_info();
+  _init_deps_left = compute_init_deps_left(true);
 }
 
 void CompileTrainingData::restore_unshareable_info(TRAPS) {
   TrainingData::restore_unshareable_info(CHECK);
   _init_deps.restore_unshareable_info(CHECK);
   _ci_records.restore_unshareable_info(CHECK);
+  guarantee(_init_deps_left == (int)compute_init_deps_left(), "mismatch");
 }
 #endif // INCLUDE_CDS

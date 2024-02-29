@@ -265,6 +265,8 @@ public:
 
   static void initialize();
 
+  static void verify();
+
   // Widget for recording dependencies, as an N-to-M graph relation,
   // possibly cyclic.
   template<typename E>
@@ -630,16 +632,10 @@ public:
   }
   void dec_init_deps_left(KlassTrainingData* ktd);
   int init_deps_left() const {
-    return _init_deps_left;
+    return Atomic::load(&_init_deps_left);
   }
-  void initialize_deps_tracking() {
-    for (int i = 0; i < _init_deps.length(); i++) {
-      KlassTrainingData* dep = _init_deps.at(i);
-      if (dep->has_holder() && !dep->holder()->is_initialized()) {
-        _init_deps_left++; // ignore symbolic refs && already initialized classes
-      }
-    }
-  }
+  uint compute_init_deps_left(bool count_initialized = false);
+
   void record_compilation_queued(CompileTask* task);
   void record_compilation_start(CompileTask* task);
   void record_compilation_end(CompileTask* task);
@@ -785,8 +781,13 @@ class MethodTrainingData : public TrainingData {
     }
   }
 
-  void initialize_deps_tracking() {
-    iterate_all_compiles([](CompileTrainingData* ctd) { ctd->initialize_deps_tracking(); });
+  void verify() {
+    iterate_all_compiles([](CompileTrainingData* ctd) {
+      int init_deps_left1 = ctd->init_deps_left();
+      int init_deps_left2 = ctd->compute_init_deps_left();
+      guarantee(init_deps_left1 == init_deps_left2, "mismatch: %d %d %d",
+                init_deps_left1, init_deps_left2, ctd->init_deps_left());
+    });
   }
 
   virtual void metaspace_pointers_do(MetaspaceClosure* iter);

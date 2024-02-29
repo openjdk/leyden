@@ -141,7 +141,9 @@
                                                                             \
   product(bool, ArchiveLoaderLookupCache, false,                            \
           "Archive app loader's positive and negative lookup cache")        \
-
+                                                                            \
+  product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
+          "Verify archived training data")                                  \
 
 // end of CDS_FLAGS
 

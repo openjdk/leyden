@@ -302,6 +302,26 @@ public:
     }
   }
 
+  template<typename Function>
+  inline void iterate(Function function) const { // lambda enabled API
+    for (u4 i = 0; i < _bucket_count; i++) {
+      u4 bucket_info = _buckets[i];
+      u4 bucket_offset = BUCKET_OFFSET(bucket_info);
+      int bucket_type = BUCKET_TYPE(bucket_info);
+      u4* entry = _entries + bucket_offset;
+
+      if (bucket_type == VALUE_ONLY_BUCKET_TYPE) {
+        function(decode(entry[0]));
+      } else {
+        u4*entry_max = _entries + BUCKET_OFFSET(_buckets[i + 1]);
+        while (entry < entry_max) {
+          function(decode(entry[1]));
+          entry += 2;
+        }
+      }
+    }
+  }
+
   void print_table_statistics(outputStream* st, const char* name) {
     st->print_cr("%s statistics:", name);
     int total_entries = 0;

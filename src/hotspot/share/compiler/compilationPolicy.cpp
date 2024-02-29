@@ -268,6 +268,7 @@ void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
     } else {
       replay_training_at_init_impl(klass, THREAD);
     }
+    guarantee(!HAS_PENDING_EXCEPTION, "");
   }
 }
 

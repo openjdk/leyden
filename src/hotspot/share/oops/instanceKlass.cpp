@@ -844,6 +844,7 @@ void InstanceKlass::initialize_from_cds(TRAPS) {
     log_class_init(THREAD, this);
     set_init_thread(THREAD);
     set_initialization_state_and_notify(fully_initialized, CHECK);
+    CompilationPolicy::replay_training_at_init(this, THREAD);
     return;
   }
 

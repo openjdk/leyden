@@ -527,11 +527,15 @@ public:
   static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level);
   static void preload_code(JavaThread* thread);
 
+  template<typename Function>
+  static void iterate(Function function); // lambda enabled API
+
   static void add_C_string(const char* str);
 
   static void print_on(outputStream* st);
   static void print_statistics_on(outputStream* st);
   static void print_timers_on(outputStream* st);
+  static void print_unused_entries_on(outputStream* st);
 
   static void new_workflow_start_writing_cache() NOT_CDS_JAVA_HEAP_RETURN;
   static void new_workflow_end_writing_cache() NOT_CDS_JAVA_HEAP_RETURN;

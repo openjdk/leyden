@@ -53,6 +53,7 @@
 #include "memory/universe.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/method.inline.hpp"
+#include "oops/trainingData.hpp"
 #include "prims/jvmtiThreadState.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/flags/flagSetting.hpp"
@@ -185,6 +186,11 @@ void SCCache::close() {
         SCCache::print_statistics_on(&log);
         log.cr();
         SCCache::print_timers_on(&log);
+
+        LogStreamHandle(Info, scc, init) log1;
+        if (log1.is_enabled()) {
+          SCCache::print_unused_entries_on(&log1);
+        }
       }
     }
 
@@ -3320,6 +3326,47 @@ void SCCache::print_on(outputStream* st) {
   }
 }
 
+void SCCache::print_unused_entries_on(outputStream* st) {
+  LogStreamHandle(Info, scc, init) info;
+  if (info.is_enabled()) {
+    SCCache::iterate([&](SCCEntry* entry) {
+      if (!entry->is_loaded()) {
+        MethodTrainingData* mtd = MethodTrainingData::lookup_for(entry->method());
+        if (mtd != nullptr) {
+          if (mtd->has_holder()) {
+            if (mtd->holder()->method_holder()->is_initialized()) {
+              ResourceMark rm;
+              mtd->iterate_all_compiles([&](CompileTrainingData* ctd) {
+                if ((uint)ctd->level() == entry->comp_level()) {
+                  if (ctd->init_deps_left() == 0) {
+                    CompiledMethod* cm = mtd->holder()->code();
+                    if (cm == nullptr) {
+                      if (mtd->holder()->queued_for_compilation()) {
+                        return; // scheduled for compilation
+                      }
+                    } else if ((uint)cm->comp_level() >= entry->comp_level()) {
+                      return; // already online compiled and superseded by a more optimal method
+                    }
+                    info.print("SCC entry not loaded: ");
+                    ctd->print_on(&info);
+                    info.cr();
+                  }
+                }
+              });
+            } else {
+              // not yet initialized
+            }
+          } else {
+            info.print("SCC entry doesn't have a holder: ");
+            mtd->print_on(&info);
+            info.cr();
+          }
+        }
+      }
+    });
+  }
+}
+
 void SCCReader::print_on(outputStream* st) {
   uint entry_position = _entry->offset();
   set_read_position(entry_position);
@@ -3966,4 +4013,22 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
     }
   }
   return id;
+}
+
+template<typename Function>
+void SCCache::iterate(Function function) { // lambda enabled API
+  SCCache* cache = open_for_read();
+  if (cache != nullptr) {
+    ReadingMark rdmk;
+
+    uint count = cache->_load_header->entries_count();
+    uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
+    SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
+
+    for (uint i = 0; i < count; i++) {
+      int index = search_entries[2*i + 1];
+      SCCEntry* entry = &(load_entries[index]);
+      function(entry);
+    }
+  }
 }
