@@ -863,6 +863,7 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
         print_event(REMOVE_FROM_QUEUE, method, method, task->osr_bci(), (CompLevel) task->comp_level());
       }
       method->clear_queued_for_compilation();
+      method->set_pending_queue_processed(false);
       compile_queue->remove_and_mark_stale(task);
       task = next_task;
       continue;
