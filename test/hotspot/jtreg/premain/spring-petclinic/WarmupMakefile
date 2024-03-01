@@ -198,7 +198,7 @@ endef
 
 # petclinic_test_plan.jmx is derived from https://github.com/spring-projects/spring-petclinic/blob/main/src/test/jmeter/petclinic_test_plan.jmx
 define run-jmeter
-taskset -c "${JMETER_CPUS}" /home/asmehra/data/ashu-mehra/apache-jmeter-5.5/bin/jmeter -JDURATION=${JMETER_DURATION} -JTHREADS=${JMETER_THREADS} -Dsummariser.interval=6 -n -t petclinic_test_plan.jmx | tee tput-$@.log
+taskset -c "${JMETER_CPUS}" ${JMETER_BIN} -JDURATION=${JMETER_DURATION} -JTHREADS=${JMETER_THREADS} -Dsummariser.interval=6 -n -t petclinic_test_plan.jmx | tee tput-$@.log
 endef
 
 ${PC_BL_CLASSLIST}: ${PC_APP_UNPACKED}
