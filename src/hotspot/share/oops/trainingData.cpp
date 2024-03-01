@@ -135,34 +135,6 @@ TrainingData::Key::Key(const Method* method)
   : Key(method->name(), method->signature(), KlassTrainingData::make(method->method_holder()))
 {}
 
-MethodTrainingData* MethodTrainingData::make(KlassTrainingData* klass, Symbol* name, Symbol* signature) {
-  Key key(klass, name, signature);
-  TrainingData* td = have_data() ? lookup_archived_training_data(&key) : nullptr;
-  MethodTrainingData* mtd = nullptr;
-  if (td != nullptr) {
-    mtd = td->as_MethodTrainingData();
-    return mtd;
-  }
-  TrainingDataLocker l;
-  td = training_data_set()->find(&key);
-  if (td != nullptr) {
-    mtd = td->as_MethodTrainingData();
-  } else {
-    mtd = MethodTrainingData::allocate(klass, name, signature);
-    td = training_data_set()->install(mtd);
-    assert(td == mtd, "");
-  }
-  assert(mtd != nullptr, "");
-  return mtd;
-}
-
-MethodTrainingData* MethodTrainingData::make(KlassTrainingData* klass,
-                                             const char* name, const char* signature) {
-  TempNewSymbol n = SymbolTable::new_symbol(name);
-  TempNewSymbol s = SymbolTable::new_symbol(signature);
-  return make(klass, n, s);
-}
-
 MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
                                              bool null_if_not_found) {
   MethodTrainingData* mtd = nullptr;
@@ -421,37 +393,6 @@ void CompileTrainingData::prepare(Visitor& visitor) {
   _ci_records.prepare(loader_data);
 }
 
-KlassTrainingData* KlassTrainingData::make(Symbol* name, Symbol* loader_name) {
-  Key key(name, loader_name);
-  TrainingData* td = have_data() ? lookup_archived_training_data(&key) : nullptr;
-  KlassTrainingData* ktd = nullptr;
-  if (td != nullptr) {
-    ktd = td->as_KlassTrainingData();
-    return ktd;
-  }
-  TrainingDataLocker l;
-  td = training_data_set()->find(&key);
-  if (td == nullptr) {
-    ktd = KlassTrainingData::allocate(name, loader_name);
-    td = training_data_set()->install(ktd);
-    assert(ktd == td, "");
-  } else {
-    ktd = td->as_KlassTrainingData();
-  }
-  assert(ktd != nullptr, "");
-  return ktd;
-}
-
-KlassTrainingData* KlassTrainingData::make(const char* name, const char* loader_name) {
-  TempNewSymbol n = SymbolTable::new_symbol(name);
-  if (loader_name == nullptr) {
-    return make(n, nullptr);
-  } else {
-    TempNewSymbol l = SymbolTable::new_symbol(loader_name);
-    return make(n, l);
-  }
-}
-
 KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_not_found) {
   Key key(holder);
   TrainingData* td = have_data() ? lookup_archived_training_data(&key) : nullptr;
@@ -509,6 +450,7 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
 
 void KlassTrainingData::refresh_from(const InstanceKlass* klass) {
   if (!has_holder()) {
+    ShouldNotReachHere();
     init_holder(klass);
   }
 }

@@ -409,9 +409,6 @@ class KlassTrainingData : public TrainingData {
   // Update any copied data.
   void refresh_from(const InstanceKlass* klass);
 
-  // factories from live class and from symbols:
-  static KlassTrainingData* make(Symbol* name, Symbol* loader_name);
-  static KlassTrainingData* make(const char* name, const char* loader_name);
   static KlassTrainingData* make(InstanceKlass* holder,
                                  bool null_if_not_found = false);
   static KlassTrainingData* find(InstanceKlass* holder) {
@@ -752,11 +749,6 @@ class MethodTrainingData : public TrainingData {
 
   // Update any copied data.
   void refresh_from(const Method* method);
-
-  static MethodTrainingData* make(KlassTrainingData* klass,
-                                  Symbol* name, Symbol* signature);
-  static MethodTrainingData* make(KlassTrainingData* klass,
-                                  const char* name, const char* signature);
   static MethodTrainingData* make(const methodHandle& method,
                                   bool null_if_not_found = false);
   static MethodTrainingData* find(const methodHandle& method) {
