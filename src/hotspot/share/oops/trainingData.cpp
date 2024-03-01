@@ -450,7 +450,6 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
 
 void KlassTrainingData::refresh_from(const InstanceKlass* klass) {
   if (!has_holder()) {
-    ShouldNotReachHere();
     init_holder(klass);
   }
 }
