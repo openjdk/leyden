@@ -411,6 +411,18 @@ private:
   void clear_lookup_failed()   { _lookup_failed = false; }
   bool lookup_failed()   const { return _lookup_failed; }
 
+  static volatile int _reading_nmethod;
+
+  class ReadingMark {
+  public:
+    ReadingMark() {
+      Atomic::inc(&_reading_nmethod);
+    }
+    ~ReadingMark() {
+      Atomic::dec(&_reading_nmethod);
+    }
+  };
+
 public:
   SCCache(const char* cache_path, int fd, uint load_size);
   ~SCCache();
@@ -528,7 +540,22 @@ public:
   static void preload_code(JavaThread* thread);
 
   template<typename Function>
-  static void iterate(Function function); // lambda enabled API
+  static void iterate(Function function) { // lambda enabled API
+    SCCache* cache = open_for_read();
+    if (cache != nullptr) {
+      ReadingMark rdmk;
+
+      uint count = cache->_load_header->entries_count();
+      uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
+      SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
+
+      for (uint i = 0; i < count; i++) {
+        int index = search_entries[2*i + 1];
+        SCCEntry* entry = &(load_entries[index]);
+        function(entry);
+      }
+    }
+  }
 
   static void add_C_string(const char* str);
 

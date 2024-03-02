@@ -177,6 +177,26 @@ bool SCCache::gen_preload_code(ciMethod* m, int entry_bci) {
          CDSAccess::can_generate_cached_code(m->get_Method());
 }
 
+static void print_helper(nmethod* nm, outputStream* st) {
+  SCCache::iterate([&](SCCEntry* e) {
+    if (e->method() == nm->method()) {
+      ResourceMark rm;
+      stringStream ss;
+      ss.print("A%s%d", (e->for_preload() ? "P" : ""), e->comp_level());
+      if (e->decompile() > 0) {
+        ss.print("+D%d", e->decompile());
+      }
+      ss.print("[%s%s%s]",
+               (e->is_loaded()   ? "L" : ""),
+               (e->load_fail()   ? "F" : ""),
+               (e->not_entrant() ? "I" : ""));
+      ss.print("#%d", e->comp_id());
+
+      st->print(" %s", ss.freeze());
+    }
+  });
+}
+
 void SCCache::close() {
   if (is_on()) {
     if (SCCache::is_on_for_read()) {
@@ -190,6 +210,34 @@ void SCCache::close() {
         LogStreamHandle(Info, scc, init) log1;
         if (log1.is_enabled()) {
           SCCache::print_unused_entries_on(&log1);
+        }
+
+        LogStreamHandle(Info, scc, codecache) info_scc;
+        if (info_scc.is_enabled()) {
+          NMethodIterator iter(NMethodIterator::all_blobs);
+          while (iter.next()) {
+            nmethod* nm = iter.method();
+            if (nm->is_in_use() && !nm->is_native_method() && !nm->is_osr_method()) {
+              info_scc.print("%5d:%c%c%c%d:", nm->compile_id(),
+                             (nm->method()->is_shared() ? 'S' : ' '),
+                             (nm->is_scc() ? 'A' : ' '),
+                             (nm->preloaded() ? 'P' : ' '),
+                             nm->comp_level());
+              print_helper(nm, &info_scc);
+              info_scc.print(": ");
+              CompileTask::print(&info_scc, nm, nullptr, true /*short_form*/);
+
+              LogStreamHandle(Debug, scc, codecache) debug_scc;
+              if (debug_scc.is_enabled()) {
+                MethodTrainingData* mtd = MethodTrainingData::lookup_for(nm->method());
+                if (mtd != nullptr) {
+                  mtd->iterate_all_compiles([&](CompileTrainingData* ctd) {
+                    debug_scc.print("     CTD: "); ctd->print_on(&debug_scc); debug_scc.cr();
+                  });
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -647,17 +695,7 @@ bool SCCHeader::verify_config(const char* cache_path, uint load_size) const {
   return true;
 }
 
-static volatile int _reading_nmethod = 0;
-
-class ReadingMark {
-public:
-  ReadingMark() {
-    Atomic::inc(&_reading_nmethod);
-  }
-  ~ReadingMark() {
-    Atomic::dec(&_reading_nmethod);
-  }
-};
+volatile int SCCache::_reading_nmethod = 0;
 
 SCCache::~SCCache() {
   if (_closing) {
@@ -4013,22 +4051,4 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
     }
   }
   return id;
-}
-
-template<typename Function>
-void SCCache::iterate(Function function) { // lambda enabled API
-  SCCache* cache = open_for_read();
-  if (cache != nullptr) {
-    ReadingMark rdmk;
-
-    uint count = cache->_load_header->entries_count();
-    uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
-    SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
-
-    for (uint i = 0; i < count; i++) {
-      int index = search_entries[2*i + 1];
-      SCCEntry* entry = &(load_entries[index]);
-      function(entry);
-    }
-  }
 }
