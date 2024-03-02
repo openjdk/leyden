@@ -194,7 +194,7 @@ void log_vm_init_stats() {
 //      Threads::java_threads_do(&cl);
 //    }
 //    log.cr();
-    log.print("Deoptimization events: ");
+    log.print_cr("Deoptimization events: ");
     Deoptimization::print_statistics_on(&log);
     log.cr();
 

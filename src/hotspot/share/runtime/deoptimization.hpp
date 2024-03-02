@@ -326,10 +326,12 @@ class Deoptimization : AllStatic {
   static void deoptimize_frame(JavaThread* thread, intptr_t* id);
 
   // Statistics
-  static void gather_statistics(DeoptReason reason, DeoptAction action,
+  static void gather_statistics(nmethod* nm, DeoptReason reason, DeoptAction action,
                                 Bytecodes::Code bc = Bytecodes::_illegal);
   static void print_statistics();
   static void print_statistics_on(outputStream* st);
+
+  static void print_statistics_on(const char* title, int lvl, outputStream* st);
 
   // How much room to adjust the last frame's SP by, to make space for
   // the callee's interpreter frame (which expects locals to be next to
@@ -485,7 +487,7 @@ class Deoptimization : AllStatic {
   static const char* _trap_reason_name[];
   static const char* _trap_action_name[];
 
-  static juint _deoptimization_hist[Reason_LIMIT][1+Action_LIMIT][BC_CASE_LIMIT];
+  static juint _deoptimization_hist[1 + 4 + 5][Reason_LIMIT][1+Action_LIMIT][BC_CASE_LIMIT];
   // Note:  Histogram array size is 1-2 Kb.
 
  public:
