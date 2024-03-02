@@ -225,12 +225,6 @@ CompileTrainingData* CompileTrainingData::make(CompileTask* task) {
   Thread* thread = Thread::current();
   methodHandle m(thread, task->method());
   MethodTrainingData* mtd = MethodTrainingData::make(m);
-  CompileTrainingData* ctd = CompileTrainingData::make(mtd, level, compile_id);
-  return ctd;
-}
-
-CompileTrainingData* CompileTrainingData::make(MethodTrainingData* mtd, int level, int compile_id) {
-  assert(level > CompLevel_none, "not a compiled level");
   mtd->notice_compilation(level);
 
   CompileTrainingData* ctd = CompileTrainingData::allocate(mtd, level, compile_id);
@@ -243,6 +237,7 @@ CompileTrainingData* CompileTrainingData::make(MethodTrainingData* mtd, int leve
   }
   return ctd;
 }
+
 
 void CompileTrainingData::dec_init_deps_left(KlassTrainingData* ktd) {
   LogStreamHandle(Trace, training) log;

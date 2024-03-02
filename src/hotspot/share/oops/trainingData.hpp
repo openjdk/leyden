@@ -597,20 +597,15 @@ private:
 
 public:
   ciRecords& ci_records() { return _ci_records; }
-  // Record a use of a method in a given task.  If non-null, the given
-  // method is not the top-level method of the task, but instead it is
-  // inlined into the top-level method.
   static CompileTrainingData* make(CompileTask* task);
-  static CompileTrainingData* make(MethodTrainingData* m, int level, int compile_id);
 
   virtual CompileTrainingData* as_CompileTrainingData() const { return const_cast<CompileTrainingData*>(this); };
 
-  MethodTrainingData* method()      const { return _method; }
+  MethodTrainingData* method() const { return _method; }
 
   CompileTrainingData* next() const { return _next; }
 
   int level() const { return _level; }
-  //void set_level(int level) { _level = level; }
 
   int compile_id() const { return _compile_id; }
 
