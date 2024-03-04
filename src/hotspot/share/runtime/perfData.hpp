@@ -826,8 +826,8 @@ class PerfDataManager : AllStatic {
                                                   const char* elapsed_counter_name,
                                                   const char* thread_counter_name,
                                                   PerfData::Units u, TRAPS) {
-      PerfCounter* elapsed_counter = create_long_counter(ns, elapsed_counter_name, u, nullptr, THREAD);
-      PerfCounter* thread_counter = create_long_counter(ns, thread_counter_name, u, nullptr, THREAD);
+      PerfCounter* elapsed_counter = create_long_counter(ns, elapsed_counter_name, u, (jlong)0, THREAD);
+      PerfCounter* thread_counter = create_long_counter(ns, thread_counter_name, u, (jlong)0, THREAD);
 
       PerfTickCounters* counters = new PerfTickCounters(counter_name, elapsed_counter, thread_counter);
       return counters;
