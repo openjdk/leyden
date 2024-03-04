@@ -347,6 +347,10 @@ public:
     return nullptr;
   }
 
+  // Do not archive any new InstanceKlasses that are loaded after this method is called.
+  // This avoids polluting the archive with classes that are only used by GenerateJLIClassesHelper.
+  static void ignore_new_classes();
+
 #ifdef ASSERT
   // This object marks a critical period when writing the CDS archive. During this
   // period, the JVM must not load any new classes, so as to avoid adding new

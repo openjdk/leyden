@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -212,6 +212,13 @@ void LambdaFormInvokers::regenerate_class(char* class_name, ClassFileStream& st,
 }
 
 void LambdaFormInvokers::dump_static_archive_invokers() {
+  if (CDSConfig::is_dumping_preimage_static_archive() ||
+      CDSConfig::is_dumping_final_static_archive()) {
+    // This function writes the "names" of the invokers.
+    // This is not supported in new CDS workflow for now.
+    return;
+  }
+
   if (_lambdaform_lines != nullptr && _lambdaform_lines->length() > 0) {
     int count = 0;
     int len   = _lambdaform_lines->length();

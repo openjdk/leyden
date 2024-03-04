@@ -93,6 +93,7 @@ static Array<InstanceKlass*>* _archived_lambda_proxy_classes_boot = nullptr;
 static Array<InstanceKlass*>* _archived_lambda_proxy_classes_boot2 = nullptr;
 static Array<InstanceKlass*>* _archived_lambda_proxy_classes_platform = nullptr;
 static Array<InstanceKlass*>* _archived_lambda_proxy_classes_app = nullptr;
+static bool _ignore_new_classes = false;
 
 // Used by NoClassLoadingMark
 DEBUG_ONLY(bool SystemDictionaryShared::_class_loading_may_happen = true;)
@@ -277,6 +278,11 @@ bool SystemDictionaryShared::is_hidden_lambda_proxy(InstanceKlass* ik) {
     return false;
   }
 }
+
+void SystemDictionaryShared::ignore_new_classes() {
+  _ignore_new_classes = true;
+}
+
 
 bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
   if (CDSConfig::is_dumping_final_static_archive() && k->is_shared_unregistered_class()
@@ -539,7 +545,14 @@ void SystemDictionaryShared::initialize() {
 void SystemDictionaryShared::init_dumptime_info(InstanceKlass* k) {
   MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
   assert(SystemDictionaryShared::class_loading_may_happen(), "sanity");
-  _dumptime_table->allocate_info(k);
+  DumpTimeClassInfo* info = _dumptime_table->allocate_info(k);
+  if (_ignore_new_classes) {
+    if (!LambdaFormInvokers::may_be_regenerated_class(k->name())) {
+      ResourceMark rm;
+      log_debug(cds)("Skipping %s: Class loaded for lambda form invoker regeneration", k->name()->as_C_string());
+      info->set_excluded();
+    }
+  }
 }
 
 void SystemDictionaryShared::remove_dumptime_info(InstanceKlass* k) {

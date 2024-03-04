@@ -3732,7 +3732,9 @@ JVM_END
 
 JVM_LEAF_PROF(jboolean, JVM_IsDumpingClassList, JVM_IsDumpingClassList(JNIEnv *env))
 #if INCLUDE_CDS
-  return ClassListWriter::is_enabled() || CDSConfig::is_dumping_dynamic_archive();
+  return ClassListWriter::is_enabled() || CDSConfig::is_dumping_dynamic_archive()
+  || CDSConfig::is_dumping_preimage_static_archive()
+  ;
 #else
   return false;
 #endif // INCLUDE_CDS
@@ -3740,12 +3742,13 @@ JVM_END
 
 JVM_ENTRY_PROF(void, JVM_LogLambdaFormInvoker, JVM_LogLambdaFormInvoker(JNIEnv *env, jstring line))
 #if INCLUDE_CDS
-  assert(ClassListWriter::is_enabled() || CDSConfig::is_dumping_dynamic_archive(),  "Should be set and open or do dynamic dump");
+  assert(ClassListWriter::is_enabled() || CDSConfig::is_dumping_dynamic_archive() ||
+         CDSConfig::is_dumping_preimage_static_archive(),  "Should be set and open or do dynamic dump");
   if (line != nullptr) {
     ResourceMark rm(THREAD);
     Handle h_line (THREAD, JNIHandles::resolve_non_null(line));
     char* c_line = java_lang_String::as_utf8_string(h_line());
-    if (CDSConfig::is_dumping_dynamic_archive()) {
+    if (CDSConfig::is_dumping_dynamic_archive() || CDSConfig::is_dumping_preimage_static_archive()) {
       // Note: LambdaFormInvokers::append take same format which is not
       // same as below the print format. The line does not include LAMBDA_FORM_TAG.
       LambdaFormInvokers::append(os::strdup((const char*)c_line, mtInternal));

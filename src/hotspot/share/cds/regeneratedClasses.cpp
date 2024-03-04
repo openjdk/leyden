@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -63,6 +63,12 @@ void RegeneratedClasses::add_class(InstanceKlass* orig_klass, InstanceKlass* reg
     } else {
       _renegerated_objs->put((address)orig_m, (address)regen_m);
     }
+  }
+
+  if (log_is_enabled(Info, cds)) {
+    ResourceMark rm;
+    log_info(cds)("Regenerated class %s: methods %d -> %d)", orig_klass->external_name(),
+                  orig_klass->methods()->length(), regen_klass->methods()->length());
   }
 }
 

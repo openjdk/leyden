@@ -658,7 +658,9 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
 void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   ClassPrelinker::initialize();
 
-  if (!jcmd_request && !CDSConfig::is_dumping_dynamic_archive()) {
+  if (!jcmd_request && !CDSConfig::is_dumping_dynamic_archive()
+      && !CDSConfig::is_dumping_preimage_static_archive()
+      && !CDSConfig::is_dumping_final_static_archive()) {
     // If we have regenerated invoker classes in the dynamic archive,
     // they will conflict with the resolved CONSTANT_Klass references that are stored
     // in the static archive. This is not easy to handle. Let's disable
@@ -713,6 +715,16 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
         }
       }
     }
+  }
+
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    // Do this after all classes are verified by the above loop.
+    // Any classes loaded from here on will be automatically excluded, so
+    // there's no need to force verification or resolve CP entries. 
+    RecordTraining = false;
+    SystemDictionaryShared::ignore_new_classes();
+    LambdaFormInvokers::regenerate_holder_classes(CHECK);
+    RecordTraining = true;
   }
 
   if (CDSConfig::is_dumping_final_static_archive()) {
@@ -849,6 +861,17 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       log_info(cds)("Reading extra data from %s ...", SharedArchiveConfigFile);
       read_extra_data(THREAD, SharedArchiveConfigFile);
       log_info(cds)("Reading extra data: done.");
+    }
+  }
+
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    log_info(cds)("Reading lambda form invokers of in JDK default classlist ...");
+    char default_classlist[JVM_MAXPATHLEN];
+    get_default_classlist(default_classlist, sizeof(default_classlist));
+    struct stat statbuf;
+    if (os::stat(default_classlist, &statbuf) == 0) {
+      ClassListParser::parse_classlist(default_classlist,
+                                       ClassListParser::_parse_lambda_forms_invokers_only, CHECK);
     }
   }
 
@@ -1049,11 +1072,13 @@ bool MetaspaceShared::try_link_class(JavaThread* current, InstanceKlass* ik) {
 #if INCLUDE_CDS_JAVA_HEAP
 void VM_PopulateDumpSharedSpace::dump_java_heap_objects(GrowableArray<Klass*>* klasses) {
   if(!HeapShared::can_write()) {
-    log_info(cds)(
+    if (!CDSConfig::is_dumping_preimage_static_archive()) {
+     log_info(cds)(
       "Archived java heap is not supported as UseG1GC "
       "and UseCompressedClassPointers are required."
       "Current settings: UseG1GC=%s, UseCompressedClassPointers=%s.",
       BOOL_TO_STR(UseG1GC), BOOL_TO_STR(UseCompressedClassPointers));
+    }
     return;
   }
   // Find all the interned strings that should be dumped.
