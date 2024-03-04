@@ -912,7 +912,7 @@ class PerfTraceThreadTime: public PerfTraceTimeBase {
 
   public:
     inline PerfTraceThreadTime(PerfCounter* counter, bool is_on = true) : PerfTraceTimeBase(&_t, counter, is_on) {
-      if (!UsePerfData || !is_on) return;
+      if (!UsePerfData || !is_on || !TraceThreadTime) return;
       if (counter != nullptr) {
         _t.start();
       }

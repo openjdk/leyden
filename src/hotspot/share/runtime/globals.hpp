@@ -2027,6 +2027,9 @@ const int ObjectAlignmentInBytes = 8;
                 "Unconditionally record nmethod dependencies on class "     \
                 "rewriting/transformation independently of the JVMTI "      \
                 "can_{retransform/redefine}_classes capabilities.")         \
+                                                                            \
+  product(bool, TraceThreadTime, false,                                     \
+          "Enable tracing of thread time in Perf counters")                 \
 
 // end of RUNTIME_FLAGS
 
