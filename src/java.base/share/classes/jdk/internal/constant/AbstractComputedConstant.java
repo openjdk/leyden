@@ -34,7 +34,11 @@ import java.util.function.Supplier;
 
 public abstract sealed class AbstractComputedConstant<V, P>
         implements ComputedConstant<V>
-        permits ClassProvidedComputedConstant, ListElementComputedConstant, MethodHandleComputedConstant, StandardComputedConstant {
+        permits ClassProvidedComputedConstant,
+        ListElementComputedConstant,
+        MethodHandleComputedConstant,
+        StandardComputedConstant,
+        MapElementComputedConstant {
 
     // `Unsafe` is used rather than the supported API of `VarHandle` to allow
     // the use of `ComputedConstant` constructs early in the boot process.

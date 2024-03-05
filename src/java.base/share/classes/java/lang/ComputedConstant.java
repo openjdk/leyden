@@ -2,9 +2,12 @@ package java.lang;
 
 import jdk.internal.constant.AbstractComputedConstant;
 import jdk.internal.constant.ClassProvidedComputedConstant;
+import jdk.internal.constant.IndexedComputedConstantMap;
 import jdk.internal.constant.ListElementComputedConstant;
+import jdk.internal.constant.MapElementComputedConstant;
 import jdk.internal.constant.MethodHandleComputedConstant;
 import jdk.internal.constant.OnDemandComputedConstantList;
+import jdk.internal.constant.OnDemandComputedConstantMap;
 import jdk.internal.constant.StandardComputedConstant;
 import jdk.internal.javac.PreviewFeature;
 
@@ -12,12 +15,15 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.RandomAccess;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 
 /**
  * An immutable value holder that is initialized at most once via a provider, offering the performance
@@ -241,6 +247,7 @@ public sealed interface ComputedConstant<V>
         permits AbstractComputedConstant,
         ClassProvidedComputedConstant,
         ListElementComputedConstant,
+        MapElementComputedConstant,
         MethodHandleComputedConstant,
         StandardComputedConstant {
 
@@ -506,5 +513,55 @@ public sealed interface ComputedConstant<V>
      * @param <V> v
      */
     interface ComputedConstantList<V> extends List<ComputedConstant<V>>, RandomAccess {}
+
+    /**
+     * {@return an immutable map of computed constant values} This accepts a provided
+     * size and uses an indexer to map the keys.
+     *
+     * <p>Indexer's exceptions, such as {@link ClassCastException}, are propagated
+     * to the map. Returned indexes out of range {@code [0, size)} is treated as if the key
+     * is not in the map.
+     *
+     * <p>The behavior if the mapper and indexer are not bijective (one-on-one)
+     * is undefined.
+     *
+     * <p>If the generator throws an exception, the currently binding computed constant
+     * value will end up in error.
+     *
+     * @param size size of the map
+     * @param mapper the mapper, from index to key
+     * @param indexer the indexer, from key to index
+     * @param generator generates values from the keys
+     * @param <K> the key type
+     * @param <V> the computed constant's value type
+     * @throws IllegalArgumentException if {@code size} is negative
+     */
+    static <K, V> Map<K, ComputedConstant<V>> indexedMapOf(int size,
+                                                           IntFunction<K> mapper,
+                                                           ToIntFunction<K> indexer,
+                                                           Function<K, V> generator) {
+        if (size < 0) {
+            throw new IllegalArgumentException();
+        }
+        return new IndexedComputedConstantMap<>(size, mapper, indexer, generator);
+    }
+
+    /**
+     * {@return an immutable map of computed constant values} This accepts a universe
+     * of possible keys and uses hash code to map.
+     *
+     * <p>If the generator throws an exception, the currently binding computed constant
+     * value will end up in error.
+     *
+     * @param keys the set of possible keys
+     * @param generator generates values from the keys
+     * @param <K> the key type
+     * @param <V> the computed constant's value type
+     * @throws NullPointerException if any argument or any element in {@code keys} is
+     * {@code null}
+     */
+    static <K, V> Map<K, ComputedConstant<V>> mapOf(Set<K> keys, Function<K, V> generator) {
+        return new OnDemandComputedConstantMap<>(keys.toArray(), generator);
+    }
 
 }
