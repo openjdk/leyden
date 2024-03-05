@@ -85,7 +85,7 @@ $(JAVASTATIC_TARGET_IMAGE): $(JAVASTATIC_LINK_LIBS)
         ifeq ($(call isTargetOs, linux), true)
 	  $(ECHO) "Creating '$(JAVASTATIC_TARGET_IMAGE)'"
 	  $(call ExecuteWithLog, $(JAVASTATIC_LOG_PREFIX), \
-	      $(LD) $(JAVASTATIC_LDFLAGS) $(LD_OUT_OPTION)$(JAVASTATIC_TARGET) \
+	      $(LD) $(JAVASTATIC_LDFLAGS) -o $(JAVASTATIC_TARGET) \
 	          $(JAVASTATIC_LD_OBJ_ARG) $(JAVASTATIC_LIBS) $(JAVASTATIC_EXTRA_LIBS))
 	  echo copy $(JAVASTATIC_TARGET) to $@
 	  $(CP) -f $(JAVASTATIC_TARGET) $@
