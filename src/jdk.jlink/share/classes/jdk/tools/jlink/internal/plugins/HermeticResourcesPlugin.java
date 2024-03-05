@@ -38,7 +38,7 @@ import jdk.tools.jlink.plugin.ResourcePoolEntry;
 
 /**
  * A plugin to add hermetic packaged JDK resources in 'modules' (jimage) for
- * specified CONFIG entries. The original CONFIG entries are also included
+ * specified CONFIG and NATIVE_LIB entries. The original entries are also included
  * in the output runtime image.
  *
  * To enable the plugin with jlink option:
@@ -69,7 +69,8 @@ public final class HermeticResourcesPlugin extends AbstractPlugin {
     @Override
     public ResourcePool transform(ResourcePool in, ResourcePoolBuilder out) {
         in.transformAndCopy(res -> {
-            if (res.type().equals(ResourcePoolEntry.Type.CONFIG)) {
+            if (res.type().equals(ResourcePoolEntry.Type.CONFIG) ||
+                res.type().equals(ResourcePoolEntry.Type.NATIVE_LIB)) {
                 String hermeticResource = hermeticResources.get(res.path());
                 if (hermeticResource != null) {
                     out.add(ResourcePoolEntry.create(hermeticResource,

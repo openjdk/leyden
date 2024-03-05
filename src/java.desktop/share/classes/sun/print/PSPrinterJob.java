@@ -362,30 +362,64 @@ public class PSPrinterJob extends RasterPrinterJob {
         // search psfont.properties for fonts
         // and create and initialize fontProps if it exist.
 
+        String ulocale = SunToolkit.getStartupLocale().getLanguage();
+        String psfontj2dProps = "psfontj2d.properties";
+        String psfontj2dPropsForLang = psfontj2dProps + "." + ulocale;
+        String psfontProps = "psfont.properties";
+        String psfontPropsForLang = psfontProps + "." + ulocale;
+
+        if (JavaHome.isHermetic()) {
+            InputStream in = PSPrinterJob.class.getResourceAsStream(
+                    psfontj2dPropsForLang);
+            if (in == null) {
+                in = PSPrinterJob.class.getResourceAsStream(
+                    psfontPropsForLang);
+                if (in == null) {
+                    in = PSPrinterJob.class.getResourceAsStream(
+                        psfontj2dProps);
+                    if (in == null) {
+                        in = PSPrinterJob.class.getResourceAsStream(
+                            psfontProps);
+                        if (in == null) {
+                            return (Properties)null;
+                        }
+                    }
+                }
+            }
+            Properties props = new Properties();
+            try {
+                props.load(in);
+                in.close();
+            } catch (IOException ioe) {
+                return (Properties)null;
+            }
+            return props;
+        }
+
         String jhome = System.getProperty("java.home");
 
         if (jhome != null){
-            String ulocale = SunToolkit.getStartupLocale().getLanguage();
             try {
+                File f = new File(jhome + File.separator +
+                                  "lib" + File.separator +
+                                  psfontj2dPropsForLang);
 
-                Path p = JavaHome.getJDKResource(
-                             jhome, "lib", "psfontj2d.properties." + ulocale);
+                if (!f.canRead()){
 
-                if (!Files.isReadable(p)){
+                    f = new File(jhome + File.separator +
+                                      "lib" + File.separator +
+                                      psfontPropsForLang);
+                    if (!f.canRead()){
 
-                    p = JavaHome.getJDKResource(
-                            jhome, "lib", "psfont.properties." + ulocale);
-                    if (!Files.isReadable(p)){
+                        f = new File(jhome + File.separator + "lib" +
+                                     File.separator + psfontj2dProps);
 
-                        p = JavaHome.getJDKResource(
-                                jhome, "lib", "psfontj2d.properties");
+                        if (!f.canRead()){
 
-                        if (!Files.isReadable(p)){
+                            f = new File(jhome + File.separator + "lib" +
+                                         File.separator + psfontProps);
 
-                            p = JavaHome.getJDKResource(
-                                    jhome, "lib", "psfont.properties");
-
-                            if (!Files.isReadable(p)){
+                            if (!f.canRead()){
                                 return (Properties)null;
                             }
                         }
@@ -394,7 +428,7 @@ public class PSPrinterJob extends RasterPrinterJob {
 
                 // Load property file
                 Properties props = new Properties();
-                try (InputStream in = Files.newInputStream(p)) {
+                try (FileInputStream in = new FileInputStream(f.getPath())) {
                     props.load(in);
                 }
                 return props;
