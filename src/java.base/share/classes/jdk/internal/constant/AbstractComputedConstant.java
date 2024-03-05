@@ -34,7 +34,7 @@ import java.util.function.Supplier;
 
 public abstract sealed class AbstractComputedConstant<V, P>
         implements ComputedConstant<V>
-        permits ClassProvidedComputedConstant,  
+        permits ClassProvidedComputedConstant,
         ListElementComputedConstant,
         MethodHandleComputedConstant,
         StandardComputedConstant,
