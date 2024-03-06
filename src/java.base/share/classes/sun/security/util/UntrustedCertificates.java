@@ -57,9 +57,10 @@ public final class UntrustedCertificates {
         var dummy = AccessController.doPrivileged(new PrivilegedAction<Void>() {
             @Override
             public Void run() {
-                try (InputStream in = Files.newInputStream(
-                        JavaHome.getJDKResource(StaticProperty.javaHome(),
-                        "lib", "security", "blocked.certs"))) {
+                try (InputStream in = JavaHome.isHermetic() ?
+                         UntrustedCertificates.class.getResourceAsStream("blocked.certs") :
+                         new FileInputStream(new File(StaticProperty.javaHome(),
+                             "lib/security/blocked.certs"))) {
                     props.load(in);
                 } catch (IOException fnfe) {
                     if (debug != null) {

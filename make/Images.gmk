@@ -76,7 +76,7 @@ JLINK_ORDER_RESOURCES += \
 
 HERMETIC_RESOURCES :=
 ifeq ($(STATIC_JAVA), true)
-  HERMETIC_RESOURCES := --hermetic-resources /java.base/conf/security/java.security=/java.base/java/security/java.security,/java.logging/conf/logging.properties=/java.logging/java/util/logging/logging.properties,/java.base/conf/net.properties=/java.base/sun/net/net.properties,/java.desktop/lib/psfont.properties.ja=/java.desktop/sun/print/psfont.properties.ja,/java.desktop/lib/psfontj2d.properties=/java.desktop/sun/print/psfontj2d.properties
+  HERMETIC_RESOURCES := --hermetic-resources /java.base/conf/security/java.security=/java.base/java/security/java.security,/java.logging/conf/logging.properties=/java.logging/java/util/logging/logging.properties,/java.base/conf/net.properties=/java.base/sun/net/net.properties,/java.desktop/lib/psfont.properties.ja=/java.desktop/sun/print/psfont.properties.ja,/java.desktop/lib/psfontj2d.properties=/java.desktop/sun/print/psfontj2d.properties,/java.base/lib/security/blocked.certs=/java.base/sun/security/util/blocked.certs
 endif
 
 JLINK_TOOL := $(JLINK) -J-Djlink.debug=true \
