@@ -25,8 +25,6 @@
 package sun.security.util;
 
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.security.cert.X509Certificate;
