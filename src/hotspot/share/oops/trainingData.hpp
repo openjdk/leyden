@@ -456,6 +456,8 @@ class KlassTrainingData : public TrainingData {
     return "{ klass training data }";
   };
 
+  void verify();
+
   static KlassTrainingData* allocate(InstanceKlass* holder);
   static KlassTrainingData* allocate(Symbol* name, Symbol* loader_name);
 
@@ -470,6 +472,8 @@ class KlassTrainingData : public TrainingData {
 
 // Information about particular JIT tasks.
 class CompileTrainingData : public TrainingData {
+  friend KlassTrainingData;
+
   // Used by CDS. These classes need to access the private default constructor.
   template <class T> friend class CppVtableTesterA;
   template <class T> friend class CppVtableTesterB;

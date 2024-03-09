@@ -112,11 +112,39 @@ void TrainingData::initialize() {
   }
 }
 
+static void verify_archived_entry(TrainingData* td, const TrainingData::Key* k) {
+  ResourceMark rm;
+  guarantee(TrainingData::Key::can_compute_cds_hash(k), "%s %s " INTPTR_FORMAT,
+            (k->name1() != nullptr ? k->name1()->as_C_string() : "(null)"),
+            (k->name2() != nullptr ? k->name2()->as_C_string() : "(null)"),
+            p2i(k->holder()));
+
+  TrainingData* td1 = TrainingData::lookup_archived_training_data(k);
+  guarantee(td == td1, "%s %s " INTPTR_FORMAT ": " INTPTR_FORMAT " != " INTPTR_FORMAT,
+            (k->name1() != nullptr ? k->name1()->as_C_string() : "(null)"),
+            (k->name2() != nullptr ? k->name2()->as_C_string() : "(null)"),
+            p2i(k->holder()), p2i(td), p2i(td1));
+}
+
 void TrainingData::verify() {
   if (TrainingData::have_data()) {
     archived_training_data_dictionary()->iterate([&](TrainingData* td) {
-      if (td->is_MethodTrainingData()) {
-        td->as_MethodTrainingData()->verify();
+      if (td->is_KlassTrainingData()) {
+        KlassTrainingData* ktd = td->as_KlassTrainingData();
+        if (ktd->has_holder() && ktd->holder()->is_loaded()) {
+          Key k(ktd->holder());
+          verify_archived_entry(td, &k);
+        }
+        ktd->verify();
+      } else if (td->is_MethodTrainingData()) {
+        MethodTrainingData* mtd = td->as_MethodTrainingData();
+        if (mtd->has_holder() && mtd->holder()->method_holder()->is_loaded()) {
+          Key k(mtd->holder());
+          verify_archived_entry(td, &k);
+        }
+        mtd->verify();
+      } else if (td->is_CompileTrainingData()) {
+        td->as_CompileTrainingData()->verify();
       }
     });
   }
@@ -632,6 +660,17 @@ void MethodTrainingData::cleanup(Visitor& visitor) {
     if (ctd->method() != this) {
       ctd->method()->cleanup(visitor);
     }
+  }
+}
+
+void KlassTrainingData::verify() {
+  for (int i = 0; i < comp_dep_count(); i++) {
+    CompileTrainingData* ctd = comp_dep(i);
+    if (!ctd->_init_deps.contains(this)) {
+      print_on(tty); tty->cr();
+      ctd->print_on(tty); tty->cr();
+    }
+    guarantee(ctd->_init_deps.contains(this), "");
   }
 }
 
