@@ -266,9 +266,11 @@ bool ClassPrelinker::can_archive_resolved_klass(InstanceKlass* cp_holder, Klass*
       return true;
     }
 
-    if (is_vm_class(cp_holder)) {
-      return is_vm_class(ik);
-    } else if (is_preloaded_class(ik)) {
+// FIXME: what are the limitations for a well-known class here?
+//    if (is_vm_class(cp_holder)) {
+//      return is_vm_class(ik);
+//    }
+    if (is_preloaded_class(ik)) {
       if (cp_holder->is_shared_platform_class()) {
         add_initiated_klass(cp_holder, ik);
         return true;
@@ -282,8 +284,15 @@ bool ClassPrelinker::can_archive_resolved_klass(InstanceKlass* cp_holder, Klass*
         return true;
       }
     }
-
-    // TODO -- allow objArray classes, too
+  } else if (resolved_klass->is_objArray_klass()) {
+    Klass* elem = ObjArrayKlass::cast(resolved_klass)->bottom_klass();
+    if (elem->is_instance_klass()) {
+      return can_archive_resolved_klass(cp_holder, InstanceKlass::cast(elem));
+    } else {
+      return false; // FIXME
+    }
+  } else if (resolved_klass->is_typeArray_klass()) {
+    return false; // FIXME
   }
 
   return false;
@@ -486,22 +495,10 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   methodHandle mh(THREAD, m);
   constantPoolHandle cp(THREAD, ik->constants());
   HandleMark hm(THREAD);
-  int cp_index;
+  int cp_index = cp->to_cp_index(raw_index, bc);
 
-  if (bc == Bytecodes::_invokehandle  ||
-      bc == Bytecodes::_invokestatic  ||
-      bc == Bytecodes::_invokespecial ||
-      bc == Bytecodes::_invokevirtual ||
-      bc == Bytecodes::_invokeinterface) {
-    ResolvedMethodEntry* method_entry = cp->cache()->resolved_method_entry_at(raw_index);
-    if (method_entry->is_resolved(bc)) {
-      return;
-    }
-    cp_index = method_entry->constant_pool_index();
-  } else {
-    assert(bc == Bytecodes::_getfield  || bc == Bytecodes::_putfield ||
-           bc == Bytecodes::_getstatic || bc == Bytecodes::_putstatic, "must be");
-    cp_index = cp->cache()->resolved_field_entry_at(raw_index)->constant_pool_index();
+  if (cp->is_resolved(raw_index, bc)) {
+    return;
   }
 
   if (preresolve_list != nullptr && preresolve_list->at(cp_index) == false) {
@@ -517,7 +514,6 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   }
   Klass* resolved_klass = cp->klass_ref_at(raw_index, bc, CHECK);
 
-  const char* ref_kind = "";
   const char* is_static = "";
   const char* is_regen = "";
 
@@ -532,13 +528,11 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
       return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
     InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
-    ref_kind = "field ";
     is_static = " *** static";
     break;
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
     InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
-    ref_kind = "field ";
     break;
 
   case Bytecodes::_invokestatic:
@@ -546,25 +540,17 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
       return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
-    ref_kind = "method";
     is_static = " *** static";
     break;
 
   case Bytecodes::_invokevirtual:
   case Bytecodes::_invokespecial:
-    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
-    ref_kind = "method";
-    break;
-
   case Bytecodes::_invokeinterface:
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
-    ref_kind = "interface method";
     break;
 
   case Bytecodes::_invokehandle:
     InterpreterRuntime::cds_resolve_invokehandle(raw_index, cp, CHECK);
-    ref_kind = "method";
-    break;
     break;
 
   default:
@@ -573,10 +559,12 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
 
   if (log_is_enabled(Trace, cds, resolve)) {
     ResourceMark rm(THREAD);
+    bool resolved = cp->is_resolved(raw_index, bc);
     Symbol* name = cp->name_ref_at(raw_index, bc);
     Symbol* signature = cp->signature_ref_at(raw_index, bc);
-    log_trace(cds, resolve)("Resolved %s [%3d] %s%s -> %s.%s:%s%s", ref_kind, cp_index,
-                            ik->external_name(), is_regen,
+    log_trace(cds, resolve)("%s %s [%3d] %s%s -> %s.%s:%s%s",
+                            (resolved ? "Resolved" : "Failed to resolve"),
+                            Bytecodes::name(bc), cp_index, ik->external_name(), is_regen,
                             resolved_klass->external_name(),
                             name->as_C_string(), signature->as_C_string(), is_static);
   }

@@ -453,58 +453,6 @@ void ConstantPool::remove_unshareable_info() {
   archive_entries();
 }
 
-void ConstantPool::archive_entries() {
-  InstanceKlass* src_holder = ArchiveBuilder::current()->get_source_addr(pool_holder());
-  assert(src_holder->is_linked(), "must be");
-  ResourceMark rm;
-  bool archived = false;
-  bool preresolve = pool_holder()->is_shared_boot_class() || pool_holder()->is_shared_platform_class() ||
-                    pool_holder()->is_shared_app_class();
-  for (int cp_index = 1; cp_index < length(); cp_index++) { // cp_index 0 is unused
-    int cp_tag = tag_at(cp_index).value();
-    switch (cp_tag) {
-    case JVM_CONSTANT_UnresolvedClass:
-      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(false);
-      break;
-    case JVM_CONSTANT_UnresolvedClassInError:
-      tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
-      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(false);
-      break;
-    case JVM_CONSTANT_MethodHandleInError:
-      tag_at_put(cp_index, JVM_CONSTANT_MethodHandle);
-      break;
-    case JVM_CONSTANT_MethodTypeInError:
-      tag_at_put(cp_index, JVM_CONSTANT_MethodType);
-      break;
-    case JVM_CONSTANT_DynamicInError:
-      tag_at_put(cp_index, JVM_CONSTANT_Dynamic);
-      break;
-    case JVM_CONSTANT_Class:
-      if (preresolve) {
-        archived = maybe_archive_resolved_klass_at(cp_index);
-      } else {
-        archived = false;
-      }
-      if (!archived) {
-        // This referenced class cannot be archived. Revert the tag to UnresolvedClass,
-        // so that the proper class loading and initialization can happen at runtime.
-        int resolved_klass_index = klass_slot_at(cp_index).resolved_klass_index();
-        resolved_klasses()->at_put(resolved_klass_index, nullptr);
-        tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
-      }
-      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(archived);
-      break;
-    default:
-      break;
-    }
-  }
-
-  if (cache() != nullptr) {
-    // cache() is null if this class is not yet linked.
-    cache()->remove_unshareable_info();
-  }
-}
-
 static const char* get_type(Klass* k) {
   const char* type;
   Klass* src_k;
@@ -539,6 +487,81 @@ static const char* get_type(Klass* k) {
   return type;
 }
 
+void ConstantPool::archive_entries() {
+  InstanceKlass* src_holder = ArchiveBuilder::current()->get_source_addr(pool_holder());
+  assert(src_holder->is_linked(), "must be");
+  ResourceMark rm;
+  log_info(cds, resolve)("Archiving CP entries for %s", pool_holder()->name()->as_C_string());
+  bool archived = false;
+  bool preresolve = pool_holder()->is_shared_boot_class() || pool_holder()->is_shared_platform_class() ||
+                    pool_holder()->is_shared_app_class();
+  for (int cp_index = 1; cp_index < length(); cp_index++) { // cp_index 0 is unused
+    int cp_tag = tag_at(cp_index).value();
+    switch (cp_tag) {
+    case JVM_CONSTANT_UnresolvedClass:
+      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(false, false);
+      break;
+    case JVM_CONSTANT_UnresolvedClassInError:
+      tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
+      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(false, false);
+      break;
+    case JVM_CONSTANT_MethodHandleInError:
+      tag_at_put(cp_index, JVM_CONSTANT_MethodHandle);
+      break;
+    case JVM_CONSTANT_MethodTypeInError:
+      tag_at_put(cp_index, JVM_CONSTANT_MethodType);
+      break;
+    case JVM_CONSTANT_DynamicInError:
+      tag_at_put(cp_index, JVM_CONSTANT_Dynamic);
+      break;
+    case JVM_CONSTANT_Class:
+      if (preresolve) {
+        archived = maybe_archive_resolved_klass_at(cp_index);
+      } else {
+        archived = false;
+      }
+      if (!archived) {
+        // This referenced class cannot be archived. Revert the tag to UnresolvedClass,
+        // so that the proper class loading and initialization can happen at runtime.
+        int resolved_klass_index = klass_slot_at(cp_index).resolved_klass_index();
+        resolved_klasses()->at_put(resolved_klass_index, nullptr);
+        tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
+      }
+      if (preresolve) {
+        LogStreamHandle(Trace, cds, resolve) log;
+        if (log.is_enabled()) {
+          ResourceMark rm;
+          log.print("%s klass  CP entry [%3d]: %s %s",
+                    (archived ? "archived" : "excluded"),
+                    cp_index, pool_holder()->name()->as_C_string(), get_type(pool_holder()));
+          if (archived) {
+            CPKlassSlot kslot = klass_slot_at(cp_index);
+            int resolved_klass_index = kslot.resolved_klass_index();
+            Klass* k = resolved_klasses()->at(resolved_klass_index);
+
+            log.print(" => %s %s%s", k->name()->as_C_string(), get_type(k),
+                      pool_holder()->is_subtype_of(k) ? "" : " (not supertype)");
+          } else {
+            CPKlassSlot kslot = klass_slot_at(cp_index);
+            int name_index = kslot.name_index();
+            Symbol* name = symbol_at(name_index);
+            log.print("  \"%s\"", name->as_C_string());
+          }
+        }
+      }
+      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(archived, preresolve && !archived);
+      break;
+    default:
+      break;
+    }
+  }
+
+  if (cache() != nullptr) {
+    // cache() is null if this class is not yet linked.
+    cache()->remove_unshareable_info();
+  }
+}
+
 bool ConstantPool::maybe_archive_resolved_klass_at(int cp_index) {
   assert(ArchiveBuilder::current()->is_in_buffer_space(this), "must be");
   assert(tag_at(cp_index).is_klass(), "must be resolved");
@@ -559,13 +582,6 @@ bool ConstantPool::maybe_archive_resolved_klass_at(int cp_index) {
   if (k != nullptr) {
     ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
     if (ClassPrelinker::can_archive_resolved_klass(src_cp, cp_index)) {
-      if (log_is_enabled(Debug, cds, resolve)) {
-        ResourceMark rm;
-        log_debug(cds, resolve)("archived klass  CP entry [%3d]: %s %s => %s %s%s", cp_index,
-                                pool_holder()->name()->as_C_string(), get_type(pool_holder()),
-                                k->name()->as_C_string(), get_type(k),
-                                pool_holder()->is_subtype_of(k) ? "" : " (not supertype)");
-      }
       return true;
     }
   }
@@ -588,13 +604,13 @@ bool ConstantPool::can_archive_invokehandle(ResolvedMethodEntry* rme) {
 }
 
 bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry) {
-  if (pool_holder()->is_hidden()) { // Not sure how to handle this yet ...
-    if (pool_holder()->name()->starts_with("java/lang/invoke/LambdaForm$")) {
-      // Hmmm, walking on thin ice here, but maybe we are OK :-)
-    } else {
-      return false;
-    }
-  }
+//  if (pool_holder()->is_hidden()) { // Not sure how to handle this yet ...
+//    if (pool_holder()->name()->starts_with("java/lang/invoke/LambdaForm$")) {
+//      // Hmmm, walking on thin ice here, but maybe we are OK :-)
+//    } else {
+//      return false;
+//    }
+//  }
 
   if (!(pool_holder()->is_shared_boot_class() || pool_holder()->is_shared_platform_class() ||
         pool_holder()->is_shared_app_class())) {
@@ -609,11 +625,15 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
     return false;
   }
 
-  if (method_entry->method() == nullptr) {
-    return false;
-  }
-  if (method_entry->method()->is_continuation_native_intrinsic()) {
-    return false; // FIXME: corresponding stub is generated on demand during method resolution (see LinkResolver::resolve_static_call).
+  if (method_entry->is_resolved(Bytecodes::_invokevirtual)) {
+//    assert(method_entry->method() == nullptr, "");
+  } else {
+    if (method_entry->method() == nullptr) {
+      return false;
+    }
+    if (method_entry->method()->is_continuation_native_intrinsic()) {
+      return false; // FIXME: corresponding stub is generated on demand during method resolution (see LinkResolver::resolve_static_call).
+    }
   }
 
   int cp_index = method_entry->constant_pool_index();
@@ -666,14 +686,6 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
     }
   }
 
-  if (log_is_enabled(Debug, cds, resolve)) {
-    ResourceMark rm;
-    Symbol* name = uncached_name_ref_at(cp_index);
-    Symbol* signature = uncached_signature_ref_at(cp_index);
-    log_debug(cds, resolve)("archived %s method CP entry [%3d]: %s => %s.%s:%s%s", is_interface, cp_index,
-                            pool_holder()->name()->as_C_string(), resolved_klass->name()->as_C_string(),
-                            name->as_C_string(), signature->as_C_string(), is_static);
-  }
   return true;
 }
 #endif // INCLUDE_CDS
@@ -919,9 +931,32 @@ int ConstantPool::to_cp_index(int index, Bytecodes::Code code) {
     case Bytecodes::_fast_invokevfinal: // Bytecode interpreter uses this
       return resolved_method_entry_at(index)->constant_pool_index();
     default:
-      tty->print_cr("Unexpected bytecode: %d", code);
-      ShouldNotReachHere(); // All cases should have been handled
-      return -1;
+      fatal("Unexpected bytecode: %s", Bytecodes::name(code));
+  }
+}
+
+bool ConstantPool::is_resolved(int index, Bytecodes::Code code) {
+  assert(cache() != nullptr, "'index' is a rewritten index so this class must have been rewritten");
+  switch(code) {
+    case Bytecodes::_invokedynamic:
+      return resolved_indy_entry_at(decode_invokedynamic_index(index))->is_resolved();
+
+    case Bytecodes::_getfield:
+    case Bytecodes::_getstatic:
+    case Bytecodes::_putfield:
+    case Bytecodes::_putstatic:
+      return resolved_field_entry_at(index)->is_resolved(code);
+
+    case Bytecodes::_invokeinterface:
+    case Bytecodes::_invokehandle:
+    case Bytecodes::_invokespecial:
+    case Bytecodes::_invokestatic:
+    case Bytecodes::_invokevirtual:
+    case Bytecodes::_fast_invokevfinal: // Bytecode interpreter uses this
+      return resolved_method_entry_at(index)->is_resolved(code);
+
+    default:
+      fatal("Unexpected bytecode: %s", Bytecodes::name(code));
   }
 }
 

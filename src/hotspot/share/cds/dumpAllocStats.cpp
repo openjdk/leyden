@@ -104,18 +104,22 @@ void DumpAllocStats::print_stats(int ro_all, int rw_all) {
 
 #undef fmt_stats
 
-  msg.info("Class  CP entries = %6d, archived = %6d (%5.1f%%)",
+  msg.info("Class  CP entries = %6d, archived = %6d (%5.1f%%), excluded = %6d",
            _num_klass_cp_entries, _num_klass_cp_entries_archived,
-           percent_of(_num_klass_cp_entries_archived, _num_klass_cp_entries));
-  msg.info("Field  CP entries = %6d, archived = %6d (%5.1f%%)",
+           percent_of(_num_klass_cp_entries_archived, _num_klass_cp_entries),
+           _num_klass_cp_entries_excluded);
+  msg.info("Field  CP entries = %6d, archived = %6d (%5.1f%%), excluded = %6d",
            _num_field_cp_entries, _num_field_cp_entries_archived,
-           percent_of(_num_field_cp_entries_archived, _num_field_cp_entries));
-  msg.info("Method CP entries = %6d, archived = %6d (%5.1f%%)",
+           percent_of(_num_field_cp_entries_archived, _num_field_cp_entries),
+           _num_field_cp_entries_excluded);
+  msg.info("Method CP entries = %6d, archived = %6d (%5.1f%%), excluded = %6d",
            _num_method_cp_entries, _num_method_cp_entries_archived,
-           percent_of(_num_method_cp_entries_archived, _num_method_cp_entries));
-  msg.info("Indy   CP entries = %6d, archived = %6d (%5.1f%%)",
+           percent_of(_num_method_cp_entries_archived, _num_method_cp_entries),
+           _num_method_cp_entries_excluded);
+  msg.info("Indy   CP entries = %6d, archived = %6d (%5.1f%%), excluded = %6d",
            _num_indy_cp_entries, _num_indy_cp_entries_archived,
-           percent_of(_num_indy_cp_entries_archived, _num_indy_cp_entries));
+           percent_of(_num_indy_cp_entries_archived, _num_indy_cp_entries),
+           _num_indy_cp_entries_excluded);
   msg.info("Platform loader initiated classes = %5d", ClassPrelinker::num_platform_initiated_classes());
   msg.info("App      loader initiated classes = %5d", ClassPrelinker::num_app_initiated_classes());
   msg.info("Dynamic proxy classes             = %5d%s", _num_dynamic_proxy_classes,

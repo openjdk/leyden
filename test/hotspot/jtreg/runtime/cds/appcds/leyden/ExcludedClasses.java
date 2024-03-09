@@ -81,7 +81,7 @@ public class ExcludedClasses {
         @Override
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
-                "-Xlog:cds+resolve=debug",
+                "-Xlog:cds+resolve=trace",
 
                 // This is needed to call into ClassLoader::defineClass()
                 "--add-opens", "java.base/java.lang=ALL-UNNAMED",

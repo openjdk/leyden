@@ -313,7 +313,7 @@ public:
       if (bucket_type == VALUE_ONLY_BUCKET_TYPE) {
         function(decode(entry[0]));
       } else {
-        u4*entry_max = _entries + BUCKET_OFFSET(_buckets[i + 1]);
+        u4* entry_max = _entries + BUCKET_OFFSET(_buckets[i + 1]);
         while (entry < entry_max) {
           function(decode(entry[1]));
           entry += 2;

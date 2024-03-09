@@ -57,7 +57,11 @@ void ResolvedMethodEntry::remove_unshareable_info() {
 
 #if INCLUDE_CDS
 void ResolvedMethodEntry::mark_and_relocate(ConstantPool* src_cp) {
-  ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_method);
+  if (_method == nullptr) {
+    assert(bytecode2() == Bytecodes::_invokevirtual, "");
+  } else {
+    ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_method);
+  }
   if (bytecode1() == Bytecodes::_invokeinterface) {
     ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_entry_specific._interface_klass);
   }

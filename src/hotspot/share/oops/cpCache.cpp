@@ -407,70 +407,109 @@ void ConstantPoolCache::remove_unshareable_info() {
 
   if (_resolved_indy_entries != nullptr) {
     for (int i = 0; i < _resolved_indy_entries->length(); i++) {
-      ResolvedIndyEntry *rei = resolved_indy_entry_at(i);
+      ResolvedIndyEntry* rei = resolved_indy_entry_at(i);
       int cp_index = rei->constant_pool_index();
       bool archived = false;
-      if (rei->is_resolved() && ClassPrelinker::is_indy_archivable(src_cp, cp_index)) {
-        if (log_is_enabled(Debug, cds, resolve)) {
+      bool resolved = rei->is_resolved();
+      if (resolved && ClassPrelinker::is_indy_archivable(src_cp, cp_index)) {
+        rei->mark_and_relocate();
+        archived = true;
+      } else {
+        rei->remove_unshareable_info();
+      }
+      if (resolved) {
+        LogStreamHandle(Trace, cds, resolve) log;
+        if (log.is_enabled()) {
           ResourceMark rm;
           int bsm = cp->bootstrap_method_ref_index_at(cp_index);
           int bsm_ref = cp->method_handle_index_at(bsm);
           Symbol* bsm_name = cp->uncached_name_ref_at(bsm_ref);
           Symbol* bsm_signature = cp->uncached_signature_ref_at(bsm_ref);
           Symbol* bsm_klass = cp->klass_name_at(cp->uncached_klass_ref_index_at(bsm_ref));
-          log_debug(cds, resolve)("archived indy   CP entry [%3d]: %s (%d) => %s.%s:%s", cp_index,
-                                  cp->pool_holder()->name()->as_C_string(), i,
-                                  bsm_klass->as_C_string(), bsm_name->as_C_string(), bsm_signature->as_C_string());
+          log.print("%s indy   CP entry [%3d]: %s (%d)",
+                    (archived ? "archived" : "excluded"),
+                    cp_index, cp->pool_holder()->name()->as_C_string(), i);
+          log.print(" %s %s.%s:%s", (archived ? "=>" : "  "), bsm_klass->as_C_string(), bsm_name->as_C_string(), bsm_signature->as_C_string());
         }
-        rei->mark_and_relocate();
-        archived = true;
-      } else {
-        rei->remove_unshareable_info();
       }
-      ArchiveBuilder::alloc_stats()->record_indy_cp_entry(archived);
+      ArchiveBuilder::alloc_stats()->record_indy_cp_entry(archived, resolved && !archived);
     }
   }
 
   if (_resolved_field_entries != nullptr) {
     for (int i = 0; i < _resolved_field_entries->length(); i++) {
-      ResolvedFieldEntry *rfi = resolved_field_entry_at(i);
+      ResolvedFieldEntry* rfi = resolved_field_entry_at(i);
       int cp_index = rfi->constant_pool_index();
       bool archived = false;
-      if ((rfi->is_resolved(Bytecodes::_getstatic) ||
-           rfi->is_resolved(Bytecodes::_putstatic) ||
-           rfi->is_resolved(Bytecodes::_putfield) ||
-           rfi->is_resolved(Bytecodes::_putfield)) &&
-          ClassPrelinker::can_archive_resolved_field(src_cp, cp_index)) {
-        if (log_is_enabled(Debug, cds, resolve)) {
-          ResourceMark rm;
-          int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
-          Symbol* klass_name = cp->klass_name_at(klass_cp_index);
-          Symbol* name = cp->uncached_name_ref_at(cp_index);
-          Symbol* signature = cp->uncached_signature_ref_at(cp_index);
-          log_debug(cds, resolve)("archived field  CP entry [%3d]: %s => %s.%s:%s", cp_index,
-                                  cp->pool_holder()->name()->as_C_string(), klass_name->as_C_string(),
-                                  name->as_C_string(), signature->as_C_string());
-        }
+      bool resolved = rfi->is_resolved(Bytecodes::_getstatic) ||
+                      rfi->is_resolved(Bytecodes::_putstatic) ||
+                      rfi->is_resolved(Bytecodes::_putfield)  ||
+                      rfi->is_resolved(Bytecodes::_putfield);
+      if (resolved && ClassPrelinker::can_archive_resolved_field(src_cp, cp_index)) {
         rfi->mark_and_relocate();
         archived = true;
       } else {
         rfi->remove_unshareable_info();
       }
-      ArchiveBuilder::alloc_stats()->record_field_cp_entry(archived);
+      if (resolved) {
+        LogStreamHandle(Trace, cds, resolve) log;
+        if (log.is_enabled()) {
+          ResourceMark rm;
+          int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
+          Symbol* klass_name = cp->klass_name_at(klass_cp_index);
+          Symbol* name = cp->uncached_name_ref_at(cp_index);
+          Symbol* signature = cp->uncached_signature_ref_at(cp_index);
+          log.print("%s field  CP entry [%3d]: %s %s %s.%s:%s",
+                    (archived ? "archived" : "excluded"),
+                    cp_index,
+                    cp->pool_holder()->name()->as_C_string(),
+                    (archived ? "=>" : "  "),
+                    klass_name->as_C_string(), name->as_C_string(), signature->as_C_string());
+        }
+      }
+      ArchiveBuilder::alloc_stats()->record_field_cp_entry(archived, resolved && !archived);
     }
   }
 
   if (_resolved_method_entries != nullptr) {
     for (int i = 0; i < _resolved_method_entries->length(); i++) {
-      ResolvedMethodEntry *rme = resolved_method_entry_at(i);
+      ResolvedMethodEntry* rme = resolved_method_entry_at(i);
+      int cp_index = rme->constant_pool_index();
       bool archived = false;
-      if (cp->can_archive_resolved_method(rme)) {
+      bool resolved = rme->is_resolved(Bytecodes::_invokevirtual)   ||
+                      rme->is_resolved(Bytecodes::_invokespecial)   ||
+                      rme->is_resolved(Bytecodes::_invokestatic)    ||
+                      rme->is_resolved(Bytecodes::_invokeinterface) ||
+                      rme->is_resolved(Bytecodes::_invokehandle);
+      if (resolved && cp->can_archive_resolved_method(rme)) {
         rme->mark_and_relocate(src_cp);
         archived = true;
       } else {
         rme->remove_unshareable_info();
       }
-      ArchiveBuilder::alloc_stats()->record_method_cp_entry(archived);
+      if (resolved) {
+        LogStreamHandle(Trace, cds, resolve) log;
+        if (log.is_enabled()) {
+          ResourceMark rm;
+          int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
+          Symbol* klass_name = cp->klass_name_at(klass_cp_index);
+          Symbol* name = cp->uncached_name_ref_at(cp_index);
+          Symbol* signature = cp->uncached_signature_ref_at(cp_index);
+          log.print("%s%s method CP entry [%3d]: %s %s.%s:%s",
+                    (archived ? "archived" : "excluded"),
+                    (rme->is_resolved(Bytecodes::_invokeinterface) ? " interface" : ""),
+                    cp_index,
+                    cp->pool_holder()->name()->as_C_string(),
+                    klass_name->as_C_string(), name->as_C_string(), signature->as_C_string());
+          if (archived) {
+            Klass* resolved_klass = cp->resolved_klass_at(klass_cp_index);
+            log.print(" => %s%s",
+                      resolved_klass->name()->as_C_string(),
+                      (rme->is_resolved(Bytecodes::_invokestatic) ? " *** static" : ""));
+          }
+        }
+      }
+      ArchiveBuilder::alloc_stats()->record_method_cp_entry(archived, resolved && !archived);
     }
   }
 }
