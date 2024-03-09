@@ -905,11 +905,11 @@ ciMethod* ciEnv::get_method_by_index_impl(const constantPoolHandle& cpool,
       constantTag tag = cpool->tag_ref_at(index, bc);
       assert(accessor->get_instanceKlass() == cpool->pool_holder(), "not the pool holder?");
       Method* m = lookup_method(accessor, holder, name_sym, sig_sym, bc, tag);
-      if (m != nullptr &&
-          (bc == Bytecodes::_invokestatic
-           ?  m->method_holder()->is_not_initialized()
-           : !m->method_holder()->is_loaded())) {
-        m = nullptr;
+      if (m != nullptr) {
+        ciInstanceKlass* cik = get_instance_klass(m->method_holder());
+        if ((bc == Bytecodes::_invokestatic && cik->is_not_initialized()) || !cik->is_loaded()) {
+          m = nullptr;
+        }
       }
       if (m != nullptr && ReplayCompiles && !ciReplay::is_loaded(m)) {
         m = nullptr;
