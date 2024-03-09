@@ -39,6 +39,7 @@
 #include "code/codeCache.hpp"
 #include "code/SCCache.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
+#include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerOracle.hpp"
 #include "gc/shared/collectedHeap.hpp"
@@ -592,7 +593,8 @@ void before_exit(JavaThread* thread, bool halt) {
   os::terminate_signal_thread();
 
   if (VerifyTrainingData) {
-    TrainingData::verify();
+    EXCEPTION_MARK;
+    CompilationPolicy::replay_training_at_init(true, THREAD); // implies TrainingData::verify()
   }
 
   print_statistics();

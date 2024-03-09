@@ -126,6 +126,8 @@ class ClassPrelinker :  AllStatic {
   static bool has_non_default_static_fields(InstanceKlass* ik);
   static bool is_forced_preinit_class(InstanceKlass* ik);
 
+  static void replay_training_at_init(Array<InstanceKlass*>* preloaded_klasses, TRAPS) NOT_CDS_RETURN;
+
 public:
   static void initialize();
   static void dispose();
@@ -182,7 +184,7 @@ public:
 
   static void runtime_preload(JavaThread* current, Handle loader) NOT_CDS_RETURN;
   static void init_javabase_preloaded_classes(TRAPS) NOT_CDS_RETURN;
-  static void replay_training_at_init_for_javabase_preloaded_classes(TRAPS) NOT_CDS_RETURN;
+  static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;
   static bool class_preloading_finished();
 
   static int  num_platform_initiated_classes();

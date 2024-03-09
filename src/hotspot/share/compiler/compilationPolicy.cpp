@@ -238,46 +238,95 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
 }
 
 void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS) {
-  KlassTrainingData* ktd = KlassTrainingData::find(klass);
-  if (ktd != nullptr) {
-    guarantee(ktd->has_holder(), "");
-    ktd->notice_fully_initialized();
-
+  if (!klass->has_init_deps_processed()) {
     ResourceMark rm;
-    ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
-      if (ctd->init_deps_left() == 0) {
-        MethodTrainingData* mtd = ctd->method();
-        if (mtd->has_holder()) {
-          const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
-          CompilationPolicy::maybe_compile_early(mh, THREAD);
+    log_debug(training)("Replay training: %s", klass->external_name());
+
+    KlassTrainingData* ktd = KlassTrainingData::find(klass);
+    if (ktd != nullptr) {
+      guarantee(ktd->has_holder(), "");
+      ktd->notice_fully_initialized(); // sets klass->has_init_deps_processed bit
+      assert(klass->has_init_deps_processed(), "");
+
+      ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
+        if (ctd->init_deps_left() == 0) {
+          MethodTrainingData* mtd = ctd->method();
+          if (mtd->has_holder()) {
+            const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
+            CompilationPolicy::maybe_compile_early(mh, THREAD);
+          }
+        }
+      });
+    }
+    Array<Method*>* methods = klass->methods();
+    for (int i = 0; i < methods->length(); i++) {
+      const methodHandle mh(THREAD, methods->at(i));
+      CompilationPolicy::maybe_compile_early_after_init(mh, THREAD);
+    }
+  }
+}
+
+void CompilationPolicy::replay_training_at_init(bool is_on_shutdown, TRAPS) {
+  // Drain pending queue when no concurrent processing thread is present.
+  if (UseConcurrentTrainingReplay) {
+    if (VerifyTrainingData) {
+      MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
+      while (!_training_replay_queue.is_empty_unlocked()) {
+        locker.wait(); // let the replay training thread drain the queue
+      }
+    }
+  } else {
+    do {
+      InstanceKlass* pending = _training_replay_queue.try_pop(TrainingReplayQueue_lock, THREAD);
+      if (pending == nullptr) {
+        break; // drained the queue
+      }
+      if (is_on_shutdown) {
+        LogStreamHandle(Warning, training) log;
+        if (log.is_enabled()) {
+          ResourceMark rm;
+          log.print("pending training replay request: %s%s",
+                    pending->external_name(), (pending->has_preinitialized_mirror() ? " (preinitialized)" : ""));
         }
       }
-    });
+      replay_training_at_init_impl(pending, THREAD);
+    } while (true);
   }
-  Array<Method*>* methods = klass->methods();
-  for (int i = 0; i < methods->length(); i++) {
-    const methodHandle mh(THREAD, methods->at(i));
-    CompilationPolicy::maybe_compile_early_after_init(mh, THREAD);
+
+  if (VerifyTrainingData) {
+    TrainingData::verify();
   }
 }
 
 void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
-  if (CompileBroker::initialized() && TrainingData::have_data() && klass->is_shared()) {
-    if (UseConcurrentTrainingReplay) {
+  assert(klass->is_initialized(), "");
+  if (TrainingData::have_data() && klass->is_shared() &&
+      (CompileBroker::replay_initialized() || !klass->has_preinitialized_mirror())) { // ignore preloaded classes during early startup
+    if (UseConcurrentTrainingReplay || !CompileBroker::replay_initialized()) {
       _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
     } else {
       replay_training_at_init_impl(klass, THREAD);
     }
-    guarantee(!HAS_PENDING_EXCEPTION, "");
+    assert(!HAS_PENDING_EXCEPTION, "");
+  }
+}
+
+// For TrainingReplayQueue
+template<>
+void CompilationPolicyUtils::Queue<InstanceKlass>::print_on(outputStream* st) {
+  int pos = 0;
+  for (QueueNode* cur = _head; cur != nullptr; cur = cur->next()) {
+    ResourceMark rm;
+    InstanceKlass* ik = cur->value();
+    st->print_cr("%3d: " INTPTR_FORMAT " %s", ++pos, p2i(ik), ik->external_name());
   }
 }
 
 void CompilationPolicy::replay_training_at_init_loop(TRAPS) {
   precond(UseConcurrentTrainingReplay);
 
-  while (!CompileBroker::is_compilation_disabled_forever()) {
+  while (!CompileBroker::is_compilation_disabled_forever() || VerifyTrainingData) {
     InstanceKlass* ik = _training_replay_queue.pop(TrainingReplayQueue_lock, THREAD);
-    if (CompileBroker::is_compilation_disabled_forever()) break;
     replay_training_at_init_impl(ik, THREAD);
   }
 }

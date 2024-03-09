@@ -1767,19 +1767,25 @@ void ClassPrelinker::init_javabase_preloaded_classes(TRAPS) {
   HeapShared::initialize_default_subgraph_classes(Handle(), CHECK);
 }
 
-void ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(TRAPS) {
-  Array<InstanceKlass*>* preloaded_klasses = _static_preloaded_klasses._boot;
+void ClassPrelinker::replay_training_at_init(Array<InstanceKlass*>* preloaded_klasses, TRAPS) {
   if (preloaded_klasses != nullptr) {
     for (int i = 0; i < preloaded_klasses->length(); i++) {
       InstanceKlass* ik = preloaded_klasses->at(i);
-      if (ik->is_initialized()) {
-        if (log_is_enabled(Debug, cds, init)) {
-          ResourceMark rm;
-          log_debug(cds, init)("replay training %s", ik->external_name());
-        }
+      if (ik->has_preinitialized_mirror() && ik->is_initialized() && !ik->has_init_deps_processed()) {
         CompilationPolicy::replay_training_at_init(ik, CHECK);
       }
     }
+  }
+}
+
+void ClassPrelinker::replay_training_at_init_for_preloaded_classes(TRAPS) {
+  if (CDSConfig::has_preloaded_classes() && TrainingData::have_data()) {
+    replay_training_at_init(_static_preloaded_klasses._boot,     CHECK);
+    replay_training_at_init(_static_preloaded_klasses._boot2,    CHECK);
+    replay_training_at_init(_static_preloaded_klasses._platform, CHECK);
+    replay_training_at_init(_static_preloaded_klasses._app,      CHECK);
+
+    CompilationPolicy::replay_training_at_init(false, CHECK);
   }
 }
 

@@ -24,6 +24,7 @@
 
 #include <cds/archiveBuilder.hpp>
 #include <classfile/systemDictionaryShared.hpp>
+#include <compiler/compileBroker.hpp>
 #include "precompiled.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciMetadata.hpp"
@@ -264,8 +265,14 @@ uint CompileTrainingData::compute_init_deps_left(bool count_initialized) {
     KlassTrainingData* ktd = _init_deps.at(i);
     // Ignore symbolic refs and already initialized classes (unless explicitly requested).
     if (ktd->has_holder()) {
+      InstanceKlass* holder = ktd->holder();
       if (!ktd->holder()->is_initialized() || count_initialized) {
         ++left;
+      } else if (holder->is_shared_unregistered_class()) {
+        Key k(holder);
+        if (!Key::can_compute_cds_hash(&k)) {
+          ++left; // FIXME: !!! init tracking doesn't work well for custom loaders !!!
+        }
       }
     }
   }
@@ -441,6 +448,12 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
   if (name_only) {
     return;
   }
+  if (_comp_deps.length() > 0) {
+    for (int i = 0, len = _comp_deps.length(); i < len; i++) {
+      st->print(" dep:");
+      _comp_deps.at(i)->print_on(st, true);
+    }
+  }
 }
 
 void KlassTrainingData::refresh_from(const InstanceKlass* klass) {
@@ -482,11 +495,17 @@ void KlassTrainingData::init_holder(const InstanceKlass* klass) {
 }
 
 void KlassTrainingData::notice_fully_initialized() {
+  ResourceMark rm;
+  assert(has_holder(), "");
+  assert(holder()->is_initialized(), "wrong state: %s %s",
+         holder()->name()->as_C_string(), holder()->init_state_name());
+
   TrainingDataLocker l; // Not a real lock if we don't collect the data,
                         // that's why we need the atomic decrement below.
   for (int i = 0; i < comp_dep_count(); i++) {
     comp_dep(i)->dec_init_deps_left(this);
   }
+  holder()->set_has_init_deps_processed();
 }
 
 void TrainingData::init_dumptime_table(TRAPS) {
@@ -495,14 +514,12 @@ void TrainingData::init_dumptime_table(TRAPS) {
   }
   _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>();
   if (CDSConfig::is_dumping_final_static_archive()) {
-    class Transfer {
-    public:
-      void do_value(TrainingData* record) {
-        _dumptime_training_data_dictionary->append(record);
-      }
-    } transfer;
-    _archived_training_data_dictionary.iterate(&transfer);
+    _archived_training_data_dictionary.iterate([&](TrainingData* record) {
+      _dumptime_training_data_dictionary->append(record);
+    });
   } else {
+    TrainingDataLocker l;
+
     ResourceMark rm;
     Visitor visitor(training_data_set()->size());
     training_data_set()->iterate_all([&](const TrainingData::Key* k, TrainingData* td) {
@@ -511,6 +528,10 @@ void TrainingData::init_dumptime_table(TRAPS) {
         _dumptime_training_data_dictionary->append(td);
       }
     });
+
+    if (VerifyTrainingData) {
+      training_data_set()->verify();
+    }
   }
 
   prepare_recompilation_schedule(CHECK);
@@ -611,6 +632,40 @@ void MethodTrainingData::cleanup(Visitor& visitor) {
     if (ctd->method() != this) {
       ctd->method()->cleanup(visitor);
     }
+  }
+}
+
+void MethodTrainingData::verify() {
+  iterate_all_compiles([](CompileTrainingData* ctd) {
+    ctd->verify();
+
+    int init_deps_left1 = ctd->init_deps_left();
+    int init_deps_left2 = ctd->compute_init_deps_left();
+
+    if (init_deps_left1 != init_deps_left2) {
+      ctd->print_on(tty); tty->cr();
+    }
+    guarantee(init_deps_left1 == init_deps_left2, "mismatch: %d %d %d",
+              init_deps_left1, init_deps_left2, ctd->init_deps_left());
+  });
+}
+
+void CompileTrainingData::verify() {
+  for (int i = 0; i < init_dep_count(); i++) {
+    KlassTrainingData* ktd = init_dep(i);
+    if (ktd->has_holder() && ktd->holder()->is_shared_unregistered_class()) {
+      LogStreamHandle(Warning, training) log;
+      if (log.is_enabled()) {
+        ResourceMark rm;
+        log.print("CTD "); print_value_on(&log);
+        log.print(" depends on unregistered class %s", ktd->holder()->name()->as_C_string());
+      }
+    }
+    if (!ktd->_comp_deps.contains(this)) {
+      print_on(tty); tty->cr();
+      ktd->print_on(tty); tty->cr();
+    }
+    guarantee(ktd->_comp_deps.contains(this), "");
   }
 }
 
@@ -740,7 +795,7 @@ TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {
       return td;
     } else {
       // FIXME: decide what to do with symbolic TD
-      LogStreamHandle(Info,training) log;
+      LogStreamHandle(Trace, training) log;
       if (log.is_enabled()) {
         ResourceMark rm;
         log.print_cr("Ignored symbolic TrainingData:");

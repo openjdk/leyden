@@ -844,7 +844,6 @@ void InstanceKlass::initialize_from_cds(TRAPS) {
     log_class_init(THREAD, this);
     set_init_thread(THREAD);
     set_initialization_state_and_notify(fully_initialized, CHECK);
-    CompilationPolicy::replay_training_at_init(this, THREAD);
     return;
   }
 
@@ -1338,6 +1337,7 @@ void InstanceKlass::initialize_impl(TRAPS) {
   if (!HAS_PENDING_EXCEPTION) {
     set_initialization_state_and_notify(fully_initialized, THREAD);
     debug_only(vtable().verify(tty, true);)
+    CompilationPolicy::replay_training_at_init(this, THREAD);
   }
   else {
     // Step 10 and 11
@@ -1366,8 +1366,6 @@ void InstanceKlass::initialize_impl(TRAPS) {
     }
   }
   DTRACE_CLASSINIT_PROBE_WAIT(end, -1, wait);
-
-  CompilationPolicy::replay_training_at_init(this, THREAD);
 }
 
 void InstanceKlass::set_initialization_state_and_notify(ClassState state, JavaThread* current) {
@@ -2761,12 +2759,12 @@ void InstanceKlass::metaspace_pointers_do(MetaspaceClosure* it) {
 
 #if INCLUDE_CDS
 void InstanceKlass::remove_unshareable_info() {
-
   if (is_linked()) {
     assert(can_be_verified_at_dumptime(), "must be");
     // Remember this so we can avoid walking the hierarchy at runtime.
     set_verified_at_dump_time();
   }
+  _misc_flags.set_has_init_deps_processed(false);
 
   Klass::remove_unshareable_info();
 

@@ -207,6 +207,13 @@ class TrainingData : public Metadata {
       return _table.iterate_all(fn);
     }
     int size() const { return _table.number_of_entries(); }
+
+    void verify() const {
+      TrainingDataLocker::assert_locked();
+      iterate_all([&](const TrainingData::Key* k, TrainingData* td) {
+        td->verify();
+      });
+    }
   };
 
   class Visitor {
@@ -660,6 +667,8 @@ public:
     return (int)align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord)/BytesPerWord);
   }
 
+  void verify();
+
   static CompileTrainingData* allocate(MethodTrainingData* mtd, int level, int compile_id);
 };
 
@@ -768,15 +777,6 @@ class MethodTrainingData : public TrainingData {
     }
   }
 
-  void verify() {
-    iterate_all_compiles([](CompileTrainingData* ctd) {
-      int init_deps_left1 = ctd->init_deps_left();
-      int init_deps_left2 = ctd->compute_init_deps_left();
-      guarantee(init_deps_left1 == init_deps_left2, "mismatch: %d %d %d",
-                init_deps_left1, init_deps_left2, ctd->init_deps_left());
-    });
-  }
-
   virtual void metaspace_pointers_do(MetaspaceClosure* iter);
   virtual MetaspaceObj::Type type() const { return MethodTrainingDataType; }
 
@@ -792,6 +792,8 @@ class MethodTrainingData : public TrainingData {
   virtual const char* internal_name() const {
     return "{ method training data }";
   };
+
+  void verify();
 
   static MethodTrainingData* allocate(KlassTrainingData* ktd, Method* m);
   static MethodTrainingData* allocate(KlassTrainingData* ktd, Symbol* name, Symbol* signature);

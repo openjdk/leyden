@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
@@ -125,6 +126,7 @@
 #endif // ndef DTRACE_ENABLED
 
 bool CompileBroker::_initialized = false;
+bool CompileBroker::_replay_initialized = false;
 volatile bool CompileBroker::_should_block = false;
 volatile int  CompileBroker::_print_compilation_warning = 0;
 volatile jint CompileBroker::_should_compile_new_jobs = run_compilation;
@@ -368,7 +370,8 @@ void CompileQueue::add(CompileTask* task) {
     task->log_task_queued();
   }
 
-  if (TrainingData::need_data()) {
+  if (TrainingData::need_data() &&
+      !CDSConfig::is_dumping_final_static_archive()) { // FIXME: !!! MetaspaceShared::preload_and_dump() temporarily enables RecordTraining !!!
     CompileTrainingData* tdata = CompileTrainingData::make(task);
     if (tdata != nullptr) {
       tdata->record_compilation_queued(task);
@@ -1181,10 +1184,18 @@ void CompileBroker::init_compiler_threads() {
     }
   }
 #endif // defined(ASSERT) && COMPILER2_OR_JVMCI
-  if (UseConcurrentTrainingReplay) {
-    Handle thread_oop = create_thread_oop("Training replay thread", CHECK);
-    jobject thread_handle = JNIHandles::make_local(THREAD, thread_oop());
-    make_thread(training_replay_t, thread_handle, nullptr, nullptr, THREAD);
+}
+
+void CompileBroker::init_training_replay() {
+  // Ensure any exceptions lead to vm_exit_during_initialization.
+  EXCEPTION_MARK;
+  if (TrainingData::have_data()) {
+    if (UseConcurrentTrainingReplay) {
+      Handle thread_oop = create_thread_oop("Training replay thread", CHECK);
+      jobject thread_handle = JNIHandles::make_local(THREAD, thread_oop());
+      make_thread(training_replay_t, thread_handle, nullptr, nullptr, THREAD);
+    }
+    _replay_initialized = true;
   }
 }
 
@@ -2441,7 +2452,8 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   const int task_level = task->comp_level();
   AbstractCompiler* comp = task->compiler();
   CompileTrainingData* tdata = task->training_data();
-  assert(tdata == nullptr || TrainingData::need_data(), "");
+  assert(tdata == nullptr || TrainingData::need_data() ||
+         CDSConfig::is_dumping_preimage_static_archive(), ""); // FIXME: MetaspaceShared::preload_and_dump() messes with RecordTraining flag
   {
     // create the handle inside it's own block so it can't
     // accidentally be referenced once the thread transitions to

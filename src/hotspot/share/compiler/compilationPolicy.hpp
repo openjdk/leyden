@@ -96,7 +96,6 @@ class Queue {
   QueueNode* _head;
   QueueNode* _tail;
 
-  bool is_empty_unlocked() const { return _head == nullptr; }
   void push_unlocked(T* value) {
     QueueNode* n = new QueueNode(value, nullptr);
     if (_tail != nullptr) {
@@ -130,14 +129,28 @@ public:
     locker.notify_all();
   }
 
+  bool is_empty_unlocked() const { return _head == nullptr; }
+
   T* pop(Monitor* lock, TRAPS) {
     MonitorLocker locker(THREAD, lock);
     while(is_empty_unlocked() && !CompileBroker::is_compilation_disabled_forever()) {
+      locker.notify_all(); // notify that queue is empty
       locker.wait();
     }
     T* value = pop_unlocked();
     return value;
   }
+
+  T* try_pop(Monitor* lock, TRAPS) {
+    MonitorLocker locker(THREAD, lock);
+    T* value = nullptr;
+    if (!is_empty_unlocked()) {
+      value = pop_unlocked();
+    }
+    return value;
+  }
+
+  void print_on(outputStream* st);
 };
 } // namespace CompilationPolicyUtils
 
@@ -394,6 +407,8 @@ class CompilationPolicy : AllStatic {
   // If m must_be_compiled then request a compilation from the CompileBroker.
   // This supports the -Xcomp option.
   static void compile_if_required(const methodHandle& m, TRAPS);
+
+  static void replay_training_at_init(bool is_on_shutdown, TRAPS);
   static void replay_training_at_init(InstanceKlass* klass, TRAPS);
   static void replay_training_at_init_loop(TRAPS);
 

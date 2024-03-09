@@ -174,6 +174,7 @@ class CompileBroker: AllStatic {
 
  private:
   static bool _initialized;
+  static bool _replay_initialized;
   static volatile bool _should_block;
 
   // This flag can be used to stop compilation or turn it back on
@@ -263,6 +264,7 @@ class CompileBroker: AllStatic {
   static Handle create_thread_oop(const char* name, TRAPS);
   static JavaThread* make_thread(ThreadType type, jobject thread_oop, CompileQueue* queue, AbstractCompiler* comp, JavaThread* THREAD);
   static void init_compiler_threads();
+  static void init_training_replay();
   static void possibly_add_compiler_threads(JavaThread* THREAD);
   static bool compilation_is_prohibited(const methodHandle& method, int osr_bci, int comp_level, bool excluded);
 
@@ -322,6 +324,7 @@ public:
   }
 
   static bool initialized() { return _initialized; }
+  static bool replay_initialized() { return _replay_initialized; }
   static bool compilation_is_complete(Method* method, int osr_bci, int comp_level, bool online_only,
                                       CompileTask::CompileReason compile_reason);
   static bool compilation_is_in_queue(const methodHandle& method);

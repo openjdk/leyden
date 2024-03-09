@@ -39,9 +39,11 @@
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "code/SCCache.hpp"
+#include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"
 #include "compiler/compilerThread.hpp"
+#include "compiler/precompiler.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetNMethod.hpp"
 #include "gc/shared/gcVMOperations.hpp"
@@ -760,10 +762,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Start the method sampler
   MethodProfiler::initialize();
 
-  bool force_JVMCI_initialization = false;
-  if (!CDSConfig::has_preloaded_classes()) {
-    force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
-  }
+  bool force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
 
   ClassPrelinker::init_javabase_preloaded_classes(CHECK_JNI_ERR);
 
@@ -777,11 +776,6 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // signature polymorphic MH intrinsics can be missed
   // (see SystemDictionary::find_method_handle_intrinsic).
   initialize_jsr292_core_classes(CHECK_JNI_ERR);
-
-  if (CDSConfig::has_preloaded_classes()) {
-    force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
-    ClassPrelinker::replay_training_at_init_for_javabase_preloaded_classes(CHECK_JNI_ERR);
-  }
 
   // This will initialize the module system.  Only java.base classes can be
   // loaded until phase 2 completes
@@ -801,6 +795,11 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   // cache the system and platform class loaders
   SystemDictionary::compute_java_loaders(CHECK_JNI_ERR);
+
+  // Initiate replay training processing once preloading is over.
+  CompileBroker::init_training_replay();
+
+  ClassPrelinker::replay_training_at_init_for_preloaded_classes(CHECK_JNI_ERR);
 
   if (Continuations::enabled()) {
     // Initialize Continuation class now so that failure to create enterSpecial/doYield
