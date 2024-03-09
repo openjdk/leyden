@@ -87,6 +87,11 @@ class CompileTask : public CHeapObj<mtCompiler> {
     return reason_names[compile_reason];
   }
 
+  static bool reason_is_precompiled(CompileTask::CompileReason compile_reason) {
+    return (compile_reason == CompileTask::Reason_Precompile) ||
+           (compile_reason == CompileTask::Reason_PrecompileForPreload);
+  }
+
  private:
   static CompileTask*  _task_free_list;
   Monitor*             _lock;
@@ -195,8 +200,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
 #endif
 
   bool is_precompiled() {
-    return (compile_reason() == CompileTask::Reason_Precompile)         ||
-           (compile_reason() == CompileTask::Reason_PrecompileForPreload);
+    return reason_is_precompiled(compile_reason());
   }
 
   Monitor*     lock() const                      { return _lock; }

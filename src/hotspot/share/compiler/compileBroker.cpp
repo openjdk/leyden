@@ -1607,6 +1607,10 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
          compile_reason == CompileTask::Reason_PrecompileForPreload, "method holder must be initialized");
   // return quickly if possible
 
+  if (PrecompileOnlyAndExit && !CompileTask::reason_is_precompiled(compile_reason)) {
+    return nullptr;
+  }
+
   // lock, make sure that the compilation
   // isn't prohibited in a straightforward way.
   AbstractCompiler* comp = CompileBroker::compiler(comp_level);

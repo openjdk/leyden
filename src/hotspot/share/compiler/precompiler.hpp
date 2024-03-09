@@ -31,7 +31,12 @@
 class ArchiveBuilder;
 
 class Precompiler : AllStatic  {
+private:
+  static int _total_count;
+
 public:
+  static void compile_cached_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS);
+  static void compile_cached_code(TRAPS);
   static void compile_cached_code(ArchiveBuilder* builder, TRAPS);
 };
 

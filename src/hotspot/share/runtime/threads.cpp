@@ -823,9 +823,18 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   }
 #endif
 
+  if (PrecompileCode) {
+    Precompiler::compile_cached_code(CHECK_JNI_ERR);
+    if (PrecompileOnlyAndExit) {
+      SCCache::close();
+      log_vm_init_stats();
+      vm_direct_exit(0, "Code precompiation is over");
+    }
+  }
+
 #if defined(COMPILER2)
   // Pre-load cached compiled methods
-  SCCache::preload_code(THREAD);
+  SCCache::preload_code(CHECK_JNI_ERR);
 #endif
 
   if (NativeHeapTrimmer::enabled()) {

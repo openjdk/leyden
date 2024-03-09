@@ -490,6 +490,12 @@
                                                                             \
   product(bool, UseLockFreeCompileQueues, true,                             \
           "Use lock free compile queues")                                   \
+                                                                            \
+  product(bool, PrecompileCode, false,                                      \
+          "Precompile code")                                                \
+                                                                            \
+  product(bool, PrecompileOnlyAndExit, false,                               \
+          "Exit after precompilation step is over")                         \
 
 // end of COMPILER_FLAGS
 
