@@ -208,12 +208,25 @@ public:
   void do_cld(ClassLoaderData* cld) {
     for (Klass* klass = cld->klasses(); klass != nullptr; klass = klass->next_link()) {
       if (klass->is_instance_klass()) {
-        write_resolved_constants_for(InstanceKlass::cast(klass));
+        InstanceKlass* ik = InstanceKlass::cast(klass);
+        write_resolved_constants_for(ik);
+        write_array_info_for(ik); // FIXME: piggybacking on WriteResolveConstantsCLDClosure is misleading
       }
     }
   }
 };
 
+void ClassListWriter::write_array_info_for(InstanceKlass* ik) {
+  ObjArrayKlass* oak = ik->array_klasses();
+  if (oak != nullptr) {
+    while (oak->higher_dimension() != nullptr) {
+      oak = oak->higher_dimension();
+    }
+    ResourceMark rm;
+    outputStream* stream = _classlist_file;
+    stream->print_cr("%s %s %d", ClassListParser::ARRAY_TAG, ik->name()->as_C_string(), oak->dimension());
+  }
+}
 
 void ClassListWriter::write_resolved_constants() {
   if (!is_enabled()) {

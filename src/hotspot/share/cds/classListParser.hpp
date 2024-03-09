@@ -70,6 +70,8 @@ class ClassListParser : public StackObj {
   static const char* LAMBDA_PROXY_TAG;
   static const char* LAMBDA_FORM_TAG;
 public:
+  static const char* ARRAY_TAG;
+
   static const char* CLASS_REFLECTION_DATA_TAG;
   static const char* LOADER_NEGATIVE_CACHE_TAG;
 
@@ -146,6 +148,7 @@ private:
   void parse_class_reflection_data_tag();
   void parse_dynamic_proxy_tag();
   void parse_loader_negative_cache_tag();
+  void parse_array_dimension_tag();
 
   ClassListParser(const char* file, ParseMode _parse_mode);
   ~ClassListParser();

@@ -45,6 +45,7 @@ class ClassListWriter {
   static bool has_id(const InstanceKlass* k);
   static void assert_locked() { assert_lock_strong(ClassListFile_lock); }
   static void write_resolved_constants_for(InstanceKlass* klass);
+  static void write_array_info_for(InstanceKlass* klass);
   static void write_reflection_data_for(InstanceKlass* klass);
   static void write_loader_negative_lookup_cache_for(oop loader, const char* loader_type);
 public:

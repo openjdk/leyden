@@ -60,6 +60,7 @@ const char* ClassListParser::DYNAMIC_PROXY_TAG = "@dynamic-proxy";
 const char* ClassListParser::LAMBDA_FORM_TAG = "@lambda-form-invoker";
 const char* ClassListParser::LAMBDA_PROXY_TAG = "@lambda-proxy";
 const char* ClassListParser::LOADER_NEGATIVE_CACHE_TAG = "@loader-negative-cache";
+const char* ClassListParser::ARRAY_TAG = "@array";
 
 volatile Thread* ClassListParser::_parsing_thread = nullptr;
 ClassListParser* ClassListParser::_instance = nullptr;
@@ -339,6 +340,11 @@ bool ClassListParser::parse_at_tags() {
     _token = _line + offset;
     _constant_pool_line = true;
     parse_constant_pool_tag();
+    return true;
+  } else if (strcmp(_token, ARRAY_TAG) == 0) {
+    _token = _line + offset;
+    _constant_pool_line = true;
+    parse_array_dimension_tag();
     return true;
   } else if (strcmp(_token, CLASS_REFLECTION_DATA_TAG) == 0) {
     _token = _line + offset;
@@ -803,6 +809,42 @@ InstanceKlass* ClassListParser::find_builtin_class(JavaThread* current, const ch
     return ik;
   } else {
     return nullptr;
+  }
+}
+
+void ClassListParser::parse_array_dimension_tag() {
+  if (_parse_mode == _parse_lambda_forms_invokers_only) {
+    return;
+  }
+
+  skip_whitespaces();
+  char* class_name = _token;
+  skip_non_whitespaces();
+  *_token = '\0';
+  _token ++;
+
+  skip_whitespaces();
+  int dim;
+  parse_uint(&dim);
+
+  JavaThread* THREAD = JavaThread::current();
+  InstanceKlass* ik = find_builtin_class(THREAD, class_name);
+  if (ik == nullptr) {
+    _token = class_name;
+    if (strstr(class_name, "/$Proxy") != nullptr ||
+        strstr(class_name, "MethodHandle$Species_") != nullptr) {
+      // ignore -- TODO: we should filter these out in classListWriter.cpp
+    } else {
+      constant_pool_resolution_warning("class %s is not (yet) loaded by one of the built-in loaders", class_name);
+    }
+    return;
+  }
+
+  if (dim > 0) {
+    ik->array_klass(dim, THREAD);
+    if (HAS_PENDING_EXCEPTION) {
+      error("Array klass allocation failed: %s %d", _class_name, dim);
+    }
   }
 }
 
