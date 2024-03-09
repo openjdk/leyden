@@ -411,6 +411,26 @@ private:
   void clear_lookup_failed()   { _lookup_failed = false; }
   bool lookup_failed()   const { return _lookup_failed; }
 
+  SCCEntry* write_nmethod(const methodHandle& method,
+                          int compile_id,
+                          int entry_bci,
+                          CodeOffsets* offsets,
+                          int orig_pc_offset,
+                          DebugInformationRecorder* recorder,
+                          Dependencies* dependencies,
+                          CodeBuffer *code_buffer,
+                          int frame_size,
+                          OopMapSet* oop_maps,
+                          ExceptionHandlerTable* handler_table,
+                          ImplicitExceptionTable* nul_chk_table,
+                          AbstractCompiler* compiler,
+                          CompLevel comp_level,
+                          bool has_clinit_barriers,
+                          bool for_preload,
+                          bool has_unsafe_access,
+                          bool has_wide_vectors,
+                          bool has_monitors);
+
   static volatile int _reading_nmethod;
 
   class ReadingMark {
@@ -509,6 +529,13 @@ public:
                      bool has_unsafe_access,
                      bool has_wide_vectors,
                      bool has_monitors);
+
+  static uint store_entries_cnt() {
+    if (is_on_for_write()) {
+      return cache()->_store_entries_cnt;
+    }
+    return -1;
+  }
 
 // Static access
 

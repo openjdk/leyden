@@ -1334,7 +1334,9 @@ bool SCCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* 
 
 Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
   uint code_offset = read_position();
-  int not_init = *(int*)addr(code_offset);
+  uint state = *(uint*)addr(code_offset);
+  uint init_state = (state  & 1);
+  uint array_dim  = (state >> 1);
   code_offset += sizeof(int);
   if (_cache->use_meta_ptrs() && shared) {
     uint klass_offset = *(uint*)addr(code_offset);
@@ -1357,15 +1359,28 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
       return nullptr;
     } else
     // Allow not initialized klass which was uninitialized during code caching or for preload
-    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (not_init != 1) && !_preload) {
+    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1) && !_preload) {
       set_lookup_failed();
       log_warning(scc)("%d '%s' (L%d): Lookup failed for klass %s: not initialized",
                        compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     }
-    log_info(scc)("%d (L%d): Shared klass lookup: %s",
-                  compile_id(), comp_level(), k->external_name());
-    return k;
+    if (k->is_instance_klass() && array_dim > 0) {
+      Klass* ak = k->array_klass_or_null(array_dim);
+      // FIXME: what would it take to create an array class on the fly?
+//      Klass* ak = k->array_klass(dim, JavaThread::current());
+//      guarantee(JavaThread::current()->pending_exception() == nullptr, "");
+      if (ak == nullptr) {
+        set_lookup_failed();
+        log_warning(scc)("%d (L%d): %d-dimension array klass lookup failed: %s",
+                         compile_id(), comp_level(), array_dim, k->external_name());
+      }
+      return ak;
+    } else {
+      log_info(scc)("%d (L%d): Shared klass lookup: %s",
+                    compile_id(), comp_level(), k->external_name());
+      return k;
+    }
   }
   int name_length = *(int*)addr(code_offset);
   code_offset += sizeof(int);
@@ -1392,7 +1407,7 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
   }
   if (k != nullptr) {
     // Allow not initialized klass which was uninitialized during code caching
-    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (not_init != 1)) {
+    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1)) {
       set_lookup_failed();
       log_warning(scc)("%d (L%d): Lookup failed for klass %s: not initialized", compile_id(), comp_level(), &(dest[0]));
       return nullptr;
@@ -1523,7 +1538,15 @@ bool SCCache::write_klass(Klass* klass) {
     return false;
   }
   bool can_use_meta_ptrs = _use_meta_ptrs;
-  int not_init = 0;
+  uint array_dim = 0;
+  if (klass->is_objArray_klass()) {
+    array_dim = ObjArrayKlass::cast(klass)->dimension();
+    klass     = ObjArrayKlass::cast(klass)->bottom_klass(); // overwrites klass
+  }
+  if (klass->is_typeArray_klass()) {
+    // FIXME: primitive array support?
+  }
+  uint init_state = 0;
   if (klass->is_instance_klass()) {
     InstanceKlass* ik = InstanceKlass::cast(klass);
     ClassLoaderData* cld = ik->class_loader_data();
@@ -1541,9 +1564,10 @@ bool SCCache::write_klass(Klass* klass) {
       }
       can_use_meta_ptrs = false;
     }
-    not_init = !ik->is_initialized() ? 1 : 0;
+    init_state = (ik->is_initialized() ? 1 : 0);
   }
   ResourceMark rm;
+  uint state = (array_dim << 1) | (init_state & 1);
   if (can_use_meta_ptrs && CDSAccess::can_generate_cached_code(klass)) {
     DataKind kind = DataKind::Klass_Shared;
     uint n = write_bytes(&kind, sizeof(int));
@@ -1551,7 +1575,7 @@ bool SCCache::write_klass(Klass* klass) {
       return false;
     }
     // Record state of instance klass initialization.
-    n = write_bytes(&not_init, sizeof(int));
+    n = write_bytes(&state, sizeof(int));
     if (n != sizeof(int)) {
       return false;
     }
@@ -1560,8 +1584,10 @@ bool SCCache::write_klass(Klass* klass) {
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(scc)("%d (L%d): Wrote shared klass: %s%s @ 0x%08x", compile_id(), comp_level(), klass->external_name(),
-                  (!klass->is_instance_klass() ? "" : ((not_init == 0) ? " (initialized)" : " (not-initialized)")), klass_offset);
+    log_info(scc)("%d (L%d): Wrote shared klass: %s%s%s @ 0x%08x", compile_id(), comp_level(), klass->external_name(),
+                  (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
+                  (array_dim > 0 ? " (object array)" : ""),
+                  klass_offset);
     return true;
   }
   // Bailout if code has clinit barriers:
@@ -1578,7 +1604,7 @@ bool SCCache::write_klass(Klass* klass) {
     return false;
   }
   // Record state of instance klass initialization.
-  n = write_bytes(&not_init, sizeof(int));
+  n = write_bytes(&state, sizeof(int));
   if (n != sizeof(int)) {
     return false;
   }
@@ -1615,17 +1641,14 @@ bool SCCache::write_klass(Klass* klass) {
   if (n != (uint)total_length) {
     return false;
   }
-  log_info(scc)("%d (L%d): Wrote klass: %s%s",
+  log_info(scc)("%d (L%d): Wrote klass: %s%s%s",
                 compile_id(), comp_level(),
-                dest, (!klass->is_instance_klass() ? "" : ((not_init == 0) ? " (initialized)" : " (not-initialized)")));
+                dest, (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
+                (array_dim > 0 ? " (object array)" : ""));
   return true;
 }
 
 bool SCCache::write_method(Method* method) {
-  if (method->is_hidden()) { // Skip such nmethod
-    set_lookup_failed();
-    return false;
-  }
   bool can_use_meta_ptrs = _use_meta_ptrs;
   Klass* klass = method->method_holder();
   if (klass->is_instance_klass()) {
@@ -1669,6 +1692,10 @@ bool SCCache::write_method(Method* method) {
   }
   _for_preload = false;
   log_info(scc,cds)("%d (L%d): Not shared method: %s", compile_id(), comp_level(), method->name_and_sig_as_C_string());
+  if (method->is_hidden()) { // Skip such nmethod
+    set_lookup_failed();
+    return false;
+  }
   DataKind kind = DataKind::Method;
   uint n = write_bytes(&kind, sizeof(int));
   if (n != sizeof(int)) {
@@ -3040,11 +3067,41 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
   if (cache == nullptr) {
     return nullptr; // Cache file is closed
   }
-  if (method->is_hidden()) {
-    ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip hidden method '%s'", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string());
-    return nullptr;
+  SCCEntry* entry = cache->write_nmethod(method, comp_id, entry_bci, offsets, orig_pc_offset, recorder, dependencies, buffer,
+                                  frame_size, oop_maps, handler_table, nul_chk_table, compiler, comp_level,
+                                  has_clinit_barriers, for_preload, has_unsafe_access, has_wide_vectors, has_monitors);
+  if (entry == nullptr) {
+    log_warning(scc, nmethod)("%d (L%d): nmethod store attempt failed", task->compile_id(), task->comp_level());
   }
+  return entry;
+}
+
+SCCEntry* SCCache::write_nmethod(const methodHandle& method,
+                                 int comp_id,
+                                 int entry_bci,
+                                 CodeOffsets* offsets,
+                                 int orig_pc_offset,
+                                 DebugInformationRecorder* recorder,
+                                 Dependencies* dependencies,
+                                 CodeBuffer* buffer,
+                                 int frame_size,
+                                 OopMapSet* oop_maps,
+                                 ExceptionHandlerTable* handler_table,
+                                 ImplicitExceptionTable* nul_chk_table,
+                                 AbstractCompiler* compiler,
+                                 CompLevel comp_level,
+                                 bool has_clinit_barriers,
+                                 bool for_preload,
+                                 bool has_unsafe_access,
+                                 bool has_wide_vectors,
+                                 bool has_monitors) {
+  CompileTask* task = ciEnv::current()->task();
+
+//  if (method->is_hidden()) {
+//    ResourceMark rm;
+//    log_info(scc, nmethod)("%d (L%d): Skip hidden method '%s'", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string());
+//    return nullptr;
+//  }
   if (buffer->before_expand() != nullptr) {
     ResourceMark rm;
     log_info(scc, nmethod)("%d (L%d): Skip nmethod with expanded buffer '%s'", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string());
@@ -3059,7 +3116,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
     buffer->decode();
   }
 #endif
-  assert(!has_clinit_barriers || cache->_gen_preload_code, "sanity");
+  assert(!has_clinit_barriers || _gen_preload_code, "sanity");
   Method* m = method();
   bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)m); // herere
   InstanceKlass* holder = m->method_holder();
@@ -3076,16 +3133,16 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
     return nullptr;
   }
   assert(!for_preload || method_in_cds, "sanity");
-  cache->_for_preload = for_preload;
-  cache->_has_clinit_barriers = has_clinit_barriers;
+  _for_preload = for_preload;
+  _has_clinit_barriers = has_clinit_barriers;
 
-  if (!cache->align_write()) {
+  if (!align_write()) {
     return nullptr;
   }
-  cache->_compile_id = task->compile_id();
-  cache->_comp_level = task->comp_level();
+  _compile_id = task->compile_id();
+  _comp_level = task->comp_level();
 
-  uint entry_position = cache->_write_position;
+  uint entry_position = _write_position;
 
   uint decomp = (method->method_data() == nullptr) ? 0 : method->method_data()->decompile_count();
   // Write name
@@ -3098,7 +3155,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
     const char* name   = method->name_and_sig_as_C_string();
     log_info(scc, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s) to Startup Code Cache '%s'",
                            task->compile_id(), task->comp_level(), name, comp_level, decomp,
-                           (has_clinit_barriers ? ", has clinit barriers" : ""), cache->_cache_path);
+                           (has_clinit_barriers ? ", has clinit barriers" : ""), _cache_path);
 
     LogStreamHandle(Info, scc, loader) log;
     if (log.is_enabled()) {
@@ -3120,135 +3177,135 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
       }
       log.cr();
     }
-    name_offset = cache->_write_position  - entry_position;
+    name_offset = _write_position  - entry_position;
     name_size   = (uint)strlen(name) + 1; // Includes '/0'
-    n = cache->write_bytes(name, name_size);
+    n = write_bytes(name, name_size);
     if (n != name_size) {
       return nullptr;
     }
     hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
   }
 
-  if (!cache->align_write()) {
+  if (!align_write()) {
     return nullptr;
   }
 
-  uint code_offset = cache->_write_position - entry_position;
+  uint code_offset = _write_position - entry_position;
 
   int flags = ((has_unsafe_access ? 1 : 0) << 16) | ((has_wide_vectors ? 1 : 0) << 8) | (has_monitors ? 1 : 0);
-  n = cache->write_bytes(&flags, sizeof(int));
+  n = write_bytes(&flags, sizeof(int));
   if (n != sizeof(int)) {
     return nullptr;
   }
 
-  n = cache->write_bytes(&orig_pc_offset, sizeof(int));
+  n = write_bytes(&orig_pc_offset, sizeof(int));
   if (n != sizeof(int)) {
     return nullptr;
   }
 
-  n = cache->write_bytes(&frame_size, sizeof(int));
+  n = write_bytes(&frame_size, sizeof(int));
   if (n != sizeof(int)) {
     return nullptr;
   }
 
   // Write offsets
-  n = cache->write_bytes(offsets, sizeof(CodeOffsets));
+  n = write_bytes(offsets, sizeof(CodeOffsets));
   if (n != sizeof(CodeOffsets)) {
     return nullptr;
   }
 
   // Write OopRecorder data
-  if (!cache->write_oops(buffer->oop_recorder())) {
-    if (cache->lookup_failed() && !cache->failed()) {
+  if (!write_oops(buffer->oop_recorder())) {
+    if (lookup_failed() && !failed()) {
       // Skip this method and reposition file
-      cache->set_write_position(entry_position);
+      set_write_position(entry_position);
     }
     return nullptr;
   }
-  if (!cache->write_metadata(buffer->oop_recorder())) {
-    if (cache->lookup_failed() && !cache->failed()) {
+  if (!write_metadata(buffer->oop_recorder())) {
+    if (lookup_failed() && !failed()) {
       // Skip this method and reposition file
-      cache->set_write_position(entry_position);
+      set_write_position(entry_position);
     }
     return nullptr;
   }
 
   // Write Debug info
-  if (!cache->write_debug_info(recorder)) {
+  if (!write_debug_info(recorder)) {
     return nullptr;
   }
   // Write Dependencies
   int dependencies_size = (int)dependencies->size_in_bytes();
-  n = cache->write_bytes(&dependencies_size, sizeof(int));
+  n = write_bytes(&dependencies_size, sizeof(int));
   if (n != sizeof(int)) {
     return nullptr;
   }
-  if (!cache->align_write()) {
+  if (!align_write()) {
     return nullptr;
   }
-  n = cache->write_bytes(dependencies->content_bytes(), dependencies_size);
+  n = write_bytes(dependencies->content_bytes(), dependencies_size);
   if (n != (uint)dependencies_size) {
     return nullptr;
   }
 
   // Write oop maps
-  if (!cache->write_oop_maps(oop_maps)) {
+  if (!write_oop_maps(oop_maps)) {
     return nullptr;
   }
 
   // Write exception handles
   int exc_table_length = handler_table->length();
-  n = cache->write_bytes(&exc_table_length, sizeof(int));
+  n = write_bytes(&exc_table_length, sizeof(int));
   if (n != sizeof(int)) {
     return nullptr;
   }
   uint exc_table_size = handler_table->size_in_bytes();
-  n = cache->write_bytes(handler_table->table(), exc_table_size);
+  n = write_bytes(handler_table->table(), exc_table_size);
   if (n != exc_table_size) {
     return nullptr;
   }
 
   // Write null check table
   int nul_chk_length = nul_chk_table->len();
-  n = cache->write_bytes(&nul_chk_length, sizeof(int));
+  n = write_bytes(&nul_chk_length, sizeof(int));
   if (n != sizeof(int)) {
     return nullptr;
   }
   uint nul_chk_size = nul_chk_table->size_in_bytes();
-  n = cache->write_bytes(nul_chk_table->data(), nul_chk_size);
+  n = write_bytes(nul_chk_table->data(), nul_chk_size);
   if (n != nul_chk_size) {
     return nullptr;
   }
 
   // Write code section
-  if (!cache->align_write()) {
+  if (!align_write()) {
     return nullptr;
   }
   uint code_size = 0;
-  if (!cache->write_code(buffer, code_size)) {
+  if (!write_code(buffer, code_size)) {
     return nullptr;
   }
   // Write relocInfo array
-  uint reloc_offset = cache->_write_position - entry_position;
+  uint reloc_offset = _write_position - entry_position;
   uint reloc_size = 0;
-  if (!cache->write_relocations(buffer, reloc_size)) {
-    if (cache->lookup_failed() && !cache->failed()) {
+  if (!write_relocations(buffer, reloc_size)) {
+    if (lookup_failed() && !failed()) {
       // Skip this method and reposition file
-      cache->set_write_position(entry_position);
+      set_write_position(entry_position);
     }
     return nullptr;
   }
-  uint entry_size = cache->_write_position - entry_position;
+  uint entry_size = _write_position - entry_position;
 
-  SCCEntry* entry = new(cache) SCCEntry(entry_position, entry_size, name_offset, name_size,
-                                 code_offset, code_size, reloc_offset, reloc_size,
-                                 SCCEntry::Code, hash, (uint)comp_level, (uint)comp_id, decomp,
-                                 has_clinit_barriers, cache->_for_preload);
+  SCCEntry* entry = new (this) SCCEntry(entry_position, entry_size, name_offset, name_size,
+                                        code_offset, code_size, reloc_offset, reloc_size,
+                                        SCCEntry::Code, hash, (uint)comp_level, (uint)comp_id, decomp,
+                                        has_clinit_barriers, _for_preload);
   if (method_in_cds) {
     entry->set_method(m);
   }
 #ifdef ASSERT
-  if (has_clinit_barriers || cache->_for_preload) {
+  if (has_clinit_barriers || _for_preload) {
     assert(for_preload, "sanity");
     assert(entry->method() != nullptr, "sanity");
   }
@@ -3257,7 +3314,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
     ResourceMark rm;
     const char* name   = method->name_and_sig_as_C_string();
     log_info(scc, nmethod)("%d (L%d): Wrote nmethod '%s'%s to Startup Code Cache '%s'",
-                           task->compile_id(), task->comp_level(), name, (cache->_for_preload ? " (for preload)" : ""), cache->_cache_path);
+                           task->compile_id(), task->comp_level(), name, (_for_preload ? " (for preload)" : ""), _cache_path);
   }
   if (VerifyCachedCode) {
     return nullptr;
