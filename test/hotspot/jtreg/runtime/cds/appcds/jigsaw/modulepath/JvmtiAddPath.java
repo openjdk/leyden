@@ -110,7 +110,6 @@ public class JvmtiAddPath {
         OutputAnalyzer output = TestCommon.createArchive(
                                     appJar,
                                     TestCommon.list("JvmtiApp", "ExtraClass", MAIN_CLASS),
-                                    "-XX:-PreloadSharedClasses",
                                     use_whitebox_jar,
                                     modulePath);
         TestCommon.checkDump(output);
@@ -141,7 +140,6 @@ public class JvmtiAddPath {
         output = TestCommon.createArchive(
                      appJar, TestCommon.list("JvmtiApp", "ExtraClass"),
                      use_whitebox_jar,
-                     "-XX:-PreloadSharedClasses",
                      modulePath);
         TestCommon.checkDump(output);
         run(twoAppJars, modulePath,

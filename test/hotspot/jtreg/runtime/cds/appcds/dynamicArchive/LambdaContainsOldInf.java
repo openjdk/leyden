@@ -61,7 +61,6 @@ public class LambdaContainsOldInf extends DynamicArchiveTestBase {
                 "-XX:+UnlockDiagnosticVMOptions",
                 "-XX:+WhiteBoxAPI",
                 "-Xlog:class+load=debug,cds=debug,cds+dynamic=info",
-                "-XX:-PreloadSharedClasses",
                 use_whitebox_jar,
                 "-cp", appJar, mainClass, mainArg)
                 .assertNormalExit(output -> {

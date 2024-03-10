@@ -59,8 +59,7 @@ public class LambdaContainsOldInf {
             CDSOptions opts = (new CDSOptions())
                 .addPrefix("-XX:ExtraSharedClassListFile=" + classList,
                            "-cp", appJar,
-                           "-Xlog:class+load,cds",
-                           "-XX:-PreloadSharedClasses")
+                           "-Xlog:class+load,cds")
                 .setArchiveName(archiveName);
             OutputAnalyzer output = CDSTestUtils.createArchiveAndCheck(opts);
             TestCommon.checkExecReturn(output, 0, true,

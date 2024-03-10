@@ -121,8 +121,7 @@ public class OptimizeModuleHandlingTest {
                                         null, appClasses,
                                         "--module-path",
                                         libsDir.toString(),
-                                        "-m", MAIN_MODULE,
-                                        "-XX:-PreloadSharedClasses");
+                                        "-m", MAIN_MODULE);
         TestCommon.checkDump(output);
 
         // following 1 - 4 test with CDS off
@@ -245,7 +244,7 @@ public class OptimizeModuleHandlingTest {
         // previous step
         OutputAnalyzer output = TestCommon.createArchive(
                                     testJar.toString() + PATH_SEPARATOR + mainJar.toString(),
-                                    appClasses, "-XX:-PreloadSharedClasses");
+                                    appClasses);
         TestCommon.checkDump(output);
 
         // tests 1 - 4 test with CDS off are same as with module archive.

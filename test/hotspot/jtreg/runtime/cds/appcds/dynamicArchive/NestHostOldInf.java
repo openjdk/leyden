@@ -61,7 +61,6 @@ public class NestHostOldInf extends DynamicArchiveTestBase {
              "-Xlog:cds",
              "-Xlog:cds+dynamic=debug",
              "-cp", appJar,
-             "-XX:-PreloadSharedClasses",
              mainAppClass)
              .assertNormalExit(output -> {
                  output.shouldContain("Written dynamic archive 0x")

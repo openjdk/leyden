@@ -75,7 +75,7 @@ public class JvmtiAddPath {
         String wbJar = TestCommon.getTestJar("WhiteBox.jar");
         use_whitebox_jar = "-Xbootclasspath/a:" + wbJar;
 
-        TestCommon.testDump(appJar, TestCommon.list("JvmtiApp", "ExtraClass"), "-XX:-PreloadSharedClasses", use_whitebox_jar);
+        TestCommon.testDump(appJar, TestCommon.list("JvmtiApp", "ExtraClass"), use_whitebox_jar);
 
         System.out.println("Test case 1: not adding any paths - Hello.class should not be found");
         run(check_appcds_enabled, appJar, "-Xlog:class+load", "JvmtiApp", "noadd"); // appcds should be enabled
@@ -93,7 +93,7 @@ public class JvmtiAddPath {
         run(twoAppJars, "JvmtiApp", "bootonly", addappJar);
 
         System.out.println("Test case 6: add to app using AppCDS, but add to boot using JVMTI - should find Hello.class in boot loader");
-        TestCommon.testDump(twoAppJars, TestCommon.list("JvmtiApp", "ExtraClass", "Hello"), "-XX:-PreloadSharedClasses", use_whitebox_jar);
+        TestCommon.testDump(twoAppJars, TestCommon.list("JvmtiApp", "ExtraClass", "Hello"), use_whitebox_jar);
         if (!TestCommon.isDynamicArchive()) {
             // skip for dynamic archive, the Hello class will be loaded from
             // the dynamic archive

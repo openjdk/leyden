@@ -47,7 +47,6 @@ public class RewriteBytecodesTest {
 
     TestCommon.dump(appJar, TestCommon.list("RewriteBytecodes", "Super", "Child"),
                     // command-line arguments ...
-                    "-XX:-PreloadSharedClasses",
                     use_whitebox_jar);
 
     OutputAnalyzer output = TestCommon.exec(appJar,

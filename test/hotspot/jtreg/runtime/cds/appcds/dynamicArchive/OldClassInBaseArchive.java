@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 202, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -62,8 +62,7 @@ public class OldClassInBaseArchive extends DynamicArchiveTestBase {
 
         // create a custom base archive containing and old class
         OutputAnalyzer output = TestCommon.dump(appJar,
-            TestCommon.list("OldSuper"), "-Xlog:class+load,cds+class=debug",
-            "-XX:-PreloadSharedClasses");
+            TestCommon.list("OldSuper"), "-Xlog:class+load,cds+class=debug");
         TestCommon.checkDump(output);
         // Check the OldSuper is being dumped into the base archive.
         output.shouldMatch(".cds.class.*klass.*0x.*app.*OldSuper.*unlinked");
@@ -78,7 +77,6 @@ public class OldClassInBaseArchive extends DynamicArchiveTestBase {
         dump2(baseArchiveName, topArchiveName,
               "-Xlog:cds,cds+dynamic,class+load,cds+class=debug",
               "-cp", appJar,
-              "-XX:-PreloadSharedClasses",
               appClass)
             .assertNormalExit(out -> {
                     out.shouldContain("OldSuper source: shared objects file")

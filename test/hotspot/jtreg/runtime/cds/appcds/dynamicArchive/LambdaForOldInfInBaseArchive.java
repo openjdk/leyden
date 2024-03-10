@@ -61,8 +61,7 @@ public class LambdaForOldInfInBaseArchive extends DynamicArchiveTestBase {
 
         // create a custom base archive containing and old interface
         OutputAnalyzer output = TestCommon.dump(appJar,
-            TestCommon.list("OldProvider"), "-Xlog:class+load,cds+class=debug",
-            "-XX:-PreloadSharedClasses");
+            TestCommon.list("OldProvider"), "-Xlog:class+load,cds+class=debug");
         TestCommon.checkDump(output);
         // Check that the OldProvider is being dumped into the base archive.
         output.shouldMatch(".cds,class.*klass.*0x.*app.*OldProvider.*unlinked");
@@ -76,7 +75,6 @@ public class LambdaForOldInfInBaseArchive extends DynamicArchiveTestBase {
         dump2(baseArchiveName, topArchiveName,
               "-Xlog:cds,cds+dynamic,class+load,cds+class=debug",
               "-cp", appJar,
-              "-XX:-PreloadSharedClasses",
               appClass)
             .assertNormalExit(out -> {
                     out.shouldContain("OldProvider source: shared objects file")

@@ -82,9 +82,6 @@ public class DeterministicDump {
             .addPrefix("-Xint") // Override any -Xmixed/-Xcomp flags from jtreg -vmoptions
             .addPrefix("-Xlog:cds=debug")
             .addPrefix("-Xlog:cds+map*=trace:file=" + mapName + ":none:filesize=0")
-            .addPrefix("-XX:-PreloadSharedClasses")
-            .addPrefix("-XX:-ArchiveFieldReferences")
-            .addPrefix("-XX:-ArchiveMethodReferences")
             .setArchiveName(archiveName)
             .addSuffix(args)
             .addSuffix(more);

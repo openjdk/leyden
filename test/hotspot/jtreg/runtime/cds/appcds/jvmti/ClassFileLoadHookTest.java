@@ -67,7 +67,7 @@ public class ClassFileLoadHookTest {
                     .assertNormalExit();
 
         // Run with AppCDS, but w/o CFLH - second baseline
-        TestCommon.testDump(appJar, sharedClasses, useWb, "-XX:-PreloadSharedClasses");
+        TestCommon.testDump(appJar, sharedClasses, useWb);
         OutputAnalyzer out = TestCommon.exec(appJar,
                 "-XX:+UnlockDiagnosticVMOptions",
                 "-XX:+WhiteBoxAPI", useWb,

@@ -65,8 +65,7 @@ public class OldClassVerifierTrouble extends DynamicArchiveTestBase {
         // create a custom base archive containing an old class
         OutputAnalyzer output = TestCommon.dump(appJar,
             TestCommon.list("VerifierTroubleApp", "VerifierTroublev49", "ChildOldSuper"),
-            "-Xlog:class+load,cds+class=debug",
-            "-XX:-PreloadSharedClasses");
+            "-Xlog:class+load,cds+class=debug");
         TestCommon.checkDump(output);
         // Check the ChildOldSuper and VerifierTroublev49 are being dumped into the base archive.
         output.shouldMatch(".cds.class.*klass.*0x.*app.*ChildOldSuper.*unlinked")
@@ -80,7 +79,6 @@ public class OldClassVerifierTrouble extends DynamicArchiveTestBase {
         // Linking VerifierTroublev49 would result in java.lang.VerifyError.
         dump2(baseArchiveName, topArchiveName,
               "-Xlog:cds,cds+dynamic,class+load,cds+class=debug",
-              "-XX:-PreloadSharedClasses",
               "-cp", appJar,
               appClass)
             .assertAbnormalExit(out -> {

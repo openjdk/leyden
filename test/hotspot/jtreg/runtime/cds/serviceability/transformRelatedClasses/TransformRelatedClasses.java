@@ -149,7 +149,7 @@ public class TransformRelatedClasses {
             CDSTestUtils.makeClassList("transform-" + parent, testNames).getPath();
 
         CDSTestUtils.createArchiveAndCheck("-Xbootclasspath/a:" + testJar,
-            "-XX:ExtraSharedClassListFile=" + classList, "-XX:-PreloadSharedClasses");
+            "-XX:ExtraSharedClassListFile=" + classList);
     }
 
 

@@ -57,7 +57,6 @@ public class ReplaceCriticalClasses {
             CDSOptions opts = new CDSOptions()
                 .setClassList(extraClasses)
                 .setArchiveName(ReplaceCriticalClasses.class.getName() + ".jsa");
-            opts.addSuffix("-XX:-PreloadSharedClasses");
             CDSTestUtils.createArchiveAndCheck(opts);
 
             launchChildProcesses(getTests());
