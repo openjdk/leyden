@@ -35,7 +35,7 @@
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/oopMap.hpp"
-#include "gc/g1/heapRegion.hpp"
+#include "gc/g1/g1HeapRegion.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/gcLocker.hpp"
@@ -328,14 +328,17 @@ JRT_BLOCK_ENTRY_PROF(void, OptoRuntime, new_array_nozero_C, OptoRuntime::new_arr
     // Zero array here if the caller is deoptimized.
     const size_t size = TypeArrayKlass::cast(array_type)->oop_size(result);
     BasicType elem_type = TypeArrayKlass::cast(array_type)->element_type();
-    const size_t hs = arrayOopDesc::header_size(elem_type);
-    // Align to next 8 bytes to avoid trashing arrays's length.
-    const size_t aligned_hs = align_object_offset(hs);
+    size_t hs_bytes = arrayOopDesc::base_offset_in_bytes(elem_type);
+    assert(is_aligned(hs_bytes, BytesPerInt), "must be 4 byte aligned");
     HeapWord* obj = cast_from_oop<HeapWord*>(result);
-    if (aligned_hs > hs) {
-      Copy::zero_to_words(obj+hs, aligned_hs-hs);
+    if (!is_aligned(hs_bytes, BytesPerLong)) {
+      *reinterpret_cast<jint*>(reinterpret_cast<char*>(obj) + hs_bytes) = 0;
+      hs_bytes += BytesPerInt;
     }
+
     // Optimized zeroing.
+    assert(is_aligned(hs_bytes, BytesPerLong), "must be 8-byte aligned");
+    const size_t aligned_hs = hs_bytes / BytesPerLong;
     Copy::fill_to_aligned_words(obj+aligned_hs, size-aligned_hs);
   }
 

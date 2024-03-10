@@ -3687,26 +3687,6 @@ JVM_ENTRY_PROF(jclass, JVM_LookupLambdaProxyClassFromArchive, JVM_LookupLambdaPr
 #endif // INCLUDE_CDS
 JVM_END
 
-JVM_LEAF_PROF(jboolean, JVM_IsDumpingArchive, JVM_IsDumpingArchive(JNIEnv* env))
-  return CDSConfig::is_dumping_archive();
-JVM_END
-
-JVM_LEAF_PROF(jboolean, JVM_IsDumpingStaticArchive, JVM_IsDumpingStaticArchive(JNIEnv* env))
-  return CDSConfig::is_dumping_static_archive();
-JVM_END
-
-JVM_LEAF_PROF(jboolean, JVM_IsDumpingHeap, JVM_IsDumpingHeap(JNIEnv* env))
-  return CDSConfig::is_dumping_heap();
-JVM_END
-
-JVM_LEAF_PROF(jboolean, JVM_IsTracingDynamicProxy, JVM_IsTracingDynamicProxy(JNIEnv* env))
-  return CDSConfig::is_tracing_dynamic_proxy();
-JVM_END
-
-JVM_LEAF_PROF(jboolean, JVM_IsSharingEnabled, JVM_IsSharingEnabled(JNIEnv* env))
-  return UseSharedSpaces;
-JVM_END
-
 JVM_ENTRY_NO_ENV_PROF(jlong, JVM_GetRandomSeedForDumping, JVM_GetRandomSeedForDumping())
   if (CDSConfig::is_dumping_static_archive()) {
     // We do this so that the default CDS archive can be deterministic.
@@ -3730,20 +3710,13 @@ JVM_ENTRY_NO_ENV_PROF(jlong, JVM_GetRandomSeedForDumping, JVM_GetRandomSeedForDu
   }
 JVM_END
 
-JVM_LEAF_PROF(jboolean, JVM_IsDumpingClassList, JVM_IsDumpingClassList(JNIEnv *env))
-#if INCLUDE_CDS
-  return ClassListWriter::is_enabled() || CDSConfig::is_dumping_dynamic_archive()
-  || CDSConfig::is_dumping_preimage_static_archive()
-  ;
-#else
-  return false;
-#endif // INCLUDE_CDS
+JVM_ENTRY_NO_ENV_PROF(jint, JVM_GetCDSConfigStatus, JVM_GetCDSConfigStatus())
+  return CDSConfig::get_status();
 JVM_END
 
 JVM_ENTRY_PROF(void, JVM_LogLambdaFormInvoker, JVM_LogLambdaFormInvoker(JNIEnv *env, jstring line))
 #if INCLUDE_CDS
-  assert(ClassListWriter::is_enabled() || CDSConfig::is_dumping_dynamic_archive() ||
-         CDSConfig::is_dumping_preimage_static_archive(),  "Should be set and open or do dynamic dump");
+  assert(CDSConfig::is_logging_lambda_form_invokers(), "sanity");
   if (line != nullptr) {
     ResourceMark rm(THREAD);
     Handle h_line (THREAD, JNIHandles::resolve_non_null(line));
@@ -4254,13 +4227,7 @@ JVM_END
   macro(JVM_InitializeFromArchive) \
   macro(JVM_RegisterLambdaProxyClassForArchiving) \
   macro(JVM_LookupLambdaProxyClassFromArchive) \
-  macro(JVM_IsDumpingArchive) \
-  macro(JVM_IsDumpingStaticArchive) \
-  macro(JVM_IsDumpingHeap) \
-  macro(JVM_IsTracingDynamicProxy) \
-  macro(JVM_IsSharingEnabled) \
   macro(JVM_GetRandomSeedForDumping) \
-  macro(JVM_IsDumpingClassList) \
   macro(JVM_LogLambdaFormInvoker) \
   macro(JVM_LogDynamicProxy) \
   macro(JVM_DumpClassListToFile) \

@@ -495,7 +495,7 @@ public class Proxy implements java.io.Serializable {
         private static String makeProxyClassNamePrefix() {
             // Allow unique proxy names to be used across CDS dump time and app run time.
             if (CDS.isDumpingArchive()) {
-                if (CDS.isSharingEnabled()) {
+                if (CDS.isUsingArchive()) {
                     return "$Proxy0100"; // CDS dynamic dump
                 } else {
                     return "$Proxy0010"; // CDS static dump
@@ -569,8 +569,8 @@ public class Proxy implements java.io.Serializable {
 
             trace(proxyName, context.module(), loader, interfaces);
 
-            if (CDS.isTracingDynamicProxy() && context.isDynamicModule()) {
-                CDS.traceDynamicProxy(loader, proxyName, interfaces.toArray(new Class<?>[0]), accessFlags);
+            if (CDS.isLoggingDynamicProxies() && context.isDynamicModule()) {
+                CDS.logDynamicProxy(loader, proxyName, interfaces.toArray(new Class<?>[0]), accessFlags);
             }
 
             /*
@@ -671,6 +671,7 @@ public class Proxy implements java.io.Serializable {
         private final List<Class<?>> interfaces;
         private final ProxyClassContext context;
         ProxyBuilder(ClassLoader loader, List<Class<?>> interfaces) {
+            Objects.requireNonNull(interfaces);
             if (!VM.isModuleSystemInited()) {
                 throw new InternalError("Proxy is not supported until "
                         + "module system is fully initialized");

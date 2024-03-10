@@ -35,6 +35,7 @@
 #include "include/jvm_io.h"
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"
+#include "memory/universe.hpp"
 #include "runtime/arguments.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/java.hpp"
@@ -42,21 +43,29 @@
 
 bool CDSConfig::_is_dumping_static_archive = false;
 bool CDSConfig::_is_dumping_dynamic_archive = false;
-
-// The ability to dump the FMG depends on many factors checked by
-// is_dumping_full_module_graph(), but can be unconditionally disabled by
-// _dumping_full_module_graph_disabled. (Ditto for loading the FMG).
-bool CDSConfig::_dumping_full_module_graph_disabled = false;
-bool CDSConfig::_loading_full_module_graph_disabled = false;
-bool CDSConfig::_has_preloaded_classes;
+bool CDSConfig::_is_using_optimized_module_handling = true;
+bool CDSConfig::_is_dumping_full_module_graph = true;
+bool CDSConfig::_is_using_full_module_graph = true;
+bool CDSConfig::_has_preloaded_classes = false;
 bool CDSConfig::_is_loading_invokedynamic = false;
 
 char* CDSConfig::_default_archive_path = nullptr;
 char* CDSConfig::_static_archive_path = nullptr;
 char* CDSConfig::_dynamic_archive_path = nullptr;
 
+int CDSConfig::get_status() {
+  assert(Universe::is_fully_initialized(), "status is finalized only after Universe is initialized");
+  return (is_dumping_archive()              ? IS_DUMPING_ARCHIVE : 0) |
+         (is_dumping_static_archive()       ? IS_DUMPING_STATIC_ARCHIVE : 0) |
+         (is_logging_lambda_form_invokers() ? IS_LOGGING_LAMBDA_FORM_INVOKERS : 0) |
+         (is_using_archive()                ? IS_USING_ARCHIVE : 0) |
+         (is_dumping_heap()                 ? IS_DUMPING_HEAP : 0) |
+         (is_tracing_dynamic_proxy()        ? IS_LOGGING_DYNAMIC_PROXIES : 0);
+}
+
+
 void CDSConfig::initialize() {
-  if (is_dumping_static_archive() && !CDSConfig::is_dumping_final_static_archive()) {
+  if (is_dumping_static_archive() && !is_dumping_final_static_archive()) {
     if (RequireSharedSpaces) {
       warning("Cannot dump shared archive while using shared archive");
     }
@@ -69,6 +78,10 @@ void CDSConfig::initialize() {
   // UseSharedSpaces may be disabled if -XX:SharedArchiveFile is invalid.
   if (is_dumping_static_archive() || UseSharedSpaces) {
     init_shared_archive_paths();
+  }
+
+  if (!is_dumping_heap()) {
+    _is_dumping_full_module_graph = false;
   }
 }
 
@@ -248,14 +261,14 @@ void CDSConfig::init_shared_archive_paths() {
 
 void CDSConfig::check_system_property(const char* key, const char* value) {
   if (Arguments::is_internal_module_property(key)) {
-    MetaspaceShared::disable_optimized_module_handling();
+    stop_using_optimized_module_handling();
     log_info(cds)("optimized module handling: disabled due to incompatible property: %s=%s", key, value);
   }
   if (strcmp(key, "jdk.module.showModuleResolution") == 0 ||
       strcmp(key, "jdk.module.validation") == 0 ||
       strcmp(key, "java.system.class.loader") == 0) {
-    disable_loading_full_module_graph();
-    disable_dumping_full_module_graph();
+    stop_dumping_full_module_graph();
+    stop_using_full_module_graph();
     log_info(cds)("full module graph: disabled due to incompatible property: %s=%s", key, value);
   }
 }
@@ -357,7 +370,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
         jio_snprintf(preimage, len, "%s.preimage", CacheDataStore);
 
         UseSharedSpaces = false;
-        CDSConfig::enable_dumping_static_archive();
+        enable_dumping_static_archive();
         SharedArchiveFile = preimage;
         log_info(cds)("CacheDataStore needs to be updated. Writing %s file", SharedArchiveFile);
 
@@ -365,7 +378,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
         // module graph when dumping the CDS final image.
         log_info(cds)("full module graph: disabled when writing CDS preimage");
         HeapShared::disable_writing();
-        CDSConfig::disable_dumping_full_module_graph();
+        stop_dumping_full_module_graph();
         ArchiveInvokeDynamic = false;
 
         FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
@@ -388,7 +401,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
       if (StoreCachedCode && FLAG_IS_DEFAULT(CachedCodeFile)) {
         set_new_workflow_default_CachedCodeFile();
         // Cannot dump cached code until metadata and heap are dumped.
-        CDSConfig::disable_dumping_cached_code();
+        disable_dumping_cached_code();
       }
     }
   } else {
@@ -475,8 +488,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
     }
   }
 
-  if (!CDSConfig::is_dumping_static_archive() || !PreloadSharedClasses) {
-    // FIXME -- CDSConfig::is_dumping_heap() is not yet callable from here, as UseG1GC is not yet set by ergo!
+  if (!is_dumping_static_archive() || !PreloadSharedClasses) {
+    // FIXME -- is_dumping_heap() is not yet callable from here, as UseG1GC is not yet set by ergo!
     //
     // These optimizations require heap dumping and PreloadSharedClasses, or else
     // the classes of some archived heap objects may be replaced at runtime.
@@ -531,6 +544,20 @@ bool CDSConfig::preserve_all_dumptime_verification_states(const InstanceKlass* i
   return PreloadSharedClasses && SystemDictionaryShared::is_builtin(ik);
 }
 
+bool CDSConfig::is_using_archive() {
+  return UseSharedSpaces; // TODO: UseSharedSpaces will be eventually replaced by CDSConfig::is_using_archive()
+}
+
+bool CDSConfig::is_logging_lambda_form_invokers() {
+  return ClassListWriter::is_enabled() || is_dumping_dynamic_archive() || is_dumping_preimage_static_archive();
+}
+
+void CDSConfig::stop_using_optimized_module_handling() {
+  _is_using_optimized_module_handling = false;
+  _is_dumping_full_module_graph = false; // This requires is_using_optimized_module_handling()
+  _is_using_full_module_graph = false; // This requires is_using_optimized_module_handling()
+}
+
 #if INCLUDE_CDS_JAVA_HEAP
 bool CDSConfig::is_dumping_heap() {
   return is_dumping_static_archive() && !is_dumping_preimage_static_archive()
@@ -541,47 +568,39 @@ bool CDSConfig::is_loading_heap() {
   return ArchiveHeapLoader::is_in_use();
 }
 
-bool CDSConfig::is_dumping_full_module_graph() {
-  if (!_dumping_full_module_graph_disabled &&
-      is_dumping_heap() &&
-      MetaspaceShared::use_optimized_module_handling()) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
-bool CDSConfig::is_loading_full_module_graph() {
+bool CDSConfig::is_using_full_module_graph() {
   if (ClassLoaderDataShared::is_full_module_graph_loaded()) {
     return true;
   }
 
-  if (!_loading_full_module_graph_disabled &&
-      UseSharedSpaces &&
-      ArchiveHeapLoader::can_use() &&
-      MetaspaceShared::use_optimized_module_handling()) {
+  if (!_is_using_full_module_graph) {
+    return false;
+  }
+
+  if (UseSharedSpaces && ArchiveHeapLoader::can_use()) {
     // Classes used by the archived full module graph are loaded in JVMTI early phase.
     assert(!(JvmtiExport::should_post_class_file_load_hook() && JvmtiExport::has_early_class_hook_env()),
            "CDS should be disabled if early class hooks are enabled");
     return true;
   } else {
+    _is_using_full_module_graph = false;
     return false;
   }
 }
 
-void CDSConfig::disable_dumping_full_module_graph(const char* reason) {
-  if (!_dumping_full_module_graph_disabled) {
-    _dumping_full_module_graph_disabled = true;
+void CDSConfig::stop_dumping_full_module_graph(const char* reason) {
+  if (_is_dumping_full_module_graph) {
+    _is_dumping_full_module_graph = false;
     if (reason != nullptr) {
       log_info(cds)("full module graph cannot be dumped: %s", reason);
     }
   }
 }
 
-void CDSConfig::disable_loading_full_module_graph(const char* reason) {
+void CDSConfig::stop_using_full_module_graph(const char* reason) {
   assert(!ClassLoaderDataShared::is_full_module_graph_loaded(), "you call this function too late!");
-  if (!_loading_full_module_graph_disabled) {
-    _loading_full_module_graph_disabled = true;
+  if (_is_using_full_module_graph) {
+    _is_using_full_module_graph = false;
     if (reason != nullptr) {
       log_info(cds)("full module graph cannot be loaded: %s", reason);
     }

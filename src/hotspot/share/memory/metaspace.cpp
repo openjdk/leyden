@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2024, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2017, 2021 SAP SE. All rights reserved.
  * Copyright (c) 2023, Red Hat, Inc. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -860,6 +860,8 @@ MetaWord* Metaspace::allocate(ClassLoaderData* loader_data, size_t word_size,
     assert(false, "Should not allocate with exception pending");
     return nullptr;  // caller does a CHECK_NULL too
   }
+  //leyden/premain: temporarily disabled due to JDK-8327737
+  //assert(!THREAD->owns_locks(), "allocating metaspace while holding mutex");
 
   MetaWord* result = allocate(loader_data, word_size, type);
 

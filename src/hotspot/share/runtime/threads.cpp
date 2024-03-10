@@ -332,7 +332,7 @@ static void call_initPhase2(TRAPS) {
 
   // Preload all boot classes outside of java.base module
   ClassPrelinker::runtime_preload(THREAD, Handle());
-  if (CDSConfig::is_loading_full_module_graph()) {
+  if (CDSConfig::is_using_full_module_graph()) {
     // SystemDictionary::java_{platform,system}_loader are already assigned. We can spin
     // this up a little quicker.
     assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
