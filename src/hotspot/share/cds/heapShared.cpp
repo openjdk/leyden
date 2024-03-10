@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1180,6 +1180,19 @@ void HeapShared::resolve_classes(JavaThread* current) {
   if (!ArchiveHeapLoader::is_in_use()) {
     return; // nothing to do
   }
+
+  if (!CDSConfig::has_preloaded_classes()) {
+    assert( _runtime_default_subgraph_info != nullptr, "must be");
+    Array<Klass*>* klasses = _runtime_default_subgraph_info->subgraph_object_klasses();
+    if (klasses != nullptr) {
+      for (int i = 0; i < klasses->length(); i++) {
+        Klass* k = klasses->at(i);
+        ExceptionMark em(current); // no exception can happen here
+        resolve_or_init(k, /*do_init*/false, current);
+      }
+    }
+  }
+
   resolve_classes_for_subgraphs(current, archive_subgraph_entry_fields);
   resolve_classes_for_subgraphs(current, fmg_archive_subgraph_entry_fields);
 }
@@ -1303,7 +1316,7 @@ HeapShared::resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAP
     }
     return nullptr;
   } else {
-    if (record->is_full_module_graph() && !CDSConfig::is_loading_full_module_graph()) {
+    if (record->is_full_module_graph() && !CDSConfig::is_loading_full_module_graph() && do_init) {
       if (log_is_enabled(Info, cds, heap)) {
         ResourceMark rm(THREAD);
         log_info(cds, heap)("subgraph %s cannot be used because full module graph is disabled",

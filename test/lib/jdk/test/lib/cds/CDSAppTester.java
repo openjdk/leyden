@@ -200,6 +200,7 @@ abstract public class CDSAppTester {
                                                    "-cp", classpath(runMode));
         if (isLeydenOldWorkflow()) {
             cmdLine = StringArrayUtils.concat(cmdLine,
+                                              "-XX:+PreloadSharedClasses",
                                               "-XX:+ArchiveInvokeDynamic",
                                               "-XX:+ArchiveDynamicProxies",
                                               "-XX:+ArchiveReflectionData");
@@ -287,6 +288,7 @@ abstract public class CDSAppTester {
         File f = new File(cdsFile);
         f.delete();
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), trainingLog(),
+                                                   "-XX:+PreloadSharedClasses",
                                                    "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
@@ -315,6 +317,7 @@ abstract public class CDSAppTester {
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), trainingLog0(),
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:+CDSManualFinalImage",
+                                                   "-XX:+PreloadSharedClasses",
                                                    "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
@@ -336,6 +339,7 @@ abstract public class CDSAppTester {
         f.delete();
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode), trainingLog1(),
                                                    "-XX:+UnlockDiagnosticVMOptions",
+                                                   "-XX:+PreloadSharedClasses",
                                                    "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",

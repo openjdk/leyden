@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -76,18 +76,6 @@
           "Dump the names all loaded classes, that could be stored into "   \
           "the CDS archive, in the specified file")                         \
                                                                             \
-  product(ccstr, CacheDataStore, nullptr,                                   \
-          "If valid, use the specified file for SharedArchiveFile; "        \
-          "otherwise the specified file is generated at program exit")      \
-                                                                            \
-  product(ccstr, CDSPreimage, nullptr,                                      \
-          "(** internal use only **) -- used by a child JVM process to "    \
-          "create the CacheDataStore final image")                          \
-                                                                            \
-  product(bool, CDSManualFinalImage, false, DIAGNOSTIC,                     \
-          "(** internal use only **) -- if false, automatically launch a "  \
-          "child process to create the final image.")                       \
-                                                                            \
   product(ccstr, SharedClassListFile, nullptr,                              \
           "Override the default CDS class list")  \
                                                                             \
@@ -109,7 +97,22 @@
            "do not map the archive")                                        \
            range(0, 2)                                                      \
                                                                             \
-  product(bool, PreloadSharedClasses, true,                                 \
+  /*========== New options added by Leyden =============================*/  \
+                                                                            \
+  product(ccstr, CacheDataStore, nullptr,                                   \
+          "If valid, use the specified file for SharedArchiveFile; "        \
+          "otherwise the specified file is generated at program exit")      \
+                                                                            \
+  product(ccstr, CDSPreimage, nullptr,                                      \
+          "(** internal use only **) -- used by a child JVM process to "    \
+          "create the CacheDataStore final image")                          \
+                                                                            \
+  product(bool, CDSManualFinalImage, false, DIAGNOSTIC,                     \
+          "(** internal use only **) -- if false, automatically launch a "  \
+          "child process to create the final image.")                       \
+                                                                            \
+  /* To be renamed to CDSLoadedClasses */                                   \
+  product(bool, PreloadSharedClasses, false,                                \
           "Load all shared classes for the boot/platform/app loaders "      \
           "immediately at VM start-up")                                     \
                                                                             \

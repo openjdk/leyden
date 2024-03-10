@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -316,7 +316,21 @@ bool CDSConfig::check_unsupported_cds_runtime_properties() {
 }
 
 bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_flag_cmd_line) {
+  if (FLAG_IS_DEFAULT(PreloadSharedClasses) &&
+      (ArchiveDynamicProxies || ArchiveInvokeDynamic || ArchiveReflectionData)) {
+    FLAG_SET_ERGO(PreloadSharedClasses, true);
+  }
+
   if (CacheDataStore != nullptr) {
+    if (FLAG_IS_DEFAULT(PreloadSharedClasses)) {
+      // New workflow - enable PreloadSharedClasses by default.
+      // TODO: make new workflow work, even when PreloadSharedClasses is false.
+      //
+      // NOTE: in old workflow, we cannot enable PreloadSharedClasses by default. That
+      // should be an opt-in option, per JEP nnn.
+      FLAG_SET_ERGO(PreloadSharedClasses, true);
+    }
+
     if (SharedArchiveFile != nullptr) {
       vm_exit_during_initialization("CacheDataStore and SharedArchiveFile cannot be both specified");
     }
@@ -378,9 +392,21 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
       }
     }
   } else {
+    // Old workflow
     if (CDSPreimage != nullptr) {
       vm_exit_during_initialization("CDSPreimage must be specified only when CacheDataStore is specified");
     }
+  }
+
+  if (!PreloadSharedClasses) {
+    // All of these *might* depend on PreloadSharedClasses. Better be safe than sorry.
+    // TODO: more fine-grained handling.
+    PrelinkSharedClasses    = false;
+    ArchiveDynamicProxies   = false;
+    ArchiveFieldReferences  = false;
+    ArchiveInvokeDynamic    = false;
+    ArchiveMethodReferences = false;
+    ArchiveReflectionData   = false;
   }
 
   if (is_dumping_static_archive()) {

@@ -776,10 +776,12 @@ void ArchiveBuilder::relocate_metaspaceobj_embedded_pointers() {
 
 #define ADD_COUNT(x) \
   x += 1; \
+  x ## _p += preloaded; \
   x ## _i += inited;
 
 #define DECLARE_INSTANCE_KLASS_COUNTER(x) \
   int x = 0; \
+  int x ## _p = 0; \
   int x ## _i = 0; \
 
 void ArchiveBuilder::make_klasses_shareable() {
@@ -814,6 +816,8 @@ void ArchiveBuilder::make_klasses_shareable() {
     const char* unlinked = "";
     const char* hidden = "";
     const char* generated = "";
+    const char* preloaded_msg = "";
+    const char* inited_msg = "";
     Klass* k = get_buffered_addr(klasses()->at(i));
     k->remove_java_mirror();
     if (k->is_objArray_klass()) {
@@ -829,6 +833,7 @@ void ArchiveBuilder::make_klasses_shareable() {
       assert(k->is_instance_klass(), " must be");
       InstanceKlass* ik = InstanceKlass::cast(k);
       InstanceKlass* src_ik = get_source_addr(ik);
+      int preloaded = ClassPrelinker::is_preloaded_class(src_ik);
       int inited = ik->has_preinitialized_mirror();
       ADD_COUNT(num_instance_klasses);
       if (CDSConfig::is_dumping_dynamic_archive()) {
@@ -871,7 +876,7 @@ void ArchiveBuilder::make_klasses_shareable() {
 
       if (!ik->is_linked()) {
         ADD_COUNT(num_unlinked_klasses);
-        unlinked = " ** unlinked";
+        unlinked = " unlinked";
         if (ik->is_shared_boot_class()) {
           boot_unlinked ++;
         } else if (ik->is_shared_platform_class()) {
@@ -885,39 +890,52 @@ void ArchiveBuilder::make_klasses_shareable() {
 
       if (ik->is_hidden()) {
         ADD_COUNT(num_hidden_klasses);
-        hidden = " ** hidden";
+        hidden = " hidden";
       }
 
       if (ik->is_generated_shared_class()) {
-        generated = " ** generated";
+        generated = " generated";
       }
+      if (preloaded) {
+        preloaded_msg = " preloaded";
+      }
+      if (inited) {
+        inited_msg = " inited";
+      }
+
       MetaspaceShared::rewrite_nofast_bytecodes_and_calculate_fingerprints(Thread::current(), ik);
       ik->remove_unshareable_info();
     }
 
     if (log_is_enabled(Debug, cds, class)) {
       ResourceMark rm;
-      log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s", i,
+      log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s", i,
                             p2i(to_requested(k)), type, k->external_name(),
-                            hidden, unlinked, generated);
+                            hidden, unlinked, generated, preloaded_msg, inited_msg);
     }
   }
 
+#define STATS_FORMAT    "= %5d, preloaded = %5d, inited = %5d"
+#define STATS_PARAMS(x) num_ ## x, num_ ## x ## _p, num_ ## x ## _i
+
   log_info(cds)("Number of classes %d", num_instance_klasses + num_obj_array_klasses + num_type_array_klasses);
-  log_info(cds)("    instance classes   = %5d, inited = %5d", num_instance_klasses,     num_instance_klasses_i);
-  log_info(cds)("      boot             = %5d, inited = %5d", num_boot_klasses,         num_boot_klasses_i);
-  log_info(cds)("       vm              = %5d, inited = %5d", num_vm_klasses,           num_vm_klasses_i);
-  log_info(cds)("      platform         = %5d, inited = %5d", num_platform_klasses,     num_platform_klasses_i);
-  log_info(cds)("      app              = %5d, inited = %5d", num_app_klasses,          num_app_klasses_i);
-  log_info(cds)("      unregistered     = %5d, inited = %5d", num_unregistered_klasses, num_unregistered_klasses_i);
-  log_info(cds)("      (hidden)         = %5d, inited = %5d", num_hidden_klasses,       num_hidden_klasses_i);
-  log_info(cds)("      (unlinked)       = %5d, inited = %5d, boot = %d, plat = %d, app = %d, unreg = %d",
-                                                              num_unlinked_klasses,     num_unlinked_klasses_i,
+  log_info(cds)("    instance classes   " STATS_FORMAT, STATS_PARAMS(instance_klasses));
+  log_info(cds)("      boot             " STATS_FORMAT, STATS_PARAMS(boot_klasses));
+  log_info(cds)("       vm              " STATS_FORMAT, STATS_PARAMS(vm_klasses));
+  log_info(cds)("      platform         " STATS_FORMAT, STATS_PARAMS(platform_klasses));
+  log_info(cds)("      app              " STATS_FORMAT, STATS_PARAMS(app_klasses));
+  log_info(cds)("      unregistered     " STATS_FORMAT, STATS_PARAMS(unregistered_klasses));
+  log_info(cds)("      (hidden)         " STATS_FORMAT, STATS_PARAMS(hidden_klasses));
+  log_info(cds)("      (unlinked)       " STATS_FORMAT ", boot = %d, plat = %d, app = %d, unreg = %d",
+                                                              STATS_PARAMS(unlinked_klasses),
                                                               boot_unlinked, platform_unlinked,
                                                               app_unlinked, unreg_unlinked);
   log_info(cds)("    obj array classes  = %5d", num_obj_array_klasses);
   log_info(cds)("    type array classes = %5d", num_type_array_klasses);
   log_info(cds)("               symbols = %5d", _symbols->length());
+
+#undef STATS_FORMAT
+#undef STATS_PARAMS
 
   DynamicArchive::make_array_klasses_shareable();
 }
