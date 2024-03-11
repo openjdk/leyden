@@ -139,7 +139,7 @@ void TrainingData::verify() {
       } else if (td->is_MethodTrainingData()) {
         MethodTrainingData* mtd = td->as_MethodTrainingData();
         if (mtd->has_holder() && mtd->holder()->method_holder()->is_loaded()) {
-          Key k(mtd->holder());
+          Key k(mtd);
           verify_archived_entry(td, &k);
         }
         mtd->verify();
@@ -160,9 +160,13 @@ TrainingData::Key::Key(const InstanceKlass* klass)
   // It can also be "'platform'".
 }
 
-TrainingData::Key::Key(const Method* method)
-  : Key(method->name(), method->signature(), KlassTrainingData::make(method->method_holder()))
-{}
+TrainingData::Key::Key(const Method* method, KlassTrainingData* holder)
+  : Key(method->name(), method->signature(), holder)
+{
+  assert(method->method_holder() == holder->holder(), "mismatch");
+}
+
+TrainingData::Key::Key(const MethodTrainingData* method) : Key(method->holder(), method->klass()) {}
 
 MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
                                              bool null_if_not_found) {
@@ -182,9 +186,8 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
   }
 
   KlassTrainingData* holder = KlassTrainingData::make(method->method_holder(), null_if_not_found);
-  assert(holder != nullptr || null_if_not_found, "");
   if (holder == nullptr) {
-    return nullptr;
+    return nullptr; // allocation failure
   }
   Key key(method->name(), method->signature(), holder);
   TrainingData* td = have_data()? lookup_archived_training_data(&key) : nullptr;
@@ -208,11 +211,14 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
   }
   assert(td == nullptr && mtd == nullptr && !null_if_not_found, "Should return if have result");
   KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder());
-  {
+  if (ktd != nullptr) {
     TrainingDataLocker l;
     td = training_data_set()->find(&key);
     if (td == nullptr) {
       mtd = MethodTrainingData::allocate(ktd, method());
+      if (mtd == nullptr) {
+        return nullptr; // allocation failure
+      }
       td = training_data_set()->install(mtd);
       assert(td == mtd, "");
     } else {
@@ -254,15 +260,21 @@ CompileTrainingData* CompileTrainingData::make(CompileTask* task) {
   Thread* thread = Thread::current();
   methodHandle m(thread, task->method());
   MethodTrainingData* mtd = MethodTrainingData::make(m);
+  if (mtd == nullptr) {
+    return nullptr; // allocation failure
+  }
   mtd->notice_compilation(level);
 
   CompileTrainingData* ctd = CompileTrainingData::allocate(mtd, level, compile_id);
-  TrainingDataLocker l;
-  ctd->_next = mtd->_compile;
-  mtd->_compile = ctd;
-  if (mtd->_last_toplevel_compiles[level - 1] == nullptr || mtd->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
-    mtd->_last_toplevel_compiles[level - 1] = ctd;
-    mtd->_highest_top_level = MAX2(mtd->_highest_top_level, level);
+  if (ctd != nullptr) {
+    TrainingDataLocker l;
+    ctd->_next = mtd->_compile;
+    mtd->_compile = ctd;
+    if (mtd->_last_toplevel_compiles[level - 1] == nullptr ||
+        mtd->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
+      mtd->_last_toplevel_compiles[level - 1] = ctd;
+      mtd->_highest_top_level = MAX2(mtd->_highest_top_level, level);
+    }
   }
   return ctd;
 }
@@ -441,6 +453,9 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
       return nullptr;
     }
     ktd = KlassTrainingData::allocate(holder);
+    if (ktd == nullptr) {
+      return nullptr; // allocation failure
+    }
     td = training_data_set()->install(ktd);
     assert(ktd == td, "");
   } else {
@@ -585,7 +600,7 @@ void TrainingData::prepare_recompilation_schedule(TRAPS) {
   }
   delete nmethods;
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  _recompilation_schedule_for_dumping = MetadataFactory::new_array<MethodTrainingData*>(loader_data, dyn_recompilation_schedule.length(), THREAD);
+  _recompilation_schedule_for_dumping = MetadataFactory::new_array<MethodTrainingData*>(loader_data, dyn_recompilation_schedule.length(), CHECK);
   int i = 0;
   for (auto it = dyn_recompilation_schedule.begin(); it != dyn_recompilation_schedule.end(); ++it) {
     _recompilation_schedule_for_dumping->at_put(i++, *it);
@@ -912,9 +927,9 @@ void CompileTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
 template <typename T>
 void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
   if (_deps == nullptr && _deps_dyn != nullptr) {
-    JavaThread* THREAD = JavaThread::current();
     int len = _deps_dyn->length();
-    _deps = MetadataFactory::new_array<T>(loader_data, len, THREAD);
+    _deps = MetadataFactory::new_array_or_null<T>(loader_data, len);
+    guarantee(_deps != nullptr, "allocation failed"); // FIXME: propagate preparation failure?
     for (int i = 0; i < len; i++) {
       _deps->at_put(i, _deps_dyn->at(i)); // copy
     }
@@ -923,55 +938,51 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
 
 KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
   assert(need_data() || have_data(), "");
-  JavaThread* THREAD = JavaThread::current();
 
   size_t size = align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = holder->class_loader_data();
-  return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
+  return new (loader_data, size, MetaspaceObj::KlassTrainingDataType)
       KlassTrainingData(holder);
 }
 
 KlassTrainingData* KlassTrainingData::allocate(Symbol* name, Symbol* loader_name) {
   assert(need_data() || have_data(), "");
-  JavaThread* THREAD = JavaThread::current();
 
   size_t size = align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::KlassTrainingDataType, THREAD)
+  return new (loader_data, size, MetaspaceObj::KlassTrainingDataType)
       KlassTrainingData(name, loader_name);
 }
 
 MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Symbol* name, Symbol* signature) {
   assert(need_data() || have_data(), "");
-  JavaThread* THREAD = JavaThread::current();
 
   size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::MethodTrainingDataType, THREAD)
+  return new (loader_data, size, MetaspaceObj::MethodTrainingDataType)
       MethodTrainingData(ktd, name, signature);
 }
 
 MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Method* m) {
   assert(need_data() || have_data(), "");
-  JavaThread* THREAD = JavaThread::current();
 
   size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::MethodTrainingDataType, THREAD)
+  return new (loader_data, size, MetaspaceObj::MethodTrainingDataType)
       MethodTrainingData(ktd, m->name(), m->signature());
 }
 
 CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int level, int compile_id) {
   assert(need_data() || have_data(), "");
-  JavaThread* THREAD = JavaThread::current();
+
   size_t size = align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord) / BytesPerWord);
 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::CompileTrainingDataType, THREAD)
+  return new (loader_data, size, MetaspaceObj::CompileTrainingDataType)
       CompileTrainingData(mtd, level, compile_id);
 }
 

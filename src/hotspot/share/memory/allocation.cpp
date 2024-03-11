@@ -81,7 +81,7 @@ void* MetaspaceObj::operator new(size_t size, ClassLoaderData* loader_data,
 void* MetaspaceObj::operator new(size_t size, ClassLoaderData* loader_data,
                                  size_t word_size,
                                  MetaspaceObj::Type type) throw() {
-  assert(!Thread::current()->is_Java_thread(), "only allowed by non-Java thread");
+  assert(!Thread::current()->is_Java_thread() || is_training_data(type), "only allowed by non-Java thread");
   return Metaspace::allocate(loader_data, word_size, type);
 }
 

@@ -51,6 +51,13 @@ class MetadataFactory : AllStatic {
   }
 
   template <typename T>
+  static Array<T>* new_array_or_null(ClassLoaderData* loader_data, int length) {
+    // The "true" argument is because all metadata arrays are read only when
+    // dumped to the shared archive
+    return new (loader_data, length) Array<T>(length);
+  }
+
+  template <typename T>
   static void free_array(ClassLoaderData* loader_data, Array<T>* data) {
     if (data != nullptr) {
       assert(loader_data != nullptr, "shouldn't pass null");

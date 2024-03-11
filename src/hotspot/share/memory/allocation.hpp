@@ -394,6 +394,12 @@ class MetaspaceObj {
     }
   }
 
+  static bool is_training_data(Type type) {
+    return (type == Type::KlassTrainingDataType)  ||
+           (type == Type::MethodTrainingDataType) ||
+           (type == Type::CompileTrainingDataType);
+  }
+
   static MetaspaceObj::Type array_type(size_t elem_size) {
     switch (elem_size) {
     case 1: return TypeArrayU1Type;
