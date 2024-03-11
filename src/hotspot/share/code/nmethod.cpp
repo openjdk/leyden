@@ -628,10 +628,11 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
 #ifdef ASSERT
     LogTarget(Debug, scc, nmethod) log;
     if (log.is_enabled()) {
-      tty->print_cr("== new_nmethod 2");
+      LogStream out(log);
+      out.print_cr("== new_nmethod 2");
       FlagSetting fs(PrintRelocations, true);
-      nm->print();
-      nm->decode(tty);
+      nm->print(&out);
+      nm->decode(&out);
     }
 #endif
 

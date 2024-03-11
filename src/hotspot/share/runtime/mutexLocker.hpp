@@ -210,7 +210,7 @@ private:
 public:
 
   MutexLockerImpl(Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag) :
-    _mutex(mutex), _prof(ProfileVMLocks && Thread::current()->profile_vm_locks()) {
+    _mutex(mutex), _prof(ProfileVMLocks && Thread::current_or_null() != nullptr && Thread::current()->profile_vm_locks()) {
 
     bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
     if (_mutex != nullptr) {

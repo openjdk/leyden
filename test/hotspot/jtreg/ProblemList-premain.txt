@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016, 2023, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -44,27 +44,23 @@
 
 #############################################################################
 
-# The following CDS tests fail due to class preloading or differences in lambdaform/lambdaproxy handling
+# The following CDS tests fail due to lambdaform/lambdaproxy handling
 runtime/cds/appcds/dynamicArchive/LambdasInTwoArchives.java 8318142 generic-all
 runtime/cds/appcds/dynamicArchive/TestDynamicDumpAtOom.java 8318142 generic-all
 runtime/cds/appcds/dynamicArchive/TestDynamicRegenerateHolderClasses.java 8318142 generic-all
 runtime/cds/appcds/dynamicArchive/TestLambdaInvokers.java 8318142 generic-all
 runtime/cds/appcds/javaldr/ExceptionDuringDumpAtObjectsInitPhase.java 8318142 generic-all
-runtime/cds/appcds/lambdaForm/DefaultClassListLFInvokers.java 8318142 generic-all
 
 # JDK-8318188: probably a bug in CDS
 compiler/jvmci/jdk.vm.ci.runtime.test/src/jdk/vm/ci/runtime/test/TestResolvedJavaMethod.java 8318188 generic-all
 
-# The following tests fail due to class preloading
-runtime/logging/ItablesTest.java  8318142 generic-all
-runtime/logging/ProtectionDomainVerificationTest.java 8318142 generic-all
-runtime/logging/RedefineClasses.java 8318142 generic-all
+# Misc failures -- need to investigate
+runtime/logging/ItablesTest.java 8318142 generic-all
 runtime/logging/VerificationTest.java 8318142 generic-all
 runtime/logging/VtablesTest.java 8318142 generic-all
 runtime/MemberName/MemberNameLeak.java 8318142 generic-all
 
 # Not analyzed yet -- don't seem to be serious -- exclude for now
-compiler/arraycopy/TestCloneWithStressReflectiveCode.java 8318142 generic-all
 compiler/blackhole/BlackholeExistingIntrinsicWarningTest.java 8318142 generic-all
 compiler/blackhole/BlackholeNonEmptyWarningTest.java 8318142 generic-all
 compiler/blackhole/BlackholeNonStaticWarningTest.java 8318142 generic-all
