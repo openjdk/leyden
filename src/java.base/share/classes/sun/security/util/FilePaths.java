@@ -25,20 +25,49 @@
 
 package sun.security.util;
 
-import java.nio.file.Path;
+import java.io.IOException;
+import java.io.FileInputStream;
+import java.io.InputStream;
 
 import jdk.internal.misc.JavaHome;
 import jdk.internal.util.StaticProperty;
 
 import java.io.File;
 
+import sun.security.action.GetPropertyAction;
+
 public class FilePaths {
-    public static Path cacertsPath() {
-        return JavaHome.getJDKResource(StaticProperty.javaHome(),
-                                       "lib", "security", "cacerts");
+    private static final String fileSep = File.separator;
+    private static final String defaultStorePath =
+        GetPropertyAction.privilegedGetProperty("java.home") +
+        fileSep + "lib" + fileSep + "security";
+
+    private static final String cacertsName = "cacerts";
+    private static final String cacertsFilePath = JavaHome.isHermetic() ?
+        cacertsName : defaultStorePath + fileSep + cacertsName;
+    private static final File cacertsFile = JavaHome.isHermetic() ?
+        null : new File(cacertsFilePath);
+
+    public static InputStream cacertsStream() throws IOException {
+        if (JavaHome.isHermetic()) {
+            return FilePaths.class.getResourceAsStream(cacertsName);
+        } else {
+            if (!cacertsFile.exists()) {
+                return null;
+            }
+            return new FileInputStream(cacertsFile);
+        }
     }
 
     public static String cacerts() {
-        return cacertsPath().toString();
+        return cacertsFilePath;
+    }
+
+    public static String defaultStore(String fileName) {
+        if (JavaHome.isHermetic()) {
+            return fileName;
+        } else {
+            return defaultStorePath + fileSep + fileName;
+        }
     }
 }

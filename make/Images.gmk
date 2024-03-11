@@ -75,8 +75,17 @@ JLINK_ORDER_RESOURCES += \
     #
 
 HERMETIC_RESOURCES :=
+
 ifeq ($(STATIC_JAVA), true)
-  HERMETIC_RESOURCES := --hermetic-resources /java.base/conf/security/java.security=/java.base/java/security/java.security,/java.logging/conf/logging.properties=/java.logging/java/util/logging/logging.properties,/java.base/conf/net.properties=/java.base/sun/net/net.properties,/java.desktop/lib/psfont.properties.ja=/java.desktop/sun/print/psfont.properties.ja,/java.desktop/lib/psfontj2d.properties=/java.desktop/sun/print/psfontj2d.properties,/java.base/lib/security/blocked.certs=/java.base/sun/security/util/blocked.certs
+  HERMETIC_JAVA_SECURITY := /java.base/conf/security/java.security=/java.base/java/security/java.security
+  HERMETIC_LOGGING_PROPERTIES := /java.logging/conf/logging.properties=/java.logging/java/util/logging/logging.properties
+  HERMETIC_NET_PROPERTIES := /java.base/conf/net.properties=/java.base/sun/net/net.properties
+  HERMETIC_PSFONT_PROPERTIES_JA := /java.desktop/lib/psfont.properties.ja=/java.desktop/sun/print/psfont.properties.ja
+  HERMETIC_PSFONT2D_PROPERTIES := /java.desktop/lib/psfontj2d.properties=/java.desktop/sun/print/psfontj2d.properties
+  HERMETIC_BLOCKED_CERTS := /java.base/lib/security/blocked.certs=/java.base/sun/security/util/blocked.certs
+  HERMETIC_CACERTS := /java.base/lib/security/cacerts=/java.base/sun/security/util/cacerts
+
+  HERMETIC_RESOURCES := --hermetic-resources $(HERMETIC_JAVA_SECURITY),$(HERMETIC_LOGGING_PROPERTIES),$(HERMETIC_NET_PROPERTIES),$(HERMETIC_PSFONT_PROPERTIES_JA),$(HERMETIC_PSFONT2D_PROPERTIES),$(HERMETIC_BLOCKED_CERTS),$(HERMETIC_CACERTS)
 endif
 
 JLINK_TOOL := $(JLINK) -J-Djlink.debug=true \

@@ -26,8 +26,6 @@
 package sun.security.util;
 
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.AccessController;
 import java.security.KeyStore;
 import java.security.PrivilegedAction;
@@ -56,11 +54,10 @@ public class AnchorCertificates {
         var dummy = AccessController.doPrivileged(new PrivilegedAction<>() {
             @Override
             public Void run() {
-                Path p = FilePaths.cacertsPath();
                 try {
                     KeyStore cacerts;
                     cacerts = KeyStore.getInstance("JKS");
-                    try (InputStream is = Files.newInputStream(p)) {
+                    try (InputStream is = FilePaths.cacertsStream()) {
                         cacerts.load(is, null);
                         certs = new HashSet<>();
                         certIssuers = new HashSet<>();

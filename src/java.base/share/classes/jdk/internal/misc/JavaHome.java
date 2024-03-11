@@ -63,9 +63,11 @@ public class JavaHome {
 
     private static final String JAVA_HOME;
 
-    private static final String EXECUTABLE;
+    private static final String HERMETIC_IMAGE;
 
     private static final String HERMETIC_JAR_JDK_RESOURCES_HOME;
+
+    private static final File HERMETIC_IMAGE_FILE;
 
     static {
         Properties props = GetPropertyAction.privilegedGetProperties();
@@ -82,8 +84,11 @@ public class JavaHome {
             isHermetic = true;
 
             // JAVA_HOME is the hermetic executable JAR.
-            EXECUTABLE = props.getProperty(
+            HERMETIC_IMAGE = props.getProperty(
                 "jdk.internal.misc.hermetic.executable", JAVA_HOME);
+            if (HERMETIC_IMAGE.equals("")) {
+                throw new IllegalStateException("Executable is not set");
+            }
 
             String javaHome =
                 props.getProperty("jdk.internal.misc.JavaHome.Directory", "");
@@ -98,11 +103,14 @@ public class JavaHome {
 
             // Initialize JavaHome explicitly.
             HermeticImageHelper.init(JAVA_HOME);
+
+            HERMETIC_IMAGE_FILE = new File(HERMETIC_IMAGE);
         } else {
             isHermetic = false;
             jarFileSystem = null;
             HERMETIC_JAR_JDK_RESOURCES_HOME = "";
-            EXECUTABLE = "";
+            HERMETIC_IMAGE = "";
+            HERMETIC_IMAGE_FILE = null;
         }
     }
 
@@ -114,10 +122,14 @@ public class JavaHome {
         if (!isHermetic()) {
             throw new IllegalStateException("Not hermetic Java");
         }
-        if (EXECUTABLE.equals("")) {
-            throw new IllegalStateException("Executable is not set");
+        return HERMETIC_IMAGE;
+    }
+
+    public static File hermeticExecutableFile() {
+        if (!isHermetic()) {
+            throw new IllegalStateException("Not hermetic Java");
         }
-        return EXECUTABLE;
+        return HERMETIC_IMAGE_FILE;
     }
 
     // The jarFileSystem is not initialized as part of JavaHome <clinit> since
