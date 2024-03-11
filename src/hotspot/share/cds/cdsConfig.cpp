@@ -411,10 +411,20 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
     }
   }
 
+  if (FLAG_IS_DEFAULT(UsePermanentHeapObjects)) {
+    if (StoreCachedCode || PreloadSharedClasses) {
+      FLAG_SET_ERGO(UsePermanentHeapObjects, true);
+    }
+  }
+
+  if (LoadCachedCode) {
+    // This must be true. Cached code is hard-wired to use permanent objects.
+    UsePermanentHeapObjects = true;
+  }
+
   if (!PreloadSharedClasses) {
     // All of these *might* depend on PreloadSharedClasses. Better be safe than sorry.
     // TODO: more fine-grained handling.
-    PrelinkSharedClasses    = false;
     ArchiveDynamicProxies   = false;
     ArchiveFieldReferences  = false;
     ArchiveInvokeDynamic    = false;

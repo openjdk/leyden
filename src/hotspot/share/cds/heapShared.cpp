@@ -140,10 +140,10 @@ static ArchivableStaticFieldInfo archive_subgraph_entry_fields[] = {
   {"java/lang/ModuleLayer",                       "EMPTY_LAYER"},
   {"java/lang/module/Configuration",              "EMPTY_CONFIGURATION"},
   {"jdk/internal/math/FDBigInteger",              "archivedCaches"},
-  {"java/lang/invoke/DirectMethodHandle",         "archivedObjects"},
-  {"java/lang/invoke/MethodType",                 "archivedObjects"},
-  {"java/lang/invoke/LambdaForm$NamedFunction",   "archivedObjects"},
-  {"java/lang/reflect/Proxy$ProxyBuilder",        "archivedData"},
+  {"java/lang/invoke/DirectMethodHandle",         "archivedObjects"},  // FIXME -- requires PreloadSharedClasses
+  {"java/lang/invoke/MethodType",                 "archivedObjects"},  // FIXME -- requires PreloadSharedClasses
+  {"java/lang/invoke/LambdaForm$NamedFunction",   "archivedObjects"},  // FIXME -- requires PreloadSharedClasses
+  {"java/lang/reflect/Proxy$ProxyBuilder",        "archivedData"},     // FIXME -- requires PreloadSharedClasses
 #ifndef PRODUCT
   {nullptr, nullptr}, // Extra slot for -XX:ArchiveHeapTestClass
 #endif
@@ -1316,7 +1316,7 @@ HeapShared::resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAP
     }
     return nullptr;
   } else {
-    if (record->is_full_module_graph() && !CDSConfig::is_using_full_module_graph() && do_init) {
+    if (record->is_full_module_graph() && !CDSConfig::is_using_full_module_graph()) {
       if (log_is_enabled(Info, cds, heap)) {
         ResourceMark rm(THREAD);
         log_info(cds, heap)("subgraph %s cannot be used because full module graph is disabled",

@@ -139,7 +139,7 @@
   product(bool, TempDisableAddJVMCIModule, false,                           \
           "Do not add jdk.internal.vm.ci module even for -XX:+EnableJVMCI") \
                                                                             \
-  product(bool, UsePermanentHeapObjects, true, DIAGNOSTIC,                  \
+  product(bool, UsePermanentHeapObjects, false, DIAGNOSTIC,                 \
           "Allow AOT code to access permanent archived heap objects")       \
                                                                             \
   product(bool, ArchiveLoaderLookupCache, false,                            \

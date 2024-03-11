@@ -150,7 +150,8 @@ ${PC_CLASSLIST}: ${PC_APP_UNPACKED}
 ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	rm -f ${PC_STATIC_JSA}.log
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
-	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA}.log
+	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA}.log
 	ls -l ${PC_STATIC_JSA}
 
 ${PC_DYNAMIC_JSA}: ${PC_STATIC_JSA}
@@ -193,14 +194,16 @@ cds: ${PC_CDS}
 
 ${PC_CDS_PREIMAGE}: ${PC_APP_UNPACKED}
 	rm -f ${PC_CDS_PREIMAGE} ${PC_CDS}
-	${PREMAIN_JAVA} -XX:+ArchiveInvokeDynamic -XX:CachedCodeMaxSize=512M -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage -XX:CacheDataStore=${PC_CDS} \
+	${PREMAIN_JAVA} -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:CachedCodeMaxSize=512M \
+	    -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage -XX:CacheDataStore=${PC_CDS} \
 	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS_PREIMAGE}.log \
 	    ${UNPACKED_CMDLINE}
 	ls -l ${PC_CDS_PREIMAGE}
 
 ${PC_CDS}: ${PC_CDS_PREIMAGE}
 	rm -f ${PC_CDS}
-	${PREMAIN_JAVA} -XX:+ArchiveInvokeDynamic -XX:CachedCodeMaxSize=512M -XX:+UnlockDiagnosticVMOptions -XX:CDSPreimage=${PC_CDS_PREIMAGE} -XX:CacheDataStore=${PC_CDS} \
+	${PREMAIN_JAVA} -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:CachedCodeMaxSize=512M \
+	    -XX:+UnlockDiagnosticVMOptions -XX:CDSPreimage=${PC_CDS_PREIMAGE} -XX:CacheDataStore=${PC_CDS} \
 	    -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS}.log \
 	    ${UNPACKED_CMDLINE}
 	ls -l ${PC_CDS}

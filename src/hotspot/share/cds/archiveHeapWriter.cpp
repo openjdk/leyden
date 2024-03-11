@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -261,11 +261,12 @@ int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClas
     info->set_buffer_offset(buffer_offset);
 
     _buffer_offset_to_source_obj_table->put(buffer_offset, src_obj);
-    // FIXME: Let's keep _perm_objs and _source_objs separate for now. We might
-    // want to add only the objects that are needed by AOT. (How??)
-    int perm_index = _perm_objs->length();
-    HeapShared::add_to_permanent_index_table(src_obj, perm_index);
-    _perm_objs->append(src_obj);
+    if (UsePermanentHeapObjects) {
+      // TODO: add only the objects that are needed by AOT. (How??)
+      int perm_index = _perm_objs->length();
+      HeapShared::add_to_permanent_index_table(src_obj, perm_index);
+      _perm_objs->append(src_obj);
+    }
   }
 
   // Create HeapShared::roots() in the output buffer. Reserve some extra slots at the end of it
