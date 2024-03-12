@@ -32,7 +32,6 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Arrays;
@@ -213,11 +212,14 @@ class DomainName {
                     @Override
                     public InputStream run() {
                         try {
-                            return Files.newInputStream(
-                                JavaHome.getJDKResource(
-                                    System.getProperty("java.home"),
-                                    "lib", "security",
-                                    "public_suffix_list.dat"));
+                            if (JavaHome.isHermetic()) {
+                                return DomainName.class.getResourceAsStream(
+                                        "public_suffix_list.dat");
+                            } else {
+                                return new FileInputStream(
+                                    new File(System.getProperty("java.home"),
+                                        "lib/security/public_suffix_list.dat"));
+                            }
                         } catch (IOException e) {
                             return null;
                         }
