@@ -26,7 +26,7 @@
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPrelinker.hpp"
+#include "cds/classPreloader.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/methodProfiler.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -174,7 +174,7 @@ void log_vm_init_stats() {
   if (log.is_enabled()) {
     SharedRuntime::print_counters_on(&log);
     ClassLoader::print_counters();
-    ClassPrelinker::print_counters();
+    ClassPreloader::print_counters();
     log.cr();
     // FIXME: intermittent crashes
 //    if (CountBytecodesPerThread) {

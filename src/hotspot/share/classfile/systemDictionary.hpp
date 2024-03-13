@@ -80,6 +80,7 @@ template <class E> class GrowableArray;
 class SystemDictionary : AllStatic {
   friend class BootstrapInfo;
   friend class ClassPrelinker;
+  friend class ClassPreloader;
   friend class vmClasses;
   friend class VMStructs;
 

@@ -34,6 +34,7 @@
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/classPrelinker.hpp"
+#include "cds/classPreloader.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "cds/dynamicArchive.hpp"
@@ -414,6 +415,7 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
   StringTable::serialize_shared_table_header(soc);
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
+  ClassPreloader::serialize(soc, true);
   ClassPrelinker::serialize(soc, true);
   TrainingData::serialize_training_data(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
@@ -522,8 +524,8 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
   ArchiveBuilder::OtherROAllocMark mark;
 
   SystemDictionaryShared::write_to_archive();
-  ClassPrelinker::record_initiated_klasses(true);
-  ClassPrelinker::record_unregistered_klasses();
+  ClassPreloader::record_initiated_klasses(true);
+  ClassPreloader::record_unregistered_klasses();
   TrainingData::dump_training_data();
   MetaspaceShared::write_method_handle_intrinsics();
 
@@ -568,7 +570,7 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   {
     ArchiveBuilder::OtherROAllocMark mark;
-    ClassPrelinker::record_preloaded_klasses(true);
+    ClassPreloader::record_preloaded_klasses(true);
     if (CDSConfig::is_dumping_preimage_static_archive()) {
       ClassPrelinker::record_final_image_eager_linkage();
     }
@@ -655,6 +657,7 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
 }
 
 void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
+  ClassPreloader::initialize();
   ClassPrelinker::initialize();
 
   if (!jcmd_request && !CDSConfig::is_dumping_dynamic_archive()

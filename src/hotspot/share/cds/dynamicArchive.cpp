@@ -29,6 +29,7 @@
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classPrelinker.hpp"
+#include "cds/classPreloader.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
@@ -140,7 +141,7 @@ public:
 
     {
       ArchiveBuilder::OtherROAllocMark mark;
-      ClassPrelinker::record_preloaded_klasses(false);
+      ClassPreloader::record_preloaded_klasses(false);
     }
 
     log_info(cds)("Make classes shareable");
@@ -159,7 +160,7 @@ public:
       SystemDictionaryShared::write_to_archive(false);
 
       DynamicArchive::dump_array_klasses();
-      ClassPrelinker::record_initiated_klasses(false);
+      ClassPreloader::record_initiated_klasses(false);
       TrainingData::dump_training_data();
 
       serialized_data = ro_region()->top();
@@ -250,6 +251,7 @@ void DynamicArchiveBuilder::release_header() {
 
 void DynamicArchiveBuilder::post_dump() {
   ArchivePtrMarker::reset_map_and_vs();
+  ClassPreloader::dispose();
   ClassPrelinker::dispose();
 }
 

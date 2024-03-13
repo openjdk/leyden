@@ -24,7 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPrelinker.hpp"
+#include "cds/classPreloader.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classFileParser.hpp"
 #include "classfile/classFileStream.hpp"
@@ -140,7 +140,7 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
   if (_java_platform_loader.is_empty()) {
     oop platform_loader = get_platform_class_loader_impl(CHECK);
     _java_platform_loader = OopHandle(Universe::vm_global(), platform_loader);
-    ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, java_platform_loader()));
+    ClassPreloader::runtime_preload(THREAD, Handle(THREAD, java_platform_loader()));
   } else {
     // It must have been restored from the archived module graph
     assert(UseSharedSpaces, "must be");
@@ -154,7 +154,7 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
   if (_java_system_loader.is_empty()) {
     oop system_loader = get_system_class_loader_impl(CHECK);
     _java_system_loader = OopHandle(Universe::vm_global(), system_loader);
-    ClassPrelinker::runtime_preload(THREAD, Handle(THREAD, java_system_loader()));
+    ClassPreloader::runtime_preload(THREAD, Handle(THREAD, java_system_loader()));
   } else {
     // It must have been restored from the archived module graph
     assert(UseSharedSpaces, "must be");

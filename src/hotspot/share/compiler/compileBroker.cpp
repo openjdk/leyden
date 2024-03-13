@@ -24,7 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPrelinker.hpp"
+#include "cds/classPreloader.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/vmClasses.hpp"
@@ -1567,7 +1567,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
 
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      comp_level == CompLevel_full_optimization && !ClassPrelinker::class_preloading_finished()) {
+      comp_level == CompLevel_full_optimization && !ClassPreloader::class_preloading_finished()) {
     return nullptr;
   }
 #endif
