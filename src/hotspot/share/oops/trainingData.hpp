@@ -71,7 +71,7 @@ class TrainingData : public Metadata {
     friend CompileTrainingData;
 
     // The empty key
-    Key() : Key(nullptr, nullptr) { }
+    Key() : _name1(nullptr), _name2(nullptr), _holder(nullptr) { }
     bool is_empty() const {
       return _name1 == nullptr && _name2 == nullptr && _holder == nullptr;
     }
@@ -86,8 +86,9 @@ class TrainingData : public Metadata {
       // after this point the Key object keeps them alive as well.
     { }
     Key(const KlassTrainingData* klass, Symbol* method_name, Symbol* signature);
+    Key(const MethodTrainingData* method);
     Key(const InstanceKlass* klass);
-    Key(const Method* method);
+    Key(const Method* method, KlassTrainingData* holder);
 
     static unsigned cds_hash(const Key* const& k);
     static bool can_compute_cds_hash(const Key* const& k);
