@@ -51,9 +51,6 @@ runtime/cds/appcds/dynamicArchive/TestDynamicRegenerateHolderClasses.java 831814
 runtime/cds/appcds/dynamicArchive/TestLambdaInvokers.java 8318142 generic-all
 runtime/cds/appcds/javaldr/ExceptionDuringDumpAtObjectsInitPhase.java 8318142 generic-all
 
-# JDK-8318188: probably a bug in CDS
-compiler/jvmci/jdk.vm.ci.runtime.test/src/jdk/vm/ci/runtime/test/TestResolvedJavaMethod.java 8318188 generic-all
-
 # Misc failures -- need to investigate
 runtime/logging/ItablesTest.java 8318142 generic-all
 runtime/logging/VerificationTest.java 8318142 generic-all
