@@ -160,7 +160,9 @@ ${PC_CLASSLIST}: ${PC_APP_UNPACKED}
 ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	rm -f ${PC_STATIC_JSA}.log
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
-	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic \
+	    -XX:SharedArchiveFile=${PC_STATIC_JSA} \
+	    -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:+ArchiveDynamicProxies -XX:+ArchiveReflectionData \
+	    -XX:+ArchiveLoaderLookupCache \
 	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA}.log
 	ls -l ${PC_STATIC_JSA}
 
@@ -236,7 +238,9 @@ cds: ${PC_CDS}
 
 ${PC_CDS_PREIMAGE}: ${PC_APP_UNPACKED}
 	rm -f ${PC_CDS_PREIMAGE} ${PC_CDS}
-	${PREMAIN_JAVA} -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:CachedCodeMaxSize=512M \
+	${PREMAIN_JAVA} -XX:+PreloadSharedClasses \
+	    -XX:+ArchiveInvokeDynamic -XX:+ArchiveReflectionData \
+	    -XX:+ArchiveDynamicProxies -XX:+ArchiveLoaderLookupCache -XX:CachedCodeMaxSize=512M \
 	    -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage -XX:CacheDataStore=${PC_CDS} \
 	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS_PREIMAGE}.log \
 	    ${UNPACKED_CMDLINE}
@@ -269,13 +273,14 @@ cleann:
 LOOPS = 0 1 2 3 4 5 6 7 8 9 10
 
 mainline_vs_premain:
-	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS,premain custom static CDS+training+AOT"
+	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS,premain custom static CDS+training+AOT,premain new workflow"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
 		$(MAKE) LOG_INIT= run0.ml | grep Booted >> tmp.txt; \
 		$(MAKE) LOG_INIT= runs.ml | grep Booted >> tmp.txt; \
 		$(MAKE) LOG_INIT= runs    | grep Booted >> tmp.txt; \
 		$(MAKE) LOG_INIT= run     | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= runn    | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \
