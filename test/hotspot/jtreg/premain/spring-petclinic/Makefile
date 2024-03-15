@@ -34,16 +34,26 @@
 # Run without Leyden optimizations
 #    make run0
 
-# Set the following to point to JDK 17 and your Leyden JDK build.
+# Set the following to point to JDK 17, your JDK mainline build, and your Leyden JDK build.
 #
 #  *** NOTE: JDK 17 (or 21??) is needed to build spring-petclinic-3.2.0-SNAPSHOT.jar
 JDK17_HOME   = /jdk3/official/jdk17
+
+# Points to your build with https://github.com/openjdk/jdk
+# For comparison purposes, this build should be the latest version of the mainline that
+# has been merged into https://github.com/openjdk/leyden/tree/premain
+MAINLINE_HOME = /jdk3/bld/rum/images/jdk
+
+# Points to your build with https://github.com/openjdk/leyden/tree/premain
 PREMAIN_HOME = /jdk3/bld/le4/images/jdk
 #===============================================================================
+
+LOG_INIT = -Xlog:init
 
 # Usually there's no need to change the following
 JAR_CMD          = ${JDK17_HOME}/bin/jar
 JDK17_JAVA       = ${JDK17_HOME}/bin/java
+MAINLINE_JAVA    = ${MAINLINE_HOME}/bin/java
 PREMAIN_JAVA     = ${PREMAIN_HOME}/bin/java
 PC_REPO          = petclinic-snapshot
 PC_JAVA_SOURCES = ${PC_REPO}/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
@@ -168,25 +178,57 @@ ${PC_CACHED_CODE}: ${PC_DYNAMIC_JSA}
 
 # run with premain optimizatipn
 run: ${PC_CACHED_CODE}
-	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
-		-XX:CachedCodeFile=${PC_CACHED_CODE} -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
+		-XX:CachedCodeFile=${PC_CACHED_CODE} ${LOG_INIT} -Xlog:scc=error ${UNPACKED_CMDLINE}
 
 # run with just static CDS archive
 runs: ${PC_STATIC_JSA}
-	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} \
-		-Xlog:init ${UNPACKED_CMDLINE}
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} \
+		${LOG_INIT} ${UNPACKED_CMDLINE}
 
 # run with just dynamic CDS archive
 rund: ${PC_DYNAMIC_JSA}
-	time ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} \
-		-Xlog:init ${UNPACKED_CMDLINE}
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} \
+		${LOG_INIT} ${UNPACKED_CMDLINE}
 
 # run WITHOUT premain optimizatipn
 run0: ${PC_APP_UNPACKED}
-	time ${PREMAIN_JAVA} -Xlog:init ${UNPACKED_CMDLINE}
+	${PREMAIN_JAVA} ${LOG_INIT} ${UNPACKED_CMDLINE}
 
 run17: ${PC_APP_UNPACKED}
-	time ${JDK17_JAVA} ${UNPACKED_CMDLINE}
+	${JDK17_JAVA} ${UNPACKED_CMDLINE}
+
+# Running with mainline
+PC_CLASSLIST_MAINLINE   = spring-petclinic.ml.classlist
+PC_STATIC_JSA_MAINLINE  = spring-petclinic.static.ml.jsa
+
+list.ml:   ${PC_CLASSLIST_MAINLINE}
+
+static.ml: ${PC_STATIC_JSA_MAINLINE}
+
+${PC_CLASSLIST_MAINLINE}: ${PC_APP_UNPACKED}
+	${MAINLINE_JAVA} -Xshare:off -XX:DumpLoadedClassList=${PC_CLASSLIST_MAINLINE} \
+	    -Xlog:class+load=debug:file=spring-petclinic.classload.ml.log \
+	    ${UNPACKED_CMDLINE}
+	wc -lc ${PC_CLASSLIST_MAINLINE}
+
+${PC_STATIC_JSA_MAINLINE}: ${PC_CLASSLIST_MAINLINE}
+	rm -f ${PC_STATIC_JSA_MAINLINE}.log
+	${MAINLINE_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST_MAINLINE} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
+	    -XX:SharedArchiveFile=${PC_STATIC_JSA_MAINLINE} \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning:file=${PC_STATIC_JSA_MAINLINE}.log
+	ls -l ${PC_STATIC_JSA_MAINLINE}
+
+run0.ml: ${PC_STATIC_JSA_MAINLINE}
+	${MAINLINE_JAVA} \
+		${UNPACKED_CMDLINE}
+
+runs.ml: ${PC_STATIC_JSA_MAINLINE}
+	${MAINLINE_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA_MAINLINE} \
+		${UNPACKED_CMDLINE}
+
+clean.ml:
+	rm -fv ${PC_CLASSLIST_MAINLINE}* ${PC_STATIC_JSA_MAINLINE}*
 
 #======================================== new workflow
 pre: ${PC_CDS_PREIMAGE}
@@ -211,7 +253,7 @@ ${PC_CDS}: ${PC_CDS_PREIMAGE}
 
 # run with NEW workflow
 runn: ${PC_CDS}
-	time ${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} -Xlog:init -Xlog:scc=error ${UNPACKED_CMDLINE}
+	${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} ${LOG_INIT} -Xlog:scc=error ${UNPACKED_CMDLINE}
 
 clean: clean0
 	rm -rf *~ ${PC_REPO}
@@ -223,3 +265,19 @@ clean0:
 # clean the the leyden artifacts for the new workflow only
 cleann:
 	rm -fv spring-petclinic.cds.*
+
+LOOPS = 0 1 2 3 4 5 6 7 8 9 10
+
+mainline_vs_premain:
+	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS,premain custom static CDS+training+AOT"
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(MAKE) LOG_INIT= run0.ml | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= runs.ml | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= runs    | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= run     | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
+	        fi; \
+		first=0; \
+	done
