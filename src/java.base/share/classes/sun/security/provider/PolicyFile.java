@@ -445,38 +445,30 @@ public class PolicyFile extends java.security.Policy {
                 while ((policy_uri = Security.getProperty(urlname+n)) != null) {
                     try {
                         URL policy_url = null;
+                        String expanded_uri = PropertyExpander.expand
+                                (policy_uri).replace(File.separatorChar, '/');
 
                         String javaHomeUriPrefix = "file:${java.home}/";
                         String userHomeUriPrefix = "file:${user.home}/";
 
-                        String expanded_uri;
-                        if (JavaHome.isHermetic() &&
-                            policy_uri.startsWith(javaHomeUriPrefix)) {
-                            // Convert to a jar URL before expanding the
-                            // java.home property.
-                            expanded_uri = JavaHome.hermeticJavaHome()
-                                               .toUri().toString() + "/" +
-                                           policy_uri.substring(
-                                               javaHomeUriPrefix.length());
+                        if (policy_uri.startsWith(javaHomeUriPrefix) ||
+                            policy_uri.startsWith(userHomeUriPrefix)) {
+                            if (JavaHome.isHermetic() &&
+                                policy_uri.startsWith(javaHomeUriPrefix)) {
+                                // Get the policy file from hermetic jimage.
+                                policy_url = PolicyFile.class.getResource(
+                                    policy_uri.substring(
+                                        policy_uri.lastIndexOf('/') + 1));
+                            } else {
+                                // this special case accommodates
+                                // the situation java.home/user.home
+                                // expand to a single slash, resulting in
+                                // a file://foo URI
+                                policy_url = new File
+                                    (expanded_uri.substring(5)).toURI().toURL();
+                            }
                         } else {
-                            expanded_uri = PropertyExpander.expand(policy_uri);
-                        }
-                        expanded_uri = expanded_uri.replace(File.separatorChar, '/');
-
-                        if (expanded_uri.startsWith("jar:file:/")) {
-                            // TODO (jiangli): Avoid the usage of deprecated URL constructor.
-                            policy_url = new URL(expanded_uri);
-                        } else if (policy_uri.startsWith(javaHomeUriPrefix) ||
-                                   policy_uri.startsWith(userHomeUriPrefix)) {
-
-                            // this special case accommodates
-                            // the situation java.home/user.home
-                            // expand to a single slash, resulting in
-                            // a file://foo URI
-                            policy_url = new File
-                                (expanded_uri.substring(5)).toURI().toURL();
-                        } else {
-                            policy_url = new URI(expanded_uri).toURL();
+                           policy_url = new URI(expanded_uri).toURL();
                         }
 
                         if (debug != null) {
@@ -503,21 +495,23 @@ public class PolicyFile extends java.security.Policy {
     }
 
     private void initDefaultPolicy(PolicyInfo newInfo) {
-        /*
-        Path defaultPolicy = builtInFS.getPath(StaticProperty.javaHome(),
+        Path defaultPolicy = null;
+
+        if (!JavaHome.isHermetic()) {
+            defaultPolicy = builtInFS.getPath(StaticProperty.javaHome(),
                                      "lib",
                                      "security",
                                      "default.policy");
-        */
-        // TODO (jiangli): Check and apply JDK-8266345's builtInFS fix.
-        Path defaultPolicy = JavaHome.getJDKResource(StaticProperty.javaHome(),
-                                     "lib",
-                                     "security",
-                                     "default.policy");
-        if (debug != null) {
-            debug.println("reading " + defaultPolicy);
         }
-        try (BufferedReader br = Files.newBufferedReader(defaultPolicy)) {
+
+        if (debug != null) {
+            debug.println("reading " + (JavaHome.isHermetic() ?
+                "hermetic default.policy" : defaultPolicy));
+        }
+        try (BufferedReader br = JavaHome.isHermetic() ?
+             new BufferedReader(new InputStreamReader(
+                 PolicyFile.class.getResourceAsStream("default.policy"))) :
+             Files.newBufferedReader(defaultPolicy)) {
 
             PolicyParser pp = new PolicyParser(expandProperties);
             pp.read(br);

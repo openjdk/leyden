@@ -85,8 +85,11 @@ ifeq ($(STATIC_JAVA), true)
   HERMETIC_BLOCKED_CERTS := /java.base/lib/security/blocked.certs=/java.base/sun/security/util/blocked.certs
   HERMETIC_CACERTS := /java.base/lib/security/cacerts=/java.base/sun/security/util/cacerts
   HERMETIC_PUBLIC_SUFFIX_LIST_DAT := /java.base/lib/security/public_suffix_list.dat=/java.base/sun/security/util/public_suffix_list.dat
+  # Security policy files
+  HERMETIC_DEFAULT_POLICY := /java.base/lib/security/default.policy=/java.base/sun/security/provider/default.policy
+  HERMETIC_JAVA_POLICY := /java.base/conf/security/java.policy=/java.base/sun/security/provider/java.policy
 
-  HERMETIC_RESOURCES := --hermetic-resources $(HERMETIC_JAVA_SECURITY),$(HERMETIC_LOGGING_PROPERTIES),$(HERMETIC_NET_PROPERTIES),$(HERMETIC_PSFONT_PROPERTIES_JA),$(HERMETIC_PSFONT2D_PROPERTIES),$(HERMETIC_BLOCKED_CERTS),$(HERMETIC_CACERTS),$(HERMETIC_PUBLIC_SUFFIX_LIST_DAT)
+  HERMETIC_RESOURCES := --hermetic-resources $(HERMETIC_JAVA_SECURITY),$(HERMETIC_LOGGING_PROPERTIES),$(HERMETIC_NET_PROPERTIES),$(HERMETIC_PSFONT_PROPERTIES_JA),$(HERMETIC_PSFONT2D_PROPERTIES),$(HERMETIC_BLOCKED_CERTS),$(HERMETIC_CACERTS),$(HERMETIC_PUBLIC_SUFFIX_LIST_DAT),$(HERMETIC_DEFAULT_POLICY),$(HERMETIC_JAVA_POLICY)
 endif
 
 JLINK_TOOL := $(JLINK) -J-Djlink.debug=true \
