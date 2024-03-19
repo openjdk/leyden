@@ -65,14 +65,19 @@ PC_APP_UNPACKED  = ${PC_REPO}/target/unpacked
 PC_APP_UNPACKED_ZIP = ${PC_REPO}/target/spring-petclinic-3.2.0.zip
 
 PC_MAIN_CLASS    = org.springframework.samples.petclinic.PetClinicApplication
-PC_CLASSLIST     = spring-petclinic.classlist
-PC_STATIC_JSA    = spring-petclinic.static.jsa
-PC_DYNAMIC_JSA   = spring-petclinic.dynamic.jsa
-PC_CACHED_CODE   = spring-petclinic.code.jsa
+
+# Note: you can add specify PM_VER (PreMain Version) for comparing the performance of different builds of premain.
+# See the compare_premain_builds target below
+
+# old workflow
+PC_CLASSLIST     = spring-petclinic$(PM_VER).classlist
+PC_STATIC_JSA    = spring-petclinic$(PM_VER).static.jsa
+PC_DYNAMIC_JSA   = spring-petclinic$(PM_VER).dynamic.jsa
+PC_CACHED_CODE   = spring-petclinic$(PM_VER).code.jsa
 
 # new workflow
-PC_CDS_PREIMAGE  = spring-petclinic.cds.preimage
-PC_CDS           = spring-petclinic.cds
+PC_CDS_PREIMAGE  = spring-petclinic$(PM_VER).cds.preimage
+PC_CDS           = spring-petclinic$(PM_VER).cds
 
 # TODO: should we add -Dspring.context.exit=onRefresh to command line??
 # This will make the JVM quit after printing this line:
@@ -153,7 +158,7 @@ ${PC_APP_UNPACKED}: ${PC_APP_JAR}
 
 ${PC_CLASSLIST}: ${PC_APP_UNPACKED}
 	${PREMAIN_JAVA} -Xshare:off -XX:DumpLoadedClassList=${PC_CLASSLIST} \
-	    -Xlog:class+load=debug:file=spring-petclinic.classload.log ${SAVE_GEN_FILES} \
+	    -Xlog:class+load=debug:file=${PC_CLASSLIST}.classload.log ${SAVE_GEN_FILES} \
 	    ${UNPACKED_CMDLINE}
 	wc -lc ${PC_CLASSLIST}
 
@@ -270,6 +275,8 @@ clean0:
 cleann:
 	rm -fv spring-petclinic.cds.*
 
+# You can choose a different number of loops like this:
+#     make compare_premain_builds LOOPS="0 1 2" PM_OLD=.....
 LOOPS = 0 1 2 3 4 5 6 7 8 9 10
 
 mainline_vs_premain:
@@ -286,3 +293,51 @@ mainline_vs_premain:
 	        fi; \
 		first=0; \
 	done
+
+# Do something like this:
+# make compare_premain_builds \
+#    PM_OLD=/repo/old/build/linux-x64/images/jdk \
+#    PM_NEW=/repo/old/build/linux-x64/images/jdk 
+#    JDK17_HOME=/my/jdk/17/home
+
+compare_premain_builds:
+	@echo old build = ${PM_OLD}
+	@echo New build = ${PM_NEW}
+	@echo "Run,Old static CDS only,New static CDS only,Old static CDS + training + AOT,New static CDS + training + AOT,Old 1-step training,New 1-step training"
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old runs | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new runs | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old run  | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new run  | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old runn | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new runn | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
+	        fi; \
+		first=0; \
+	done
+
+diff_training_logs:
+	@for i in old new; do \
+	    grep cds,class spring-petclinic.$$i.static.jsa.log | \
+		sed -e 's/.*0x[0-9a-f]* ..... //g' \
+		    -e 's/Lambda\/0x[0-9a-f]*/Lambda\/nnn/g' \
+		    -e 's/MH\/0x[0-9a-f]*/MH\/nnn/g' | \
+		sort > old-workflow-static-classes.$$i.txt; \
+	    grep cds,class spring-petclinic.$$i.dynamic.jsa.log | \
+		sed -e 's/.*0x[0-9a-f]* ..... //g' \
+		    -e 's/Lambda\/0x[0-9a-f]*/Lambda\/nnn/g' \
+		    -e 's/MH\/0x[0-9a-f]*/MH\/nnn/g' | \
+		sort > old-workflow-dynamic-classes.$$i.txt; \
+	    grep cds,class spring-petclinic.$$i.cds.log | \
+		sed -e 's/.*0x[0-9a-f]* ..... //g' \
+		    -e 's/Lambda\/0x[0-9a-f]*/Lambda\/nnn/g' \
+		    -e 's/MH\/0x[0-9a-f]*/MH\/nnn/g' | \
+		sort > new-workflow-classes.$$i.txt; \
+	done
+	@ls -l *.old.txt *.new.txt
+	@echo '***'
+	@echo "You can diff the above files to diagnose speed differences between two builds"
+
+
