@@ -1365,7 +1365,8 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
                        compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     }
-    if (k->is_instance_klass() && array_dim > 0) {
+    if (array_dim > 0) {
+      assert(k->is_instance_klass() || k->is_typeArray_klass(), "sanity check");
       Klass* ak = k->array_klass_or_null(array_dim);
       // FIXME: what would it take to create an array class on the fly?
 //      Klass* ak = k->array_klass(dim, JavaThread::current());
@@ -1375,6 +1376,7 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
         log_warning(scc)("%d (L%d): %d-dimension array klass lookup failed: %s",
                          compile_id(), comp_level(), array_dim, k->external_name());
       }
+      log_info(scc)("%d (L%d): Klass lookup: %s (object array)", compile_id(), comp_level(), k->external_name());
       return ak;
     } else {
       log_info(scc)("%d (L%d): Shared klass lookup: %s",
@@ -1542,9 +1544,6 @@ bool SCCache::write_klass(Klass* klass) {
   if (klass->is_objArray_klass()) {
     array_dim = ObjArrayKlass::cast(klass)->dimension();
     klass     = ObjArrayKlass::cast(klass)->bottom_klass(); // overwrites klass
-  }
-  if (klass->is_typeArray_klass()) {
-    // FIXME: primitive array support?
   }
   uint init_state = 0;
   if (klass->is_instance_klass()) {
