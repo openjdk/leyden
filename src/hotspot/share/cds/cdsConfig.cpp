@@ -329,11 +329,6 @@ bool CDSConfig::check_unsupported_cds_runtime_properties() {
 }
 
 bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_flag_cmd_line) {
-  if (FLAG_IS_DEFAULT(PreloadSharedClasses) &&
-      (ArchiveDynamicProxies || ArchiveInvokeDynamic || ArchiveReflectionData)) {
-    FLAG_SET_ERGO(PreloadSharedClasses, true);
-  }
-
   if (CacheDataStore != nullptr) {
     if (FLAG_IS_DEFAULT(PreloadSharedClasses)) {
       // New workflow - enable PreloadSharedClasses by default.
@@ -422,14 +417,23 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
     UsePermanentHeapObjects = true;
   }
 
-  if (!PreloadSharedClasses) {
+  if (PreloadSharedClasses) {
+    // If PreloadSharedClasses is specified, enable all these optimizations by default.
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, true);
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveFieldReferences, true);
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveInvokeDynamic, true);
+  //FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveMethodReferences, true);
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
+  } else {
     // All of these *might* depend on PreloadSharedClasses. Better be safe than sorry.
     // TODO: more fine-grained handling.
-    ArchiveDynamicProxies   = false;
-    ArchiveFieldReferences  = false;
-    ArchiveInvokeDynamic    = false;
-    ArchiveMethodReferences = false;
-    ArchiveReflectionData   = false;
+    FLAG_SET_ERGO(ArchiveDynamicProxies, false);
+    FLAG_SET_ERGO(ArchiveFieldReferences, false);
+    FLAG_SET_ERGO(ArchiveInvokeDynamic, false);
+    FLAG_SET_ERGO(ArchiveLoaderLookupCache, false);
+    FLAG_SET_ERGO(ArchiveMethodReferences, false);
+    FLAG_SET_ERGO(ArchiveReflectionData, false);
   }
 
   if (is_dumping_static_archive()) {
