@@ -2703,8 +2703,11 @@ void MacroAssembler::resolve_global_jobject(Register value, Register tmp1, Regis
 
 void MacroAssembler::stop(const char* msg) {
   BLOCK_COMMENT(msg);
+  // load msg into r0 so we can access it from the signal handler
+  // ExternalAddress enables saving and restoring via the code cache
+  lea(c_rarg0, ExternalAddress((address) msg));
   dcps1(0xdeae);
-  emit_int64((uintptr_t)msg);
+  SCCache::add_C_string(msg);
 }
 
 void MacroAssembler::unimplemented(const char* what) {
