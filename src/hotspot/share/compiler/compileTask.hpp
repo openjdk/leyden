@@ -65,6 +65,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
       Reason_Whitebox,         // Whitebox API
       Reason_MustBeCompiled,   // Used for -Xcomp or AlwaysCompileLoopMethods (see CompilationPolicy::must_be_compiled())
       Reason_Bootstrap,        // JVMCI bootstrap
+      Reason_DirectivesChanged, // Changed CompilerDirectivesStack
       Reason_Preload,          // pre-load SC code
       Reason_Precompile,
       Reason_PrecompileForPreload,
@@ -81,8 +82,10 @@ class CompileTask : public CHeapObj<mtCompiler> {
       "whitebox",
       "must_be_compiled",
       "bootstrap",
+      "directives_changed",
       "preload",
       "precompile",
+      "precompile_for_preload",
     };
     return reason_names[compile_reason];
   }

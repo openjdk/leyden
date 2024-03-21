@@ -312,15 +312,19 @@ cleann:
 #     make compare_premain_builds LOOPS="0 1 2" PM_OLD=.....
 LOOPS = 0 1 2 3 4 5 6 7 8 9 10
 
-mainline_vs_premain:
+SLEEP = sleep 1;
+
+mainline_vs_premain: clean0 _mainline_vs_premain
+
+_mainline_vs_premain:
 	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS,premain custom static CDS+training+AOT,premain new workflow"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(MAKE) LOG_INIT= run0.ml | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= runs.ml | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= runs    | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= run     | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= runn    | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= run0.ml | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs.ml | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs    | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= run     | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runn    | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \
@@ -341,18 +345,20 @@ mainline_vs_premain:
 #    PM_NEW=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:+ArchivePackages \
 #    JDK17_HOME=/my/jdk/17/home
 
-compare_premain_builds: clean0
+compare_premain_builds: clean0 _compare_premain_builds
+
+_compare_premain_builds:
 	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
 	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
 	@echo "Run,Old static CDS only,New static CDS only,Old static CDS + training + AOT,New static CDS + training + AOT,Old 1-step training,New 1-step training"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} run  | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} run  | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runn | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} run  | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} run  | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runn | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \
@@ -360,14 +366,16 @@ compare_premain_builds: clean0
 	done
 
 # same as above, but only comapre the speed of "make runs"
-compare_premain_builds_static: clean0
+compare_premain_builds_static: clean0 _compare_premain_builds_static
+
+_compare_premain_builds_static:
 	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
 	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
 	@echo "Run,Old static CDS only,New static CDS only"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \

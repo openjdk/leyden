@@ -141,6 +141,7 @@ private:
 
   static GrowableArrayCHeap<NativePointerInfo, mtClassShared>* _native_pointers;
   static GrowableArrayCHeap<oop, mtClassShared>* _source_objs;
+  static GrowableArrayCHeap<int, mtClassShared>* _source_objs_order;
   static GrowableArrayCHeap<oop, mtClassShared>* _perm_objs;
 
   typedef ResourceHashtable<size_t, oop,
@@ -231,6 +232,9 @@ private:
   static constexpr int PERMOBJ_SEGMENT_MAX_SHIFT  = DEBUG_ONLY(12) NOT_DEBUG(16);
   static constexpr int PERMOBJ_SEGMENT_MAX_LENGTH = 1 << PERMOBJ_SEGMENT_MAX_SHIFT;
   static constexpr int PERMOBJ_SEGMENT_MAX_MASK   = PERMOBJ_SEGMENT_MAX_LENGTH - 1;
+
+  static int compare_objs_by_oop_fields(int* a, int* b);
+  static void sort_source_objs();
 public:
   static void init() NOT_CDS_JAVA_HEAP_RETURN;
   static void add_source_obj(oop src_obj);
