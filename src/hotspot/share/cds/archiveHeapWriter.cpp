@@ -62,6 +62,10 @@ size_t ArchiveHeapWriter::_heap_roots_word_size;
 address ArchiveHeapWriter::_requested_bottom;
 address ArchiveHeapWriter::_requested_top;
 
+static size_t _num_strings = 0;
+static size_t _string_bytes = 0; 
+static size_t _num_packages = 0;
+
 GrowableArrayCHeap<ArchiveHeapWriter::NativePointerInfo, mtClassShared>* ArchiveHeapWriter::_native_pointers;
 GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_source_objs;
 GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_perm_objs = nullptr;
@@ -287,6 +291,9 @@ int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClas
 
   log_info(cds)("Size of heap region = " SIZE_FORMAT " bytes, %d objects, %d roots, %d permobjs in %d segments",
                 _buffer_used, _source_objs->length() + 2, roots->length(), _perm_objs->length(), permobj_segments);
+  log_info(cds)("   strings  = " SIZE_FORMAT_W(8) " (" SIZE_FORMAT " bytes)", _num_strings, _string_bytes);
+  log_info(cds)("   packages = " SIZE_FORMAT_W(8), _num_packages);
+
   assert(permobj_seg_offsets->length() == permobj_segments, "sanity");
   HeapShared::set_permobj_segments(permobj_segments);
   int n = _perm_objs->length();
@@ -383,7 +390,23 @@ void update_buffered_object_field(address buffered_obj, int field_offset, T valu
   *field_addr = value;
 }
 
+void ArchiveHeapWriter::update_stats(oop src_obj) {
+  if (java_lang_String::is_instance(src_obj)) {
+    _num_strings ++;
+    _string_bytes += src_obj->size() * HeapWordSize;
+    _string_bytes += java_lang_String::value(src_obj)->size() * HeapWordSize;
+  } else {
+    Klass* k = src_obj->klass();
+    Symbol* name = k->name();
+    if (name->equals("java/lang/NamedPackage") || name->equals("java/lang/Package")) {
+      _num_packages ++;
+    }
+  }
+}
+
 size_t ArchiveHeapWriter::copy_one_source_obj_to_buffer(oop src_obj) {
+  update_stats(src_obj);
+
   assert(!is_too_large_to_archive(src_obj), "already checked");
   size_t byte_size = src_obj->size() * HeapWordSize;
   assert(byte_size > 0, "no zero-size objects");

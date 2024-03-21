@@ -1,6 +1,6 @@
 
 /*
- * Copyright (c) 2021, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -65,7 +65,8 @@ template<typename Function>
 void DumpTimeSharedClassTable::iterate_all_classes_in_builtin_loaders(Function function) const {
   auto wrapper = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
     assert_lock_strong(DumpTimeTable_lock);
-    if (SystemDictionaryShared::is_builtin_loader(k->class_loader_data())) {
+    // k->class_loader_data() could be null for unreg classes loaded during CDSConfig::is_dumping_final_static_archive()
+    if (k->class_loader_data() != nullptr && SystemDictionaryShared::is_builtin_loader(k->class_loader_data())) {
        assert(k->is_loader_alive(), "must be");
        function(k, info);
        assert(k->is_loader_alive(), "must be");

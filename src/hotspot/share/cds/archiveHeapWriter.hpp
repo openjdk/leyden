@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -188,6 +188,7 @@ private:
   static int copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots, GrowableArray<size_t>* permobj_seg_offsets);
   template <typename T> static void add_permobj_segments_to_roots(GrowableArrayCHeap<oop, mtClassShared>* roots,
                                                                   ArchiveHeapInfo* info, GrowableArray<size_t>* permobj_seg_offsets);
+  static void update_stats(oop src_obj);
   static size_t copy_one_source_obj_to_buffer(oop src_obj);
 
   static void maybe_fill_gc_region_gap(size_t required_byte_size);

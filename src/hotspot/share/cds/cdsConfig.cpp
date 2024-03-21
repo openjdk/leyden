@@ -48,6 +48,7 @@ bool CDSConfig::_is_dumping_full_module_graph = true;
 bool CDSConfig::_is_using_full_module_graph = true;
 bool CDSConfig::_has_preloaded_classes = false;
 bool CDSConfig::_is_loading_invokedynamic = false;
+bool CDSConfig::_is_loading_packages = false;
 
 char* CDSConfig::_default_archive_path = nullptr;
 char* CDSConfig::_static_archive_path = nullptr;
@@ -60,7 +61,8 @@ int CDSConfig::get_status() {
          (is_logging_lambda_form_invokers() ? IS_LOGGING_LAMBDA_FORM_INVOKERS : 0) |
          (is_using_archive()                ? IS_USING_ARCHIVE : 0) |
          (is_dumping_heap()                 ? IS_DUMPING_HEAP : 0) |
-         (is_tracing_dynamic_proxy()        ? IS_LOGGING_DYNAMIC_PROXIES : 0);
+         (is_tracing_dynamic_proxy()        ? IS_LOGGING_DYNAMIC_PROXIES : 0) |
+         (is_dumping_packages()             ? IS_DUMPING_PACKAGES : 0);
 }
 
 
@@ -375,6 +377,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
         HeapShared::disable_writing();
         stop_dumping_full_module_graph();
         ArchiveInvokeDynamic = false;
+        ArchivePackages = false;
 
         FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
       }
@@ -424,6 +427,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveInvokeDynamic, true);
   //FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveMethodReferences, true);
+    FLAG_SET_ERGO_IF_DEFAULT(ArchivePackages, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
   } else {
     // All of these *might* depend on PreloadSharedClasses. Better be safe than sorry.
@@ -433,6 +437,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
     FLAG_SET_ERGO(ArchiveInvokeDynamic, false);
     FLAG_SET_ERGO(ArchiveLoaderLookupCache, false);
     FLAG_SET_ERGO(ArchiveMethodReferences, false);
+    FLAG_SET_ERGO(ArchivePackages, false);
     FLAG_SET_ERGO(ArchiveReflectionData, false);
   }
 
@@ -459,8 +464,9 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
 
     Arguments::PropertyList_add(new SystemProperty("java.lang.invoke.MethodHandle.NO_SOFT_CACHE", "true", false));
   } else {
-    // This flag is useful only when dumping static archive
+    // These flags flag are useful only when dumping static archive (which supports archived heap)
     ArchiveInvokeDynamic = false;
+    ArchivePackages = false;
   }
 
   // RecordDynamicDumpInfo is not compatible with ArchiveClassesAtExit
@@ -508,6 +514,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase,  bool mode_fl
     // These optimizations require heap dumping and PreloadSharedClasses, or else
     // the classes of some archived heap objects may be replaced at runtime.
     ArchiveInvokeDynamic = false;
+    ArchivePackages = false;
   }
 
   if (!ArchiveInvokeDynamic) {
@@ -635,6 +642,14 @@ bool CDSConfig::is_initing_classes_at_dump_time() {
 
 bool CDSConfig::is_dumping_invokedynamic() {
   return ArchiveInvokeDynamic && is_dumping_heap();
+}
+
+bool CDSConfig::is_dumping_packages() {
+  return ArchivePackages && is_dumping_heap();
+}
+
+bool CDSConfig::is_loading_packages() {
+  return UseSharedSpaces && is_loading_heap() && _is_loading_packages;
 }
 #endif // INCLUDE_CDS_JAVA_HEAP
 

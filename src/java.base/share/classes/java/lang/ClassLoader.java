@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2024, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2019, Azul Systems, Inc. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -61,6 +61,7 @@ import jdk.internal.loader.ClassLoaders;
 import jdk.internal.loader.NativeLibrary;
 import jdk.internal.loader.NativeLibraries;
 import jdk.internal.perf.PerfCounter;
+import jdk.internal.misc.CDS;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.misc.VM;
 import jdk.internal.reflect.CallerSensitive;
@@ -2710,6 +2711,8 @@ public abstract class ClassLoader {
         return unsafe.compareAndSetReference(this, offset, null, obj);
     }
 
+    static final boolean DEBUG = System.getProperty("leyden.debug.archived.packages") != null;
+
     /**
      * Called by the VM, during -Xshare:dump
      */
@@ -2717,8 +2720,40 @@ public abstract class ClassLoader {
         if (parallelLockMap != null) {
             parallelLockMap.clear();
         }
-        packages.clear();
-        package2certs.clear();
+
+        if (DEBUG) {
+            System.out.println(this + ": packages = " + packages.size());
+            for (Map.Entry<String, NamedPackage> entry : packages.entrySet()) {
+                String key = entry.getKey();
+                NamedPackage value = entry.getValue();
+                System.out.print("Package ");
+                System.out.print(key);
+                System.out.print(" = ");
+                System.out.println(value instanceof Package ? "Package" : "NamedPackage");
+            }
+        }
+        if (DEBUG) {
+            System.out.println("package2certs = " + package2certs.size());
+            for (Map.Entry<String, Certificate[]> entry : package2certs.entrySet()) {
+                String key = entry.getKey();
+                Certificate[] value = entry.getValue();
+                System.out.print("Package ");
+                System.out.print(key);
+                System.out.print(" = ");
+                System.out.println(value.length);
+            }
+        }
+        if (!CDS.isDumpingPackages()) {
+            if (DEBUG) {
+                System.out.println("Reset packages/package2certs");
+            }
+            packages.clear();
+            package2certs.clear();
+        } else {
+            if (DEBUG) {
+                System.out.println("Retained packages/package2certs");
+            }
+        }
         classes.clear();
         classLoaderValueMap = null;
     }

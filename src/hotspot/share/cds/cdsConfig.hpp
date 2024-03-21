@@ -40,6 +40,7 @@ class CDSConfig : public AllStatic {
   static bool _is_using_full_module_graph;
   static bool _has_preloaded_classes;
   static bool _is_loading_invokedynamic;
+  static bool _is_loading_packages;
 
   static char* _default_archive_path;
   static char* _static_archive_path;
@@ -60,6 +61,7 @@ public:
   static const int IS_USING_ARCHIVE                = 1 << 3;
   static const int IS_DUMPING_HEAP                 = 1 << 4;
   static const int IS_LOGGING_DYNAMIC_PROXIES      = 1 << 5;
+  static const int IS_DUMPING_PACKAGES             = 1 << 6;
   static int get_status() NOT_CDS_RETURN_(0);
 
   // Initialization and command-line checking
@@ -119,6 +121,10 @@ public:
   static bool is_dumping_invokedynamic()                     NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_loading_invokedynamic()                     NOT_CDS_JAVA_HEAP_RETURN_(false);
   static void set_is_loading_invokedynamic()                 { CDS_JAVA_HEAP_ONLY(_is_loading_invokedynamic = true); }
+
+  static bool is_dumping_packages()                          NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_loading_packages()                          NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static void set_is_loading_packages()                      { CDS_JAVA_HEAP_ONLY(_is_loading_packages = true); }
 
   static bool is_dumping_dynamic_proxy()                     NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_tracing_dynamic_proxy()                     NOT_CDS_RETURN_(false);

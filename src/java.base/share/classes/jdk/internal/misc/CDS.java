@@ -48,6 +48,7 @@ public class CDS {
     private static final int IS_USING_ARCHIVE                = 1 << 3;
     private static final int IS_DUMPING_HEAP                 = 1 << 4;
     private static final int IS_LOGGING_DYNAMIC_PROXIES      = 1 << 5;
+    private static final int IS_DUMPING_PACKAGES             = 1 << 6;
     private static final int configStatus = getCDSConfigStatus();
 
     /**
@@ -84,6 +85,10 @@ public class CDS {
 
     public static boolean isLoggingDynamicProxies() {
         return (configStatus & IS_LOGGING_DYNAMIC_PROXIES) != 0;
+    }
+
+    public static boolean isDumpingPackages() {
+        return (configStatus & IS_DUMPING_PACKAGES) != 0;
     }
 
     private static native int getCDSConfigStatus();

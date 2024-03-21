@@ -216,6 +216,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _has_preloaded_classes = PreloadSharedClasses;
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
   _has_archived_invokedynamic = CDSConfig::is_dumping_invokedynamic();
+  _has_archived_packages = CDSConfig::is_dumping_packages();
 
   // The following fields are for sanity checks for whether this archive
   // will function correctly with this JVM and the bootclasspath it's
@@ -295,6 +296,7 @@ void FileMapHeader::print(outputStream* st) {
   st->print_cr("- use_optimized_module_handling:  %d", _use_optimized_module_handling);
   st->print_cr("- has_full_module_graph           %d", _has_full_module_graph);
   st->print_cr("- has_archived_invokedynamic      %d", _has_archived_invokedynamic);
+  st->print_cr("- has_archived_packages           %d", _has_archived_packages);
   st->print_cr("- ptrmap_size_in_bits:            " SIZE_FORMAT, _ptrmap_size_in_bits);
 }
 
@@ -2508,6 +2510,9 @@ bool FileMapHeader::validate() {
 
     if (_has_archived_invokedynamic) {
       CDSConfig::set_is_loading_invokedynamic();
+    }
+    if (_has_archived_packages) {
+      CDSConfig::set_is_loading_packages();
     }
   }
 

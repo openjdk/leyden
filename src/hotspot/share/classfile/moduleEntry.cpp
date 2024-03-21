@@ -503,7 +503,12 @@ void ModuleEntry::update_oops_in_archived_module(int root_oop_index) {
 
   _archived_module_index = root_oop_index;
 
-  assert(shared_protection_domain() == nullptr, "never set during -Xshare:dump");
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    OopHandle null_handle;
+    _shared_pd = null_handle;
+  } else {    
+    assert(shared_protection_domain() == nullptr, "never set during -Xshare:dump");
+  }
   // Clear handles and restore at run time. Handles cannot be archived.
   OopHandle null_handle;
   _module = null_handle;

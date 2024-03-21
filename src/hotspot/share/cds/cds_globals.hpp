@@ -129,9 +129,16 @@
   product(bool, ArchiveInvokeDynamic, false,                                \
           "Archive resolved JVM_CONSTANT_InvokeDynamic in ConstantPool")    \
                                                                             \
+  product(bool, ArchiveLoaderLookupCache, false,                            \
+          "Archive app loader's positive and negative lookup cache")        \
+                                                                            \
   product(bool, ArchiveMethodReferences, true,                              \
           "Archive resolved JVM_CONSTANT_Methodref and "                    \
           "JVM_CONSTANT_InterfaceMethodref in ConstantPool")                \
+                                                                            \
+  product(bool, ArchivePackages, false,                                     \
+          "Archive the java.lang.ClassLoader::{packages,package2certs} "    \
+          "tables")                                                         \
                                                                             \
   product(bool, ArchiveReflectionData, false,                               \
           "Archive Class::reflectionData field")                            \
@@ -141,9 +148,6 @@
                                                                             \
   product(bool, UsePermanentHeapObjects, false, DIAGNOSTIC,                 \
           "Allow AOT code to access permanent archived heap objects")       \
-                                                                            \
-  product(bool, ArchiveLoaderLookupCache, false,                            \
-          "Archive app loader's positive and negative lookup cache")        \
                                                                             \
   product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
           "Verify archived training data")                                  \

@@ -50,11 +50,15 @@ PREMAIN_HOME = /jdk3/bld/le4/images/jdk
 
 LOG_INIT = -Xlog:init
 
+# Options passed to PREMAIN_JAVA. See compare_premain_builds below
+PM_OPTS =
+
 # Usually there's no need to change the following
 JAR_CMD          = ${JDK17_HOME}/bin/jar
+JAVAC_CMD        = ${JDK17_HOME}/bin/javac
 JDK17_JAVA       = ${JDK17_HOME}/bin/java
 MAINLINE_JAVA    = ${MAINLINE_HOME}/bin/java
-PREMAIN_JAVA     = ${PREMAIN_HOME}/bin/java
+PREMAIN_JAVA     = ${PREMAIN_HOME}/bin/java ${PM_OPTS}
 PC_REPO          = petclinic-snapshot
 PC_JAVA_SOURCES = ${PC_REPO}/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
 PC_APP_JAR       = ${PC_REPO}/target/spring-petclinic-3.2.0-SNAPSHOT.jar
@@ -94,6 +98,7 @@ PC_CDS           = spring-petclinic$(PM_VER).cds
 #    4:21.694 ... com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
 HEAP_SIZE        = -Xmx2g
 UNPACKED_CMDLINE = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath -DautoQuit=true -Dspring.aot.enabled=true -Dspring.output.ansi.enabled=NEVER ${PC_MAIN_CLASS}
+DUMMY_CMDLINE    = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath.dummy Dummy
 
 all: check git app aot
 
@@ -150,6 +155,7 @@ ${PC_APP_UNPACKED}: ${PC_APP_JAR}
 	    ${JAR_CMD} cf classes.jar *
 	echo ${PC_APP_UNPACKED}/classes.jar $$(find ${PC_APP_UNPACKED}/BOOT-INF -name \*.jar | sort) \
 	    | sed -e 's/ /:/g' > ${PC_APP_UNPACKED}/classpath
+	echo $$(cat ${PC_APP_UNPACKED}/classpath):Dummy.jar > ${PC_APP_UNPACKED}/classpath.dummy
 	${JAR_CMD} cf0 ${PC_APP_UNPACKED_ZIP} ${PC_APP_UNPACKED}
 	$(MAKE) run17
 
@@ -167,7 +173,7 @@ ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
 	    -XX:SharedArchiveFile=${PC_STATIC_JSA} \
 	    -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:+ArchiveDynamicProxies -XX:+ArchiveReflectionData \
-	    -XX:+ArchiveLoaderLookupCache \
+	    -XX:+ArchiveLoaderLookupCache -Dleyden.debug.archived.packages=1 \
 	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA}.log
 	ls -l ${PC_STATIC_JSA}
 
@@ -190,8 +196,23 @@ run: ${PC_CACHED_CODE}
 
 # run with just static CDS archive
 runs: ${PC_STATIC_JSA}
-	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} \
-		${LOG_INIT} ${UNPACKED_CMDLINE}
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} ${LOG_INIT} ${UNPACKED_CMDLINE}
+
+# run with just static CDS archive, but instead of the main class, give a fake class name
+# Because -XX:+LoadSharedClasses is specified, this command will basically test the speed of loading all
+# the classes and entering the main() method.
+dummy: ${PC_STATIC_JSA} Dummy.jar
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} ${LOG_INIT} ${DUMMY_CMDLINE}
+
+dummy-50: ${PC_STATIC_JSA} Dummy.jar
+	bash -c "time for i in {1..50}; do ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} ${DUMMY_CMDLINE}; done"
+
+dummy-50-perf: ${PC_STATIC_JSA} Dummy.jar
+	perf stat -r 50 ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} ${DUMMY_CMDLINE}
+
+Dummy.jar: Dummy.java
+	${JAVAC_CMD} Dummy.java
+	${JAR_CMD} cf Dummy.jar Dummy*.class
 
 # run with just dynamic CDS archive
 rund: ${PC_DYNAMIC_JSA}
@@ -256,6 +277,7 @@ ${PC_CDS}: ${PC_CDS_PREIMAGE}
 	${PREMAIN_JAVA} -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:CachedCodeMaxSize=512M \
 	    -XX:+UnlockDiagnosticVMOptions -XX:CDSPreimage=${PC_CDS_PREIMAGE} -XX:CacheDataStore=${PC_CDS} \
 	    -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_CDS}.log \
+	    -Dleyden.debug.archived.packages=1 \
 	    ${UNPACKED_CMDLINE}
 	ls -l ${PC_CDS}
 	ls -l ${PC_CDS}.code
@@ -264,8 +286,19 @@ ${PC_CDS}: ${PC_CDS_PREIMAGE}
 runn: ${PC_CDS}
 	${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} ${LOG_INIT} -Xlog:scc=error ${UNPACKED_CMDLINE}
 
+# see dummy above
+dummyn: ${PC_CDS} Dummy.jar
+	${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} ${LOG_INIT} -Xlog:scc=error ${DUMMY_CMDLINE}
+
+dummyn-50: ${PC_CDS} Dummy.jar
+	bash -c "time for i in {1..50}; do ${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} \
+		-XX:-ReplayTraining -XX:-LoadCachedCode -Xlog:scc=error ${DUMMY_CMDLINE}; done"
+
+dummyn-50-perf: ${PC_CDS} Dummy.jar
+	perf stat -r 50 ${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} -XX:-ReplayTraining -XX:-LoadCachedCode -Xlog:scc=error ${DUMMY_CMDLINE}
+
 clean: clean0
-	rm -rf *~ ${PC_REPO}
+	rm -rf *~ ${PC_REPO} Dummy*.class Dummy.jar *.old.txt *.new.txt tmp.txt hs_err*
 
 # clean the the leyden artifacts
 clean0:
@@ -294,30 +327,55 @@ mainline_vs_premain:
 		first=0; \
 	done
 
-# Do something like this:
+# Do something like this to compare two different builds:
+#
 # make compare_premain_builds \
 #    PM_OLD=/repo/old/build/linux-x64/images/jdk \
-#    PM_NEW=/repo/old/build/linux-x64/images/jdk 
+#    PM_NEW=/repo/new/build/linux-x64/images/jdk \
+#    JDK17_HOME=/my/jdk/17/home
+#
+# or do this to compare the same build with different options:
+#
+# make compare_premain_builds \
+#    PM_OLD=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:-ArchivePackages \
+#    PM_NEW=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:+ArchivePackages \
 #    JDK17_HOME=/my/jdk/17/home
 
-compare_premain_builds:
-	@echo old build = ${PM_OLD}
-	@echo New build = ${PM_NEW}
+compare_premain_builds: clean0
+	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
+	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
 	@echo "Run,Old static CDS only,New static CDS only,Old static CDS + training + AOT,New static CDS + training + AOT,Old 1-step training,New 1-step training"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old runs | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new runs | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old run  | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new run  | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old runn | grep Booted >> tmp.txt; \
-		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new runn | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} run  | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} run  | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runn | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runn | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \
 		first=0; \
 	done
 
+# same as above, but only comapre the speed of "make runs"
+compare_premain_builds_static: clean0
+	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
+	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
+	@echo "Run,Old static CDS only,New static CDS only"
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
+		$(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
+	        fi; \
+		first=0; \
+	done
+
+# Clean up the logs generated by compare_premain_builds, so you can see if one build includes
+# more classes than another.
 diff_training_logs:
 	@for i in old new; do \
 	    grep cds,class spring-petclinic.$$i.static.jsa.log | \
