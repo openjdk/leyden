@@ -1,5 +1,5 @@
 diff --git a/pom.xml b/pom.xml
-index 8a3d6f1..cdea0a8 100644
+index 8a3d6f1..6d148ff 100644
 --- a/pom.xml
 +++ b/pom.xml
 @@ -209,10 +209,12 @@
@@ -37,19 +37,40 @@ index 8a3d6f1..cdea0a8 100644
        </plugin>
        <plugin>
 diff --git a/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java b/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
-index ac6e150..28b3931 100644
+index ac6e150..fe5c747 100644
 --- a/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
 +++ b/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
-@@ -31,7 +31,15 @@ import org.springframework.context.annotation.ImportRuntimeHints;
+@@ -16,6 +16,9 @@
+ 
+ package org.springframework.samples.petclinic;
+ 
++import java.lang.management.ManagementFactory;
++import java.lang.management.RuntimeMXBean;
++
+ import org.springframework.boot.SpringApplication;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
+ import org.springframework.context.annotation.ImportRuntimeHints;
+@@ -31,7 +34,26 @@ import org.springframework.context.annotation.ImportRuntimeHints;
  public class PetClinicApplication {
  
  	public static void main(String[] args) {
-+		long begin = System.currentTimeMillis();
++		long mainStart = System.currentTimeMillis();
++		RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
++		// This includes all the time spent inside the JVM before main() is reached
++		// (since os::Posix::init is called and initial_time_count is initialized).
++		long vmStart = runtimeMXBean.getStartTime();
++		long maxBeanOverHead = System.currentTimeMillis() - mainStart;
++
  		SpringApplication.run(PetClinicApplication.class, args);
 +		long end = System.currentTimeMillis();
 +		Boolean quit = Boolean.getBoolean("autoQuit");
 +		if (quit) {
-+			System.out.println("#### Booted and returned in " + (end - begin) + "ms");
++			System.out.println("#### Booted and returned in " + (end - vmStart - maxBeanOverHead) + "ms");
++			System.out.println("#### (debug) mainStart = " + mainStart);
++			System.out.println("#### (debug) vmStart = " + vmStart);
++			System.out.println("#### (debug) before main (mainStart - vmStart) = " + (mainStart - vmStart));
++			System.out.println("#### (debug) maxBeanOverHead = " + maxBeanOverHead);
++			System.out.println("#### (debug) end = " + end);
 +			System.exit(0);
 +		}
 +
