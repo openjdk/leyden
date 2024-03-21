@@ -1617,10 +1617,6 @@ void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
     SharedMethodInfoDictionaryPrinter mdp(st);
     _method_info_dictionary.iterate(&mdp);
   }
-  st->print_cr("%sTraining Data", prefix);
-  TrainingDataPrinter tdp(st);
-  _builtin_dictionary.iterate(&tdp);
-  _method_info_dictionary.iterate(&tdp);
 }
 
 void SystemDictionaryShared::ArchiveInfo::print_table_statistics(const char* prefix,

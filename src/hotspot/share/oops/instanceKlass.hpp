@@ -75,7 +75,6 @@ class OopMapCache;
 class InterpreterOopMap;
 class PackageEntry;
 class ModuleEntry;
-class KlassTrainingData;
 
 // This is used in iterators below.
 class FieldClosure: public StackObj {
@@ -236,7 +235,6 @@ class InstanceKlass: public Klass {
 
   Monitor*             _init_monitor;       // mutual exclusion to _init_state and _init_thread.
   JavaThread* volatile _init_thread;        // Pointer to current thread doing initialization (to handle recursive initialization)
-  KlassTrainingData*   _training_data;      // Null except in training mode.
 
   OopMapCache*    volatile _oop_map_cache;   // OopMapCache for all methods in the klass (allocated lazily)
   JNIid*          _jni_ids;              // First JNI identifier for static fields in this class
@@ -519,20 +517,6 @@ public:
   ClassState  init_state() const           { return Atomic::load(&_init_state); }
   const char* init_state_name() const;
   bool is_rewritten() const                { return _misc_flags.rewritten(); }
-
-  KlassTrainingData* training_data_or_null() const {
-    // there is a lot of concurrent state around classes, so let's use atomics
-    return Atomic::load_acquire(&_training_data);
-  }
-  bool init_training_data(KlassTrainingData* tdata) {
-    return (_training_data == tdata ||
-            Atomic::replace_if_null(&_training_data, tdata));
-  }
-  KlassTrainingData* training_data() const {
-    KlassTrainingData* tdata = training_data_or_null();
-    assert(tdata != nullptr, "call alloc_training_data first");
-    return tdata;
-  }
 
   static const char* state2name(ClassState state);
 

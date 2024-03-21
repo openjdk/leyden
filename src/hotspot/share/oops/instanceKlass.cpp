@@ -521,8 +521,7 @@ InstanceKlass::InstanceKlass(const ClassFileParser& parser, KlassKind kind, Refe
   _init_state(allocated),
   _reference_type(reference_type),
   _init_monitor(create_init_monitor("InstanceKlassInitMonitor_lock")),
-  _init_thread(nullptr),
-  _training_data(nullptr)
+  _init_thread(nullptr)
 {
   set_vtable_length(parser.vtable_size());
   set_access_flags(parser.access_flags());
@@ -2824,7 +2823,6 @@ void InstanceKlass::remove_unshareable_info() {
   _init_monitor = nullptr;
   DEBUG_ONLY(_shared_class_load_count = 0);
 
-  _training_data = nullptr;
   remove_unshareable_flags();
 }
 
@@ -2930,10 +2928,6 @@ void InstanceKlass::restore_unshareable_info(ClassLoaderData* loader_data, Handl
 
   // restore the monitor
   _init_monitor = create_init_monitor("InstanceKlassInitMonitorRestored_lock");
-
-  if (_training_data != nullptr) {
-    _training_data->restore_unshareable_info(CHECK);
-  }
 }
 
 bool InstanceKlass::can_be_verified_at_dumptime() const {

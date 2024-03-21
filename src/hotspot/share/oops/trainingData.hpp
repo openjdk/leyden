@@ -834,13 +834,9 @@ class TrainingDataDictionary : public OffsetCompactHashtable<
 class TrainingDataPrinter : StackObj {
   outputStream* _st;
   int _index;
-
 public:
   TrainingDataPrinter(outputStream* st) : _st(st), _index(0) {}
-
   void do_value(TrainingData* record);
-  void do_value(const RunTimeClassInfo* record);
-  void do_value(const RunTimeMethodDataInfo* record);
 };
 
 #endif // SHARE_OOPS_TRAININGDATA_HPP

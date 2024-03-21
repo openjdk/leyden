@@ -377,13 +377,12 @@ void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what)
 
       if (cik->is_initialized()) {
         InstanceKlass* ik = md->as_instance_klass()->get_instanceKlass();
-        KlassTrainingData* ktd = ik->training_data_or_null();
-        if (ktd != nullptr) {
-          // This JIT task is (probably) requesting that ik be initialized,
-          // so add him to my _init_deps list.
-          TrainingDataLocker l;
-          add_init_dep(ktd);
-        }
+        KlassTrainingData* ktd = KlassTrainingData::make(ik);
+        assert(ktd != nullptr, "");
+        // This JIT task is (probably) requesting that ik be initialized,
+        // so add him to my _init_deps list.
+        TrainingDataLocker l;
+        add_init_dep(ktd);
       }
     }
   }
@@ -442,7 +441,6 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
   if (td != nullptr) {
     ktd = td->as_KlassTrainingData();
     ktd->refresh_from(holder);
-    holder->init_training_data(ktd);
     guarantee(ktd->has_holder() && ktd->holder() == holder, "");
     return ktd;
   }
@@ -463,8 +461,6 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
   }
   assert(ktd != nullptr, "");
   ktd->refresh_from(holder);
-  bool ok = holder->init_training_data(ktd);
-  assert(ok, "CAS under mutex cannot fail");
   guarantee(ktd->has_holder() && ktd->holder() == holder, "");
   return ktd;
 }
@@ -984,54 +980,6 @@ CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int 
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::CompileTrainingDataType)
       CompileTrainingData(mtd, level, compile_id);
-}
-
-static const char* tag(void* p) {
-  if (p == nullptr) {
-    return "   ";
-  } else if (MetaspaceShared::is_shared_dynamic(p)) {
-    return "<D>";
-  } else if (MetaspaceShared::is_in_shared_metaspace(p)) {
-    return "<S>";
-  } else {
-    return "???";
-  }
-}
-
-void TrainingDataPrinter::do_value(const RunTimeClassInfo* record) {
-  ResourceMark rm;
-  KlassTrainingData* ktd = record->_klass->training_data_or_null();
-  if (ktd != nullptr) {
-    _st->print("%4d: KTD %s%p for %s %s", _index++, tag(ktd), ktd, record->_klass->external_name(),
-               SystemDictionaryShared::class_loader_name_for_shared(record->_klass));
-    ktd->print_on(_st);
-    _st->cr();
-    ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
-      ResourceMark rm;
-      _st->print_raw("    ");
-      ctd->print_on(_st);
-    });
-  }
-}
-
-void TrainingDataPrinter::do_value(const RunTimeMethodDataInfo* record) {
-  ResourceMark rm;
-  MethodCounters* mc = record->method_counters();
-  if (mc != nullptr) {
-    MethodTrainingData* mtd = mc->method_training_data();
-    if (mtd != nullptr) {
-      _st->print("%4d: MTD %s%p ", _index++, tag(mtd), mtd);
-      mtd->print_on(_st);
-      _st->cr();
-
-      int i = 0;
-      for (CompileTrainingData* ctd = mtd->compile(); ctd != nullptr; ctd = ctd->next()) {
-        _st->print("  CTD[%d]: ", i++);
-        ctd->print_on(_st);
-        _st->cr();
-      }
-    }
-  }
 }
 
 void TrainingDataPrinter::do_value(TrainingData* td) {
