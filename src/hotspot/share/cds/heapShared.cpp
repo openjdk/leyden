@@ -165,14 +165,6 @@ GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_trace = nullptr;
 GrowableArrayCHeap<const char*, mtClassShared>* HeapShared::_context = nullptr;
 OopHandle HeapShared::_roots;
 OopHandle HeapShared::_scratch_basic_type_mirrors[T_VOID+1];
-
-OopHandle HeapShared::_scratch_null_ptr_exception_instance;
-OopHandle HeapShared::_scratch_arithmetic_exception_instance;
-OopHandle HeapShared::_scratch_virtual_machine_error_instance;
-OopHandle HeapShared::_scratch_array_index_oob_exception_instance;
-OopHandle HeapShared::_scratch_array_store_exception_instance;
-OopHandle HeapShared::_scratch_class_cast_exception_instance;
-
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_java_mirror_table = nullptr;
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_references_table = nullptr;
 int HeapShared::_permobj_segments = 0;
@@ -517,21 +509,6 @@ void HeapShared::init_scratch_objects(TRAPS) {
   }
 }
 
-OopHandle HeapShared::init_scratch_exception(oop orig_exception_obj, TRAPS) {
-  Symbol* klass_name = orig_exception_obj->klass()->name();
-  oop scratch_obj = java_lang_Throwable::create_exception_instance(klass_name, CHECK_(OopHandle()));
-  track_scratch_object(orig_exception_obj, scratch_obj);
-  return OopHandle(Universe::vm_global(), scratch_obj);
-}
-
-void HeapShared::init_scratch_exceptions(TRAPS) {
-  _scratch_null_ptr_exception_instance        = init_scratch_exception(Universe::null_ptr_exception_instance(),        CHECK);
-  _scratch_arithmetic_exception_instance      = init_scratch_exception(Universe::arithmetic_exception_instance(),      CHECK);
-  _scratch_virtual_machine_error_instance     = init_scratch_exception(Universe::virtual_machine_error_instance(),     CHECK);
-  _scratch_array_index_oob_exception_instance = init_scratch_exception(Universe::array_index_oob_exception_instance(), CHECK);
-  _scratch_array_store_exception_instance     = init_scratch_exception(Universe::array_store_exception_instance(),     CHECK);
-  _scratch_class_cast_exception_instance      = init_scratch_exception(Universe::class_cast_exception_instance(),      CHECK);
-}
 // Given java_mirror that represents a (primitive or reference) type T,
 // return the "scratch" version that represents the same type T.
 // Note that if java_mirror will be returned if it's already a
@@ -740,43 +717,10 @@ void HeapShared::archive_strings() {
   StringTable::set_shared_strings_array_index(append_root(shared_strings_array));
 }
 
-void HeapShared::archive_exception_instances() {
-  {
-    oop m = _scratch_null_ptr_exception_instance.resolve();
-    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::null_ptr_exception_instance()*/);
-    assert(success, "sanity");
-    Universe::set_archived_null_ptr_exception_instance_index(append_root(m));
-  }
-  {
-    oop m = _scratch_arithmetic_exception_instance.resolve();
-    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::arithmetic_exception_instance()*/);
-    assert(success, "sanity");
-    Universe::set_archived_arithmetic_exception_instance_index(append_root(m));
-  }
-  {
-    oop m = _scratch_virtual_machine_error_instance.resolve();
-    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::virtual_machine_error_instance()*/);
-    assert(success, "sanity");
-    Universe::set_archived_virtual_machine_error_instance_index(append_root(m));
-  }
-  {
-    oop m = _scratch_array_index_oob_exception_instance.resolve();
-    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::array_index_oob_exception_instance()*/);
-    assert(success, "sanity");
-    Universe::set_archived_array_index_oob_exception_instance_index(append_root(m));
-  }
-  {
-    oop m = _scratch_array_store_exception_instance.resolve();
-    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::array_store_exception_instance()*/);
-    assert(success, "sanity");
-    Universe::set_archived_array_store_exception_instance_index(append_root(m));
-  }
-  {
-    oop m = _scratch_class_cast_exception_instance.resolve();
-    bool success = archive_reachable_objects_from(1, _default_subgraph_info, m /*Universe::class_cast_exception_instance()*/);
-    assert(success, "sanity");
-    Universe::set_archived_class_cast_exception_instance_index(append_root(m));
-  }
+int HeapShared::archive_exception_instance(oop exception) {
+  bool success = archive_reachable_objects_from(1, _default_subgraph_info, exception);
+  assert(success, "sanity");
+  return append_root(exception);
 }
 
 void HeapShared::mark_native_pointers(oop orig_obj) {
@@ -853,7 +797,7 @@ void HeapShared::copy_special_objects() {
   init_seen_objects_table();
   archive_java_mirrors();
   archive_strings();
-  archive_exception_instances();
+  Universe::archive_exception_instances();
   delete_seen_objects_table();
 }
 
@@ -1870,9 +1814,15 @@ void HeapShared::check_default_subgraph_classes() {
 
     if (subgraph_k->is_instance_klass()) {
       InstanceKlass* ik = InstanceKlass::cast(subgraph_k);
-      Symbol* name = ik->name();
-      if (!name->equals("java/lang/Class") &&
-          !name->equals("java/lang/String") &&
+      Symbol* name = ArchiveBuilder::current()->get_source_addr(ik->name());
+      if (name != vmSymbols::java_lang_Class() &&
+          name != vmSymbols::java_lang_String() &&
+          name != vmSymbols::java_lang_ArithmeticException() &&
+          name != vmSymbols::java_lang_ArrayIndexOutOfBoundsException() &&
+          name != vmSymbols::java_lang_ArrayStoreException() &&
+          name != vmSymbols::java_lang_ClassCastException() &&
+          name != vmSymbols::java_lang_NullPointerException() &&
+          name != vmSymbols::java_lang_VirtualMachineError() &&
           !is_archivable_hidden_klass(ik)) {
         ResourceMark rm;
         const char* category = ArchiveUtils::class_category(ik);
@@ -2108,7 +2058,6 @@ void HeapShared::init_for_dumping(TRAPS) {
     setup_test_class(ArchiveHeapTestClass);
     _dumped_interned_strings = new (mtClass)DumpedInternedStrings();
     init_subgraph_entry_fields(CHECK);
-    init_scratch_exceptions(CHECK);
   }
 }
 
