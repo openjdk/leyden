@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -271,9 +271,15 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
       ik->is_hidden()) {
     return;
   }
-  //if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
-  //  return;
-  //}
+  if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
+    return;
+  }
+  if (ik->name()->equals("jdk/internal/module/SystemModules$all")) {
+    // This class is regenerated during JDK build process, so the classlist
+    // may not match the version that's in the real jdk image.
+    return;
+  }
+
   if (!has_id(ik)) { // do not resolve CP for classes loaded by custom loaders.
     return;
   }
@@ -341,20 +347,11 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
     for (int i = 0; i < list.length(); i++) {
       if (list.at(i)) {
         constantTag cp_tag = cp->tag_at(i).value();
-        switch (cp_tag.value()) {
-//          case JVM_CONSTANT_UnresolvedClass:        break;
-//          case JVM_CONSTANT_UnresolvedClassInError: break;
-          case JVM_CONSTANT_Class:                  break;
-          case JVM_CONSTANT_Fieldref:               break;
-          case JVM_CONSTANT_Methodref:              break;
-          case JVM_CONSTANT_InterfaceMethodref:     break;
-          case JVM_CONSTANT_InvokeDynamic:          break;
-
-          default:
-            log_warning(cds, resolve)("Unsupported constant pool index %d: %s (type=%d)",
-                                      i, cp_tag.internal_name(), cp_tag.value());
-        }
-
+        assert(cp_tag.value() == JVM_CONSTANT_Class ||
+               cp_tag.value() == JVM_CONSTANT_Fieldref ||
+               cp_tag.value() == JVM_CONSTANT_Methodref||
+               cp_tag.value() == JVM_CONSTANT_InterfaceMethodref ||
+               cp_tag.value() == JVM_CONSTANT_InvokeDynamic, "sanity");
         stream->print(" %d", i);
       }
     }
