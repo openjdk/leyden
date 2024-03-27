@@ -73,6 +73,7 @@ class ClassPreloader :  AllStatic {
   static Array<InstanceKlass*>* record_preloaded_klasses(int loader_type);
   static Array<InstanceKlass*>* record_initiated_klasses(ClassesTable* table);
   static void runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS);
+  static void runtime_preload_class_quick(InstanceKlass* ik, ClassLoaderData* loader_data, Handle domain, TRAPS);
   static void preload_archived_hidden_class(Handle class_loader, InstanceKlass* ik,
                                             const char* loader_name, TRAPS);
   static void jvmti_agent_error(InstanceKlass* expected, InstanceKlass* actual, const char* type);

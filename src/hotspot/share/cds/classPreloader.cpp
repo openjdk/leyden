@@ -569,7 +569,12 @@ void ClassPreloader::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
         } else {
           InstanceKlass* actual;
           if (loader() == nullptr) {
-            actual = SystemDictionary::load_instance_class(ik->name(), loader, CHECK);
+            if (!Universe::is_fully_initialized()) {
+              runtime_preload_class_quick(ik, loader_data, Handle(), CHECK);
+              actual = ik;
+            } else {
+              actual = SystemDictionary::load_instance_class(ik->name(), loader, CHECK);
+            }
           } else {
             // Note: we are not adding the locker objects into java.lang.ClassLoader::parallelLockMap, but
             // that should be harmless.
@@ -632,6 +637,35 @@ void ClassPreloader::preload_archived_hidden_class(Handle class_loader, Instance
   }
   SystemDictionary::load_shared_class_misc(ik, loader_data);
   ik->add_to_hierarchy(THREAD);
+}
+
+void ClassPreloader::runtime_preload_class_quick(InstanceKlass* ik, ClassLoaderData* loader_data, Handle domain, TRAPS) {
+  assert(!ik->is_loaded(), "sanity");
+
+#ifdef ASSERT
+  {
+    InstanceKlass* super = ik->java_super();
+    if (super != nullptr) {
+      assert(super->is_loaded(), "must have been loaded");
+    }
+    Array<InstanceKlass*>* intfs = ik->local_interfaces();
+    for (int i = 0; i < intfs->length(); i++) {
+      assert(intfs->at(i)->is_loaded(), "must have been loaded");
+    }
+  }
+#endif
+
+  ik->restore_unshareable_info(loader_data, domain, nullptr, CHECK);
+  SystemDictionary::load_shared_class_misc(ik, loader_data);
+
+  // We are adding to the dictionary but can get away without
+  // holding SystemDictionary_lock, as no other threads will be loading
+  // classes at the same time.
+  assert(!Universe::is_fully_initialized(), "sanity");
+  Dictionary* dictionary = loader_data->dictionary();
+  dictionary->add_klass(THREAD, ik->name(), ik);
+  ik->add_to_hierarchy(THREAD);
+  assert(ik->is_loaded(), "Must be in at least loaded state");
 }
 
 void ClassPreloader::jvmti_agent_error(InstanceKlass* expected, InstanceKlass* actual, const char* type) {
