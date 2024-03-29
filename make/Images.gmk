@@ -89,7 +89,13 @@ ifeq ($(STATIC_JAVA), true)
   HERMETIC_DEFAULT_POLICY := /java.base/lib/security/default.policy=/java.base/sun/security/provider/default.policy
   HERMETIC_JAVA_POLICY := /java.base/conf/security/java.policy=/java.base/sun/security/provider/java.policy
 
-  HERMETIC_RESOURCES := --hermetic-resources $(HERMETIC_JAVA_SECURITY),$(HERMETIC_LOGGING_PROPERTIES),$(HERMETIC_NET_PROPERTIES),$(HERMETIC_PSFONT_PROPERTIES_JA),$(HERMETIC_PSFONT2D_PROPERTIES),$(HERMETIC_BLOCKED_CERTS),$(HERMETIC_CACERTS),$(HERMETIC_PUBLIC_SUFFIX_LIST_DAT),$(HERMETIC_DEFAULT_POLICY),$(HERMETIC_JAVA_POLICY)
+  HERMETIC_LIMITED_DEFAULT_US_EXPORT_POLICY := /java.base/conf/security/policy/limited/default_US_export.policy=/java.base/javax/crypto/limited_default_US_export.policy
+  HERMETIC_LIMITED_DEFAULT_LOCAL_POLICY := /java.base/conf/security/policy/limited/default_local.policy=/java.base/javax/crypto/limited_default_local.policy
+  HERMETIC_LIMITED_EXEMPT_LOCAL_POLICY := /java.base/conf/security/policy/limited/exempt_local.policy=/java.base/javax/crypto/limited_exempt_local.policy
+  HERMETIC_UNLIMITED_DEFAULT_US_EXPORT_POLICY := /java.base/conf/security/policy/unlimited/default_US_export.policy=/java.base/javax/crypto/unlimited_default_US_export.policy
+  HERMETIC_UNLIMITED_DEFAULT_LOCAL_POLICY := /java.base/conf/security/policy/unlimited/default_local.policy=/java.base/javax/crypto/unlimited_default_local.policy
+
+  HERMETIC_RESOURCES := --hermetic-resources $(HERMETIC_JAVA_SECURITY),$(HERMETIC_LOGGING_PROPERTIES),$(HERMETIC_NET_PROPERTIES),$(HERMETIC_PSFONT_PROPERTIES_JA),$(HERMETIC_PSFONT2D_PROPERTIES),$(HERMETIC_BLOCKED_CERTS),$(HERMETIC_CACERTS),$(HERMETIC_PUBLIC_SUFFIX_LIST_DAT),$(HERMETIC_DEFAULT_POLICY),$(HERMETIC_JAVA_POLICY),$(HERMETIC_LIMITED_DEFAULT_US_EXPORT_POLICY),$(HERMETIC_LIMITED_DEFAULT_LOCAL_POLICY),$(HERMETIC_LIMITED_EXEMPT_LOCAL_POLICY),$(HERMETIC_UNLIMITED_DEFAULT_US_EXPORT_POLICY),$(HERMETIC_UNLIMITED_DEFAULT_LOCAL_POLICY)
 endif
 
 JLINK_TOOL := $(JLINK) -J-Djlink.debug=true \

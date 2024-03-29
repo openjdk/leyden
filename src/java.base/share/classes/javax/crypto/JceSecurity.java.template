@@ -306,6 +306,47 @@ final class JceSecurity {
         }
     }
 
+    // Called by setupJurisdictionPolicies(), which is within a doPrivileged
+    // block.
+    private static void hermeticJurisdictionPolicies(String cryptoPolicyProperty) {
+        // Find the policy files using an explicit list here. We could make it
+        // more flexible by matching the policy file names with
+        // "{default,exempt}_*.policy".
+        String[] policyFiles = {"default_US_export.policy",
+                                "default_local.policy",
+                                "exempt_local.policy"};
+        for (String p : policyFiles) {
+            String policyFile = cryptoPolicyProperty + "_" + p;
+            try (InputStream in = JceSecurity.class.getResourceAsStream(policyFile)) {
+                if (in != null) {
+                    CryptoPermissions perms = new CryptoPermissions();
+                    perms.load(in);
+                    if (p.startsWith("default_")) {
+                        defaultPolicy = ((defaultPolicy == null) ? perms :
+                            defaultPolicy.getMinimum(perms));
+                    } else if (p.startsWith("exempt_")) {
+                        exemptPolicy = ((exemptPolicy == null) ? perms :
+                            exemptPolicy.getMinimum(perms));
+                    }
+                }
+            } catch (Exception e) {
+                throw new SecurityException(
+                    "Couldn't parse jurisdiction policy files in: " +
+                    cryptoPolicyProperty);
+            }
+        }
+
+        if ((defaultPolicy == null) || defaultPolicy.isEmpty()) {
+            throw new SecurityException(
+                "Missing mandatory jurisdiction policy files: " +
+                cryptoPolicyProperty);
+        }
+
+        if ((exemptPolicy != null) && exemptPolicy.isEmpty()) {
+            exemptPolicy = null;
+        }
+    }
+
     // This is called from within an doPrivileged block.
     private static void setupJurisdictionPolicies() throws Exception {
 
@@ -331,6 +372,11 @@ final class JceSecurity {
             }
         }
 
+        if (JavaHome.isHermetic()) {
+            hermeticJurisdictionPolicies(cryptoPolicyProperty);
+            return;
+        }
+
         Path cpPath = Paths.get(cryptoPolicyProperty);
 
         if ((cpPath.getNameCount() != 1) ||
@@ -343,10 +389,10 @@ final class JceSecurity {
         // Prepend java.home to get the full path.  normalize() in
         // case an extra "." or ".." snuck in somehow.
         String javaHomeProperty = StaticProperty.javaHome();
-        Path javaHomePolicyPath = JavaHome.getJDKResource(javaHomeProperty,
-                "conf", "security", "policy").normalize();
-        Path cryptoPolicyPath = JavaHome.getJDKResource(javaHomeProperty,
-                "conf", "security", "policy", cryptoPolicyProperty).normalize();
+        Path javaHomePolicyPath = Paths.get(javaHomeProperty, "conf",
+                "security", "policy").normalize();
+        Path cryptoPolicyPath = Paths.get(javaHomeProperty, "conf", "security",
+                "policy", cryptoPolicyProperty).normalize();
 
         if (cryptoPolicyPath.getParent().compareTo(javaHomePolicyPath) != 0) {
             throw new SecurityException(
@@ -354,20 +400,16 @@ final class JceSecurity {
                 cryptoPolicyProperty);
         }
 
-        // cryptoPolicyPath is a readable directory in the local file system or
-        // the hermetic JAR (java.home) file.
-        if ((!Files.isDirectory(cryptoPolicyPath) && !JavaHome.isHermetic())
+        if (!Files.isDirectory(cryptoPolicyPath)
                 || !Files.isReadable(cryptoPolicyPath)) {
             throw new SecurityException(
                 "Can't read cryptographic policy directory: " +
                 cryptoPolicyProperty);
         }
 
-        final String s = cryptoPolicyProperty;
-        try (Stream<Path> stream = Files.find(
-            cryptoPolicyPath, Integer.MAX_VALUE, (file, attrs)
-                -> (file.toString().matches(".*(default|exempt)_.*policy")))) {
-            stream.forEach(entry -> {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(
+                cryptoPolicyPath, "{default,exempt}_*.policy")) {
+            for (Path entry : stream) {
                 try (InputStream is = new BufferedInputStream(
                         Files.newInputStream(entry))) {
                     String filename = entry.getFileName().toString();
@@ -384,15 +426,18 @@ final class JceSecurity {
                         exemptPolicy = ((exemptPolicy == null) ? tmpPerms :
                                 exemptPolicy.getMinimum(tmpPerms));
                     } else {
-                        // This should never happen.
+                        // This should never happen.  newDirectoryStream
+                        // should only throw return "{default,exempt}_*.policy"
                         throw new SecurityException(
-                            "Unexpected jurisdiction policy files in : " + s);
+                            "Unexpected jurisdiction policy files in : " +
+                            cryptoPolicyProperty);
                     }
                 } catch (Exception e) {
                     throw new SecurityException(
-                        "Couldn't parse jurisdiction policy files in: " + s);
+                        "Couldn't parse jurisdiction policy files in: " +
+                        cryptoPolicyProperty);
                 }
-            });
+            }
         } catch (DirectoryIteratorException ex) {
             // I/O error encountered during the iteration,
             // the cause is an IOException
