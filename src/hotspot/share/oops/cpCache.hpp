@@ -191,10 +191,6 @@ class ConstantPoolCache: public MetaspaceObj {
   static ByteSize field_entries_offset()           { return byte_offset_of(ConstantPoolCache, _resolved_field_entries);  }
   static ByteSize method_entries_offset()          { return byte_offset_of(ConstantPoolCache, _resolved_method_entries); }
 
-#if INCLUDE_CDS
-  void remove_unshareable_info();
-#endif
-
  public:
   static int size() { return align_metadata_size(sizeof(ConstantPoolCache) / wordSize); }
 

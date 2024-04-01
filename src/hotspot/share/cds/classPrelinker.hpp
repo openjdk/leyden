@@ -72,12 +72,13 @@ class ClassPrelinker :  AllStatic {
   }
   static void resolve_string(constantPoolHandle cp, int cp_index, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static Klass* maybe_resolve_class(constantPoolHandle cp, int cp_index, TRAPS);
-  static bool can_archive_resolved_klass(InstanceKlass* cp_holder, Klass* resolved_klass);
+  static bool is_klass_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_klass);
+  static bool is_indy_resolution_deterministic(ConstantPool* cp, int cp_index);
+
   static Klass* find_loaded_class(Thread* current, oop class_loader, Symbol* name);
   static Klass* find_loaded_class(Thread* current, ConstantPool* cp, int class_cp_index);
 
   // fmi = FieldRef/MethodRef/InterfaceMethodRef
-  static Klass* get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, int cp_index);
   static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
   class RecordResolveIndysCLDClosure;
@@ -106,8 +107,6 @@ public:
   static void preresolve_invoker_class(JavaThread* current, InstanceKlass* ik);
   static void apply_final_image_eager_linkage(TRAPS);
 
-  static bool is_indy_archivable(ConstantPool* cp, int cp_index);
-
   // java/lang/Class$ReflectionData caching
   static void record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS);
   static int class_reflection_data_flags(InstanceKlass* ik, TRAPS);
@@ -126,15 +125,10 @@ public:
   // CDS archive.
   static void dumptime_resolve_constants(InstanceKlass* ik, TRAPS);
 
-  // Can we resolve the klass entry at cp_index in this constant pool, and store
-  // the result in the CDS archive? Returns true if cp_index is guaranteed to
-  // resolve to the same InstanceKlass* at both dump time and run time.
-  static bool can_archive_resolved_klass(ConstantPool* cp, int cp_index);
-
-  // Similar to can_archive_resolved_klass() -- returns true if cp_index is
-  // guaranteed to resolve to the same result both dump time and run time.
-  static bool can_archive_resolved_field(ConstantPool* cp, int cp_index);
-  static bool can_archive_resolved_method(ConstantPool* cp, int cp_index);
+  // Returns true if cp_index is guaranteed to resolve to the same information
+  // at both dump time and run time. This is a necessary (but not sufficient)
+  // condition for pre-resolving cp_index during CDS assembly.
+  static bool is_resolution_deterministic(ConstantPool* cp, int cp_index);
 
   static bool can_archive_preinitialized_mirror(InstanceKlass* src_ik);
 

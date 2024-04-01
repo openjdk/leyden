@@ -692,11 +692,15 @@ class ConstantPool : public Metadata {
   objArrayOop prepare_resolved_references_for_archiving() NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   void add_dumped_interned_strings() NOT_CDS_JAVA_HEAP_RETURN;
   bool can_archive_invokehandle(ResolvedMethodEntry* rme);
-  bool maybe_archive_resolved_klass_at(int cp_index);
   bool can_archive_resolved_method(ResolvedMethodEntry* method_entry);
-  void archive_entries();
   void remove_unshareable_info();
+  void remove_unshareable_entries();
   void restore_unshareable_info(TRAPS);
+ private:
+  void remove_resolved_klass_if_non_deterministic(int cp_index);
+  void remove_resolved_field_entries_if_non_deterministic();
+  void remove_resolved_method_entries_if_non_deterministic();
+  void remove_resolved_indy_entries_if_non_deterministic();
 #endif
 
  private:

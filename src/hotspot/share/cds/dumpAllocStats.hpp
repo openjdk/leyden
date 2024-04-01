@@ -136,10 +136,10 @@ public:
     _num_indy_cp_entries_excluded += excluded ? 1 : 0;
   }
 
-  void record_klass_cp_entry(bool archived, bool excluded) {
+  void record_klass_cp_entry(bool archived) {
     _num_klass_cp_entries ++;
-    _num_klass_cp_entries_archived += archived ? 1 : 0;
-    _num_klass_cp_entries_excluded += excluded ? 1 : 0;
+    _num_klass_cp_entries_archived +=  archived ? 1 : 0;
+    _num_klass_cp_entries_excluded += !archived ? 1 : 0;
   }
 
   void record_method_cp_entry(bool archived, bool excluded) {

@@ -97,35 +97,48 @@ void ClassPrelinker::dispose() {
   _processed_classes = nullptr;
 }
 
-bool ClassPrelinker::can_archive_resolved_klass(ConstantPool* cp, int cp_index) {
+bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index) {
   assert(!is_in_archivebuilder_buffer(cp), "sanity");
-  assert(cp->tag_at(cp_index).is_klass(), "must be resolved");
 
-  Klass* resolved_klass = cp->resolved_klass_at(cp_index);
-  assert(resolved_klass != nullptr, "must be");
+  if (cp->tag_at(cp_index).is_klass()) {
+    // TODO: we require cp_index to be already resolved. This is fine for now, are we
+    // currently archive only CP entries that are already resolved.
+    Klass* resolved_klass = cp->resolved_klass_at(cp_index);
+    return resolved_klass != nullptr && is_klass_resolution_deterministic(cp->pool_holder(), resolved_klass);
+  } else if (cp->tag_at(cp_index).is_invoke_dynamic()) {
+    return is_indy_resolution_deterministic(cp, cp_index);
+  } else {
+    int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
+    if (!cp->tag_at(klass_cp_index).is_klass()) {
+      // Not yet resolved
+      return false;
+    }
+    Klass* k = cp->resolved_klass_at(klass_cp_index);
+    if (!is_klass_resolution_deterministic(cp->pool_holder(), k)) {
+      return false;
+    }
 
-  return can_archive_resolved_klass(cp->pool_holder(), resolved_klass);
+    if (cp->tag_at(cp_index).is_method() || cp->tag_at(cp_index).is_interface_method()) {
+      // FIXME -- check if method actually exists? Or, is this really necessary?
+      return true;
+    } else {
+      assert(cp->tag_at(cp_index).is_field(), "must be");
+
+      Symbol* field_name = cp->uncached_name_ref_at(cp_index);
+      Symbol* field_sig = cp->uncached_signature_ref_at(cp_index);
+      fieldDescriptor fd;
+      if (k->find_field(field_name, field_sig, &fd) == NULL) {
+        // Probably an incompatible class change.
+        return false;
+      }
+      return true;
+    }
+  }
 }
 
-bool ClassPrelinker::can_archive_resolved_klass(InstanceKlass* cp_holder, Klass* resolved_klass) {
+bool ClassPrelinker::is_klass_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_klass) {
   assert(!is_in_archivebuilder_buffer(cp_holder), "sanity");
   assert(!is_in_archivebuilder_buffer(resolved_klass), "sanity");
-
-#if 0
-  if (cp_holder->is_hidden()) {
-    // TODO - what is needed for hidden classes?
-    return false;
-  }
-#endif
-
-#if 0
-  if (DumpSharedSpaces && LambdaFormInvokers::may_be_regenerated_class(resolved_klass->name())) {
-    // Hack -- there's a copy of the regenerated class in both dynamic and static archive.
-    // When dynamic archive is loaded, we don't want pre-resolved CP entries in the static
-    // archive to point to the wrong class.
-    return false;
-  }
-#endif
 
   if (resolved_klass->is_instance_klass()) {
     InstanceKlass* ik = InstanceKlass::cast(resolved_klass);
@@ -136,10 +149,6 @@ bool ClassPrelinker::can_archive_resolved_klass(InstanceKlass* cp_holder, Klass*
       return true;
     }
 
-// FIXME: what are the limitations for a well-known class here?
-//    if (is_vm_class(cp_holder)) {
-//      return is_vm_class(ik);
-//    }
     if (ClassPreloader::is_preloaded_class(ik)) {
       if (cp_holder->is_shared_platform_class()) {
         ClassPreloader::add_initiated_klass(cp_holder, ik);
@@ -157,56 +166,15 @@ bool ClassPrelinker::can_archive_resolved_klass(InstanceKlass* cp_holder, Klass*
   } else if (resolved_klass->is_objArray_klass()) {
     Klass* elem = ObjArrayKlass::cast(resolved_klass)->bottom_klass();
     if (elem->is_instance_klass()) {
-      return can_archive_resolved_klass(cp_holder, InstanceKlass::cast(elem));
-    } else {
-      return false; // FIXME
+      return is_klass_resolution_deterministic(cp_holder, InstanceKlass::cast(elem));
+    } else if (elem->is_typeArray_klass()) {
+      return true;
     }
   } else if (resolved_klass->is_typeArray_klass()) {
-    return false; // FIXME
+    return true;
   }
-
+  
   return false;
-}
-
-Klass* ClassPrelinker::get_fmi_ref_resolved_archivable_klass(ConstantPool* cp, int cp_index) {
-  assert(!is_in_archivebuilder_buffer(cp), "sanity");
-
-  int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
-  if (!cp->tag_at(klass_cp_index).is_klass()) {
-    // Not yet resolved
-    return nullptr;
-  }
-  Klass* k = cp->resolved_klass_at(klass_cp_index);
-  if (!can_archive_resolved_klass(cp->pool_holder(), k)) {
-    // When we access this field at runtime, the target klass may
-    // have a different definition.
-    return nullptr;
-  }
-  return k;
-}
-
-bool ClassPrelinker::can_archive_resolved_method(ConstantPool* cp, int cp_index) {
-  assert(cp->tag_at(cp_index).is_method() ||
-         cp->tag_at(cp_index).is_interface_method(), "must be");
-  return get_fmi_ref_resolved_archivable_klass(cp, cp_index) != nullptr;
-}
-
-bool ClassPrelinker::can_archive_resolved_field(ConstantPool* cp, int cp_index) {
-  assert(cp->tag_at(cp_index).is_field(), "must be");
-
-  Klass* k = get_fmi_ref_resolved_archivable_klass(cp, cp_index);
-  if (k == nullptr) {
-    return false;
-  }
-
-  Symbol* field_name = cp->uncached_name_ref_at(cp_index);
-  Symbol* field_sig = cp->uncached_signature_ref_at(cp_index);
-  fieldDescriptor fd;
-  if (k->find_field(field_name, field_sig, &fd) == NULL) {
-    return false;
-  }
-
-  return true;
 }
 
 void ClassPrelinker::dumptime_resolve_constants(InstanceKlass* ik, TRAPS) {
@@ -454,7 +422,7 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
   for (int i = 0; i < indy_entries->length(); i++) {
     ResolvedIndyEntry* rie = indy_entries->adr_at(i);
     int cp_index = rie->constant_pool_index();
-    if (preresolve_list->at(cp_index) == true && !rie->is_resolved() && is_indy_archivable(cp(), cp_index)) {
+    if (preresolve_list->at(cp_index) == true && !rie->is_resolved() && is_indy_resolution_deterministic(cp(), cp_index)) {
       InterpreterRuntime::cds_resolve_invokedynamic(ConstantPool::encode_invokedynamic_index(i), cp, THREAD);
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION; // just ignore
@@ -484,7 +452,8 @@ static bool has_clinit(InstanceKlass* ik) {
   return false;
 }
 
-bool ClassPrelinker::is_indy_archivable(ConstantPool* cp, int cp_index) {
+bool ClassPrelinker::is_indy_resolution_deterministic(ConstantPool* cp, int cp_index) {
+  assert(cp->tag_at(cp_index).is_invoke_dynamic(), "sanity");
   if (!ArchiveInvokeDynamic || !HeapShared::can_write()) {
     return false;
   }
