@@ -1480,7 +1480,7 @@ CompLevel CompilationPolicy::common(const methodHandle& method, CompLevel cur_le
           next_level = standard_transition<Predicate>(method, cur_level, true /*delay_profiling*/, disable_feedback);
         }
       }
-    } else if (is_trivial(method)) {
+    } else if (is_trivial(method) || method->is_native()) {
       next_level = CompilationModeFlag::disable_intermediate() ? CompLevel_full_optimization : CompLevel_simple;
     } else {
       next_level = standard_transition<Predicate>(method, cur_level, false /*delay_profiling*/, disable_feedback);
