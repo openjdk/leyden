@@ -97,17 +97,23 @@ void ClassPrelinker::dispose() {
   _processed_classes = nullptr;
 }
 
+// Returns true if we CAN PROVE that cp_index will always resolve to
+// the same information at both dump time and run time. This is a
+// necessary (but not sufficient) condition for pre-resolving cp_index
+// during CDS archive assembly.
 bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index) {
   assert(!is_in_archivebuilder_buffer(cp), "sanity");
 
   if (cp->tag_at(cp_index).is_klass()) {
-    // TODO: we require cp_index to be already resolved. This is fine for now, are we
+    // We require cp_index to be already resolved. This is fine for now, are we
     // currently archive only CP entries that are already resolved.
     Klass* resolved_klass = cp->resolved_klass_at(cp_index);
     return resolved_klass != nullptr && is_klass_resolution_deterministic(cp->pool_holder(), resolved_klass);
   } else if (cp->tag_at(cp_index).is_invoke_dynamic()) {
     return is_indy_resolution_deterministic(cp, cp_index);
-  } else {
+  } else if (cp->tag_at(cp_index).is_field() ||
+             cp->tag_at(cp_index).is_method() ||
+             cp->tag_at(cp_index).is_interface_method()) {
     int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
     if (!cp->tag_at(klass_cp_index).is_klass()) {
       // Not yet resolved
@@ -118,21 +124,17 @@ bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index)
       return false;
     }
 
-    if (cp->tag_at(cp_index).is_method() || cp->tag_at(cp_index).is_interface_method()) {
-      // FIXME -- check if method actually exists? Or, is this really necessary?
-      return true;
-    } else {
-      assert(cp->tag_at(cp_index).is_field(), "must be");
-
-      Symbol* field_name = cp->uncached_name_ref_at(cp_index);
-      Symbol* field_sig = cp->uncached_signature_ref_at(cp_index);
-      fieldDescriptor fd;
-      if (k->find_field(field_name, field_sig, &fd) == NULL) {
-        // Probably an incompatible class change.
-        return false;
-      }
-      return true;
+    if (!k->is_instance_klass()) { // FIXME -- remove this check, and add a test case
+      // FIXME: is it valid to have a non-instance klass in method refs?
+      return false;
     }
+
+    // Here, We don't check if this entry can actually be resolved to a valid Field/Method.
+    // This method should be called by the ConstantPool to check Fields/Methods that
+    // have already been successfully resolved.
+    return true;
+  } else {
+    return false;
   }
 }
 
@@ -142,6 +144,10 @@ bool ClassPrelinker::is_klass_resolution_deterministic(InstanceKlass* cp_holder,
 
   if (resolved_klass->is_instance_klass()) {
     InstanceKlass* ik = InstanceKlass::cast(resolved_klass);
+
+    if (!ik->is_shared() && SystemDictionaryShared::is_excluded_class(ik)) {
+      return false;
+    }
 
     if (cp_holder->is_subtype_of(ik)) {
       // All super types of ik will be resolved in ik->class_loader() before

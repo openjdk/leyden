@@ -524,6 +524,46 @@ void ConstantPool::remove_unshareable_entries() {
   }
 }
 
+void ConstantPool::remove_resolved_klass_if_non_deterministic(int cp_index) {
+  assert(ArchiveBuilder::current()->is_in_buffer_space(this), "must be");
+  assert(tag_at(cp_index).is_klass(), "must be resolved");
+
+  // k could be null if the referenced class has been excluded via
+  // SystemDictionaryShared::is_excluded_class().
+  Klass* k = resolved_klass_at(cp_index);
+  bool revert = true;
+  if (k != nullptr) {
+    ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
+    if (ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
+      revert = false;
+    }
+  }
+
+  if (revert) {
+    // This resolved klass entry cannot be archived. Revert the tag to UnresolvedClass,
+    // so that it will be resolved at runtime.
+    int resolved_klass_index = klass_slot_at(cp_index).resolved_klass_index();
+    resolved_klasses()->at_put(resolved_klass_index, nullptr);
+    tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
+  }
+
+  LogStreamHandle(Trace, cds, resolve) log;
+  if (log.is_enabled()) {
+    ResourceMark rm;
+    log.print("%s klass  CP entry [%3d]: %s %s",
+              (revert ? "reverted" : "archived"),
+              cp_index, pool_holder()->name()->as_C_string(), get_type(pool_holder()));
+    if (revert) {
+      Symbol* name = klass_name_at(cp_index);
+      log.print("  \"%s\"", name->as_C_string());
+    } else {
+      log.print(" => %s %s%s", k->name()->as_C_string(), get_type(k),
+                (!k->is_instance_klass() || pool_holder()->is_subtype_of(k)) ? "" : " (not supertype)");
+    }
+  }
+  ArchiveBuilder::alloc_stats()->record_klass_cp_entry(!revert);
+}
+
 void ConstantPool::remove_resolved_field_entries_if_non_deterministic() {
   ConstantPool* src_cp =  ArchiveBuilder::current()->get_source_addr(this);
   Array<ResolvedFieldEntry>* field_entries = cache()->resolved_field_entries();
@@ -644,46 +684,6 @@ void ConstantPool::remove_resolved_indy_entries_if_non_deterministic() {
   }
 }
 
-void ConstantPool::remove_resolved_klass_if_non_deterministic(int cp_index) {
-  assert(ArchiveBuilder::current()->is_in_buffer_space(this), "must be");
-  assert(tag_at(cp_index).is_klass(), "must be resolved");
-
-  // k could be null if the referenced class has been excluded via
-  // SystemDictionaryShared::is_excluded_class().
-  Klass* k = resolved_klass_at(cp_index);
-  bool revert = true;
-  if (k != nullptr) {
-    ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
-    if (ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
-      revert = false;
-    }
-  }
-
-  if (revert) {
-    // This resolved klass entry cannot be archived. Revert the tag to UnresolvedClass,
-    // so that it will be resolved at runtime.
-    int resolved_klass_index = klass_slot_at(cp_index).resolved_klass_index();
-    resolved_klasses()->at_put(resolved_klass_index, nullptr);
-    tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
-  }
-
-  LogStreamHandle(Trace, cds, resolve) log;
-  if (log.is_enabled()) {
-    ResourceMark rm;
-    log.print("%s klass  CP entry [%3d]: %s %s",
-              (revert ? "reverted" : "archived"),
-              cp_index, pool_holder()->name()->as_C_string(), get_type(pool_holder()));
-    if (revert) {
-      Symbol* name = klass_name_at(cp_index);
-      log.print("  \"%s\"", name->as_C_string());
-    } else {
-      log.print(" => %s %s%s", k->name()->as_C_string(), get_type(k),
-                (!k->is_instance_klass() || pool_holder()->is_subtype_of(k)) ? "" : " (not supertype)");
-    }
-  }
-  ArchiveBuilder::alloc_stats()->record_klass_cp_entry(!revert);
-}
-
 bool ConstantPool::can_archive_invokehandle(ResolvedMethodEntry* rme) {
   assert(rme->is_resolved(Bytecodes::_invokehandle), "sanity");
 
@@ -713,9 +713,7 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
     return false;
   }
 
-  if (method_entry->is_resolved(Bytecodes::_invokevirtual)) {
-//    assert(method_entry->method() == nullptr, "");
-  } else {
+  if (!method_entry->is_resolved(Bytecodes::_invokevirtual)) {
     if (method_entry->method() == nullptr) {
       return false;
     }
@@ -726,50 +724,26 @@ bool ConstantPool::can_archive_resolved_method(ResolvedMethodEntry* method_entry
 
   int cp_index = method_entry->constant_pool_index();
   ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
-  if (!src_cp->tag_at(cp_index).is_method() &&
-      !src_cp->tag_at(cp_index).is_interface_method()) {
-    return false;
-  }
+  assert(src_cp->tag_at(cp_index).is_method() || src_cp->tag_at(cp_index).is_interface_method(), "sanity");
 
   if (!ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
     return false;
   }
 
-  int klass_cp_index = uncached_klass_ref_index_at(cp_index);
-  if (!src_cp->tag_at(klass_cp_index).is_klass()) {
-    return false;
-  }
-
-  Klass* resolved_klass = resolved_klass_at(klass_cp_index);
-  if (!resolved_klass->is_instance_klass()) {
-    // FIXME: is it valid to have a non-instance klass in method refs?
-    return false;
-  }
   if (method_entry->is_resolved(Bytecodes::_invokehandle)) {
     if (!ArchiveInvokeDynamic) {
-      // FIXME We don't dump the MethodType tables. This somehow breaks stuff. Why???
+      // invokehandle depends on archived MethodType and LambdaForms.
       return false;
     } else if (!can_archive_invokehandle(method_entry)) {
       return false;
     }
-  } else if (method_entry->is_resolved(Bytecodes::_invokestatic)) {
+  } else if (method_entry->is_resolved(Bytecodes::_invokestatic) ||
+             method_entry->is_resolved(Bytecodes::_invokeinterface) ||
+             method_entry->is_resolved(Bytecodes::_invokevirtual) ||
+             method_entry->is_resolved(Bytecodes::_invokespecial)) {
     // OK
-  } else if (method_entry->is_resolved(Bytecodes::_invokeinterface)) {
-    // OK
-  } else if (!method_entry->is_resolved(Bytecodes::_invokevirtual) &&
-             !method_entry->is_resolved(Bytecodes::_invokespecial)) {
-    return false;
-  }
-
-  if (resolved_klass->is_instance_klass()) {
-    InstanceKlass* ik = InstanceKlass::cast(resolved_klass);
-    if (SystemDictionaryShared::is_jfr_event_class(ik)) {
-      // Some methods in JRF event klasses may be redefined.
-      return false;
-    }
-    if (SystemDictionaryShared::has_been_redefined(ik)) {
-      return false;
-    }
+  } else {
+    return false; // just to be safe.
   }
 
   return true;

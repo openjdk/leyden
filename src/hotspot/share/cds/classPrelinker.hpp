@@ -125,9 +125,6 @@ public:
   // CDS archive.
   static void dumptime_resolve_constants(InstanceKlass* ik, TRAPS);
 
-  // Returns true if cp_index is guaranteed to resolve to the same information
-  // at both dump time and run time. This is a necessary (but not sufficient)
-  // condition for pre-resolving cp_index during CDS assembly.
   static bool is_resolution_deterministic(ConstantPool* cp, int cp_index);
 
   static bool can_archive_preinitialized_mirror(InstanceKlass* src_ik);
