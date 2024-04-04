@@ -397,8 +397,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         log_info(cds)("full module graph: disabled when writing CDS preimage");
         HeapShared::disable_writing();
         stop_dumping_full_module_graph();
-        ArchiveInvokeDynamic = false;
-        ArchivePackages = false;
+        FLAG_SET_ERGO(ArchiveInvokeDynamic, false);
+        FLAG_SET_ERGO(ArchivePackages, false);
 
         FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
       }
