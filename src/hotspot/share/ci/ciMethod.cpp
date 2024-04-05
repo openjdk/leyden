@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1215,8 +1215,8 @@ int ciMethod::inline_instructions_size() {
   }
   if (_inline_instructions_size == -1) {
     GUARDED_VM_ENTRY(
-      CompiledMethod* code = get_Method()->code();
-      if (code != nullptr && !code->is_scc() && code->comp_level() == CompLevel_full_optimization) {
+      nmethod* code = get_Method()->code();
+      if (code != nullptr && !code->is_scc() && (code->comp_level() == CompLevel_full_optimization)) {
         int isize = code->insts_end() - code->verified_entry_point() - code->skipped_instructions_size();
         _inline_instructions_size = isize > 0 ? isize : 0;
       } else {
@@ -1239,7 +1239,7 @@ int ciMethod::inline_instructions_size() {
 // ciMethod::log_nmethod_identity
 void ciMethod::log_nmethod_identity(xmlStream* log) {
   GUARDED_VM_ENTRY(
-    CompiledMethod* code = get_Method()->code();
+    nmethod* code = get_Method()->code();
     if (code != nullptr) {
       code->log_identity(log);
     }

@@ -3433,12 +3433,12 @@ void SCCache::print_unused_entries_on(outputStream* st) {
               mtd->iterate_all_compiles([&](CompileTrainingData* ctd) {
                 if ((uint)ctd->level() == entry->comp_level()) {
                   if (ctd->init_deps_left() == 0) {
-                    CompiledMethod* cm = mtd->holder()->code();
-                    if (cm == nullptr) {
+                    nmethod* nm = mtd->holder()->code();
+                    if (nm == nullptr) {
                       if (mtd->holder()->queued_for_compilation()) {
                         return; // scheduled for compilation
                       }
-                    } else if ((uint)cm->comp_level() >= entry->comp_level()) {
+                    } else if ((uint)nm->comp_level() >= entry->comp_level()) {
                       return; // already online compiled and superseded by a more optimal method
                     }
                     info.print("SCC entry not loaded: ");

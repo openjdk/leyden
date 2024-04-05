@@ -461,8 +461,8 @@ void xmlStream::method(Method* method, const char* pfx) {
   if (RecordTraining) {
     // print stuff about this method's compilation history
     print(" highest_comp_level='%d'", method->highest_comp_level());
-    CompiledMethod* cm = method->code();
-    if (cm != nullptr)  print(" last_compile_id='%d'", cm->compile_id());
+    nmethod* nm = method->code();
+    if (nm != nullptr)  print(" last_compile_id='%d'", nm->compile_id());
   }
   int bec = method->backedge_count();
   if (bec != 0)  print(" backedge_count='%d'", bec);

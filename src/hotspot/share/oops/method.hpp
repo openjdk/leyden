@@ -63,7 +63,7 @@ class MethodCounters;
 class MethodTrainingData;
 class ConstMethod;
 class InlineTableSizes;
-class CompiledMethod;
+class nmethod;
 class InterpreterOopMap;
 class SCCEntry;
 
@@ -95,17 +95,17 @@ class Method : public Metadata {
   address _i2i_entry;           // All-args-on-stack calling convention
   // Entry point for calling from compiled code, to compiled code if it exists
   // or else the interpreter.
-  volatile address _from_compiled_entry;        // Cache of: _code ? _code->entry_point() : _adapter->c2i_entry()
+  volatile address _from_compiled_entry;     // Cache of: _code ? _code->entry_point() : _adapter->c2i_entry()
   // The entry point for calling both from and to compiled code is
   // "_code->entry_point()".  Because of tiered compilation and de-opt, this
   // field can come and go.  It can transition from null to not-null at any
   // time (whenever a compile completes).  It can transition from not-null to
   // null only at safepoints (because of a de-opt).
-  CompiledMethod* volatile _code;                       // Points to the corresponding piece of native code
-  volatile address           _from_interpreted_entry; // Cache of _code ? _adapter->i2c_entry() : _i2i_entry
+  nmethod* volatile _code;                   // Points to the corresponding piece of native code
+  volatile address  _from_interpreted_entry; // Cache of _code ? _adapter->i2c_entry() : _i2i_entry
 
-  CompiledMethod* _preload_code;  // preloaded SCCache code
-  SCCEntry* _scc_entry;           // SCCache entry for pre-loading code
+  nmethod*  _preload_code;  // preloaded SCCache code
+  SCCEntry* _scc_entry;     // SCCache entry for pre-loading code
 
   // Constructor
   Method(ConstMethod* xconst, AccessFlags access_flags, Symbol* name);
@@ -368,10 +368,10 @@ class Method : public Metadata {
   // nmethod/verified compiler entry
   address verified_code_entry();
   bool check_code() const;      // Not inline to avoid circular ref
-  CompiledMethod* code() const;
+  nmethod* code() const;
 
   // Locks CompiledMethod_lock if not held.
-  void unlink_code(CompiledMethod *compare);
+  void unlink_code(nmethod *compare);
   // Locks CompiledMethod_lock if not held.
   void unlink_code();
 
@@ -384,7 +384,7 @@ private:
   }
 
 public:
-  static void set_code(const methodHandle& mh, CompiledMethod* code);
+  static void set_code(const methodHandle& mh, nmethod* code);
   void set_adapter_entry(AdapterHandlerEntry* adapter) {
     _adapter = adapter;
   }
@@ -392,7 +392,7 @@ public:
     _from_compiled_entry =  entry;
   }
 
-  void set_preload_code(CompiledMethod* code) {
+  void set_preload_code(nmethod* code) {
     _preload_code = code;
   }
   void set_scc_entry(SCCEntry* entry) {
@@ -722,7 +722,6 @@ public:
   // made obsolete or deleted -- in these cases, the jmethodID
   // refers to null (as is the case for any weak reference).
   static jmethodID make_jmethod_id(ClassLoaderData* cld, Method* mh);
-  static void destroy_jmethod_id(ClassLoaderData* cld, jmethodID mid);
 
   // Ensure there is enough capacity in the internal tracking data
   // structures to hold the number of jmethodIDs you plan to generate.

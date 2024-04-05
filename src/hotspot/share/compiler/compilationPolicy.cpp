@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -115,15 +115,15 @@ bool CompilationPolicy::recompilation_step(int step, TRAPS) {
         repeat = true;
         continue;
       }
-      CompiledMethod *cm = method->code();
-      if (cm == nullptr) {
+      nmethod *nm = method->code();
+      if (nm == nullptr) {
         repeat = true;
         continue;
       }
 
-      if (!ForceRecompilation && !(cm->is_scc() && cm->comp_level() == CompLevel_full_optimization)) {
+      if (!ForceRecompilation && !(nm->is_scc() && nm->comp_level() == CompLevel_full_optimization)) {
         // If it's already online-compiled at level 4, mark it as done.
-        if (cm->comp_level() == CompLevel_full_optimization) {
+        if (nm->comp_level() == CompLevel_full_optimization) {
           Atomic::store(&TrainingData::recompilation_status()[i], true);
         } else {
           repeat = true;
@@ -434,7 +434,7 @@ bool CompilationPolicy::force_comp_at_level_simple(const methodHandle& method) {
 }
 
 CompLevel CompilationPolicy::comp_level(Method* method) {
-  CompiledMethod *nm = method->code();
+  nmethod *nm = method->code();
   if (nm != nullptr && nm->is_in_use()) {
     return (CompLevel)nm->comp_level();
   }
@@ -981,7 +981,7 @@ void CompilationPolicy::reprofile(ScopeDesc* trap_scope, bool is_osr) {
 }
 
 nmethod* CompilationPolicy::event(const methodHandle& method, const methodHandle& inlinee,
-                                      int branch_bci, int bci, CompLevel comp_level, CompiledMethod* nm, TRAPS) {
+                                      int branch_bci, int bci, CompLevel comp_level, nmethod* nm, TRAPS) {
   if (PrintTieredEvents) {
     print_event(bci == InvocationEntryBci ? CALL : LOOP, method(), inlinee(), bci, comp_level);
   }
@@ -1629,7 +1629,7 @@ CompLevel CompilationPolicy::loop_event(const methodHandle& method, CompLevel cu
 
 // Handle the invocation event.
 void CompilationPolicy::method_invocation_event(const methodHandle& mh, const methodHandle& imh,
-                                                      CompLevel level, CompiledMethod* nm, TRAPS) {
+                                                      CompLevel level, nmethod* nm, TRAPS) {
   if (should_create_mdo(mh, level)) {
     create_mdo(mh, THREAD);
   }
@@ -1644,7 +1644,7 @@ void CompilationPolicy::method_invocation_event(const methodHandle& mh, const me
 // Handle the back branch event. Notice that we can compile the method
 // with a regular entry from here.
 void CompilationPolicy::method_back_branch_event(const methodHandle& mh, const methodHandle& imh,
-                                                     int bci, CompLevel level, CompiledMethod* nm, TRAPS) {
+                                                     int bci, CompLevel level, nmethod* nm, TRAPS) {
   if (should_create_mdo(mh, level)) {
     create_mdo(mh, THREAD);
   }
