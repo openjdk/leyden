@@ -78,20 +78,11 @@ CompileTrainingData::CompileTrainingData() : _level(-1), _compile_id(-1) {
 
 #if INCLUDE_CDS
 void TrainingData::restore_all_unshareable_info(TRAPS) {
-  class RestoreUnshareableInfo {
-    JavaThread *_thread;
-  public:
-    RestoreUnshareableInfo(JavaThread *thread) : _thread(thread) { }
-    void do_value(TrainingData* td) {
-      td->restore_unshareable_info(_thread);
-    }
-  };
-
-  if (have_data()) {
-    if (!archived_training_data_dictionary()->empty()) {
-      RestoreUnshareableInfo r(THREAD);
-      archived_training_data_dictionary()->iterate(&r);
-    }
+  if (have_data() && !archived_training_data_dictionary()->empty()) {
+    Visitor visitor(archived_training_data_dictionary()->entry_count());
+    archived_training_data_dictionary()->iterate([&](TrainingData *td) {
+      td->restore_unshareable_info(visitor, THREAD);
+    });
   }
 }
 #endif
@@ -412,6 +403,12 @@ void MethodTrainingData::prepare(Visitor& visitor) {
     _final_counters = holder()->method_counters();
     _final_profile  = holder()->method_data();
     assert(_final_profile == nullptr || _final_profile->method() == holder(), "");
+  }
+  for (int i = 0; i < CompLevel_count; i++) {
+    CompileTrainingData* ctd = _last_toplevel_compiles[i];
+    if (ctd != nullptr) {
+      ctd->prepare(visitor);
+    }
   }
   if (_compile != nullptr) {
     // Just prepare the first one, or prepare them all?  This needs
@@ -742,11 +739,12 @@ void TrainingData::adjust_training_data_dictionary() {
     return;
   }
   assert(_dumptime_training_data_dictionary != nullptr, "");
+  Visitor visitor(_dumptime_training_data_dictionary->length());
   for (int i = 0; i < _dumptime_training_data_dictionary->length(); i++) {
     TrainingData* td = _dumptime_training_data_dictionary->at(i).training_data();
     td = ArchiveBuilder::current()->get_buffered_addr(td);
     assert(MetaspaceShared::is_in_shared_metaspace(td) || ArchiveBuilder::current()->is_in_buffer_space(td), "");
-    td->remove_unshareable_info();
+    td->remove_unshareable_info(visitor);
   }
 }
 
@@ -1016,20 +1014,38 @@ void TrainingDataPrinter::do_value(TrainingData* td) {
 
 
 #if INCLUDE_CDS
-void KlassTrainingData::remove_unshareable_info() {
-  TrainingData::remove_unshareable_info();
+void KlassTrainingData::remove_unshareable_info(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
+  TrainingData::remove_unshareable_info(visitor);
   _comp_deps.remove_unshareable_info();
 }
 
-void KlassTrainingData::restore_unshareable_info(TRAPS) {
-  TrainingData::restore_unshareable_info(CHECK);
+void KlassTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
+  TrainingData::restore_unshareable_info(visitor, CHECK);
   _comp_deps.restore_unshareable_info(CHECK);
 }
 
-void MethodTrainingData::remove_unshareable_info() {
-  TrainingData::remove_unshareable_info();
+void MethodTrainingData::remove_unshareable_info(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
+  TrainingData::remove_unshareable_info(visitor);
+  for (int i = 0; i < CompLevel_count; i++) {
+    CompileTrainingData* ctd = _last_toplevel_compiles[i];
+    if (ctd != nullptr) {
+      ctd->remove_unshareable_info(visitor);
+    }
+  }
   for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
-    ctd->remove_unshareable_info();
+    ctd->remove_unshareable_info(visitor);
   }
   if (_final_counters != nullptr) {
     _final_counters->remove_unshareable_info();
@@ -1039,10 +1055,20 @@ void MethodTrainingData::remove_unshareable_info() {
   }
 }
 
-void MethodTrainingData::restore_unshareable_info(TRAPS) {
-  TrainingData::restore_unshareable_info(CHECK);
+void MethodTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
+  TrainingData::restore_unshareable_info(visitor, CHECK);
+  for (int i = 0; i < CompLevel_count; i++) {
+    CompileTrainingData* ctd = _last_toplevel_compiles[i];
+    if (ctd != nullptr) {
+      ctd->restore_unshareable_info(visitor, CHECK);
+    }
+  }
   for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
-    ctd->restore_unshareable_info(CHECK);
+    ctd->restore_unshareable_info(visitor, CHECK);
   }
   if (_final_counters != nullptr ) {
     _final_counters->restore_unshareable_info(CHECK);
@@ -1052,15 +1078,23 @@ void MethodTrainingData::restore_unshareable_info(TRAPS) {
   }
 }
 
-void CompileTrainingData::remove_unshareable_info() {
-  TrainingData::remove_unshareable_info();
+void CompileTrainingData::remove_unshareable_info(Visitor& visitor) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
+  TrainingData::remove_unshareable_info(visitor);
   _init_deps.remove_unshareable_info();
   _ci_records.remove_unshareable_info();
   _init_deps_left = compute_init_deps_left(true);
 }
 
-void CompileTrainingData::restore_unshareable_info(TRAPS) {
-  TrainingData::restore_unshareable_info(CHECK);
+void CompileTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
+  if (visitor.is_visited(this)) {
+    return;
+  }
+  visitor.visit(this);
+  TrainingData::restore_unshareable_info(visitor, CHECK);
   _init_deps.restore_unshareable_info(CHECK);
   _ci_records.restore_unshareable_info(CHECK);
   guarantee(_init_deps_left == (int)compute_init_deps_left(), "mismatch");

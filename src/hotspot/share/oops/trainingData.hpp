@@ -341,8 +341,8 @@ public:
   virtual void metaspace_pointers_do(MetaspaceClosure *iter);
 
 #if INCLUDE_CDS
-  virtual void remove_unshareable_info() {}
-  virtual void restore_unshareable_info(TRAPS) {}
+  virtual void remove_unshareable_info(Visitor& vistor) {}
+  virtual void restore_unshareable_info(Visitor& visitor, TRAPS) {}
   static void restore_all_unshareable_info(TRAPS);
 #endif
   static void init_dumptime_table(TRAPS);
@@ -443,8 +443,8 @@ class KlassTrainingData : public TrainingData {
   }
 
 #if INCLUDE_CDS
-  virtual void remove_unshareable_info();
-  virtual void restore_unshareable_info(TRAPS);
+  virtual void remove_unshareable_info(Visitor& visitor);
+  virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 
   void metaspace_pointers_do(MetaspaceClosure *iter);
@@ -657,8 +657,8 @@ public:
   virtual void print_value_on(outputStream* st) const { print_on(st, true); }
 
 #if INCLUDE_CDS
-  virtual void remove_unshareable_info();
-  virtual void restore_unshareable_info(TRAPS);
+  virtual void remove_unshareable_info(Visitor& visitor);
+  virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 
   virtual void metaspace_pointers_do(MetaspaceClosure* iter);
@@ -786,8 +786,8 @@ class MethodTrainingData : public TrainingData {
   virtual MetaspaceObj::Type type() const { return MethodTrainingDataType; }
 
 #if INCLUDE_CDS
-  virtual void remove_unshareable_info();
-  virtual void restore_unshareable_info(TRAPS);
+  virtual void remove_unshareable_info(Visitor& visitor);
+  virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 
   virtual int size() const {
