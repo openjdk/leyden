@@ -106,7 +106,6 @@ public:
 };
 
 bool HeapShared::_disable_writing = false;
-bool HeapShared::_box_classes_inited = false;
 DumpedInternedStrings *HeapShared::_dumped_interned_strings = nullptr;
 
 size_t HeapShared::_alloc_count[HeapShared::ALLOC_STAT_SLOTS];
@@ -128,6 +127,7 @@ static const ArchivedKlassSubGraphInfoRecord* _test_class_record = nullptr;
 //
 
 static ArchivableStaticFieldInfo archive_subgraph_entry_fields[] = {
+  {"java/lang/Boolean",                           "archivedCache"},
   {"java/lang/Integer$IntegerCache",              "archivedCache"},
   {"java/lang/Long$LongCache",                    "archivedCache"},
   {"java/lang/Byte$ByteCache",                    "archivedCache"},
@@ -1229,11 +1229,6 @@ void HeapShared::initialize_from_archived_subgraph(JavaThread* current, Klass* k
     return; // nothing to do
   }
 
-  // The subgraphs may reference java_mirrors of the box classes like
-  // java/lang/Boolean. It may not be necessary, but for sanity, we force
-  // the box classes to be initialized before any subgraph can be initialized.
-  assert(_box_classes_inited, "must be");
-
   ExceptionMark em(THREAD);
   const ArchivedKlassSubGraphInfoRecord* record =
     resolve_or_init_classes_for_subgraph_of(k, /*do_init=*/true, THREAD);
@@ -1557,7 +1552,6 @@ void HeapShared::init_box_classes(TRAPS) {
     vmClasses::Integer_klass()->initialize(CHECK);
     vmClasses::Long_klass()->initialize(CHECK);
     vmClasses::Void_klass()->initialize(CHECK);
-    _box_classes_inited = true;
   }
 }
 

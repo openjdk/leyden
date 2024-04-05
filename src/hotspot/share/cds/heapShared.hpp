@@ -170,7 +170,6 @@ public:
 private:
 #if INCLUDE_CDS_JAVA_HEAP
   static bool _disable_writing;
-  static bool _box_classes_inited;
   static DumpedInternedStrings *_dumped_interned_strings;
 
   // statistics
