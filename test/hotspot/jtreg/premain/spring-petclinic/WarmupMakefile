@@ -214,8 +214,8 @@ ${PC_CLASSLIST}: ${PC_APP_UNPACKED}
 	    -Xlog:class+load=debug:file=$@.log ${SAVE_GEN_FILES} \
 	    ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
+	$(run-jmeter)
 	$(exit-app)
-	$(call wait-for-startup,$@.out)
 	wc -lc $@
 
 ${PC_STATIC_BL_JSA}: ${PC_BL_CLASSLIST}
@@ -227,6 +227,8 @@ ${PC_STATIC_BL_JSA}: ${PC_BL_CLASSLIST}
 ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	rm -f ${PC_STATIC_JSA}.log
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
+	    -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:+ArchiveDynamicProxies -XX:+ArchiveReflectionData \
+            -XX:+ArchiveLoaderLookupCache -Dleyden.debug.archived.packages=1 \
 	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log
 	ls -l $@
 
@@ -276,8 +278,10 @@ ${PC_ST_CACHED_CODE}: ${PC_DYNAMIC_ST_JSA}
 
 ${PC_LT_CACHED_CODE}: ${PC_DYNAMIC_LT_JSA}
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining -XX:+StoreCachedCode \
+	     -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log \
 	     -XX:CachedCodeFile=${PC_LT_CACHED_CODE} -XX:CachedCodeMaxSize=512M ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
+	$(run-jmeter)
 	$(exit-app)
 	ls -l $@
 
@@ -323,7 +327,7 @@ warmup-st-aot: ${PC_ST_CACHED_CODE} ${JMETER_BIN}
 # run with load training data and aot code
 warmup-lt-aot: ${PC_LT_CACHED_CODE} ${JMETER_BIN}
 	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
-		-XX:CachedCodeFile=${PC_LT_CACHED_CODE} ${UNPACKED_CMDLINE} &> $@.out &
+		-Xlog:init -XX:CachedCodeFile=${PC_LT_CACHED_CODE} ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(run-jmeter)
 	$(exit-app)
