@@ -97,6 +97,9 @@ PC_BL_CLASSLIST     = spring-petclinic.bl_classlist
 PC_STATIC_BL_JSA    = spring-petclinic.static_bl.jsa
 PC_DYNAMIC_BL_JSA   = spring-petclinic.dynamic_bl.jsa
 
+PC_CDS_PREIMAGE     = spring-petclinic.cds.preimage
+PC_CDS              = spring-petclinic.cds
+
 JMETER_DURATION = 180
 JMETER_THREADS = 1
 JMETER_CPUS = 12-13
@@ -285,6 +288,29 @@ ${PC_LT_CACHED_CODE}: ${PC_DYNAMIC_LT_JSA}
 	$(exit-app)
 	ls -l $@
 
+${PC_CDS_PREIMAGE}: ${PC_APP_UNPACKED}
+	rm -f ${PC_CDS_PREIMAGE} ${PC_CDS}
+	${PREMAIN_JAVA} -XX:+PreloadSharedClasses \
+               -XX:+ArchiveInvokeDynamic -XX:+ArchiveReflectionData \
+               -XX:+ArchiveDynamicProxies -XX:+ArchiveLoaderLookupCache -XX:CachedCodeMaxSize=512M \
+               -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage -XX:CacheDataStore=${PC_CDS} \
+               -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log \
+               ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+	ls -l $@
+
+${PC_CDS}: ${PC_CDS_PREIMAGE}
+	rm -f ${PC_CDS}
+	${PREMAIN_JAVA} -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:CachedCodeMaxSize=512M \
+	       -XX:+UnlockDiagnosticVMOptions -XX:CDSPreimage=${PC_CDS_PREIMAGE} -XX:CacheDataStore=${PC_CDS} \
+	       -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log \
+	       -XX:-AssemblyStepInlining \
+	       ${UNPACKED_CMDLINE} &> $@.out
+	ls -l $@
+	ls -l $@.code
+
 warmup-bl: ${PC_DYNAMIC_BL_JSA} ${JMETER_BIN}
 	time taskset -c "${APP_CPUS}" ${BL_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_BL_JSA} \
 		${UNPACKED_CMDLINE} &> $@.out &
@@ -327,12 +353,22 @@ warmup-st-aot: ${PC_ST_CACHED_CODE} ${JMETER_BIN}
 # run with load training data and aot code
 warmup-lt-aot: ${PC_LT_CACHED_CODE} ${JMETER_BIN}
 	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
+		-XX:+UnlockDiagnosticVMOptions -XX:+PrintCompilation -XX:-TraceDeoptimization \
 		-Xlog:init -XX:CachedCodeFile=${PC_LT_CACHED_CODE} ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(run-jmeter)
 	$(exit-app)
 
-run: warmup-bl warmup-preload warmup-st warmup-lt warmup-st-aot warmup-lt-aot
+# run with new single-step workflow
+warmup-lt-aot-new: ${PC_CDS}
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} \
+	       -XX:+UnlockDiagnosticVMOptions -XX:+PrintCompilation \
+	       -Xlog:init ${UNPACKED_CMDLINE} &> $@.out &
+	$(wait-for-startup)
+	$(run-jmeter)
+	$(exit-app)
+
+run: warmup-bl warmup-preload warmup-st warmup-lt warmup-st-aot warmup-lt-aot warmup-lt-aot-new
 
 run17: ${PC_APP_UNPACKED}
 	time ${JDK17_JAVA} ${UNPACKED_CMDLINE} &> $@.out &
