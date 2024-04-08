@@ -411,7 +411,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       if (FLAG_SET_CMDLINE(BackgroundCompilation, false) != JVMFlag::SUCCESS) {
         return false;
       }
-      Inline = false; // FIXME: this is just for temp debugging.
       RecordTraining = false; // This will be updated inside MetaspaceShared::preload_and_dump()
 
       FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
@@ -446,7 +445,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveFieldReferences, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveInvokeDynamic, true);
-  //FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveMethodReferences, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchivePackages, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);

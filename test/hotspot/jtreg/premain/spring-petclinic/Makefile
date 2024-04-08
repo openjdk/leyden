@@ -365,7 +365,7 @@ _compare_premain_builds:
 		first=0; \
 	done
 
-# same as above, but only comapre the speed of "make runs"
+# same as above, but only compare the speed of "make runs"
 compare_premain_builds_static: clean0 _compare_premain_builds_static
 
 _compare_premain_builds_static:
@@ -376,6 +376,23 @@ _compare_premain_builds_static:
 		rm -f tmp.txt; \
 		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
 		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
+	        fi; \
+		first=0; \
+	done
+
+# same as above, but only compare the speed of "make runn"
+compare_premain_builds_1step: clean0 _compare_premain_builds_1step
+
+_compare_premain_builds_1step:
+	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
+	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
+	@echo "Run,Old 1-step training,New 1-step training"
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runn | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \
