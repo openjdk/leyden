@@ -33,6 +33,7 @@
 #include "cds/cds_globals.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
+#include "cds/classPreinitializer.hpp"
 #include "cds/classPrelinker.hpp"
 #include "cds/classPreloader.hpp"
 #include "cds/cppVtables.hpp"
@@ -693,7 +694,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
             has_linked |= try_link_class(THREAD, ik);
           }
           if (CDSConfig::is_dumping_heap() && ik->is_linked() && !ik->is_initialized()) {
-            ClassPrelinker::maybe_preinit_class(ik, CHECK);
+            ClassPreinitializer::maybe_preinit_class(ik, CHECK);
           }
         }
       }

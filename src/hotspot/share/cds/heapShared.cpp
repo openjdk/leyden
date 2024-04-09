@@ -30,7 +30,7 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEnumKlass.hpp"
 #include "cds/cdsHeapVerifier.hpp"
-#include "cds/classPrelinker.hpp"
+#include "cds/classPreinitializer.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classLoaderData.hpp"
@@ -584,7 +584,7 @@ void HeapShared::copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop 
     assert(ik->is_initialized(), "must be");
   }
 
-  if (!ik->is_initialized() || !ClassPrelinker::can_archive_preinitialized_mirror(ik)) {
+  if (!ik->is_initialized() || !ClassPreinitializer::can_archive_preinitialized_mirror(ik)) {
     return;
   }
 

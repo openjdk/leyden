@@ -29,7 +29,7 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPrelinker.hpp"
+#include "cds/classPreinitializer.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
@@ -1711,7 +1711,7 @@ void SystemDictionaryShared::cleanup_method_info_dictionary() {
 }
 
 // SystemDictionaryShared::can_be_preinited() is called in two different phases
-//   [1] ClassPrelinker::try_preinit_class()
+//   [1] ClassPreinitializer::try_preinit_class()
 //   [2] HeapShared::archive_java_mirrors()
 // Between the two phases, some Java code may have been executed to contaminate the
 // some initialized mirrors. So we call reset_preinit_check() at the beginning of the
@@ -1738,7 +1738,7 @@ bool SystemDictionaryShared::can_be_preinited_locked(InstanceKlass* ik) {
   assert_lock_strong(DumpTimeTable_lock);
   DumpTimeClassInfo* info = get_info_locked(ik);
   if (!info->has_done_preinit_check()) {
-    info->set_can_be_preinited(ClassPrelinker::check_can_be_preinited(ik));
+    info->set_can_be_preinited(ClassPreinitializer::check_can_be_preinited(ik));
   }
   return info->can_be_preinited();
 }

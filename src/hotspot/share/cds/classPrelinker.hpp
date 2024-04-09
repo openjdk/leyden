@@ -89,22 +89,15 @@ class ClassPrelinker :  AllStatic {
   // java/lang/reflect/Proxy caching
   static void init_dynamic_proxy_cache(TRAPS);
 
-  // Preinitialize classes during dump time
-  static bool has_non_default_static_fields(InstanceKlass* ik);
-  static bool is_forced_preinit_class(InstanceKlass* ik);
-
 public:
   static void initialize();
   static void dispose();
-
-  // Preinitialize classes during dump time
-  static bool check_can_be_preinited(InstanceKlass* ik);
-  static void maybe_preinit_class(InstanceKlass* ik, TRAPS);
 
   static void preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_invoker_class(JavaThread* current, InstanceKlass* ik);
+
   static void apply_final_image_eager_linkage(TRAPS);
 
   // java/lang/Class$ReflectionData caching
@@ -126,8 +119,6 @@ public:
   static void dumptime_resolve_constants(InstanceKlass* ik, TRAPS);
 
   static bool is_resolution_deterministic(ConstantPool* cp, int cp_index);
-
-  static bool can_archive_preinitialized_mirror(InstanceKlass* src_ik);
 
   static void record_final_image_eager_linkage();
   static void serialize(SerializeClosure* soc, bool is_static_archive);
