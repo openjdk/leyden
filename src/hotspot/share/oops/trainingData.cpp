@@ -664,9 +664,15 @@ void MethodTrainingData::cleanup(Visitor& visitor) {
       _holder = nullptr;
     }
   }
+  for (int i = 0; i < CompLevel_count; i++) {
+    CompileTrainingData* ctd = _last_toplevel_compiles[i];
+    if (ctd != nullptr) {
+      ctd->cleanup(visitor);
+    }
+  }
   for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
-    if (ctd->method() != this) {
-      ctd->method()->cleanup(visitor);
+    if (ctd != nullptr) {
+      ctd->cleanup(visitor);
     }
   }
 }
