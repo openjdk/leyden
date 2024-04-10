@@ -26,11 +26,13 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classPreinitializer.hpp"
+#include "dumpTimeClassInfo.inline.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/fieldStreams.inline.hpp"
-#include "oops/instanceKlass.hpp"
+#include "oops/instanceKlass.inline.hpp"
+#include "runtime/mutexLocker.hpp"
 
 // Warning -- this is fragile!!!
 //
@@ -72,14 +74,9 @@ bool ClassPreinitializer::is_forced_preinit_class(InstanceKlass* ik) {
   //"java/lang/invoke/BoundMethodHandle$Holder",
   //"java/lang/invoke/MemberName",
   //"java/lang/invoke/MethodHandleNatives",
-    nullptr
   };
 
-  for (int i = 0; ; i++) {
-    const char* class_name = forced_preinit_classes[i];
-    if (class_name == nullptr) {
-      return false;
-    }
+  for (const char* class_name : forced_preinit_classes) {
     if (ik->name()->equals(class_name)) {
       if (log_is_enabled(Info, cds, init)) {
         ResourceMark rm;
@@ -88,8 +85,12 @@ bool ClassPreinitializer::is_forced_preinit_class(InstanceKlass* ik) {
       return true;
     }
   }
+
+  return false;
 }
 
+// check_can_be_preinited() is quite costly, so we cache the results inside
+// DumpTimeClassInfo::_can_be_preinited. See also ClassPreinitializer::reset_preinit_check().
 bool ClassPreinitializer::check_can_be_preinited(InstanceKlass* ik) {
   ResourceMark rm;
 
@@ -99,14 +100,14 @@ bool ClassPreinitializer::check_can_be_preinited(InstanceKlass* ik) {
   }
 
   InstanceKlass* super = ik->java_super();
-  if (super != nullptr && !SystemDictionaryShared::can_be_preinited_locked(super)) {
+  if (super != nullptr && !can_be_preinited_locked(super)) {
     log_info(cds, init)("cannot initialize %s (super %s not initable)", ik->external_name(), super->external_name());
     return false;
   }
 
   Array<InstanceKlass*>* interfaces = ik->local_interfaces();
   for (int i = 0; i < interfaces->length(); i++) {
-    if (!SystemDictionaryShared::can_be_preinited_locked(interfaces->at(i))) {
+    if (!can_be_preinited_locked(interfaces->at(i))) {
       log_info(cds, init)("cannot initialize %s (interface %s not initable)",
                           ik->external_name(), interfaces->at(i)->external_name());
       return false;
@@ -181,15 +182,53 @@ bool ClassPreinitializer::has_non_default_static_fields(InstanceKlass* ik) {
   return true;
 }
 
+bool ClassPreinitializer::can_be_preinited(InstanceKlass* ik) {
+  MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+  return can_be_preinited_locked(ik);
+}
+
+bool ClassPreinitializer::can_be_preinited_locked(InstanceKlass* ik) {
+  if (!CDSConfig::is_initing_classes_at_dump_time()) {
+    return false;
+  }
+
+  assert_lock_strong(DumpTimeTable_lock);
+  DumpTimeClassInfo* info = SystemDictionaryShared::get_info_locked(ik);
+  if (!info->has_done_preinit_check()) {
+    info->set_can_be_preinited(ClassPreinitializer::check_can_be_preinited(ik));
+  }
+  return info->can_be_preinited();
+}
+
 // Initialize a class at dump time, if possible.
 void ClassPreinitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
-  if (!ik->is_initialized() && SystemDictionaryShared::can_be_preinited(ik)) {
+  if (!ik->is_initialized() && ClassPreinitializer::can_be_preinited(ik)) {
     if (log_is_enabled(Info, cds, init)) {
       ResourceMark rm;
       log_info(cds, init)("preinitializing %s", ik->external_name());
     }
     ik->initialize(CHECK);
   }
+}
+
+// ClassPreinitializer::can_be_preinited(ik) is called in two different phases:
+//
+// [1] Before the VM_PopulateDumpSharedSpace safepoint:
+//     when MetaspaceShared::link_shared_classes calls ClassPreinitializer::maybe_preinit_class(ik)
+// [2] Inside the VM_PopulateDumpSharedSpace safepoint
+//     when HeapShared::archive_java_mirrors() calls ClassPreinitializer::can_archive_preinitialized_mirror(ik)
+//
+// Between the two phases, some Java code may have been executed to contaminate the
+// some initialized mirrors. So we call reset_preinit_check() at the beginning of the
+// [2] so that we will re-run has_non_default_static_fields() on all the classes.
+// As a result, phase [2] may archive fewer mirrors that were initialized in phase [1].
+void ClassPreinitializer::reset_preinit_check() {
+  auto iterator = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
+    if (info.can_be_preinited()) {
+      info.reset_preinit_check();
+    }
+  };
+  SystemDictionaryShared::dumptime_table()->iterate_all_live_classes(iterator);
 }
 
 bool ClassPreinitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
@@ -201,6 +240,6 @@ bool ClassPreinitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
   if (ik->is_hidden()) {
     return HeapShared::is_archivable_hidden_klass(ik);
   } else {
-    return SystemDictionaryShared::can_be_preinited_locked(ik);
+    return ClassPreinitializer::can_be_preinited_locked(ik);
   }
 }

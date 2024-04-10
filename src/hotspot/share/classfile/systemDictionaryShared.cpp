@@ -1710,39 +1710,6 @@ void SystemDictionaryShared::cleanup_method_info_dictionary() {
   _dumptime_method_info_dictionary->unlink(&cleanup_method_info);
 }
 
-// SystemDictionaryShared::can_be_preinited() is called in two different phases
-//   [1] ClassPreinitializer::try_preinit_class()
-//   [2] HeapShared::archive_java_mirrors()
-// Between the two phases, some Java code may have been executed to contaminate the
-// some initialized mirrors. So we call reset_preinit_check() at the beginning of the
-// [2] so that we will re-run has_non_default_static_fields() on all the classes.
-void SystemDictionaryShared::reset_preinit_check() {
-  auto iterator = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (info.can_be_preinited()) {
-      info.reset_preinit_check();
-    }
-  };
-  _dumptime_table->iterate_all_live_classes(iterator);
-}
-
-bool SystemDictionaryShared::can_be_preinited(InstanceKlass* ik) {
-  MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
-  return can_be_preinited_locked(ik);
-}
-
-bool SystemDictionaryShared::can_be_preinited_locked(InstanceKlass* ik) {
-  if (!CDSConfig::is_initing_classes_at_dump_time()) {
-    return false;
-  }
-
-  assert_lock_strong(DumpTimeTable_lock);
-  DumpTimeClassInfo* info = get_info_locked(ik);
-  if (!info->has_done_preinit_check()) {
-    info->set_can_be_preinited(ClassPreinitializer::check_can_be_preinited(ik));
-  }
-  return info->can_be_preinited();
-}
-
 void SystemDictionaryShared::create_loader_positive_lookup_cache(TRAPS) {
   GrowableArray<InstanceKlass*> shared_classes_list;
   {

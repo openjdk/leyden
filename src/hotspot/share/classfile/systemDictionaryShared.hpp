@@ -194,11 +194,6 @@ private:
                                  const ClassFileStream* cfs,
                                  TRAPS);
 
-  // Guaranteed to return non-null value for non-shared classes.
-  // k must not be a shared class.
-  static DumpTimeClassInfo* get_info(InstanceKlass* k);
-  static DumpTimeClassInfo* get_info_locked(InstanceKlass* k);
-
   static void write_dictionary(RunTimeSharedDictionary* dictionary,
                                bool is_builtin);
   static void write_lambda_proxy_class_dictionary(LambdaProxyClassDictionary* dictionary);
@@ -214,6 +209,12 @@ private:
   DEBUG_ONLY(static bool _class_loading_may_happen;)
 
 public:
+  // Guaranteed to return non-null value for non-shared classes.
+  // k must not be a shared class.
+  static DumpTimeClassInfo* get_info(InstanceKlass* k);
+  static DumpTimeClassInfo* get_info_locked(InstanceKlass* k);
+  static DumpTimeSharedClassTable* dumptime_table() { return _dumptime_table; }
+
   static bool has_been_redefined(InstanceKlass* k);
   static bool is_jfr_event_class(InstanceKlass *k);
   static bool is_hidden_lambda_proxy(InstanceKlass* ik);

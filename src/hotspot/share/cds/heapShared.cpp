@@ -648,7 +648,7 @@ static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
 }
 
 void HeapShared::archive_java_mirrors() {
-  SystemDictionaryShared::reset_preinit_check();
+  ClassPreinitializer::reset_preinit_check();
 
   for (int i = T_BOOLEAN; i < T_VOID+1; i++) {
     BasicType bt = (BasicType)i;
