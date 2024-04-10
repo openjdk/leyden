@@ -871,7 +871,7 @@ void ArchiveBuilder::make_klasses_shareable() {
         ADD_COUNT(num_unregistered_klasses);
       }
 
-      if (ClassPrelinker::is_vm_class(src_ik)) {
+      if (ClassPreloader::is_vm_class(src_ik)) {
         ADD_COUNT(num_vm_klasses);
       }
 

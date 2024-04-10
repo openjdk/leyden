@@ -56,44 +56,13 @@
 #include "runtime/signature.hpp"
 
 ClassPrelinker::ClassesTable* ClassPrelinker::_processed_classes = nullptr;
-ClassPrelinker::ClassesTable* ClassPrelinker::_vm_classes = nullptr;
-int ClassPrelinker::_num_vm_klasses = 0;
-
-bool ClassPrelinker::is_vm_class(InstanceKlass* ik) {
-  return (_vm_classes->get(ik) != nullptr);
-}
-
-void ClassPrelinker::add_one_vm_class(InstanceKlass* ik) {
-  bool created;
-  ClassPreloader::add_preloaded_klass(ik);
-  _vm_classes->put_if_absent(ik, &created);
-  if (created) {
-    ++ _num_vm_klasses;
-    InstanceKlass* super = ik->java_super();
-    if (super != nullptr) {
-      add_one_vm_class(super);
-    }
-    Array<InstanceKlass*>* ifs = ik->local_interfaces();
-    for (int i = 0; i < ifs->length(); i++) {
-      add_one_vm_class(ifs->at(i));
-    }
-  }
-}
 
 void ClassPrelinker::initialize() {
-  assert(_vm_classes == nullptr, "must be");
-  _vm_classes = new (mtClass)ClassesTable();
   _processed_classes = new (mtClass)ClassesTable();
-  for (auto id : EnumRange<vmClassID>{}) {
-    add_one_vm_class(vmClasses::klass_at(id));
-  }
 }
 
 void ClassPrelinker::dispose() {
-  assert(_vm_classes != nullptr, "must be");
-  delete _vm_classes;
   delete _processed_classes;
-  _vm_classes = nullptr;
   _processed_classes = nullptr;
 }
 
@@ -108,7 +77,7 @@ bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index)
     // We require cp_index to be already resolved. This is fine for now, are we
     // currently archive only CP entries that are already resolved.
     Klass* resolved_klass = cp->resolved_klass_at(cp_index);
-    return resolved_klass != nullptr && is_klass_resolution_deterministic(cp->pool_holder(), resolved_klass);
+    return resolved_klass != nullptr && is_class_resolution_deterministic(cp->pool_holder(), resolved_klass);
   } else if (cp->tag_at(cp_index).is_invoke_dynamic()) {
     return is_indy_resolution_deterministic(cp, cp_index);
   } else if (cp->tag_at(cp_index).is_field() ||
@@ -120,7 +89,7 @@ bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index)
       return false;
     }
     Klass* k = cp->resolved_klass_at(klass_cp_index);
-    if (!is_klass_resolution_deterministic(cp->pool_holder(), k)) {
+    if (!is_class_resolution_deterministic(cp->pool_holder(), k)) {
       return false;
     }
 
@@ -138,12 +107,12 @@ bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index)
   }
 }
 
-bool ClassPrelinker::is_klass_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_klass) {
+bool ClassPrelinker::is_class_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_class) {
   assert(!is_in_archivebuilder_buffer(cp_holder), "sanity");
-  assert(!is_in_archivebuilder_buffer(resolved_klass), "sanity");
+  assert(!is_in_archivebuilder_buffer(resolved_class), "sanity");
 
-  if (resolved_klass->is_instance_klass()) {
-    InstanceKlass* ik = InstanceKlass::cast(resolved_klass);
+  if (resolved_class->is_instance_klass()) {
+    InstanceKlass* ik = InstanceKlass::cast(resolved_class);
 
     if (!ik->is_shared() && SystemDictionaryShared::is_excluded_class(ik)) {
       return false;
@@ -157,10 +126,10 @@ bool ClassPrelinker::is_klass_resolution_deterministic(InstanceKlass* cp_holder,
 
     if (ClassPreloader::is_preloaded_class(ik)) {
       if (cp_holder->is_shared_platform_class()) {
-        ClassPreloader::add_initiated_klass(cp_holder, ik);
+        ClassPreloader::add_initiated_class(cp_holder, ik);
         return true;
       } else if (cp_holder->is_shared_app_class()) {
-        ClassPreloader::add_initiated_klass(cp_holder, ik);
+        ClassPreloader::add_initiated_class(cp_holder, ik);
         return true;
       } else if (cp_holder->is_shared_boot_class()) {
         assert(ik->class_loader() == nullptr, "a boot class can reference only boot classes");
@@ -169,14 +138,14 @@ bool ClassPrelinker::is_klass_resolution_deterministic(InstanceKlass* cp_holder,
         return true;
       }
     }
-  } else if (resolved_klass->is_objArray_klass()) {
-    Klass* elem = ObjArrayKlass::cast(resolved_klass)->bottom_klass();
+  } else if (resolved_class->is_objArray_klass()) {
+    Klass* elem = ObjArrayKlass::cast(resolved_class)->bottom_klass();
     if (elem->is_instance_klass()) {
-      return is_klass_resolution_deterministic(cp_holder, InstanceKlass::cast(elem));
+      return is_class_resolution_deterministic(cp_holder, InstanceKlass::cast(elem));
     } else if (elem->is_typeArray_klass()) {
       return true;
     }
-  } else if (resolved_klass->is_typeArray_klass()) {
+  } else if (resolved_class->is_typeArray_klass()) {
     return true;
   }
   
@@ -837,7 +806,7 @@ void ClassPrelinker::generate_reflection_data(JavaThread* current, InstanceKlass
   }
 }
 
-Klass* ClassPrelinker::resolve_boot_klass_or_fail(const char* class_name, TRAPS) {
+Klass* ClassPrelinker::resolve_boot_class_or_fail(const char* class_name, TRAPS) {
   Handle class_loader;
   Handle protection_domain;
   TempNewSymbol class_name_sym = SymbolTable::new_symbol(class_name);
@@ -874,7 +843,7 @@ void ClassPrelinker::init_dynamic_proxy_cache(TRAPS) {
   }
   inited = true;
 
-  Klass* klass = resolve_boot_klass_or_fail("java/lang/reflect/Proxy", CHECK);
+  Klass* klass = resolve_boot_class_or_fail("java/lang/reflect/Proxy", CHECK);
   TempNewSymbol method = SymbolTable::new_symbol("initCacheForCDS");
   TempNewSymbol signature = SymbolTable::new_symbol("(Ljava/lang/ClassLoader;Ljava/lang/ClassLoader;)V");
 
@@ -896,7 +865,7 @@ void ClassPrelinker::define_dynamic_proxy_class(Handle loader, Handle proxy_name
   }
   init_dynamic_proxy_cache(CHECK);
 
-  Klass* klass = resolve_boot_klass_or_fail("java/lang/reflect/Proxy$ProxyBuilder", CHECK);
+  Klass* klass = resolve_boot_class_or_fail("java/lang/reflect/Proxy$ProxyBuilder", CHECK);
   TempNewSymbol method = SymbolTable::new_symbol("defineProxyClassForCDS");
   TempNewSymbol signature = SymbolTable::new_symbol("(Ljava/lang/ClassLoader;Ljava/lang/String;[Ljava/lang/Class;I)Ljava/lang/Class;");
 

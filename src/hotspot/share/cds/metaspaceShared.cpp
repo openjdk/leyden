@@ -526,8 +526,8 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
   ArchiveBuilder::OtherROAllocMark mark;
 
   SystemDictionaryShared::write_to_archive();
-  ClassPreloader::record_initiated_klasses(true);
-  ClassPreloader::record_unregistered_klasses();
+  ClassPreloader::record_initiated_classes(true);
+  ClassPreloader::record_unregistered_classes();
   TrainingData::dump_training_data();
   MetaspaceShared::write_method_handle_intrinsics();
 
@@ -572,7 +572,7 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   {
     ArchiveBuilder::OtherROAllocMark mark;
-    ClassPreloader::record_preloaded_klasses(true);
+    ClassPreloader::record_preloaded_classes(true);
     if (CDSConfig::is_dumping_preimage_static_archive()) {
       ClassPrelinker::record_final_image_eager_linkage();
     }

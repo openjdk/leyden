@@ -49,66 +49,96 @@
 #include "runtime/timer.hpp"
 #include "services/management.hpp"
 
+ClassPreloader::ClassesTable* ClassPreloader::_vm_classes = nullptr;
 ClassPreloader::ClassesTable* ClassPreloader::_preloaded_classes = nullptr;
 ClassPreloader::ClassesTable* ClassPreloader::_platform_initiated_classes = nullptr;
 ClassPreloader::ClassesTable* ClassPreloader::_app_initiated_classes = nullptr;
 bool ClassPreloader::_record_javabase_only = true;
 bool ClassPreloader::_preload_javabase_only = true;
-ClassPreloader::PreloadedKlasses ClassPreloader::_static_preloaded_klasses;
-ClassPreloader::PreloadedKlasses ClassPreloader::_dynamic_preloaded_klasses;
-Array<InstanceKlass*>* ClassPreloader::_unregistered_klasses_from_preimage = nullptr;
+ClassPreloader::PreloadedKlasses ClassPreloader::_static_preloaded_classes;
+ClassPreloader::PreloadedKlasses ClassPreloader::_dynamic_preloaded_classes;
+Array<InstanceKlass*>* ClassPreloader::_unregistered_classes_from_preimage = nullptr;
 
 static PerfCounter* _perf_classes_preloaded = nullptr;
 static PerfTickCounters* _perf_class_preload_counters = nullptr;
 
 void ClassPreloader::initialize() {
+  _vm_classes = new (mtClass)ClassesTable();
   _preloaded_classes = new (mtClass)ClassesTable();
   _platform_initiated_classes = new (mtClass)ClassesTable();
   _app_initiated_classes = new (mtClass)ClassesTable();
 
-  if (_static_preloaded_klasses._boot != nullptr && !CDSConfig::is_dumping_final_static_archive()) {
-    assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
-    add_preloaded_klasses(_static_preloaded_klasses._boot);
-    add_preloaded_klasses(_static_preloaded_klasses._boot2);
-    add_preloaded_klasses(_static_preloaded_klasses._platform);
-    add_preloaded_klasses(_static_preloaded_klasses._app);
+  for (auto id : EnumRange<vmClassID>{}) {
+    add_one_vm_class(vmClasses::klass_at(id));
+  }
 
-    add_unrecorded_initiated_klasses(_platform_initiated_classes, _static_preloaded_klasses._platform_initiated);
-    add_unrecorded_initiated_klasses(_app_initiated_classes, _static_preloaded_klasses._app_initiated);
+  if (_static_preloaded_classes._boot != nullptr && !CDSConfig::is_dumping_final_static_archive()) {
+    assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
+    add_preloaded_classes(_static_preloaded_classes._boot);
+    add_preloaded_classes(_static_preloaded_classes._boot2);
+    add_preloaded_classes(_static_preloaded_classes._platform);
+    add_preloaded_classes(_static_preloaded_classes._app);
+
+    add_unrecorded_initiated_classes(_platform_initiated_classes, _static_preloaded_classes._platform_initiated);
+    add_unrecorded_initiated_classes(_app_initiated_classes, _static_preloaded_classes._app_initiated);
   }
 
   // Record all the initiated classes that we used during dump time. This covers the verification constraints and
   // (resolved) class loader constraints.
-  add_initiated_klasses_for_loader(ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_platform_loader()),
+  add_initiated_classes_for_loader(ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_platform_loader()),
                                    "platform", _platform_initiated_classes);
-  add_initiated_klasses_for_loader(ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_system_loader()),
+  add_initiated_classes_for_loader(ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_system_loader()),
                                    "app", _app_initiated_classes);
 }
 
 void ClassPreloader::dispose() {
+  delete _vm_classes;
+  delete _preloaded_classes;
   delete _platform_initiated_classes;
   delete _app_initiated_classes;
+  _vm_classes = nullptr;
+  _preloaded_classes = nullptr;
   _platform_initiated_classes = nullptr;
   _app_initiated_classes = nullptr;
+}
+
+bool ClassPreloader::is_vm_class(InstanceKlass* ik) {
+  return (_vm_classes->get(ik) != nullptr);
+}
+
+void ClassPreloader::add_one_vm_class(InstanceKlass* ik) {
+  bool created;
+  add_preloaded_class(ik);
+  _vm_classes->put_if_absent(ik, &created);
+  if (created) {
+    InstanceKlass* super = ik->java_super();
+    if (super != nullptr) {
+      add_one_vm_class(super);
+    }
+    Array<InstanceKlass*>* ifs = ik->local_interfaces();
+    for (int i = 0; i < ifs->length(); i++) {
+      add_one_vm_class(ifs->at(i));
+    }
+  }
 }
 
 bool ClassPreloader::is_preloaded_class(InstanceKlass* ik) {
   return (_preloaded_classes->get(ik) != nullptr);
 }
 
-void ClassPreloader::add_preloaded_klass(InstanceKlass* ik) {
+void ClassPreloader::add_preloaded_class(InstanceKlass* ik) {
   bool created;
   _preloaded_classes->put_if_absent(ik, &created);
 }
 
-void ClassPreloader::add_preloaded_klasses(Array<InstanceKlass*>* klasses) {
+void ClassPreloader::add_preloaded_classes(Array<InstanceKlass*>* klasses) {
   for (int i = 0; i < klasses->length(); i++) {
     assert(klasses->at(i)->is_shared() && klasses->at(i)->is_loaded(), "must be");
     _preloaded_classes->put_when_absent(klasses->at(i), true);
   }
 }
 
-void ClassPreloader::add_unrecorded_initiated_klasses(ClassesTable* table, Array<InstanceKlass*>* klasses) {
+void ClassPreloader::add_unrecorded_initiated_classes(ClassesTable* table, Array<InstanceKlass*>* klasses) {
   // These initiated classes are already recorded in the static archive. There's no need to
   // record them again for the dynamic archive.
   assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
@@ -119,7 +149,7 @@ void ClassPreloader::add_unrecorded_initiated_klasses(ClassesTable* table, Array
   }
 }
 
-void ClassPreloader::add_extra_initiated_klasses(PreloadedKlasses* table) {
+void ClassPreloader::add_extra_initiated_classes(PreloadedKlasses* table) {
   if (table->_app->length() > 0) {
     // Add all public classes in boot/platform to the app loader. This speeds up
     // Class.forName() operations in frameworks.
@@ -130,7 +160,7 @@ void ClassPreloader::add_extra_initiated_klasses(PreloadedKlasses* table) {
         // TODO: only add classes that are visible to unnamed module in app loader.
         InstanceKlass* ik = InstanceKlass::cast(k);
         if (ik->is_public() && (ik->is_shared_boot_class() || ik->is_shared_platform_class())) {
-          add_initiated_klass(_app_initiated_classes, "app", ik);
+          add_initiated_class(_app_initiated_classes, "app", ik);
         }
       }
     }
@@ -146,12 +176,12 @@ class ClassPreloader::RecordInitiatedClassesClosure : public KlassClosure {
     _loader_data(loader_data), _loader_name(loader_name), _table(table) {}
   virtual void do_klass(Klass* k) {
     if (k->is_instance_klass() && k->class_loader_data() != _loader_data) {
-      add_initiated_klass(_table, _loader_name, InstanceKlass::cast(k));
+      add_initiated_class(_table, _loader_name, InstanceKlass::cast(k));
     }
   }
 };
 
-void ClassPreloader::add_initiated_klasses_for_loader(ClassLoaderData* loader_data, const char* loader_name, ClassesTable* table) {
+void ClassPreloader::add_initiated_classes_for_loader(ClassLoaderData* loader_data, const char* loader_name, ClassesTable* table) {
   if (loader_data != nullptr) {
     MonitorLocker mu1(SystemDictionary_lock);
     RecordInitiatedClassesClosure mk(loader_data, loader_name, table);  
@@ -162,20 +192,20 @@ void ClassPreloader::add_initiated_klasses_for_loader(ClassLoaderData* loader_da
 // ik has a reference to target:
 //    - target is a declared supertype of ik, or
 //    - one of the constant pool entries in ik references target
-void ClassPreloader::add_initiated_klass(InstanceKlass* ik, InstanceKlass* target) {
+void ClassPreloader::add_initiated_class(InstanceKlass* ik, InstanceKlass* target) {
   if (ik->shared_class_loader_type() == target->shared_class_loader_type()) {
     return;
   }
 
   if (SystemDictionary::is_platform_class_loader(ik->class_loader())) {
-    add_initiated_klass(_platform_initiated_classes, "platform", target);
+    add_initiated_class(_platform_initiated_classes, "platform", target);
   } else {
     assert(SystemDictionary::is_system_class_loader(ik->class_loader()), "must be");
-    add_initiated_klass(_app_initiated_classes, "app", target);
+    add_initiated_class(_app_initiated_classes, "app", target);
   }
 }
 
-void ClassPreloader::add_initiated_klass(ClassesTable* initiated_classes, const char* loader_name, InstanceKlass* target) {
+void ClassPreloader::add_initiated_class(ClassesTable* initiated_classes, const char* loader_name, InstanceKlass* target) {
   bool need_to_record = true;
   bool created;
   initiated_classes->put_if_absent(target, need_to_record, &created);
@@ -197,7 +227,7 @@ bool ClassPreloader::is_in_javabase(InstanceKlass* ik) {
 
 class ClassPreloader::PreloadedKlassRecorder : StackObj {
   int _loader_type;
-  ResourceHashtable<InstanceKlass*, bool, 15889, AnyObj::RESOURCE_AREA, mtClassShared> _seen_klasses;
+  ResourceHashtable<InstanceKlass*, bool, 15889, AnyObj::RESOURCE_AREA, mtClassShared> _seen_classes;
   GrowableArray<InstanceKlass*> _list;
   bool loader_type_matches(InstanceKlass* ik) {
     InstanceKlass* buffered_ik = ArchiveBuilder::current()->get_buffered_addr(ik);
@@ -206,7 +236,7 @@ class ClassPreloader::PreloadedKlassRecorder : StackObj {
 
   void maybe_record(InstanceKlass* ik) {
     bool created;
-    _seen_klasses.put_if_absent(ik, true, &created);
+    _seen_classes.put_if_absent(ik, true, &created);
     if (!created) {
       // Already seen this class when we walked the hierarchy of a previous class
       return;
@@ -223,7 +253,7 @@ class ClassPreloader::PreloadedKlassRecorder : StackObj {
       assert(HeapShared::is_lambda_form_klass(ik) || HeapShared::is_lambda_proxy_klass(ik), "must be");
     }
 
-    if (ClassPrelinker::is_vm_class(ik)) {
+    if (is_vm_class(ik)) {
       // vmClasses are loaded in vmClasses::resolve_all() at the very beginning
       // of VM bootstrap, before ClassPreloader::runtime_preload() is called.
       return;
@@ -257,7 +287,7 @@ class ClassPreloader::PreloadedKlassRecorder : StackObj {
     InstanceKlass* s = ik->java_super();
     if (s != nullptr) {
       maybe_record(s);
-      add_initiated_klass(ik, s);
+      add_initiated_class(ik, s);
     }
 
     Array<InstanceKlass*>* interfaces = ik->local_interfaces();
@@ -265,7 +295,7 @@ class ClassPreloader::PreloadedKlassRecorder : StackObj {
     for (int index = 0; index < num_interfaces; index++) {
       InstanceKlass* intf = interfaces->at(index);
       maybe_record(intf);
-      add_initiated_klass(ik, intf);
+      add_initiated_class(ik, intf);
     }
 
     _list.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
@@ -291,7 +321,7 @@ class ClassPreloader::PreloadedKlassRecorder : StackObj {
   }
 
 public:
-  PreloadedKlassRecorder(int loader_type) : _loader_type(loader_type),  _seen_klasses(), _list() {}
+  PreloadedKlassRecorder(int loader_type) : _loader_type(loader_type),  _seen_classes(), _list() {}
 
   void iterate() {
     GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
@@ -309,30 +339,30 @@ public:
   }
 };
 
-Array<InstanceKlass*>* ClassPreloader::record_preloaded_klasses(int loader_type) {
+Array<InstanceKlass*>* ClassPreloader::record_preloaded_classes(int loader_type) {
   ResourceMark rm;
   PreloadedKlassRecorder recorder(loader_type);
   recorder.iterate();
   return recorder.to_array();
 }
 
-void ClassPreloader::record_preloaded_klasses(bool is_static_archive) {
+void ClassPreloader::record_preloaded_classes(bool is_static_archive) {
   if (PreloadSharedClasses) {
-    PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_klasses : &_dynamic_preloaded_klasses;
+    PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_classes : &_dynamic_preloaded_classes;
 
     _record_javabase_only = true;
-    table->_boot     = record_preloaded_klasses(ClassLoader::BOOT_LOADER);
+    table->_boot     = record_preloaded_classes(ClassLoader::BOOT_LOADER);
     _record_javabase_only = false;
-    table->_boot2    = record_preloaded_klasses(ClassLoader::BOOT_LOADER);
+    table->_boot2    = record_preloaded_classes(ClassLoader::BOOT_LOADER);
 
-    table->_platform = record_preloaded_klasses(ClassLoader::PLATFORM_LOADER);
-    table->_app      = record_preloaded_klasses(ClassLoader::APP_LOADER);
+    table->_platform = record_preloaded_classes(ClassLoader::PLATFORM_LOADER);
+    table->_app      = record_preloaded_classes(ClassLoader::APP_LOADER);
 
-    add_extra_initiated_klasses(table);
+    add_extra_initiated_classes(table);
   }
 }
 
-Array<InstanceKlass*>* ClassPreloader::record_initiated_klasses(ClassesTable* table) {
+Array<InstanceKlass*>* ClassPreloader::record_initiated_classes(ClassesTable* table) {
   ResourceMark rm;
   GrowableArray<InstanceKlass*> tmp_array;
 
@@ -364,35 +394,35 @@ Array<InstanceKlass*>* ClassPreloader::record_initiated_klasses(ClassesTable* ta
   return ArchiveUtils::archive_array(&tmp_array);
 }
 
-void ClassPreloader::record_initiated_klasses(bool is_static_archive) {
+void ClassPreloader::record_initiated_classes(bool is_static_archive) {
   if (PreloadSharedClasses) {
-    PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_klasses : &_dynamic_preloaded_klasses;
-    table->_platform_initiated = record_initiated_klasses(_platform_initiated_classes);
-    table->_app_initiated = record_initiated_klasses(_app_initiated_classes);
+    PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_classes : &_dynamic_preloaded_classes;
+    table->_platform_initiated = record_initiated_classes(_platform_initiated_classes);
+    table->_app_initiated = record_initiated_classes(_app_initiated_classes);
   }
 }
 
-void ClassPreloader::record_unregistered_klasses() {
+void ClassPreloader::record_unregistered_classes() {
   if (CDSConfig::is_dumping_preimage_static_archive()) {
-    GrowableArray<InstanceKlass*> unreg_klasses;
+    GrowableArray<InstanceKlass*> unreg_classes;
     GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
     for (int i = 0; i < klasses->length(); i++) {
       Klass* k = klasses->at(i);
       if (k->is_instance_klass()) {
         InstanceKlass* ik = InstanceKlass::cast(k);
         if (ik->is_shared_unregistered_class()) {
-          unreg_klasses.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
+          unreg_classes.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
         }
       }
     }
-    _unregistered_klasses_from_preimage = ArchiveUtils::archive_array(&unreg_klasses);
+    _unregistered_classes_from_preimage = ArchiveUtils::archive_array(&unreg_classes);
   } else {
-    _unregistered_klasses_from_preimage = nullptr;
+    _unregistered_classes_from_preimage = nullptr;
   }
 }
 
 void ClassPreloader::serialize(SerializeClosure* soc, bool is_static_archive) {
-  PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_klasses : &_dynamic_preloaded_klasses;
+  PreloadedKlasses* table = (is_static_archive) ? &_static_preloaded_classes : &_dynamic_preloaded_classes;
 
   soc->do_ptr((void**)&table->_boot);
   soc->do_ptr((void**)&table->_boot2);
@@ -402,7 +432,7 @@ void ClassPreloader::serialize(SerializeClosure* soc, bool is_static_archive) {
   soc->do_ptr((void**)&table->_app_initiated);
 
   if (is_static_archive) {
-    soc->do_ptr((void**)&_unregistered_klasses_from_preimage);
+    soc->do_ptr((void**)&_unregistered_classes_from_preimage);
   }
 
   if (table->_boot != nullptr && table->_boot->length() > 0) {
@@ -418,7 +448,7 @@ void ClassPreloader::serialize(SerializeClosure* soc, bool is_static_archive) {
 
 int ClassPreloader::num_platform_initiated_classes() {
   if (PreloadSharedClasses) {
-    PreloadedKlasses* table = CDSConfig::is_dumping_dynamic_archive() ? &_dynamic_preloaded_klasses : &_static_preloaded_klasses;
+    PreloadedKlasses* table = CDSConfig::is_dumping_dynamic_archive() ? &_dynamic_preloaded_classes : &_static_preloaded_classes;
     return table->_platform_initiated->length();
   }
   return 0;
@@ -426,7 +456,7 @@ int ClassPreloader::num_platform_initiated_classes() {
 
 int ClassPreloader::num_app_initiated_classes() {
   if (PreloadSharedClasses) {
-    PreloadedKlasses* table = CDSConfig::is_dumping_dynamic_archive() ? &_dynamic_preloaded_klasses : &_static_preloaded_klasses;
+    PreloadedKlasses* table = CDSConfig::is_dumping_dynamic_archive() ? &_dynamic_preloaded_classes : &_static_preloaded_classes;
     return table->_app_initiated->length();
   }
   return 0;
@@ -473,9 +503,9 @@ void ClassPreloader::runtime_preload(JavaThread* current, Handle loader) {
     }
     ResourceMark rm(current);
     ExceptionMark em(current);
-    runtime_preload(&_static_preloaded_klasses, loader, current);
+    runtime_preload(&_static_preloaded_classes, loader, current);
     if (!current->has_pending_exception()) {
-      runtime_preload(&_dynamic_preloaded_klasses, loader, current);
+      runtime_preload(&_dynamic_preloaded_classes, loader, current);
     }
     _preload_javabase_only = false;
 
@@ -496,9 +526,9 @@ void ClassPreloader::runtime_preload(JavaThread* current, Handle loader) {
     }
 
     if (CDSConfig::is_dumping_final_static_archive()) {
-      assert(_unregistered_klasses_from_preimage != nullptr, "must be");
-      for (int i = 0; i < _unregistered_klasses_from_preimage->length(); i++) {
-        InstanceKlass* ik = _unregistered_klasses_from_preimage->at(i);
+      assert(_unregistered_classes_from_preimage != nullptr, "must be");
+      for (int i = 0; i < _unregistered_classes_from_preimage->length(); i++) {
+        InstanceKlass* ik = _unregistered_classes_from_preimage->at(i);
         SystemDictionaryShared::init_dumptime_info(ik);
         SystemDictionaryShared::add_unregistered_class(current, ik);
       }
@@ -508,8 +538,8 @@ void ClassPreloader::runtime_preload(JavaThread* current, Handle loader) {
 
 void ClassPreloader::runtime_preload(PreloadedKlasses* table, Handle loader, TRAPS) {
   PerfTraceTime timer(_perf_class_preload_counters);
-  Array<InstanceKlass*>* preloaded_klasses;
-  Array<InstanceKlass*>* initiated_klasses = nullptr;
+  Array<InstanceKlass*>* preloaded_classes;
+  Array<InstanceKlass*>* initiated_classes = nullptr;
   const char* loader_name;
   ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(loader());
 
@@ -518,27 +548,27 @@ void ClassPreloader::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
   if (loader() == nullptr) {
     if (_preload_javabase_only) {
       loader_name = "boot ";
-      preloaded_klasses = table->_boot;
+      preloaded_classes = table->_boot;
     } else {
       loader_name = "boot2";
-      preloaded_klasses = table->_boot2;
+      preloaded_classes = table->_boot2;
     }
   } else if (loader() == SystemDictionary::java_platform_loader()) {
-    initiated_klasses = table->_platform_initiated;
-    preloaded_klasses = table->_platform;
+    initiated_classes = table->_platform_initiated;
+    preloaded_classes = table->_platform;
     loader_name = "plat ";
   } else {
     assert(loader() == SystemDictionary::java_system_loader(), "must be");
-    initiated_klasses = table->_app_initiated;
-    preloaded_klasses = table->_app;
+    initiated_classes = table->_app_initiated;
+    preloaded_classes = table->_app;
     loader_name = "app  ";
   }
 
-  if (initiated_klasses != nullptr) {
+  if (initiated_classes != nullptr) {
     MonitorLocker mu1(SystemDictionary_lock);
 
-    for (int i = 0; i < initiated_klasses->length(); i++) {
-      InstanceKlass* ik = initiated_klasses->at(i);
+    for (int i = 0; i < initiated_classes->length(); i++) {
+      InstanceKlass* ik = initiated_classes->at(i);
       assert(ik->is_loaded(), "must have already been loaded by a parent loader");
       if (log_is_enabled(Info, cds, preload)) {
         ResourceMark rm;
@@ -550,12 +580,12 @@ void ClassPreloader::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
     }
   }
 
-  if (preloaded_klasses != nullptr) {
-    for (int i = 0; i < preloaded_klasses->length(); i++) {
+  if (preloaded_classes != nullptr) {
+    for (int i = 0; i < preloaded_classes->length(); i++) {
       if (UsePerfData) {
         _perf_classes_preloaded->inc();
       }
-      InstanceKlass* ik = preloaded_klasses->at(i);
+      InstanceKlass* ik = preloaded_classes->at(i);
       if (log_is_enabled(Info, cds, preload)) {
         ResourceMark rm;
         log_info(cds, preload)("%s %s%s", loader_name, ik->external_name(),
@@ -593,8 +623,8 @@ void ClassPreloader::runtime_preload(PreloadedKlasses* table, Handle loader, TRA
 
     if (!_preload_javabase_only) {
       // The java.base classes needs to wait till ClassPreloader::init_javabase_preloaded_classes()
-      for (int i = 0; i < preloaded_klasses->length(); i++) {
-        InstanceKlass* ik = preloaded_klasses->at(i);
+      for (int i = 0; i < preloaded_classes->length(); i++) {
+        InstanceKlass* ik = preloaded_classes->at(i);
         if (ik->has_preinitialized_mirror()) {
           ik->initialize_from_cds(CHECK);
         } else if (PrelinkSharedClasses && ik->verified_at_dump_time()) {
@@ -684,10 +714,10 @@ void ClassPreloader::jvmti_agent_error(InstanceKlass* expected, InstanceKlass* a
 }
 
 void ClassPreloader::init_javabase_preloaded_classes(TRAPS) {
-  Array<InstanceKlass*>* preloaded_klasses = _static_preloaded_klasses._boot;
-  if (preloaded_klasses != nullptr) {
-    for (int i = 0; i < preloaded_klasses->length(); i++) {
-      InstanceKlass* ik = preloaded_klasses->at(i);
+  Array<InstanceKlass*>* preloaded_classes = _static_preloaded_classes._boot;
+  if (preloaded_classes != nullptr) {
+    for (int i = 0; i < preloaded_classes->length(); i++) {
+      InstanceKlass* ik = preloaded_classes->at(i);
       if (ik->has_preinitialized_mirror()) {
         ik->initialize_from_cds(CHECK);
       }
@@ -698,10 +728,10 @@ void ClassPreloader::init_javabase_preloaded_classes(TRAPS) {
   HeapShared::initialize_default_subgraph_classes(Handle(), CHECK);
 }
 
-void ClassPreloader::replay_training_at_init(Array<InstanceKlass*>* preloaded_klasses, TRAPS) {
-  if (preloaded_klasses != nullptr) {
-    for (int i = 0; i < preloaded_klasses->length(); i++) {
-      InstanceKlass* ik = preloaded_klasses->at(i);
+void ClassPreloader::replay_training_at_init(Array<InstanceKlass*>* preloaded_classes, TRAPS) {
+  if (preloaded_classes != nullptr) {
+    for (int i = 0; i < preloaded_classes->length(); i++) {
+      InstanceKlass* ik = preloaded_classes->at(i);
       if (ik->has_preinitialized_mirror() && ik->is_initialized() && !ik->has_init_deps_processed()) {
         CompilationPolicy::replay_training_at_init(ik, CHECK);
       }
@@ -711,10 +741,10 @@ void ClassPreloader::replay_training_at_init(Array<InstanceKlass*>* preloaded_kl
 
 void ClassPreloader::replay_training_at_init_for_preloaded_classes(TRAPS) {
   if (CDSConfig::has_preloaded_classes() && TrainingData::have_data()) {
-    replay_training_at_init(_static_preloaded_klasses._boot,     CHECK);
-    replay_training_at_init(_static_preloaded_klasses._boot2,    CHECK);
-    replay_training_at_init(_static_preloaded_klasses._platform, CHECK);
-    replay_training_at_init(_static_preloaded_klasses._app,      CHECK);
+    replay_training_at_init(_static_preloaded_classes._boot,     CHECK);
+    replay_training_at_init(_static_preloaded_classes._boot2,    CHECK);
+    replay_training_at_init(_static_preloaded_classes._platform, CHECK);
+    replay_training_at_init(_static_preloaded_classes._app,      CHECK);
 
     CompilationPolicy::replay_training_at_init(false, CHECK);
   }

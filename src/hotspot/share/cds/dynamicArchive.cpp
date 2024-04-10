@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -141,7 +141,7 @@ public:
 
     {
       ArchiveBuilder::OtherROAllocMark mark;
-      ClassPreloader::record_preloaded_klasses(false);
+      ClassPreloader::record_preloaded_classes(false);
     }
 
     log_info(cds)("Make classes shareable");
@@ -160,7 +160,7 @@ public:
       SystemDictionaryShared::write_to_archive(false);
 
       DynamicArchive::dump_array_klasses();
-      ClassPreloader::record_initiated_klasses(false);
+      ClassPreloader::record_initiated_classes(false);
       TrainingData::dump_training_data();
 
       serialized_data = ro_region()->top();

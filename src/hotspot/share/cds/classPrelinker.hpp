@@ -40,8 +40,8 @@ class InstanceKlass;
 class Klass;
 class SerializeClosure;
 
-template <typename T> class Array;
 template <typename T> class GrowableArray;
+
 // ClassPrelinker is used to perform ahead-of-time linking of ConstantPool entries
 // for archived InstanceKlasses.
 //
@@ -56,23 +56,16 @@ class ClassPrelinker :  AllStatic {
   class PreloadedKlassRecorder;
   using ClassesTable = ResourceHashtable<InstanceKlass*, bool, 15889, AnyObj::C_HEAP, mtClassShared> ;
   static ClassesTable* _processed_classes;
-  // Classes loaded inside vmClasses::resolve_all()
-  static ClassesTable* _vm_classes;
-  static int _num_vm_klasses;
-
-  static void add_one_vm_class(InstanceKlass* ik);
 
 #ifdef ASSERT
+  template <typename T> static bool is_in_archivebuilder_buffer(T p) {
+    return is_in_archivebuilder_buffer((address)(p));
+  }
   static bool is_in_archivebuilder_buffer(address p);
 #endif
 
-  template <typename T>
-  static bool is_in_archivebuilder_buffer(T p) {
-    return is_in_archivebuilder_buffer((address)(p));
-  }
   static void resolve_string(constantPoolHandle cp, int cp_index, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
-  static Klass* maybe_resolve_class(constantPoolHandle cp, int cp_index, TRAPS);
-  static bool is_klass_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_klass);
+  static bool is_class_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_class);
   static bool is_indy_resolution_deterministic(ConstantPool* cp, int cp_index);
 
   static Klass* find_loaded_class(Thread* current, oop class_loader, Symbol* name);
@@ -84,7 +77,7 @@ class ClassPrelinker :  AllStatic {
   class RecordResolveIndysCLDClosure;
 
   // helper
-  static Klass* resolve_boot_klass_or_fail(const char* class_name, TRAPS);
+  static Klass* resolve_boot_class_or_fail(const char* class_name, TRAPS);
 
   // java/lang/reflect/Proxy caching
   static void init_dynamic_proxy_cache(TRAPS);
@@ -96,7 +89,6 @@ public:
   static void preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
-  static void preresolve_invoker_class(JavaThread* current, InstanceKlass* ik);
 
   static void apply_final_image_eager_linkage(TRAPS);
 
@@ -109,11 +101,6 @@ public:
   static void trace_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags);
   static void define_dynamic_proxy_class(Handle loader, Handle proxy_name, Handle interfaces, int access_flags, TRAPS);
 
-  // Is this class resolved as part of vmClasses::resolve_all()? If so, these
-  // classes are guatanteed to be loaded at runtime (and cannot be replaced by JVMTI)
-  // when CDS is enabled. Therefore, we can safely keep a direct reference to these
-  // classes.
-  static bool is_vm_class(InstanceKlass* ik);
   // Resolve all constant pool entries that are safe to be stored in the
   // CDS archive.
   static void dumptime_resolve_constants(InstanceKlass* ik, TRAPS);
