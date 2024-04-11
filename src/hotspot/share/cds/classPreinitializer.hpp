@@ -30,7 +30,7 @@
 
 class InstanceKlass;
 
-class ClassPreinitializer :  AllStatic {
+class ClassPreinitializer : AllStatic {
   static bool has_non_default_static_fields(InstanceKlass* ik);
   static bool is_forced_preinit_class(InstanceKlass* ik);
 

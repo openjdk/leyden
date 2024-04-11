@@ -40,6 +40,7 @@
 #include "cds/dumpAllocStats.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
+#include "cds/finalImageRecipes.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -418,7 +419,7 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
   ClassPreloader::serialize(soc, true);
-  ClassPrelinker::serialize(soc, true);
+  FinalImageRecipes::serialize(soc, true);
   TrainingData::serialize_training_data(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
 
@@ -574,7 +575,7 @@ void VM_PopulateDumpSharedSpace::doit() {
     ArchiveBuilder::OtherROAllocMark mark;
     ClassPreloader::record_preloaded_classes(true);
     if (CDSConfig::is_dumping_preimage_static_archive()) {
-      ClassPrelinker::record_final_image_eager_linkage();
+      FinalImageRecipes::record_recipes();
     }
   }
 
@@ -715,7 +716,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
         InstanceKlass* ik = InstanceKlass::cast(klass);
         ClassPrelinker::dumptime_resolve_constants(ik, CHECK);
         if (CDSConfig::is_dumping_preimage_static_archive()) {
-          ClassPrelinker::record_reflection_data_flags_for_preimage(ik, CHECK);
+          FinalImageRecipes::add_reflection_data_flags(ik, CHECK);
         }
       }
     }
@@ -732,7 +733,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   }
 
   if (CDSConfig::is_dumping_final_static_archive()) {
-    ClassPrelinker::apply_final_image_eager_linkage(CHECK);
+    FinalImageRecipes::apply_recipes(CHECK);
   }
 }
 

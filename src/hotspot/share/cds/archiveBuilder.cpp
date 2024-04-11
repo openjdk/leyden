@@ -32,6 +32,7 @@
 #include "cds/cppVtables.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "cds/dynamicArchive.hpp"
+#include "cds/finalImageRecipes.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
@@ -946,7 +947,7 @@ void ArchiveBuilder::serialize_dynamic_archivable_items(SerializeClosure* soc) {
   SystemDictionaryShared::serialize_dictionary_headers(soc, false);
   DynamicArchive::serialize_array_klasses(soc);
   ClassPreloader::serialize(soc, false);
-  ClassPrelinker::serialize(soc, false);
+  FinalImageRecipes::serialize(soc, false);
   TrainingData::serialize_training_data(soc);
 }
 

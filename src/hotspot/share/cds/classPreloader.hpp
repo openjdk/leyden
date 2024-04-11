@@ -83,7 +83,6 @@ class ClassPreloader :  AllStatic {
   static void jvmti_agent_error(InstanceKlass* expected, InstanceKlass* actual, const char* type);
 
   static bool is_in_javabase(InstanceKlass* ik);
-  class RecordResolveIndysCLDClosure;
   class RecordInitiatedClassesClosure;
 
   static void replay_training_at_init(Array<InstanceKlass*>* preloaded_classes, TRAPS) NOT_CDS_RETURN;

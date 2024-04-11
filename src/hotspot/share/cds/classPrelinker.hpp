@@ -74,8 +74,6 @@ class ClassPrelinker :  AllStatic {
   // fmi = FieldRef/MethodRef/InterfaceMethodRef
   static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
-  class RecordResolveIndysCLDClosure;
-
   // helper
   static Klass* resolve_boot_class_or_fail(const char* class_name, TRAPS);
 
@@ -90,10 +88,7 @@ public:
   static void preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
 
-  static void apply_final_image_eager_linkage(TRAPS);
-
   // java/lang/Class$ReflectionData caching
-  static void record_reflection_data_flags_for_preimage(InstanceKlass* ik, TRAPS);
   static int class_reflection_data_flags(InstanceKlass* ik, TRAPS);
   static void generate_reflection_data(JavaThread* current, InstanceKlass* ik, int rd_flags);
 
@@ -106,9 +101,6 @@ public:
   static void dumptime_resolve_constants(InstanceKlass* ik, TRAPS);
 
   static bool is_resolution_deterministic(ConstantPool* cp, int cp_index);
-
-  static void record_final_image_eager_linkage();
-  static void serialize(SerializeClosure* soc, bool is_static_archive);
 };
 
 #endif // SHARE_CDS_CLASSPRELINKER_HPP
