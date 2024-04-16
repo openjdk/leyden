@@ -1,0 +1,154 @@
+# Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+#
+# This code is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License version 2 only, as
+# published by the Free Software Foundation.
+#
+# This code is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+# version 2 for more details (a copy is included in the LICENSE file that
+# accompanied this code).
+#
+# You should have received a copy of the GNU General Public License version
+# 2 along with this work; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+# or visit www.oracle.com if you need additional information or have any
+# questions.
+
+#===============================================================================
+# HOWTO
+#===============================================================================
+
+# Build the app from source code
+#    make app
+#
+# Run with all Leyden optimizations (new workflow)
+#    make run
+#    make runn
+#
+# Run with all CDS static archive only (with Leyden repo)
+#    make runs
+#
+# Run without Leyden optimizations (with Leyden repo)
+#    make run0
+#
+
+#===============================================================================
+# Environment Config
+#===============================================================================
+
+# The best way to set the paths to various JDKs is to use environment variables to
+# set the values for the following variables. E.g.
+#  export BLDJDK_HOME=/home/$USER/jdk21
+#  export MAINLINE_HOME=/home/$USER/repo/jdk/build/linux-x64/images/jdk
+#  export PREMAIN_HOME=/home/$USER/leyden/jdk/build/linux-x64/images/jdk
+#  make run
+
+#  *** NOTE: JDK 21 is needed to build most of the demos
+ifndef BLDJDK_HOME
+BLDJDK_HOME   = /jdk3/official/jdk21
+endif
+
+# Points to your build with https://github.com/openjdk/jdk
+# For comparison purposes, this build should be the latest version of the mainline that
+# has been merged into https://github.com/openjdk/leyden/tree/premain
+ifndef MAINLINE_HOME
+MAINLINE_HOME = /jdk3/bld/rum/images/jdk
+endif
+
+# Points to your build with https://github.com/openjdk/leyden/tree/premain
+ifndef PREMAIN_HOME
+PREMAIN_HOME = /jdk3/bld/le4/images/jdk
+endif
+
+# Override this if your system's MVM version is too old (to point to your own build of mvn, etc)
+ifndef MVN
+MVN = mvn
+endif
+
+#===============================================================================
+# Common Makefile rules for Leyden demos
+#===============================================================================
+
+# Options passed to PREMAIN_JAVA. See compare_premain_builds below
+PM_OPTS =
+
+JAR             = ${BLDJDK_HOME}/bin/jar
+BLDJDK_JAVA     = ${BLDJDK_HOME}/bin/java
+MAINLINE_JAVA   = ${MAINLINE_HOME}/bin/java
+PREMAIN_JAVA    = ${PREMAIN_HOME}/bin/java ${PM_OPTS}
+
+# The following variables should be defined by the main Makefile.
+# See ../helidon-quickstart-se/Makefile for an example.
+
+# DEMO_NAME
+# DEMO_SRC
+# DEMO_JAR
+# DEMO_CMDLINE
+# DEMO_ARTIFACT
+
+DEMO_CLASSLIST  = ${DEMO_NAME}$(PM_VER).classlist
+DEMO_JSA        = ${DEMO_NAME}$(PM_VER).jsa
+DEMO_CDS        = ${DEMO_NAME}$(PM_VER).cds
+
+# Rules for the following targets should be specified in the main Makefile.
+# See ../helidon-quickstart-se/Makefile for an example.
+
+src: ${DEMO_SRC}
+app: ${DEMO_JAR}
+artifact: ${DEMO_ARTIFACT}
+
+#
+# The following rules should be common to all demos
+#
+
+# Run with the build JDK------------------------
+runb: ${DEMO_JAR}
+	${BLDJDK_JAVA} ${DEMO_CMDLINE}
+
+# No optimizations (Leyden repo)----------------
+run0: ${DEMO_JAR}
+	${PREMAIN_JAVA} ${DEMO_CMDLINE}
+
+# Static CDS only (Leyden repo)-----------------
+
+list:  ${DEMO_CLASSLIST}
+jsa:   ${DEMO_JSA}
+
+${DEMO_CLASSLIST}: ${DEMO_JAR}
+	${PREMAIN_JAVA} -Xshare:off -XX:DumpLoadedClassList=${DEMO_CLASSLIST} ${DEMO_CMDLINE}
+
+${DEMO_JSA}: ${DEMO_CLASSLIST}
+	rm -f ${DEMO_JSA}.log
+	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${DEMO_CLASSLIST} -XX:SharedArchiveFile=${DEMO_JSA} \
+	    -XX:+PreloadSharedClasses \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_JSA}.log \
+	    ${DEMO_CMDLINE}
+
+runs:  ${DEMO_JSA}
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${DEMO_JSA} ${DEMO_CMDLINE}
+
+# Leyden new workflow --------------------------
+
+cds: ${DEMO_CDS}
+
+${DEMO_CDS}: ${DEMO_JAR}
+	rm -f ${DEMO_CDS} ${DEMO_CDS}.log
+	${PREMAIN_JAVA} \
+	    -XX:CacheDataStore=${DEMO_CDS} -XX:CachedCodeMaxSize=512M \
+	    -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_CDS}.log::filesize=0 \
+	     ${DEMO_CMDLINE}
+	ls -l ${DEMO_CDS}
+	ls -l ${DEMO_CDS}.code
+
+run: runn
+
+runn: ${DEMO_CDS}
+	${PREMAIN_JAVA} \
+	    -XX:CacheDataStore=${DEMO_CDS} \
+	    -Xlog:scc*=error \
+	     ${DEMO_CMDLINE}

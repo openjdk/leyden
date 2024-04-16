@@ -20,47 +20,49 @@
 # questions.
 
 #===============================================================================
-# Leyden-premain + Helidon helidon-quickstart-se demo
-# (https://helidon.io/docs/v4/se/guides/quickstart)
+# Leyden-premain + Quarkus getting-started demo
+#  - https://quarkus.io/guides/getting-started
+#  - https://quarkus.io/guides/lifecycle
 #
 # See ../lib/DemoSupport.gmk for the "make" targets that build the demo, run the
 # demo, and gather benchmarking data.
 #===============================================================================
 
 # The following needs to be defined before including ../lib/DemoSupport.gmk
-DEMO_NAME       = helidon-quickstart-se
-DEMO_SRC        = helidon-quickstart-se/src/main/java/io/helidon/examples/quickstart/se/Main.java
-DEMO_JAR        = helidon-quickstart-se/target/helidon-quickstart-se.jar
-DEMO_CMDLINE    = -DautoQuit=true -Dserver.port=0 -jar ${DEMO_JAR}
+DEMO_NAME       = quarkus-getting-started
+DEMO_SRC        = getting-started/src/main/java/Main.java
+DEMO_JAR        = getting-started/target/getting-started-1.0.0-SNAPSHOT-runner.jar
+DEMO_CMDLINE    = -DautoQuit=true -Dquarkus.http.port=0 -jar ${DEMO_JAR}
 # This is for uploading into Artifactory, usually to a path like
-#    https://xxxx.com/artifactory/yyyy/io/helidon/helidon-quickstart-se/4.0.7/helidon-quickstart-se-4.0.7.zip
-DEMO_ARTIFACT   = helidon-quickstart-se-4.0.7.zip
+#    https://xxxx.com/artifactory/yyyy/io/quarkus/quarkus-getting-started/1.0.0b/quarkus-getting-started-1.0.0b.zip
+DEMO_ARTIFACT   = quarkus-getting-started-1.0.0b.zip
 
 include ../lib/DemoSupport.gmk
 
-# Create the project using instructions from https://helidon.io/docs/v4/se/guides/quickstart, then
-# patch it to add some start-up timing data.
-${DEMO_SRC}: Main.java.diff
-	JAVA_HOME=${BLDJDK_HOME} mvn -U archetype:generate -DinteractiveMode=false \
-	    -DarchetypeGroupId=io.helidon.archetypes \
-	    -DarchetypeArtifactId=helidon-quickstart-se \
-	    -DarchetypeVersion=4.0.7 \
-	    -DgroupId=io.helidon.examples \
-	    -DartifactId=helidon-quickstart-se \
-	    -Dpackage=io.helidon.examples.quickstart.se
-	patch ${DEMO_SRC} Main.java.diff
+# Create the project using instructions from https://quarkus.io/guides/getting-started, then
+# add the Main class which prints out the timing data and exits.
+${DEMO_SRC}: Main.java
+	rm -rf getting-started
+	JAVA_HOME=${BLDJDK_HOME} ${MVN} \
+	    io.quarkus.platform:quarkus-maven-plugin:3.9.3:create \
+	    -DprojectGroupId=org.acme \
+	    -DprojectArtifactId=getting-started \
+	    -Dextensions='rest'
+	cp Main.java ${DEMO_SRC}
 
+# We package the app in the "legacy-jar" to be CDS friendly
+# See https://quarkus.io/guides/class-loading-reference:
+#  "everything is loaded in the system ClassLoader, so it is a completely flat classpath."
+# See https://www.cheat-sheets.org/saved-copy/quarkus-cheat-sheet.pdf
+${DEMO_JAR}: ${DEMO_SRC}
+	cd getting-started && JAVA_HOME=${BLDJDK_HOME} ${MVN} -Dquarkus.package.type=legacy-jar install
 
 ${DEMO_ARTIFACT}: ${DEMO_JAR}
 	${JAR} cvfM ${DEMO_ARTIFACT} \
-		-C helidon-quickstart-se target/helidon-quickstart-se.jar \
-		-C helidon-quickstart-se target/libs
-
-${DEMO_JAR}: ${DEMO_SRC}
-	cd helidon-quickstart-se && JAVA_HOME=${BLDJDK_HOME} mvn package
+		-C getting-started/target .
 
 clean: clean0
-	rm -rf helidon-quickstart-se ${DEMO_ARTIFACT}
+	rm -rf getting-started ${DEMO_ARTIFACT}
 
 clean0:
 	rm -f *.cds *.cds.code *.classlist *.jsa *~ *.log *.log.* hs_err_*
