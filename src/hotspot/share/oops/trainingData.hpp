@@ -312,6 +312,17 @@ public:
         return _deps_dyn->append_if_missing(dep);
       }
     }
+    bool remove_if_existing(E dep) {
+      if (_deps_dyn != nullptr) {
+        return _deps_dyn->remove_if_existing(dep);
+      }
+      return false;
+    }
+    void clear() {
+      if (_deps_dyn != nullptr)  {
+        _deps_dyn->clear();
+      }
+    }
     void append(E dep) {
       //assert(_deps == nullptr, "must be growable");
       if (_deps_dyn == nullptr) {
@@ -404,6 +415,10 @@ class KlassTrainingData : public TrainingData {
     TrainingDataLocker::assert_locked();
      _comp_deps.append_if_missing(ctd);
   }
+  void remove_comp_dep(CompileTrainingData* ctd) {
+    TrainingDataLocker::assert_locked();
+     _comp_deps.remove_if_existing(ctd);
+  }
 
  public:
   Symbol* name()                const { return _key.name1(); }
@@ -481,7 +496,6 @@ class CompileTrainingData : public TrainingData {
   template <class T> friend class CppVtableCloner;
 
   MethodTrainingData* _method;
-  CompileTrainingData* _next;   // singly linked list, latest first
   const short _level;
   const int _compile_id;
   int _nm_total_size;
@@ -601,7 +615,6 @@ private:
       : TrainingData(),  // empty key
         _method(method), _level(level), _compile_id(compile_id)
   {
-    _next = nullptr;
     _qtime = _stime = _etime = 0;
     _nm_total_size = 0;
     _init_deps_left = 0;
@@ -614,8 +627,6 @@ public:
   virtual CompileTrainingData* as_CompileTrainingData() const { return const_cast<CompileTrainingData*>(this); };
 
   MethodTrainingData* method() const { return _method; }
-
-  CompileTrainingData* next() const { return _next; }
 
   int level() const { return _level; }
 
@@ -633,6 +644,13 @@ public:
     TrainingDataLocker::assert_locked();
     ktd->add_comp_dep(this);
     _init_deps.append_if_missing(ktd);
+  }
+  void clear_init_deps() {
+    TrainingDataLocker::assert_locked();
+    for (int i = 0; i < _init_deps.length(); i++) {
+      _init_deps.at(i)->remove_comp_dep(this);
+    }
+    _init_deps.clear();
   }
   void dec_init_deps_left(KlassTrainingData* ktd);
   int init_deps_left() const {
@@ -689,7 +707,6 @@ class MethodTrainingData : public TrainingData {
 
   KlassTrainingData* _klass;
   const Method* _holder;  // can be null
-  CompileTrainingData* _compile;   // singly linked list, latest first
   CompileTrainingData* _last_toplevel_compiles[CompLevel_count];
   int _highest_top_level;
   int _level_mask;  // bit-set of all possible levels
@@ -706,7 +723,6 @@ class MethodTrainingData : public TrainingData {
   {
     _klass = klass;
     _holder = nullptr;
-    _compile = nullptr;
     for (int i = 0; i < CompLevel_count; i++) {
       _last_toplevel_compiles[i] = nullptr;
     }
@@ -726,7 +742,6 @@ class MethodTrainingData : public TrainingData {
 
  public:
   KlassTrainingData* klass()  const { return _klass; }
-  CompileTrainingData* compile() const { return _compile; }
   bool has_holder()           const { return _holder != nullptr; }
   const Method* holder()      const { return _holder; }
   Symbol* name()              const { return _key.name1(); }
@@ -744,8 +759,6 @@ class MethodTrainingData : public TrainingData {
     }
     return nullptr;
   }
-
-  inline int last_compile_id() const;
 
   void notice_compilation(int level, bool inlined = false) {
     if (inlined) {
@@ -777,8 +790,11 @@ class MethodTrainingData : public TrainingData {
 
   template<typename FN>
   void iterate_all_compiles(FN fn) const { // lambda enabled API
-    for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
-      fn(ctd);
+    for (int i = 0; i < CompLevel_count; i++) {
+      CompileTrainingData* ctd = _last_toplevel_compiles[i];
+      if (ctd != nullptr) {
+        fn(ctd);
+      }
     }
   }
 
@@ -803,10 +819,6 @@ class MethodTrainingData : public TrainingData {
   static MethodTrainingData* allocate(KlassTrainingData* ktd, Method* m);
   static MethodTrainingData* allocate(KlassTrainingData* ktd, Symbol* name, Symbol* signature);
 };
-
-inline int MethodTrainingData::last_compile_id() const {
-  return (_compile == nullptr) ? 0 : _compile->compile_id();
-}
 
 // CDS support
 

@@ -259,10 +259,13 @@ CompileTrainingData* CompileTrainingData::make(CompileTask* task) {
   CompileTrainingData* ctd = CompileTrainingData::allocate(mtd, level, compile_id);
   if (ctd != nullptr) {
     TrainingDataLocker l;
-    ctd->_next = mtd->_compile;
-    mtd->_compile = ctd;
-    if (mtd->_last_toplevel_compiles[level - 1] == nullptr ||
-        mtd->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
+    if (mtd->_last_toplevel_compiles[level - 1] != nullptr) {
+      if (mtd->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
+        mtd->_last_toplevel_compiles[level - 1]->clear_init_deps();
+        mtd->_last_toplevel_compiles[level - 1] = ctd;
+        mtd->_highest_top_level = MAX2(mtd->_highest_top_level, level);
+      }
+    } else {
       mtd->_last_toplevel_compiles[level - 1] = ctd;
       mtd->_highest_top_level = MAX2(mtd->_highest_top_level, level);
     }
@@ -407,14 +410,6 @@ void MethodTrainingData::prepare(Visitor& visitor) {
   for (int i = 0; i < CompLevel_count; i++) {
     CompileTrainingData* ctd = _last_toplevel_compiles[i];
     if (ctd != nullptr) {
-      ctd->prepare(visitor);
-    }
-  }
-  if (_compile != nullptr) {
-    // Just prepare the first one, or prepare them all?  This needs
-    // an option, because it's useful to dump them all for analysis,
-    // but it is likely only the first one (= most recent) matters.
-    for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
       ctd->prepare(visitor);
     }
   }
@@ -670,11 +665,6 @@ void MethodTrainingData::cleanup(Visitor& visitor) {
       ctd->cleanup(visitor);
     }
   }
-  for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
-    if (ctd != nullptr) {
-      ctd->cleanup(visitor);
-    }
-  }
 }
 
 void KlassTrainingData::verify() {
@@ -907,7 +897,6 @@ void MethodTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
   TrainingData::metaspace_pointers_do(iter);
   iter->push(&_klass);
   iter->push((Method**)&_holder);
-  iter->push(&_compile);
   for (int i = 0; i < CompLevel_count; i++) {
     iter->push(&_last_toplevel_compiles[i]);
   }
@@ -921,7 +910,6 @@ void CompileTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
   _init_deps.metaspace_pointers_do(iter);
   _ci_records.metaspace_pointers_do(iter);
   iter->push(&_method);
-  iter->push(&_next);
 }
 
 template <typename T>
@@ -1050,9 +1038,6 @@ void MethodTrainingData::remove_unshareable_info(Visitor& visitor) {
       ctd->remove_unshareable_info(visitor);
     }
   }
-  for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
-    ctd->remove_unshareable_info(visitor);
-  }
   if (_final_counters != nullptr) {
     _final_counters->remove_unshareable_info();
   }
@@ -1072,9 +1057,6 @@ void MethodTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
     if (ctd != nullptr) {
       ctd->restore_unshareable_info(visitor, CHECK);
     }
-  }
-  for (CompileTrainingData* ctd = _compile; ctd != nullptr; ctd = ctd->next()) {
-    ctd->restore_unshareable_info(visitor, CHECK);
   }
   if (_final_counters != nullptr ) {
     _final_counters->restore_unshareable_info(CHECK);
