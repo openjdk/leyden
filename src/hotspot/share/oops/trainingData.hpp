@@ -475,7 +475,6 @@ class KlassTrainingData : public TrainingData {
   void verify();
 
   static KlassTrainingData* allocate(InstanceKlass* holder);
-  static KlassTrainingData* allocate(Symbol* name, Symbol* loader_name);
 
   template<typename FN>
   void iterate_all_comp_deps(FN fn) const { // lambda enabled API
@@ -817,7 +816,6 @@ class MethodTrainingData : public TrainingData {
   void verify();
 
   static MethodTrainingData* allocate(KlassTrainingData* ktd, Method* m);
-  static MethodTrainingData* allocate(KlassTrainingData* ktd, Symbol* name, Symbol* signature);
 };
 
 // CDS support
