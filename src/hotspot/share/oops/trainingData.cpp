@@ -926,27 +926,21 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
 
 KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
   assert(need_data() || have_data(), "");
-
   size_t size = align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord) / BytesPerWord);
-
-  ClassLoaderData* loader_data = holder->class_loader_data();
+  ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::KlassTrainingDataType) KlassTrainingData(holder);
 }
 
 MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Method* m) {
   assert(need_data() || have_data(), "");
-
   size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
-
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::MethodTrainingDataType) MethodTrainingData(ktd, m->name(), m->signature());
 }
 
 CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int level, int compile_id) {
   assert(need_data() || have_data(), "");
-
   size_t size = align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord) / BytesPerWord);
-
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   return new (loader_data, size, MetaspaceObj::CompileTrainingDataType) CompileTrainingData(mtd, level, compile_id);
 }
