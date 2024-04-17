@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -45,6 +45,9 @@ template<class E> class GrowableArray;
 // fixed, but _ptr_end can be expanded as more objects are dumped.
 class ArchivePtrMarker : AllStatic {
   static CHeapBitMap*  _ptrmap;
+  static CHeapBitMap*  _rw_ptrmap;
+  static CHeapBitMap*  _ro_ptrmap;
+  static CHeapBitMap*  _cc_ptrmap;
   static VirtualSpace* _vs;
 
   // Once _ptrmap is compacted, we don't allow bit marking anymore. This is to
@@ -56,6 +59,7 @@ class ArchivePtrMarker : AllStatic {
 
 public:
   static void initialize(CHeapBitMap* ptrmap, VirtualSpace* vs);
+  static void initialize_rw_ro_cc_maps(CHeapBitMap* rw_ptrmap, CHeapBitMap* ro_ptrmap, CHeapBitMap* cc_ptrmap);
   static void mark_pointer(address* ptr_loc);
   static void clear_pointer(address* ptr_loc);
   static void compact(address relocatable_base, address relocatable_end);
@@ -76,8 +80,23 @@ public:
     return _ptrmap;
   }
 
+  static CHeapBitMap* rw_ptrmap() {
+    return _rw_ptrmap;
+  }
+
+  static CHeapBitMap* ro_ptrmap() {
+    return _ro_ptrmap;
+  }
+
+  static CHeapBitMap* cc_ptrmap() {
+    return _cc_ptrmap;
+  }
+
   static void reset_map_and_vs() {
     _ptrmap = nullptr;
+    _rw_ptrmap = nullptr;
+    _ro_ptrmap = nullptr;
+    _cc_ptrmap = nullptr;
     _vs = nullptr;
   }
 };

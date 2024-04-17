@@ -118,7 +118,7 @@ GrowableArrayCHeap<nmethod*, mtClassShared>* MethodProfiler::sampled_nmethods() 
 
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    NMethodIterator iter(NMethodIterator::only_not_unloading);
+    NMethodIterator iter(NMethodIterator::not_unloading);
     while(iter.next()) {
       nmethod* nm = iter.method();
       if (nm->is_compiled_by_c2() || nm->is_compiled_by_jvmci()) {

@@ -1198,7 +1198,7 @@ void ciEnv::register_method(ciMethod* target,
                     (scc_entry != nullptr ? scc_entry->offset() : 0));
         }
         // Allow the code to be executed
-        MutexLocker ml(CompiledMethod_lock, Mutex::_no_safepoint_check_flag);
+        MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
         if (nm->make_in_use()) {
 #ifdef ASSERT
           BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
@@ -1225,7 +1225,7 @@ void ciEnv::register_method(ciMethod* target,
                    task()->is_scc() ? "A" : "",
                    (scc_entry != nullptr ? scc_entry->offset() : 0));
         }
-        MutexLocker ml(CompiledMethod_lock, Mutex::_no_safepoint_check_flag);
+        MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
         if (nm->make_in_use()) {
           method->method_holder()->add_osr_nmethod(nm);
         }

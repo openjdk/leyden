@@ -43,7 +43,6 @@
 #include "runtime/java.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "utilities/bitMap.inline.hpp"
-
 #if INCLUDE_G1GC
 #include "gc/g1/g1CollectedHeap.hpp"
 #include "gc/g1/g1HeapRegion.hpp"
@@ -68,8 +67,8 @@ static size_t _num_packages = 0;
 
 GrowableArrayCHeap<ArchiveHeapWriter::NativePointerInfo, mtClassShared>* ArchiveHeapWriter::_native_pointers;
 GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_source_objs;
-GrowableArrayCHeap<int, mtClassShared>* ArchiveHeapWriter::_source_objs_order;
 GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_perm_objs = nullptr;
+GrowableArrayCHeap<ArchiveHeapWriter::HeapObjOrder, mtClassShared>* ArchiveHeapWriter::_source_objs_order;
 
 static GrowableArrayCHeap<size_t, mtClassShared> *_permobj_seg_buffered_addrs = nullptr;
 static GrowableArrayCHeap<size_t, mtClassShared> *_permobj_seg_bytesizes = nullptr;
@@ -90,14 +89,13 @@ void ArchiveHeapWriter::init() {
   if (HeapShared::can_write()) {
     Universe::heap()->collect(GCCause::_java_lang_system_gc);
 
-    _buffer_offset_to_source_obj_table = new BufferOffsetToSourceObjectTable();
+    _buffer_offset_to_source_obj_table = new BufferOffsetToSourceObjectTable(/*size (prime)*/36137, /*max size*/1 * M);
     _fillers = new FillersTable();
     _requested_bottom = nullptr;
     _requested_top = nullptr;
 
     _native_pointers = new GrowableArrayCHeap<NativePointerInfo, mtClassShared>(2048);
     _source_objs = new GrowableArrayCHeap<oop, mtClassShared>(10000);
-    _source_objs_order = new GrowableArrayCHeap<int, mtClassShared>(10000);
 
     _permobj_seg_buffered_addrs = new GrowableArrayCHeap<size_t, mtClassShared>(5);
     _permobj_seg_bytesizes = new GrowableArrayCHeap<size_t, mtClassShared>(5);
@@ -109,7 +107,6 @@ void ArchiveHeapWriter::init() {
 }
 
 void ArchiveHeapWriter::add_source_obj(oop src_obj) {
-  _source_objs_order->append(_source_objs->length());
   _source_objs->append(src_obj);
 }
 
@@ -214,7 +211,7 @@ size_t ArchiveHeapWriter::create_objarray_in_buffer(GrowableArrayCHeap<oop, mtCl
                                                     int num_elms,     // copy this number of elements from input
                                                     int extra_length, // add extra elements at the end of the copy
                                                     size_t& objarray_word_size) {
-  Klass* k = Universe::objectArrayKlassObj(); // already relocated to point to archived klass
+  Klass* k = Universe::objectArrayKlass(); // already relocated to point to archived klass
   int length = num_elms + extra_length;
   objarray_word_size = objArrayOopDesc::object_size(length);
   size_t byte_size = objarray_word_size * HeapWordSize;
@@ -259,17 +256,17 @@ size_t ArchiveHeapWriter::create_objarray_in_buffer(GrowableArrayCHeap<oop, mtCl
 }
 
 static int oop_sorting_rank(oop o) {
-  bool has_o_ptr = HeapShared::has_oop_pointers(o);
-  bool has_n_ptr = HeapShared::has_native_pointers(o);
+  bool has_oop_ptr, has_native_ptr;
+  HeapShared::get_pointer_info(o, has_oop_ptr, has_native_ptr);
 
-  if (!has_o_ptr) {
-    if (!has_n_ptr) {
+  if (!has_oop_ptr) {
+    if (!has_native_ptr) {
       return 0;
     } else {
       return 1;
     }
   } else {
-    if (has_n_ptr) {
+    if (has_native_ptr) {
       return 2;
     } else {
       return 3;
@@ -282,37 +279,47 @@ static int oop_sorting_rank(oop o) {
 // - objects that have only native pointers
 // - objects that have both native and oop pointers
 // - objects that have only oop pointers
-int ArchiveHeapWriter::compare_objs_by_oop_fields(int* a, int* b) {
-  oop oa = _source_objs->at(*a);
-  oop ob = _source_objs->at(*b);
-
-  int rank_a = oop_sorting_rank(oa);
-  int rank_b = oop_sorting_rank(ob);
+int ArchiveHeapWriter::compare_objs_by_oop_fields(HeapObjOrder* a, HeapObjOrder* b) {
+  int rank_a = a->_rank;
+  int rank_b = b->_rank;
 
   if (rank_a != rank_b) {
     return rank_a - rank_b;
   } else {
     // If they are the same rank, sort them by their position in the _source_objs array
-    return *a - *b;
+    return a->_index - b->_index;
   }
 }
 
 void ArchiveHeapWriter::sort_source_objs() {
+  log_info(cds)("sorting heap objects");
+  int len = _source_objs->length();
+  _source_objs_order = new GrowableArrayCHeap<HeapObjOrder, mtClassShared>(len);
+
+  for (int i = 0; i < len; i++) {
+    oop o = _source_objs->at(i);
+    int rank = oop_sorting_rank(o);
+    HeapObjOrder os = {i, rank};
+    _source_objs_order->append(os);
+  }
+  log_info(cds)("computed ranks");
   _source_objs_order->sort(compare_objs_by_oop_fields);
+  log_info(cds)("sorting heap objects done");
 }
 
 int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots, GrowableArray<size_t>* permobj_seg_offsets) {
   sort_source_objs();
   _perm_objs = new GrowableArrayCHeap<oop, mtClassShared>();
   for (int i = 0; i < _source_objs_order->length(); i++) {
-    int src_obj_index = _source_objs_order->at(i);
+    int src_obj_index = _source_objs_order->at(i)._index;
     oop src_obj = _source_objs->at(src_obj_index);
     HeapShared::CachedOopInfo* info = HeapShared::archived_object_cache()->get(src_obj);
     assert(info != nullptr, "must be");
     size_t buffer_offset = copy_one_source_obj_to_buffer(src_obj);
     info->set_buffer_offset(buffer_offset);
 
-    _buffer_offset_to_source_obj_table->put(buffer_offset, src_obj);
+    _buffer_offset_to_source_obj_table->put_when_absent(buffer_offset, src_obj);
+    _buffer_offset_to_source_obj_table->maybe_grow();
     if (UsePermanentHeapObjects) {
       // TODO: add only the objects that are needed by AOT. (How??)
       int perm_index = _perm_objs->length();
@@ -379,7 +386,7 @@ int ArchiveHeapWriter::filler_array_length(size_t fill_bytes) {
 
 HeapWord* ArchiveHeapWriter::init_filler_array_at_buffer_top(int array_length, size_t fill_bytes) {
   assert(UseCompressedClassPointers, "Archived heap only supported for compressed klasses");
-  Klass* oak = Universe::objectArrayKlassObj(); // already relocated to point to archived klass
+  Klass* oak = Universe::objectArrayKlass(); // already relocated to point to archived klass
   HeapWord* mem = offset_to_buffered_address<HeapWord*>(_buffer_used);
   memset(mem, 0, fill_bytes);
   oopDesc::set_mark(mem, markWord::prototype());
@@ -666,7 +673,7 @@ void ArchiveHeapWriter::relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassSh
   heap_info->oopmap()->resize(heap_region_byte_size   / oopmap_unit);
 
   for (int i = 0; i < _source_objs_order->length(); i++) {
-    int src_obj_index = _source_objs_order->at(i);
+    int src_obj_index = _source_objs_order->at(i)._index;
     oop src_obj = _source_objs->at(src_obj_index);
     HeapShared::CachedOopInfo* info = HeapShared::archived_object_cache()->get(src_obj);
     assert(info != nullptr, "must be");
@@ -680,7 +687,7 @@ void ArchiveHeapWriter::relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassSh
   // Relocate HeapShared::roots(), which is created in create_objarray_in_buffer() and
   // doesn't have a corresponding src_obj, so we can't use EmbeddedOopRelocator on it.
   oop requested_roots = requested_obj_from_buffer_offset(_heap_roots_offset);
-  update_header_for_requested_obj(requested_roots, nullptr, Universe::objectArrayKlassObj());
+  update_header_for_requested_obj(requested_roots, nullptr, Universe::objectArrayKlass());
   int length = roots != nullptr ? roots->length() : 0;
   for (int i = 0; i < length; i++) {
     if (UseCompressedOops) {
@@ -697,7 +704,7 @@ void ArchiveHeapWriter::relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassSh
     // don't have a corresponding src_obj, so we can't use EmbeddedOopRelocator.
     size_t permobj_seg_bottom_offset = permobj_seg_offsets->at(i);
     oop requested_permobj_seg = requested_obj_from_buffer_offset(permobj_seg_bottom_offset);
-    update_header_for_requested_obj(requested_permobj_seg, nullptr, Universe::objectArrayKlassObj());
+    update_header_for_requested_obj(requested_permobj_seg, nullptr, Universe::objectArrayKlass());
     for (int i = 0; i < length; i++) {
       address buffered_addr = offset_to_buffered_address<address>(permobj_seg_bottom_offset);
       if (UseCompressedOops) {

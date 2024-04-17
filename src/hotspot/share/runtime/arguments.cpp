@@ -538,6 +538,7 @@ static SpecialFlag const special_jvm_flags[] = {
 
   { "ParallelOldDeadWoodLimiterMean",   JDK_Version::undefined(), JDK_Version::jdk(23), JDK_Version::jdk(24) },
   { "ParallelOldDeadWoodLimiterStdDev", JDK_Version::undefined(), JDK_Version::jdk(23), JDK_Version::jdk(24) },
+  { "UseNeon",                      JDK_Version::undefined(), JDK_Version::jdk(23), JDK_Version::jdk(24) },
 #ifdef ASSERT
   { "DummyObsoleteTestFlag",        JDK_Version::undefined(), JDK_Version::jdk(18), JDK_Version::undefined() },
 #endif
@@ -3688,6 +3689,18 @@ jint Arguments::apply_ergo() {
   jint code = set_aggressive_opts_flags();
   if (code != JNI_OK) {
     return code;
+  }
+
+  if (FLAG_IS_DEFAULT(UseSecondarySupersTable)) {
+    FLAG_SET_DEFAULT(UseSecondarySupersTable, VM_Version::supports_secondary_supers_table());
+  } else if (UseSecondarySupersTable && !VM_Version::supports_secondary_supers_table()) {
+    warning("UseSecondarySupersTable is not supported");
+    FLAG_SET_DEFAULT(UseSecondarySupersTable, false);
+  }
+  UseSecondarySupersTable = false; // FIXME: Disabled for Leyden. Neet to fix SCAddressTable::id_for_address()
+  if (!UseSecondarySupersTable) {
+    FLAG_SET_DEFAULT(StressSecondarySupers, false);
+    FLAG_SET_DEFAULT(VerifySecondarySupers, false);
   }
 
 #ifdef ZERO

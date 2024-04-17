@@ -1057,7 +1057,7 @@ JVM_ENTRY_PROF(jint, MHN_getNamedCon, MHN_getNamedCon(JNIEnv *env, jobject igcls
     assert(which >= 0 && which < con_value_count, "");
     int con = con_values[which];
     objArrayHandle box(THREAD, (objArrayOop) JNIHandles::resolve(box_jh));
-    if (box.not_null() && box->klass() == Universe::objectArrayKlassObj() && box->length() > 0) {
+    if (box.not_null() && box->klass() == Universe::objectArrayKlass() && box->length() > 0) {
       const char* str = &con_names[0];
       for (int i = 0; i < which; i++)
         str += strlen(str) + 1;   // skip name and null
@@ -1292,7 +1292,7 @@ JVM_ENTRY_PROF(void, MHN_copyOutBootstrapArguments, MHN_copyOutBootstrapArgument
   InstanceKlass* caller = InstanceKlass::cast(caller_k);
   typeArrayOop index_info_oop = (typeArrayOop) JNIHandles::resolve(index_info_jh);
   if (index_info_oop == nullptr ||
-      index_info_oop->klass() != Universe::intArrayKlassObj() ||
+      index_info_oop->klass() != Universe::intArrayKlass() ||
       typeArrayOop(index_info_oop)->length() < 2) {
       THROW_MSG(vmSymbols::java_lang_InternalError(), "bad index info (0)");
   }

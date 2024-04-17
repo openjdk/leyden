@@ -214,7 +214,7 @@ void SCCache::close() {
 
         LogStreamHandle(Info, scc, codecache) info_scc;
         if (info_scc.is_enabled()) {
-          NMethodIterator iter(NMethodIterator::all_blobs);
+          NMethodIterator iter(NMethodIterator::all);
           while (iter.next()) {
             nmethod* nm = iter.method();
             if (nm->is_in_use() && !nm->is_native_method() && !nm->is_osr_method()) {

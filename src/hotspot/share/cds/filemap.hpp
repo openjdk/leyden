@@ -131,7 +131,6 @@ public:
 
 
 class FileMapRegion: private CDSFileMapRegion {
-  BitMapView bitmap_view(bool is_oopmap);
 public:
   void assert_is_heap_region() const {
     assert(_is_heap_region, "must be heap region");
@@ -158,6 +157,8 @@ public:
   bool   mapped_from_file()         const { return _mapped_from_file != 0; }
   size_t oopmap_offset()            const { assert_is_heap_region();     return _oopmap_offset; }
   size_t oopmap_size_in_bits()      const { assert_is_heap_region();     return _oopmap_size_in_bits; }
+  size_t ptrmap_offset()            const { return _ptrmap_offset; }
+  size_t ptrmap_size_in_bits()      const { return _ptrmap_size_in_bits; }
 
   void set_file_offset(size_t s)     { _file_offset = s; }
   void set_read_only(bool v)         { _read_only = v; }
@@ -167,8 +168,6 @@ public:
             bool allow_exec, int crc);
   void init_oopmap(size_t offset, size_t size_in_bits);
   void init_ptrmap(size_t offset, size_t size_in_bits);
-  BitMapView oopmap_view();
-  BitMapView ptrmap_view();
   bool has_ptrmap()                  { return _ptrmap_size_in_bits != 0; }
 
   bool check_region_crc(char* base) const;
@@ -192,6 +191,7 @@ private:
   CompressedOops::Mode _narrow_oop_mode;          // compressed oop encoding mode
   bool    _compressed_oops;                       // save the flag UseCompressedOops
   bool    _compressed_class_ptrs;                 // save the flag UseCompressedClassPointers
+  bool    _use_secondary_supers_table;            // save the flag UseSecondarySupersTable
   size_t  _cloned_vtables_offset;                 // The address of the first cloned vtable
   size_t  _serialized_data_offset;                // Data accessed using {ReadClosure,WriteClosure}::serialize()
   bool _has_non_jar_in_classpath;                 // non-jar file entry exists in classpath
@@ -286,7 +286,6 @@ public:
   void set_has_platform_or_app_classes(bool v)   { _has_platform_or_app_classes = v; }
   void set_cloned_vtables(char* p)               { set_as_offset(p, &_cloned_vtables_offset); }
   void set_serialized_data(char* p)              { set_as_offset(p, &_serialized_data_offset); }
-  void set_ptrmap_size_in_bits(size_t s)         { _ptrmap_size_in_bits = s; }
   void set_mapped_base_address(char* p)          { _mapped_base_address = p; }
   void set_heap_roots_offset(size_t n)           { _heap_roots_offset = n; }
   void set_heap_oopmap_start_pos(size_t n)       { _heap_oopmap_start_pos = n; }
@@ -447,7 +446,8 @@ public:
   void  write_region(int region, char* base, size_t size,
                      bool read_only, bool allow_exec);
   size_t remove_bitmap_leading_zeros(CHeapBitMap* map);
-  char* write_bitmap_region(const CHeapBitMap* ptrmap, ArchiveHeapInfo* heap_info,
+  char* write_bitmap_region(const CHeapBitMap* rw_ptrmap, const CHeapBitMap* ro_ptrmap,
+                            const CHeapBitMap* cc_ptrmap, ArchiveHeapInfo* heap_info,
                             size_t &size_in_bytes);
   size_t write_heap_region(ArchiveHeapInfo* heap_info);
   void  write_bytes(const void* buffer, size_t count);
@@ -530,6 +530,10 @@ public:
   FileMapRegion* region_at(int i) const {
     return header()->region_at(i);
   }
+
+  BitMapView bitmap_view(int region_index, bool is_oopmap);
+  BitMapView oopmap_view(int region_index);
+  BitMapView ptrmap_view(int region_index);
 
   void print(outputStream* st) const;
 

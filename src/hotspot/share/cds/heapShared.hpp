@@ -216,8 +216,12 @@ public:
   };
 
 private:
-  typedef ResourceHashtable<oop, CachedOopInfo,
-      36137, // prime number
+  static void check_enum_obj(int level, KlassSubGraphInfo* subgraph_info,
+                             oop orig_obj);
+
+  static const int INITIAL_TABLE_SIZE = 15889; // prime number
+  static const int MAX_TABLE_SIZE     = 1000000;
+  typedef ResizeableResourceHashtable<oop, CachedOopInfo,
       AnyObj::C_HEAP,
       mtClassShared,
       HeapShared::oop_hash> ArchivedObjectCache;
@@ -279,8 +283,7 @@ private:
   // !UseCompressedOops only: used to relocate pointers to the archived objects
   static ptrdiff_t _runtime_delta;
 
-  typedef ResourceHashtable<oop, bool,
-      15889, // prime number
+  typedef ResizeableResourceHashtable<oop, bool,
       AnyObj::C_HEAP,
       mtClassShared,
       HeapShared::oop_hash> SeenObjectsTable;
@@ -306,7 +309,7 @@ private:
 
   static void init_seen_objects_table() {
     assert(_seen_objects_table == nullptr, "must be");
-    _seen_objects_table = new (mtClass)SeenObjectsTable();
+    _seen_objects_table = new (mtClass)SeenObjectsTable(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
   }
   static void delete_seen_objects_table() {
     assert(_seen_objects_table != nullptr, "must be");
@@ -367,7 +370,7 @@ private:
   static void reset_archived_object_states(TRAPS);
   static void create_archived_object_cache() {
     _archived_object_cache =
-      new (mtClass)ArchivedObjectCache();
+      new (mtClass)ArchivedObjectCache(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
   }
   static void destroy_archived_object_cache() {
     delete _archived_object_cache;
@@ -394,9 +397,8 @@ private:
   // Scratch objects for archiving Klass::java_mirror()
   static void set_scratch_java_mirror(Klass* k, oop mirror);
   static void remove_scratch_objects(Klass* k);
-  static bool has_oop_pointers(oop obj);
-  static bool has_native_pointers(oop obj);
-  static void set_has_native_pointers(oop obj);
+  static void get_pointer_info(oop src_obj, bool& has_oop_pointers, bool& has_native_pointers);
+  static void set_has_native_pointers(oop src_obj);
 
   // We use the HeapShared::roots() array to make sure that objects stored in the
   // archived heap region are not prematurely collected. These roots include:
@@ -467,12 +469,18 @@ private:
 
 #if INCLUDE_CDS_JAVA_HEAP
 class DumpedInternedStrings :
-  public ResourceHashtable<oop, bool,
-                           15889, // prime number
+  public ResizeableResourceHashtable<oop, bool,
                            AnyObj::C_HEAP,
                            mtClassShared,
                            HeapShared::string_oop_hash>
-{};
+{
+public:
+  DumpedInternedStrings(unsigned size, unsigned max_size) :
+    ResizeableResourceHashtable<oop, bool,
+                                AnyObj::C_HEAP,
+                                mtClassShared,
+                                HeapShared::string_oop_hash>(size, max_size) {}
+};
 #endif
 
 #endif // SHARE_CDS_HEAPSHARED_HPP

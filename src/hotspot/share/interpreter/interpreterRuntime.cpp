@@ -1035,11 +1035,7 @@ void InterpreterRuntime::resolve_invoke(JavaThread* current, Bytecodes::Code byt
       return;
     }
 
-    if (JvmtiExport::can_hotswap_or_post_breakpoint() && info.resolved_method()->is_old()) {
-      resolved_method = methodHandle(current, info.resolved_method()->get_new_method());
-    } else {
-      resolved_method = methodHandle(current, info.resolved_method());
-    }
+    resolved_method = methodHandle(current, info.resolved_method());
   } // end JvmtiHideSingleStepping
 
   update_invoke_cp_cache_entry(info, bytecode, resolved_method, pool, method_index);
@@ -1049,6 +1045,9 @@ void InterpreterRuntime::update_invoke_cp_cache_entry(CallInfo& info, Bytecodes:
                                                       methodHandle& resolved_method,
                                                       constantPoolHandle& pool,
                                                       int method_index) {
+  // Don't allow safepoints until the method is cached.
+  NoSafepointVerifier nsv;
+
   // check if link resolution caused cpCache to be updated
   ConstantPoolCache* cache = pool->cache();
   if (cache->resolved_method_entry_at(method_index)->is_resolved(bytecode)) return;
