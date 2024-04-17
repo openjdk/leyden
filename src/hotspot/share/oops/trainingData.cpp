@@ -79,7 +79,8 @@ CompileTrainingData::CompileTrainingData() : _level(-1), _compile_id(-1) {
 #if INCLUDE_CDS
 void TrainingData::restore_all_unshareable_info(TRAPS) {
   if (have_data() && !archived_training_data_dictionary()->empty()) {
-    Visitor visitor(archived_training_data_dictionary()->entry_count());
+    const unsigned size = static_cast<unsigned>(archived_training_data_dictionary()->entry_count());
+    Visitor visitor(size);
     archived_training_data_dictionary()->iterate([&](TrainingData *td) {
       td->restore_unshareable_info(visitor, THREAD);
     });
