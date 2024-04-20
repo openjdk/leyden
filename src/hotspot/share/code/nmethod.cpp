@@ -1472,13 +1472,14 @@ nmethod::nmethod(
     _osr_entry_point         = code_begin()          + offsets->value(CodeOffsets::OSR_Entry);
     _exception_cache         = nullptr;
 
-    _pc_desc_container.reset_to(scopes_pcs_begin());
-
     code_buffer->copy_code_and_locs_to(this);
     // Copy contents of ScopeDescRecorder to nmethod
     code_buffer->copy_values_to(this);
     debug_info->copy_to(this);
     dependencies->copy_to(this);
+
+    _pc_desc_container.reset_to(scopes_pcs_begin());
+
     clear_unloading_state();
 
 #if INCLUDE_JVMCI
