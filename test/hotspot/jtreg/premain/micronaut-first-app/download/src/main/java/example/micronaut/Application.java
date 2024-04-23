@@ -15,11 +15,34 @@
  */
 package example.micronaut;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
+
 import io.micronaut.runtime.Micronaut;
 
 public class Application {
 
     public static void main(String[] args) {
+ 	long mainStart = System.currentTimeMillis();
+ 	RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+ 	// This includes all the time spent inside the JVM before main() is reached
+ 	// (since os::Posix::init is called and initial_time_count is initialized).
+ 	long vmStart = runtimeMXBean.getStartTime();
+ 	long maxBeanOverHead = System.currentTimeMillis() - mainStart;
+
         Micronaut.run(Application.class, args);
+
+        if (Boolean.getBoolean("autoQuit")) {
+            long end = System.currentTimeMillis();
+            System.out.println("#### Booted and returned in " + (end - vmStart - maxBeanOverHead) + "ms");
+            System.out.println("#### (debug) mainStart = " + mainStart);
+            System.out.println("#### (debug) vmStart = " + vmStart);
+            System.out.println("#### (debug) before main (mainStart - vmStart) = " + (mainStart - vmStart));
+            System.out.println("#### (debug) maxBeanOverHead = " + maxBeanOverHead);
+            System.out.println("#### (debug) end = " + end);
+
+            System.out.println("Done .. Exiting");
+            System.exit(0);
+        }
     }
 }

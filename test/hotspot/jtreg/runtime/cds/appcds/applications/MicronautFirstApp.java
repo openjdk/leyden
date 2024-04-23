@@ -34,67 +34,67 @@ import jdk.test.lib.process.OutputAnalyzer;
 /*
  * @test id=static
  * @requires vm.cds
- * @summary run QuarkusGettingStarted with the classic static archive workflow
+ * @summary run MicronautFirstApp with the classic static archive workflow
  * @library /test/lib
- * @run driver/timeout=120 QuarkusGettingStarted STATIC
+ * @run driver/timeout=120 MicronautFirstApp STATIC
  */
 
 /*
  * @test id=dynamic
  * @requires vm.cds
- * @summary run QuarkusGettingStarted with the classic dynamic archive workflow
+ * @summary run MicronautFirstApp with the classic dynamic archive workflow
  * @library /test/lib
- * @run driver/timeout=120 QuarkusGettingStarted DYNAMIC
+ * @run driver/timeout=120 MicronautFirstApp DYNAMIC
  */
 
 /*
  * @test id=leyden
  * @requires vm.cds
- * @summary un QuarkusGettingStarted with the Leyden workflow
+ * @summary un MicronautFirstApp with the Leyden workflow
  * @library /test/lib
- * @run driver/timeout=120 QuarkusGettingStarted LEYDEN
+ * @run driver/timeout=120 MicronautFirstApp LEYDEN
  */
 
 /*
  * @test id=leyden_old
  * @requires vm.cds
- * @summary un QuarkusGettingStarted with the "OLD" Leyden workflow
+ * @summary un MicronautFirstApp with the "OLD" Leyden workflow
  * @library /test/lib
- * @run driver/timeout=120 QuarkusGettingStarted LEYDEN_OLD
+ * @run driver/timeout=120 MicronautFirstApp LEYDEN_OLD
  */
 
-// Test CDS with the example program in https://quarkus.io/guides/getting-started
+// Test CDS with the example program in https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html
 //
-// NOTE: if you have not set up an artifactory, you can create quarkus-getting-started-1.0.0b.zip by:
+// NOTE: if you have not set up an artifactory, you can create micronaut-first-app-1.0.0.zip
 //
 // - Make a clone of https://github.com/openjdk/leyden/tree/premain
-// - Change to the directory test/hotspot/jtreg/premain/quarkus-getting-started
+// - Change to the directory test/hotspot/jtreg/premain/micronaut-first-app
 // - Edit the Makefile and ../lib/DemoSupport.gmk as necessary
 // - Run the command "make artifact"
 //
 // Then, you can add the following to your jtreg command-line to run the test cases in this directory:
-// -vmoption:-Djdk.test.lib.artifacts.quarkus-getting-started=/my/repo/test/hotspot/jtreg/premain/quarkus-getting-started/getting-started/target
+// -vmoption:-Djdk.test.lib.artifacts.micronaut-first-app=/my/repo/test/hotspot/jtreg/premain/micronaut-first-app/download/target/
 
-@Artifact(organization = "io.quarkus", name = "quarkus-getting-started", revision = "1.0.0b", extension = "zip")
-public class QuarkusGettingStarted {
+@Artifact(organization = "io.micronaut", name = "micronaut-first-app", revision = "1.0.0", extension = "zip")
+public class MicronautFirstApp {
     public static void main(String args[]) throws Exception {
         String cp = getArtifact();
-        QuarkusGettingStartedTester tester = new QuarkusGettingStartedTester(cp);
+        MicronautFirstAppTester tester = new MicronautFirstAppTester(cp);
         tester.run(args);
         System.out.println(cp);
     }
 
     private static String getArtifact() throws Exception {
-        Map<String, Path> artifacts = ArtifactResolver.resolve(QuarkusGettingStarted.class);
-        Path path = artifacts.get("io.quarkus.quarkus-getting-started-1.0.0b");
-        return path.toString() + "/getting-started-1.0.0-SNAPSHOT-runner.jar";
+        Map<String, Path> artifacts = ArtifactResolver.resolve(MicronautFirstApp.class);
+        Path path = artifacts.get("io.micronaut.micronaut-first-app-1.0.0");
+        return path.toString() + "/default-0.1.jar";
     }
 
-    static class QuarkusGettingStartedTester extends CDSAppTester {
+    static class MicronautFirstAppTester extends CDSAppTester {
         String cp;
 
-        QuarkusGettingStartedTester(String cp) {
-            super("QuarkusGettingStarted");
+        MicronautFirstAppTester(String cp) {
+            super("MicronautFirstApp");
             this.cp = cp;
         }
 
@@ -102,7 +102,7 @@ public class QuarkusGettingStarted {
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
                 "-DautoQuit=true",
-                "-Dquarkus.http.port=0", // use system-assigned port
+                "-Dmicronaut.server.port=0", // use system-assigned port
 
                 // This program may run very slowly in debug builds if VerifyDependencies is enabled.
                 "-XX:+IgnoreUnrecognizedVMOptions", "-XX:-VerifyDependencies",
@@ -117,7 +117,7 @@ public class QuarkusGettingStarted {
         @Override
         public String[] appCommandLine(RunMode runMode) {
             String cmdLine[] = new String[] {
-                "Main", 
+                "example.micronaut.Application", 
             };
 
             if (runMode.isProductionRun()) {

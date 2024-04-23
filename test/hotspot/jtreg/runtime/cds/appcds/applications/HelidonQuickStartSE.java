@@ -69,7 +69,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 //
 // - Make a clone of https://github.com/openjdk/leyden/tree/premain
 // - Change to the directory test/hotspot/jtreg/premain/helidon-quickstart-se
-// - Edit the Makefile
+// - Edit the Makefile and ../lib/DemoSupport.gmk as necessary
 // - Run the command "make artifact"
 //
 // Then, you can add the following to your jtreg command-line to run the test cases in this directory:
@@ -119,13 +119,6 @@ public class HelidonQuickStartSE {
             String cmdLine[] = new String[] {
                 "io.helidon.examples.quickstart.se.Main", 
             };
-
-            /*
-            if (runMode == RunMode.PRODUCTION) {
-                // FIXME: bug JDK-8318393
-                cmdLine = StringArrayUtils.concat("-XX:-LoadCachedCode", cmdLine);
-            }
-            */
 
             if (runMode.isProductionRun()) {
                 cmdLine = StringArrayUtils.concat("-Xlog:scc=error", cmdLine);
