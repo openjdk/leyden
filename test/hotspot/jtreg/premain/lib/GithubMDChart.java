@@ -136,7 +136,7 @@ public class GithubMDChart {
         for (int i = 1; i < head.length; i++) {
             double base = Double.parseDouble(geomeans[1]);
             double me   = Double.parseDouble(geomeans[i]);
-            System.out.println("    " + head[i] + "   : 0, " + String.format("%.5f", me / base));
+            System.out.println("    " + head[i] + "   : 0, " + String.format("%.0f", 1000.0 * me / base));
         }
         System.out.println("```");
     }
