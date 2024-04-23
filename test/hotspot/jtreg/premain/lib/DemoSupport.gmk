@@ -85,15 +85,12 @@ PREMAIN_JAVA    = ${PREMAIN_HOME}/bin/java ${PM_OPTS}
 # The following variables should be defined by the main Makefile.
 # See ../helidon-quickstart-se/Makefile for an example.
 
-# DEMO_NAME
-# DEMO_SRC
-# DEMO_JAR
-# DEMO_CMDLINE
-# DEMO_ARTIFACT
-
 DEMO_CLASSLIST  = ${DEMO_NAME}$(PM_VER).classlist
 DEMO_JSA        = ${DEMO_NAME}$(PM_VER).jsa
 DEMO_CDS        = ${DEMO_NAME}$(PM_VER).cds
+
+DEMO_ML_CLASSLIST = ${DEMO_NAME}$(PM_VER).ml.classlist
+DEMO_ML_JSA       = ${DEMO_NAME}$(PM_VER).ml.jsa
 
 # Rules for the following targets should be specified in the main Makefile.
 # See ../helidon-quickstart-se/Makefile for an example.
@@ -132,6 +129,26 @@ ${DEMO_JSA}: ${DEMO_CLASSLIST}
 runs:  ${DEMO_JSA}
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${DEMO_JSA} ${DEMO_CMDLINE}
 
+# Static CDS only (Leyden repo)-----------------
+
+list.ml:  ${DEMO_ML_CLASSLIST}
+jsa.ml:   ${DEMO_ML_JSA}
+
+${DEMO_ML_CLASSLIST}: ${DEMO_JAR}
+	${MAINLINE_JAVA} -Xshare:off -XX:DumpLoadedClassList=${DEMO_ML_CLASSLIST} ${DEMO_CMDLINE}
+
+${DEMO_ML_JSA}: ${DEMO_ML_CLASSLIST}
+	rm -f ${DEMO_ML_JSA}.log
+	${MAINLINE_JAVA} -Xshare:dump -XX:SharedClassListFile=${DEMO_ML_CLASSLIST} -XX:SharedArchiveFile=${DEMO_ML_JSA} \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_ML_JSA}.log \
+	    ${DEMO_CMDLINE}
+
+run0.ml: ${DEMO_JAR}
+	${MAINLINE_JAVA} ${DEMO_CMDLINE}
+
+runs.ml: ${DEMO_ML_JSA}
+	${MAINLINE_JAVA} -XX:SharedArchiveFile=${DEMO_ML_JSA} ${DEMO_CMDLINE}
+
 # Leyden new workflow --------------------------
 
 cds: ${DEMO_CDS}
@@ -152,3 +169,28 @@ runn: ${DEMO_CDS}
 	    -XX:CacheDataStore=${DEMO_CDS} \
 	    -Xlog:scc*=error \
 	     ${DEMO_CMDLINE}
+
+# Benchmarking ---------------------------------
+LOOPS = 0 1 2 3 4 5 6 7 8 9 10
+SLEEP = sleep 1;
+
+bench: mainline_vs_premain
+
+mainline_vs_premain: clean0 _mainline_vs_premain
+
+_mainline_vs_premain:
+	rm -f mainline_vs_premain.csv
+	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT" | tee -a mainline_vs_premain.csv
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= run0.ml 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs.ml 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs    2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runn    2>&1 | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a mainline_vs_premain.csv; \
+	        fi; \
+		first=0; \
+	done
+	echo ========================================
+	${MAINLINE_JAVA} ../lib/GithubMDChart.java < mainline_vs_premain.csv

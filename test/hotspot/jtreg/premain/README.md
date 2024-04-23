@@ -21,3 +21,85 @@ JVM invocation.
 
 - [InvokeDynamic.md](InvokeDynamic.md) CDS optimizations for invokedynamic
 
+## Preliminary Benchmark Results
+
+The following charts show the relative start-up performance of the Leyden/Premain branch vs
+the JDK mainline.
+
+For example, a number of "premain CDS + AOT : 0.29117" indicates that if the application takes
+1.00 second to start-up with the JDK mainline, it takes only 0.29 seconds to start up when all the
+current set of Leyden optimizations for CDS and AOT are enabled.
+
+The benchmark results are collected with `make bench` in the following directories:
+
+- helidon-quickstart-se
+- micronaut-first-app
+- quarkus-getting-started
+- spring-petclinic
+
+The version used in the comparisons:
+
+- JDK Mainline: https://github.com/openjdk/jdk/commit/70944ca54ad0090c734bb5b3082beb33450c4877
+- Leyden: https://github.com/openjdk/leyden/commit/9fa972214934d30f67db5fd4d1b8007636ac1428
+
+
+### Helidon Quick Start (SE) Demo
+
+```mermaid
+gantt
+    title Elapsed time (normalized, smaller is better)
+    todayMarker off
+    dateFormat  X
+    axisFormat %s
+
+    mainline default   : 0, 1.00000
+    mainline custom static CDS   : 0, 0.63273
+    premain custom static CDS only   : 0, 0.37635
+    premain CDS + AOT   : 0, 0.29117
+```
+
+### Micronaut First App Demo
+
+```mermaid
+gantt
+    title Elapsed time (normalized, smaller is better)
+    todayMarker off
+    dateFormat  X
+    axisFormat %s
+
+    mainline default   : 0, 1.00000
+    mainline custom static CDS   : 0, 0.55835
+    premain custom static CDS only   : 0, 0.41092
+    premain CDS + AOT   : 0, 0.35389
+```
+
+
+### Quarkus Getting Started Demo
+
+```mermaid
+gantt
+    title Elapsed time (normalized, smaller is better)
+    todayMarker off
+    dateFormat  X
+    axisFormat %s
+
+    mainline default   : 0, 1.00000
+    mainline custom static CDS   : 0, 0.56844
+    premain custom static CDS only   : 0, 0.39581
+    premain CDS + AOT   : 0, 0.31700
+```
+
+### Spring PetClinic Demo
+
+```mermaid
+gantt
+    title Elapsed time (normalized, smaller is better)
+    todayMarker off
+    dateFormat  X
+    axisFormat %s
+
+    mainline default   : 0, 1.00000
+    mainline custom static CDS   : 0, 0.69565
+    premain custom static CDS only   : 0, 0.56353
+    premain CDS + AOT   : 0, 0.36867
+```

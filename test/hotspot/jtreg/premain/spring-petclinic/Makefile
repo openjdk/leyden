@@ -314,9 +314,31 @@ LOOPS = 0 1 2 3 4 5 6 7 8 9 10
 
 SLEEP = sleep 1;
 
+bench: mainline_vs_premain
+
 mainline_vs_premain: clean0 _mainline_vs_premain
 
 _mainline_vs_premain:
+	rm -f mainline_vs_premain.csv
+	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT" | tee -a mainline_vs_premain.csv
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= run0.ml | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs.ml | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs    | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runn    | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a mainline_vs_premain.csv; \
+	        fi; \
+		first=0; \
+	done
+	echo ========================================
+	${MAINLINE_JAVA} ../lib/GithubMDChart.java < mainline_vs_premain.csv
+
+# Same as mainline_vs_premain, but also includes old workflow
+mainline_vs_premain_all: clean0 _mainline_vs_premain_all
+
+_mainline_vs_premain_all:
 	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS,premain custom static CDS+training+AOT,premain new workflow"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
