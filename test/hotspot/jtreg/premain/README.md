@@ -26,8 +26,8 @@ JVM invocation.
 The following charts show the relative start-up performance of the Leyden/Premain branch vs
 the JDK mainline.
 
-For example, a number of "premain CDS + AOT : 0.29117" indicates that if the application takes
-1.00 second to start-up with the JDK mainline, it takes only 0.29 seconds to start up when all the
+For example, a number of "premain CDS + AOT : 291" indicates that if the application takes
+1000 ms to start-up with the JDK mainline, it takes only 291 ms to start up when all the
 current set of Leyden optimizations for CDS and AOT are enabled.
 
 The benchmark results are collected with `make bench` in the following directories:
@@ -52,10 +52,10 @@ gantt
     dateFormat  X
     axisFormat %s
 
-    mainline default   : 0, 1.00000
-    mainline custom static CDS   : 0, 0.63273
-    premain custom static CDS only   : 0, 0.37635
-    premain CDS + AOT   : 0, 0.29117
+    mainline default   : 0, 1000
+    mainline custom static CDS   : 0, 632
+    premain custom static CDS only   : 0, 376
+    premain CDS + AOT   : 0, 291
 ```
 
 ### Micronaut First App Demo
@@ -67,10 +67,10 @@ gantt
     dateFormat  X
     axisFormat %s
 
-    mainline default   : 0, 1.00000
-    mainline custom static CDS   : 0, 0.55835
-    premain custom static CDS only   : 0, 0.41092
-    premain CDS + AOT   : 0, 0.35389
+    mainline default   : 0, 1000
+    mainline custom static CDS   : 0, 558
+    premain custom static CDS only   : 0, 410
+    premain CDS + AOT   : 0, 353
 ```
 
 
@@ -83,10 +83,10 @@ gantt
     dateFormat  X
     axisFormat %s
 
-    mainline default   : 0, 1.00000
-    mainline custom static CDS   : 0, 0.56844
-    premain custom static CDS only   : 0, 0.39581
-    premain CDS + AOT   : 0, 0.31700
+    mainline default   : 0, 1000
+    mainline custom static CDS   : 0, 568
+    premain custom static CDS only   : 0, 395
+    premain CDS + AOT   : 0, 317
 ```
 
 ### Spring PetClinic Demo
@@ -98,8 +98,8 @@ gantt
     dateFormat  X
     axisFormat %s
 
-    mainline default   : 0, 1.00000
-    mainline custom static CDS   : 0, 0.69565
-    premain custom static CDS only   : 0, 0.56353
-    premain CDS + AOT   : 0, 0.36867
+    mainline default   : 0, 1000
+    mainline custom static CDS   : 0, 695
+    premain custom static CDS only   : 0, 563
+    premain CDS + AOT   : 0, 368
 ```
