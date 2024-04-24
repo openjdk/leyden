@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -81,8 +81,16 @@ void* MetaspaceObj::operator new(size_t size, ClassLoaderData* loader_data,
 void* MetaspaceObj::operator new(size_t size, ClassLoaderData* loader_data,
                                  size_t word_size,
                                  MetaspaceObj::Type type) throw() {
-  assert(!Thread::current()->is_Java_thread() || is_training_data(type), "only allowed by non-Java thread");
+  assert(!Thread::current()->is_Java_thread(), "only allowed by non-Java thread");
   return Metaspace::allocate(loader_data, word_size, type);
+}
+
+
+// Work-around -- see JDK-8331086
+void* MetaspaceObj::operator new(size_t size, MEMFLAGS flags) throw() {
+  void* p = AllocateHeap(size, flags, CALLER_PC);
+  memset(p, 0, size);
+  return p;
 }
 
 bool MetaspaceObj::is_valid(const MetaspaceObj* p) {

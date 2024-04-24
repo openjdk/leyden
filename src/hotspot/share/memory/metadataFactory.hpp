@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -48,11 +48,11 @@ class MetadataFactory : AllStatic {
     return array;
   }
 
+  // Work-around -- see JDK-8331086.
+  // This API should be used for TrainingData only.
   template <typename T>
-  static Array<T>* new_array_or_null(ClassLoaderData* loader_data, int length) {
-    // The "true" argument is because all metadata arrays are read only when
-    // dumped to the shared archive
-    return new (loader_data, length) Array<T>(length);
+  static Array<T>* new_array_from_c_heap(int length, MEMFLAGS flags) {
+    return new (length, flags) Array<T>(length);
   }
 
   template <typename T>

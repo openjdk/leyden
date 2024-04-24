@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -917,8 +917,7 @@ template <typename T>
 void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
   if (_deps == nullptr && _deps_dyn != nullptr) {
     int len = _deps_dyn->length();
-    _deps = MetadataFactory::new_array_or_null<T>(loader_data, len);
-    guarantee(_deps != nullptr, "allocation failed"); // FIXME: propagate preparation failure?
+    _deps = MetadataFactory::new_array_from_c_heap<T>(len, mtClassShared);
     for (int i = 0; i < len; i++) {
       _deps->at_put(i, _deps_dyn->at(i)); // copy
     }
@@ -927,23 +926,17 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
 
 KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
   assert(need_data() || have_data(), "");
-  size_t size = align_metadata_size(align_up(sizeof(KlassTrainingData), BytesPerWord) / BytesPerWord);
-  ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::KlassTrainingDataType) KlassTrainingData(holder);
+  return new (mtClassShared) KlassTrainingData(holder);
 }
 
 MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Method* m) {
   assert(need_data() || have_data(), "");
-  size_t size = align_metadata_size(align_up(sizeof(MethodTrainingData), BytesPerWord) / BytesPerWord);
-  ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::MethodTrainingDataType) MethodTrainingData(ktd, m->name(), m->signature());
+  return new (mtClassShared) MethodTrainingData(ktd, m->name(), m->signature());
 }
 
 CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int level, int compile_id) {
   assert(need_data() || have_data(), "");
-  size_t size = align_metadata_size(align_up(sizeof(CompileTrainingData), BytesPerWord) / BytesPerWord);
-  ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  return new (loader_data, size, MetaspaceObj::CompileTrainingDataType) CompileTrainingData(mtd, level, compile_id);
+  return new (mtClassShared) CompileTrainingData(mtd, level, compile_id);
 }
 
 void TrainingDataPrinter::do_value(TrainingData* td) {
