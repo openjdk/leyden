@@ -194,3 +194,8 @@ _mainline_vs_premain:
 	done
 	echo ========================================
 	${MAINLINE_JAVA} ../lib/GithubMDChart.java < mainline_vs_premain.csv
+
+showenv:
+	@echo "BLDJDK_JAVA   = ${BLDJDK_JAVA}"
+	@echo "MAINLINE_JAVA = ${MAINLINE_JAVA}"
+	@echo "PREMAIN_JAVA  = ${PREMAIN_JAVA}"

@@ -34,10 +34,10 @@
 # Run without Leyden optimizations
 #    make run0
 
-# Set the following to point to JDK 17, your JDK mainline build, and your Leyden JDK build.
+# Set the following to point to youd "Build JDK", your JDK mainline build, and your Leyden JDK build.
 #
-#  *** NOTE: JDK 17 (or 21??) is needed to build spring-petclinic-3.2.0-SNAPSHOT.jar
-JDK17_HOME   = /jdk3/official/jdk17
+#  *** NOTE: JDK 21 (or 17) is needed to build spring-petclinic-3.2.0-SNAPSHOT.jar
+BLDJDK_HOME   = /jdk3/official/jdk21
 
 # Points to your build with https://github.com/openjdk/jdk
 # For comparison purposes, this build should be the latest version of the mainline that
@@ -54,9 +54,9 @@ LOG_INIT = -Xlog:init
 PM_OPTS =
 
 # Usually there's no need to change the following
-JAR_CMD          = ${JDK17_HOME}/bin/jar
-JAVAC_CMD        = ${JDK17_HOME}/bin/javac
-JDK17_JAVA       = ${JDK17_HOME}/bin/java
+JAR_CMD          = ${BLDJDK_HOME}/bin/jar
+JAVAC_CMD        = ${BLDJDK_HOME}/bin/javac
+BLDJDK_JAVA       = ${BLDJDK_HOME}/bin/java
 MAINLINE_JAVA    = ${MAINLINE_HOME}/bin/java
 PREMAIN_JAVA     = ${PREMAIN_HOME}/bin/java ${PM_OPTS}
 PC_REPO          = petclinic-snapshot
@@ -103,12 +103,6 @@ DUMMY_CMDLINE    = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath.dummy Dummy
 all: check git app aot
 
 check:
-	@if ${JDK17_JAVA} --version | grep -q '17.*LTS'; then \
-	    true; \
-	else \
-	    echo JDK17_HOME should point to JDK 17; \
-	    exit 1; \
-	fi
 	@if ${PREMAIN_JAVA} -XX:+PrintFlagsFinal --version | grep -q ArchiveInvokeDynamic; then \
 	    true; \
 	else \
@@ -140,7 +134,7 @@ ${PC_JAVA_SOURCES}:
 
 # Need to touch ${PC_APP_JAR} as mvn wants to set it the release date of 3.2.0-SNAPSHOT
 ${PC_APP_JAR}: ${PC_JAVA_SOURCES}
-	cd ${PC_REPO}; JAVA_HOME=${JDK17_HOME} mvn -Dmaven.test.skip=true package
+	cd ${PC_REPO}; JAVA_HOME=${BLDJDK_HOME} mvn -Dmaven.test.skip=true package
 	if test -f ${PC_APP_JAR}; then \
 	    touch ${PC_APP_JAR}; \
 	fi
@@ -157,7 +151,7 @@ ${PC_APP_UNPACKED}: ${PC_APP_JAR}
 	    | sed -e 's/ /:/g' > ${PC_APP_UNPACKED}/classpath
 	echo $$(cat ${PC_APP_UNPACKED}/classpath):Dummy.jar > ${PC_APP_UNPACKED}/classpath.dummy
 	${JAR_CMD} cf0 ${PC_APP_UNPACKED_ZIP} ${PC_APP_UNPACKED}
-	$(MAKE) run17
+	$(MAKE) runb
 
 #uncomment this to see the generated classes for dynamic proxies
 #SAVE_GEN_FILES=-Djdk.proxy.ProxyGenerator.saveGeneratedFiles=true
@@ -223,8 +217,9 @@ rund: ${PC_DYNAMIC_JSA}
 run0: ${PC_APP_UNPACKED}
 	${PREMAIN_JAVA} ${LOG_INIT} ${UNPACKED_CMDLINE}
 
-run17: ${PC_APP_UNPACKED}
-	${JDK17_JAVA} ${UNPACKED_CMDLINE}
+# Run using "build JDK"
+runb: ${PC_APP_UNPACKED}
+	${BLDJDK_JAVA} ${UNPACKED_CMDLINE}
 
 # Running with mainline
 PC_CLASSLIST_MAINLINE   = spring-petclinic.ml.classlist
@@ -358,14 +353,14 @@ _mainline_vs_premain_all:
 # make compare_premain_builds \
 #    PM_OLD=/repo/old/build/linux-x64/images/jdk \
 #    PM_NEW=/repo/new/build/linux-x64/images/jdk \
-#    JDK17_HOME=/my/jdk/17/home
+#    BLDJDK_HOME=/my/jdk/21/home
 #
 # or do this to compare the same build with different options:
 #
 # make compare_premain_builds \
 #    PM_OLD=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:-ArchivePackages \
 #    PM_NEW=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:+ArchivePackages \
-#    JDK17_HOME=/my/jdk/17/home
+#    BLDJDK_HOME=/my/jdk/21/home
 
 compare_premain_builds: clean0 _compare_premain_builds
 

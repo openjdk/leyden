@@ -21,6 +21,59 @@ JVM invocation.
 
 - [InvokeDynamic.md](InvokeDynamic.md) CDS optimizations for invokedynamic
 
+## Benchmarking
+
+We have included some demo application for some popular Java application
+frameworks, so you can compare the performance of Leyden vs the mainline JDK.
+
+- [helidon-quickstart-se](helidon-quickstart-se): from https://helidon.io/docs/v4/se/guides/quickstart
+- [micronaut-first-app](micronaut-first-app): from https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html
+- [quarkus-getting-started](quarkus-getting-started): from https://quarkus.io/guides/getting-started
+- [spring-petclinic](spring-petclinic): from https://github.com/spring-projects/spring-petclinic
+
+You need:
+
+- An official build of JDK 21
+- An up-to-date build of the JDK mainline
+- The latest Leyden build
+- Maven (ideally 3.8 or later, as required by some of the demos). Note: if you are behind
+  a firewall, you may need to [set up proxies for Maven](https://maven.apache.org/guides/mini/guide-proxies.html)
+
+The steps for benchmarking is the same for the above four demos. For example:
+
+```
+$ cd helidon-quickstart-se
+$ make PREMAIN_HOME=/repos/leyden/build/linux-x64/images/jdk \
+       PREMAIN_HOME=/repos/jdk/build/linux-x64/images/jdk \
+       BLDJDK_HOME=/usr/local/jdk21 \
+       bench
+[...]
+run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT
+1,398,244,144,107
+2,387,247,142,108
+3,428,238,143,107
+4,391,252,142,111
+5,417,247,141,107
+6,390,239,139,127
+7,387,247,145,111
+8,387,240,147,110
+9,388,242,147,108
+10,400,242,167,108
+Geomean,397.08,243.76,145.52,110.26
+Stdev,13.55,4.19,7.50,5.73
+[...]
+```
+
+The above command runs each configuration 10 times, in an interleaving order. This way
+the noise of the system (background processes, thermo throttling, etc) is more likely to
+be spread across the different runs.
+
+As typical for start-up benchmarking, the numbers are not very steady. You should plot
+the results (saved in the file mainline_vs_premain.csv) in a spreadsheet to check for noise, etc.
+
+The "make target" target also generates GitHub markdown snippets for creating the
+graphs below.
+
 ## Preliminary Benchmark Results
 
 The following charts show the relative start-up performance of the Leyden/Premain branch vs
@@ -30,7 +83,7 @@ For example, a number of "premain CDS + AOT : 291" indicates that if the applica
 1000 ms to start-up with the JDK mainline, it takes only 291 ms to start up when all the
 current set of Leyden optimizations for CDS and AOT are enabled.
 
-The benchmark results are collected with `make bench` in the following directories:
+The benchmark results are collected with `make bench`in the following directories:
 
 - helidon-quickstart-se
 - micronaut-first-app
