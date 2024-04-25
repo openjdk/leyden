@@ -945,6 +945,28 @@ void ArchiveBuilder::make_klasses_shareable() {
   DynamicArchive::make_array_klasses_shareable();
 }
 
+void ArchiveBuilder::make_training_data_shareable() {
+  auto clean_td = [&] (address& src_obj,  SourceObjInfo& info) {
+    if (!is_in_buffer_space(info.buffered_addr())) {
+      return;
+    }
+
+    if (info.msotype() == MetaspaceObj::KlassTrainingDataType ||
+        info.msotype() == MetaspaceObj::MethodTrainingDataType ||
+        info.msotype() == MetaspaceObj::CompileTrainingDataType) {
+      TrainingData* buffered_td = (TrainingData*)info.buffered_addr();
+      buffered_td->remove_unshareable_info();
+    } else if (info.msotype() == MetaspaceObj::MethodDataType) {
+      MethodData* buffered_mdo = (MethodData*)info.buffered_addr();
+      buffered_mdo->remove_unshareable_info();
+    } else if (info.msotype() == MetaspaceObj::MethodCountersType) {
+      MethodCounters* buffered_mc = (MethodCounters*)info.buffered_addr();
+      buffered_mc->remove_unshareable_info();
+    }
+  };
+  _src_obj_table.iterate_all(clean_td);
+}
+
 void ArchiveBuilder::serialize_dynamic_archivable_items(SerializeClosure* soc) {
   SymbolTable::serialize_shared_table_header(soc, false);
   SystemDictionaryShared::serialize_dictionary_headers(soc, false);

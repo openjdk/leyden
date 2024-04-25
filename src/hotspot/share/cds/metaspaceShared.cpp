@@ -590,8 +590,8 @@ void VM_PopulateDumpSharedSpace::doit() {
   log_info(cds)("Adjust method info dictionary");
   SystemDictionaryShared::adjust_method_info_dictionary();
 
-  log_info(cds)("Adjust training data dictionary");
-  TrainingData::adjust_training_data_dictionary();
+  log_info(cds)("Make training data shareable");
+  _builder.make_training_data_shareable();
 
   // The vtable clones contain addresses of the current process.
   // We don't want to write these addresses into the archive.
