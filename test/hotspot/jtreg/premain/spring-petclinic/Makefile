@@ -303,34 +303,9 @@ clean0:
 cleann:
 	rm -fv spring-petclinic.cds.*
 
-# You can choose a different number of loops like this:
-#     make compare_premain_builds LOOPS="0 1 2" PM_OLD=.....
-LOOPS = 0 1 2 3 4 5 6 7 8 9 10
+include ../lib/Bench.gmk
 
-SLEEP = sleep 1;
-
-bench: mainline_vs_premain
-
-mainline_vs_premain: clean0 _mainline_vs_premain
-
-_mainline_vs_premain:
-	rm -f mainline_vs_premain.csv
-	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT" | tee -a mainline_vs_premain.csv
-	@first=1; for i in ${LOOPS}; do \
-		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= run0.ml | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= runs.ml | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= runs    | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= runn    | grep Booted >> tmp.txt; \
-		if test "$$first" != "1"; then \
-		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a mainline_vs_premain.csv; \
-	        fi; \
-		first=0; \
-	done
-	echo ========================================
-	${MAINLINE_JAVA} ../lib/GithubMDChart.java < mainline_vs_premain.csv
-
-# Same as mainline_vs_premain, but also includes old workflow
+# Same as mainline_vs_premain in ../lib/Bench.gmk, but also includes old workflow
 mainline_vs_premain_all: clean0 _mainline_vs_premain_all
 
 _mainline_vs_premain_all:
@@ -348,34 +323,22 @@ _mainline_vs_premain_all:
 		first=0; \
 	done
 
-# Do something like this to compare two different builds:
-#
-# make compare_premain_builds \
-#    PM_OLD=/repo/old/build/linux-x64/images/jdk \
-#    PM_NEW=/repo/new/build/linux-x64/images/jdk \
-#    BLDJDK_HOME=/my/jdk/21/home
-#
-# or do this to compare the same build with different options:
-#
-# make compare_premain_builds \
-#    PM_OLD=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:-ArchivePackages \
-#    PM_NEW=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:+ArchivePackages \
-#    BLDJDK_HOME=/my/jdk/21/home
+# Same as compare_premain_builds in ../lib/Bench.gmk, but compare CDS only, and old workflow as well
 
-compare_premain_builds: clean0 _compare_premain_builds
+compare_premain_builds_full: clean0 _compare_premain_builds_full
 
-_compare_premain_builds:
+_compare_premain_builds_full:
 	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
 	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
 	@echo "Run,Old static CDS only,New static CDS only,Old static CDS + training + AOT,New static CDS + training + AOT,Old 1-step training,New 1-step training"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} run  | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} run  | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runn | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" run  | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" run  | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runn | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \
@@ -391,25 +354,8 @@ _compare_premain_builds_static:
 	@echo "Run,Old static CDS only,New static CDS only"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
-		if test "$$first" != "1"; then \
-		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
-	        fi; \
-		first=0; \
-	done
-
-# same as above, but only compare the speed of "make runn"
-compare_premain_builds_1step: clean0 _compare_premain_builds_1step
-
-_compare_premain_builds_1step:
-	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
-	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
-	@echo "Run,Old 1-step training,New 1-step training"
-	@first=1; for i in ${LOOPS}; do \
-		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runn | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runs | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \

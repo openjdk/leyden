@@ -21,7 +21,7 @@ JVM invocation.
 
 - [InvokeDynamic.md](InvokeDynamic.md) CDS optimizations for invokedynamic
 
-## Benchmarking
+## Benchmarking Against JDK Mainline
 
 We have included some demo application for some popular Java application
 frameworks, so you can compare the performance of Leyden vs the mainline JDK.
@@ -47,7 +47,6 @@ $ make PREMAIN_HOME=/repos/leyden/build/linux-x64/images/jdk \
        PREMAIN_HOME=/repos/jdk/build/linux-x64/images/jdk \
        BLDJDK_HOME=/usr/local/jdk21 \
        bench
-[...]
 run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT
 1,398,244,144,107
 2,387,247,142,108
@@ -61,7 +60,7 @@ run,mainline default,mainline custom static CDS,premain custom static CDS only,p
 10,400,242,167,108
 Geomean,397.08,243.76,145.52,110.26
 Stdev,13.55,4.19,7.50,5.73
-[...]
+Markdown snippets in mainline_vs_premain.md
 ```
 
 The above command runs each configuration 10 times, in an interleaving order. This way
@@ -71,8 +70,42 @@ be spread across the different runs.
 As typical for start-up benchmarking, the numbers are not very steady. You should plot
 the results (saved in the file mainline_vs_premain.csv) in a spreadsheet to check for noise, etc.
 
-The "make target" target also generates GitHub markdown snippets for creating the
+The "make bench" target also generates GitHub markdown snippets (in the file mainline_vs_premain.md) for creating the
 graphs below.
+
+## Benchmarking Between Two Leyden Builds
+
+This is useful for Leyden developers to measure the benefits of a particular optimization.
+The steps are similar to above, but we use the "make compare_premain_builds" target:
+
+```
+$ cd helidon-quickstart-se
+$ make PM_OLD=/repos/leyden_old/build/linux-x64/images/jdk \
+       PM_NEW=/repos/leyden_new/build/linux-x64/images/jdk \
+       BLDJDK_HOME=/usr/local/jdk21 \
+       compare_premain_builds
+Old build = /repos/leyden_old/build/linux-x64/images/jdk with options
+New build = /repos/leyden_new/build/linux-x64/images/jdk with options
+Run,Old CDS + AOT,New CDS + AOT
+1,110,109
+2,131,111
+3,118,115
+4,110,108
+5,117,110
+6,114,109
+7,110,109
+8,118,110
+9,110,110
+10,113,114
+Geomean,114.94,110.48
+Stdev,6.19,2.16
+Markdown snippets in compare_premain_builds.md
+```
+
+Please see [lib/Bench.gmk](lib/Bench.gmk) for more details.
+
+Note: due to the variability of start-up time, the benefit of minor improvements may
+be difficult to measure.
 
 ## Preliminary Benchmark Results
 
