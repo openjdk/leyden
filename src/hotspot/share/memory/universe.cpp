@@ -230,7 +230,7 @@ public:
 
 static BuiltinException _null_ptr_exception;
 static BuiltinException _arithmetic_exception;
-static BuiltinException _virtual_machine_error;
+static BuiltinException _internal_error;
 static BuiltinException _array_index_oob_exception;
 static BuiltinException _array_store_exception;
 static BuiltinException _class_cast_exception;
@@ -250,7 +250,8 @@ oop Universe::the_min_jint_string()               { return _the_min_jint_string.
 
 oop Universe::null_ptr_exception_instance()       { return _null_ptr_exception.instance(); }
 oop Universe::arithmetic_exception_instance()     { return _arithmetic_exception.instance(); }
-oop Universe::virtual_machine_error_instance()    { return _virtual_machine_error.instance(); }
+oop Universe::internal_error_instance()           { return _internal_error.instance(); }
+
 oop Universe::array_index_oob_exception_instance() { return _array_index_oob_exception.instance(); }
 oop Universe::array_store_exception_instance()     { return _array_store_exception.instance(); }
 oop Universe::class_cast_exception_instance()      { return _class_cast_exception.instance(); }
@@ -309,7 +310,7 @@ void Universe::set_archived_basic_type_mirror_index(BasicType t, int index) {
 void Universe::archive_exception_instances() {
   _null_ptr_exception.store_in_cds();
   _arithmetic_exception.store_in_cds();
-  _virtual_machine_error.store_in_cds();
+  _internal_error.store_in_cds();
   _array_index_oob_exception.store_in_cds();
   _array_store_exception.store_in_cds();
   _class_cast_exception.store_in_cds();
@@ -328,7 +329,7 @@ void Universe::load_archived_object_instances() {
 
     _null_ptr_exception.load_from_cds();
     _arithmetic_exception.load_from_cds();
-    _virtual_machine_error.load_from_cds();
+    _internal_error.load_from_cds();
     _array_index_oob_exception.load_from_cds();
     _array_store_exception.load_from_cds();
     _class_cast_exception.load_from_cds();
@@ -347,7 +348,7 @@ void Universe::serialize(SerializeClosure* f) {
   }
   _null_ptr_exception.serialize(f);
   _arithmetic_exception.serialize(f);
-  _virtual_machine_error.serialize(f);
+  _internal_error.serialize(f);
   _array_index_oob_exception.serialize(f);
   _array_store_exception.serialize(f);
   _class_cast_exception.serialize(f);
@@ -1115,13 +1116,13 @@ bool universe_post_init() {
   _class_cast_exception.init_if_empty(vmSymbols::java_lang_ClassCastException(), CHECK_false);
 
   // Virtual Machine Error for when we get into a situation we can't resolve
-  Klass* k = vmClasses::VirtualMachineError_klass();
+  Klass* k = vmClasses::InternalError_klass();
   bool linked = InstanceKlass::cast(k)->link_class_or_fail(CHECK_false);
   if (!linked) {
-     tty->print_cr("Unable to link/verify VirtualMachineError class");
+     tty->print_cr("Unable to link/verify InternalError class");
      return false; // initialization failed
   }
-  _virtual_machine_error.init_if_empty(vmSymbols::java_lang_VirtualMachineError(), CHECK_false);
+  _internal_error.init_if_empty(vmSymbols::java_lang_InternalError(), CHECK_false);
 
   Handle msg = java_lang_String::create_from_str("/ by zero", CHECK_false);
   java_lang_Throwable::set_message(Universe::arithmetic_exception_instance(), msg());

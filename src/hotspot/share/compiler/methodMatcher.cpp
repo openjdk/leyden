@@ -287,7 +287,7 @@ void MethodMatcher::parse_method_pattern(char*& line, const char*& error_msg, Me
     // it doesn't show up again.
     // !!! FIXME !!! rejects TooManyTrapsAtBCI,CLS::print()V,199 command
 //    if ((OptionType::Unknown != CompilerOracle::parse_option_type(method_name) ||
-//        CompileCommand::Unknown != CompilerOracle::parse_option_name(method_name)) &&
+//        CompileCommandEnum::Unknown != CompilerOracle::parse_option_name(method_name)) &&
 //        *(line + bytes_read) != '\0' &&
 //        strstr(line + bytes_read, method_name) == nullptr) {
 //      error_msg = "Did not specify any method name";

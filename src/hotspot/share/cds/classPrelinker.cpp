@@ -399,7 +399,7 @@ void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKla
     ResolvedIndyEntry* rie = indy_entries->adr_at(i);
     int cp_index = rie->constant_pool_index();
     if (preresolve_list->at(cp_index) == true && !rie->is_resolved() && is_indy_resolution_deterministic(cp(), cp_index)) {
-      InterpreterRuntime::cds_resolve_invokedynamic(ConstantPool::encode_invokedynamic_index(i), cp, THREAD);
+      InterpreterRuntime::cds_resolve_invokedynamic(i, cp, THREAD);
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION; // just ignore
       }

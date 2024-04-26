@@ -139,7 +139,7 @@ static bool is_resolved(JavaThread* current) {
     return constants->tag_at(index).is_klass();
   } else if (bc == Bytecodes::_invokedynamic) {
     int index = last_frame.get_index_u4(bc);
-    int indy_index = constants->decode_invokedynamic_index(index);
+    int indy_index = index;
     ResolvedIndyEntry* indy_entry = constants->resolved_indy_entry_at(indy_index);
     return indy_entry->is_resolved();
   } else if (Bytecodes::is_invoke(bc)) {
@@ -226,7 +226,7 @@ static void trace_current_location(JavaThread* current) {
     if (log1.is_enabled()) {
       if (bc == Bytecodes::_invokedynamic) {
         int index = last_frame.get_index_u4(bc);
-        int indy_index = constants->decode_invokedynamic_index(index);
+        int indy_index = index;
         ResolvedIndyEntry* indy_entry = constants->resolved_indy_entry_at(indy_index);
         indy_entry->print_on(&log1);
       } else if (Bytecodes::is_invoke(bc)) {
@@ -1177,7 +1177,7 @@ PROF_ENTRY(void, InterpreterRuntime, resolve_invokedynamic, InterpreterRuntime::
                                  index, bytecode, CHECK);
   } // end JvmtiHideSingleStepping
 
-  pool->cache()->set_dynamic_call(info, pool->decode_invokedynamic_index(index));
+  pool->cache()->set_dynamic_call(info, index);
 PROF_END
 
 void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
@@ -1186,7 +1186,7 @@ void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
   CallInfo info;
   LinkResolver::resolve_invoke(info, Handle(), pool,
                                raw_index, bytecode, CHECK);
-  pool->cache()->set_dynamic_call(info, pool->decode_invokedynamic_index(raw_index));
+  pool->cache()->set_dynamic_call(info, raw_index);
 }
 
 // This function is the interface to the assembly code. It returns the resolved

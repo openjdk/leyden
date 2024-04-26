@@ -1065,8 +1065,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
         break;
       }
       case Bytecodes::_invokedynamic: {
-        int indy_index = pool->decode_invokedynamic_index(index);
-        appendix = Handle(current, pool->cache()->set_dynamic_call(info, indy_index));
+        appendix = Handle(current, pool->cache()->set_dynamic_call(info, index));
         break;
       }
       default: fatal("unexpected bytecode for load_appendix_patching_id");

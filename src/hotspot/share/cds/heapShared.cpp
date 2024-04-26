@@ -1811,8 +1811,8 @@ void HeapShared::check_default_subgraph_classes() {
           name != vmSymbols::java_lang_ArrayIndexOutOfBoundsException() &&
           name != vmSymbols::java_lang_ArrayStoreException() &&
           name != vmSymbols::java_lang_ClassCastException() &&
+          name != vmSymbols::java_lang_InternalError() &&
           name != vmSymbols::java_lang_NullPointerException() &&
-          name != vmSymbols::java_lang_VirtualMachineError() &&
           !is_archivable_hidden_klass(ik)) {
         ResourceMark rm;
         const char* category = ArchiveUtils::class_category(ik);
