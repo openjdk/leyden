@@ -2956,6 +2956,10 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
     return JNI_ERR;
   }
 
+  if (StoreCachedCode) {
+    FLAG_SET_ERGO_IF_DEFAULT(CachedCodeMaxSize, 512*M);
+  }
+
 #ifndef CAN_SHOW_REGISTERS_ON_ASSERT
   UNSUPPORTED_OPTION(ShowRegistersOnAssert);
 #endif // CAN_SHOW_REGISTERS_ON_ASSERT

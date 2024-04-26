@@ -59,6 +59,7 @@ gantt
 
 */
 
+import java.io.PrintWriter;
 import java.util.Scanner;
 import java.util.ArrayList;
 
@@ -67,7 +68,7 @@ public class GithubMDChart {
     public static void main(String args[]) throws Exception {
         Scanner input = new Scanner(System.in);
         String line = input.nextLine();
-        System.out.println(line);
+        //System.out.println(line);
         String head[] = line.split(",");
         Object[] groups = new Object[head.length];
         String[] geomeans = new String[head.length];
@@ -76,7 +77,7 @@ public class GithubMDChart {
         }
         while (input.hasNext()) {
             line = input.nextLine();
-            System.out.println(line);
+            //System.out.println(line);
             String parts[] = line.split(",");
             for (int i = 0; i < head.length; i++) {
                 ArrayList<Double> list =  (ArrayList<Double>)(groups[i]);
@@ -107,38 +108,39 @@ public class GithubMDChart {
             }
         }
         System.out.println();
-        System.out.println();
-        System.out.println("-----------------RAW Results---------------------------------------------");
+        System.out.println("Markdown snippets in " + args[0]);
 
-        System.out.println("```mermaid");
-        System.out.println("gantt");
-        System.out.println("    title Elapsed time (ms, smaller is better)");
-        System.out.println("    todayMarker off");
-        System.out.println("    dateFormat  X");
-        System.out.println("    axisFormat %s");
-        System.out.println();
+        PrintWriter pw = new PrintWriter(args[0]);
+        pw.println("```mermaid");
+        pw.println("gantt");
+        pw.println("    title Elapsed time (ms, smaller is better)");
+        pw.println("    todayMarker off");
+        pw.println("    dateFormat  X");
+        pw.println("    axisFormat %s");
+        pw.println();
 
         for (int i = 1; i < head.length; i++) {
-            System.out.println("    " + head[i] + "   : 0, " + geomeans[i]);
+            pw.println("    " + head[i] + "   : 0, " + geomeans[i]);
         }
-        System.out.println("```");
-        System.out.println();
-        System.out.println("-----------------Normalized---------------------------------------------");
+        pw.println("```");
+        pw.println();
+        pw.println("-----------------Normalized---------------------------------------------");
 
-        System.out.println("```mermaid");
-        System.out.println("gantt");
-        System.out.println("    title Elapsed time (normalized, smaller is better)");
-        System.out.println("    todayMarker off");
-        System.out.println("    dateFormat  X");
-        System.out.println("    axisFormat %s");
-        System.out.println();
+        pw.println("```mermaid");
+        pw.println("gantt");
+        pw.println("    title Elapsed time (normalized, smaller is better)");
+        pw.println("    todayMarker off");
+        pw.println("    dateFormat  X");
+        pw.println("    axisFormat %s");
+        pw.println();
 
         for (int i = 1; i < head.length; i++) {
             double base = Double.parseDouble(geomeans[1]);
             double me   = Double.parseDouble(geomeans[i]);
-            System.out.println("    " + head[i] + "   : 0, " + String.format("%.0f", 1000.0 * me / base));
+            pw.println("    " + head[i] + "   : 0, " + String.format("%.0f", 1000.0 * me / base));
         }
-        System.out.println("```");
+        pw.println("```");
+        pw.close();
     }
 
 

@@ -731,20 +731,6 @@ void TrainingData::serialize_training_data(SerializeClosure* soc) {
   }
 }
 
-void TrainingData::adjust_training_data_dictionary() {
-  if (!need_data()) {
-    return;
-  }
-  assert(_dumptime_training_data_dictionary != nullptr, "");
-  Visitor visitor(_dumptime_training_data_dictionary->length());
-  for (int i = 0; i < _dumptime_training_data_dictionary->length(); i++) {
-    TrainingData* td = _dumptime_training_data_dictionary->at(i).training_data();
-    td = ArchiveBuilder::current()->get_buffered_addr(td);
-    assert(MetaspaceShared::is_in_shared_metaspace(td) || ArchiveBuilder::current()->is_in_buffer_space(td), "");
-    td->remove_unshareable_info(visitor);
-  }
-}
-
 void TrainingData::print_archived_training_data_on(outputStream* st) {
   st->print_cr("Archived TrainingData Dictionary");
   TrainingDataPrinter tdp(st);
@@ -973,12 +959,9 @@ void TrainingDataPrinter::do_value(TrainingData* td) {
 
 
 #if INCLUDE_CDS
-void KlassTrainingData::remove_unshareable_info(Visitor& visitor) {
-  if (visitor.is_visited(this)) {
-    return;
-  }
-  visitor.visit(this);
-  TrainingData::remove_unshareable_info(visitor);
+void KlassTrainingData::remove_unshareable_info() {
+  TrainingData::remove_unshareable_info();
+  _holder_mirror = nullptr;
   _comp_deps.remove_unshareable_info();
 }
 
@@ -991,18 +974,8 @@ void KlassTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
   _comp_deps.restore_unshareable_info(CHECK);
 }
 
-void MethodTrainingData::remove_unshareable_info(Visitor& visitor) {
-  if (visitor.is_visited(this)) {
-    return;
-  }
-  visitor.visit(this);
-  TrainingData::remove_unshareable_info(visitor);
-  for (int i = 0; i < CompLevel_count; i++) {
-    CompileTrainingData* ctd = _last_toplevel_compiles[i];
-    if (ctd != nullptr) {
-      ctd->remove_unshareable_info(visitor);
-    }
-  }
+void MethodTrainingData::remove_unshareable_info() {
+  TrainingData::remove_unshareable_info();
   if (_final_counters != nullptr) {
     _final_counters->remove_unshareable_info();
   }
@@ -1031,12 +1004,8 @@ void MethodTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
   }
 }
 
-void CompileTrainingData::remove_unshareable_info(Visitor& visitor) {
-  if (visitor.is_visited(this)) {
-    return;
-  }
-  visitor.visit(this);
-  TrainingData::remove_unshareable_info(visitor);
+void CompileTrainingData::remove_unshareable_info() {
+  TrainingData::remove_unshareable_info();
   _init_deps.remove_unshareable_info();
   _ci_records.remove_unshareable_info();
   _init_deps_left = compute_init_deps_left(true);

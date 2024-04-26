@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -352,7 +352,7 @@ public:
   virtual void metaspace_pointers_do(MetaspaceClosure *iter);
 
 #if INCLUDE_CDS
-  virtual void remove_unshareable_info(Visitor& vistor) {}
+  virtual void remove_unshareable_info() {}
   virtual void restore_unshareable_info(Visitor& visitor, TRAPS) {}
   static void restore_all_unshareable_info(TRAPS);
 #endif
@@ -361,7 +361,6 @@ public:
   static void dump_training_data();
   static void cleanup_training_data();
   static void serialize_training_data(SerializeClosure* soc);
-  static void adjust_training_data_dictionary();
   static void print_archived_training_data_on(outputStream* st);
   static void write_training_data_dictionary(TrainingDataDictionary* dictionary);
   static size_t estimate_size_for_archive();
@@ -458,7 +457,7 @@ class KlassTrainingData : public TrainingData {
   }
 
 #if INCLUDE_CDS
-  virtual void remove_unshareable_info(Visitor& visitor);
+  virtual void remove_unshareable_info();
   virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 
@@ -674,7 +673,7 @@ public:
   virtual void print_value_on(outputStream* st) const { print_on(st, true); }
 
 #if INCLUDE_CDS
-  virtual void remove_unshareable_info(Visitor& visitor);
+  virtual void remove_unshareable_info();
   virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 
@@ -801,7 +800,7 @@ class MethodTrainingData : public TrainingData {
   virtual MetaspaceObj::Type type() const { return MethodTrainingDataType; }
 
 #if INCLUDE_CDS
-  virtual void remove_unshareable_info(Visitor& visitor);
+  virtual void remove_unshareable_info();
   virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 

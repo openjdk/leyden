@@ -1,0 +1,87 @@
+# Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+#
+# This code is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License version 2 only, as
+# published by the Free Software Foundation.
+#
+# This code is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+# version 2 for more details (a copy is included in the LICENSE file that
+# accompanied this code).
+#
+# You should have received a copy of the GNU General Public License version
+# 2 along with this work; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+# or visit www.oracle.com if you need additional information or have any
+# questions.
+
+
+# You can choose a different number of loops like this:
+#     make compare_premain_builds LOOPS="0 1 2" PM_OLD=.....
+
+LOOPS = 0 1 2 3 4 5 6 7 8 9 10
+SLEEP = sleep 1;
+
+bench: mainline_vs_premain
+
+mainline_vs_premain: clean0 _mainline_vs_premain
+
+_mainline_vs_premain:
+	rm -f mainline_vs_premain.csv
+	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT" | tee -a mainline_vs_premain.csv
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= run0.ml 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs.ml 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs    2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runn    2>&1 | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a mainline_vs_premain.csv; \
+	        fi; \
+		first=0; \
+	done
+	@${MAINLINE_JAVA} ../lib/GithubMDChart.java mainline_vs_premain.md < mainline_vs_premain.csv
+
+# Compare two premain builds running "make run"
+#
+# make PM_OLD=/repos/leyden_old/build/linux-x64/images/jdk \
+#      PM_NEW=/repos/leyden_new/build/linux-x64/images/jdk \
+#      BLDJDK_HOME=/usr/local/jdk21 \
+#      compare_premain_builds
+#
+# Note: you can also use the same build, but use different option to enable/disable certain features. E.g.
+#
+# make PM_OLD=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:-ArchivePackages \
+#      PM_NEW=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:+ArchivePackages \
+#      BLDJDK_HOME=/my/jdk/21/home
+#      compare_premain_builds
+#
+# Or .. to benchmark a feature that you're developing
+#
+# make PM_OLD=/repos/leyden/build/linux-x64/images/jdk PM_OPTS_OLD="-XX:+UnlockDiagnosticVMOptions -XX:-UseNewCode" \
+#      PM_NEW=/repos/leyden/build/linux-x64/images/jdk PM_OPTS_NEW="-XX:+UnlockDiagnosticVMOptions -XX:+UseNewCode" \
+#      BLDJDK_HOME=/usr/local/jdk21 \
+#      compare_premain_builds
+#
+
+compare_premain_builds: clean0 _compare_premain_builds
+
+_compare_premain_builds:
+	@rm -f compare_premain_builds.csv
+	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
+	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
+	@echo "Run,Old CDS + AOT,New CDS + AOT" | tee -a compare_premain_builds.csv
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" run 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" run 2>&1 | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a compare_premain_builds.csv; \
+	        fi; \
+		first=0; \
+	done
+	@${MAINLINE_JAVA} ../lib/GithubMDChart.java compare_premain_builds.md < compare_premain_builds.csv

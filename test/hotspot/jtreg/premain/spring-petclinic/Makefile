@@ -34,10 +34,10 @@
 # Run without Leyden optimizations
 #    make run0
 
-# Set the following to point to JDK 17, your JDK mainline build, and your Leyden JDK build.
+# Set the following to point to youd "Build JDK", your JDK mainline build, and your Leyden JDK build.
 #
-#  *** NOTE: JDK 17 (or 21??) is needed to build spring-petclinic-3.2.0-SNAPSHOT.jar
-JDK17_HOME   = /jdk3/official/jdk17
+#  *** NOTE: JDK 21 (or 17) is needed to build spring-petclinic-3.2.0-SNAPSHOT.jar
+BLDJDK_HOME   = /jdk3/official/jdk21
 
 # Points to your build with https://github.com/openjdk/jdk
 # For comparison purposes, this build should be the latest version of the mainline that
@@ -54,9 +54,9 @@ LOG_INIT = -Xlog:init
 PM_OPTS =
 
 # Usually there's no need to change the following
-JAR_CMD          = ${JDK17_HOME}/bin/jar
-JAVAC_CMD        = ${JDK17_HOME}/bin/javac
-JDK17_JAVA       = ${JDK17_HOME}/bin/java
+JAR_CMD          = ${BLDJDK_HOME}/bin/jar
+JAVAC_CMD        = ${BLDJDK_HOME}/bin/javac
+BLDJDK_JAVA       = ${BLDJDK_HOME}/bin/java
 MAINLINE_JAVA    = ${MAINLINE_HOME}/bin/java
 PREMAIN_JAVA     = ${PREMAIN_HOME}/bin/java ${PM_OPTS}
 PC_REPO          = petclinic-snapshot
@@ -103,12 +103,6 @@ DUMMY_CMDLINE    = $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath.dummy Dummy
 all: check git app aot
 
 check:
-	@if ${JDK17_JAVA} --version | grep -q '17.*LTS'; then \
-	    true; \
-	else \
-	    echo JDK17_HOME should point to JDK 17; \
-	    exit 1; \
-	fi
 	@if ${PREMAIN_JAVA} -XX:+PrintFlagsFinal --version | grep -q ArchiveInvokeDynamic; then \
 	    true; \
 	else \
@@ -140,7 +134,7 @@ ${PC_JAVA_SOURCES}:
 
 # Need to touch ${PC_APP_JAR} as mvn wants to set it the release date of 3.2.0-SNAPSHOT
 ${PC_APP_JAR}: ${PC_JAVA_SOURCES}
-	cd ${PC_REPO}; JAVA_HOME=${JDK17_HOME} mvn -Dmaven.test.skip=true package
+	cd ${PC_REPO}; JAVA_HOME=${BLDJDK_HOME} mvn -Dmaven.test.skip=true package
 	if test -f ${PC_APP_JAR}; then \
 	    touch ${PC_APP_JAR}; \
 	fi
@@ -157,7 +151,7 @@ ${PC_APP_UNPACKED}: ${PC_APP_JAR}
 	    | sed -e 's/ /:/g' > ${PC_APP_UNPACKED}/classpath
 	echo $$(cat ${PC_APP_UNPACKED}/classpath):Dummy.jar > ${PC_APP_UNPACKED}/classpath.dummy
 	${JAR_CMD} cf0 ${PC_APP_UNPACKED_ZIP} ${PC_APP_UNPACKED}
-	$(MAKE) run17
+	$(MAKE) runb
 
 #uncomment this to see the generated classes for dynamic proxies
 #SAVE_GEN_FILES=-Djdk.proxy.ProxyGenerator.saveGeneratedFiles=true
@@ -223,8 +217,9 @@ rund: ${PC_DYNAMIC_JSA}
 run0: ${PC_APP_UNPACKED}
 	${PREMAIN_JAVA} ${LOG_INIT} ${UNPACKED_CMDLINE}
 
-run17: ${PC_APP_UNPACKED}
-	${JDK17_JAVA} ${UNPACKED_CMDLINE}
+# Run using "build JDK"
+runb: ${PC_APP_UNPACKED}
+	${BLDJDK_JAVA} ${UNPACKED_CMDLINE}
 
 # Running with mainline
 PC_CLASSLIST_MAINLINE   = spring-petclinic.ml.classlist
@@ -308,34 +303,9 @@ clean0:
 cleann:
 	rm -fv spring-petclinic.cds.*
 
-# You can choose a different number of loops like this:
-#     make compare_premain_builds LOOPS="0 1 2" PM_OLD=.....
-LOOPS = 0 1 2 3 4 5 6 7 8 9 10
+include ../lib/Bench.gmk
 
-SLEEP = sleep 1;
-
-bench: mainline_vs_premain
-
-mainline_vs_premain: clean0 _mainline_vs_premain
-
-_mainline_vs_premain:
-	rm -f mainline_vs_premain.csv
-	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT" | tee -a mainline_vs_premain.csv
-	@first=1; for i in ${LOOPS}; do \
-		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= run0.ml | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= runs.ml | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= runs    | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= runn    | grep Booted >> tmp.txt; \
-		if test "$$first" != "1"; then \
-		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a mainline_vs_premain.csv; \
-	        fi; \
-		first=0; \
-	done
-	echo ========================================
-	${MAINLINE_JAVA} ../lib/GithubMDChart.java < mainline_vs_premain.csv
-
-# Same as mainline_vs_premain, but also includes old workflow
+# Same as mainline_vs_premain in ../lib/Bench.gmk, but also includes old workflow
 mainline_vs_premain_all: clean0 _mainline_vs_premain_all
 
 _mainline_vs_premain_all:
@@ -353,34 +323,22 @@ _mainline_vs_premain_all:
 		first=0; \
 	done
 
-# Do something like this to compare two different builds:
-#
-# make compare_premain_builds \
-#    PM_OLD=/repo/old/build/linux-x64/images/jdk \
-#    PM_NEW=/repo/new/build/linux-x64/images/jdk \
-#    JDK17_HOME=/my/jdk/17/home
-#
-# or do this to compare the same build with different options:
-#
-# make compare_premain_builds \
-#    PM_OLD=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:-ArchivePackages \
-#    PM_NEW=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:+ArchivePackages \
-#    JDK17_HOME=/my/jdk/17/home
+# Same as compare_premain_builds in ../lib/Bench.gmk, but compare CDS only, and old workflow as well
 
-compare_premain_builds: clean0 _compare_premain_builds
+compare_premain_builds_full: clean0 _compare_premain_builds_full
 
-_compare_premain_builds:
+_compare_premain_builds_full:
 	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
 	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
 	@echo "Run,Old static CDS only,New static CDS only,Old static CDS + training + AOT,New static CDS + training + AOT,Old 1-step training,New 1-step training"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} run  | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} run  | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runn | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" run  | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" run  | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runn | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \
@@ -396,25 +354,8 @@ _compare_premain_builds_static:
 	@echo "Run,Old static CDS only,New static CDS only"
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runs | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runs | grep Booted >> tmp.txt; \
-		if test "$$first" != "1"; then \
-		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
-	        fi; \
-		first=0; \
-	done
-
-# same as above, but only compare the speed of "make runn"
-compare_premain_builds_1step: clean0 _compare_premain_builds_1step
-
-_compare_premain_builds_1step:
-	@echo Old build = ${PM_OLD} with options ${PM_OPTS_OLD}
-	@echo New build = ${PM_NEW} with options ${PM_OPTS_NEW}
-	@echo "Run,Old 1-step training,New 1-step training"
-	@first=1; for i in ${LOOPS}; do \
-		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS=${PM_OPTS_OLD} runn | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS=${PM_OPTS_NEW} runn | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runs | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runs | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g'; \
 	        fi; \
