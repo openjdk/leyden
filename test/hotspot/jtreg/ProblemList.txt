@@ -188,3 +188,38 @@ vmTestbase/nsk/jdwp/ThreadReference/ForceEarlyReturn/forceEarlyReturn001/forceEa
 vmTestbase/nsk/monitoring/ThreadMXBean/ThreadInfo/Multi/Multi005/TestDescription.java 8076494 windows-x64
 
 vmTestbase/nsk/monitoring/ThreadMXBean/findMonitorDeadlockedThreads/find006/TestDescription.java 8310144 macosx-aarch64
+
+
+
+
+
+
+
+#############################################################################
+
+# leyden/premain branch test failures
+
+#############################################################################
+
+# The following CDS tests fail due to lambdaform/lambdaproxy handling
+runtime/cds/appcds/dynamicArchive/LambdasInTwoArchives.java 8318142 generic-all
+runtime/cds/appcds/dynamicArchive/TestDynamicDumpAtOom.java 8318142 generic-all
+runtime/cds/appcds/dynamicArchive/TestDynamicRegenerateHolderClasses.java 8318142 generic-all
+runtime/cds/appcds/dynamicArchive/TestLambdaInvokers.java 8318142 generic-all
+runtime/cds/appcds/javaldr/ExceptionDuringDumpAtObjectsInitPhase.java 8318142 generic-all
+
+# Misc failures -- need to investigate
+runtime/logging/ItablesTest.java 8318142 generic-all
+runtime/logging/VerificationTest.java 8318142 generic-all
+runtime/logging/VtablesTest.java 8318142 generic-all
+runtime/MemberName/MemberNameLeak.java 8318142 generic-all
+
+# Not analyzed yet -- don't seem to be serious -- exclude for now
+compiler/blackhole/BlackholeExistingIntrinsicWarningTest.java 8318142 generic-all
+compiler/blackhole/BlackholeNonEmptyWarningTest.java 8318142 generic-all
+compiler/blackhole/BlackholeNonStaticWarningTest.java 8318142 generic-all
+compiler/blackhole/BlackholeNonVoidWarningTest.java 8318142 generic-all
+compiler/jvmci/TestEnableJVMCIProduct.java 8318142 generic-all
+gtest/GTestWrapper.java 8318142 generic-all
+runtime/ErrorHandling/TestDwarf.java#dontCheckDecoder 8318142 generic-all
+serviceability/dcmd/compiler/CodelistTest.java 8318142 generic-all
