@@ -1654,6 +1654,10 @@ MapArchiveResult MetaspaceShared::map_archive(FileMapInfo* mapinfo, char* mapped
     return MAP_ARCHIVE_SUCCESS; // The dynamic archive has not been specified. No error has happened -- trivially succeeded.
   }
 
+  if (!mapinfo->validate_leyden_config()) {
+    return MAP_ARCHIVE_OTHER_FAILURE;
+  }
+
   mapinfo->set_is_mapped(false);
   if (mapinfo->core_region_alignment() != (size_t)core_region_alignment()) {
     log_info(cds)("Unable to map CDS archive -- core_region_alignment() expected: " SIZE_FORMAT

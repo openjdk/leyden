@@ -28,10 +28,10 @@
  * @summary Test for verification of classes that are preloaded
  * @library /test/jdk/lib/testlibrary /test/lib /test/hotspot/jtreg/runtime/cds/appcds
  * @build GoodOldClass BadOldClass BadOldClass2 BadNewClass BadNewClass2
- * @build PreloadedClassVerification
+ * @build PreloadedClassesVerification
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar WhiteBox.jar jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app1.jar
- *                 PreloadedClassVerificationApp
+ *                 PreloadedClassesVerificationApp
  *                 Unlinked UnlinkedSuper
  *                 BadOldClass
  *                 BadOldClass2
@@ -41,19 +41,19 @@
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app2.jar
  *                 UnlinkedSub
  *                 Foo NotFoo
- * @run driver PreloadedClassVerification
+ * @run driver PreloadedClassesVerification
  */
 
 import java.io.File;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.whitebox.WhiteBox;
 
-public class PreloadedClassVerification {
+public class PreloadedClassesVerification {
     static final String app1Jar = ClassFileInstaller.getJarPath("app1.jar");
     static final String app2Jar = ClassFileInstaller.getJarPath("app2.jar");
     static final String wbJar = TestCommon.getTestJar("WhiteBox.jar");
     static final String bootAppendWhiteBox = "-Xbootclasspath/a:" + wbJar;
-    static final String mainClass = PreloadedClassVerificationApp.class.getName();
+    static final String mainClass = PreloadedClassesVerificationApp.class.getName();
 
     public static void main(String[] args) throws Exception {
         // Dump without app2.jar so:
@@ -77,14 +77,14 @@ public class PreloadedClassVerification {
                        "-XX:+UnlockDiagnosticVMOptions",
                        "-XX:+WhiteBoxAPI",
                        bootAppendWhiteBox,
-                       "PreloadedClassVerificationApp")
+                       "PreloadedClassesVerificationApp")
             .assertNormalExit();
     }
 }
 
-class PreloadedClassVerificationApp {
+class PreloadedClassesVerificationApp {
     static WhiteBox wb = WhiteBox.getWhiteBox();
-    static ClassLoader classLoader = PreloadedClassVerificationApp.class.getClassLoader();
+    static ClassLoader classLoader = PreloadedClassesVerificationApp.class.getClassLoader();
 
     public static void main(String[] args) throws Exception {
         assertNotShared(UnlinkedSub.class);

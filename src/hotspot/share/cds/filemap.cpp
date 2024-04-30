@@ -218,6 +218,8 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
   _has_archived_invokedynamic = CDSConfig::is_dumping_invokedynamic();
   _has_archived_packages = CDSConfig::is_dumping_packages();
+  _gc_kind = (int)Universe::heap()->kind();
+  jio_snprintf(_gc_name, sizeof(_gc_name), Universe::heap()->name());
 
   // The following fields are for sanity checks for whether this archive
   // will function correctly with this JVM and the bootclasspath it's
@@ -2432,13 +2434,28 @@ bool FileMapInfo::initialize() {
     }
   }
 
+  return true;
+}
+
+bool FileMapInfo::validate_leyden_config() {
+  // These checks need to be done after FileMapInfo::initialize(), which gets called before Universe::heap()
+  // is available.
   if (header()->has_preloaded_classes()) {
     if (JvmtiExport::should_post_class_file_load_hook()) {
-      log_info(cds)("CDS archive has preloaded classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
+      log_error(cds)("CDS archive has preloaded classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
       return false;
     }
     if (JvmtiExport::has_early_vmstart_env()) {
-      log_info(cds)("CDS archive has preloaded classes. It cannot be used when JVMTI early vm start is in use.");
+      log_error(cds)("CDS archive has preloaded classes. It cannot be used when JVMTI early vm start is in use.");
+      return false;
+    }
+    if (!CDSConfig::is_using_full_module_graph() && !CDSConfig::is_dumping_final_static_archive()) {
+      log_error(cds)("CDS archive has preloaded classes. It cannot be used when archived full module graph is not used.");
+      return false;
+    }
+    if (header()->gc_kind() != (int)Universe::heap()->kind()) {
+      log_error(cds)("CDS archive has preloaded classes. It cannot be used because GC used during dump time (%s) is not the same as runtime (%s)",
+                     header()->gc_name(), Universe::heap()->name());
       return false;
     }
   }

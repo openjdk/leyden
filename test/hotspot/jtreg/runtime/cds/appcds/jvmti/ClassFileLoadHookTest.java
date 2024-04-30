@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -96,5 +96,14 @@ public class ClassFileLoadHookTest {
                 "ClassFileLoadHook",
                 "" + ClassFileLoadHook.TestCaseId.SHARING_ON_CFLH_ON);
         TestCommon.checkExec(out);
+
+        // Leyden: if dumped with -XX:+PreloadSharedClasses, cannot use archive when CFLH
+        TestCommon.testDump(appJar, sharedClasses, "-XX:+PreloadSharedClasses");
+        out = TestCommon.exec(appJar,
+                "-agentlib:SimpleClassFileLoadHook=LoadMe,beforeHook,after_Hook",
+                "ClassFileLoadHook",
+                "" + ClassFileLoadHook.TestCaseId.SHARING_ON_CFLH_ON);
+        out.shouldContain("CDS archive has preloaded classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
+        out.shouldNotHaveExitValue(0);
     }
 }

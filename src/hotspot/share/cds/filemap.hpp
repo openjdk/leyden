@@ -228,6 +228,8 @@ private:
   bool   _has_full_module_graph;        // Does this CDS archive contain the full archived module graph?
   bool   _has_archived_invokedynamic;   // Does the archive have preresolved invokedynamic CP entries?
   bool   _has_archived_packages;
+  int    _gc_kind;                      // Universe::heap()->kind();
+  char   _gc_name[32];                  // Universe::heap()->name();
   size_t _ptrmap_size_in_bits;          // Size of pointer relocation bitmap
   size_t _heap_roots_offset;            // Offset of the HeapShared::roots() object, from the bottom
                                         // of the archived heap objects, in bytes.
@@ -273,6 +275,8 @@ public:
   bool has_platform_or_app_classes()       const { return _has_platform_or_app_classes; }
   bool has_non_jar_in_classpath()          const { return _has_non_jar_in_classpath; }
   bool has_preloaded_classes()             const { return _has_preloaded_classes; }
+  int gc_kind()                            const { return _gc_kind; }
+  const char* gc_name()                    const { return _gc_name; }
   size_t ptrmap_size_in_bits()             const { return _ptrmap_size_in_bits; }
   bool compressed_oops()                   const { return _compressed_oops; }
   bool compressed_class_pointers()         const { return _compressed_class_ptrs; }
@@ -490,6 +494,7 @@ public:
   bool check_module_paths();
   bool validate_shared_path_table();
   void validate_non_existent_class_paths();
+  bool validate_leyden_config();
   static void set_shared_path_table(FileMapInfo* info) {
     _shared_path_table = info->header()->shared_path_table();
   }
