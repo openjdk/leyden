@@ -44,7 +44,7 @@ The steps for benchmarking is the same for the above four demos. For example:
 ```
 $ cd helidon-quickstart-se
 $ make PREMAIN_HOME=/repos/leyden/build/linux-x64/images/jdk \
-       PREMAIN_HOME=/repos/jdk/build/linux-x64/images/jdk \
+       MAINLINE_HOME=/repos/jdk/build/linux-x64/images/jdk \
        BLDJDK_HOME=/usr/local/jdk21 \
        bench
 run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT
@@ -190,3 +190,15 @@ gantt
     premain custom static CDS only   : 0, 563
     premain CDS + AOT   : 0, 368
 ```
+
+## Regression Testing
+
+Leyden-specific tests have been added to the following directories in the repo:
+
+- [test/hotspot/jtreg/runtime/cds/appcds/applications](../runtime/cds/appcds/applications)
+- [test/hotspot/jtreg/runtime/cds/appcds/indy](../runtime/cds/appcds/indy)
+- [test/hotspot/jtreg/runtime/cds/appcds/leyden](../runtime/cds/appcds/leyden)
+- [test/hotspot/jtreg/runtime/cds/appcds/preloadedClasses](../runtime/cds/appcds/preloadedClasses)
+
+These test cases can be executed using jtreg. Some of the tests (in the applications directories)
+require binaries to be built separately. Please refer to the script [lib/build-for-jtreg.sh](lib/build-for-jtreg.sh)
