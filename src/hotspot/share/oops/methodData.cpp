@@ -1264,7 +1264,7 @@ MethodData::MethodData(const methodHandle& method)
     // Holds Compile_lock
     _compiler_counters(),
     _parameters_type_data_di(parameters_uninitialized) {
-    _extra_data_lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock"),
+    _extra_data_lock = nullptr;
     initialize();
 }
 
@@ -1829,6 +1829,19 @@ public:
   bool is_live(Method* m) { return !m->is_old(); }
 };
 
+Mutex* MethodData::extra_data_lock() {
+  Mutex* lock = Atomic::load(&_extra_data_lock);
+  if (lock == nullptr) {
+    MutexLocker cl(Metaspace_lock, Mutex::_no_safepoint_check_flag);
+    lock = Atomic::load(&_extra_data_lock);
+    if (lock == nullptr) {
+      lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
+      Atomic::store(&_extra_data_lock, lock);
+    }
+  }
+
+  return lock;
+}
 
 // Remove SpeculativeTrapData entries that reference an unloaded or
 // redefined method
@@ -1955,7 +1968,7 @@ void MethodData::remove_unshareable_info() {
 }
 
 void MethodData::restore_unshareable_info(TRAPS) {
-  _extra_data_lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
+  //_extra_data_lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
 }
 #endif // INCLUDE_CDS
        

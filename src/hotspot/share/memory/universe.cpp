@@ -543,7 +543,7 @@ void Universe::genesis(TRAPS) {
   #endif
 
 #if INCLUDE_CDS
-  TrainingData::restore_all_unshareable_info(CHECK);
+  //TrainingData::restore_all_unshareable_info(CHECK);
 #endif
 }
 
