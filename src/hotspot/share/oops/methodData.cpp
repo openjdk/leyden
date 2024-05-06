@@ -1832,14 +1832,14 @@ public:
 Mutex* MethodData::extra_data_lock() {
   Mutex* lock = Atomic::load(&_extra_data_lock);
   if (lock == nullptr) {
-    MutexLocker cl(Metaspace_lock, Mutex::_no_safepoint_check_flag);
-    lock = Atomic::load(&_extra_data_lock);
-    if (lock == nullptr) {
-      lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
-      Atomic::store(&_extra_data_lock, lock);
+    lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
+    Mutex* old = Atomic::cmpxchg(&_extra_data_lock, (Mutex*)nullptr, lock);
+    if (old != nullptr) {
+      // Another thread created the lock before us. Use that lock instead.
+      delete lock;
+      return old;
     }
   }
-
   return lock;
 }
 
