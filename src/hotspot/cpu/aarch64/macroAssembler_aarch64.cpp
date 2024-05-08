@@ -1585,16 +1585,7 @@ void MacroAssembler::check_klass_subtype_slow_path(Register sub_klass,
   }
 
 #ifndef PRODUCT
-  if (SCCache::is_on_for_write()) {
-    // SCA needs relocation info for this
-    lea(rscratch2, ExternalAddress((address)&SharedRuntime::_partial_subtype_ctr));
-  } else {
-    mov(rscratch2, (address)&SharedRuntime::_partial_subtype_ctr);
-  }
-  Address pst_counter_addr(rscratch2);
-  ldr(rscratch1, pst_counter_addr);
-  add(rscratch1, rscratch1, 1);
-  str(rscratch1, pst_counter_addr);
+  incrementw(ExternalAddress((address)&SharedRuntime::_partial_subtype_ctr));
 #endif //PRODUCT
 
   // We will consult the secondary-super array.

@@ -35,6 +35,7 @@
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "gc/shared/collectedHeap.hpp"
+#include "gc/shared/memAllocator.hpp"
 #include "interpreter/bytecode.hpp"
 #include "interpreter/bytecodeStream.hpp"
 #include "interpreter/interpreter.hpp"
@@ -393,7 +394,6 @@ static void restore_eliminated_locks(JavaThread* thread, GrowableArray<compiledV
 #ifndef PRODUCT
   bool first = true;
 #endif // !PRODUCT
-  DEBUG_ONLY(GrowableArray<oop> lock_order{0};)
   // Start locking from outermost/oldest frame
   for (int i = (chunk->length() - 1); i >= 0; i--) {
     compiledVFrame* cvf = chunk->at(i);
@@ -403,13 +403,6 @@ static void restore_eliminated_locks(JavaThread* thread, GrowableArray<compiledV
       bool relocked = Deoptimization::relock_objects(thread, monitors, deoptee_thread, deoptee,
                                                      exec_mode, realloc_failures);
       deoptimized_objects = deoptimized_objects || relocked;
-#ifdef ASSERT
-      if (LockingMode == LM_LIGHTWEIGHT && !realloc_failures) {
-        for (MonitorInfo* mi : *monitors) {
-          lock_order.push(mi->owner());
-        }
-      }
-#endif // ASSERT
 #ifndef PRODUCT
       if (PrintDeoptimizationDetails) {
         ResourceMark rm;
@@ -441,11 +434,6 @@ static void restore_eliminated_locks(JavaThread* thread, GrowableArray<compiledV
 #endif // !PRODUCT
     }
   }
-#ifdef ASSERT
-  if (LockingMode == LM_LIGHTWEIGHT && !realloc_failures) {
-    deoptee_thread->lock_stack().verify_consistent_lock_order(lock_order, exec_mode != Deoptimization::Unpack_none);
-  }
-#endif // ASSERT
 }
 
 // Deoptimize objects, that is reallocate and relock them, just before they escape through JVMTI.
@@ -550,7 +538,7 @@ Deoptimization::UnrollBlock* Deoptimization::fetch_unroll_info_helper(JavaThread
 #if COMPILER2_OR_JVMCI
   if ((jvmci_enabled COMPILER2_PRESENT( || ((DoEscapeAnalysis || EliminateNestedLocks) && EliminateLocks) ))
       && !EscapeBarrier::objs_are_deoptimized(current, deoptee.id())) {
-    bool unused;
+    bool unused = false;
     restore_eliminated_locks(current, chunk, realloc_failures, deoptee, exec_mode, unused);
   }
 #endif // COMPILER2_OR_JVMCI
@@ -1252,6 +1240,7 @@ bool Deoptimization::realloc_objects(JavaThread* thread, frame* fr, RegisterMap*
 
       InstanceKlass* ik = InstanceKlass::cast(k);
       if (obj == nullptr && !cache_init_error) {
+        InternalOOMEMark iom(THREAD);
 #if COMPILER2_OR_JVMCI
         if (EnableVectorSupport && VectorSupport::is_vector(ik)) {
           obj = VectorSupport::allocate_vector(ik, fr, reg_map, sv, THREAD);
@@ -1266,9 +1255,11 @@ bool Deoptimization::realloc_objects(JavaThread* thread, frame* fr, RegisterMap*
       TypeArrayKlass* ak = TypeArrayKlass::cast(k);
       assert(sv->field_size() % type2size[ak->element_type()] == 0, "non-integral array length");
       int len = sv->field_size() / type2size[ak->element_type()];
+      InternalOOMEMark iom(THREAD);
       obj = ak->allocate(len, THREAD);
     } else if (k->is_objArray_klass()) {
       ObjArrayKlass* ak = ObjArrayKlass::cast(k);
+      InternalOOMEMark iom(THREAD);
       obj = ak->allocate(sv->field_size(), THREAD);
     }
 
