@@ -29,7 +29,7 @@
 #include "utilities/exceptions.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/growableArray.hpp"
-#include "utilities/lineReader.hpp"
+#include "utilities/istream.hpp"
 #include "utilities/resizeableResourceHash.hpp"
 
 class constantPoolHandle;
@@ -96,15 +96,14 @@ private:
   static volatile Thread* _parsing_thread; // the thread that created _instance
   static ClassListParser* _instance; // the singleton.
   const char* _classlist_file;
-  FILE* _file;
 
   ID2KlassTable _id2klass_table;
 
-  LineReader          _line_reader;
+  FileInput           _file_input;
+  inputStream         _input_stream;
   char*               _line;                  // The buffer that holds the current line. Some characters in
                                               // the buffer may be overwritten by '\0' during parsing.
   int                 _line_len;              // Original length of the input line.
-  int                 _line_no;               // Line number for current line being parsed
   const char*         _class_name;
   GrowableArray<const char*>* _indy_items;    // items related to invoke dynamic for archiving lambda proxy classes
   int                 _id;
@@ -142,6 +141,8 @@ private:
   void parse_loader_negative_cache_tag();
   void parse_array_dimension_tag();
 
+  size_t lineno() { return _input_stream.lineno(); }
+  FILE* do_open(const char* file);
   ClassListParser(const char* file, ParseMode _parse_mode);
   ~ClassListParser();
   void print_diagnostic_info(outputStream* st, const char* msg, va_list ap) ATTRIBUTE_PRINTF(3, 0);
@@ -202,6 +203,7 @@ public:
       error("%s id %d is not yet loaded", which, id);
     }
   }
+  void check_class_name(const char* class_name);
 
   const char* current_class_name() {
     return _class_name;

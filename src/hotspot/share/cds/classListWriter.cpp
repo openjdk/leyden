@@ -287,6 +287,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
   ResourceMark rm;
   ConstantPool* cp = ik->constants();
   GrowableArray<bool> list(cp->length(), cp->length(), false);
+  bool print = false;
 
   for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is unused
     switch (cp->tag_at(cp_index).value()) {
@@ -295,6 +296,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
         Klass* k = cp->resolved_klass_at(cp_index);
         if (k->is_instance_klass()) {
           list.at_put(cp_index, true);
+          print = true;
         }
       }
       break;
@@ -309,6 +311,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
         int cp_index = rie->constant_pool_index();
         if (rie->is_resolved()) {
           list.at_put(cp_index, true);
+          print = true;
         }
       }
     }
@@ -322,6 +325,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
             rfe->is_resolved(Bytecodes::_getfield) ||
             rfe->is_resolved(Bytecodes::_putfield)) {
           list.at_put(rfe->constant_pool_index(), true);
+          print = true;
         }
       }
     }
@@ -336,12 +340,13 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
             rme->is_resolved(Bytecodes::_invokestatic) ||
             rme->is_resolved(Bytecodes::_invokehandle)) {
           list.at_put(rme->constant_pool_index(), true);
+          print = true;
         }
       }
     }
   }
 
-  if (list.length() > 0) {
+  if (print) {
     outputStream* stream = _classlist_file;
     stream->print("@cp %s", ik->name()->as_C_string());
     for (int i = 0; i < list.length(); i++) {

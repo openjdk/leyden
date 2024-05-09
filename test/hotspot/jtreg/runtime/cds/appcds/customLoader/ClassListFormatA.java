@@ -23,6 +23,7 @@
  */
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import jdk.test.lib.cds.CDSOptions;
 import jdk.test.lib.cds.CDSTestUtils;
@@ -99,35 +100,76 @@ public class ClassListFormatA extends ClassListFormatBase {
 
         // Good input:
         dumpShouldPass(
-            "TESTCASE A6: extraneous spaces, tab characters and trailing new line characters",
+            "TESTCASE A6: extraneous spaces, tab characters, trailing new line characters, and trailing comment line",
             appJar, classlist(
                 "Hello   ",                   // trailing spaces
                 "java/lang/Object\tid:\t1",   // \t instead of ' '
                 "CustomLoadee id: 2 super: 1 source: " + customJarPath,
                 "CustomInterface2_ia id: 3 super: 1 source: " + customJarPath + " ",
                 "CustomInterface2_ib id: 4 super: 1 source: " + customJarPath + "\t\t\r" ,
-                "CustomLoadee2 id: 5 super: 1 interfaces: 3 4 source: " + customJarPath      // preceding spaces
+                "CustomLoadee2 id: 5 super: 1 interfaces: 3 4 source: " + customJarPath,      // preceding spaces
+                "#last line is a comment"
             ));
 
-        // The C++ class LineReader should be able to:
-        // [1] read a very long line (65000 chars)
-        // [2] read the last line from a file that doesn't end with a newline character.
+        // Tests for corner cases in the C++ class LineReader, or invalid UTF8. These can't
+        // be tested with dumpShouldPass/dumpShouldFail as we need to prepare a special class
+        // list file.
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 6500; i++) {
-          sb.append("X123456789");
-        }
-        String longName = sb.toString(); // 65000 chars long
-        System.out.println("TESTCASE A7: Long line; Last line in file is not newline.");
-        String classList = "NoEndingNewLine.classlist";
-        try (FileWriter fw = new FileWriter(classList)) {
-            fw.write(longName + "\n");
-            fw.write("No/Such/ClassABCD");
+            sb.append("X123456789");
         }
 
-        CDSOptions opts = (new CDSOptions())
-            .addPrefix("-XX:ExtraSharedClassListFile=" + classList, "-Xlog:cds");
-        CDSTestUtils.createArchiveAndCheck(opts)
-            .shouldContain("Preload Warning: Cannot find " + longName)
-            .shouldContain("Preload Warning: Cannot find No/Such/ClassABCD");
+        {
+            System.out.println("TESTCASE A7.1: Long line (65000 chars)");
+            String longName = sb.toString(); // 65000 chars long
+            String classList = "LongLine.classlist";
+            try (FileWriter fw = new FileWriter(classList)) {
+                fw.write(longName + "\n");
+            }
+            CDSOptions opts = (new CDSOptions())
+                .addPrefix("-XX:ExtraSharedClassListFile=" + classList, "-Xlog:cds");
+            CDSTestUtils.createArchiveAndCheck(opts)
+                .shouldContain("Preload Warning: Cannot find " + longName);
+        }
+
+        {
+            System.out.println("TESTCASE A7.2: Name Length > Symbol::max_length()");
+            String tooLongName = sb.toString() + sb.toString();
+            String classList = "TooLongLine.classlist";
+            try (FileWriter fw = new FileWriter(classList)) {
+                fw.write("java/lang/Object\n");
+                fw.write(tooLongName + "\n");
+            }
+            CDSOptions opts = (new CDSOptions())
+                .addPrefix("-XX:ExtraSharedClassListFile=" + classList, "-Xlog:cds");
+            CDSTestUtils.createArchive(opts)
+                .shouldContain(classList + ":2 class name too long") // test line number as well.
+                .shouldHaveExitValue(1);
+        }
+
+        {
+            System.out.println("TESTCASE A7.3: File doesn't end with newline");
+            String classList = "NoTrailingNewLine.classlist";
+            try (FileWriter fw = new FileWriter(classList)) {
+                fw.write("No/Such/ClassABCD");
+            }
+            CDSOptions opts = (new CDSOptions())
+                .addPrefix("-XX:ExtraSharedClassListFile=" + classList, "-Xlog:cds");
+            CDSTestUtils.createArchiveAndCheck(opts)
+                .shouldContain("Preload Warning: Cannot find No/Such/ClassABCD");
+        }
+        {
+            System.out.println("TESTCASE A7.4: invalid UTF8 character");
+            String classList = "BadUTF8.classlist";
+            try (FileOutputStream fos = new FileOutputStream(classList)) {
+                byte chars[] = new byte[] { (byte)0xa0, (byte)0xa1, '\n'};
+                fos.write(chars);
+            }
+            CDSOptions opts = (new CDSOptions())
+                .addPrefix("-XX:ExtraSharedClassListFile=" + classList, "-Xlog:cds");
+            CDSTestUtils.createArchive(opts)
+                .shouldContain(classList + ":1 class name is not valid UTF8") // test line number as well.
+                .shouldHaveExitValue(1);
+        }
     }
 }
