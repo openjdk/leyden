@@ -35,7 +35,7 @@ if test "$BLDJDK_HOME" = ""; then
     BLDJDK_HOME=/jdk3/official/jdk21
 fi
 
-if test "$REPO" = ""; then
+if test "$ROOT" = ""; then
     # This is your copy of https://github.com/openjdk/leyden/tree/premain
     ROOT=/jdk3/le4/open
 fi
