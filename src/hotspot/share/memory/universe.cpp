@@ -540,10 +540,6 @@ void Universe::genesis(TRAPS) {
     assert(i == ((objArrayOop)_fullgc_alot_dummy_array.resolve())->length(), "just checking");
   }
   #endif
-
-#if INCLUDE_CDS
-  //TrainingData::restore_all_unshareable_info(CHECK);
-#endif
 }
 
 void Universe::initialize_basic_type_mirrors(TRAPS) {

@@ -76,18 +76,6 @@ CompileTrainingData::CompileTrainingData() : _level(-1), _compile_id(-1) {
   assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
 }
 
-#if INCLUDE_CDS
-void TrainingData::restore_all_unshareable_info(TRAPS) {
-  if (have_data() && !archived_training_data_dictionary()->empty()) {
-    const unsigned size = static_cast<unsigned>(archived_training_data_dictionary()->entry_count());
-    Visitor visitor(size);
-    archived_training_data_dictionary()->iterate([&](TrainingData *td) {
-      td->restore_unshareable_info(visitor, THREAD);
-    });
-  }
-}
-#endif
-
 void TrainingData::initialize() {
   // this is a nop if training modes are not enabled
   if (have_data() || need_data()) {
@@ -965,15 +953,6 @@ void KlassTrainingData::remove_unshareable_info() {
   _comp_deps.remove_unshareable_info();
 }
 
-void KlassTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
-  if (visitor.is_visited(this)) {
-    return;
-  }
-  visitor.visit(this);
-  TrainingData::restore_unshareable_info(visitor, CHECK);
-  _comp_deps.restore_unshareable_info(CHECK);
-}
-
 void MethodTrainingData::remove_unshareable_info() {
   TrainingData::remove_unshareable_info();
   if (_final_counters != nullptr) {
@@ -984,26 +963,6 @@ void MethodTrainingData::remove_unshareable_info() {
   }
 }
 
-void MethodTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
-  if (visitor.is_visited(this)) {
-    return;
-  }
-  visitor.visit(this);
-  TrainingData::restore_unshareable_info(visitor, CHECK);
-  for (int i = 0; i < CompLevel_count; i++) {
-    CompileTrainingData* ctd = _last_toplevel_compiles[i];
-    if (ctd != nullptr) {
-      ctd->restore_unshareable_info(visitor, CHECK);
-    }
-  }
-  if (_final_counters != nullptr ) {
-    _final_counters->restore_unshareable_info(CHECK);
-  }
-  if (_final_profile != nullptr) {
-    _final_profile->restore_unshareable_info(CHECK);
-  }
-}
-
 void CompileTrainingData::remove_unshareable_info() {
   TrainingData::remove_unshareable_info();
   _init_deps.remove_unshareable_info();
@@ -1011,14 +970,4 @@ void CompileTrainingData::remove_unshareable_info() {
   _init_deps_left = compute_init_deps_left(true);
 }
 
-void CompileTrainingData::restore_unshareable_info(Visitor& visitor, TRAPS) {
-  if (visitor.is_visited(this)) {
-    return;
-  }
-  visitor.visit(this);
-  TrainingData::restore_unshareable_info(visitor, CHECK);
-  _init_deps.restore_unshareable_info(CHECK);
-  _ci_records.restore_unshareable_info(CHECK);
-  guarantee(_init_deps_left == (int)compute_init_deps_left(), "mismatch");
-}
 #endif // INCLUDE_CDS

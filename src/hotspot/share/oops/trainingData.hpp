@@ -343,7 +343,6 @@ public:
     void remove_unshareable_info() {
       _deps_dyn = nullptr;
     }
-    void restore_unshareable_info(TRAPS) {}
 #endif
     void prepare(ClassLoaderData* loader_data);
     void metaspace_pointers_do(MetaspaceClosure *iter);
@@ -353,8 +352,6 @@ public:
 
 #if INCLUDE_CDS
   virtual void remove_unshareable_info() {}
-  virtual void restore_unshareable_info(Visitor& visitor, TRAPS) {}
-  static void restore_all_unshareable_info(TRAPS);
 #endif
   static void init_dumptime_table(TRAPS);
   static void iterate_roots(MetaspaceClosure* it);
@@ -458,7 +455,6 @@ class KlassTrainingData : public TrainingData {
 
 #if INCLUDE_CDS
   virtual void remove_unshareable_info();
-  virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 
   void metaspace_pointers_do(MetaspaceClosure *iter);
@@ -572,7 +568,6 @@ public:
       }
 #if INCLUDE_CDS
       void remove_unshareable_info() { _data.remove_unshareable_info(); }
-      void restore_unshareable_info(TRAPS) { _data.restore_unshareable_info(THREAD); }
 #endif
       void prepare(ClassLoaderData* loader_data) {
         _data.prepare(loader_data);
@@ -589,9 +584,6 @@ public:
 #if INCLUDE_CDS
     void remove_unshareable_info() {
       ciMethod__inline_instructions_size.remove_unshareable_info();
-    }
-    void restore_unshareable_info(TRAPS) {
-      ciMethod__inline_instructions_size.restore_unshareable_info(THREAD);
     }
 #endif
     void prepare(ClassLoaderData* loader_data) {
@@ -674,7 +666,6 @@ public:
 
 #if INCLUDE_CDS
   virtual void remove_unshareable_info();
-  virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 
   virtual void metaspace_pointers_do(MetaspaceClosure* iter);
@@ -801,7 +792,6 @@ class MethodTrainingData : public TrainingData {
 
 #if INCLUDE_CDS
   virtual void remove_unshareable_info();
-  virtual void restore_unshareable_info(Visitor& visitor, TRAPS);
 #endif
 
   virtual int size() const {
