@@ -77,8 +77,8 @@ _compare_premain_builds:
 	@echo "Run,Old CDS + AOT,New CDS + AOT" | tee -a compare_premain_builds.csv
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" run 2>&1 | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" run 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runn 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runn 2>&1 | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a compare_premain_builds.csv; \
 	        fi; \
