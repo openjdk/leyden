@@ -20,6 +20,6 @@
 # questions.
 
 clean:
-	rm -f *.cds *.cds.preimage cmds.txt *~ HelloWorld.class
+	rm -f *.classlist *.jsa *.log *.cds *.cds.preimage *.cds.code cmds.txt report.csv *~ HelloWorld.class
 
 
