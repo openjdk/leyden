@@ -246,12 +246,12 @@ function exec_one_jvm () {
 
     if test -f $APPID-mainline.classlist; then
         (set -x;
-         perf stat -r $REPEAT $JAVA -Xshare:off $CMDLINE 2> logs/${1}_xoff.$2
+         $TASKSET perf stat -r $REPEAT $JAVA -Xshare:off $CMDLINE 2> logs/${1}_xoff.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_xoff.$2)
 
         (set -x;
-         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-mainline.jsa $CMDLINE 2> logs/${1}_xon.$2
+         $TASKSET perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-mainline.jsa $CMDLINE 2> logs/${1}_xon.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_xon.$2)
     fi
@@ -259,20 +259,20 @@ function exec_one_jvm () {
     if test -f $APPID.cds; then
         LEYDEN_OPTS="$LEYDEN_CALLER_OPTS"
         (set -x;
-         perf stat -r $REPEAT $JAVA -Xshare:off $CMDLINE 2> logs/${1}_xoff.$2
+         $TASKSET perf stat -r $REPEAT $JAVA -Xshare:off $CMDLINE 2> logs/${1}_xoff.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_xoff.$2)
 
         (set -x;
-         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-premain.jsa $CMDLINE 2> logs/${1}_xon.$2
+         $TASKSET perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-premain.jsa $CMDLINE 2> logs/${1}_xon.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_xon.$2)
         (set -x;
-         perf stat -r $REPEAT $JAVA -XX:CacheDataStore=$APPID.cds -XX:-LoadCachedCode $LEYDEN_OPTS  $CMDLINE 2> logs/${1}_td.$2
+         $TASKSET perf stat -r $REPEAT $JAVA -XX:CacheDataStore=$APPID.cds -XX:-LoadCachedCode $LEYDEN_OPTS  $CMDLINE 2> logs/${1}_td.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_td.$2)
         (set -x;
-         perf stat -r $REPEAT $JAVA -XX:CacheDataStore=$APPID.cds  -XX:+LoadCachedCode $LEYDEN_OPTS  $CMDLINE 2> logs/${1}_aot.$2
+         $TASKSET perf stat -r $REPEAT $JAVA -XX:CacheDataStore=$APPID.cds  -XX:+LoadCachedCode $LEYDEN_OPTS  $CMDLINE 2> logs/${1}_aot.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_aot.$2)
     fi
