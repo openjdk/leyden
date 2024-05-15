@@ -44,7 +44,6 @@ class RegeneratedClasses : public AllStatic {
   static void cleanup();
   static bool has_been_regenerated(address orig_obj);
   static address get_regenerated_object(address orig_obj);
-  static bool is_a_regenerated_object(address obj);
   static void record_regenerated_objects();
 };
 

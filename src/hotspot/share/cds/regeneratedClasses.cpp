@@ -87,18 +87,6 @@ address RegeneratedClasses::get_regenerated_object(address orig_obj) {
   return *p;
 }
 
-bool RegeneratedClasses::is_a_regenerated_object(address obj) {
-#if 0
-  if (_original_objs == nullptr) {
-    return false;
-  } else {
-    return _original_objs->get(obj) != nullptr;
-  }
-#else
-  return false; // FIXME-MERGE
-#endif
-}
-
 void RegeneratedClasses::record_regenerated_objects() {
   assert_locked_or_safepoint(DumpTimeTable_lock);
   if (_renegerated_objs != nullptr) {

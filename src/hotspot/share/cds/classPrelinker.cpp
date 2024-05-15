@@ -326,14 +326,9 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     // Do not resolve any field/methods from a class that has not been loaded yet.
     return;
   }
+
   Klass* resolved_klass = cp->klass_ref_at(raw_index, bc, CHECK);
-
   const char* is_static = "";
-  const char* is_regen = "";
-
-  if (RegeneratedClasses::is_a_regenerated_object((address)ik)) {
-    is_regen = " (regenerated)";
-  }
 
   switch (bc) {
   case Bytecodes::_getstatic:
@@ -376,9 +371,9 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     bool resolved = cp->is_resolved(raw_index, bc);
     Symbol* name = cp->name_ref_at(raw_index, bc);
     Symbol* signature = cp->signature_ref_at(raw_index, bc);
-    log_trace(cds, resolve)("%s %s [%3d] %s%s -> %s.%s:%s%s",
+    log_trace(cds, resolve)("%s %s [%3d] %s -> %s.%s:%s%s",
                             (resolved ? "Resolved" : "Failed to resolve"),
-                            Bytecodes::name(bc), cp_index, ik->external_name(), is_regen,
+                            Bytecodes::name(bc), cp_index, ik->external_name(),
                             resolved_klass->external_name(),
                             name->as_C_string(), signature->as_C_string(), is_static);
   }
