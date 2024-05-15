@@ -22,10 +22,25 @@
  *
  */
 
-import javax.tools.*;
-import java.io.*;
+import java.lang.invoke.MethodHandles;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.FileObject;
+import javax.tools.ForwardingJavaFileManager;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileManager;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
 
 /**
  * This program tries to compile a large number of classes that exercise a fair amount of
@@ -57,7 +72,7 @@ public class JavacBenchApp {
             classesMap.put(name, classFile);
             return classFile;
         }
-        public Map<String, byte[]> getByteCode() {
+        public Map<String, byte[]> getCompiledClasses() {
             Map<String, byte[]> result = new HashMap<>();
             for (Map.Entry<String, ClassFile> entry : classesMap.entrySet()) {
                 result.put(entry.getKey(), entry.getValue().toByteArray());
@@ -78,19 +93,19 @@ public class JavacBenchApp {
         }
     }
 
-    public Object compile(int count) {
+    public Map<String, byte[]> compile() {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> ds = new DiagnosticCollector<>();
-        Collection<SourceFile> sourceFiles = sources.subList(0, count);
+        Collection<SourceFile> sourceFiles = sources;
 
         try (FileManager fileManager = new FileManager(compiler.getStandardFileManager(ds, null, null))) {
             JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, null, null, null, sourceFiles);
             if (task.call()) {
-                return fileManager.getByteCode();
+                return fileManager.getCompiledClasses();
             } else {
                 for (Diagnostic<? extends JavaFileObject> d : ds.getDiagnostics()) {
-                  System.out.format("Line: %d, %s in %s", d.getLineNumber(), d.getMessage(null), d.getSource().getName());
-                  }
+                    System.out.format("Line: %d, %s in %s", d.getLineNumber(), d.getMessage(null), d.getSource().getName());
+                }
                 throw new InternalError("compilation failure");
             }
         } catch (IOException e) {
@@ -161,34 +176,52 @@ public class JavacBenchApp {
         }
         """;
 
-    List<SourceFile> generate(int count) {
-        ArrayList<SourceFile> sources = new ArrayList<>(count);
+    String sanitySource = """
+        public class Sanity implements java.util.concurrent.Callable<String> {
+            public String call() {
+                return "this is a test";
+            }
+        }
+        """;
+
+    void setup(int count) {
+        sources = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             String source = imports + "public class Test" + i + " {" + testClassBody + "}";
             sources.add(new SourceFile("Test" + i, source));
         }
-        return sources;
+        
+        sources.add(new SourceFile("Sanity", sanitySource));
     }
 
-    public void setup() {
-        sources = generate(10_000);
+    @SuppressWarnings("unchecked")
+    static void validate(byte[] sanityClassFile) throws Throwable {
+        MethodHandles.Lookup lookup = MethodHandles.lookup();
+        Class<?> cls = lookup.defineClass(sanityClassFile);
+        Callable<String> obj = (Callable<String>)cls.getDeclaredConstructor().newInstance();
+        String s = obj.call();
+        if (!s.equals("this is a test")) {
+            throw new RuntimeException("Expected \"this is a test\", but got \"" + s + "\"");
+        }
     }
 
     public static void main(String args[]) throws Throwable {
         long started = System.currentTimeMillis();
         JavacBenchApp bench = new JavacBenchApp();
-        bench.setup();
+
         int count = 0;
         if (args.length > 0) {
             count = Integer.parseInt(args[0]);
-            if (count > 0) {
-                bench.compile(count);
+            if (count >= 0) {
+                bench.setup(count);
+                Map<String, byte[]> allClasses = bench.compile();
+                validate(allClasses.get("Sanity"));
             }
         }
         long elapsed = System.currentTimeMillis() - started;
         if (System.getProperty("JavacBenchApp.silent") == null) {
             // Set this property when running with "perf stat", etc
-            System.out.println("Generated source code for " + bench.sources.size() + " classes and compiled them for " + count + " times in " + elapsed + " ms");
+            System.out.println("Generated source code for " + bench.sources.size() + " classes and compiled them in " + elapsed + " ms");
         }
     }
 }

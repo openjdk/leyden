@@ -22,11 +22,44 @@
  *
  */
 
+/*
+ * @test id=static
+ * @summary Run JavacBenchApp with the classic static archive workflow
+ * @requires vm.cds
+ * @library /test/lib
+ * @run driver JavacBench STATIC
+ */
+
+/*
+ * @test id=dynamic
+ * @summary Run JavacBenchApp with the classic dynamic archive workflow
+ * @requires vm.cds
+ * @library /test/lib
+ * @run driver JavacBench DYNAMIC
+ */
+
+/*
+ * @test id=leyden
+ * @summary Run JavacBenchApp with Leyden workflow
+ * @requires vm.cds
+ * @library /test/lib
+ * @run driver JavacBench LEYDEN
+ */
+
+/*
+ * @test id=leyden_old
+ * @summary Run JavacBenchApp with the "OLD" Leyden workflow
+ * @requires vm.cds
+ * @library /test/lib
+ * @run driver JavacBench LEYDEN_OLD
+ */
+
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
 
 public class JavacBench {
+    static String mainClass = JavacBenchApp.class.getName();
     static String appJar;
 
     public static void main(String args[]) throws Exception {
@@ -52,8 +85,8 @@ public class JavacBench {
         @Override
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
-                "JavacBenchApp",
-                "30",
+                mainClass,
+                "90",
             };
         }
     }
