@@ -282,30 +282,6 @@ DEFINE_COPY_INTO_AUX(Relocation)
 #undef DEFINE_COPY_INTO_AUX
 #undef DEFINE_COPY_INTO
 
-//////// Methods for RelocationHolder
-
-RelocationHolder RelocationHolder::plus(int offset) const {
-  if (offset != 0) {
-    switch (type()) {
-    case relocInfo::none:
-      break;
-    case relocInfo::oop_type:
-      {
-        oop_Relocation* r = (oop_Relocation*)reloc();
-        return oop_Relocation::spec(r->oop_index(), r->offset() + offset);
-      }
-    case relocInfo::metadata_type:
-      {
-        metadata_Relocation* r = (metadata_Relocation*)reloc();
-        return metadata_Relocation::spec(r->metadata_index(), r->offset() + offset);
-      }
-    default:
-      ShouldNotReachHere();
-    }
-  }
-  return (*this);
-}
-
 //////// Methods for flyweight Relocation types
 
 // some relocations can compute their own values
@@ -407,24 +383,24 @@ void CallRelocation::fix_relocation_after_move(const CodeBuffer* src, CodeBuffer
 
 void oop_Relocation::pack_data_to(CodeSection* dest) {
   short* p = (short*) dest->locs_end();
-  p = pack_2_ints_to(p, _oop_index, _offset);
+  p = pack_1_int_to(p, _oop_index);
   dest->set_locs_end((relocInfo*) p);
 }
 
 
 void oop_Relocation::unpack_data() {
-  unpack_2_ints(_oop_index, _offset);
+  _oop_index = unpack_1_int();
 }
 
 void metadata_Relocation::pack_data_to(CodeSection* dest) {
   short* p = (short*) dest->locs_end();
-  p = pack_2_ints_to(p, _metadata_index, _offset);
+  p = pack_1_int_to(p, _metadata_index);
   dest->set_locs_end((relocInfo*) p);
 }
 
 
 void metadata_Relocation::unpack_data() {
-  unpack_2_ints(_metadata_index, _offset);
+  _metadata_index = unpack_1_int();
 }
 
 
@@ -865,8 +841,8 @@ void RelocIterator::print_current_on(outputStream* st) {
         raw_oop   = *oop_addr;
         oop_value = r->oop_value();
       }
-      st->print(" | [oop_addr=" INTPTR_FORMAT " *=" INTPTR_FORMAT " index=%d offset=%d]",
-                 p2i(oop_addr), p2i(raw_oop), r->oop_index(), r->offset());
+      st->print(" | [oop_addr=" INTPTR_FORMAT " *=" INTPTR_FORMAT " index=%d]",
+                 p2i(oop_addr), p2i(raw_oop), r->oop_index());
       // Do not print the oop by default--we want this routine to
       // work even during GC or other inconvenient times.
       if (WizardMode && oop_value != nullptr) {
@@ -888,8 +864,8 @@ void RelocIterator::print_current_on(outputStream* st) {
         raw_metadata   = *metadata_addr;
         metadata_value = r->metadata_value();
       }
-      st->print(" | [metadata_addr=" INTPTR_FORMAT " *=" INTPTR_FORMAT " index=%d offset=%d]",
-                 p2i(metadata_addr), p2i(raw_metadata), r->metadata_index(), r->offset());
+      st->print(" | [metadata_addr=" INTPTR_FORMAT " *=" INTPTR_FORMAT " index=%d]",
+                 p2i(metadata_addr), p2i(raw_metadata), r->metadata_index());
       if (metadata_value != nullptr) {
         st->print("metadata_value=" INTPTR_FORMAT ": ", p2i(metadata_value));
         metadata_value->print_value_on(st);
