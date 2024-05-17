@@ -605,12 +605,10 @@ void VM_PopulateDumpSharedSpace::doit() {
     static_archive = CDSConfig::static_archive_path();
   }
   assert(static_archive != nullptr, "SharedArchiveFile not set?");
-  FileMapInfo* mapinfo = new FileMapInfo(static_archive, true);
-  mapinfo->populate_header(MetaspaceShared::core_region_alignment());
-  mapinfo->set_serialized_data(serialized_data);
-  mapinfo->set_cloned_vtables(CppVtables::vtables_serialized_base());
-  mapinfo->open_for_write();
-  _builder.write_archive(mapinfo, &_heap_info);
+  _mapinfo = new FileMapInfo(static_archive, true);
+  _mapinfo->populate_header(MetaspaceShared::core_region_alignment());
+  _mapinfo->set_serialized_data(serialized_data);
+  _mapinfo->set_cloned_vtables(CppVtables::vtables_serialized_base());
 }
 
 class CollectCLDClosure : public CLDClosure {

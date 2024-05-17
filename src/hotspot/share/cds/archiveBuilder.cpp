@@ -1029,7 +1029,7 @@ uintx ArchiveBuilder::any_to_offset(address p) const {
 
 void ArchiveBuilder::start_cc_region() {
   ro_region()->pack();
-  start_dump_space(&_cc_region);
+  start_dump_region(&_cc_region);
 }
 
 void ArchiveBuilder::end_cc_region() {
