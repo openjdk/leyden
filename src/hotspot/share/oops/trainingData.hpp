@@ -136,6 +136,7 @@ class TrainingData : public Metadata {
     void metaspace_pointers_do(MetaspaceClosure *iter);
   };
   class TrainingDataLocker {
+    static volatile bool _snapshot;
     static int _lock_mode;
     static void lock() {
       assert(_lock_mode != 0, "Forgot to call TrainingDataLocker::initialize()");
@@ -157,11 +158,22 @@ class TrainingData : public Metadata {
       }
     }
   public:
+    static void snapshot() {
+      assert_locked();
+      _snapshot = true;
+    }
+    static bool can_add() {
+      assert_locked();
+      return !_snapshot;
+    }
     static void initialize() {
       _lock_mode = need_data() ? +1 : -1;   // if -1, we go lock-free
     }
     static void assert_locked() {
-      assert(TrainingDataLocker::safely_locked(), "use under TrainingDataLocker");
+      assert(safely_locked(), "use under TrainingDataLocker");
+    }
+    static void assert_can_add() {
+      assert(can_add(), "Cannot add TrainingData objects");
     }
     TrainingDataLocker() {
       lock();
@@ -193,6 +205,7 @@ class TrainingData : public Metadata {
     }
     TrainingData* install(TrainingData* tdata) {
       TrainingDataLocker::assert_locked();
+      TrainingDataLocker::assert_can_add();
       auto key = tdata->key();
       if (key->is_empty())   return tdata;  // unkeyed TD not installed
       bool created = false;
@@ -303,7 +316,6 @@ public:
       return *adr_at(i);
     }
     bool append_if_missing(E dep) {
-      //assert(_deps == nullptr, "must be growable");
       if (_deps_dyn == nullptr) {
         _deps_dyn = new GrowableArrayCHeap<E, mtCompiler>(10);
         _deps_dyn->append(dep);
@@ -324,7 +336,6 @@ public:
       }
     }
     void append(E dep) {
-      //assert(_deps == nullptr, "must be growable");
       if (_deps_dyn == nullptr) {
         _deps_dyn = new GrowableArrayCHeap<E, mtCompiler>(10);
       }

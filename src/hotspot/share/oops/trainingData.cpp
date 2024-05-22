@@ -63,6 +63,7 @@ Array<MethodTrainingData*>* TrainingData::_recompilation_schedule = nullptr;
 Array<MethodTrainingData*>* TrainingData::_recompilation_schedule_for_dumping = nullptr;
 volatile bool* TrainingData::_recompilation_status = nullptr;
 int TrainingData::TrainingDataLocker::_lock_mode;
+volatile bool TrainingData::TrainingDataLocker::_snapshot = false;
 
 MethodTrainingData::MethodTrainingData() {
   assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
@@ -245,9 +246,9 @@ CompileTrainingData* CompileTrainingData::make(CompileTask* task) {
   }
   mtd->notice_compilation(level);
 
+  TrainingDataLocker l;
   CompileTrainingData* ctd = CompileTrainingData::allocate(mtd, level, compile_id);
   if (ctd != nullptr) {
-    TrainingDataLocker l;
     if (mtd->_last_toplevel_compiles[level - 1] != nullptr) {
       if (mtd->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
         mtd->_last_toplevel_compiles[level - 1]->clear_init_deps();
@@ -361,7 +362,10 @@ void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what)
       if (cik->is_initialized()) {
         InstanceKlass* ik = md->as_instance_klass()->get_instanceKlass();
         KlassTrainingData* ktd = KlassTrainingData::make(ik);
-        assert(ktd != nullptr, "");
+        if (ktd == nullptr) {
+          // Allocation failure or snapshot in progress
+          return;
+        }
         // This JIT task is (probably) requesting that ik be initialized,
         // so add him to my _init_deps list.
         TrainingDataLocker l;
@@ -539,6 +543,7 @@ void TrainingData::init_dumptime_table(TRAPS) {
     });
   } else {
     TrainingDataLocker l;
+    TrainingDataLocker::snapshot();
 
     ResourceMark rm;
     Visitor visitor(training_data_set()->size());
@@ -900,17 +905,26 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
 
 KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
   assert(need_data() || have_data(), "");
-  return new (mtClassShared) KlassTrainingData(holder);
+  if (TrainingDataLocker::can_add()) {
+    return new (mtClassShared) KlassTrainingData(holder);
+  }
+  return nullptr;
 }
 
 MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Method* m) {
   assert(need_data() || have_data(), "");
-  return new (mtClassShared) MethodTrainingData(ktd, m->name(), m->signature());
+  if (TrainingDataLocker::can_add()) {
+    return new (mtClassShared) MethodTrainingData(ktd, m->name(), m->signature());
+  }
+  return nullptr;
 }
 
 CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int level, int compile_id) {
   assert(need_data() || have_data(), "");
-  return new (mtClassShared) CompileTrainingData(mtd, level, compile_id);
+  if (TrainingDataLocker::can_add()) {
+    return new (mtClassShared) CompileTrainingData(mtd, level, compile_id);
+  }
+  return nullptr;
 }
 
 void TrainingDataPrinter::do_value(TrainingData* td) {
