@@ -6,8 +6,17 @@ startup time, time to peak performance, and footprint of Java programs, as a par
 the Java community, with the hope that some of these improvements can be eventually
 incoporated in future Java releases.
 
-## 1. Overview
+## 0. Disclaimers
 
+- *This repository contains experimental and unstable code. It's not intended to be used
+   in a production environment.*
+- *This repository is intended for developers of the JDK, and advanced Java developers who
+   are familiar with building the JDK.*
+- *The experimental features in this repository may be changed or removed without notice.*
+- *The benchmarks results reported on this page are for illustrative purposes only. Your
+   applications may get better or worse results.*
+
+## 1. Overview
 
 The Leyden prototype includes many optimizations that shift work from run time to earlier phases, which are
 called <i>training runs</i>. In training runs, we pre-compute various kinds of information, and pre-compile
@@ -137,7 +146,7 @@ in the [Overview](#1-overview) section above are enabled by default. This ensure
 without specifying them individually.
 
 For diagnostic purposes, you can selectively disable some of the options:
-- The `-XX:+LoadCachedCode` and `-XX:+RecordTraining` flags affect only the production run.
+- The `-XX:+LoadCachedCode` and `-XX:+ReplayTraining` flags affect only the production run.
 - All other options affect only the training run.
 
 
