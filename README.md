@@ -169,7 +169,47 @@ $ ls -l JavacBenchApp.cds*
 
 Note that the `JavacBenchApp.cds.code` file is no longer created.
 
-## 4. Benchmarking
+## 4. Limitations of the Leyden Prototype
+
+When trying out the Leyden, please pay attention to the following limitations.
+
+### Only the G1 collector is supported
+
+G1 is the default collector used by the JDK. Many of the optimizations in the Leyden only work with G1.
+
+A collector other than G1 may be used under the following conditions:
+
+- You have explicitly specified a different collector, e.g., `-XX:+UseSerialGC`; or
+- You are using a container that has a very small amount of memory. As a result, the JVM automatically
+  picks a different collector such as Serial.
+
+In these cases, you can run into the following problems:
+
+(a) During the training run, you will see an error like this, and the CDS archive will not be created:
+
+```
+$ rm -fv JavacBenchApp.cds*
+$ java -XX:CacheDataStore=JavacBenchApp.cds -XX:+UseSerialGC -cp JavacBenchApp.jar JavacBenchApp 50
+Error occurred during initialization of VM
+(Temporary) Cannot create the CacheDataStore: -XX:UseG1GC must be specified
+```
+
+(b) During the production run, you will see an error like the following. The CDS archive will
+    not be loaded. As a result, your application will not benefit from the Leyden optimizations:
+
+
+```
+$ ls -l JavacBenchApp.cds*
+-r--r--r-- 1 iklam iklam 30900224 May 20 19:21 JavacBenchApp.cds
+-r--r--r-- 1 iklam iklam 16895736 May 20 19:21 JavacBenchApp.cds.code
+$ java -XX:CacheDataStore=JavacBenchApp.cds -cp JavacBenchApp.jar JavacBenchApp 50
+Generated source code for 51 classes and compiled them in 423 ms
+$ java -XX:CacheDataStore=JavacBenchApp.cds -cp JavacBenchApp.jar -XX:+UseSerialGC JavacBenchApp 50
+[0.180s][error][cds] CDS archive has preloaded classes. It cannot be used because GC used during dump time (G1) is not the same as runtime (Serial)
+Generated source code for 51 classes and compiled them in 890 ms
+```
+
+## 5. Benchmarking
 
 We use a small set of benchmarks to demonstrate the performance of the optimizations in the Leyden repo.
 
@@ -340,6 +380,6 @@ gantt
     premain CDS + AOT   : 0, 368
 ```
 
-## 5. More Documentation
+## 6. More Documentation
 
 Please see [test/hotspot/jtreg/premain/](test/hotspot/jtreg/premain) for more information.
