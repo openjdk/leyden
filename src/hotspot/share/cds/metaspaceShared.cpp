@@ -264,11 +264,11 @@ void MetaspaceShared::initialize_for_static_dump() {
   assert(CDSConfig::is_dumping_static_archive(), "sanity");
 
   if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
-    if (!UseG1GC) { // See JDK-8333222
-      vm_exit_during_initialization("(Temporary) Cannot create the CacheDataStore", "-XX:UseG1GC must be specified");
+    if (!((UseG1GC || UseParallelGC || UseSerialGC) && UseCompressedClassPointers)) {
+      vm_exit_during_initialization("Cannot create the CacheDataStore",
+                                    "UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, or Serial");
     }
   }
-
 
   log_info(cds)("Core region alignment: " SIZE_FORMAT, core_region_alignment());
   // The max allowed size for CDS archive. We use this to limit SharedBaseAddress

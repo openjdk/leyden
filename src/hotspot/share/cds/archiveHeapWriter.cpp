@@ -103,7 +103,6 @@ void ArchiveHeapWriter::init() {
     _permobj_seg_bytesizes = new GrowableArrayCHeap<size_t, mtClassShared>(5);
     _permobj_seg_lengths = new GrowableArrayCHeap<int, mtClassShared>(5);
 
-    guarantee(UseG1GC, "implementation limitation");
     guarantee(MIN_GC_REGION_ALIGNMENT <= /*G1*/HeapRegion::min_region_size_in_words() * HeapWordSize, "must be");
   }
 }
@@ -510,16 +509,20 @@ size_t ArchiveHeapWriter::copy_one_source_obj_to_buffer(oop src_obj) {
 
 void ArchiveHeapWriter::set_requested_address(ArchiveHeapInfo* info) {
   assert(!info->is_used(), "only set once");
-  assert(UseG1GC, "must be");
-  address heap_end = (address)G1CollectedHeap::heap()->reserved().end();
-  log_info(cds, heap)("Heap end = %p", heap_end);
 
   size_t heap_region_byte_size = _buffer_used;
   assert(heap_region_byte_size > 0, "must archived at least one object!");
 
-
   if (UseCompressedOops) {
-    _requested_bottom = align_down(heap_end - heap_region_byte_size, HeapRegion::GrainBytes);
+    if (UseG1GC) {
+      address heap_end = (address)G1CollectedHeap::heap()->reserved().end();
+      log_info(cds, heap)("Heap end = %p", heap_end);
+      _requested_bottom = align_down(heap_end - heap_region_byte_size, HeapRegion::GrainBytes);
+      _requested_bottom = align_down(_requested_bottom, MIN_GC_REGION_ALIGNMENT);
+      assert(is_aligned(_requested_bottom, HeapRegion::GrainBytes), "sanity");
+    } else {
+      _requested_bottom = align_up(CompressedOops::begin(), MIN_GC_REGION_ALIGNMENT);
+    }
   } else {
     // We always write the objects as if the heap started at this address. This
     // makes the contents of the archive heap deterministic.
@@ -527,10 +530,10 @@ void ArchiveHeapWriter::set_requested_address(ArchiveHeapInfo* info) {
     // Note that at runtime, the heap address is selected by the OS, so the archive
     // heap will not be mapped at 0x10000000, and the contents need to be patched.
     _requested_bottom = (address)NOCOOPS_REQUESTED_BASE;
+    _requested_bottom = align_up(_requested_bottom, MIN_GC_REGION_ALIGNMENT);
   }
-
-  assert(is_aligned(_requested_bottom, HeapRegion::GrainBytes), "sanity");
-
+  
+  assert(is_aligned(_requested_bottom, MIN_GC_REGION_ALIGNMENT), "sanity");
   _requested_top = _requested_bottom + _buffer_used;
 
   info->set_buffer_region(MemRegion(offset_to_buffered_address<HeapWord*>(0),

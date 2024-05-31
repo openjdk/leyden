@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -108,9 +108,9 @@ public class IncompatibleOptions {
             testDump(1, "-XX:+UseZGC", "-XX:-UseCompressedOops", null, false);
         }
 
-        // incompatible GCs
-        testDump(2, "-XX:+UseParallelGC", "", GC_WARNING, false);
-        testDump(3, "-XX:+UseSerialGC", "", GC_WARNING, false);
+        // ParallelGC and SerialGC now supports dumping heap objects
+        testDump(2, "-XX:+UseParallelGC", "", "", false);
+        testDump(3, "-XX:+UseSerialGC", "", "", false);
 
         // Explicitly archive with compressed oops, run without.
         testDump(5, "-XX:+UseG1GC", "-XX:+UseCompressedOops", null, false);

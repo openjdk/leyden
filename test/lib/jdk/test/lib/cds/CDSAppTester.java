@@ -122,6 +122,11 @@ abstract public class CDSAppTester {
     public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {}
 
     private Workflow workflow;
+    private boolean checkExitValue = true;
+
+    public final void setCheckExitValue(boolean b) {
+        checkExitValue = b;
+    }
 
     public final boolean isStaticWorkflow() {
         return workflow == Workflow.STATIC;
@@ -167,7 +172,9 @@ abstract public class CDSAppTester {
         for (String logFile : logFiles) {
             listOutputFile(logFile);
         }
-        output.shouldHaveExitValue(0);
+        if (checkExitValue) {
+            output.shouldHaveExitValue(0);
+        }
         CDSTestUtils.checkCommonExecExceptions(output);
         checkExecution(output, runMode);
         return output;
@@ -373,7 +380,9 @@ abstract public class CDSAppTester {
             } else if (args[0].equals("LEYDEN_OLD")) {
                 runLeydenOldWorkflow();
             } else if (args[0].equals("LEYDEN")) {
-                runLeydenWorkflow();
+                runLeydenWorkflow(false);
+            } else if (args[0].equals("LEYDEN_TRAINONLY")) {
+                runLeydenWorkflow(true);
             } else {
                 throw new RuntimeException(err);
             }
@@ -402,7 +411,7 @@ abstract public class CDSAppTester {
         oldProductionRun();
     }
 
-    private void runLeydenWorkflow() throws Exception {
+    private void runLeydenWorkflow(boolean trainOnly) throws Exception {
         this.workflow = Workflow.LEYDEN;
         if (System.getProperty("CDSAppTester.split.new.workflow") != null) {
             trainingRun0();
@@ -410,6 +419,8 @@ abstract public class CDSAppTester {
         } else {
             trainingRun();
         }
-        productionRun();
+        if (!trainOnly) {
+            productionRun();
+        }
     }
 }
