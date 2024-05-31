@@ -190,7 +190,7 @@ public class JavacBenchApp {
             String source = imports + "public class Test" + i + " {" + testClassBody + "}";
             sources.add(new SourceFile("Test" + i, source));
         }
-        
+
         sources.add(new SourceFile("Sanity", sanitySource));
     }
 
@@ -218,9 +218,9 @@ public class JavacBenchApp {
                 validate(allClasses.get("Sanity"));
             }
         }
-        long elapsed = System.currentTimeMillis() - started;
         if (System.getProperty("JavacBenchApp.silent") == null) {
             // Set this property when running with "perf stat", etc
+            long elapsed = System.currentTimeMillis() - started;
             System.out.println("Generated source code for " + bench.sources.size() + " classes and compiled them in " + elapsed + " ms");
         }
     }
