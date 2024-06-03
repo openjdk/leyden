@@ -1090,7 +1090,7 @@ void ciEnv::register_method(ciMethod* target,
       if (failing() && preload) {
         ResourceMark rm;
         char *method_name = method->name_and_sig_as_C_string();
-        log_warning(scc)("preload code for '%s' failed dependency check", method_name);
+        log_info(scc)("preload code for '%s' failed dependency check", method_name);
       }
     }
 #if INCLUDE_RTM_OPT

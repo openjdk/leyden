@@ -108,7 +108,7 @@ void SCCache::initialize() {
       FLAG_SET_DEFAULT(ClassInitBarrierMode, 1);
     }
   } else if (ClassInitBarrierMode > 0) {
-    log_warning(scc, init)("Set ClassInitBarrierMode to 0 because StoreCachedCode and LoadCachedCode are false.");
+    log_info(scc, init)("Set ClassInitBarrierMode to 0 because StoreCachedCode and LoadCachedCode are false.");
     FLAG_SET_DEFAULT(ClassInitBarrierMode, 0);
   }
   if ((LoadCachedCode || StoreCachedCode) && CachedCodeFile != nullptr) {
@@ -625,7 +625,7 @@ bool SCConfig::verify(const char* cache_path) const {
 
   CollectedHeap::Name scc_gc = (CollectedHeap::Name)_gc;
   if (scc_gc != Universe::heap()->kind()) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with %s vs current %s", cache_path, GCConfig::hs_err_name(scc_gc), GCConfig::hs_err_name());
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with different GC: %s vs current %s", cache_path, GCConfig::hs_err_name(scc_gc), GCConfig::hs_err_name());
     return false;
   }
 
@@ -889,7 +889,7 @@ void SCCache::preload_startup_code(TRAPS) {
         assert(!HAS_PENDING_EXCEPTION, "");
         mh->method_holder()->link_class(THREAD);
         if (HAS_PENDING_EXCEPTION) {
-          LogStreamHandle(Warning, scc) log;
+          LogStreamHandle(Info, scc) log;
           if (log.is_enabled()) {
             ResourceMark rm;
             log.print("Linkage failed for %s: ", mh->method_holder()->external_name());
@@ -1346,7 +1346,7 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
     if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
       // Something changed in CDS
       set_lookup_failed();
-      log_warning(scc)("Lookup failed for shared klass: " INTPTR_FORMAT " is not in CDS ", p2i((address)k));
+      log_info(scc)("Lookup failed for shared klass: " INTPTR_FORMAT " is not in CDS ", p2i((address)k));
       return nullptr;
     }
     assert(k->is_klass(), "sanity");
@@ -1354,14 +1354,14 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
     const char* comp_name = comp_method->name_and_sig_as_C_string();
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_loaded()) {
       set_lookup_failed();
-      log_warning(scc)("%d '%s' (L%d): Lookup failed for klass %s: not loaded",
+      log_info(scc)("%d '%s' (L%d): Lookup failed for klass %s: not loaded",
                        compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     } else
     // Allow not initialized klass which was uninitialized during code caching or for preload
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1) && !_preload) {
       set_lookup_failed();
-      log_warning(scc)("%d '%s' (L%d): Lookup failed for klass %s: not initialized",
+      log_info(scc)("%d '%s' (L%d): Lookup failed for klass %s: not initialized",
                        compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     }
@@ -1373,7 +1373,7 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
 //      guarantee(JavaThread::current()->pending_exception() == nullptr, "");
       if (ak == nullptr) {
         set_lookup_failed();
-        log_warning(scc)("%d (L%d): %d-dimension array klass lookup failed: %s",
+        log_info(scc)("%d (L%d): %d-dimension array klass lookup failed: %s",
                          compile_id(), comp_level(), array_dim, k->external_name());
       }
       log_info(scc)("%d (L%d): Klass lookup: %s (object array)", compile_id(), comp_level(), k->external_name());
@@ -1392,7 +1392,7 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
   TempNewSymbol klass_sym = SymbolTable::probe(&(dest[0]), name_length);
   if (klass_sym == nullptr) {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Probe failed for class %s",
+    log_info(scc)("%d (L%d): Probe failed for class %s",
                      compile_id(), comp_level(), &(dest[0]));
     return nullptr;
   }
@@ -1411,13 +1411,13 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
     // Allow not initialized klass which was uninitialized during code caching
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1)) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for klass %s: not initialized", compile_id(), comp_level(), &(dest[0]));
+      log_info(scc)("%d (L%d): Lookup failed for klass %s: not initialized", compile_id(), comp_level(), &(dest[0]));
       return nullptr;
     }
     log_info(scc)("%d (L%d): Klass lookup %s", compile_id(), comp_level(), k->external_name());
   } else {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Lookup failed for class %s", compile_id(), comp_level(), &(dest[0]));
+    log_info(scc)("%d (L%d): Lookup failed for class %s", compile_id(), comp_level(), &(dest[0]));
     return nullptr;
   }
   return k;
@@ -1433,7 +1433,7 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
     if (!MetaspaceShared::is_in_shared_metaspace((address)m)) {
       // Something changed in CDS
       set_lookup_failed();
-      log_warning(scc)("Lookup failed for shared method: " INTPTR_FORMAT " is not in CDS ", p2i((address)m));
+      log_info(scc)("Lookup failed for shared method: " INTPTR_FORMAT " is not in CDS ", p2i((address)m));
       return nullptr;
     }
     assert(m->is_method(), "sanity");
@@ -1442,19 +1442,19 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
     Klass* k = m->method_holder();
     if (!k->is_instance_klass()) {
       set_lookup_failed();
-      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not instance klass", compile_id(), comp_name, comp_level(), k->external_name());
+      log_info(scc)("%d '%s' (L%d): Lookup failed for holder %s: not instance klass", compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     } else if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
       set_lookup_failed();
-      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not in CDS", compile_id(), comp_name, comp_level(), k->external_name());
+      log_info(scc)("%d '%s' (L%d): Lookup failed for holder %s: not in CDS", compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_loaded()) {
       set_lookup_failed();
-      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not loaded", compile_id(), comp_name, comp_level(), k->external_name());
+      log_info(scc)("%d '%s' (L%d): Lookup failed for holder %s: not loaded", compile_id(), comp_name, comp_level(), k->external_name());
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_linked()) {
       set_lookup_failed();
-      log_warning(scc)("%d '%s' (L%d): Lookup failed for holder %s: not linked%s", compile_id(), comp_name, comp_level(), k->external_name(), (_preload ? " for code preload" : ""));
+      log_info(scc)("%d '%s' (L%d): Lookup failed for holder %s: not linked%s", compile_id(), comp_name, comp_level(), k->external_name(), (_preload ? " for code preload" : ""));
       return nullptr;
     }
     log_info(scc)("%d (L%d): Shared method lookup: %s", compile_id(), comp_level(), m->name_and_sig_as_C_string());
@@ -1473,7 +1473,7 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
   TempNewSymbol klass_sym = SymbolTable::probe(&(dest[0]), holder_length);
   if (klass_sym == nullptr) {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Probe failed for class %s", compile_id(), comp_level(), &(dest[0]));
+    log_info(scc)("%d (L%d): Probe failed for class %s", compile_id(), comp_level(), &(dest[0]));
     return nullptr;
   }
   // Use class loader of compiled method.
@@ -1490,19 +1490,19 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
   if (k != nullptr) {
     if (!k->is_instance_klass()) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for holder %s: not instance klass",
+      log_info(scc)("%d (L%d): Lookup failed for holder %s: not instance klass",
                        compile_id(), comp_level(), &(dest[0]));
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_linked()) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for holder %s: not linked",
+      log_info(scc)("%d (L%d): Lookup failed for holder %s: not linked",
                        compile_id(), comp_level(), &(dest[0]));
       return nullptr;
     }
     log_info(scc)("%d (L%d): Holder lookup: %s", compile_id(), comp_level(), k->external_name());
   } else {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Lookup failed for holder %s",
+    log_info(scc)("%d (L%d): Lookup failed for holder %s",
                   compile_id(), comp_level(), &(dest[0]));
     return nullptr;
   }
@@ -1511,13 +1511,13 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
   TempNewSymbol sign_sym = SymbolTable::probe(&(dest[pos]), signat_length);
   if (name_sym == nullptr) {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Probe failed for method name %s",
+    log_info(scc)("%d (L%d): Probe failed for method name %s",
                      compile_id(), comp_level(), &(dest[holder_length + 1]));
     return nullptr;
   }
   if (sign_sym == nullptr) {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Probe failed for method signature %s",
+    log_info(scc)("%d (L%d): Probe failed for method signature %s",
                      compile_id(), comp_level(), &(dest[pos]));
     return nullptr;
   }
@@ -1527,7 +1527,7 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
     log_info(scc)("%d (L%d): Method lookup: %s", compile_id(), comp_level(), m->name_and_sig_as_C_string());
   } else {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Lookup failed for method %s::%s%s",
+    log_info(scc)("%d (L%d): Lookup failed for method %s::%s%s",
                      compile_id(), comp_level(), &(dest[0]), &(dest[holder_length + 1]), &(dest[pos]));
     return nullptr;
   }
@@ -1938,7 +1938,7 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
       buffer->initialize_section_size(cs, orig_size_align);
     }
     if (orig_size_align > (uint)cs->capacity()) { // Will not fit
-      log_warning(scc)("%d (L%d): original code section %d size %d > current capacity %d",
+      log_info(scc)("%d (L%d): original code section %d size %d > current capacity %d",
                        compile_id(), comp_level(), i, orig_size, cs->capacity());
       return false;
     }
@@ -2444,7 +2444,7 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     obj = k->java_mirror();
     if (obj == nullptr) {
       set_lookup_failed();
-      log_warning(scc)("Lookup failed for java_mirror of klass %s", k->external_name());
+      log_info(scc)("Lookup failed for java_mirror of klass %s", k->external_name());
       return nullptr;
     }
   } else if (kind == DataKind::Primitive) {
@@ -2472,7 +2472,7 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     obj = StringTable::intern(&(dest[0]), thread);
     if (obj == nullptr) {
       set_lookup_failed();
-      log_warning(scc)("%d (L%d): Lookup failed for String %s",
+      log_info(scc)("%d (L%d): Lookup failed for String %s",
                        compile_id(), comp_level(), &(dest[0]));
       return nullptr;
     }
@@ -2493,7 +2493,7 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     assert(k == CDSAccess::get_archived_object_permanent_index(obj), "sanity");
   } else {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Unknown oop's kind: %d",
+    log_info(scc)("%d (L%d): Unknown oop's kind: %d",
                      compile_id(), comp_level(), (int)kind);
     return nullptr;
   }
@@ -2565,14 +2565,14 @@ Metadata* SCCReader::read_metadata(const methodHandle& comp_method) {
       m = method->get_method_counters(Thread::current());
       if (m == nullptr) {
         set_lookup_failed();
-        log_warning(scc)("%d (L%d): Failed to get MethodCounters", compile_id(), comp_level());
+        log_info(scc)("%d (L%d): Failed to get MethodCounters", compile_id(), comp_level());
       } else {
         log_info(scc)("%d (L%d): Read MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
       }
     }
   } else {
     set_lookup_failed();
-    log_warning(scc)("%d (L%d): Unknown metadata's kind: %d", compile_id(), comp_level(), (int)kind);
+    log_info(scc)("%d (L%d): Unknown metadata's kind: %d", compile_id(), comp_level(), (int)kind);
   }
   return m;
 }
@@ -2720,7 +2720,7 @@ bool SCCache::write_oop(jobject& jo) {
     }
     // Unhandled oop - bailout
     set_lookup_failed();
-    log_warning(scc, nmethod)("%d (L%d): Unhandled obj: " PTR_FORMAT " : %s",
+    log_info(scc, nmethod)("%d (L%d): Unhandled obj: " PTR_FORMAT " : %s",
                               compile_id(), comp_level(), p2i(obj), obj->klass()->external_name());
     return false;
   }
@@ -3070,7 +3070,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
                                   frame_size, oop_maps, handler_table, nul_chk_table, compiler, comp_level,
                                   has_clinit_barriers, for_preload, has_unsafe_access, has_wide_vectors, has_monitors);
   if (entry == nullptr) {
-    log_warning(scc, nmethod)("%d (L%d): nmethod store attempt failed", task->compile_id(), task->comp_level());
+    log_info(scc, nmethod)("%d (L%d): nmethod store attempt failed", task->compile_id(), task->comp_level());
   }
   return entry;
 }
@@ -3953,7 +3953,7 @@ void SCAddressTable::add_C_string(const char* str) {
       _C_strings[_C_strings_count++] = str;
     } else {
       CompileTask* task = ciEnv::current()->task();
-      log_warning(scc)("%d (L%d): Number of C strings > max %d %s",
+      log_info(scc)("%d (L%d): Number of C strings > max %d %s",
                        task->compile_id(), task->comp_level(), MAX_STR_COUNT, str);
     }
   }
