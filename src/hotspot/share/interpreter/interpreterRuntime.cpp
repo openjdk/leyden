@@ -1103,7 +1103,7 @@ void InterpreterRuntime::update_invoke_cp_cache_entry(CallInfo& info, Bytecodes:
 
 
 void InterpreterRuntime::cds_resolve_invoke(Bytecodes::Code bytecode, int method_index,
-                                            methodHandle& m, constantPoolHandle& pool, TRAPS) {
+                                            constantPoolHandle& pool, TRAPS) {
   LinkInfo link_info(pool, method_index, bytecode, CHECK);
 
   if (!link_info.resolved_klass()->is_instance_klass() || InstanceKlass::cast(link_info.resolved_klass())->is_linked()) {

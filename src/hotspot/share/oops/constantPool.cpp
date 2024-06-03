@@ -493,11 +493,11 @@ void ConstantPool::remove_unshareable_entries() {
     int cp_tag = tag_at(cp_index).value();
     switch (cp_tag) {
     case JVM_CONSTANT_UnresolvedClass:
-      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(false);
+      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(false, false);
       break;
     case JVM_CONSTANT_UnresolvedClassInError:
       tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
-      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(false);
+      ArchiveBuilder::alloc_stats()->record_klass_cp_entry(false, false);
       break;
     case JVM_CONSTANT_MethodHandleInError:
       tag_at_put(cp_index, JVM_CONSTANT_MethodHandle);
@@ -528,20 +528,21 @@ void ConstantPool::remove_resolved_klass_if_non_deterministic(int cp_index) {
   assert(ArchiveBuilder::current()->is_in_buffer_space(this), "must be");
   assert(tag_at(cp_index).is_klass(), "must be resolved");
 
-  // k could be null if the referenced class has been excluded via
-  // SystemDictionaryShared::is_excluded_class().
   Klass* k = resolved_klass_at(cp_index);
-  bool revert = true;
-  if (k != nullptr) {
+  bool can_archive;
+
+  if (k == nullptr) {
+    // We'd come here if the referenced class has been excluded via
+    // SystemDictionaryShared::is_excluded_class(). As a result, ArchiveBuilder
+    // has cleared the resolved_klasses()->at(...) pointer to NULL. Thus, we
+    // need to revert the tag to JVM_CONSTANT_UnresolvedClass.
+    can_archive = false;
+  } else {
     ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
-    if (ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
-      revert = false;
-    }
+    can_archive = ClassPrelinker::is_resolution_deterministic(src_cp, cp_index);
   }
 
-  if (revert) {
-    // This resolved klass entry cannot be archived. Revert the tag to UnresolvedClass,
-    // so that it will be resolved at runtime.
+  if (!can_archive) {
     int resolved_klass_index = klass_slot_at(cp_index).resolved_klass_index();
     resolved_klasses()->at_put(resolved_klass_index, nullptr);
     tag_at_put(cp_index, JVM_CONSTANT_UnresolvedClass);
@@ -551,17 +552,18 @@ void ConstantPool::remove_resolved_klass_if_non_deterministic(int cp_index) {
   if (log.is_enabled()) {
     ResourceMark rm;
     log.print("%s klass  CP entry [%3d]: %s %s",
-              (revert ? "reverted" : "archived"),
+              (can_archive ? "archived" : "reverted"),
               cp_index, pool_holder()->name()->as_C_string(), get_type(pool_holder()));
-    if (revert) {
-      Symbol* name = klass_name_at(cp_index);
-      log.print("  \"%s\"", name->as_C_string());
-    } else {
+    if (can_archive) {
       log.print(" => %s %s%s", k->name()->as_C_string(), get_type(k),
                 (!k->is_instance_klass() || pool_holder()->is_subtype_of(k)) ? "" : " (not supertype)");
+    } else {
+      Symbol* name = klass_name_at(cp_index);
+      log.print("    %s", name->as_C_string());
     }
   }
-  ArchiveBuilder::alloc_stats()->record_klass_cp_entry(!revert);
+
+  ArchiveBuilder::alloc_stats()->record_klass_cp_entry(can_archive, /*reverted=*/!can_archive);
 }
 
 void ConstantPool::remove_resolved_field_entries_if_non_deterministic() {
@@ -591,7 +593,7 @@ void ConstantPool::remove_resolved_field_entries_if_non_deterministic() {
           Symbol* name = uncached_name_ref_at(cp_index);
           Symbol* signature = uncached_signature_ref_at(cp_index);
           log.print("%s field  CP entry [%3d]: %s %s %s.%s:%s",
-                    (archived ? "archived" : "excluded"),
+                    (archived ? "archived" : "reverted"),
                     cp_index,
                     pool_holder()->name()->as_C_string(),
                     (archived ? "=>" : "  "),
@@ -631,7 +633,7 @@ void ConstantPool::remove_resolved_method_entries_if_non_deterministic() {
           Symbol* name = uncached_name_ref_at(cp_index);
           Symbol* signature = uncached_signature_ref_at(cp_index);
           log.print("%s%s method CP entry [%3d]: %s %s.%s:%s",
-                    (archived ? "archived" : "excluded"),
+                    (archived ? "archived" : "reverted"),
                     (rme->is_resolved(Bytecodes::_invokeinterface) ? " interface" : ""),
                     cp_index,
                     pool_holder()->name()->as_C_string(),
@@ -674,7 +676,7 @@ void ConstantPool::remove_resolved_indy_entries_if_non_deterministic() {
           Symbol* bsm_signature = uncached_signature_ref_at(bsm_ref);
           Symbol* bsm_klass = klass_name_at(uncached_klass_ref_index_at(bsm_ref));
           log.print("%s indy   CP entry [%3d]: %s (%d)",
-                    (archived ? "archived" : "excluded"),
+                    (archived ? "archived" : "reverted"),
                     cp_index, pool_holder()->name()->as_C_string(), i);
           log.print(" %s %s.%s:%s", (archived ? "=>" : "  "), bsm_klass->as_C_string(), bsm_name->as_C_string(), bsm_signature->as_C_string());
         }

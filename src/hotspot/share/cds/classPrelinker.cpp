@@ -125,7 +125,16 @@ bool ClassPrelinker::is_class_resolution_deterministic(InstanceKlass* cp_holder,
       return true;
     }
 
-    if (ClassPreloader::is_preloaded_class(ik)) {
+    if (!PreloadSharedClasses && ClassPreloader::is_vm_class(ik)) {
+      if (ik->class_loader() != cp_holder->class_loader()) {
+        // At runtime, cp_holder() may not be able to resolve to the same
+        // ik. For example, a different version of ik may be defined in
+        // cp->pool_holder()'s loader using MethodHandles.Lookup.defineClass().
+        return false;
+      } else {
+        return true;
+      }
+    } else if (PreloadSharedClasses && ClassPreloader::is_preloaded_class(ik)) {
       if (cp_holder->is_shared_platform_class()) {
         ClassPreloader::add_initiated_class(cp_holder, ik);
         return true;
@@ -348,14 +357,14 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
     if (!VM_Version::supports_fast_class_init_checks()) {
       return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
-    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
+    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, cp, CHECK);
     is_static = " *** static";
     break;
 
   case Bytecodes::_invokevirtual:
   case Bytecodes::_invokespecial:
   case Bytecodes::_invokeinterface:
-    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, mh, cp, CHECK);
+    InterpreterRuntime::cds_resolve_invoke(bc, raw_index, cp, CHECK);
     break;
 
   case Bytecodes::_invokehandle:
