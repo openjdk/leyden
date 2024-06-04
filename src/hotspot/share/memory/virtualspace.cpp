@@ -556,7 +556,7 @@ void ReservedHeapSpace::initialize_compressed_heap(const size_t size, size_t ali
 
     // Attempt to allocate so that we can run without base and scale (32-Bit unscaled compressed oops).
     // Give it several tries from top of range to bottom.
-    if (aligned_heap_base_min_address + size <= (char *)UnscaledOopHeapMax) {
+    if (aligned_heap_base_min_address + size <= (char *)UnscaledOopHeapMax && !UseCompatibleCompressedOops) {
 
       // Calc address range within we try to attach (range of possible start addresses).
       char* const highest_start = align_down((char *)UnscaledOopHeapMax - size, attach_point_alignment);
@@ -569,7 +569,8 @@ void ReservedHeapSpace::initialize_compressed_heap(const size_t size, size_t ali
     char *zerobased_max = (char *)OopEncodingHeapMax;
 
     // Give it several tries from top of range to bottom.
-    if (aligned_heap_base_min_address + size <= zerobased_max &&    // Zerobased theoretical possible.
+    if (!UseCompatibleCompressedOops &&
+        aligned_heap_base_min_address + size <= zerobased_max &&    // Zerobased theoretical possible.
         ((_base == nullptr) ||                        // No previous try succeeded.
          (_base + size > zerobased_max))) {        // Unscaled delivered an arbitrary address.
 
