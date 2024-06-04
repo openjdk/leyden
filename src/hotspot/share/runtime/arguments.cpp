@@ -2955,7 +2955,7 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
     return JNI_ERR;
   }
 
-  if (!CDSConfig::check_vm_args_consistency(patch_mod_javabase, mode_flag_cmd_line)) {
+  if (!CDSConfig::check_vm_args_consistency(patch_mod_javabase, mode_flag_cmd_line, xshare_auto_cmd_line)) {
     return JNI_ERR;
   }
 

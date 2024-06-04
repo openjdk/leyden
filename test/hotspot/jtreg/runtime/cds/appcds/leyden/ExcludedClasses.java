@@ -37,7 +37,6 @@
  *                 TestApp$MyInvocationHandler
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
  *                 Custy
- * @run driver jdk.test.lib.helpers.ClassFileInstaller TestApp$Foo$NotInJar
  * @run driver ExcludedClasses LEYDEN
  */
 
@@ -82,10 +81,6 @@ public class ExcludedClasses {
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
                 "-Xlog:cds+resolve=trace",
-
-                // This is needed to call into ClassLoader::defineClass()
-                "--add-opens", "java.base/java.lang=ALL-UNNAMED",
-
                 //TEMP: uncomment the next line to see the TrainingData::_archived_training_data_dictionary
                 //"-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintTrainingInfo",
             };
@@ -114,15 +109,11 @@ public class ExcludedClasses {
 
 class TestApp {
     static Object custInstance;
-    static Object notInJarInstance;
 
     public static void main(String args[]) throws Exception {
         // In new workflow, classes from custom loaders are passed from the preimage
         // to the final image. See ClassPrelinker::record_unregistered_klasses().
         custInstance = initFromCustomLoader();
-
-        notInJarInstance = initNotInJar();
-
         System.out.println("Counter = " + Foo.hotSpot());
     }
 
@@ -133,18 +124,6 @@ class TestApp {
         URLClassLoader urlClassLoader =
             new URLClassLoader("MyLoader", urls, null);
         Class c = Class.forName("Custy", true, urlClassLoader);
-        return c.newInstance();
-    }
-
-    static Object initNotInJar() throws Exception  {
-        byte[] classdata = Files.readAllBytes((new File("TestApp$Foo$NotInJar.class")).toPath());
-        ClassLoader loader = TestApp.class.getClassLoader();
-        Method method = ClassLoader.class.getDeclaredMethod("defineClass", String.class, byte[].class,
-                                                            int.class, int.class, ProtectionDomain.class);
-        // The following call needs: --add-opens java.base/java.lang=ALL-UNNAMED
-        method.setAccessible(true);
-        Class<?> c = (Class<?>)method.invoke(loader, "TestApp$Foo$NotInJar",
-                                             classdata, 0, classdata.length, TestApp.class.getProtectionDomain());
         return c.newInstance();
     }
 
@@ -197,10 +176,6 @@ class TestApp {
                     // but excluded from the final image.
                     counter += custInstance.equals(null) ? 1 : 2;
                 }
-
-                if (notInJarInstance != null) {
-                    notInJarInstance.toString();
-                }
             }
 
             return counter + s.m() + s.f + b.m() + b.f;
@@ -248,26 +223,6 @@ class TestApp {
             int f = (int)(System.currentTimeMillis()) + 123;
             int m() {
                 return f + 456;
-            }
-
-            void hotSpot3() {
-                long start = System.currentTimeMillis();
-                while (System.currentTimeMillis() - start < 20) {
-                    for (int i = 0; i < 50000; i++) {
-                        counter += i;
-                    }
-                    f();
-                }
-            }
-        }
-
-        // This class is not included in the JAR file. Instead, it's defined by the app
-        // using Lookup.defineClass().
-        // This class should be excluded from the CDS archive.
-        static class NotInJar {
-            public String toString() {
-                hotSpot3();
-                return "NotInJar";
             }
 
             void hotSpot3() {

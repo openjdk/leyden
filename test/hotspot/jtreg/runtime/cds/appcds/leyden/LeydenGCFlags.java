@@ -65,14 +65,21 @@ public class LeydenGCFlags {
         fail_run(null,                 "-XX:+UseParallelGC",  ERROR_GC_MISMATCH );
 
         // Different oop encodings
-        fail_run("-Xmx128m",  "-Xmx8g",    ERROR_COOP_MISMATCH);
-        fail_run("-Xmx8g",    "-Xmx128m",  ERROR_COOP_MISMATCH);
+        fail_run(array("-XX:-UseCompatibleCompressedOops", "-Xmx128m"), 
+                 array("-XX:-UseCompatibleCompressedOops","-Xmx8g"),
+                 ERROR_COOP_MISMATCH);
+        fail_run(array("-XX:-UseCompatibleCompressedOops", "-Xmx8g"),
+                 array("-XX:-UseCompatibleCompressedOops","-Xmx128m"),
+                 ERROR_COOP_MISMATCH);
 
         // FIXME -- this causes
         // java.lang.invoke.WrongMethodTypeException: handle's method type ()Object but found ()Object
      /* fail_run(null,                 "NoSuchApp"); */
     }
 
+    static String[] array(String... strings) {
+        return strings;
+    }
     static void good(Object t, Object p) throws Exception {
         shouldFailDump = false;
         shouldFailRun = false;
@@ -128,7 +135,7 @@ public class LeydenGCFlags {
         @Override
         public String[] appCommandLine(RunMode runMode) {
             if (runMode.isProductionRun()) {
-                return StringArrayUtils.concat(productionArgs, mainClass);
+                return StringArrayUtils.concat(productionArgs, "-Xshare:auto", mainClass);
             } else {
                 return StringArrayUtils.concat(trainingArgs, mainClass);
             }

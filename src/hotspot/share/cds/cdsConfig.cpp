@@ -65,7 +65,6 @@ int CDSConfig::get_status() {
          (is_dumping_packages()             ? IS_DUMPING_PACKAGES : 0);
 }
 
-
 void CDSConfig::initialize() {
   if (is_dumping_static_archive() && !is_dumping_final_static_archive()) {
     if (RequireSharedSpaces) {
@@ -351,7 +350,7 @@ bool CDSConfig::has_unsupported_runtime_module_options() {
   return false;
 }
 
-bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line) {
+bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) {
   if (CacheDataStore != nullptr) {
     // Leyden temp work-around:
     //
@@ -366,6 +365,12 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     // However, this is risky and there's a chance that the production run will be slower
     // because it is unable to load the AOT code cache.
     FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true);
+
+    // Leyden temp: make sure the user knows if CDS archive somehow fails to load.
+    if (UseSharedSpaces && !xshare_auto_cmd_line) {
+      log_info(cds)("Enabled -Xshare:on by default for troubleshooting Leyden prototype");
+      RequireSharedSpaces = true;
+    }
 
     if (FLAG_IS_DEFAULT(PreloadSharedClasses)) {
       // New workflow - enable PreloadSharedClasses by default.
