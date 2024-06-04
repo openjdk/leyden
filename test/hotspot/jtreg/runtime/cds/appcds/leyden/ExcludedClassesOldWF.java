@@ -37,7 +37,6 @@
  *                 TestApp$MyInvocationHandler
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
  *                 Custy
- * @run driver jdk.test.lib.helpers.ClassFileInstaller TestApp$Foo$NotInJar
  * @run driver ExcludedClasses LEYDEN_OLD
  */
 
