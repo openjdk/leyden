@@ -531,11 +531,11 @@ void ReservedHeapSpace::initialize_compressed_heap(const size_t size, size_t ali
   const size_t attach_point_alignment = lcm(alignment, os_attach_point_alignment);
 
   char *aligned_heap_base_min_address = (char *)align_up((void *)HeapBaseMinAddress, alignment);
-  size_t noaccess_prefix = ((aligned_heap_base_min_address + size) > (char*)OopEncodingHeapMax) ?
+  size_t noaccess_prefix = (((aligned_heap_base_min_address + size) > (char*)OopEncodingHeapMax) || UseCompatibleCompressedOops) ?
     noaccess_prefix_size(alignment) : 0;
 
   // Attempt to alloc at user-given address.
-  if (!FLAG_IS_DEFAULT(HeapBaseMinAddress)) {
+  if (!FLAG_IS_DEFAULT(HeapBaseMinAddress) || UseCompatibleCompressedOops) {
     try_reserve_heap(size + noaccess_prefix, alignment, page_size, aligned_heap_base_min_address);
     if (_base != aligned_heap_base_min_address) { // Enforce this exact address.
       release();
@@ -637,7 +637,7 @@ ReservedHeapSpace::ReservedHeapSpace(size_t size, size_t alignment, size_t page_
 
   if (UseCompressedOops) {
     initialize_compressed_heap(size, alignment, page_size);
-    if (_size > size) {
+    if (_size > size || UseCompatibleCompressedOops) {
       // We allocated heap with noaccess prefix.
       // It can happen we get a zerobased/unscaled heap with noaccess prefix,
       // if we had to try at arbitrary address.

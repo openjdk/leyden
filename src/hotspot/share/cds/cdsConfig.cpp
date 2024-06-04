@@ -353,6 +353,20 @@ bool CDSConfig::has_unsupported_runtime_module_options() {
 
 bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line) {
   if (CacheDataStore != nullptr) {
+    // Leyden temp work-around:
+    //
+    // By default, when using CacheDataStore, use the HeapBasedNarrowOop mode so that
+    // AOT code can be always work regardless of runtime heap range.
+    //
+    // If you are *absolutely sure* that the CompressedOops::mode() will be the same
+    // between training and production runs (e.g., if you specify -Xmx128m
+    // for both training and production runs, and you know the OS will always reserve
+    // the heap under 4GB), you can explicitly disable this with:
+    //     java -XX:-UseCompatibleCompressedOops -XX:CacheDataStore=...
+    // However, this is risky and there's a chance that the production run will be slower
+    // because it is unable to load the AOT code cache.
+    FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true);
+
     if (FLAG_IS_DEFAULT(PreloadSharedClasses)) {
       // New workflow - enable PreloadSharedClasses by default.
       // TODO: make new workflow work, even when PreloadSharedClasses is false.

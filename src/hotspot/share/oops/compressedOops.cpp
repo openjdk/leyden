@@ -47,6 +47,10 @@ MemRegion       CompressedOops::_heap_address_range;
 // HeapBased - Use compressed oops with heap base + encoding.
 void CompressedOops::initialize(const ReservedHeapSpace& heap_space) {
 #ifdef _LP64
+ if (UseCompatibleCompressedOops) {
+    set_shift(LogMinObjAlignmentInBytes);
+    set_base((address)heap_space.compressed_oop_base());
+ } else {
   // Subtract a page because something can get allocated at heap base.
   // This also makes implicit null checking work, because the
   // memory+1 page below heap_base needs to cause a signal.
@@ -63,6 +67,7 @@ void CompressedOops::initialize(const ReservedHeapSpace& heap_space) {
   } else {
     set_base((address)heap_space.compressed_oop_base());
   }
+ }
 
   _heap_address_range = heap_space.region();
 
