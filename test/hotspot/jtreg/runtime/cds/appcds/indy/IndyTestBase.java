@@ -180,6 +180,7 @@ public class IndyTestBase {
                 .setArchiveName(archiveName)
                 .setUseVersion(false)
                 .addSuffix("-XX:ArchiveClassesAtExit=" + dynamicArchiveName)
+                .addSuffix("-XX:-BackgroundCompilation")
                 .addSuffix("-XX:+RecordTraining");
             if ((runMode & RUN_BENCH) != 0) {
                 dynDumpOpts.setBenchmarkMode(true);
@@ -203,6 +204,7 @@ public class IndyTestBase {
                 .addPrefix("-cp", appJar)
                 .setArchiveName(archiveName)
                 .setUseVersion(false)
+                .addSuffix("-XX:-BackgroundCompilation")
                 .addSuffix("-XX:+StoreCachedCode")
                 .addSuffix("-XX:CachedCodeFile=" + sharedCodeArchive)
                 .addSuffix("-XX:CachedCodeMaxSize=100M");
@@ -215,7 +217,7 @@ public class IndyTestBase {
                 // in the AOT code.
                 aotOpts.setBenchmarkMode(true);
 
-                aotOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug", "-Xlog:scc");
+                aotOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug", "-Xlog:scc+init,scc+exit");
                 if (mainClass.equals("ConcatA")) {
                     // Hard-code the printing of loopA for now
                     dynDumpOpts
@@ -248,7 +250,7 @@ public class IndyTestBase {
                 // in the AOT code.
                 runOpts.setBenchmarkMode(true);
 
-                runOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug");
+                runOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug", "-Xlog:scc+init");
                 if (mainClass.equals("ConcatA")) {
                     // Hard-code the printing of loopA for now
                     dynDumpOpts

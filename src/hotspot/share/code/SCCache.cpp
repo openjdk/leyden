@@ -59,6 +59,7 @@
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/java.hpp"
 #include "runtime/jniHandles.inline.hpp"
 #include "runtime/os.inline.hpp"
 #include "runtime/sharedRuntime.hpp"
@@ -99,6 +100,21 @@ static bool enable_timers() {
   return CITime || log_is_enabled(Info, init);
 }
 
+static void exit_vm_on_load_failure() {
+  // Treat SCC warnings as error when RequireSharedSpaces is on.
+  if (RequireSharedSpaces) {
+    vm_exit_during_initialization("Unable to used startup cached code.", nullptr);
+  }
+}
+
+static void exit_vm_on_store_failure() {
+  // Treat SCC warnings as error when RequireSharedSpaces is on.
+  if (RequireSharedSpaces) {
+    tty->print_cr("Unable to create startup cached code.");
+    // Failure during AOT code caching, we don't want to dump core
+    vm_abort(false);
+  }
+}
 void SCCache::initialize() {
   if (LoadCachedCode && !UseSharedSpaces) {
     return;
@@ -118,6 +134,7 @@ void SCCache::initialize() {
     memcpy(path, CachedCodeFile, len);
     path[len] = '\0';
     if (!open_cache(path)) {
+      exit_vm_on_load_failure();
       return;
     }
     if (StoreCachedCode) {
@@ -140,10 +157,12 @@ void SCCache::init2() {
       // Bail out since we can't encode card table base address with relocation
       log_warning(scc, init)("Can't create Startup Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
       close();
+      exit_vm_on_load_failure();
     }
   }
   if (!verify_vm_config()) {
     close();
+    exit_vm_on_load_failure();
   }
 }
 
@@ -813,6 +832,7 @@ uint SCCache::write_bytes(const void* buffer, uint nbytes) {
     log_warning(scc)("Failed to write %d bytes at offset %d to Startup Code Cache file '%s'. Increase CachedCodeMaxSize.",
                      nbytes, _write_position, _cache_path);
     set_failed();
+    exit_vm_on_store_failure();
     return 0;
   }
   copy_bytes((const char* )buffer, (address)(_store_buffer + _write_position), nbytes);
@@ -1228,6 +1248,7 @@ bool SCCache::finish_write() {
     if (fd < 0) {
       log_warning(scc, exit)("Unable to create Startup Code Cache file '%s': (%s)", _cache_path, os::strerror(errno));
       FREE_C_HEAP_ARRAY(char, buffer);
+      exit_vm_on_store_failure();
       return false;
     } else {
       log_info(scc, exit)("Opened for write Startup Code Cache '%s'", _cache_path);
@@ -1236,11 +1257,13 @@ bool SCCache::finish_write() {
     if (!success) {
       log_warning(scc, exit)("Failed to write %d bytes to Startup Code Cache file '%s': (%s)", size, _cache_path, os::strerror(errno));
       FREE_C_HEAP_ARRAY(char, buffer);
+      exit_vm_on_store_failure();
       return false;
     }
     log_info(scc, exit)("Wrote %d bytes to Startup Code Cache '%s'", size, _cache_path);
     if (::close(fd) < 0) {
       log_warning(scc, exit)("Failed to close for write Startup Code Cache file '%s'", _cache_path);
+      exit_vm_on_store_failure();
     } else {
       log_info(scc, exit)("Closed for write Startup Code Cache '%s'", _cache_path);
     }
@@ -1267,6 +1290,7 @@ bool SCCache::load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* n
   if (strncmp(name, saved_name, (name_size - 1)) != 0) {
     log_warning(scc)("Saved stub's name '%s' is different from '%s' for id:%d", saved_name, name, (int)id);
     cache->set_failed();
+    exit_vm_on_load_failure();
     return false;
   }
   log_info(scc,stubs)("Reading stub '%s' id:%d from Startup Code Cache '%s'", name, (int)id, cache->_cache_path);
@@ -2001,6 +2025,7 @@ bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
     log_warning(scc)("%d (L%d): Saved blob's name '%s' is different from '%s'",
                      compile_id(), comp_level(), name, buffer->name());
     ((SCCache*)_cache)->set_failed();
+    exit_vm_on_load_failure();
     return false;
   }
 
