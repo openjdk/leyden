@@ -80,6 +80,7 @@
 #include "utilities/events.hpp"
 #include "utilities/formatBuffer.hpp"
 #include "utilities/macros.hpp"
+#include "utilities/nonblockingQueue.inline.hpp"
 #ifdef COMPILER1
 #include "c1/c1_Compiler.hpp"
 #endif
@@ -396,29 +397,36 @@ void CompileQueue::add_pending(CompileTask* task) {
   }
 }
 
+static bool process_pending(CompileTask* task) {
+//  guarantee(task->method()->queued_for_compilation(), "");
+  if (task->is_unloaded()) {
+    return true; // unloaded
+  }
+  task->method()->set_queued_for_compilation(); // FIXME
+  if (task->method()->pending_queue_processed()) {
+    return true; // already queued
+  }
+  // Mark the method as being in the compile queue.
+  task->method()->set_pending_queue_processed();
+  if (CompileBroker::compilation_is_complete(task->method(), task->osr_bci(), task->comp_level(),
+                                             task->requires_online_compilation(), task->compile_reason())) {
+    return true; // already compiled
+  }
+  return false; // active
+}
+
 void CompileQueue::transfer_pending() {
   assert(_lock->owned_by_self(), "must own lock");
   while (!_queue.empty()) {
     CompileTask* task = _queue.pop();
-//    guarantee(task->method()->queued_for_compilation(), "");
-    task->method()->set_queued_for_compilation(); // FIXME
-    if (task->method()->pending_queue_processed()) {
+    bool is_stale = process_pending(task);
+    if (is_stale) {
       task->set_next(_first_stale);
       task->set_prev(nullptr);
       _first_stale = task;
-      continue; // skip
     } else {
-      // Mark the method as being in the compile queue.
-      task->method()->set_pending_queue_processed();
+      add(task);
     }
-    if (CompileBroker::compilation_is_complete(task->method(), task->osr_bci(), task->comp_level(),
-                                               task->requires_online_compilation(), task->compile_reason())) {
-      task->set_next(_first_stale);
-      task->set_prev(nullptr);
-      _first_stale = task;
-      continue; // skip
-    }
-    add(task);
   }
 }
 
@@ -589,10 +597,12 @@ void CompileQueue::remove_and_mark_stale(CompileTask* task) {
 // methods in the compile queue need to be marked as used on the stack
 // so that they don't get reclaimed by Redefine Classes
 void CompileQueue::mark_on_stack() {
-  CompileTask* task = _first;
-  while (task != nullptr) {
+  for (CompileTask* task = _first; task != nullptr; task = task->next()) {
     task->mark_on_stack();
-    task = task->next();
+  }
+  for (CompileTask* task = _queue.first(); !_queue.is_end(task); task = task->next()) {
+    assert(task != nullptr, "");
+    task->mark_on_stack();
   }
 }
 
