@@ -30,31 +30,31 @@
 Example:
 
 helidon-quickstart-se$ tbjava ../lib/GithubMDChart.java < mainline_vs_premain.csv
-run,mainline default,mainline custom static CDS,premain custom static CDS only,premain AOT new workflow
-1,398,240,175,116
-2,380,239,138,110
-3,411,287,144,113
-4,399,246,147,112
-5,402,245,147,110
-6,398,242,142,122
-7,383,242,146,111
-8,388,260,152,108
-9,395,250,149,113
-10,380,241,143,132
-Geomean,393.28,248.84,148.01,114.51
-Stdev,9.78,13.91,9.63,6.86
+run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT
+1,398,244,144,107
+2,387,247,142,108
+3,428,238,143,107
+4,391,252,142,111
+5,417,247,141,107
+6,390,239,139,127
+7,387,247,145,111
+8,387,240,147,110
+9,388,242,147,108
+10,400,242,167,108
+Geomean,397.08,243.76,145.52,110.26
+Stdev,13.55,4.19,7.50,5.73
 
 ```mermaid
-gantt
-    title Elapsed time (ms)
-    todayMarker off
-    dateFormat  X
-    axisFormat %s
-
-    mainline default   : 0, 393.28
-    mainline custom static CDS   : 0, 248.84
-    premain custom static CDS only   : 0, 148.01
-    premain AOT new workflow   : 0, 114.51
+---
+config:
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static CDS", "premain custom static CDS only", "premain CDS + AOT"]
+    y-axis "Elapsed time (ms, smaller is better)" 0 --> 397
+    bar [397, 244, 146, 110]
 ```
 
 */
@@ -62,6 +62,7 @@ gantt
 import java.io.PrintWriter;
 import java.util.Scanner;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class GithubMDChart {
     @SuppressWarnings("unchecked")
@@ -110,36 +111,49 @@ public class GithubMDChart {
         System.out.println();
         System.out.println("Markdown snippets in " + args[0]);
 
-        PrintWriter pw = new PrintWriter(args[0]);
-        pw.println("```mermaid");
-        pw.println("gantt");
-        pw.println("    title Elapsed time (ms, smaller is better)");
-        pw.println("    todayMarker off");
-        pw.println("    dateFormat  X");
-        pw.println("    axisFormat %s");
-        pw.println();
-
-        for (int i = 1; i < head.length; i++) {
-            pw.println("    " + head[i] + "   : 0, " + geomeans[i]);
-        }
-        pw.println("```");
-        pw.println();
-        pw.println("-----------------Normalized---------------------------------------------");
-
-        pw.println("```mermaid");
-        pw.println("gantt");
-        pw.println("    title Elapsed time (normalized, smaller is better)");
-        pw.println("    todayMarker off");
-        pw.println("    dateFormat  X");
-        pw.println("    axisFormat %s");
-        pw.println();
-
+        String[] norm = new String[geomeans.length];
         for (int i = 1; i < head.length; i++) {
             double base = Double.parseDouble(geomeans[1]);
             double me   = Double.parseDouble(geomeans[i]);
-            pw.println("    " + head[i] + "   : 0, " + String.format("%.0f", 1000.0 * me / base));
+            norm[i] = String.format("%.0f", 1000.0 * me / base);
         }
-        pw.println("```");
+
+        PrintWriter pw = new PrintWriter(args[0]);
+        // Horizontal avoids issues with long names overlapping each other,
+        // and setting a smaller-than-default height makes it easier to overlook and compare.
+        pw.println("""
+        ```mermaid
+        ---
+        config:
+            xyChart:
+                chartOrientation: horizontal
+                height: 300
+        ---
+        xychart-beta
+            x-axis [$names]
+            y-axis "Elapsed time (ms, smaller is better)" 0 --> $maxtime
+            bar [$geomeans]
+        ```
+        
+        -----------------Normalized---------------------------------------------
+        ```mermaid
+        ---
+        config:
+            xyChart:
+                chartOrientation: horizontal
+                height: 300
+        ---
+        xychart-beta
+            x-axis [$names]
+            y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+            bar [$norms]
+        ```
+        """
+        .replace("$names", '"' + String.join("\", \"", Arrays.copyOfRange(head, 1, head.length)) + '"')
+        .replace("$maxtime", geomeans[1])
+        .replace("$geomeans", String.join(", ", Arrays.copyOfRange(geomeans, 1, geomeans.length)))
+        .replace("$norms", String.join(", ", Arrays.copyOfRange(norm, 1, norm.length)))
+        );
         pw.close();
     }
 
