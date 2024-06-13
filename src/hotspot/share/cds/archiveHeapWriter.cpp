@@ -103,7 +103,7 @@ void ArchiveHeapWriter::init() {
     _permobj_seg_bytesizes = new GrowableArrayCHeap<size_t, mtClassShared>(5);
     _permobj_seg_lengths = new GrowableArrayCHeap<int, mtClassShared>(5);
 
-    guarantee(MIN_GC_REGION_ALIGNMENT <= /*G1*/HeapRegion::min_region_size_in_words() * HeapWordSize, "must be");
+    guarantee(MIN_GC_REGION_ALIGNMENT <= G1HeapRegion::min_region_size_in_words() * HeapWordSize, "must be");
   }
 }
 
@@ -517,9 +517,9 @@ void ArchiveHeapWriter::set_requested_address(ArchiveHeapInfo* info) {
     if (UseG1GC) {
       address heap_end = (address)G1CollectedHeap::heap()->reserved().end();
       log_info(cds, heap)("Heap end = %p", heap_end);
-      _requested_bottom = align_down(heap_end - heap_region_byte_size, HeapRegion::GrainBytes);
+      _requested_bottom = align_down(heap_end - heap_region_byte_size, G1HeapRegion::GrainBytes);
       _requested_bottom = align_down(_requested_bottom, MIN_GC_REGION_ALIGNMENT);
-      assert(is_aligned(_requested_bottom, HeapRegion::GrainBytes), "sanity");
+      assert(is_aligned(_requested_bottom, G1HeapRegion::GrainBytes), "sanity");
     } else {
       _requested_bottom = align_up(CompressedOops::begin(), MIN_GC_REGION_ALIGNMENT);
     }

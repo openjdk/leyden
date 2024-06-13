@@ -1020,7 +1020,6 @@ void ciEnv::register_method(ciMethod* target,
                             bool has_monitors,
                             int immediate_oops_patched,
                             bool install_code,
-                            RTMState  rtm_state,
                             SCCEntry* scc_entry) {
   VM_ENTRY_MARK;
   nmethod* nm = nullptr;
@@ -1093,14 +1092,6 @@ void ciEnv::register_method(ciMethod* target,
         log_info(scc)("preload code for '%s' failed dependency check", method_name);
       }
     }
-#if INCLUDE_RTM_OPT
-    if (!failing() && (rtm_state != NoRTM) &&
-        (method()->method_data() != nullptr) &&
-        (method()->method_data()->rtm_state() != rtm_state)) {
-      // Preemptive decompile if rtm state was changed.
-      record_failure("RTM state change invalidated rtm code");
-    }
-#endif
 
     if (failing()) {
       // While not a true deoptimization, it is a preemptive decompile.
@@ -1119,7 +1110,7 @@ void ciEnv::register_method(ciMethod* target,
     assert(offsets->value(CodeOffsets::Deopt) != -1, "must have deopt entry");
     assert(offsets->value(CodeOffsets::Exceptions) != -1, "must have exception entry");
 
-    if (rtm_state == NoRTM && scc_entry == nullptr) {
+    if (scc_entry == nullptr) {
       scc_entry = SCCache::store_nmethod(method,
                              compile_id(),
                              entry_bci,
@@ -1170,9 +1161,6 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_preloaded(preload);
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
-#if INCLUDE_RTM_OPT
-      nm->set_rtm_state(rtm_state);
-#endif
 
       if (entry_bci == InvocationEntryBci) {
         if (TieredCompilation) {

@@ -143,7 +143,7 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     ClassPreloader::runtime_preload(THREAD, Handle(THREAD, java_platform_loader()));
   } else {
     // It must have been restored from the archived module graph
-    assert(UseSharedSpaces, "must be");
+    assert(CDSConfig::is_using_archive(), "must be");
     assert(CDSConfig::is_using_full_module_graph(), "must be");
     DEBUG_ONLY(
       oop platform_loader = get_platform_class_loader_impl(CHECK);
@@ -157,7 +157,7 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     ClassPreloader::runtime_preload(THREAD, Handle(THREAD, java_system_loader()));
   } else {
     // It must have been restored from the archived module graph
-    assert(UseSharedSpaces, "must be");
+    assert(CDSConfig::is_using_archive(), "must be");
     assert(CDSConfig::is_using_full_module_graph(), "must be");
     DEBUG_ONLY(
       oop system_loader = get_system_class_loader_impl(CHECK);
@@ -1288,7 +1288,7 @@ InstanceKlass* SystemDictionary::load_instance_class_impl(Symbol* class_name, Ha
     InstanceKlass* k = nullptr;
 
 #if INCLUDE_CDS
-    if (UseSharedSpaces)
+    if (CDSConfig::is_using_archive())
     {
       PerfTraceElapsedTime vmtimer(ClassLoader::perf_shared_classload_time());
       InstanceKlass* ik = SystemDictionaryShared::find_builtin_class(class_name);
@@ -1643,7 +1643,7 @@ void SystemDictionary::initialize(TRAPS) {
   // Resolve basic classes
   vmClasses::resolve_all(CHECK);
   // Resolve classes used by archived heap objects
-  if (UseSharedSpaces) {
+  if (CDSConfig::is_using_archive()) {
     HeapShared::resolve_classes(THREAD);
   }
 }

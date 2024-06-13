@@ -263,7 +263,7 @@ objArrayOop HeapShared::roots() {
       return nullptr;
     }
   } else {
-    assert(UseSharedSpaces, "must be");
+    assert(CDSConfig::is_using_archive(), "must be");
   }
 
   objArrayOop roots = (objArrayOop)_roots.resolve();
@@ -393,7 +393,7 @@ oop HeapShared::get_archived_object(int permanent_index) {
 // Returns an objArray that contains all the roots of the archived objects
 oop HeapShared::get_root(int index, bool clear) {
   assert(index >= 0, "sanity");
-  assert(!CDSConfig::is_dumping_heap() && UseSharedSpaces, "runtime only");
+  assert(!CDSConfig::is_dumping_heap() && CDSConfig::is_using_archive(), "runtime only");
   assert(!_roots.is_empty(), "must have loaded shared heap");
   oop result = roots()->obj_at(index);
   if (clear) {
@@ -404,7 +404,7 @@ oop HeapShared::get_root(int index, bool clear) {
 
 void HeapShared::clear_root(int index) {
   assert(index >= 0, "sanity");
-  assert(UseSharedSpaces, "must be");
+  assert(CDSConfig::is_using_archive(), "must be");
   if (ArchiveHeapLoader::is_in_use()) {
     if (log_is_enabled(Debug, cds, heap)) {
       oop old = roots()->obj_at(index);
@@ -1130,7 +1130,7 @@ static void verify_the_heap(Klass* k, const char* which) {
 // ClassFileLoadHook is enabled, it's possible for this class to be dynamically replaced. In
 // this case, we will not load the ArchivedKlassSubGraphInfoRecord and will clear its roots.
 void HeapShared::resolve_classes(JavaThread* current) {
-  assert(UseSharedSpaces, "runtime only!");
+  assert(CDSConfig::is_using_archive(), "runtime only!");
   if (!ArchiveHeapLoader::is_in_use()) {
     return; // nothing to do
   }

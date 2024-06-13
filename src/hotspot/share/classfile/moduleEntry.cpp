@@ -62,7 +62,7 @@ void ModuleEntry::set_location(Symbol* location) {
 
   if (location != nullptr) {
     location->increment_refcount();
-    CDS_ONLY(if (UseSharedSpaces) {
+    CDS_ONLY(if (CDSConfig::is_using_archive()) {
         _shared_path_index = FileMapInfo::get_module_shared_path_index(location);
       });
   }
@@ -554,7 +554,7 @@ void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
 }
 
 void ModuleEntry::clear_archived_oops() {
-  assert(UseSharedSpaces && !CDSConfig::is_using_full_module_graph(), "runtime only");
+  assert(CDSConfig::is_using_archive() && !CDSConfig::is_using_full_module_graph(), "runtime only");
   HeapShared::clear_root(_archived_module_index);
 }
 
