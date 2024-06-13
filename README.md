@@ -1,6 +1,6 @@
-# Welcome to the Leyden Prototype Repository!
+# Leyden Early Access Release
 
-The purpose of the Leyden repository is to prototype improvements in 
+The purpose of the Leyden Early Access Release is to prototype improvements in 
 startup time, in time to peak performance, and in footprint of Java programs, as a part of 
 [Project Leyden](https://openjdk.org/projects/leyden). We would like to solicit feedback from
 the Java community, with the hope that some of these improvements can be eventually
@@ -8,14 +8,10 @@ incoporated in future Java releases.
 
 ## 0. Disclaimers
 
-- *This repository contains experimental and unstable code. It is not intended to be used
+- *This release contains experimental and unstable code. It is not intended to be used
    in a production environment.*
-- *This repository is intended for developers of the JDK, and advanced Java developers who
-   are familiar with building the JDK.*
-- *The experimental features in this repository may be changed or removed without notice.
+- *The experimental features in this release may be changed or removed without notice.
    Command line flags and workflows are likely to change.*
-- *The benchmarks results reported on this page are for illustrative purposes only. Your
-   applications may get better or worse results.*
 
 ## 1. Overview
 
@@ -77,25 +73,9 @@ be individually disabled by negating its associated flag.
 
 [CDS]: <https://docs.oracle.com/en/java/javase/22/vm/class-data-sharing.html>
 
-## 2. Building the Leyden Repository
+## 2. Trying out Leyden Features
 
-The Leyden Repository can be built in the same way as the main-line JDK repository.
-Please use the "premain" branch. I.e., [https://github.com/openjdk/leyden/tree/premain](https://github.com/openjdk/leyden/tree/premain).
-
-For build instructions please see the
-[online documentation](https://openjdk.org/groups/build/doc/building.html),
-or either of these files:
-
-- [doc/building.html](doc/building.html) (html version)
-- [doc/building.md](doc/building.md) (markdown version)
-
-See <https://openjdk.org/> for more information about the OpenJDK
-Community and the JDK and see <https://bugs.openjdk.org> for JDK issue
-tracking.
-
-## 3. Trying out Leyden Features
-
-The easiest way to try out the Leyden features is to build a JVM from the Leyden repository, and use it with your application with the `-XX:CacheDataStore` flag.
+The easiest way to try out the Leyden features is to use the `java` program in the Leyden Early Access Release with the `-XX:CacheDataStore` flag.
 
 Here's a small benchmark that uses the JDK's built-in
 [`JavaCompiler`](https://docs.oracle.com/en/java/javase/21/docs/api/java.compiler/javax/tools/JavaCompiler.html)
@@ -105,7 +85,7 @@ setting up the classes used by `JavaCompiler`, so it will benefit from the Leyde
 First, download [JavacBenchApp.java](https://github.com/iklam/jdk/blob/f95f851aed3d2bf06edabab1e7c24e15f4145d0d/test/hotspot/jtreg/runtime/cds/appcds/applications/JavacBenchApp.java)
 and compile it into a JAR file.
 
-(Remember to use the `java` program that you built from the Leyden repository.)
+(Remember to use the `java` program from the Leyden Early Access Release.)
 
 ```
 $ javac JavacBenchApp.java
@@ -182,7 +162,7 @@ $ ls -l JavacBenchApp.cds*
 
 Note that the file `JavacBenchApp.cds.code` is no longer created.
 
-## 4. Limitations of the Leyden Prototype
+## 3. Limitations of the Leyden Prototype
 
 When trying out the Leyden, please pay attention to the following limitations.
 
@@ -205,7 +185,8 @@ Otherwise, the CDS archive may not be loaded for the production run, leading to 
 For example, sometimes you may perform the training run on a large development host, and then use
 a container to run the application in a small production node. In the following scenario, as the collector
 is not explicitly specified, the VM will automatically pick G1 for the training run, and SerialGC for the
-production run (due to its limited amount of memory):
+production run (due to its limited amount of memory). The following example assumes that you have extracted the
+Leyden Early Access Release under `/tmp/leyden-ea/jdk-24`.
 
 ```
 # training run (uses G1 by default)
@@ -213,7 +194,7 @@ $ rm -fv JavacBenchApp.cds*
 $ java -XX:CacheDataStore=JavacBenchApp.cds -cp JavacBenchApp.jar JavacBenchApp 50
 
 # production run (uses SerialGC)
-$ docker run --rm -v /repos/leyden/build/linux-x64/images/jdk:/jdk -v $(pwd):/test \
+$ docker run --rm -v /tmp/leyden-ea/jdk-24/jdk:/jdk -v $(pwd):/test \
     --memory=1024m \
     container-registry.oracle.com/java/openjdk \
     bash -c 'cd /test; /jdk/bin/java -XX:CacheDataStore=JavacBenchApp.cds -cp JavacBenchApp.jar JavacBenchApp 50'
@@ -256,7 +237,7 @@ from being used, or it's caused by a deficiency in the implementation of the Ley
 To revert to the behavior of the standard JDK, you can explicitly add `-Xshare:auto` to the command-line.
 
 ```
-$ docker run --rm -v /repos/leyden/build/linux-x64/images/jdk:/jdk -v $(pwd):/test \
+$ docker run --rm -v /tmp/leyden-ea/jdk-24/jdk:/jdk -v $(pwd):/test \
     --memory=1024m \
     container-registry.oracle.com/java/openjdk \
     bash -c 'cd /test; /jdk/bin/java -Xshare:auto -XX:CacheDataStore=JavacBenchApp.cds -cp JavacBenchApp.jar JavacBenchApp 50'
@@ -267,180 +248,6 @@ Generated source code for 51 classes and compiled them in 831 ms
 
 See [here](https://docs.oracle.com/en/java/javase/21/vm/class-data-sharing.html) for a discussion of `-Xshare:on` vs  `-Xshare:auto`.
 
+## 4. More Documentation
 
-## 5. Benchmarking
-
-We use a small set of benchmarks to demonstrate the performance of the optimizations in the Leyden repo.
-
-- [helidon-quickstart-se](test/hotspot/jtreg/premain/helidon-quickstart-se): from https://helidon.io/docs/v4/se/guides/quickstart
-- [micronaut-first-app](test/hotspot/jtreg/premain/micronaut-first-app): from https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html
-- [quarkus-getting-started](test/hotspot/jtreg/premain/quarkus-getting-started): from https://quarkus.io/guides/getting-started
-- [spring-petclinic](test/hotspot/jtreg/premain/spring-petclinic): from https://github.com/spring-projects/spring-petclinic
-- *(FIXME: add a benchmark for javac)*
-
-### Benchmarking Against JDK Main-line
-
-To can compare the performance of Leyden vs the main-line JDK, you need:
-
-- An official build of JDK 21
-- An up-to-date build of the JDK main-line
-- The latest Leyden build
-- Maven (ideally 3.8 or later, as required by some of the demos). Note: if you are behind
-  a firewall, you may need to [set up proxies for Maven](https://maven.apache.org/guides/mini/guide-proxies.html)
-
-The same steps are used for benchmarking all of the above demos. For example:
-
-```
-$ cd helidon-quickstart-se
-$ make PREMAIN_HOME=/repos/leyden/build/linux-x64/images/jdk \
-       MAINLINE_HOME=/repos/jdk/build/linux-x64/images/jdk \
-       BLDJDK_HOME=/usr/local/jdk21 \
-       bench
-run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT
-1,398,244,144,107
-2,387,247,142,108
-3,428,238,143,107
-4,391,252,142,111
-5,417,247,141,107
-6,390,239,139,127
-7,387,247,145,111
-8,387,240,147,110
-9,388,242,147,108
-10,400,242,167,108
-Geomean,397.08,243.76,145.52,110.26
-Stdev,13.55,4.19,7.50,5.73
-Markdown snippets in mainline_vs_premain.md
-```
-
-The above command runs each configuration 10 times, in an interleaving order. This way
-the noise of the system (background processes, thermo throttling, etc) is more likely to
-be spread across the different runs.
-
-As is typical for benchmarking start-up performance, the numbers are not very steady.
-It is best to plot
-the results (as saved in the file `mainline_vs_premain.csv`) in a spreadsheet to check for
-noise and other artifacts.
-
-The "make bench" target also generates GitHub markdown snippets (in the file `mainline_vs_premain.md`) for creating the
-graphs below.
-
-### Benchmarking Between Two Leyden Builds
-
-This is useful for Leyden developers to measure the benefits of a particular optimization.
-The steps are similar to above, but we use the "make compare_premain_builds" target:
-
-```
-$ cd helidon-quickstart-se
-$ make PM_OLD=/repos/leyden_old/build/linux-x64/images/jdk \
-       PM_NEW=/repos/leyden_new/build/linux-x64/images/jdk \
-       BLDJDK_HOME=/usr/local/jdk21 \
-       compare_premain_builds
-Old build = /repos/leyden_old/build/linux-x64/images/jdk with options
-New build = /repos/leyden_new/build/linux-x64/images/jdk with options
-Run,Old CDS + AOT,New CDS + AOT
-1,110,109
-2,131,111
-3,118,115
-4,110,108
-5,117,110
-6,114,109
-7,110,109
-8,118,110
-9,110,110
-10,113,114
-Geomean,114.94,110.48
-Stdev,6.19,2.16
-Markdown snippets in compare_premain_builds.md
-```
-
-Please see [test/hotspot/jtreg/premain/lib/Bench.gmk](test/hotspot/jtreg/premain/lib/Bench.gmk) for more details.
-
-Note: due to the variability of start-up time, the benefit of minor improvements may
-be difficult to measure.
-
-### Preliminary Benchmark Results
-
-The following charts show the relative start-up performance of the Leyden/Premain branch vs
-the JDK main-line.
-
-For example, a number of "premain CDS + AOT : 291" indicates that if the application takes
-1000 ms to start-up with the JDK main-line, it takes only 291 ms to start up when all the
-current set of Leyden optimizations for CDS and AOT are enabled.
-
-The benchmark results are collected with `make bench` in the following directories:
-
-- `helidon-quickstart-se`
-- `micronaut-first-app`
-- `quarkus-getting-started`
-- `spring-petclinic`
-
-These JDK versions were used in the comparisons:
-
-- JDK main-line: https://github.com/openjdk/jdk/commit/70944ca54ad0090c734bb5b3082beb33450c4877
-- Leyden: https://github.com/openjdk/leyden/commit/9fa972214934d30f67db5fd4d1b8007636ac1428
-
-The benchmarks were executed on an 8-core Intel i7-10700 CPU @ 2.90GHz with 32GB RAM running Ubuntu 22.04.3 LTS.
-
-### Helidon Quick Start (SE) Demo (3.44x improvement)
-
-```mermaid
----
-config:
-    xyChart:
-        chartOrientation: horizontal
-        height: 300
----
-xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static CDS", "premain custom static CDS only", "premain CDS + AOT"]
-    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 632, 376, 291]
-```
-
-### Micronaut First App Demo (2.83x improvement)
-
-```mermaid
----
-config:
-    xyChart:
-        chartOrientation: horizontal
-        height: 300
----
-xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static CDS", "premain custom static CDS only", "premain CDS + AOT"]
-    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 558, 410, 353]
-```
-
-### Quarkus Getting Started Demo (3.15x improvement)
-
-```mermaid
----
-config:
-    xyChart:
-        chartOrientation: horizontal
-        height: 300
----
-xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static CDS", "premain custom static CDS only", "premain CDS + AOT"]
-    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 568, 395, 317]
-```
-
-### Spring PetClinic Demo (2.72x improvement)
-
-```mermaid
----
-config:
-    xyChart:
-        chartOrientation: horizontal
-        height: 300
----
-xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static CDS", "premain custom static CDS only", "premain CDS + AOT"]
-    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 695, 563, 368]
-```
-
-## 6. More Documentation
-
-Please see [test/hotspot/jtreg/premain/](test/hotspot/jtreg/premain) for more information.
+Please see the [README.md file from the Leyden Repository](https://github.com/openjdk/leyden/blob/premain/README.md) for more information.
