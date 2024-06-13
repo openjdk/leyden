@@ -19,7 +19,8 @@ incoporated in future Java releases.
 
 ## 1. Overview
 
-The Leyden prototype includes many optimizations that shift work from run time to earlier
+The Leyden "[premain](https://github.com/openjdk/leyden/blob/premain/)" prototype
+includes many optimizations that shift work from run time to earlier
 experimental executions of the application, which are
 called <i>training runs</i>. In a training run, we pre-compute various kinds of information.
 Importantly, we pre-compile
