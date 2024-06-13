@@ -8,8 +8,9 @@ incoporated in future Java releases.
 
 ## 0. Disclaimers
 
-- *This release contains experimental and unstable code. It is not intended to be used
-   in a production environment.*
+- *This release contains experimental and unstable code from the
+   Leyden "[premain](https://github.com/openjdk/leyden/blob/premain/)" prototype.
+   It is not intended to be used in a production environment.*
 - *The experimental features in this release may be changed or removed without notice.
    Command line flags and workflows are likely to change.*
 
@@ -22,9 +23,6 @@ called <i>training runs</i>. In a training run, we pre-compute various kinds of 
 Importantly, we pre-compile
 bytecode to native code, guided by observations of the application's actual behavior
 during the training run.
-
-The Leyden repository is closely tracking the JDK main-line development. We are typically only a few weeks behind
-the [main-line JDK repo](https://github.com/openjdk/jdk).
 
 We have implemented the following improvements over the JDK main-line:
 
