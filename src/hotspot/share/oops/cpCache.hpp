@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -191,11 +191,14 @@ class ConstantPoolCache: public MetaspaceObj {
   static ByteSize field_entries_offset()           { return byte_offset_of(ConstantPoolCache, _resolved_field_entries);  }
   static ByteSize method_entries_offset()          { return byte_offset_of(ConstantPoolCache, _resolved_method_entries); }
 
+#if INCLUDE_CDS
+  void remove_unshareable_info();
+#endif
+
  public:
   static int size() { return align_metadata_size(sizeof(ConstantPoolCache) / wordSize); }
 
  private:
-
   // Helpers
   ConstantPool**        constant_pool_addr()     { return &_constant_pool; }
 
@@ -218,6 +221,14 @@ class ConstantPoolCache: public MetaspaceObj {
   bool check_no_old_or_obsolete_entries();
   void dump_cache();
 #endif // INCLUDE_JVMTI
+
+#if INCLUDE_CDS
+  void remove_resolved_field_entries_if_non_deterministic();
+  void remove_resolved_indy_entries_if_non_deterministic();
+  void remove_resolved_method_entries_if_non_deterministic();
+  bool can_archive_resolved_method(ResolvedMethodEntry* method_entry);
+  bool can_archive_invokehandle(ResolvedMethodEntry* rme);
+#endif
 
   // RedefineClasses support
   DEBUG_ONLY(bool on_stack() { return false; })
