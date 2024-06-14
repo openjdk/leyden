@@ -30,6 +30,7 @@
 #include "runtime/perfDataTypes.hpp"
 #include "utilities/exceptions.hpp"
 #include "utilities/macros.hpp"
+#include "utilities/ostream.hpp"
 #include "utilities/zipLibrary.hpp"
 
 // The VM class loader.
@@ -329,7 +330,7 @@ class ClassLoader: AllStatic {
 
   static PerfCounter* perf_class_init_bytecodes_count() { return _perf_class_init_bytecodes_count; }
 
-  static void print_counters();
+  static void print_counters(outputStream *st);
 
   // Record how many calls to Unsafe_DefineClass
   static PerfCounter* unsafe_defineClassCallCounter() {

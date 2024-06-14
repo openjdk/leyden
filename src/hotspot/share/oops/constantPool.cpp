@@ -1144,6 +1144,7 @@ oop ConstantPool::resolve_constant_at_impl(const constantPoolHandle& this_cp,
     { PerfTraceTimedEvent timer(ClassLoader::perf_resolve_invokedynamic_time(),
                                 ClassLoader::perf_resolve_invokedynamic_count(),
                                 THREAD->class_being_initialized() == nullptr);
+
       // Resolve the Dynamically-Computed constant to invoke the BSM in order to obtain the resulting oop.
       BootstrapInfo bootstrap_specifier(this_cp, cp_index);
 
@@ -1204,6 +1205,7 @@ oop ConstantPool::resolve_constant_at_impl(const constantPoolHandle& this_cp,
     { PerfTraceTimedEvent timer(ClassLoader::perf_resolve_method_handle_time(),
                                 ClassLoader::perf_resolve_method_handle_count(),
                                 THREAD->class_being_initialized() == nullptr);
+
       int ref_kind                 = this_cp->method_handle_ref_kind_at(cp_index);
       int callee_index             = this_cp->method_handle_klass_index_at(cp_index);
       Symbol*  name =      this_cp->method_handle_name_ref_at(cp_index);
@@ -1254,6 +1256,7 @@ oop ConstantPool::resolve_constant_at_impl(const constantPoolHandle& this_cp,
     { PerfTraceTimedEvent timer(ClassLoader::perf_resolve_method_type_time(),
                                 ClassLoader::perf_resolve_method_type_count(),
                                 THREAD->class_being_initialized() == nullptr);
+
       Symbol*  signature = this_cp->method_type_signature_at(cp_index);
       { ResourceMark rm(THREAD);
         log_debug(class, resolve)("resolve JVM_CONSTANT_MethodType [%d/%d] %s",

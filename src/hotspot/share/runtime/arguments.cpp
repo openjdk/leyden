@@ -3744,6 +3744,10 @@ jint Arguments::apply_ergo() {
     if (FLAG_IS_DEFAULT(ProfileVMLocks)) {
       FLAG_SET_DEFAULT(ProfileVMLocks, true);
     }
+    if (UsePerfData && !log_is_enabled(Info, perf, class, link)) {
+      // automatically enable -Xlog:perf+class+link
+      LogConfiguration::configure_stdout(LogLevel::Info, true, LOG_TAGS(perf, class, link));
+    }
     // Don't turn on ProfileVMCalls and ProfileRuntimeCalls by default.
   } else {
     if (!FLAG_IS_DEFAULT(ProfileVMLocks) && ProfileVMLocks) {
@@ -3757,6 +3761,10 @@ jint Arguments::apply_ergo() {
     if (!FLAG_IS_DEFAULT(ProfileRuntimeCalls) && ProfileRuntimeCalls) {
       warning("Disabling ProfileRuntimeCalls since logging is turned off.");
       FLAG_SET_DEFAULT(ProfileRuntimeCalls, false);
+    }
+    if (log_is_enabled(Info, perf, class, link)) {
+      warning("Disabling -Xlog:perf+class+link since logging is turned off.");
+      LogConfiguration::configure_stdout(LogLevel::Off, false, LOG_TAGS(perf, class, link));
     }
   }
   if (FLAG_IS_DEFAULT(PerfDataMemorySize)) {

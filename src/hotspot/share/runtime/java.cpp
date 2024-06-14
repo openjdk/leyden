@@ -170,13 +170,16 @@ static void print_method_profiling_data() {
 
 void perf_jvm_print_on(outputStream* st);
 
-void log_vm_init_stats() {
+void log_vm_init_stats(bool use_tty) {
   LogStreamHandle(Info, init) log;
   if (log.is_enabled()) {
-    SharedRuntime::print_counters_on(&log);
-    ClassLoader::print_counters();
+    outputStream* out = use_tty ? tty : &log;
+    SharedRuntime::print_counters_on(out);
+    LogStreamHandle(Info, perf, class, link) log2;
+    outputStream* out2 = use_tty ? tty : &log2;
+    ClassLoader::print_counters(out2);
     ClassPreloader::print_counters();
-    log.cr();
+    out->cr();
     // FIXME: intermittent crashes
 //    if (CountBytecodesPerThread) {
 //      log.print_cr("Thread info:");
@@ -196,47 +199,47 @@ void log_vm_init_stats() {
 //      Threads::java_threads_do(&cl);
 //    }
 //    log.cr();
-    log.print_cr("Deoptimization events: ");
-    Deoptimization::print_statistics_on(&log);
-    log.cr();
+    out->print_cr("Deoptimization events: ");
+    Deoptimization::print_statistics_on(out);
+    out->cr();
 
-    log.print("Compilation statistics: ");
-    CompileBroker::print_statistics_on(&log);
-    log.cr();
+    out->print("Compilation statistics: ");
+    CompileBroker::print_statistics_on(out);
+    out->cr();
 
     {
       MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-      log.print("Code cache statistics: ");
-      CodeCache::print_nmethod_statistics_on(&log);
-      log.cr();
+      out->print("Code cache statistics: ");
+      CodeCache::print_nmethod_statistics_on(out);
+      out->cr();
     }
 
     if (SCCache::is_on_for_read()) {
-      log.print_cr("Startup Code Cache: ");
-      SCCache::print_statistics_on(&log);
-      log.cr();
-      SCCache::print_timers_on(&log);
+      out->print_cr("Startup Code Cache: ");
+      SCCache::print_statistics_on(out);
+      out->cr();
+      SCCache::print_timers_on(out);
     }
 
-    VMThread::print_counters_on(&log);
-    log.cr();
-    MutexLockerImpl::print_counters_on(&log);
-    log.cr();
-    log.print("Runtime events for thread \"main\"");
+    VMThread::print_counters_on(out);
+    out->cr();
+    MutexLockerImpl::print_counters_on(out);
+    out->cr();
+    out->print("Runtime events for thread \"main\"");
     if (ProfileRuntimeCalls) {
-      log.print_cr(" (%d nested events):", ProfileVMCallContext::nested_runtime_calls_count());
+      out->print_cr(" (%d nested events):", ProfileVMCallContext::nested_runtime_calls_count());
 
-      Runtime1::print_counters_on(&log);
-      OptoRuntime::print_counters_on(&log);
-      InterpreterRuntime::print_counters_on(&log);
-      Deoptimization::print_counters_on(&log);
+      Runtime1::print_counters_on(out);
+      OptoRuntime::print_counters_on(out);
+      InterpreterRuntime::print_counters_on(out);
+      Deoptimization::print_counters_on(out);
     } else {
-      log.print_cr(": no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
+      out->print_cr(": no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
     }
-    log.cr();
-    perf_jvm_print_on(&log);
-    log.cr();
-    MethodHandles::print_counters_on(&log);
+    out->cr();
+    perf_jvm_print_on(out);
+    out->cr();
+    MethodHandles::print_counters_on(out);
   }
 }
 
@@ -448,7 +451,7 @@ void print_statistics() {
 
   ThreadsSMRSupport::log_statistics();
 
-  log_vm_init_stats();
+  log_vm_init_stats(true /* use_tty */);
 }
 
 // Note: before_exit() can be executed only once, if more than one threads

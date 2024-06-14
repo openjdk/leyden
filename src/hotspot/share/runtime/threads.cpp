@@ -825,7 +825,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     Precompiler::compile_cached_code(CHECK_JNI_ERR);
     if (PrecompileOnlyAndExit) {
       SCCache::close();
-      log_vm_init_stats();
+      log_vm_init_stats(true /* use_tty */);
       vm_direct_exit(0, "Code precompiation is over");
     }
   }
@@ -894,8 +894,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     vm_direct_exit(0, "CacheDataStore dumping is complete");
   }
 
-  log_info(init)("Before main:");
-  log_vm_init_stats();
+  log_info(init)("At VM initialization completion:");
+  log_vm_init_stats(false /* use_tty */);
 
   if (UsePerfData) {
     if (ProfileVMLocks) {
@@ -911,6 +911,14 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
       main_thread->set_profile_vm_ops(true);
     }
   }
+
+/*
+  if (log_is_enabled(Info, perf, class, link)) {
+    LogStreamHandle(Info, perf, class, link) log;
+    log.print_cr("At VM initialization completion:");
+    ClassLoader::print_counters(&log);
+  }
+*/
 
   return JNI_OK;
 }

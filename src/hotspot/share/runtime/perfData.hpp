@@ -1028,7 +1028,7 @@ class PerfTraceTimedEvent : public PerfTraceTime {
 
   public:
     inline PerfTraceTimedEvent(PerfTickCounters* counters, PerfLongCounter* eventp, bool is_on = true) : PerfTraceTime(counters, is_on), _eventp(eventp) {
-      if (!UsePerfData || !is_on) return;
+      if (!UsePerfData || !is_on || counters == nullptr) return;
       _eventp->inc();
     }
 };
