@@ -863,7 +863,7 @@ void ClassListParser::parse_constant_pool_tag() {
   bool preresolve_class = false;
   bool preresolve_fmi = false;
   bool preresolve_indy = false;
-  
+
   while (*_token) {
     int cp_index;
     skip_whitespaces();

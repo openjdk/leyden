@@ -513,6 +513,14 @@ void before_exit(JavaThread* thread, bool halt) {
 
   MethodProfiler::process_method_hotness();
 
+  // Actual shutdown logic begins here.
+
+#if INCLUDE_JVMCI
+  if (EnableJVMCI) {
+    JVMCI::shutdown(thread);
+  }
+#endif
+
 #if INCLUDE_CDS
   ClassListWriter::write_resolved_constants();
   ClassListWriter::write_reflection_data();
@@ -526,14 +534,6 @@ void before_exit(JavaThread* thread, bool halt) {
     DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
   }
   assert(!thread->has_pending_exception(), "must be");
-#endif
-
-  // Actual shutdown logic begins here.
-
-#if INCLUDE_JVMCI
-  if (EnableJVMCI) {
-    JVMCI::shutdown(thread);
-  }
 #endif
 
   SCCache::close(); // Write final data and close archive

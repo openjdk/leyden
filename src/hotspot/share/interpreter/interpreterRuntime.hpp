@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -102,6 +102,7 @@ class InterpreterRuntime: AllStatic {
   static void cds_resolve_invokedynamic(int raw_index,
                                         constantPoolHandle& pool, TRAPS);
  private:
+
   // Statics & fields
   static void resolve_getfield(JavaThread* current);
   static void resolve_putfield(JavaThread* current);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -44,6 +44,7 @@ void ResolvedFieldEntry::print_on(outputStream* st) const {
   st->print_cr(" - Put Bytecode: %s", Bytecodes::name((Bytecodes::Code)put_code()));
 }
 
+#if INCLUDE_CDS
 void ResolvedFieldEntry::remove_unshareable_info() {
   u2 saved_cpool_index = _cpool_index;
   memset(this, 0, sizeof(*this));
@@ -53,3 +54,4 @@ void ResolvedFieldEntry::remove_unshareable_info() {
 void ResolvedFieldEntry::mark_and_relocate() {
   ArchiveBuilder::current()->mark_and_relocate_to_buffered_addr(&_field_holder);
 }
+#endif

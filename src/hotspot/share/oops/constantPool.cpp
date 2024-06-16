@@ -62,7 +62,6 @@
 #include "oops/typeArrayOop.inline.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/atomic.hpp"
-//#include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/init.hpp"
 #include "runtime/javaCalls.hpp"
@@ -441,15 +440,13 @@ void ConstantPool::remove_unshareable_info() {
     return;
   }
 
-  // Resolved references are not in the shared archive.
-  // Save the length for restoration.  It is not necessarily the same length
-  // as reference_map.length() if invokedynamic is saved. It is needed when
-  // re-creating the resolved reference array if archived heap data cannot be map
-  // at runtime.
-  set_resolved_reference_length(
-    resolved_references() != nullptr ? resolved_references()->length() : 0);
-  set_resolved_references(OopHandle());
-
+  // resolved_references(): remember its length. If it cannot be restored
+  // from the archived heap objects at run time, we need to dynamically allocate it.
+  if (cache() != nullptr) {
+    set_resolved_reference_length(
+        resolved_references() != nullptr ? resolved_references()->length() : 0);
+    set_resolved_references(OopHandle());
+  }
   remove_unshareable_entries();
 }
 

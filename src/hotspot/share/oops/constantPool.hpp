@@ -684,9 +684,9 @@ class ConstantPool : public Metadata {
   objArrayOop prepare_resolved_references_for_archiving() NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   void add_dumped_interned_strings() NOT_CDS_JAVA_HEAP_RETURN;
   void remove_unshareable_info();
-  void remove_unshareable_entries();
   void restore_unshareable_info(TRAPS);
- private:
+private:
+  void remove_unshareable_entries();
   void remove_resolved_klass_if_non_deterministic(int cp_index);
 #endif
 

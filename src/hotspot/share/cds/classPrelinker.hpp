@@ -68,18 +68,18 @@ class ClassPrelinker :  AllStatic {
   static bool is_class_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_class);
   static bool is_indy_resolution_deterministic(ConstantPool* cp, int cp_index);
 
-  static Klass* find_loaded_class(Thread* current, oop class_loader, Symbol* name);
-  static Klass* find_loaded_class(Thread* current, ConstantPool* cp, int class_cp_index);
-
-  // fmi = FieldRef/MethodRef/InterfaceMethodRef
-  static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
-                                    GrowableArray<bool>* resolve_fmi_list, TRAPS);
   // helper
   static Klass* resolve_boot_class_or_fail(const char* class_name, TRAPS);
 
   // java/lang/reflect/Proxy caching
   static void init_dynamic_proxy_cache(TRAPS);
 
+  static Klass* find_loaded_class(Thread* current, oop class_loader, Symbol* name);
+  static Klass* find_loaded_class(Thread* current, ConstantPool* cp, int class_cp_index);
+
+  // fmi = FieldRef/MethodRef/InterfaceMethodRef
+  static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
+                                    GrowableArray<bool>* resolve_fmi_list, TRAPS);
 public:
   static void initialize();
   static void dispose();
