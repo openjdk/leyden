@@ -883,7 +883,7 @@ class PerfTraceTimeBase : public StackObj {
     PerfLongCounter* _counter;
 
   public:
-    inline PerfTraceTimeBase(BaseTimer* t, PerfLongCounter* counter, bool is_on) : _t(t), _counter(counter) {}
+    inline PerfTraceTimeBase(BaseTimer* t, PerfLongCounter* counter) : _t(t), _counter(counter) {}
 
     ~PerfTraceTimeBase();
 
@@ -898,11 +898,9 @@ class PerfTraceElapsedTime: public PerfTraceTimeBase {
     elapsedTimer _t;
 
   public:
-    inline PerfTraceElapsedTime(PerfCounter* counter, bool is_on = true) : PerfTraceTimeBase(&_t, counter, is_on) {
-      if (!UsePerfData || !is_on) return;
-      if (counter != nullptr) {
-        _t.start();
-      }
+    inline PerfTraceElapsedTime(PerfCounter* counter) : PerfTraceTimeBase(&_t, counter) {
+      if (!UsePerfData || counter == nullptr) { return; }
+      _t.start();
     }
 };
 
@@ -911,11 +909,9 @@ class PerfTraceThreadTime: public PerfTraceTimeBase {
     ThreadTimer _t;
 
   public:
-    inline PerfTraceThreadTime(PerfCounter* counter, bool is_on = true) : PerfTraceTimeBase(&_t, counter, is_on) {
-      if (!UsePerfData || !is_on || !TraceThreadTime) return;
-      if (counter != nullptr) {
-        _t.start();
-      }
+    inline PerfTraceThreadTime(PerfCounter* counter) : PerfTraceTimeBase(&_t, counter) {
+      if (!UsePerfData || !TraceThreadTime || counter == nullptr) { return; }
+      _t.start();
     }
 };
 
@@ -930,8 +926,8 @@ class PerfTraceTime : public StackObj {
   public:
     inline PerfTraceTime(PerfTickCounters* counters, bool is_on = true):
                          _counters(counters),
-                         _elapsed_timer(counters != nullptr ? counters->elapsed_counter() : nullptr, is_on),
-                         _thread_timer(counters != nullptr ? counters->thread_counter() : nullptr, is_on) {}
+                         _elapsed_timer(counters != nullptr ? counters->elapsed_counter() : nullptr),
+                         _thread_timer(counters != nullptr ? counters->thread_counter() : nullptr) {}
 
     const char* name() { return _counters->name(); }
     PerfTraceTimeBase* elapsed_timer() { return &_elapsed_timer; }
@@ -1005,8 +1001,8 @@ class PerfTraceElapsedTimeEvent: public PerfTraceElapsedTime {
     PerfLongCounter* _eventp;
 
   public:
-    inline PerfTraceElapsedTimeEvent(PerfCounter* counter, PerfLongCounter* eventp, bool is_on = true) : PerfTraceElapsedTime(counter, is_on), _eventp(eventp) {
-      if (!UsePerfData || !is_on) return;
+    inline PerfTraceElapsedTimeEvent(PerfCounter* counter, PerfLongCounter* eventp) : PerfTraceElapsedTime(counter), _eventp(eventp) {
+      if (!UsePerfData || counter == nullptr) return;
       _eventp->inc();
     }
 };
@@ -1016,8 +1012,8 @@ class PerfTraceThreadTimeEvent: public PerfTraceThreadTime {
     PerfLongCounter* _eventp;
 
   public:
-    inline PerfTraceThreadTimeEvent(PerfCounter* counter, PerfLongCounter* eventp, bool is_on = true) : PerfTraceThreadTime(counter, is_on), _eventp(eventp) {
-      if (!UsePerfData || !is_on) return;
+    inline PerfTraceThreadTimeEvent(PerfCounter* counter, PerfLongCounter* eventp) : PerfTraceThreadTime(counter), _eventp(eventp) {
+      if (!UsePerfData || counter == nullptr) return;
       _eventp->inc();
     }
 };
