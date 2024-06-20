@@ -70,6 +70,7 @@ class ClassListParser : public StackObj {
   static const char* DYNAMIC_PROXY_TAG;
   static const char* LAMBDA_FORM_TAG;
   static const char* LAMBDA_PROXY_TAG;
+
 public:
   static const char* ARRAY_TAG;
 
@@ -148,6 +149,7 @@ private:
   void constant_pool_resolution_warning(const char* msg, ...) ATTRIBUTE_PRINTF(2, 0);
   void error(const char* msg, ...) ATTRIBUTE_PRINTF(2, 0);
   oop loader_from_type(const char* loader_name);
+
 public:
   static void parse_classlist(const char* classlist_path, ParseMode parse_mode, TRAPS) {
     ClassListParser parser(classlist_path, parse_mode);

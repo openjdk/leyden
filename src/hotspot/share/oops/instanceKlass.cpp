@@ -2702,8 +2702,9 @@ void InstanceKlass::remove_unshareable_info() {
     init_implementor();
   }
 
-  // ConstantPool is cleaned separately. See ArchiveBuilder::make_klasses_shareable()
-  // constants()->remove_unshareable_info();
+  // Call remove_unshareable_info() on other objects that belong to this class, except
+  // for constants()->remove_unshareable_info(), which is called in a separate pass in
+  // ArchiveBuilder::make_klasses_shareable(),
 
   for (int i = 0; i < methods()->length(); i++) {
     Method* m = methods()->at(i);

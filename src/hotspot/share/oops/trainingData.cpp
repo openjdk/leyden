@@ -32,7 +32,6 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/methodDataDictionary.hpp"
-#include "cds/methodProfiler.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/compactHashtable.hpp"
@@ -46,6 +45,7 @@
 #include "oops/fieldStreams.inline.hpp"
 #include "oops/method.hpp"
 #include "oops/methodCounters.hpp"
+#include "oops/recompilationSchedule.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/arguments.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
@@ -59,9 +59,6 @@ TrainingData::TrainingDataSet TrainingData::_training_data_set(1024, 0x3fffffff)
 TrainingDataDictionary TrainingData::_archived_training_data_dictionary;
 TrainingDataDictionary TrainingData::_archived_training_data_dictionary_for_dumping;
 GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>* TrainingData::_dumptime_training_data_dictionary = nullptr;
-Array<MethodTrainingData*>* TrainingData::_recompilation_schedule = nullptr;
-Array<MethodTrainingData*>* TrainingData::_recompilation_schedule_for_dumping = nullptr;
-volatile bool* TrainingData::_recompilation_status = nullptr;
 int TrainingData::TrainingDataLocker::_lock_mode;
 volatile bool TrainingData::TrainingDataLocker::_snapshot = false;
 
@@ -82,15 +79,7 @@ void TrainingData::initialize() {
   if (have_data() || need_data()) {
     TrainingDataLocker::initialize();
   }
-  if (have_data()) {
-    if (_recompilation_schedule != nullptr && _recompilation_schedule->length() > 0) {
-      const int size = _recompilation_schedule->length();
-      _recompilation_status = NEW_C_HEAP_ARRAY(bool, size, mtCompiler);
-      for (int i = 0; i < size; i++) {
-        _recompilation_status[i] = false;
-      }
-    }
-  }
+  RecompilationSchedule::initialize();
 }
 
 static void verify_archived_entry(TrainingData* td, const TrainingData::Key* k) {
@@ -559,34 +548,7 @@ void TrainingData::init_dumptime_table(TRAPS) {
     }
   }
 
-  prepare_recompilation_schedule(CHECK);
-}
-
-void TrainingData::prepare_recompilation_schedule(TRAPS) {
-  if (!need_data()) {
-    return;
-  }
-  auto nmethods = MethodProfiler::sampled_nmethods();
-  GrowableArray<MethodTrainingData*> dyn_recompilation_schedule;
-  for (auto it = nmethods->begin(); it != nmethods->end(); ++it) {
-    nmethod* nm = *it;
-    if (RecordOnlyTopCompilations && nm->method_profiling_count() == 0) {
-      break;
-    }
-    if (nm->method() != nullptr) {
-      MethodTrainingData* mtd = nm->method()->training_data_or_null();
-      if (mtd != nullptr) {
-        dyn_recompilation_schedule.append(mtd);
-      }
-    }
-  }
-  delete nmethods;
-  ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  _recompilation_schedule_for_dumping = MetadataFactory::new_array<MethodTrainingData*>(loader_data, dyn_recompilation_schedule.length(), CHECK);
-  int i = 0;
-  for (auto it = dyn_recompilation_schedule.begin(); it != dyn_recompilation_schedule.end(); ++it) {
-    _recompilation_schedule_for_dumping->at_put(i++, *it);
-  }
+  RecompilationSchedule::prepare(CHECK);
 }
 
 #if INCLUDE_CDS
@@ -598,7 +560,7 @@ void TrainingData::iterate_roots(MetaspaceClosure* it) {
   for (int i = 0; i < _dumptime_training_data_dictionary->length(); i++) {
     _dumptime_training_data_dictionary->at(i).metaspace_pointers_do(it);
   }
-  it->push(&_recompilation_schedule_for_dumping);
+  RecompilationSchedule::iterate_roots(it);
 }
 
 void TrainingData::dump_training_data() {
@@ -617,7 +579,7 @@ void TrainingData::cleanup_training_data() {
       td->cleanup(visitor);
     }
   }
-  _recompilation_status = nullptr;
+  RecompilationSchedule::cleanup();
 }
 
 void KlassTrainingData::cleanup(Visitor& visitor) {
@@ -717,11 +679,10 @@ void CompileTrainingData::cleanup(Visitor& visitor) {
 void TrainingData::serialize_training_data(SerializeClosure* soc) {
   if (soc->writing()) {
     _archived_training_data_dictionary_for_dumping.serialize_header(soc);
-    soc->do_ptr(&_recompilation_schedule_for_dumping);
   } else {
     _archived_training_data_dictionary.serialize_header(soc);
-    soc->do_ptr(&_recompilation_schedule);
   }
+  RecompilationSchedule::serialize_training_data(soc);
 }
 
 void TrainingData::print_archived_training_data_on(outputStream* st) {
@@ -729,19 +690,7 @@ void TrainingData::print_archived_training_data_on(outputStream* st) {
   TrainingDataPrinter tdp(st);
   TrainingDataLocker::initialize();
   _archived_training_data_dictionary.iterate(&tdp);
-  if (_recompilation_schedule != nullptr && _recompilation_schedule->length() > 0) {
-    st->print_cr("Archived TrainingData Recompilation Schedule");
-    for (int i = 0; i < _recompilation_schedule->length(); i++) {
-      st->print("%4d: ", i);
-      MethodTrainingData* mtd = _recompilation_schedule->at(i);
-      if (mtd != nullptr) {
-        mtd->print_on(st);
-      } else {
-        st->print("nullptr");
-      }
-      st->cr();
-    }
-  }
+  RecompilationSchedule::print_archived_training_data_on(st);
 }
 
 void TrainingData::Key::metaspace_pointers_do(MetaspaceClosure *iter) {

@@ -94,8 +94,8 @@ bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index)
       return false;
     }
 
-    if (!k->is_instance_klass()) { // FIXME -- remove this check, and add a test case
-      // FIXME: is it valid to have a non-instance klass in method refs?
+    if (!k->is_instance_klass()) {
+      // TODO: support non instance klasses as well.
       return false;
     }
 
@@ -175,7 +175,8 @@ void ClassPrelinker::dumptime_resolve_constants(InstanceKlass* ik, TRAPS) {
 
   constantPoolHandle cp(THREAD, ik->constants());
   for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is unused
-    if (cp->tag_at(cp_index).value() == JVM_CONSTANT_String) {
+    switch (cp->tag_at(cp_index).value()) {
+    case JVM_CONSTANT_String:
       resolve_string(cp, cp_index, CHECK); // may throw OOM when interning strings.
     }
   }
@@ -487,7 +488,6 @@ bool ClassPrelinker::is_indy_resolution_deterministic(ConstantPool* cp, int cp_i
 
   return false;
 }
-
 #ifdef ASSERT
 bool ClassPrelinker::is_in_archivebuilder_buffer(address p) {
   if (!Thread::current()->is_VM_thread() || ArchiveBuilder::current() == nullptr) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,20 +19,28 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
- *
+ */
+/*
+ * @test
+ * @bug 8194743
+ * @summary Test lambda declared in early construction context
+ * @enablePreview
  */
 
-#ifndef SHARE_CDS_LAMBDAFORMINVOKERS_INLINE_HPP
-#define SHARE_CDS_LAMBDAFORMINVOKERS_INLINE_HPP
+public class LambdaOuterCapture {
 
-#include "cds/lambdaFormInvokers.hpp"
-#include "classfile/vmSymbols.hpp"
+    public class Inner {
 
-inline bool LambdaFormInvokers::may_be_regenerated_class(Symbol* name) {
-  return name == vmSymbols::java_lang_invoke_Invokers_Holder() ||
-         name == vmSymbols::java_lang_invoke_DirectMethodHandle_Holder() ||
-         name == vmSymbols::java_lang_invoke_LambdaForm_Holder() ||
-         name == vmSymbols::java_lang_invoke_DelegatingMethodHandle_Holder();
+        public Inner() {
+            Runnable r = () -> System.out.println(LambdaOuterCapture.this);
+            this(r);
+        }
+
+        public Inner(Runnable r) {
+        }
+    }
+
+    public static void main(String[] args) {
+        new LambdaOuterCapture().new Inner();
+    }
 }
-
-#endif // SHARE_CDS_LAMBDAFORMINVOKERS_INLINE_HPP
