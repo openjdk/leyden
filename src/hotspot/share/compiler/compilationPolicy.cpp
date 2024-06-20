@@ -34,6 +34,7 @@
 #include "oops/methodData.hpp"
 #include "oops/method.inline.hpp"
 #include "oops/oop.inline.hpp"
+#include "oops/recompilationSchedule.hpp"
 #include "oops/trainingData.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/arguments.hpp"
@@ -84,8 +85,8 @@ void CompilationPolicy::sample_load_average() {
 }
 
 bool CompilationPolicy::have_recompilation_work() {
-  if (UseRecompilation && TrainingData::have_data() && TrainingData::have_recompilation_schedule() &&
-                          TrainingData::recompilation_schedule()->length() > 0 && !_recompilation_done) {
+  if (UseRecompilation && TrainingData::have_data() && RecompilationSchedule::have_schedule() &&
+                          RecompilationSchedule::length() > 0 && !_recompilation_done) {
     if (_load_average.value() <= RecompilationLoadAverageThreshold) {
       return true;
     }
@@ -98,15 +99,15 @@ bool CompilationPolicy::recompilation_step(int step, TRAPS) {
     return false;
   }
 
-  const int size = TrainingData::recompilation_schedule()->length();
+  const int size = RecompilationSchedule::length();
   int i = 0;
   int count = 0;
   bool repeat = false;
   for (; i < size && count < step; i++) {
-    if (!TrainingData::recompilation_status()[i]) {
-      MethodTrainingData* mtd = TrainingData::recompilation_schedule()->at(i);
+    if (!RecompilationSchedule::status_at(i)) {
+      MethodTrainingData* mtd = RecompilationSchedule::at(i);
       if (!mtd->has_holder()) {
-        Atomic::release_store(&TrainingData::recompilation_status()[i], true);
+        RecompilationSchedule::set_status_at(i, true);
         continue;
       }
       const Method* method = mtd->holder();
@@ -124,13 +125,13 @@ bool CompilationPolicy::recompilation_step(int step, TRAPS) {
       if (!ForceRecompilation && !(nm->is_scc() && nm->comp_level() == CompLevel_full_optimization)) {
         // If it's already online-compiled at level 4, mark it as done.
         if (nm->comp_level() == CompLevel_full_optimization) {
-          Atomic::store(&TrainingData::recompilation_status()[i], true);
+          RecompilationSchedule::set_status_at(i, true);
         } else {
           repeat = true;
         }
         continue;
       }
-      if (Atomic::cmpxchg(&TrainingData::recompilation_status()[i], false, true) == false) {
+      if (RecompilationSchedule::claim_at(i)) {
         const methodHandle m(THREAD, const_cast<Method*>(method));
         CompLevel next_level = CompLevel_full_optimization;
 
