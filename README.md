@@ -251,7 +251,7 @@ See [here](https://docs.oracle.com/en/java/javase/21/vm/class-data-sharing.html)
 
 Please see the [README.md file from the Leyden Repository](https://github.com/openjdk/leyden/blob/premain/README.md) for more information.
 
-### 5. Errata
+## 5. Errata
 
 - The following message is printed during the training run. This message is incorrect and
   can be safely ignored.
