@@ -250,3 +250,13 @@ See [here](https://docs.oracle.com/en/java/javase/21/vm/class-data-sharing.html)
 ## 4. More Documentation
 
 Please see the [README.md file from the Leyden Repository](https://github.com/openjdk/leyden/blob/premain/README.md) for more information.
+
+### 5. Errata
+
+- The following message is printed during the training run. This message is incorrect and
+  can be safely ignored.
+  The CDS archive *is* dumped in spite of this message.
+
+```
+Java HotSpot(TM) 64-Bit Server VM warning: Cannot dump shared archive while using shared archive
+```
