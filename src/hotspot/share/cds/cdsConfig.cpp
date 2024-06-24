@@ -67,9 +67,6 @@ int CDSConfig::get_status() {
 
 void CDSConfig::initialize() {
   if (is_dumping_static_archive() && !is_dumping_final_static_archive()) {
-    if (RequireSharedSpaces) {
-      warning("Cannot dump shared archive while using shared archive");
-    }
     UseSharedSpaces = false;
   }
 
