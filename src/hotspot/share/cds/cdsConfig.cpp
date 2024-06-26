@@ -413,7 +413,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         log_info(cds)("full module graph: disabled when writing CDS preimage");
         HeapShared::disable_writing();
         stop_dumping_full_module_graph();
-        FLAG_SET_ERGO(ArchiveInvokeDynamic, false);
         FLAG_SET_ERGO(ArchivePackages, false);
 
         FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
@@ -499,10 +498,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     UseStringDeduplication = false;
 
     Arguments::PropertyList_add(new SystemProperty("java.lang.invoke.MethodHandle.NO_SOFT_CACHE", "true", false));
-  } else {
-    // These flags flag are useful only when dumping static archive (which supports archived heap)
-    ArchiveInvokeDynamic = false;
-    ArchivePackages = false;
   }
 
   // RecordDynamicDumpInfo is not compatible with ArchiveClassesAtExit
@@ -542,19 +537,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       BytecodeVerificationRemote = true;
       log_info(cds)("All non-system classes will be verified (-Xverify:remote) during CDS dump time.");
     }
-  }
-
-  if (!is_dumping_static_archive() || !PreloadSharedClasses) {
-    // FIXME -- is_dumping_heap() is not yet callable from here, as UseG1GC is not yet set by ergo!
-    //
-    // These optimizations require heap dumping and PreloadSharedClasses, or else
-    // the classes of some archived heap objects may be replaced at runtime.
-    ArchiveInvokeDynamic = false;
-    ArchivePackages = false;
-  }
-
-  if (!ArchiveInvokeDynamic) {
-    ArchiveReflectionData = false; // reflection data use LambdaForm classes
   }
 
   return true;
@@ -677,7 +659,9 @@ bool CDSConfig::is_initing_classes_at_dump_time() {
 }
 
 bool CDSConfig::is_dumping_invokedynamic() {
-  return ArchiveInvokeDynamic && is_dumping_heap();
+  // Requires PreloadSharedClasses, or else the classes of some archived heap
+  // objects used by the archive indy callsites may be replaced at runtime.
+  return ArchiveInvokeDynamic && PreloadSharedClasses && is_dumping_heap();
 }
 
 bool CDSConfig::is_dumping_packages() {
@@ -687,6 +671,12 @@ bool CDSConfig::is_dumping_packages() {
 bool CDSConfig::is_loading_packages() {
   return UseSharedSpaces && is_loading_heap() && _is_loading_packages;
 }
+
+bool CDSConfig::is_dumping_reflection_data() {
+  // reflection data use LambdaForm classes
+  return ArchiveReflectionData && is_dumping_invokedynamic();
+}
+
 #endif // INCLUDE_CDS_JAVA_HEAP
 
 // This is allowed by default. We disable it only in the final image dump before the

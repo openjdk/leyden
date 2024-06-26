@@ -1236,7 +1236,7 @@ JVM_END
 JVM_ENTRY_PROF(void, MHN_checkArchivable, MHN_checkArchivable(JNIEnv *env, jobject igcls, jclass klass_jh)) {
   if (klass_jh == nullptr) { THROW_MSG(vmSymbols::java_lang_InternalError(), "klass is null"); }
 
-  if (ArchiveInvokeDynamic) {
+  if (CDSConfig::is_dumping_invokedynamic()) {
     Klass* klass = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(klass_jh));
     if (klass != nullptr && klass->is_instance_klass()) {
       // klass could be null during very early VM start-up

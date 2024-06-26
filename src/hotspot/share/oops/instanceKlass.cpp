@@ -2731,7 +2731,7 @@ void InstanceKlass::remove_unshareable_info() {
   _methods_jmethod_ids = nullptr;
   _jni_ids = nullptr;
   _oop_map_cache = nullptr;
-  if (ArchiveInvokeDynamic && HeapShared::is_lambda_proxy_klass(this)) {
+  if (CDSConfig::is_dumping_invokedynamic() && HeapShared::is_lambda_proxy_klass(this)) {
     // keep _nest_host
   } else {
     // clear _nest_host to ensure re-load at runtime
@@ -2860,7 +2860,7 @@ bool InstanceKlass::can_be_verified_at_dumptime() const {
     return true;
   }
 
-  if (ArchiveInvokeDynamic) {
+  if (CDSConfig::is_dumping_invokedynamic()) {
     // FIXME: this works around JDK-8315719
     return true;
   }

@@ -299,7 +299,7 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
 void ArchiveBuilder::update_hidden_class_loader_type(InstanceKlass* ik) {
   s2 classloader_type;
   if (HeapShared::is_lambda_form_klass(ik)) {
-    assert(CDSConfig::is_dumping_invokedynamic(), "lambda form classes are archived only if ArchiveInvokeDynamic is true");
+    assert(CDSConfig::is_dumping_invokedynamic(), "lambda form classes are archived only if CDSConfig::is_dumping_invokedynamic() is true");
     classloader_type = ClassLoader::BOOT_LOADER;
   } else if (HeapShared::is_lambda_proxy_klass(ik)) {
     oop loader = ik->class_loader();

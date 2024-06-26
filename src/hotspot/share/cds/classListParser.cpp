@@ -951,7 +951,7 @@ void ClassListParser::parse_class_reflection_data_tag() {
     return;
   }
 
-  if (ArchiveReflectionData) {
+  if (CDSConfig::is_dumping_reflection_data()) {
     ClassPrelinker::generate_reflection_data(THREAD, ik, rd_flags);
   }
 }

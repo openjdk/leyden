@@ -672,7 +672,7 @@ void HeapShared::archive_java_mirrors() {
     if (m != nullptr) {
       copy_java_mirror_hashcode(orig_mirror, m);
       copy_preinitialized_mirror(orig_k, orig_mirror, m);
-      if (ArchiveReflectionData && java_lang_Class::has_reflection_data(orig_mirror)) {
+      if (CDSConfig::is_dumping_reflection_data() && java_lang_Class::has_reflection_data(orig_mirror)) {
         oop reflection_data = java_lang_Class::reflection_data(orig_mirror);
         bool success = archive_reachable_objects_from(1, _default_subgraph_info, reflection_data);
         guarantee(success, "");
@@ -867,7 +867,7 @@ void KlassSubGraphInfo::add_subgraph_object_klass(Klass* orig_k) {
   }
 
   if (buffered_k->is_instance_klass()) {
-    if (!ArchiveInvokeDynamic) {
+    if (!CDSConfig::is_dumping_invokedynamic()) {
       // FIXME: this supports Lambda Proxy classes
       assert(InstanceKlass::cast(buffered_k)->is_shared_boot_class(),
              "must be boot class");
@@ -911,7 +911,7 @@ void KlassSubGraphInfo::add_subgraph_object_klass(Klass* orig_k) {
 }
 
 void KlassSubGraphInfo::check_allowed_klass(InstanceKlass* ik) {
-  if (ArchiveInvokeDynamic) {
+  if (CDSConfig::is_dumping_invokedynamic()) {
     // FIXME -- this allows LambdaProxy classes
     return;
   }
@@ -1175,7 +1175,7 @@ void HeapShared::resolve_classes_for_subgraph_of(JavaThread* current, Klass* k) 
 }
 
 void HeapShared::initialize_java_lang_invoke(TRAPS) {
-  if (CDSConfig::is_loading_invokedynamic() || ArchiveInvokeDynamic) {
+  if (CDSConfig::is_loading_invokedynamic() || CDSConfig::is_dumping_invokedynamic()) {
     resolve_or_init("java/lang/invoke/Invokers$Holder", true, CHECK);
     resolve_or_init("java/lang/invoke/MethodHandle", true, CHECK);
     resolve_or_init("java/lang/invoke/MethodHandleNatives", true, CHECK);

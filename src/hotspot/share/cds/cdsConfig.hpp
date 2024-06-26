@@ -127,6 +127,8 @@ public:
   static bool is_loading_packages()                          NOT_CDS_JAVA_HEAP_RETURN_(false);
   static void set_is_loading_packages()                      { CDS_JAVA_HEAP_ONLY(_is_loading_packages = true); }
 
+  static bool is_dumping_reflection_data()                   NOT_CDS_JAVA_HEAP_RETURN_(false);
+
   static bool is_dumping_dynamic_proxy()                     NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_tracing_dynamic_proxy()                     NOT_CDS_RETURN_(false);
 

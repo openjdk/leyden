@@ -896,7 +896,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   }
 
 #if INCLUDE_CDS_JAVA_HEAP
-  if (CDSConfig::is_dumping_heap() && ArchiveInvokeDynamic) {
+  if (CDSConfig::is_dumping_invokedynamic()) {
     // We also assume no other Java threads are running
     // This makes sure that the MethodType and MethodTypeForm objects are clean.
     JavaValue result(T_VOID);
