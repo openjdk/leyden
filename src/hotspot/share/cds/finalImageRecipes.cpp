@@ -51,7 +51,7 @@ void FinalImageRecipes::record_recipes_impl() {
   ResourceMark rm;
   GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
 
-  // ArchiveInvokeDynamic
+  // For CDSConfig::is_dumping_invokedynamic()
   GrowableArray<InstanceKlass*> tmp_indy_klasses;
   GrowableArray<Array<int>*> tmp_indy_cp_indices;
   int total_indys_to_resolve = 0;
@@ -92,7 +92,7 @@ void FinalImageRecipes::record_recipes_impl() {
   }
   log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_indy_klasses.length());
 
-  // ArchiveReflectionData
+  // For CDSConfig::is_dumping_reflection_data()
   int reflect_count = 0;
   if (_tmp_reflect_klasses != nullptr) {
     for (int i = _tmp_reflect_klasses->length() - 1; i >= 0; i--) {

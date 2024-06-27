@@ -317,7 +317,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     // instrumentation in order to work with -XX:FlightRecorderOptions:retransform=false.
     // There are only a small number of these classes, so it's not worthwhile to
     // support them and make CDS more complicated.
-    if (!ArchiveReflectionData) { // FIXME: !!! HACK !!!
+    if (!CDSConfig::is_dumping_reflection_data()) { // FIXME: !!! HACK !!!
       return warn_excluded(k, "JFR event class");
     }
   }
@@ -341,8 +341,8 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
   }
 
   if (k->is_hidden() && !is_registered_lambda_proxy_class(k)) {
-    if (ArchiveInvokeDynamic && HeapShared::is_archivable_hidden_klass(k)) {
-      // Allow Lambda Proxy and LambdaForm classes, for ArchiveInvokeDynamic only
+    if (CDSConfig::is_dumping_invokedynamic() && HeapShared::is_archivable_hidden_klass(k)) {
+      // Allow Lambda Proxy and LambdaForm classes, for CDSConfig::is_dumping_invokedynamic() only
     } else {
       log_info(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
       return true;
@@ -613,7 +613,7 @@ void SystemDictionaryShared::validate_before_archiving(InstanceKlass* k) {
   guarantee(!info->is_excluded(), "Should not attempt to archive excluded class %s", name);
   if (is_builtin(k)) {
     if (k->is_hidden()) {
-      if (ArchiveInvokeDynamic) { // FIXME -- clean up
+      if (CDSConfig::is_dumping_invokedynamic()) { // FIXME -- clean up
         return;
       }
       assert(is_registered_lambda_proxy_class(k), "unexpected hidden class %s", name);
@@ -817,7 +817,7 @@ void SystemDictionaryShared::add_lambda_proxy_class(InstanceKlass* caller_ik,
                                                     Method* member_method,
                                                     Symbol* instantiated_method_type,
                                                     TRAPS) {
-  if (CDSConfig::is_dumping_static_archive() && ArchiveInvokeDynamic) {
+  if (CDSConfig::is_dumping_invokedynamic()) {
     // The proxy classes will be accessible through the archived CP entries.
     return;
   }

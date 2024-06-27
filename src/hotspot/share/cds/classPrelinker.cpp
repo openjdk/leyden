@@ -392,7 +392,7 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
 void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
   JavaThread* THREAD = current;
   constantPoolHandle cp(THREAD, ik->constants());
-  if (!ArchiveInvokeDynamic || cp->cache() == nullptr) {
+  if (!CDSConfig::is_dumping_invokedynamic() || cp->cache() == nullptr) {
     return;
   }
 
@@ -435,7 +435,7 @@ static bool has_clinit(InstanceKlass* ik) {
 
 bool ClassPrelinker::is_indy_resolution_deterministic(ConstantPool* cp, int cp_index) {
   assert(cp->tag_at(cp_index).is_invoke_dynamic(), "sanity");
-  if (!ArchiveInvokeDynamic || !HeapShared::can_write()) {
+  if (!CDSConfig::is_dumping_invokedynamic()) {
     return false;
   }
 

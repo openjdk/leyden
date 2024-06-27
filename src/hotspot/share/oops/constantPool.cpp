@@ -307,7 +307,7 @@ objArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
     GrowableArray<bool> keep_resolved_refs(rr_len, rr_len, false);
     ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
 
-    if (cache() != nullptr && ArchiveInvokeDynamic) {
+    if (cache() != nullptr && CDSConfig::is_dumping_invokedynamic()) {
       Array<ResolvedIndyEntry>* indy_entries = cache()->resolved_indy_entries();
       if (indy_entries != nullptr) {
         for (int i = 0; i < indy_entries->length(); i++) {
