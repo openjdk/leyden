@@ -386,21 +386,9 @@ class KlassTrainingData : public TrainingData {
 
   DepList<CompileTrainingData*> _comp_deps; // compiles that depend on me
 
-  void init() {
-    _holder_mirror = nullptr;
-    _holder = nullptr;
-  }
-
   KlassTrainingData();
-  KlassTrainingData(Symbol* klass_name, Symbol* loader_name)
-    : TrainingData(klass_name, loader_name)
-  {
-    init();
-  }
-  KlassTrainingData(InstanceKlass* klass)
-    : TrainingData(klass)
-  {
-    init();
+  KlassTrainingData(InstanceKlass* klass) : TrainingData(klass) {
+    init_holder(klass);
   }
   int comp_dep_count() const {
     TrainingDataLocker::assert_locked();
@@ -427,9 +415,6 @@ class KlassTrainingData : public TrainingData {
 
   // This sets up the mirror as well, and may scan for field metadata.
   void init_holder(const InstanceKlass* klass);
-
-  // Update any copied data.
-  void refresh_from(const InstanceKlass* klass);
 
   static KlassTrainingData* make(InstanceKlass* holder,
                                  bool null_if_not_found = false);
@@ -602,11 +587,11 @@ private:
 
   CompileTrainingData();
   // (should we also capture counters or MDO state or replay data?)
-  CompileTrainingData(MethodTrainingData* method,
+  CompileTrainingData(MethodTrainingData* mtd,
                       int level,
                       int compile_id)
       : TrainingData(),  // empty key
-        _method(method), _level(level), _compile_id(compile_id)
+        _method(mtd), _level(level), _compile_id(compile_id)
   {
     _qtime = _stime = _etime = 0;
     _nm_total_size = 0;
@@ -709,12 +694,12 @@ class MethodTrainingData : public TrainingData {
   MethodData*     _final_profile;
 
   MethodTrainingData();
-  MethodTrainingData(KlassTrainingData* klass,
+  MethodTrainingData(Method* holder, KlassTrainingData* klass,
                      Symbol* name, Symbol* signature)
     : TrainingData(klass, name, signature)
   {
     _klass = klass;
-    _holder = nullptr;
+    _holder = holder;
     for (int i = 0; i < CompLevel_count; i++) {
       _last_toplevel_compiles[i] = nullptr;
     }
@@ -761,8 +746,6 @@ class MethodTrainingData : public TrainingData {
     _level_mask |= level_mask(level);
   }
 
-  // Update any copied data.
-  void refresh_from(const Method* method);
   static MethodTrainingData* make(const methodHandle& method,
                                   bool null_if_not_found = false);
   static MethodTrainingData* find(const methodHandle& method) {
@@ -807,7 +790,7 @@ class MethodTrainingData : public TrainingData {
 
   void verify();
 
-  static MethodTrainingData* allocate(KlassTrainingData* ktd, Method* m);
+  static MethodTrainingData* allocate(Method* m, KlassTrainingData* ktd);
 };
 
 // CDS support

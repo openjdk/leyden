@@ -163,7 +163,6 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
   TrainingData* td = have_data()? lookup_archived_training_data(&key) : nullptr;
   if (td != nullptr) {
     mtd = td->as_MethodTrainingData();
-    mtd->refresh_from(method());
     method->init_training_data(mtd);  // Cache the pointer for next time.
     return mtd;
   } else {
@@ -174,7 +173,6 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
     }
     if (td != nullptr) {
       mtd = td->as_MethodTrainingData();
-      mtd->refresh_from(method());
       method->init_training_data(mtd); // Cache the pointer for next time.
       return mtd;
     }
@@ -185,7 +183,7 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
     TrainingDataLocker l;
     td = training_data_set()->find(&key);
     if (td == nullptr) {
-      mtd = MethodTrainingData::allocate(ktd, method());
+      mtd = MethodTrainingData::allocate(method(), ktd);
       if (mtd == nullptr) {
         return nullptr; // allocation failure
       }
@@ -194,7 +192,6 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
     } else {
       mtd = td->as_MethodTrainingData();
     }
-    mtd->refresh_from(method());
     method->init_training_data(mtd);
   }
   return mtd;
@@ -215,13 +212,6 @@ void MethodTrainingData::print_on(outputStream* st, bool name_only) const {
     st->print(" LM%d", _level_mask);
   }
   st->print(" mc=%p mdo=%p", _final_counters, _final_profile);
-}
-
-void MethodTrainingData::refresh_from(const Method* method) {
-  if (method == nullptr || method == _holder) {
-    return;
-  }
-  _holder = method;
 }
 
 CompileTrainingData* CompileTrainingData::make(CompileTask* task) {
@@ -414,8 +404,7 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
   KlassTrainingData* ktd = nullptr;
   if (td != nullptr) {
     ktd = td->as_KlassTrainingData();
-    ktd->refresh_from(holder);
-    guarantee(ktd->has_holder() && ktd->holder() == holder, "");
+    guarantee(ktd->holder() == holder, "");
     return ktd;
   }
   TrainingDataLocker l;
@@ -434,8 +423,7 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
     ktd = td->as_KlassTrainingData();
   }
   assert(ktd != nullptr, "");
-  ktd->refresh_from(holder);
-  guarantee(ktd->has_holder() && ktd->holder() == holder, "");
+  guarantee(ktd->holder() == holder, "");
   return ktd;
 }
 
@@ -466,12 +454,6 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
       st->print(" dep:");
       _comp_deps.at(i)->print_on(st, true);
     }
-  }
-}
-
-void KlassTrainingData::refresh_from(const InstanceKlass* klass) {
-  if (!has_holder()) {
-    init_holder(klass);
   }
 }
 
@@ -860,10 +842,10 @@ KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
   return nullptr;
 }
 
-MethodTrainingData* MethodTrainingData::allocate(KlassTrainingData* ktd, Method* m) {
+MethodTrainingData* MethodTrainingData::allocate(Method* m, KlassTrainingData* ktd) {
   assert(need_data() || have_data(), "");
   if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) MethodTrainingData(ktd, m->name(), m->signature());
+    return new (mtClassShared) MethodTrainingData(m, ktd, m->name(), m->signature());
   }
   return nullptr;
 }
