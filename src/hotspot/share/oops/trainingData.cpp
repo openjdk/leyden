@@ -460,7 +460,7 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
   }
 }
 
-void KlassTrainingData::init_holder(const InstanceKlass* klass) {
+KlassTrainingData::KlassTrainingData(InstanceKlass* klass) : TrainingData(klass) {
   if (holder() == klass) {
     return;   // no change to make
   }

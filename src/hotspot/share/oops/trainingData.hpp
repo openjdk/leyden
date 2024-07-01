@@ -390,9 +390,8 @@ class KlassTrainingData : public TrainingData {
   DepList<CompileTrainingData*> _comp_deps; // compiles that depend on me
 
   KlassTrainingData();
-  KlassTrainingData(InstanceKlass* klass) : TrainingData(klass) {
-    init_holder(klass);
-  }
+  KlassTrainingData(InstanceKlass* klass);
+
   int comp_dep_count() const {
     TrainingDataLocker::assert_locked();
     return _comp_deps.length();
@@ -415,9 +414,6 @@ class KlassTrainingData : public TrainingData {
   Symbol* loader_name()         const { return _key.name2(); }
   bool    has_holder()          const { return _holder != nullptr; }
   InstanceKlass* holder()       const { return _holder; }
-
-  // This sets up the mirror as well, and may scan for field metadata.
-  void init_holder(const InstanceKlass* klass);
 
   static KlassTrainingData* make(InstanceKlass* holder,
                                  bool null_if_not_found = false);
