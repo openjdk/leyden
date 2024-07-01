@@ -197,8 +197,11 @@ class TrainingData : public Metadata {
     }
     TrainingData* find(const Key* key) const {
       TrainingDataLocker::assert_locked();
-      auto res = _table.get(key);
-      return res == nullptr ? nullptr : *res;
+      if (TrainingDataLocker::can_add()) {
+        auto res = _table.get(key);
+        return res == nullptr ? nullptr : *res;
+      }
+      return nullptr;
     }
     bool remove(const Key* key) {
       return _table.remove(key);

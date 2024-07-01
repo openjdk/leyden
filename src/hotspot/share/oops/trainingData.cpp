@@ -404,8 +404,10 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
   KlassTrainingData* ktd = nullptr;
   if (td != nullptr) {
     ktd = td->as_KlassTrainingData();
-    guarantee(ktd->holder() == holder, "");
-    return ktd;
+    guarantee(!ktd->has_holder() || ktd->holder() == holder, "");
+    if (ktd->has_holder()) {
+      return ktd;
+    }
   }
   TrainingDataLocker l;
   td = training_data_set()->find(&key);
@@ -421,6 +423,7 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
     assert(ktd == td, "");
   } else {
     ktd = td->as_KlassTrainingData();
+    guarantee(ktd->holder() != nullptr, "null holder");
   }
   assert(ktd != nullptr, "");
   guarantee(ktd->holder() == holder, "");
