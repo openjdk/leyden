@@ -404,11 +404,6 @@
   product(bool, PrintTrainingInfo, false, DIAGNOSTIC,                       \
           "Print additional information about training")                    \
                                                                             \
-  product(ccstr, TrainingFile, nullptr,                                     \
-          "If training record or replay is enabled, store or load VM data " \
-          "to or from this file [default: ./hs_training_%p.log] "           \
-          "(_%p replaced with _pidNNN on output, empty string on input)")   \
-                                                                            \
   product(bool, RecordOptCompilationOrder, false,                           \
           "Record c2/jvmci nmethod temperature to guide compilation order.")\
                                                                             \

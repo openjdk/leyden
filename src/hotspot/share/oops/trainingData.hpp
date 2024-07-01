@@ -272,9 +272,9 @@ public:
   virtual MethodTrainingData*   as_MethodTrainingData()  const { return nullptr; }
   virtual KlassTrainingData*    as_KlassTrainingData()   const { return nullptr; }
   virtual CompileTrainingData*  as_CompileTrainingData() const { return nullptr; }
-  bool is_MethodTrainingData()  const { return as_MethodTrainingData() != nullptr; }
-  bool is_KlassTrainingData()   const { return as_KlassTrainingData()  != nullptr; }
-  bool is_CompileTrainingData() const { return as_CompileTrainingData()  != nullptr; }
+  bool is_MethodTrainingData()  const { return as_MethodTrainingData()  != nullptr; }
+  bool is_KlassTrainingData()   const { return as_KlassTrainingData()   != nullptr; }
+  bool is_CompileTrainingData() const { return as_CompileTrainingData() != nullptr; }
 
   virtual void prepare(Visitor& visitor) = 0;
   virtual void cleanup(Visitor& visitor) = 0;
