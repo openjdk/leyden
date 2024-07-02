@@ -211,6 +211,14 @@ DumpTimeClassInfo* SystemDictionaryShared::get_info_locked(InstanceKlass* k) {
   return info;
 }
 
+void SystemDictionaryShared::mark_required_class(InstanceKlass* k) {
+  DumpTimeClassInfo* info = _dumptime_table->get(k);
+  ResourceMark rm;
+  if (info != nullptr) {
+    info->set_is_required();
+  }
+}
+
 bool SystemDictionaryShared::check_for_exclusion(InstanceKlass* k, DumpTimeClassInfo* info) {
   if (!CDSConfig::is_dumping_final_static_archive() && MetaspaceShared::is_in_shared_metaspace(k)) {
     // We have reached a super type that's already in the base archive. Treat it
@@ -340,13 +348,9 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     }
   }
 
-  if (k->is_hidden() && !is_registered_lambda_proxy_class(k)) {
-    if (CDSConfig::is_dumping_invokedynamic() && HeapShared::is_archivable_hidden_klass(k)) {
-      // Allow Lambda Proxy and LambdaForm classes, for CDSConfig::is_dumping_invokedynamic() only
-    } else {
-      log_info(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
-      return true;
-    }
+  if (k->is_hidden() && !should_hidden_class_be_archived(k)) {
+    log_info(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
+    return true;
   }
 
   InstanceKlass* super = k->java_super();
@@ -616,7 +620,7 @@ void SystemDictionaryShared::validate_before_archiving(InstanceKlass* k) {
       if (CDSConfig::is_dumping_invokedynamic()) { // FIXME -- clean up
         return;
       }
-      assert(is_registered_lambda_proxy_class(k), "unexpected hidden class %s", name);
+      assert(should_hidden_class_be_archived(k), "unexpected hidden class %s", name);
     }
     guarantee(!k->is_shared_unregistered_class(),
               "Class loader type must be set for BUILTIN class %s", name);
@@ -668,6 +672,31 @@ public:
   }
 };
 
+void SystemDictionaryShared::scan_constant_pool(InstanceKlass* k) {
+  k->constants()->find_archivable_hidden_classes();
+}
+
+bool SystemDictionaryShared::should_hidden_class_be_archived(InstanceKlass* k) {
+  assert(k->is_hidden(), "sanity");
+  if (is_registered_lambda_proxy_class(k)) {
+    return true;
+  }
+
+  if (CDSConfig::is_dumping_invokedynamic()) {
+    if (HeapShared::is_archivable_hidden_klass(k)) {
+      return true;
+    }
+
+    // TODO: merge the following with HeapShared::is_archivable_hidden_klass()
+    DumpTimeClassInfo* info = _dumptime_table->get(k);
+    if (info != nullptr && info->is_required()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void SystemDictionaryShared::check_excluded_classes() {
   assert(!class_loading_may_happen(), "class loading must be disabled");
   assert_lock_strong(DumpTimeTable_lock);
@@ -681,10 +710,50 @@ void SystemDictionaryShared::check_excluded_classes() {
     dup_checker.mark_duplicated_classes();
   }
 
-  auto check_for_exclusion = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
-    SystemDictionaryShared::check_for_exclusion(k, &info);
+  ResourceMark rm;
+
+  // First, scan all non-hidden classes
+  auto check_non_hidden = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
+    if (!k->is_hidden()) {
+      SystemDictionaryShared::check_for_exclusion(k, &info);
+      if (!info.is_excluded() && !info.has_scanned_constant_pool()) {
+        scan_constant_pool(k);
+        info.set_has_scanned_constant_pool();
+      }
+    }
   };
-  _dumptime_table->iterate_all_live_classes(check_for_exclusion);
+  _dumptime_table->iterate_all_live_classes(check_non_hidden);
+
+  // Then, scan all that hidden classes that have been marked as required, until
+  // we reach a stable state.
+  bool made_progress;
+  do {
+    made_progress = false;
+    auto check_hidden = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
+      if (k->is_hidden() && should_hidden_class_be_archived(k)) {
+        SystemDictionaryShared::check_for_exclusion(k, &info);
+        if (info.is_excluded()) {
+          assert(!info.is_required(), "A required hidden class cannot be marked as excluded");
+        } else if (!info.has_scanned_constant_pool()) {
+          scan_constant_pool(k);
+          info.set_has_scanned_constant_pool();
+          // The CP entries in k *MAY* refer to other hidden classes, so scan
+          // every hidden class again.
+          made_progress = true;
+        }
+      }
+    };
+    _dumptime_table->iterate_all_live_classes(check_hidden);
+  } while (made_progress);
+
+  // Now, all hidden classes that have not yet been scanned should be excluded
+  auto exclude_remaining_hidden = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
+    if (k->is_hidden() && !info.has_checked_exclusion()) {
+      SystemDictionaryShared::check_for_exclusion(k, &info);
+      assert(info.is_excluded(), "Must be");
+    }
+  };
+  _dumptime_table->iterate_all_live_classes(exclude_remaining_hidden);
   _dumptime_table->update_counts();
 
   cleanup_lambda_proxy_class_dictionary();
@@ -1713,9 +1782,14 @@ void SystemDictionaryShared::cleanup_method_info_dictionary() {
 void SystemDictionaryShared::create_loader_positive_lookup_cache(TRAPS) {
   GrowableArray<InstanceKlass*> shared_classes_list;
   {
+    // With static dumping, we have only a single Java thread (see JVM_StartThread) so
+    // no no other threads should be loading classes. Otherwise, the code below may miss some
+    // classes that are loaded concurrently.
+    assert(CDSConfig::is_dumping_static_archive(), "no other threads should be loading classes");
+
     MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
     _dumptime_table->iterate_all_classes_in_builtin_loaders([&](InstanceKlass* k, DumpTimeClassInfo& info) {
-        if (!check_for_exclusion(k, &info)) {
+        if (!k->is_hidden() && !check_for_exclusion(k, &info)) {
           shared_classes_list.append(k);
         }
       }

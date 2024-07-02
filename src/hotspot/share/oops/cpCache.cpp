@@ -463,7 +463,7 @@ void ConstantPoolCache::remove_resolved_method_entries_if_non_deterministic() {
                     rme->is_resolved(Bytecodes::_invokestatic)    ||
                     rme->is_resolved(Bytecodes::_invokeinterface) ||
                     rme->is_resolved(Bytecodes::_invokehandle);
-    if (resolved && can_archive_resolved_method(rme)) {
+    if (resolved && can_archive_resolved_method(src_cp, rme)) {
       rme->mark_and_relocate(src_cp);
       archived = true;
     } else {
@@ -545,7 +545,7 @@ bool ConstantPoolCache::can_archive_invokehandle(ResolvedMethodEntry* rme) {
   return true;
 }
 
-bool ConstantPoolCache::can_archive_resolved_method(ResolvedMethodEntry* method_entry) {
+bool ConstantPoolCache::can_archive_resolved_method(ConstantPool* src_cp, ResolvedMethodEntry* method_entry) {
   InstanceKlass* pool_holder = constant_pool()->pool_holder();
   if (!(pool_holder->is_shared_boot_class() || pool_holder->is_shared_platform_class() ||
         pool_holder->is_shared_app_class())) {
@@ -570,7 +570,6 @@ bool ConstantPoolCache::can_archive_resolved_method(ResolvedMethodEntry* method_
   }
 
   int cp_index = method_entry->constant_pool_index();
-  ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(constant_pool());
   assert(src_cp->tag_at(cp_index).is_method() || src_cp->tag_at(cp_index).is_interface_method(), "sanity");
 
   if (!ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {

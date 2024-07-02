@@ -740,6 +740,99 @@ void HeapShared::set_has_native_pointers(oop src_obj) {
   info->set_has_native_pointers();
 }
 
+void HeapShared::start_finding_archivable_hidden_classes() {
+  NoSafepointVerifier nsv;
+
+  init_seen_objects_table();
+
+  find_archivable_hidden_classes_helper(archive_subgraph_entry_fields);
+  if (CDSConfig::is_dumping_full_module_graph()) {
+    find_archivable_hidden_classes_helper(fmg_archive_subgraph_entry_fields);
+  }
+}
+
+void HeapShared::end_finding_archivable_hidden_classes() {
+  NoSafepointVerifier nsv;
+
+  delete_seen_objects_table();
+}
+
+void HeapShared::find_archivable_hidden_classes_helper(ArchivableStaticFieldInfo fields[]) {
+  if (!CDSConfig::is_dumping_heap()) {
+    return;
+  }
+  int i;
+  for (int i = 0; fields[i].valid(); ) {
+    ArchivableStaticFieldInfo* info = &fields[i];
+    const char* klass_name = info->klass_name;
+    for (; fields[i].valid(); i++) {
+      ArchivableStaticFieldInfo* f = &fields[i];
+      if (f->klass_name != klass_name) {
+        break;
+      }
+
+      InstanceKlass* k = f->klass;
+      oop m = k->java_mirror();
+      oop o = m->obj_field(f->offset);
+      if (o != nullptr) {
+        find_archivable_hidden_classes_in_object(o);
+      }
+    }
+  }
+}
+
+class HeapShared::FindHiddenClassesOopClosure: public BasicOopIterateClosure {
+  GrowableArray<oop> _stack;
+  template <class T> void do_oop_work(T *p) {
+    // Recurse on a GrowableArray to avoid overflowing the C stack.
+    oop o = RawAccess<>::oop_load(p);
+    if (o != nullptr) {
+      _stack.append(o);
+    }
+  }
+
+ public:
+
+  void do_oop(narrowOop *p) { FindHiddenClassesOopClosure::do_oop_work(p); }
+  void do_oop(      oop *p) { FindHiddenClassesOopClosure::do_oop_work(p); }
+
+  FindHiddenClassesOopClosure(oop o) {
+    _stack.append(o);
+  }
+  oop pop() {
+    if (_stack.length() == 0) {
+      return nullptr;
+    } else {
+      return _stack.pop();
+    }
+  }
+};
+
+void HeapShared::find_archivable_hidden_classes_in_object(oop root) {
+  ResourceMark rm;
+  FindHiddenClassesOopClosure c(root);
+  oop o;
+  while ((o = c.pop()) != nullptr) {
+    if (!has_been_seen_during_subgraph_recording(o)) {
+      set_has_been_seen_during_subgraph_recording(o);
+
+      if (java_lang_Class::is_instance(o)) {
+        Klass* k = java_lang_Class::as_Klass(o);
+        if (k != nullptr && k->is_instance_klass()) {
+          SystemDictionaryShared::mark_required_class(InstanceKlass::cast(k));
+        }
+      } else if (java_lang_invoke_ResolvedMethodName::is_instance(o)) {
+        Method* m = java_lang_invoke_ResolvedMethodName::vmtarget(o);
+        if (m != nullptr && m->method_holder() != nullptr) {
+          SystemDictionaryShared::mark_required_class(m->method_holder());
+        }
+      }
+
+      o->oop_iterate(&c);
+    }
+  }
+}
+
 void HeapShared::archive_objects(ArchiveHeapInfo *heap_info) {
   {
     NoSafepointVerifier nsv;

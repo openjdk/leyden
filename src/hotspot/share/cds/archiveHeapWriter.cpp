@@ -771,7 +771,19 @@ void ArchiveHeapWriter::mark_native_pointer(oop src_obj, int field_offset) {
     info._src_obj = src_obj;
     info._field_offset = field_offset;
     _native_pointers->append(info);
-    assert(ArchiveBuilder::current()->has_been_archived((address)ptr), "must be archived %p", ptr);
+    if (!ArchiveBuilder::current()->has_been_archived((address)ptr)) {
+      // Currently we supporting marking of only Method and Klass, both of which are
+      // subtypes of MetaData.
+      ResourceMark rm;
+      log_error(cds, heap)("Native pointer %p is not archived", ptr);
+      if (((Metadata*)ptr)->is_method()) {
+        log_error(cds, heap)("Method: %s", ((Method*)ptr)->external_name());
+      } else {
+        assert(((Metadata*)ptr)->is_klass(), "must be");
+        log_error(cds, heap)("Klass: %s", ((Klass*)ptr)->external_name());
+      }
+      HeapShared::exit_on_error();
+    }
     HeapShared::set_has_native_pointers(src_obj);
     _num_native_ptrs ++;
   }

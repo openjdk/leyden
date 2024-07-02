@@ -250,7 +250,7 @@ class ClassPreloader::PreloadedKlassRecorder : StackObj {
       if (!CDSConfig::is_dumping_invokedynamic()) {
         return;
       }
-      assert(HeapShared::is_lambda_form_klass(ik) || HeapShared::is_lambda_proxy_klass(ik), "must be");
+      assert(SystemDictionaryShared::should_hidden_class_be_archived(ik), "sanity");
     }
 
     if (is_vm_class(ik)) {

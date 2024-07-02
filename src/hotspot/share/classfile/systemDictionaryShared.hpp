@@ -205,7 +205,7 @@ private:
   static bool check_for_exclusion_impl(InstanceKlass* k);
   static void remove_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static InstanceKlass* retrieve_lambda_proxy_class(const RunTimeLambdaProxyClassInfo* info) NOT_CDS_RETURN_(nullptr);
-
+  static void scan_constant_pool(InstanceKlass* k);
   DEBUG_ONLY(static bool _class_loading_may_happen;)
 
 public:
@@ -215,6 +215,8 @@ public:
   static DumpTimeClassInfo* get_info_locked(InstanceKlass* k);
   static DumpTimeSharedClassTable* dumptime_table() { return _dumptime_table; }
 
+  static bool should_hidden_class_be_archived(InstanceKlass* k);
+  static void mark_required_class(InstanceKlass* k);
   static bool has_been_redefined(InstanceKlass* k);
   static bool is_jfr_event_class(InstanceKlass *k);
   static bool is_hidden_lambda_proxy(InstanceKlass* ik);

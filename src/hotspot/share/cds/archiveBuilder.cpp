@@ -37,6 +37,7 @@
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
+#include "classfile/classLoaderExt.hpp"
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/symbolTable.hpp"
@@ -301,7 +302,7 @@ void ArchiveBuilder::update_hidden_class_loader_type(InstanceKlass* ik) {
   if (HeapShared::is_lambda_form_klass(ik)) {
     assert(CDSConfig::is_dumping_invokedynamic(), "lambda form classes are archived only if CDSConfig::is_dumping_invokedynamic() is true");
     classloader_type = ClassLoader::BOOT_LOADER;
-  } else if (HeapShared::is_lambda_proxy_klass(ik)) {
+  } else if (SystemDictionaryShared::should_hidden_class_be_archived(ik)) {
     oop loader = ik->class_loader();
 
     if (loader == nullptr) {
@@ -321,6 +322,13 @@ void ArchiveBuilder::update_hidden_class_loader_type(InstanceKlass* ik) {
   if (HeapShared::is_lambda_proxy_klass(ik)) {
     InstanceKlass* nest_host = ik->nest_host_not_null();
     ik->set_shared_classpath_index(nest_host->shared_classpath_index());
+  } else if (!HeapShared::is_lambda_form_klass(ik)) {
+    // Injected invoker classes: fake this for now. Probably not needed!
+    if (classloader_type == ClassLoader::APP_LOADER) {
+      ik->set_shared_classpath_index(ClassLoaderExt::app_class_paths_start_index()); // HACK
+    } else {
+      ik->set_shared_classpath_index(0);
+    }
   }
 }
 

@@ -253,6 +253,9 @@ private:
   static DumpTimeKlassSubGraphInfoTable* _dump_time_subgraph_info_table;
   static RunTimeKlassSubGraphInfoTable _run_time_subgraph_info_table;
 
+  class FindHiddenClassesOopClosure;
+  static void find_archivable_hidden_classes_helper(ArchivableStaticFieldInfo fields[]);
+
   static CachedOopInfo make_cached_oop_info(oop obj);
   static ArchivedKlassSubGraphInfoRecord* archive_subgraph_info(KlassSubGraphInfo* info);
   static void archive_object_subgraphs(ArchivableStaticFieldInfo fields[],
@@ -365,8 +368,8 @@ private:
   static bool can_mirror_be_used_in_subgraph(oop orig_java_mirror);
   static void archive_java_mirrors();
   static void archive_strings();
-  static void exit_on_error();
  public:
+  static void exit_on_error();
   static void reset_archived_object_states(TRAPS);
   static void create_archived_object_cache() {
     _archived_object_cache =
@@ -381,6 +384,9 @@ private:
   }
 
   static int archive_exception_instance(oop exception);
+  static void start_finding_archivable_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
+  static void find_archivable_hidden_classes_in_object(oop o) NOT_CDS_JAVA_HEAP_RETURN;
+  static void end_finding_archivable_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
   static void archive_objects(ArchiveHeapInfo* heap_info);
   static void copy_objects();
   static void copy_special_objects();
