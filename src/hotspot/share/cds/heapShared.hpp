@@ -167,6 +167,10 @@ public:
   static oop scratch_java_mirror(oop java_mirror) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   static bool is_archived_boot_layer_available(JavaThread* current) NOT_CDS_JAVA_HEAP_RETURN_(false);
 
+  static void start_finding_archivable_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
+  static void find_archivable_hidden_classes_in_object(oop o) NOT_CDS_JAVA_HEAP_RETURN;
+  static void end_finding_archivable_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
+
 private:
 #if INCLUDE_CDS_JAVA_HEAP
   static bool _disable_writing;
@@ -384,9 +388,6 @@ private:
   }
 
   static int archive_exception_instance(oop exception);
-  static void start_finding_archivable_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
-  static void find_archivable_hidden_classes_in_object(oop o) NOT_CDS_JAVA_HEAP_RETURN;
-  static void end_finding_archivable_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
   static void archive_objects(ArchiveHeapInfo* heap_info);
   static void copy_objects();
   static void copy_special_objects();
