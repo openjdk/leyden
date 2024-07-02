@@ -1087,7 +1087,6 @@ void InterpreterRuntime::update_invoke_cp_cache_entry(CallInfo& info, Bytecodes:
   }
 }
 
-
 void InterpreterRuntime::cds_resolve_invoke(Bytecodes::Code bytecode, int method_index,
                                             constantPoolHandle& pool, TRAPS) {
   LinkInfo link_info(pool, method_index, bytecode, CHECK);
@@ -1100,7 +1099,7 @@ void InterpreterRuntime::cds_resolve_invoke(Bytecodes::Code bytecode, int method
       case Bytecodes::_invokestatic:    LinkResolver::cds_resolve_static_call   (call_info, link_info, CHECK); break;
       case Bytecodes::_invokespecial:   LinkResolver::cds_resolve_special_call  (call_info, link_info, CHECK); break;
 
-      default: fatal("NYI: %s", Bytecodes::name(bytecode));
+      default: fatal("Unimplemented: %s", Bytecodes::name(bytecode));
     }
     methodHandle resolved_method(THREAD, call_info.resolved_method());
     guarantee(resolved_method->method_holder()->is_linked(), "");

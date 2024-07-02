@@ -45,6 +45,7 @@
 #include "oops/compressedOops.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/cpCache.inline.hpp"
+#include "oops/method.inline.hpp"
 #include "oops/objArrayOop.inline.hpp"
 #include "oops/oop.inline.hpp"
 #include "oops/method.inline.hpp"
@@ -555,7 +556,7 @@ bool ConstantPoolCache::can_archive_resolved_method(ConstantPool* src_cp, Resolv
   }
 
   if (CDSConfig::is_dumping_dynamic_archive()) {
-    // InstanceKlass::methods() is has been resorted. We need to
+    // InstanceKlass::methods() has been resorted. We need to
     // update the vtable_index in method_entry (not implemented)
     return false;
   }
@@ -576,23 +577,21 @@ bool ConstantPoolCache::can_archive_resolved_method(ConstantPool* src_cp, Resolv
     return false;
   }
 
-  if (method_entry->is_resolved(Bytecodes::_invokehandle)) {
-    if (!CDSConfig::is_dumping_invokedynamic()) {
+  if (method_entry->is_resolved(Bytecodes::_invokestatic) ||
+      method_entry->is_resolved(Bytecodes::_invokeinterface) ||
+      method_entry->is_resolved(Bytecodes::_invokevirtual) ||
+      method_entry->is_resolved(Bytecodes::_invokespecial)) {
+    return true;
+  } else if (method_entry->is_resolved(Bytecodes::_invokehandle)) {
+    if (CDSConfig::is_dumping_invokedynamic() && can_archive_invokehandle(method_entry)) {
       // invokehandle depends on archived MethodType and LambdaForms.
-      return false;
-    } else if (!can_archive_invokehandle(method_entry)) {
+      return true;
+    } else {
       return false;
     }
-  } else if (method_entry->is_resolved(Bytecodes::_invokestatic) ||
-             method_entry->is_resolved(Bytecodes::_invokeinterface) ||
-             method_entry->is_resolved(Bytecodes::_invokevirtual) ||
-             method_entry->is_resolved(Bytecodes::_invokespecial)) {
-    // OK
   } else {
-    return false; // just to be safe.
+    return false;
   }
-
-  return true;
 }
 #endif // INCLUDE_CDS
 
