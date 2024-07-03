@@ -26,7 +26,10 @@
  * @test
  * @requires vm.cds
  * @summary Test for verification of classes that are preloaded
- * @library /test/jdk/lib/testlibrary /test/lib /test/hotspot/jtreg/runtime/cds/appcds
+ * @library /test/jdk/lib/testlibrary
+ *          /test/lib
+ *          /test/hotspot/jtreg/runtime/cds/appcds
+ *          /test/hotspot/jtreg/runtime/cds/appcds/test-classes
  * @build GoodOldClass BadOldClass BadOldClass2 BadNewClass BadNewClass2
  * @build PreloadedClassesVerification
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar WhiteBox.jar jdk.test.whitebox.WhiteBox
@@ -38,6 +41,7 @@
  *                 BadNewClass
  *                 BadNewClass2
  *                 GoodOldClass Vehicle Car
+ *                 Util
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app2.jar
  *                 UnlinkedSub
  *                 Foo NotFoo
@@ -45,6 +49,7 @@
  */
 
 import java.io.File;
+import java.lang.invoke.MethodHandles;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.whitebox.WhiteBox;
 
@@ -77,7 +82,7 @@ public class PreloadedClassesVerification {
                        "-XX:+UnlockDiagnosticVMOptions",
                        "-XX:+WhiteBoxAPI",
                        bootAppendWhiteBox,
-                       "PreloadedClassesVerificationApp")
+                       "PreloadedClassesVerificationApp", app1Jar)
             .assertNormalExit();
     }
 }
@@ -85,8 +90,10 @@ public class PreloadedClassesVerification {
 class PreloadedClassesVerificationApp {
     static WhiteBox wb = WhiteBox.getWhiteBox();
     static ClassLoader classLoader = PreloadedClassesVerificationApp.class.getClassLoader();
+    static File app1Jar;
 
     public static void main(String[] args) throws Exception {
+        app1Jar = new File(args[0]);
         assertNotShared(UnlinkedSub.class);
         assertShared(UnlinkedSuper.class);
         assertShared(Unlinked.class);
@@ -128,6 +135,10 @@ class PreloadedClassesVerificationApp {
 
         // Although Vehicle and Car are not specified in the classlist, they are archived as
         // they were used during dumptime verification of GoodOldClass
+        assertAlreadyLoaded("Vehicle");
+        assertAlreadyLoaded("Car");
+        assertAlreadyLoaded("GoodOldClass");
+
         assertShared(GoodOldClass.class);
         assertShared(Vehicle.class);
         assertShared(Car.class);
@@ -145,6 +156,20 @@ class PreloadedClassesVerificationApp {
         if (wb.isSharedClass(c)) {
             throw new RuntimeException("wb.isSharedClass(" + c.getName() + ") should be false");
         }
+    }
+
+    static void assertAlreadyLoaded(String className) throws Exception {
+        byte[] data = Util.getClassFileFromJar(app1Jar, className);
+        try {
+            MethodHandles.lookup().defineClass(data);
+        } catch (LinkageError e) {
+            if (e.getMessage().contains("duplicate class definition for " + className)) {
+                return;
+            } else {
+                throw e;
+            }
+        }
+        throw new RuntimeException(className + " must have already been loaded");
     }
 }
 
