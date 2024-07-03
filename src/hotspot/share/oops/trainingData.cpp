@@ -436,7 +436,6 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
     switch (holder()->init_state()) {
       case InstanceKlass::allocated:            st->print("[A]"); break;
       case InstanceKlass::loaded:               st->print("[D]"); break;
-      case InstanceKlass::being_linked:         st->print("[l]"); break;
       case InstanceKlass::linked:               st->print("[L]"); break;
       case InstanceKlass::being_initialized:    st->print("[i]"); break;
       case InstanceKlass::fully_initialized:    /*st->print("");*/ break;

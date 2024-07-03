@@ -489,26 +489,28 @@ void MetaspaceShared::rewrite_nofast_bytecodes_and_calculate_fingerprints(Thread
 class VM_PopulateDumpSharedSpace : public VM_Operation {
 private:
   ArchiveHeapInfo _heap_info;
+  FileMapInfo* _map_info;
+  StaticArchiveBuilder& _builder;
+
   void dump_java_heap_objects(GrowableArray<Klass*>* klasses) NOT_CDS_JAVA_HEAP_RETURN;
   void dump_shared_symbol_table(GrowableArray<Symbol*>* symbols) {
     log_info(cds)("Dumping symbol table ...");
     SymbolTable::write_to_archive(symbols);
   }
   char* dump_read_only_tables();
-  StaticArchiveBuilder& _builder;
-  FileMapInfo* _mapinfo;
+
 public:
 
   VM_PopulateDumpSharedSpace(StaticArchiveBuilder& b) :
-    VM_Operation(), _heap_info(), _builder(b), _mapinfo(nullptr) {}
+    VM_Operation(), _heap_info(), _map_info(nullptr), _builder(b) {}
 
   bool skip_operation() const { return false; }
 
   VMOp_Type type() const { return VMOp_PopulateDumpSharedSpace; }
+  ArchiveHeapInfo* heap_info()  { return &_heap_info; }
+  FileMapInfo* map_info() const { return _map_info; }
   void doit();   // outline because gdb sucks
   bool allow_nested_vm_operations() const { return true; }
-  FileMapInfo* mapinfo() const { return _mapinfo; }
-  ArchiveHeapInfo* heap_info() { return &_heap_info; }
 }; // class VM_PopulateDumpSharedSpace
 
 class StaticArchiveBuilder : public ArchiveBuilder {
@@ -624,10 +626,10 @@ void VM_PopulateDumpSharedSpace::doit() {
     static_archive = CDSConfig::static_archive_path();
   }
   assert(static_archive != nullptr, "SharedArchiveFile not set?");
-  _mapinfo = new FileMapInfo(static_archive, true);
-  _mapinfo->populate_header(MetaspaceShared::core_region_alignment());
-  _mapinfo->set_serialized_data(serialized_data);
-  _mapinfo->set_cloned_vtables(CppVtables::vtables_serialized_base());
+  _map_info = new FileMapInfo(static_archive, true);
+  _map_info->populate_header(MetaspaceShared::core_region_alignment());
+  _map_info->set_serialized_data(serialized_data);
+  _map_info->set_cloned_vtables(CppVtables::vtables_serialized_base());
 }
 
 class CollectCLDClosure : public CLDClosure {
@@ -762,8 +764,7 @@ void MetaspaceShared::prepare_for_dumping() {
 
 // Preload classes from a list, populate the shared spaces and dump to a
 // file.
-void MetaspaceShared::preload_and_dump() {
-  EXCEPTION_MARK;
+void MetaspaceShared::preload_and_dump(TRAPS) {
   ResourceMark rm(THREAD);
   HandleMark hm(THREAD);
 
@@ -778,13 +779,11 @@ void MetaspaceShared::preload_and_dump() {
     if (PENDING_EXCEPTION->is_a(vmClasses::OutOfMemoryError_klass())) {
       log_error(cds)("Out of memory. Please run with a larger Java heap, current MaxHeapSize = "
                      SIZE_FORMAT "M", MaxHeapSize/M);
-      CLEAR_PENDING_EXCEPTION;
-      MetaspaceShared::unrecoverable_writing_error();
+      MetaspaceShared::writing_error();
     } else {
       log_error(cds)("%s: %s", PENDING_EXCEPTION->klass()->external_name(),
                      java_lang_String::as_utf8_string(java_lang_Throwable::message(PENDING_EXCEPTION)));
-      CLEAR_PENDING_EXCEPTION;
-      MetaspaceShared::unrecoverable_writing_error("VM exits due to exception, use -Xlog:cds,exceptions=trace for detail");
+      MetaspaceShared::writing_error("Unexpected exception, use -Xlog:cds,exceptions=trace for detail");
     }
   }
 }
@@ -953,12 +952,13 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   VM_PopulateDumpSharedSpace op(builder);
   VMThread::execute(&op);
-  FileMapInfo* mapinfo = op.mapinfo();
+  FileMapInfo* mapinfo = op.map_info();
   ArchiveHeapInfo* heap_info = op.heap_info();
-
+  bool status;
   if (CDSConfig::is_dumping_preimage_static_archive()) {
-    write_static_archive(&builder, mapinfo, heap_info);
-    fork_and_dump_final_static_archive();
+    if ((status = write_static_archive(&builder, mapinfo, heap_info))) {
+      fork_and_dump_final_static_archive();
+    }
   } else if (CDSConfig::is_dumping_final_static_archive()) {
     RecordTraining = false;
     if (StoreCachedCode && CachedCodeFile != nullptr) { // FIXME: new workflow -- remove the CachedCodeFile flag
@@ -982,28 +982,32 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
       SCCache::close(); // Write final data and close archive
     }
-    write_static_archive(&builder, mapinfo, heap_info);
+    status = write_static_archive(&builder, mapinfo, heap_info);
   } else {
-    write_static_archive(&builder, mapinfo, heap_info);
+    status = write_static_archive(&builder, mapinfo, heap_info);
+  }
+
+  if (!status) {
+    THROW_MSG(vmSymbols::java_io_IOException(), "Encountered error while dumping");
   }
 }
 
-void MetaspaceShared::write_static_archive(ArchiveBuilder* builder, FileMapInfo *mapinfo, ArchiveHeapInfo* heap_info) {
+bool MetaspaceShared::write_static_archive(ArchiveBuilder* builder, FileMapInfo* map_info, ArchiveHeapInfo* heap_info) {
   // relocate the data so that it can be mapped to MetaspaceShared::requested_base_address()
   // without runtime relocation.
   builder->relocate_to_requested();
 
-  mapinfo->open_for_write();
-  builder->write_archive(mapinfo, heap_info);
-
-  if (PrintSystemDictionaryAtExit) {
-    SystemDictionary::print();
+  map_info->open_for_write();
+  if (!map_info->is_open()) {
+    return false;
   }
+  builder->write_archive(map_info, heap_info);
 
   if (AllowArchivingWithJavaAgent) {
     log_warning(cds)("This archive was created with AllowArchivingWithJavaAgent. It should be used "
             "for testing purposes only and should not be used in a production environment");
   }
+  return true;
 }
 
 void MetaspaceShared::fork_and_dump_final_static_archive() {
@@ -1167,11 +1171,17 @@ void MetaspaceShared::unrecoverable_loading_error(const char* message) {
 // This function is called when the JVM is unable to write the specified CDS archive due to an
 // unrecoverable error.
 void MetaspaceShared::unrecoverable_writing_error(const char* message) {
+  writing_error(message);
+  vm_direct_exit(1);
+}
+
+// This function is called when the JVM is unable to write the specified CDS archive due to a
+// an error. The error will be propagated
+void MetaspaceShared::writing_error(const char* message) {
   log_error(cds)("An error has occurred while writing the shared archive file.");
   if (message != nullptr) {
     log_error(cds)("%s", message);
   }
-  vm_direct_exit(1);
 }
 
 void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {

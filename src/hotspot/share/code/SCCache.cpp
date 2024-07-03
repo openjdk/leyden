@@ -619,9 +619,6 @@ void SCConfig::record(bool use_meta_ptrs) {
   if (RestrictContended) {
     _flags |= restrictContendedPadding;
   }
-  if (UseEmptySlotsInSupers) {
-    _flags |= useEmptySlotsInSupers;
-  }
   _compressedOopShift    = CompressedOops::shift();
   _compressedKlassShift  = CompressedKlassPointers::shift();
   _contendedPaddingWidth = ContendedPaddingWidth;
@@ -674,11 +671,6 @@ bool SCConfig::verify(const char* cache_path) const {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with RestrictContended = %s", cache_path, RestrictContended ? "false" : "true");
     return false;
   }
-  if (((_flags & useEmptySlotsInSupers) != 0) != UseEmptySlotsInSupers) { 
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with UseEmptySlotsInSupers = %s", cache_path, UseEmptySlotsInSupers ? "false" : "true");
-    return false;
-  }
-
   if (_compressedOopShift != (uint)CompressedOops::shift()) {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedOops::shift() = %d vs current %d", cache_path, _compressedOopShift, CompressedOops::shift());
     return false;
@@ -1900,21 +1892,6 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
           break;
         case relocInfo::external_word_type: {
           address target = _cache->address_for_id(reloc_data[j]);
-          int data_len = iter.datalen();
-          if (data_len > 0) {
-            // Overwrite RelocInfo embedded address
-            RelocationHolder rh = external_word_Relocation::spec(target);
-            external_word_Relocation* new_reloc = (external_word_Relocation*)rh.reloc();
-            short buf[4] = {0}; // 8 bytes
-            short* p = new_reloc->pack_data_to(buf);
-            if ((p - buf) != data_len) {
-              return false; // New address does not fit into old relocInfo
-            }
-            short* data = iter.data();
-            for (int i = 0; i < data_len; i++) {
-              data[i] = buf[i];
-            }
-          }
           external_word_Relocation* reloc = (external_word_Relocation*)iter.reloc();
           reloc->set_value(target); // Patch address in the code
           iter.reloc()->fix_relocation_after_move(orig_buffer, buffer);

@@ -55,6 +55,7 @@
 #include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "nmt/memMapPrinter.hpp"
 #include "nmt/memTracker.hpp"
 #include "oops/constantPool.hpp"
 #include "oops/generateOopMap.hpp"
@@ -529,7 +530,7 @@ void before_exit(JavaThread* thread, bool halt) {
   // run Java code.
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     // Creating the hotspot.cds.preimage file
-    MetaspaceShared::preload_and_dump();
+    MetaspaceShared::preload_and_dump(thread);
   } else {
     DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
   }
@@ -584,6 +585,9 @@ void before_exit(JavaThread* thread, bool halt) {
 #ifdef LINUX
   if (DumpPerfMapAtExit) {
     CodeCache::write_perf_map();
+  }
+  if (PrintMemoryMapAtExit) {
+    MemMapPrinter::print_all_mappings(tty, false);
   }
 #endif
 

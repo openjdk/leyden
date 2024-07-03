@@ -76,7 +76,6 @@ class SCConfig {
     userClassAssertions      = 64,
     enableContendedPadding   = 128,
     restrictContendedPadding = 256,
-    useEmptySlotsInSupers    = 512
   };
   uint _flags;
 

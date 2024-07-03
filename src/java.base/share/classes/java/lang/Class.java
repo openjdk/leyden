@@ -4737,6 +4737,7 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @since 15
      * @see MethodHandles.Lookup#defineHiddenClass
+     * @see Class##hiddenClasses Hidden Classes
      */
     @IntrinsicCandidate
     public native boolean isHidden();

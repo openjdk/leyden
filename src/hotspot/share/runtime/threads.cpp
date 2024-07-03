@@ -885,12 +885,12 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   if (CDSConfig::is_dumping_classic_static_archive()) {
     // Classic -Xshare:dump, aka "old workflow"
-    MetaspaceShared::preload_and_dump();
+    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
   } else if (CDSConfig::is_dumping_final_static_archive()) {
     // TODO: copy the verification and loader constraints from preimage to final image
     // TODO: load archived classes for custom loaders as well.
     log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
-    MetaspaceShared::preload_and_dump();
+    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
     vm_direct_exit(0, "CacheDataStore dumping is complete");
   }
 
@@ -1417,8 +1417,11 @@ void Threads::print_on(outputStream* st, bool print_stacks,
           if (p->is_vthread_mounted()) {
             const oop vt = p->vthread();
             assert(vt != nullptr, "vthread should not be null when vthread is mounted");
-            st->print_cr("   Mounted virtual thread \"%s\" #" INT64_FORMAT, JavaThread::name_for(vt), (int64_t)java_lang_Thread::thread_id(vt));
-            p->print_vthread_stack_on(st);
+            // JavaThread._vthread can refer to the carrier thread. Print only if _vthread refers to a virtual thread.
+            if (vt != thread_oop) {
+              st->print_cr("   Mounted virtual thread #" INT64_FORMAT, (int64_t)java_lang_Thread::thread_id(vt));
+              p->print_vthread_stack_on(st);
+            }
           }
         }
       }
