@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1462,6 +1462,11 @@ s.writeObject(this.parameterArray());
 
     // This is called from C code.
     static void dumpSharedArchive() {
+        // Call these first, as the <clinit> of these classes may add
+        // new MethodTypes into internTable.
+        DirectMethodHandle.dumpSharedArchive();
+        LambdaForm.NamedFunction.dumpSharedArchive();
+
         Archiver archiver = new Archiver();
 
         MethodType[] objectOnlyTypesCopy = new MethodType[objectOnlyTypes.length];
@@ -1475,8 +1480,5 @@ s.writeObject(this.parameterArray());
         archivedObjects = new Object[2];
         archivedObjects[0] = archive(archiver);
         archivedObjects[1] = objectOnlyTypesCopy;
-
-        DirectMethodHandle.dumpSharedArchive();
-        LambdaForm.NamedFunction.dumpSharedArchive();
     }
 }
