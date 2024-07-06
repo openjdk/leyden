@@ -1006,30 +1006,52 @@ void MetaspaceShared::write_static_archive(ArchiveBuilder* builder, FileMapInfo 
   }
 }
 
+static void print_java_launcher(outputStream* st) {
+  st->print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
+}
+
+static void print_vm_arguments(outputStream* st) {
+  const char* cp = Arguments::get_appclasspath();
+  if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
+    st->print(" -cp ");  st->print_raw(cp);
+  }
+  for (int i = 0; i < Arguments::num_jvm_flags(); i++) {
+    st->print(" %s", Arguments::jvm_flags_array()[i]);
+  }
+  for (int i = 0; i < Arguments::num_jvm_args(); i++) {
+    st->print(" %s", Arguments::jvm_args_array()[i]);
+  }
+}
+
 void MetaspaceShared::fork_and_dump_final_static_archive() {
   assert(CDSConfig::is_dumping_preimage_static_archive(), "sanity");
 
   ResourceMark rm;
-  stringStream st;
-  st.print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
-  const char* cp = Arguments::get_appclasspath();
-  if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
-    st.print(" -cp ");  st.print_raw(cp);
-  }
-  for (int i = 0; i < Arguments::num_jvm_flags(); i++) {
-    st.print(" %s", Arguments::jvm_flags_array()[i]);
-  }
-  for (int i = 0; i < Arguments::num_jvm_args(); i++) {
-    st.print(" %s", Arguments::jvm_args_array()[i]);
-  }
-  st.print(" -XX:CDSPreimage=%s", SharedArchiveFile);
+  stringStream ss;
+  print_java_launcher(&ss);
+  print_vm_arguments(&ss);
+  ss.print(" -XX:CDSPreimage=%s", SharedArchiveFile);
 
-  const char* cmd = st.freeze();
+  const char* cmd = ss.freeze();
   if (CDSManualFinalImage) {
     tty->print_cr("-XX:+CDSManualFinalImage is specified");
     tty->print_cr("Please manually execute the following command to create the final CDS image:");
     tty->print("    "); tty->print_raw_cr(cmd);
+
+    // The following is useful if the dumping was trigger by a script that builds
+    // a complex command-line.
+    tty->print_cr("Note: to recreate the preimage only:");
+    tty->print_cr("    rm -f %s", CacheDataStore);
+    tty->print("    ");
+    print_java_launcher(tty);
+    print_vm_arguments(tty);
+    if (Arguments::java_command() != nullptr) {
+      tty->print(" %s", Arguments::java_command());
+    }
+    tty->cr();
   } else {
+    // FIXME: space characters are not properly quoated. E.g.,
+    //      java -Dfoo='a b c' HelloWorld
     log_info(cds)("Launching child process to create final CDS image:");
     log_info(cds)("    %s", cmd);
     int status = os::fork_and_exec(cmd);
@@ -1039,6 +1061,20 @@ void MetaspaceShared::fork_and_dump_final_static_archive() {
       ResourceMark rm;
       LogStream ls(Log(cds)::error());
       ls.print("    "); ls.print_raw_cr(cmd);
+
+      // The following is useful if the dumping was trigger by a script that builds
+      // a complex command-line.
+      ls.print_cr("Note: to recreate the preimage only:");
+      ls.print_cr("    rm -f %s", CacheDataStore);
+      ls.print("    ");
+      print_java_launcher(&ls);
+      print_vm_arguments(&ls);
+      ls.print(" -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage");
+      if (Arguments::java_command() != nullptr) {
+        ls.print(" %s", Arguments::java_command());
+      }
+      ls.cr();
+
       vm_direct_exit(status);
     } else {
       log_info(cds)("Child process finished; status = %d", status);
