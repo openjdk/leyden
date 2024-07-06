@@ -2711,8 +2711,6 @@ public abstract class ClassLoader {
         return unsafe.compareAndSetReference(this, offset, null, obj);
     }
 
-    static final boolean DEBUG = System.getProperty("leyden.debug.archived.packages") != null;
-
     /**
      * Called by the VM, during -Xshare:dump
      */
@@ -2721,38 +2719,19 @@ public abstract class ClassLoader {
             parallelLockMap.clear();
         }
 
-        if (DEBUG) {
-            System.out.println(this + ": packages = " + packages.size());
-            for (Map.Entry<String, NamedPackage> entry : packages.entrySet()) {
-                String key = entry.getKey();
-                NamedPackage value = entry.getValue();
-                System.out.print("Package ");
-                System.out.print(key);
-                System.out.print(" = ");
-                System.out.println(value instanceof Package ? "Package" : "NamedPackage");
+        if (CDS.isDumpingPackages()) {
+            if (System.getProperty("cds.debug.archived.packages") != null) {
+                for (Map.Entry<String, NamedPackage> entry : packages.entrySet()) {
+                    String key = entry.getKey();
+                    NamedPackage value = entry.getValue();
+                    System.out.println("Archiving " + 
+                                       (value instanceof Package ? "Package" : "NamedPackage") +
+                                       " \"" + key + "\" for " + this);
+                }
             }
-        }
-        if (DEBUG) {
-            System.out.println("package2certs = " + package2certs.size());
-            for (Map.Entry<String, Certificate[]> entry : package2certs.entrySet()) {
-                String key = entry.getKey();
-                Certificate[] value = entry.getValue();
-                System.out.print("Package ");
-                System.out.print(key);
-                System.out.print(" = ");
-                System.out.println(value.length);
-            }
-        }
-        if (!CDS.isDumpingPackages()) {
-            if (DEBUG) {
-                System.out.println("Reset packages/package2certs");
-            }
+        } else {
             packages.clear();
             package2certs.clear();
-        } else {
-            if (DEBUG) {
-                System.out.println("Retained packages/package2certs");
-            }
         }
         classes.clear();
         classLoaderValueMap = null;

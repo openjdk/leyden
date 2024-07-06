@@ -231,7 +231,7 @@ ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	rm -f ${PC_STATIC_JSA}.log
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
 	    -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:+ArchiveDynamicProxies -XX:+ArchiveReflectionData \
-            -XX:+ArchiveLoaderLookupCache -Dleyden.debug.archived.packages=1 \
+            -XX:+ArchiveLoaderLookupCache -Dcds.debug.archived.packages=1 \
 	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log
 	ls -l $@
 
