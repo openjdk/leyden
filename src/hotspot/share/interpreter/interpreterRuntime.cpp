@@ -1791,8 +1791,14 @@ JRT_END
   macro(InterpreterRuntime, post_method_entry) \
   macro(InterpreterRuntime, post_method_exit) \
   macro(InterpreterRuntime, interpreter_contains) \
-  macro(InterpreterRuntime, prepare_native_call) \
+  macro(InterpreterRuntime, prepare_native_call)
+
+#if INCLUDE_JVMTI
+#define DO_JVMTI_COUNTERS(macro) \
   macro(InterpreterRuntime, member_name_arg_or_null)
+#else
+#define DO_JVMTI_COUNTERS(macro)
+#endif /* INCLUDE_JVMTI */
 
 #define INIT_COUNTER(sub, name) \
   NEWPERFTICKCOUNTERS(_perf_##sub##_##name##_timer, SUN_CI, #sub "::" #name); \
@@ -1803,6 +1809,7 @@ void InterpreterRuntime::init_counters() {
     EXCEPTION_MARK;
 
     DO_COUNTERS(INIT_COUNTER)
+    DO_JVMTI_COUNTERS(INIT_COUNTER)
 
     if (HAS_PENDING_EXCEPTION) {
       vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
@@ -1823,11 +1830,13 @@ void InterpreterRuntime::init_counters() {
 void InterpreterRuntime::print_counters_on(outputStream* st) {
   if (UsePerfData && ProfileRuntimeCalls) {
     DO_COUNTERS(PRINT_COUNTER)
+    DO_JVMTI_COUNTERS(PRINT_COUNTER)
   } else {
     st->print_cr("  InterpreterRuntime: no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
   }
 }
 
 #undef PRINT_COUNTER
+#undef DO_JVMTI_COUNTERS
 #undef DO_COUNTERS
 

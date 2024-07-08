@@ -3569,8 +3569,9 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, SharedRuntime::ldiv);
   SET_ADDRESS(_extrs, SharedRuntime::lmul);
   SET_ADDRESS(_extrs, SharedRuntime::lrem);
+#if INCLUDE_JVMTI
   SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);
-
+#endif /* INCLUDE_JVMTI */
   BarrierSet* bs = BarrierSet::barrier_set(); 
   if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
     SET_ADDRESS(_extrs, ci_card_table_address_as<address>());
@@ -3581,7 +3582,9 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, os::javaTimeMillis);
   SET_ADDRESS(_extrs, os::javaTimeNanos);
 
+#if INCLUDE_JVMTI
   SET_ADDRESS(_extrs, &JvmtiVTMSTransitionDisabler::_VTMS_notify_jvmti_events);
+#endif /* INCLUDE_JVMTI */
   SET_ADDRESS(_extrs, StubRoutines::crc_table_addr());
 #ifndef PRODUCT
   SET_ADDRESS(_extrs, &SharedRuntime::_partial_subtype_ctr);
@@ -3812,10 +3815,12 @@ void SCAddressTable::init_opto() {
   SET_ADDRESS(_C2_blobs, OptoRuntime::slow_arraycopy_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::register_finalizer_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::class_init_barrier_Java());
+#if INCLUDE_JVMTI
   SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_start());
   SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_end());
   SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_mount());
   SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_unmount());
+#endif /* INCLUDE_JVMTI */
 #endif
 
   assert(_C2_blobs_length <= _C2_blobs_max, "increase _C2_blobs_max to %d", _C2_blobs_length);
