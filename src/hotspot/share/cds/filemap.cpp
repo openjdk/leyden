@@ -218,6 +218,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
   _has_archived_invokedynamic = CDSConfig::is_dumping_invokedynamic();
   _has_archived_packages = CDSConfig::is_dumping_packages();
+  _has_archived_protection_domains = CDSConfig::is_dumping_protection_domains();
   _gc_kind = (int)Universe::heap()->kind();
   jio_snprintf(_gc_name, sizeof(_gc_name), Universe::heap()->name());
 
@@ -305,6 +306,7 @@ void FileMapHeader::print(outputStream* st) {
   st->print_cr("- has_full_module_graph           %d", _has_full_module_graph);
   st->print_cr("- has_archived_invokedynamic      %d", _has_archived_invokedynamic);
   st->print_cr("- has_archived_packages           %d", _has_archived_packages);
+  st->print_cr("- has_archived_protection_domains %d", _has_archived_protection_domains);
   st->print_cr("- ptrmap_size_in_bits:            " SIZE_FORMAT, _ptrmap_size_in_bits);
 }
 
@@ -2584,6 +2586,9 @@ bool FileMapHeader::validate() {
     }
     if (_has_archived_packages) {
       CDSConfig::set_is_loading_packages();
+    }
+    if (_has_archived_protection_domains) {
+      CDSConfig::set_is_loading_protection_domains();
     }
   }
 

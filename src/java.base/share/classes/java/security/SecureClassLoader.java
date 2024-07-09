@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import jdk.internal.misc.CDS;
 
 /**
  * This class extends {@code ClassLoader} with additional support for defining
@@ -260,6 +261,15 @@ public class SecureClassLoader extends ClassLoader {
      * Called by the VM, during -Xshare:dump
      */
     private void resetArchivedStates() {
-        pdcache.clear();
+        if (CDS.isDumpingProtectionDomains()) {
+            if (System.getProperty("cds.debug.archived.protection.domains") != null) {
+                for (Map.Entry<CodeSourceKey, ProtectionDomain> entry : pdcache.entrySet()) {
+                    CodeSourceKey key = entry.getKey();
+                    System.out.println("Archiving ProtectionDomain " + key.cs + " for " + this);
+                }
+            }            
+        } else {
+            pdcache.clear();
+        }
     }
 }

@@ -139,6 +139,9 @@
           "Archive the java.lang.ClassLoader::{packages,package2certs} "    \
           "tables")                                                         \
                                                                             \
+  product(bool, ArchiveProtectionDomains, false,                            \
+          "Archive the java.security.SecureClassLoader::pdcache table")     \
+                                                                            \
   product(bool, ArchiveReflectionData, false,                               \
           "Archive Class::reflectionData field")                            \
                                                                             \

@@ -1065,7 +1065,11 @@ void java_lang_Class::create_mirror(Klass* k, Handle class_loader,
       release_set_array_klass(comp_mirror(), k);
     }
     if (CDSConfig::is_dumping_heap()) {
-      create_scratch_mirror(k, CHECK);
+      if (CDSConfig::is_dumping_protection_domains()) {
+        create_scratch_mirror(k, protection_domain, CHECK);
+      } else {
+        create_scratch_mirror(k, Handle() /* null protection_domain*/, CHECK);
+      }
     }
   } else {
     assert(fixup_mirror_list() != nullptr, "fixup_mirror_list not initialized");
@@ -1085,7 +1089,7 @@ void java_lang_Class::create_mirror(Klass* k, Handle class_loader,
 // Note: we archive the "scratch mirror" instead of k->java_mirror(), because the
 // latter may contain dumptime-specific information that cannot be archived
 // (e.g., ClassLoaderData*, or static fields that are modified by Java code execution).
-void java_lang_Class::create_scratch_mirror(Klass* k, TRAPS) {
+void java_lang_Class::create_scratch_mirror(Klass* k, Handle protection_domain, TRAPS) {
   if (k->class_loader() != nullptr &&
       k->class_loader() != SystemDictionary::java_platform_loader() &&
       k->class_loader() != SystemDictionary::java_system_loader()) {
@@ -1093,7 +1097,7 @@ void java_lang_Class::create_scratch_mirror(Klass* k, TRAPS) {
     return;
   }
 
-  Handle protection_domain, classData; // set to null. Will be reinitialized at runtime
+  Handle classData; // set to null. Will be reinitialized at runtime
   Handle mirror;
   Handle comp_mirror;
   allocate_mirror(k, /*is_scratch=*/true, protection_domain, classData, mirror, comp_mirror, CHECK);
