@@ -564,7 +564,7 @@ bool HeapShared::is_lambda_proxy_klass(InstanceKlass* ik) {
 }
 
 bool HeapShared::is_archivable_hidden_klass(InstanceKlass* ik) {
-  return is_lambda_form_klass(ik) || is_lambda_proxy_klass(ik);
+  return CDSConfig::is_dumping_invokedynamic() && (is_lambda_form_klass(ik) || is_lambda_proxy_klass(ik));
 }
 
 void HeapShared::copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop m) {
