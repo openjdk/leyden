@@ -153,6 +153,9 @@
                                                                             \
   product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
           "Verify archived training data")                                  \
+                                                                            \
+  product(bool, SkipArchiveHeapVerification, false,                         \
+          "Skip verification of CDS archive heap")                          \
 
 // end of CDS_FLAGS
 
