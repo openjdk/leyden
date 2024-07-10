@@ -45,6 +45,7 @@
 #include "code/oopRecorder.inline.hpp"
 #include "code/SCCache.hpp"
 #include "compiler/abstractCompiler.hpp"
+#include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -460,7 +461,7 @@ void SCCache::new_workflow_start_writing_cache() {
   CachedCodeDirectory* dir = (CachedCodeDirectory*)CDSAccess::allocate_from_code_cache(sizeof(CachedCodeDirectory));
   _cached_code_directory = dir;
 
-  CDSAccess::set_pointer(&dir->_some_klass, vmClasses::String_klass()); 
+  CDSAccess::set_pointer(&dir->_some_klass, vmClasses::String_klass());
 
   size_t n = 120;
   void* d = (void*)CDSAccess::allocate_from_code_cache(n);
@@ -670,11 +671,11 @@ bool SCConfig::verify(const char* cache_path) const {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with EnableContended = %s", cache_path, EnableContended ? "false" : "true");
     return false;
   }
-  if (((_flags & restrictContendedPadding) != 0) != RestrictContended) { 
+  if (((_flags & restrictContendedPadding) != 0) != RestrictContended) {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with RestrictContended = %s", cache_path, RestrictContended ? "false" : "true");
     return false;
   }
-  if (((_flags & useEmptySlotsInSupers) != 0) != UseEmptySlotsInSupers) { 
+  if (((_flags & useEmptySlotsInSupers) != 0) != UseEmptySlotsInSupers) {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with UseEmptySlotsInSupers = %s", cache_path, UseEmptySlotsInSupers ? "false" : "true");
     return false;
   }
@@ -880,6 +881,11 @@ bool skip_preload(methodHandle mh) {
 }
 
 void SCCache::preload_startup_code(TRAPS) {
+  if (CompilationPolicy::compiler_count(CompLevel_full_optimization) == 0) {
+    // Since we reuse the CompilerBroker API to install cached code, we're required to have a JIT compiler for the
+    // level we want (that is CompLevel_full_optimization).
+    return;
+  }
   assert(_for_read, "sanity");
   uint count = _load_header->entries_count();
   if (_load_entries == nullptr) {
@@ -1583,7 +1589,7 @@ bool SCCache::write_klass(Klass* klass) {
       // method will be recompiled without them in any case
       if (_has_clinit_barriers) {
         set_lookup_failed();
-        return false;    
+        return false;
       }
       can_use_meta_ptrs = false;
     }
@@ -3571,7 +3577,7 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, SharedRuntime::lrem);
   SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);
 
-  BarrierSet* bs = BarrierSet::barrier_set(); 
+  BarrierSet* bs = BarrierSet::barrier_set();
   if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
     SET_ADDRESS(_extrs, ci_card_table_address_as<address>());
   }

@@ -1414,7 +1414,7 @@ CompLevel CompilationPolicy::trained_transition(const methodHandle& method, Comp
   if (CompilationModeFlag::high_only() && next_level < CompLevel_full_optimization) {
     return CompLevel_none;
   }
-  return next_level;
+  return (cur_level != next_level) ? limit_level(next_level) : cur_level;
 }
 
 /*
