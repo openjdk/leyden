@@ -64,6 +64,7 @@ address ArchiveHeapWriter::_requested_top;
 static size_t _num_strings = 0;
 static size_t _string_bytes = 0; 
 static size_t _num_packages = 0;
+static size_t _num_protection_domains = 0;
 
 GrowableArrayCHeap<ArchiveHeapWriter::NativePointerInfo, mtClassShared>* ArchiveHeapWriter::_native_pointers;
 GrowableArrayCHeap<oop, mtClassShared>* ArchiveHeapWriter::_source_objs;
@@ -347,8 +348,9 @@ int ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClas
 
   log_info(cds)("Size of heap region = " SIZE_FORMAT " bytes, %d objects, %d roots, %d native ptrs, %d permobjs in %d segments",
                 _buffer_used, _source_objs->length() + 2, roots->length(), _num_native_ptrs, _perm_objs->length(), permobj_segments);
-  log_info(cds)("   strings  = " SIZE_FORMAT_W(8) " (" SIZE_FORMAT " bytes)", _num_strings, _string_bytes);
-  log_info(cds)("   packages = " SIZE_FORMAT_W(8), _num_packages);
+  log_info(cds)("   strings            = " SIZE_FORMAT_W(8) " (" SIZE_FORMAT " bytes)", _num_strings, _string_bytes);
+  log_info(cds)("   packages           = " SIZE_FORMAT_W(8), _num_packages);
+  log_info(cds)("   protection domains = " SIZE_FORMAT_W(8),_num_protection_domains);
 
   assert(permobj_seg_offsets->length() == permobj_segments, "sanity");
   HeapShared::set_permobj_segments(permobj_segments);
@@ -456,6 +458,8 @@ void ArchiveHeapWriter::update_stats(oop src_obj) {
     Symbol* name = k->name();
     if (name->equals("java/lang/NamedPackage") || name->equals("java/lang/Package")) {
       _num_packages ++;
+    } else if (name->equals("java/security/ProtectionDomain")) {
+      _num_protection_domains ++;
     }
   }
 }

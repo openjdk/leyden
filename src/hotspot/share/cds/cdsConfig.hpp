@@ -41,6 +41,9 @@ class CDSConfig : public AllStatic {
   static bool _has_preloaded_classes;
   static bool _is_loading_invokedynamic;
   static bool _is_loading_packages;
+  static bool _is_loading_protection_domains;
+
+  static bool _is_security_manager_allowed;
 
   static char* _default_archive_path;
   static char* _static_archive_path;
@@ -61,6 +64,7 @@ public:
   static const int IS_DUMPING_HEAP                 = 1 << 4;
   static const int IS_LOGGING_DYNAMIC_PROXIES      = 1 << 5;
   static const int IS_DUMPING_PACKAGES             = 1 << 6;
+  static const int IS_DUMPING_PROTECTION_DOMAINS   = 1 << 7;
   static int get_status() NOT_CDS_RETURN_(0);
 
   // Initialization and command-line checking
@@ -126,6 +130,10 @@ public:
   static bool is_dumping_packages()                          NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_loading_packages()                          NOT_CDS_JAVA_HEAP_RETURN_(false);
   static void set_is_loading_packages()                      { CDS_JAVA_HEAP_ONLY(_is_loading_packages = true); }
+
+  static bool is_dumping_protection_domains()                NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_loading_protection_domains()                NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static void set_is_loading_protection_domains()            { CDS_JAVA_HEAP_ONLY(_is_loading_protection_domains = true); }
 
   static bool is_dumping_reflection_data()                   NOT_CDS_JAVA_HEAP_RETURN_(false);
 

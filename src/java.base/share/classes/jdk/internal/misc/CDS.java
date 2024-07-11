@@ -49,6 +49,7 @@ public class CDS {
     private static final int IS_DUMPING_HEAP                 = 1 << 4;
     private static final int IS_LOGGING_DYNAMIC_PROXIES      = 1 << 5;
     private static final int IS_DUMPING_PACKAGES             = 1 << 6;
+    private static final int IS_DUMPING_PROTECTION_DOMAINS   = 1 << 7;
     private static final int configStatus = getCDSConfigStatus();
 
     /**
@@ -89,6 +90,10 @@ public class CDS {
 
     public static boolean isDumpingPackages() {
         return (configStatus & IS_DUMPING_PACKAGES) != 0;
+    }
+
+    public static boolean isDumpingProtectionDomains() {
+        return (configStatus & IS_DUMPING_PROTECTION_DOMAINS) != 0;
     }
 
     private static native int getCDSConfigStatus();

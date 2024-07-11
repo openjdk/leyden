@@ -460,7 +460,9 @@ void trampoline_stub_Relocation::unpack_data() {
 void external_word_Relocation::pack_data_to(CodeSection* dest) {
   short* p = (short*) dest->locs_end();
   int index = ExternalsRecorder::find_index(_target);
-  p = pack_1_int_to(p, index);
+  // Use 4 bytes to store index to be able patch it when
+  // updating relocations in SCCReader::read_relocations().
+  p = add_jint(p, index);
   dest->set_locs_end((relocInfo*) p);
 }
 

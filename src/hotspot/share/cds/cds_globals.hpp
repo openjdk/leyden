@@ -139,6 +139,9 @@
           "Archive the java.lang.ClassLoader::{packages,package2certs} "    \
           "tables")                                                         \
                                                                             \
+  product(bool, ArchiveProtectionDomains, false,                            \
+          "Archive the java.security.SecureClassLoader::pdcache table")     \
+                                                                            \
   product(bool, ArchiveReflectionData, false,                               \
           "Archive Class::reflectionData field")                            \
                                                                             \
@@ -150,6 +153,9 @@
                                                                             \
   product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
           "Verify archived training data")                                  \
+                                                                            \
+  product(bool, SkipArchiveHeapVerification, false,                         \
+          "Skip verification of CDS archive heap")                          \
 
 // end of CDS_FLAGS
 

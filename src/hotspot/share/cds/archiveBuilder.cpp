@@ -1400,6 +1400,16 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
         st.print_cr(" - fields (" SIZE_FORMAT " words):", source_oop->size());
         ArchivedFieldPrinter print_field(heap_info, &st, source_oop, buffered_addr);
         InstanceKlass::cast(source_klass)->print_nonstatic_fields(&print_field);
+
+        if (java_lang_Class::is_instance(source_oop)) {
+          st.print(" - signature: ");
+          if (java_lang_Class::is_primitive(source_oop)) {
+            st.print("primitive ??");
+          } else {
+            java_lang_Class::print_signature(source_oop, &st);            
+          }
+          st.cr();
+        }
       }
     }
   }

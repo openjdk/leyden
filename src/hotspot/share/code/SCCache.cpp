@@ -45,6 +45,7 @@
 #include "code/oopRecorder.inline.hpp"
 #include "code/SCCache.hpp"
 #include "compiler/abstractCompiler.hpp"
+#include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -460,7 +461,7 @@ void SCCache::new_workflow_start_writing_cache() {
   CachedCodeDirectory* dir = (CachedCodeDirectory*)CDSAccess::allocate_from_code_cache(sizeof(CachedCodeDirectory));
   _cached_code_directory = dir;
 
-  CDSAccess::set_pointer(&dir->_some_klass, vmClasses::String_klass()); 
+  CDSAccess::set_pointer(&dir->_some_klass, vmClasses::String_klass());
 
   size_t n = 120;
   void* d = (void*)CDSAccess::allocate_from_code_cache(n);
@@ -667,7 +668,7 @@ bool SCConfig::verify(const char* cache_path) const {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with EnableContended = %s", cache_path, EnableContended ? "false" : "true");
     return false;
   }
-  if (((_flags & restrictContendedPadding) != 0) != RestrictContended) { 
+  if (((_flags & restrictContendedPadding) != 0) != RestrictContended) {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with RestrictContended = %s", cache_path, RestrictContended ? "false" : "true");
     return false;
   }
@@ -872,6 +873,11 @@ bool skip_preload(methodHandle mh) {
 }
 
 void SCCache::preload_startup_code(TRAPS) {
+  if (CompilationPolicy::compiler_count(CompLevel_full_optimization) == 0) {
+    // Since we reuse the CompilerBroker API to install cached code, we're required to have a JIT compiler for the
+    // level we want (that is CompLevel_full_optimization).
+    return;
+  }
   assert(_for_read, "sanity");
   uint count = _load_header->entries_count();
   if (_load_entries == nullptr) {
@@ -1575,7 +1581,7 @@ bool SCCache::write_klass(Klass* klass) {
       // method will be recompiled without them in any case
       if (_has_clinit_barriers) {
         set_lookup_failed();
-        return false;    
+        return false;
       }
       can_use_meta_ptrs = false;
     }
@@ -1892,7 +1898,12 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
           break;
         case relocInfo::external_word_type: {
           address target = _cache->address_for_id(reloc_data[j]);
+          // Add external address to global table
+          int index = ExternalsRecorder::find_index(target);
+          // Update index in relocation
+          Relocation::add_jint(iter.data(), index);
           external_word_Relocation* reloc = (external_word_Relocation*)iter.reloc();
+          assert(reloc->target() == target, "sanity");
           reloc->set_value(target); // Patch address in the code
           iter.reloc()->fix_relocation_after_move(orig_buffer, buffer);
           break;
@@ -3546,9 +3557,10 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, SharedRuntime::ldiv);
   SET_ADDRESS(_extrs, SharedRuntime::lmul);
   SET_ADDRESS(_extrs, SharedRuntime::lrem);
+#if INCLUDE_JVMTI
   SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);
-
-  BarrierSet* bs = BarrierSet::barrier_set(); 
+#endif /* INCLUDE_JVMTI */
+  BarrierSet* bs = BarrierSet::barrier_set();
   if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
     SET_ADDRESS(_extrs, ci_card_table_address_as<address>());
   }
@@ -3558,7 +3570,9 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, os::javaTimeMillis);
   SET_ADDRESS(_extrs, os::javaTimeNanos);
 
+#if INCLUDE_JVMTI
   SET_ADDRESS(_extrs, &JvmtiVTMSTransitionDisabler::_VTMS_notify_jvmti_events);
+#endif /* INCLUDE_JVMTI */
   SET_ADDRESS(_extrs, StubRoutines::crc_table_addr());
 #ifndef PRODUCT
   SET_ADDRESS(_extrs, &SharedRuntime::_partial_subtype_ctr);
@@ -3789,10 +3803,12 @@ void SCAddressTable::init_opto() {
   SET_ADDRESS(_C2_blobs, OptoRuntime::slow_arraycopy_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::register_finalizer_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::class_init_barrier_Java());
+#if INCLUDE_JVMTI
   SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_start());
   SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_end());
   SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_mount());
   SET_ADDRESS(_C2_blobs, OptoRuntime::notify_jvmti_vthread_unmount());
+#endif /* INCLUDE_JVMTI */
 #endif
 
   assert(_C2_blobs_length <= _C2_blobs_max, "increase _C2_blobs_max to %d", _C2_blobs_length);

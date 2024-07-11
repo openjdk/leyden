@@ -853,7 +853,9 @@ void HeapShared::archive_objects(ArchiveHeapInfo *heap_info) {
     }
     copy_objects();
 
-    CDSHeapVerifier::verify();
+    if (!SkipArchiveHeapVerification) {
+      CDSHeapVerifier::verify();
+    }
     check_default_subgraph_classes();
   }
 
