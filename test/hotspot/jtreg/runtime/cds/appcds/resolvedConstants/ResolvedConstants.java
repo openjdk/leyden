@@ -66,12 +66,14 @@ public class ResolvedConstants {
             // Always resolve reference when a class references a super interface
             .shouldMatch("cds,resolve.*archived klass.* ResolvedConstantsApp app => java/lang/Runnable boot")
 
+/** Work around JDK-8336414
+
             // java/lang/System is in the root loader but ResolvedConstantsApp is loaded by the app loader.
             // Even though System is in the vmClasses list, when ResolvedConstantsApp looks up
             // "java/lang/System" in its ConstantPool, the app loader may not have resolved the System
             // class yet (i.e., there's no initiaited class entry for System in the app loader's dictionary)
             .shouldMatch("cds,resolve.*reverted klass.* ResolvedConstantsApp .*java/lang/System")
-
+*/
           // Field References ---
 
             // Always resolve references to fields in the current class or super class(es)
