@@ -79,6 +79,8 @@ PC_STATIC_JSA    = spring-petclinic$(PM_VER).static.jsa
 PC_DYNAMIC_JSA   = spring-petclinic$(PM_VER).dynamic.jsa
 PC_CACHED_CODE   = spring-petclinic$(PM_VER).code.jsa
 
+PC_STATIC_JSA_8315737  = spring-petclinic$(PM_VER).8315737.static.jsa
+
 # new workflow
 PC_CDS_PREIMAGE  = spring-petclinic$(PM_VER).cds.preimage
 PC_CDS           = spring-petclinic$(PM_VER).cds
@@ -171,6 +173,15 @@ ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA}.log
 	ls -l ${PC_STATIC_JSA}
 
+${PC_STATIC_JSA_8315737}: ${PC_CLASSLIST}
+	rm -f ${PC_STATIC_JSA}.log
+	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
+	    -XX:SharedArchiveFile=${PC_STATIC_JSA_8315737} \
+	    -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:-ArchiveDynamicProxies -XX:-ArchiveReflectionData \
+	    -XX:-ArchiveLoaderLookupCache -XX:-ArchiveProtectionDomains -XX:-ArchivePackages \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${PC_STATIC_JSA_8315737}.log
+	ls -l ${PC_STATIC_JSA_8315737}
+
 ${PC_DYNAMIC_JSA}: ${PC_STATIC_JSA}
 	rm -f ${PC_DYNAMIC_JSA} ${PC_DYNAMIC_JSA}.log
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_JSA} \
@@ -191,6 +202,12 @@ run: ${PC_CACHED_CODE}
 # run with just static CDS archive
 runs: ${PC_STATIC_JSA}
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} ${LOG_INIT} ${UNPACKED_CMDLINE}
+
+# run with just static CDS archive
+runs.8315737: ${PC_STATIC_JSA_8315737}
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA_8315737} ${LOG_INIT} ${UNPACKED_CMDLINE}
+
+runs.jep: runs.8315737
 
 # run with just static CDS archive, but instead of the main class, give a fake class name
 # Because -XX:+LoadSharedClasses is specified, this command will basically test the speed of loading all
@@ -322,6 +339,30 @@ _mainline_vs_premain_all:
 	        fi; \
 		first=0; \
 	done
+
+# Compare
+# (1) Mainline JDK with default CDS archive only
+# (2) Mainline JDK with a custom (static) CDS archive for PetClinic
+# (3) Premain with a custom (static) CDS archive for PetClinic, with only the optimizations in https://openjdk.org/jeps/8315737
+mainline_vs_premain_jep_8315737: clean0 _mainline_vs_premain_jep_8315737
+
+_mainline_vs_premain_jep_8315737:
+	rm -f mainline_vs_premain_jep_8315737.csv
+	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS (JEP 8315737 only),premain custom static CDS (all optimizations),premain all optimizations (incl profiles and AOT)" | \
+	    tee -a mainline_vs_premain_jep_8315737.csv
+	@first=1; for i in ${LOOPS}; do \
+		rm -f tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= run0.ml      | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs.ml      | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs.8315737 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runs         | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runn         | grep Booted >> tmp.txt; \
+		if test "$$first" != "1"; then \
+		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a mainline_vs_premain_jep_8315737.csv; \
+	        fi; \
+		first=0; \
+	done
+	@${MAINLINE_JAVA} ../lib/GithubMDChart.java mainline_vs_premain_jep_8315737.md < mainline_vs_premain_jep_8315737.csv
 
 # Same as compare_premain_builds in ../lib/Bench.gmk, but compare CDS only, and old workflow as well
 
