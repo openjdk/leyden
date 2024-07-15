@@ -28,7 +28,6 @@
 #include "asm/assembler.inline.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciUtilities.hpp"
-#include "code/SCCache.hpp"
 #include "code/compiledIC.hpp"
 #include "compiler/compileTask.hpp"
 #include "compiler/disassembler.hpp"
@@ -875,6 +874,9 @@ void MacroAssembler::call_VM_helper(Register oop_result, address entry_point, in
 
 // Check the entry target is always reachable from any branch.
 static bool is_always_within_branch_range(Address entry) {
+  if (SCCache::is_on_for_write()) {
+    return false;
+  }
   const address target = entry.target();
 
   if (!CodeCache::contains(target)) {

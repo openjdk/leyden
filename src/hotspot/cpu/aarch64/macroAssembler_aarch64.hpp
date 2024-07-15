@@ -28,6 +28,7 @@
 
 #include "asm/assembler.inline.hpp"
 #include "code/vmreg.hpp"
+#include "code/SCCache.hpp"
 #include "metaprogramming/enableIf.hpp"
 #include "oops/compressedOops.hpp"
 #include "oops/compressedKlass.hpp"
@@ -1258,6 +1259,10 @@ public:
 
   // Check if branches to the non nmethod section require a far jump
   static bool codestub_branch_needs_far_jump() {
+    if (SCCache::is_on_for_write()) {
+      // To calculate far_codestub_branch_size correctly.
+      return true;
+    }
     return CodeCache::max_distance_to_non_nmethod() > branch_range;
   }
 
