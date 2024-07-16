@@ -25,6 +25,7 @@
 /*
  * @test
  * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
  * @summary Test for verification of classes that are preloaded
  * @library /test/jdk/lib/testlibrary /test/lib /test/hotspot/jtreg/runtime/cds/appcds
  * @build GoodOldClass BadOldClass BadOldClass2 BadNewClass BadNewClass2
