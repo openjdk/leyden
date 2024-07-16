@@ -26,6 +26,7 @@
  * @bug 8241071
  * @summary The same JDK build should always generate the same archive file (no randomness).
  * @requires vm.cds
+ * @requires vm.flagless
  * @library /test/lib
  * @run driver DeterministicDump
  */

@@ -25,6 +25,7 @@
 /*
  * @test
  * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
  * @summary run Spring Pet Clinic demo with leyden-premain
  * @library /test/lib
  * @run driver/timeout=120 SpringPetClinic LEYDEN_OLD
