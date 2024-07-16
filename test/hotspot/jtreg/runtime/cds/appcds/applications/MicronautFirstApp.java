@@ -50,6 +50,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 /*
  * @test id=leyden
  * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
  * @summary un MicronautFirstApp with the Leyden workflow
  * @library /test/lib
  * @run driver/timeout=120 MicronautFirstApp LEYDEN
@@ -58,6 +59,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 /*
  * @test id=leyden_old
  * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
  * @summary un MicronautFirstApp with the "OLD" Leyden workflow
  * @library /test/lib
  * @run driver/timeout=120 MicronautFirstApp LEYDEN_OLD
