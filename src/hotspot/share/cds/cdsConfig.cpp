@@ -257,10 +257,22 @@ void CDSConfig::init_shared_archive_paths() {
   }
 }
 
+static char* bad_module_prop_key   = nullptr;
+static char* bad_module_prop_value = nullptr;
+
 void CDSConfig::check_internal_module_property(const char* key, const char* value) {
   if (Arguments::is_internal_module_property(key)) {
     stop_using_optimized_module_handling();
-    log_info(cds)("optimized module handling: disabled due to incompatible property: %s=%s", key, value);
+    if (bad_module_prop_key == nullptr) {
+      // We don't want to print an unconditional warning here, as we are still processing the command line.
+      // A later argument may specify something like -Xshare:off, which makes such a warning irrelevant.
+      //
+      // Instead, we save the info so we can warn when necessary: we are doing it only during CacheDataStore
+      // creation for now, but could add it to other places.
+      bad_module_prop_key   = os::strdup(key);
+      bad_module_prop_value = os::strdup(value);
+    }
+    log_info(cds)("optimized module handling/full module graph: disabled due to incompatible property: %s=%s", key, value);
   }
 }
 
@@ -555,6 +567,17 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
 
   if (!ArchiveInvokeDynamic) {
     ArchiveReflectionData = false; // reflection data use LambdaForm classes
+  }
+
+  if (PreloadSharedClasses) {
+    if ((is_dumping_preimage_static_archive() && !is_using_optimized_module_handling()) ||
+        (is_dumping_final_static_archive()    && !is_dumping_full_module_graph())) {
+      if (bad_module_prop_key != nullptr) {
+        log_warning(cds)("optimized module handling/full module graph: disabled due to incompatible property: %s=%s",
+                         bad_module_prop_key, bad_module_prop_value);
+      }
+      vm_exit_during_initialization("CacheDataStore cannot be created because PreloadSharedClasses is enabled but full module graph is disabled");
+    }
   }
 
   return true;
