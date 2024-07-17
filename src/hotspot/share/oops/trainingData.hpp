@@ -60,10 +60,7 @@ class TrainingData : public Metadata {
   friend CompileTrainingData;
  public:
   class Key {
-    Symbol* _name1;   // Klass::name or Method::name
-    Symbol* _name2;   // class_loader_name_and_id or signature
-    const TrainingData* const _holder; // TD for containing klass or method
-
+    mutable Metadata* _meta;
     // These guys can get to my constructors:
     friend TrainingData;
     friend KlassTrainingData;
@@ -71,70 +68,34 @@ class TrainingData : public Metadata {
     friend CompileTrainingData;
 
     // The empty key
-    Key() : _name1(nullptr), _name2(nullptr), _holder(nullptr) { }
-    bool is_empty() const {
-      return _name1 == nullptr && _name2 == nullptr && _holder == nullptr;
-    }
-
+    Key() : _meta(nullptr) { }
+    bool is_empty() const { return _meta == nullptr; }
   public:
-    Key(Symbol* name1, Symbol* name2,
-        const TrainingData* holder = nullptr)
-      : _name1(name1), _name2(name2), _holder(holder)
-      // Since we are using SymbolHandles here, the reference counts
-      // are incremented here, in this constructor.  We assume that
-      // the symbols are already kept alive by some other means, but
-      // after this point the Key object keeps them alive as well.
-    { }
-    Key(const KlassTrainingData* klass, Symbol* method_name, Symbol* signature);
-    Key(const MethodTrainingData* method);
-    Key(const InstanceKlass* klass);
-    Key(const Method* method, KlassTrainingData* holder);
+    Key(Metadata* meta) : _meta(meta) { }
 
-    static unsigned cds_hash(const Key* const& k);
     static bool can_compute_cds_hash(const Key* const& k);
+    static uint cds_hash(const Key* const& k);
     static unsigned hash(const Key* const& k) {
-      // A symmetric hash code is usually a bad idea, except in cases
-      // like this where it is very unlikely that any one string might
-      // appear in two positions, and even less likely that two
-      // strings might trade places in two otherwise equal keys.
-      return (Symbol::identity_hash(k->name1()) +
-              Symbol::identity_hash(k->name2()) +
-              (k->holder() == nullptr ? 0 : hash(k->holder()->key())));
+      return primitive_hash(k->meta());
     }
     static bool equals(const Key* const& k1, const Key* const& k2) {
-      // We assume that all Symbols come for SymbolTable and therefore are unique.
-      // Hence pointer comparison is enough to prove equality.
-      return (k1->name1()   == k2->name1() &&
-              k1->name2()   == k2->name2() &&
-              k1->holder()  == k2->holder());
+      return k1->meta() == k2->meta();
     }
     static inline bool equals(TrainingData* value, const TrainingData::Key* key, int unused) {
       return equals(value->key(), key);
     }
     int cmp(const Key* that) const {
-      auto h1 = this->holder();
-      auto h2 = that->holder();
-      #define NULL_CHECKS(x1, x2, cmpx1x2)                      \
-        ((x1) == nullptr ? -1 : (x2) == nullptr ? +1 : cmpx1x2)
-      if (h1 != h2) {
-        return NULL_CHECKS(h1, h2, h1->key()->cmp(h2->key()));
-      }
-      Symbol* k1; Symbol* k2;
-      #define CHECK_COMPONENT(name)                             \
-        if ((k1 = this->name()) != (k2 = that->name()))         \
-          return NULL_CHECKS(k1, k2, k1->cmp(k2))
-      CHECK_COMPONENT(name1);
-      CHECK_COMPONENT(name2);
-      #undef CHECK_COMPONENT
-      #undef NULL_CHECKS
-      return 0; // no pair of differing components
+      auto m1 = this->meta();
+      auto m2 = that->meta();
+      if (m1 < m2) return -1;
+      if (m1 > m2) return +1;
+      return 0;
     }
-    Symbol* name1() const       { return _name1; }
-    Symbol* name2() const       { return _name2; }
-    const TrainingData* holder() const { return _holder; }
-
+    Metadata* meta() const { return _meta; }
     void metaspace_pointers_do(MetaspaceClosure *iter);
+    void make_empty() const { _meta = nullptr; }
   };
+
   class TrainingDataLocker {
     static volatile bool _snapshot;
     static int _lock_mode;
@@ -410,17 +371,22 @@ class KlassTrainingData : public TrainingData {
   }
 
  public:
-  Symbol* name()                const { return _key.name1(); }
-  Symbol* loader_name()         const { return _key.name2(); }
-  bool    has_holder()          const { return _holder != nullptr; }
-  InstanceKlass* holder()       const { return _holder; }
+  Symbol* name() const {
+    precond(has_holder());
+    return holder()->name();
+  }
+  Symbol* loader_name() const {
+    precond(has_holder());
+    return holder()->class_loader_name_and_id();
+  }
+  bool has_holder()       const { return _holder != nullptr; }
+  InstanceKlass* holder() const { return _holder; }
 
   static KlassTrainingData* make(InstanceKlass* holder,
                                  bool null_if_not_found = false);
   static KlassTrainingData* find(InstanceKlass* holder) {
     return make(holder, true);
   }
-
   virtual KlassTrainingData* as_KlassTrainingData() const { return const_cast<KlassTrainingData*>(this); };
 
   ClassLoaderData* class_loader_data() {
@@ -682,7 +648,7 @@ class MethodTrainingData : public TrainingData {
   template <class T> friend class CppVtableCloner;
 
   KlassTrainingData* _klass;
-  const Method* _holder;  // can be null
+  Method* _holder;  // can be null
   CompileTrainingData* _last_toplevel_compiles[CompLevel_count];
   int _highest_top_level;
   int _level_mask;  // bit-set of all possible levels
@@ -693,12 +659,9 @@ class MethodTrainingData : public TrainingData {
   MethodData*     _final_profile;
 
   MethodTrainingData();
-  MethodTrainingData(Method* holder, KlassTrainingData* klass,
-                     Symbol* name, Symbol* signature)
-    : TrainingData(klass, name, signature)
-  {
-    _klass = klass;
-    _holder = holder;
+  MethodTrainingData(Method* method, KlassTrainingData* ktd) : TrainingData(method) {
+    _klass = ktd;
+    _holder = method;
     for (int i = 0; i < CompLevel_count; i++) {
       _last_toplevel_compiles[i] = nullptr;
     }
@@ -719,15 +682,22 @@ class MethodTrainingData : public TrainingData {
  public:
   KlassTrainingData* klass()  const { return _klass; }
   bool has_holder()           const { return _holder != nullptr; }
-  const Method* holder()      const { return _holder; }
-  Symbol* name()              const { return _key.name1(); }
-  Symbol* signature()         const { return _key.name2(); }
+  Method* holder()            const { return _holder; }
   bool only_inlined()         const { return !_was_toplevel; }
   bool never_inlined()        const { return !_was_inlined; }
   bool saw_level(CompLevel l) const { return (_level_mask & level_mask(l)) != 0; }
   int highest_level()         const { return highest_level(_level_mask); }
   int highest_top_level()     const { return _highest_top_level; }
   MethodData* final_profile() const { return _final_profile; }
+
+  Symbol* name() const {
+    precond(has_holder());
+    return holder()->name();
+  }
+  Symbol* signature() const {
+    precond(has_holder());
+    return holder()->signature();
+  }
 
   CompileTrainingData* last_toplevel_compile(int level) const {
     if (level > CompLevel_none) {

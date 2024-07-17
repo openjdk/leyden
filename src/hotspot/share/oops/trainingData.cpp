@@ -83,17 +83,9 @@ void TrainingData::initialize() {
 }
 
 static void verify_archived_entry(TrainingData* td, const TrainingData::Key* k) {
-  ResourceMark rm;
-  guarantee(TrainingData::Key::can_compute_cds_hash(k), "%s %s " INTPTR_FORMAT,
-            (k->name1() != nullptr ? k->name1()->as_C_string() : "(null)"),
-            (k->name2() != nullptr ? k->name2()->as_C_string() : "(null)"),
-            p2i(k->holder()));
-
+  guarantee(TrainingData::Key::can_compute_cds_hash(k), "");
   TrainingData* td1 = TrainingData::lookup_archived_training_data(k);
-  guarantee(td == td1, "%s %s " INTPTR_FORMAT ": " INTPTR_FORMAT " != " INTPTR_FORMAT,
-            (k->name1() != nullptr ? k->name1()->as_C_string() : "(null)"),
-            (k->name2() != nullptr ? k->name2()->as_C_string() : "(null)"),
-            p2i(k->holder()), p2i(td), p2i(td1));
+  guarantee(td == td1, "");
 }
 
 void TrainingData::verify() {
@@ -109,7 +101,7 @@ void TrainingData::verify() {
       } else if (td->is_MethodTrainingData()) {
         MethodTrainingData* mtd = td->as_MethodTrainingData();
         if (mtd->has_holder() && mtd->holder()->method_holder()->is_loaded()) {
-          Key k(mtd);
+          Key k(mtd->holder());
           verify_archived_entry(td, &k);
         }
         mtd->verify();
@@ -119,24 +111,6 @@ void TrainingData::verify() {
     });
   }
 }
-
-
-TrainingData::Key::Key(const KlassTrainingData* klass, Symbol* method_name, Symbol* signature)
-  : Key(method_name, signature, klass) {}
-
-TrainingData::Key::Key(const InstanceKlass* klass)
-  : Key(klass->name(), klass->class_loader_name_and_id()) {
-  // Often the loader is either null or the string "'app'" (w/ extra quotes).
-  // It can also be "'platform'".
-}
-
-TrainingData::Key::Key(const Method* method, KlassTrainingData* holder)
-  : Key(method->name(), method->signature(), holder)
-{
-  assert(method->method_holder() == holder->holder(), "mismatch");
-}
-
-TrainingData::Key::Key(const MethodTrainingData* method) : Key(method->holder(), method->klass()) {}
 
 MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
                                              bool null_if_not_found) {
@@ -159,7 +133,7 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
   if (holder == nullptr) {
     return nullptr; // allocation failure
   }
-  Key key(method->name(), method->signature(), holder);
+  Key key(method());
   TrainingData* td = have_data()? lookup_archived_training_data(&key) : nullptr;
   if (td != nullptr) {
     mtd = td->as_MethodTrainingData();
@@ -562,6 +536,19 @@ void TrainingData::cleanup_training_data() {
       TrainingData* td = _dumptime_training_data_dictionary->at(i).training_data();
       td->cleanup(visitor);
     }
+    // Throw away all elements with empty keys
+    int j = 0;
+    for (int i = 0; i < _dumptime_training_data_dictionary->length(); i++) {
+      TrainingData* td = _dumptime_training_data_dictionary->at(i).training_data();
+      if (td->key()->is_empty()) {
+        continue;
+      }
+      if (i != j) { // no need to copy if it's the same
+        _dumptime_training_data_dictionary->at_put(j, td);
+      }
+      j++;
+    }
+    _dumptime_training_data_dictionary->trunc_to(j);
   }
   RecompilationSchedule::cleanup();
 }
@@ -571,12 +558,13 @@ void KlassTrainingData::cleanup(Visitor& visitor) {
     return;
   }
   visitor.visit(this);
-  if (holder() != nullptr) {
+  if (has_holder()) {
     bool is_excluded = !holder()->is_loaded() || SystemDictionaryShared::check_for_exclusion(holder(), nullptr);
     if (is_excluded) {
       ResourceMark rm;
       log_debug(cds)("Cleanup KTD %s", name()->as_klass_external_name());
-      _holder = nullptr; // reset
+      _holder = nullptr;
+      key()->make_empty();
     }
   }
   for (int i = 0; i < _comp_deps.length(); i++) {
@@ -593,10 +581,10 @@ void MethodTrainingData::cleanup(Visitor& visitor) {
     if (SystemDictionaryShared::check_for_exclusion(holder()->method_holder(), nullptr)) {
       log_debug(cds)("Cleanup MTD %s::%s", name()->as_klass_external_name(), signature()->as_utf8());
       if (_final_profile != nullptr && _final_profile->method() != _holder) {
-        // FIXME: MDO still points at the stale method; either completely drop the MDO or zero out the link
         log_warning(cds)("Stale MDO for  %s::%s", name()->as_klass_external_name(), signature()->as_utf8());
       }
       _holder = nullptr;
+      key()->make_empty();
     }
   }
   for (int i = 0; i < CompLevel_count; i++) {
@@ -678,9 +666,7 @@ void TrainingData::print_archived_training_data_on(outputStream* st) {
 }
 
 void TrainingData::Key::metaspace_pointers_do(MetaspaceClosure *iter) {
-  iter->push(&_name1);
-  iter->push(&_name2);
-  iter->push((TrainingData**)&_holder);
+  iter->push(const_cast<Metadata**>(&_meta));
 }
 
 void TrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
@@ -688,23 +674,11 @@ void TrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
 }
 
 bool TrainingData::Key::can_compute_cds_hash(const Key* const& k) {
-  return (k->name1() == nullptr || MetaspaceObj::is_shared(k->name1())) &&
-         (k->name2() == nullptr || MetaspaceObj::is_shared(k->name2())) &&
-         (k->holder() == nullptr || MetaspaceObj::is_shared(k->holder()));
+  return k->meta() == nullptr || MetaspaceObj::is_shared(k->meta());
 }
 
 uint TrainingData::Key::cds_hash(const Key* const& k) {
-  uint hash = 0;
-  if (k->holder() != nullptr) {
-    hash += SystemDictionaryShared::hash_for_shared_dictionary((address)k->holder());
-  }
-  if (k->name1() != nullptr) {
-    hash += SystemDictionaryShared::hash_for_shared_dictionary((address)k->name1());
-  }
-  if (k->name2() != nullptr) {
-    hash += SystemDictionaryShared::hash_for_shared_dictionary((address)k->name2());
-  }
-  return hash;
+  return SystemDictionaryShared::hash_for_shared_dictionary((address)k->meta());
 }
 
 void TrainingData::write_training_data_dictionary(TrainingDataDictionary* dictionary) {
@@ -751,17 +725,7 @@ TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {
         (td->is_MethodTrainingData() && td->as_MethodTrainingData()->has_holder())) {
       return td;
     } else {
-      // FIXME: decide what to do with symbolic TD
-      LogStreamHandle(Trace, training) log;
-      if (log.is_enabled()) {
-        ResourceMark rm;
-        log.print_cr("Ignored symbolic TrainingData:");
-        log.print_cr("  Key: %s %s",
-                     (k->name1() != nullptr ? k->name1()->as_C_string() : "(null)"),
-                     (k->name2() != nullptr ? k->name2()->as_C_string() : "(null)"));
-        td->print_on(&log);
-        log.cr();
-      }
+      ShouldNotReachHere();
     }
   }
   return nullptr;
@@ -783,7 +747,7 @@ MethodTrainingData* TrainingData::lookup_for(Method* m) {
   if (TrainingData::have_data() && m != nullptr) {
     KlassTrainingData* holder_ktd = TrainingData::lookup_for(m->method_holder());
     if (holder_ktd != nullptr) {
-      TrainingData::Key key(m->name(), m->signature(), holder_ktd);
+      TrainingData::Key key(m);
       TrainingData* td = TrainingData::lookup_archived_training_data(&key);
       if (td != nullptr && td->is_MethodTrainingData()) {
         return td->as_MethodTrainingData();
@@ -847,7 +811,7 @@ KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
 MethodTrainingData* MethodTrainingData::allocate(Method* m, KlassTrainingData* ktd) {
   assert(need_data() || have_data(), "");
   if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) MethodTrainingData(m, ktd, m->name(), m->signature());
+    return new (mtClassShared) MethodTrainingData(m, ktd);
   }
   return nullptr;
 }
@@ -862,7 +826,7 @@ CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int 
 
 void TrainingDataPrinter::do_value(TrainingData* td) {
 #ifdef ASSERT
-  TrainingData::Key key(td->key()->name1(), td->key()->name2(), td->key()->holder());
+  TrainingData::Key key(td->key()->meta());
   assert(td == TrainingData::archived_training_data_dictionary()->lookup(td->key(), TrainingData::Key::cds_hash(td->key()), -1), "");
   assert(td == TrainingData::archived_training_data_dictionary()->lookup(&key, TrainingData::Key::cds_hash(&key), -1), "");
 #endif // ASSERT
