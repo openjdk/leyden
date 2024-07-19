@@ -159,7 +159,7 @@ class ImplicitExceptionTable {
   void set_len(int length) { _len = length; }
 
 public:
-  ImplicitExceptionTable( ) :  _size(0), _len(0), _data(0) { }
+  ImplicitExceptionTable( ) :  _size(0), _len(0), _data(nullptr) { }
   // (run-time) construction from nmethod
   ImplicitExceptionTable(const nmethod *nm);
 

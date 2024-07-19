@@ -358,6 +358,7 @@ class Compile : public Phase {
   // JSR 292
   bool                  _has_method_handle_invokes; // True if this method has MethodHandle invokes.
   bool                  _has_monitors;          // Metadata transfered to nmethod to enable Continuations lock-detection fastpath
+  bool                  _has_scoped_access;     // For shared scope closure
   bool                  _clinit_barrier_on_entry; // True if clinit barrier is needed on nmethod entry
   bool                  _has_clinit_barriers;   // True if compiled code has clinit barriers
   int                   _loop_opts_cnt;         // loop opts round
@@ -680,6 +681,8 @@ private:
   void          set_clinit_barrier_on_entry(bool z) { _clinit_barrier_on_entry = z; }
   bool              has_monitors() const         { return _has_monitors; }
   void          set_has_monitors(bool v)         { _has_monitors = v; }
+  bool              has_scoped_access() const    { return _has_scoped_access; }
+  void          set_has_scoped_access(bool v)    { _has_scoped_access = v; }
   bool              has_clinit_barriers()        { return _has_clinit_barriers; }
   void          set_has_clinit_barriers(bool z)  { _has_clinit_barriers = z; }
 

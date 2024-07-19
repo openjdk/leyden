@@ -2239,7 +2239,7 @@ void Parse::do_one_bytecode() {
   case Bytecodes::_fdiv:
     b = pop();
     a = pop();
-    c = _gvn.transform( new DivFNode(0,a,b) );
+    c = _gvn.transform( new DivFNode(nullptr,a,b) );
     d = precision_rounding(c);
     push( d );
     break;
@@ -2249,7 +2249,7 @@ void Parse::do_one_bytecode() {
       // Generate a ModF node.
       b = pop();
       a = pop();
-      c = _gvn.transform( new ModFNode(0,a,b) );
+      c = _gvn.transform( new ModFNode(nullptr,a,b) );
       d = precision_rounding(c);
       push( d );
     }
@@ -2300,7 +2300,7 @@ void Parse::do_one_bytecode() {
     a = pop_pair();
     b = _gvn.transform( new ConvD2FNode(a));
     // This breaks _227_mtrt (speed & correctness) and _222_mpegaudio (speed)
-    //b = _gvn.transform(new RoundFloatNode(0, b) );
+    //b = _gvn.transform(new RoundFloatNode(nullptr, b) );
     push( b );
     break;
 
@@ -2366,7 +2366,7 @@ void Parse::do_one_bytecode() {
   case Bytecodes::_ddiv:
     b = pop_pair();
     a = pop_pair();
-    c = _gvn.transform( new DivDNode(0,a,b) );
+    c = _gvn.transform( new DivDNode(nullptr,a,b) );
     d = dprecision_rounding(c);
     push_pair( d );
     break;
@@ -2384,7 +2384,7 @@ void Parse::do_one_bytecode() {
       a = pop_pair();
       // a % b
 
-      c = _gvn.transform( new ModDNode(0,a,b) );
+      c = _gvn.transform( new ModDNode(nullptr,a,b) );
       d = dprecision_rounding(c);
       push_pair( d );
     }

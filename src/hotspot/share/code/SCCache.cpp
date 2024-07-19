@@ -2912,9 +2912,10 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
   // Read flags
   int flags = *(int*)addr(code_offset);
   code_offset += sizeof(int);
-  bool has_monitors      = (flags & 0xFF) > 0;
-  bool has_wide_vectors  = ((flags >>  8) & 0xFF) > 0;
-  bool has_unsafe_access = ((flags >> 16) & 0xFF) > 0;
+  bool has_monitors      = (flags & 0x1) != 0;
+  bool has_wide_vectors  = (flags & 0x2) != 0;
+  bool has_unsafe_access = (flags & 0x4) != 0;
+  bool has_scoped_access = (flags & 0x8) != 0;
 
   int orig_pc_offset = *(int*)addr(code_offset);
   code_offset += sizeof(int);
@@ -3030,6 +3031,7 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
                        has_unsafe_access,
                        has_wide_vectors,
                        has_monitors,
+                       has_scoped_access,
                        0, true /* install_code */,
                        (SCCEntry *)_entry);
   CompileTask* task = env->task();
@@ -3060,7 +3062,8 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
                      bool for_preload,
                      bool has_unsafe_access,
                      bool has_wide_vectors,
-                     bool has_monitors) {
+                     bool has_monitors,
+                     bool has_scoped_access) {
   CompileTask* task = ciEnv::current()->task();
 
   if (!CDSConfig::is_dumping_cached_code()) {
@@ -3081,7 +3084,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
   }
   SCCEntry* entry = cache->write_nmethod(method, comp_id, entry_bci, offsets, orig_pc_offset, recorder, dependencies, buffer,
                                   frame_size, oop_maps, handler_table, nul_chk_table, compiler, comp_level,
-                                  has_clinit_barriers, for_preload, has_unsafe_access, has_wide_vectors, has_monitors);
+                                  has_clinit_barriers, for_preload, has_unsafe_access, has_wide_vectors, has_monitors, has_scoped_access);
   if (entry == nullptr) {
     log_info(scc, nmethod)("%d (L%d): nmethod store attempt failed", task->compile_id(), task->comp_level());
   }
@@ -3106,7 +3109,8 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
                                  bool for_preload,
                                  bool has_unsafe_access,
                                  bool has_wide_vectors,
-                                 bool has_monitors) {
+                                 bool has_monitors,
+                                 bool has_scoped_access) {
   CompileTask* task = ciEnv::current()->task();
 
 //  if (method->is_hidden()) {
@@ -3204,7 +3208,10 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
 
   uint code_offset = _write_position - entry_position;
 
-  int flags = ((has_unsafe_access ? 1 : 0) << 16) | ((has_wide_vectors ? 1 : 0) << 8) | (has_monitors ? 1 : 0);
+  int flags = (has_scoped_access ? 0x8 : 0) |
+              (has_unsafe_access ? 0x4 : 0) |
+              (has_wide_vectors  ? 0x2 : 0) |
+              (has_monitors      ? 0x1 : 0);
   n = write_bytes(&flags, sizeof(int));
   if (n != sizeof(int)) {
     return nullptr;

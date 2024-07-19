@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -428,7 +428,8 @@ private:
                           bool for_preload,
                           bool has_unsafe_access,
                           bool has_wide_vectors,
-                          bool has_monitors);
+                          bool has_monitors,
+                          bool has_scoped_access);
 
   static volatile int _reading_nmethod;
 
@@ -527,7 +528,8 @@ public:
                      bool for_preload,
                      bool has_unsafe_access,
                      bool has_wide_vectors,
-                     bool has_monitors);
+                     bool has_monitors,
+                     bool has_scoped_access);
 
   static uint store_entries_cnt() {
     if (is_on_for_write()) {

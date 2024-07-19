@@ -220,9 +220,6 @@ public:
   };
 
 private:
-  static void check_enum_obj(int level, KlassSubGraphInfo* subgraph_info,
-                             oop orig_obj);
-
   static const int INITIAL_TABLE_SIZE = 15889; // prime number
   static const int MAX_TABLE_SIZE     = 1000000;
   typedef ResizeableResourceHashtable<oop, CachedOopInfo,

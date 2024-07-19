@@ -1018,6 +1018,7 @@ void ciEnv::register_method(ciMethod* target,
                             bool has_unsafe_access,
                             bool has_wide_vectors,
                             bool has_monitors,
+                            bool has_scoped_access,
                             int immediate_oops_patched,
                             bool install_code,
                             SCCEntry* scc_entry) {
@@ -1125,7 +1126,8 @@ void ciEnv::register_method(ciMethod* target,
                              for_preload,
                              has_unsafe_access,
                              has_wide_vectors,
-                             has_monitors);
+                             has_monitors,
+                             has_scoped_access);
       if (scc_entry != nullptr) {
         scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());
         if (has_clinit_barriers) {
@@ -1158,6 +1160,7 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_unsafe_access(has_unsafe_access);
       nm->set_has_wide_vectors(has_wide_vectors);
       nm->set_has_monitors(has_monitors);
+      nm->set_has_scoped_access(has_scoped_access);
       nm->set_preloaded(preload);
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
