@@ -145,11 +145,19 @@ final class TrustStoreManager {
                         for (String fileName : fileNames) {
                             if (!JavaHome.isHermetic() || (fileName.equals(storePropName) &&
                                                            !fileName.equals(jsseDefaultStoreName))) {
+                                // If we get here, it must be one of the following
+                                // cases:
+                                //   - In non-hermetic mode, in which case, the current file is
+                                //       - either the JDK default cacerts or jssecacerts
+                                //       - or, javax.net.ssl.trustStore specified;
+                                //   - In hermetic mode and the current file is
+                                //     javax.net.ssl.trustStore specified;
+                                //
                                 // If the current 'fileName' is the
                                 // storePropName and is not the default one
-                                // specified by jsseDefaultStoreName, handle
-                                // it as a regular file path. It is specified
-                                // by the javax.net.ssl.trustStore property.
+                                // specified by jsseDefaultStoreName, it must
+                                // be specified by the javax.net.ssl.trustStore property.
+                                // Handle it as a regular file path.
                                 //
                                 // If we are not running in hermetic mode,
                                 // the JDK default stores are regular files.
@@ -165,8 +173,9 @@ final class TrustStoreManager {
                                     break;
                                 }
                             } else {
-                                // This must be one of the default store files,
-                                // specified by defaultStoreName or
+                                // If we get here, we are executing in hermetic
+                                // mode and this must be one of the JDK default store
+                                // files that is specified by defaultStoreName or
                                 // jsseDefaultStoreName. Find the store file
                                 // using the FilePaths class from the hermetic
                                 // modules image.
@@ -382,9 +391,14 @@ final class TrustStoreManager {
          */
         private static KeyStore loadKeyStore(
                 TrustStoreDescriptor descriptor) throws Exception {
-            // The descriptor.lastModified is 0L if no store file is found.
+            // In non-hermetic mode, 'storeFile' should be non-null if
+            // the 'storeName' is not "NONE" and the file is valid.
+            // In hermetic mode, the 'storeFile' is null when JDK default
+            // cacerts or jssecacerts is used. In that case, 'lastModified'
+            // should not be 0L.
             if (!"NONE".equals(descriptor.storeName) &&
-                    descriptor.lastModified == 0L) {
+                    ((!JavaHome.isHermetic() && descriptor.storeFile == null) ||
+                     (JavaHome.isHermetic() && descriptor.lastModified == 0L))) {
 
                 // No KeyStore available.
                 if (SSLLogger.isOn && SSLLogger.isOn("trustmanager")) {
