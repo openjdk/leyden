@@ -700,7 +700,7 @@ ciConstant ciEnv::get_constant_by_index_impl(const constantPoolHandle& cpool,
                                              ciInstanceKlass* accessor) {
   if (obj_index >= 0) {
     ciConstant con = get_resolved_constant(cpool, obj_index);
-    if (con.is_valid()) {
+    if (con.should_be_constant()) {
       return con;
     }
   }

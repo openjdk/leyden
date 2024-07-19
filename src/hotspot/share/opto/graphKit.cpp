@@ -3044,6 +3044,8 @@ void GraphKit::guard_klass_is_initialized(Node* klass) {
                                        OptoRuntime::class_init_barrier_Java(),
                                        nullptr, TypePtr::BOTTOM,
                                        klass);
+        // Deoptimization during class init barrier execution should trigger current bytecode reexecution.
+        call->jvms()->set_should_reexecute(true);
 
         // FIXME: deoptimize for now. deoptimize=false doesn't work with late inlining yet.
         // Parse::create_entry_map() introduces a barrier which uses distinct JVM state (*before* call).
