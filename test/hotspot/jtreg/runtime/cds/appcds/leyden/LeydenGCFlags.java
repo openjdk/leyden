@@ -44,7 +44,7 @@ import jdk.test.lib.StringArrayUtils;
 public class LeydenGCFlags {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
     static final String mainClass = "HelloApp";
-    static final String ERROR_GC_SUPPORTED = "Cannot create the CacheDataStore: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, or Epsilon";
+    static final String ERROR_GC_SUPPORTED = "Cannot create the CacheDataStore: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah";
     static final String ERROR_GC_MISMATCH = "CDS archive has aot-linked classes. It cannot be used because GC used during dump time (.*) is not the same as runtime (.*)";
     static final String ERROR_COOP_MISMATCH = "Disable Startup Code Cache: 'HelloApp.cds.code' was created with CompressedOops::shift.. = .* vs current .*";
 
@@ -58,10 +58,11 @@ public class LeydenGCFlags {
         // ZGC not supported for now
         fail_dump("-XX:+UseZGC",  "-Xmx8g",  ERROR_GC_SUPPORTED);
 
-        // Serial and Parallel collector are allowed to be used, as long as the same one is used
-        // between training and production
+        // Serial, Parallel and Shenandoah collectors are allowed to be used,
+        // as long as the same one is used between training and production
         good("-XX:+UseSerialGC",   "-XX:+UseSerialGC");
         good("-XX:+UseParallelGC", "-XX:+UseParallelGC");
+        good("-XX:+UseShenandoahGC", "-XX:+UseShenandoahGC");
 
         // Fail if production uses a different collector than training
         fail_run("-XX:+UseParallelGC", "-XX:+UseG1GC",        ERROR_GC_MISMATCH );
