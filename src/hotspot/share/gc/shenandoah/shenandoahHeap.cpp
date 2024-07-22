@@ -2490,3 +2490,26 @@ bool ShenandoahHeap::requires_barriers(stackChunkOop obj) const {
 
   return false;
 }
+
+HeapWord* ShenandoahHeap::allocate_loaded_archive_space(size_t size) {
+  ShenandoahAllocRequest req = ShenandoahAllocRequest::for_shared(size);
+  return allocate_memory(req);
+}
+
+void ShenandoahHeap::complete_loaded_archive_space(MemRegion archive_space) {
+  // Check that heap remains parsable after archive is loaded.
+#ifdef ASSERT
+  HeapWord* start = archive_space.start();
+  HeapWord* end = archive_space.end();
+
+  HeapWord* cur = start;
+  while (cur < end) {
+    size_t word_size = cast_to_oop(cur)->size();
+    cur += word_size;
+  }
+
+  assert(cur == end,
+         "Archive space is not used properly: " PTR_FORMAT " " PTR_FORMAT,
+         p2i(cur), p2i(end));
+#endif
+}

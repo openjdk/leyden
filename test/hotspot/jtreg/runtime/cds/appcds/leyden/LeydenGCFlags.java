@@ -55,10 +55,11 @@ public class LeydenGCFlags {
         // ZGC not supported for now
         fail_dump("-XX:+UseZGC",  "-Xmx8g",  ERROR_GC_SUPPORTED);
 
-        // Serial and Parallel collector are allowed to be used, as long as the same one is used
-        // between training and production
+        // Serial, Parallel and Shenandoah collectors are allowed to be used,
+        // as long as the same one is used between training and production
         good("-XX:+UseSerialGC",   "-XX:+UseSerialGC");
         good("-XX:+UseParallelGC", "-XX:+UseParallelGC");
+        good("-XX:+UseShenandoahGC", "-XX:+UseShenandoahGC");
 
         // Fail if production uses a different collector than training
         fail_run("-XX:+UseParallelGC", "-XX:+UseG1GC",        ERROR_GC_MISMATCH );
