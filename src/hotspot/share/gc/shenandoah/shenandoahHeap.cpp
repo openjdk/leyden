@@ -2504,12 +2504,13 @@ void ShenandoahHeap::complete_loaded_archive_space(MemRegion archive_space) {
 
   HeapWord* cur = start;
   while (cur < end) {
-    size_t word_size = cast_to_oop(cur)->size();
-    cur += word_size;
+    oop oop = cast_to_oop(cur);
+    shenandoah_assert_correct(nullptr, oop);
+    cur += oop->size();
   }
 
   assert(cur == end,
-         "Archive space is not used properly: " PTR_FORMAT " " PTR_FORMAT,
+         "Archive space should be fully used: " PTR_FORMAT " " PTR_FORMAT,
          p2i(cur), p2i(end));
 #endif
 }
