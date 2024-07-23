@@ -1744,7 +1744,7 @@ bool HeapShared::archive_reachable_objects_from(int level,
   orig_obj->oop_iterate(&walker);
 
   if (CDSEnumKlass::is_enum_obj(orig_obj)) {
-    CDSEnumKlass::handle_enum_obj(level + 1, subgraph_info, orig_obj);
+    CDSEnumKlass::archive_enum_obj(level + 1, subgraph_info, orig_obj);
   }
   return true;
 }

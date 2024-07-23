@@ -38,9 +38,9 @@ class KlassSubGraphInfo;
 class CDSEnumKlass: AllStatic {
 public:
   static bool is_enum_obj(oop orig_obj);
-  static void handle_enum_obj(int level,
-                              KlassSubGraphInfo* subgraph_info,
-                              oop orig_obj);
+  static void archive_enum_obj(int level,
+                               KlassSubGraphInfo* subgraph_info,
+                               oop orig_obj);
   static bool initialize_enum_klass(InstanceKlass* k, TRAPS) NOT_CDS_JAVA_HEAP_RETURN_(false);
 
 private:
