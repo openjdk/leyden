@@ -76,7 +76,7 @@
           "the CDS archive, in the specified file")                         \
                                                                             \
   product(ccstr, SharedClassListFile, nullptr,                              \
-          "Override the default CDS class list")  \
+          "Override the default CDS class list")                            \
                                                                             \
   product(ccstr, SharedArchiveFile, nullptr,                                \
           "Override the default location of the CDS archive file")          \
@@ -95,6 +95,26 @@
            "(2) always map at preferred address, and if unsuccessful, "     \
            "do not map the archive")                                        \
            range(0, 2)                                                      \
+                                                                            \
+  /*========== New "AOT" flags =========================================*/  \
+                                                                            \
+  /* Alias of -Xshare:off -XX:DumpLoadedClassList */                        \
+  product(ccstr, RecordAOTConfiguration, nullptr,                           \
+          "Record configuration information from a training run to "        \
+          "be used in AOT Assembly mode")                                   \
+                                                                            \
+  /* Alias of -Xshare:dump -XX:SharedArchiveFile=... */                     \
+  product(ccstr, CreateAOTCache, nullptr,                                   \
+          "Execute the JVM in AOT Assembly mode to create an AOT Cache")    \
+                                                                            \
+  /* Alias of -Xshare:dump -XX:SharedClassListFile=... */                   \
+  product(ccstr, AOTConfiguration, nullptr,                                 \
+          "Configuration information used by CreateAOTCache")               \
+                                                                            \
+  /* Alias of -Xshare:auto -XX:SharedArchiveFile=... */                     \
+  product(ccstr, AOTCache, nullptr,                                         \
+          "AOT Cache to to used to improve start up and warm up time")      \
+                                                                            \
                                                                             \
   /*========== New options added by Leyden =============================*/  \
                                                                             \

@@ -40,6 +40,7 @@
 #include "runtime/globals_extension.hpp"
 #include "runtime/java.hpp"
 #include "utilities/defaultStream.hpp"
+#include "utilities/formatBuffer.hpp"
 
 bool CDSConfig::_is_dumping_static_archive = false;
 bool CDSConfig::_is_dumping_dynamic_archive = false;
@@ -51,6 +52,7 @@ bool CDSConfig::_is_loading_invokedynamic = false;
 bool CDSConfig::_is_loading_packages = false;
 bool CDSConfig::_is_loading_protection_domains = false;
 bool CDSConfig::_is_security_manager_allowed = false;
+bool CDSConfig::_old_cds_flags_used = false;
 
 char* CDSConfig::_default_archive_path = nullptr;
 char* CDSConfig::_static_archive_path = nullptr;
@@ -368,7 +370,76 @@ bool CDSConfig::has_unsupported_runtime_module_options() {
   return false;
 }
 
+#define CHECK_ALIAS(f) check_flag_alias(FLAG_IS_DEFAULT(f), #f)
+
+void CDSConfig::check_flag_alias(bool alias_is_default, const char* alias_name) {
+  if (_old_cds_flags_used && !alias_is_default) {
+    vm_exit_during_initialization(err_msg("Option %s cannot be used at the same time with "
+                                          "-Xshare:on, -Xshare:auto, -Xshare:off, -Xshare:dump, "
+                                          "DumpLoadedClassList, SharedClassListFile, or SharedArchiveFile",
+                                          alias_name));
+  }
+}
+
+void CDSConfig::check_flag_aliases() {
+  if (!FLAG_IS_DEFAULT(DumpLoadedClassList) ||
+      !FLAG_IS_DEFAULT(SharedClassListFile) ||
+      !FLAG_IS_DEFAULT(SharedArchiveFile)) {
+    _old_cds_flags_used = true;
+  }
+
+  CHECK_ALIAS(RecordAOTConfiguration);
+  CHECK_ALIAS(CreateAOTCache);
+  CHECK_ALIAS(AOTConfiguration);
+  CHECK_ALIAS(AOTCache);
+
+  if ((FLAG_IS_DEFAULT(RecordAOTConfiguration) ? 0 : 1) + 
+      (FLAG_IS_DEFAULT(CreateAOTCache) ? 0 : 1) + 
+      (FLAG_IS_DEFAULT(AOTCache) ? 0 : 1) > 1) {
+    vm_exit_during_initialization("Only one of RecordAOTConfiguration, CreateAOTCache, and AOTCache can be used");
+  }
+
+  // -XX:RecordAOTConfiguration=<value> is alias for -Xshare:off -XX:DumpLoadedClassList=<value>
+  if (!FLAG_IS_DEFAULT(RecordAOTConfiguration)) {
+    assert(FLAG_IS_DEFAULT(DumpLoadedClassList), "already checked");
+    FLAG_SET_ERGO(DumpLoadedClassList, RecordAOTConfiguration);
+    UseSharedSpaces = false;
+    RequireSharedSpaces = false;
+  }
+
+  // -XX:CreateAOTCache=<value> is alias for -Xshare:dump -XX:SharedArchiveFile=<value>
+  // Requires -XX:AOTConfiguration
+  if (!FLAG_IS_DEFAULT(CreateAOTCache)) {
+    if (FLAG_IS_DEFAULT(AOTConfiguration)) {
+      vm_exit_during_initialization("AOTConfiguration must be specified when CreateAOTCache is used");
+    }
+    assert(FLAG_IS_DEFAULT(SharedArchiveFile), "already checked");
+    FLAG_SET_ERGO(SharedArchiveFile, CreateAOTCache);
+    CDSConfig::enable_dumping_static_archive();
+  }
+
+  // -XX:AOTCache=<value> is alias for -Xshare:auto -XX:SharedArchiveFile=<value>
+  if (!FLAG_IS_DEFAULT(AOTCache)) {
+    assert(FLAG_IS_DEFAULT(SharedArchiveFile), "already checked");
+    FLAG_SET_ERGO(SharedArchiveFile, AOTCache);
+    UseSharedSpaces = true;
+    RequireSharedSpaces = false;
+  }
+
+  // -XX:AOTConfiguration=<value> is alias for -XX:SharedClassListFile=<value>
+  // But can be used only with -XX:CreateAOTCache
+  if (!FLAG_IS_DEFAULT(AOTConfiguration)) {
+    if (FLAG_IS_DEFAULT(CreateAOTCache)) {
+      vm_exit_during_initialization("AOTConfiguration can be used only when CreateAOTCache is used");
+    }
+    assert(FLAG_IS_DEFAULT(SharedClassListFile), "already checked");
+    FLAG_SET_ERGO(SharedClassListFile, AOTConfiguration);
+  }
+}
+
 bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) {
+  check_flag_aliases();
+
   if (CacheDataStore != nullptr) {
     // Leyden temp work-around:
     //
@@ -576,6 +647,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
 
   return true;
 }
+
 bool CDSConfig::is_dumping_classic_static_archive() {
   return _is_dumping_static_archive && CacheDataStore == nullptr && CDSPreimage == nullptr;
 }
