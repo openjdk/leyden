@@ -101,11 +101,11 @@
   /* Alias of -Xshare:off -XX:DumpLoadedClassList */                        \
   product(ccstr, RecordAOTConfiguration, nullptr,                           \
           "Record configuration information from a training run to "        \
-          "be used in AOT Assembly mode")                                   \
+          "be used in AOT Assembly Mode")                                   \
                                                                             \
   /* Alias of -Xshare:dump -XX:SharedArchiveFile=... */                     \
   product(ccstr, CreateAOTCache, nullptr,                                   \
-          "Execute the JVM in AOT Assembly mode to create an AOT Cache")    \
+          "Execute the JVM in AOT Assembly Mode to create an AOT Cache")    \
                                                                             \
   /* Alias of -Xshare:dump -XX:SharedClassListFile=... */                   \
   product(ccstr, AOTConfiguration, nullptr,                                 \
@@ -113,7 +113,7 @@
                                                                             \
   /* Alias of -Xshare:auto -XX:SharedArchiveFile=... */                     \
   product(ccstr, AOTCache, nullptr,                                         \
-          "AOT Cache to to used to improve start up and warm up time")      \
+          "AOT Cache for improving start up and warm up")                   \
                                                                             \
                                                                             \
   /*========== New options added by Leyden =============================*/  \
