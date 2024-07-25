@@ -97,21 +97,15 @@
            range(0, 2)                                                      \
                                                                             \
   /*========== New "AOT" flags =========================================*/  \
+  /* These are aliases of -Xshare:dump, -XX:SharedArchiveFile=..., etc. */  \
+  /* See CDSConfig::check_flag_aliases().                               */  \
                                                                             \
-  /* Alias of -Xshare:off -XX:DumpLoadedClassList */                        \
-  product(ccstr, RecordAOTConfiguration, nullptr,                           \
-          "Record configuration information from a training run to "        \
-          "be used in AOT Assembly Mode")                                   \
+  product(ccstr, AOTMode, nullptr,                                          \
+          "record/create/on")                                               \
                                                                             \
-  /* Alias of -Xshare:dump -XX:SharedArchiveFile=... */                     \
-  product(ccstr, CreateAOTCache, nullptr,                                   \
-          "Execute the JVM in AOT Assembly Mode to create an AOT Cache")    \
-                                                                            \
-  /* Alias of -Xshare:dump -XX:SharedClassListFile=... */                   \
   product(ccstr, AOTConfiguration, nullptr,                                 \
           "Configuration information used by CreateAOTCache")               \
                                                                             \
-  /* Alias of -Xshare:auto -XX:SharedArchiveFile=... */                     \
   product(ccstr, AOTCache, nullptr,                                         \
           "AOT Cache for improving start up and warm up")                   \
                                                                             \

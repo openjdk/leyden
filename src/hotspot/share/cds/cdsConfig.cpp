@@ -388,52 +388,48 @@ void CDSConfig::check_flag_aliases() {
     _old_cds_flags_used = true;
   }
 
-  CHECK_ALIAS(RecordAOTConfiguration);
-  CHECK_ALIAS(CreateAOTCache);
-  CHECK_ALIAS(AOTConfiguration);
   CHECK_ALIAS(AOTCache);
+  CHECK_ALIAS(AOTConfiguration);
+  CHECK_ALIAS(AOTMode);
 
-  if ((FLAG_IS_DEFAULT(RecordAOTConfiguration) ? 0 : 1) + 
-      (FLAG_IS_DEFAULT(CreateAOTCache) ? 0 : 1) + 
-      (FLAG_IS_DEFAULT(AOTCache) ? 0 : 1) > 1) {
-    vm_exit_during_initialization("Only one of RecordAOTConfiguration, CreateAOTCache, and AOTCache can be used");
-  }
-
-  // -XX:RecordAOTConfiguration=<value> is alias for -Xshare:off -XX:DumpLoadedClassList=<value>
-  if (!FLAG_IS_DEFAULT(RecordAOTConfiguration)) {
-    assert(FLAG_IS_DEFAULT(DumpLoadedClassList), "already checked");
-    FLAG_SET_ERGO(DumpLoadedClassList, RecordAOTConfiguration);
-    UseSharedSpaces = false;
-    RequireSharedSpaces = false;
-  }
-
-  // -XX:CreateAOTCache=<value> is alias for -Xshare:dump -XX:SharedArchiveFile=<value>
-  // Requires -XX:AOTConfiguration
-  if (!FLAG_IS_DEFAULT(CreateAOTCache)) {
-    if (FLAG_IS_DEFAULT(AOTConfiguration)) {
-      vm_exit_during_initialization("AOTConfiguration must be specified when CreateAOTCache is used");
+  if (FLAG_IS_DEFAULT(AOTMode)) {
+    if (!FLAG_IS_DEFAULT(AOTConfiguration)) {
+      vm_exit_during_initialization("AOTConfiguration cannot be used without setting AOTMode");
     }
-    assert(FLAG_IS_DEFAULT(SharedArchiveFile), "already checked");
-    FLAG_SET_ERGO(SharedArchiveFile, CreateAOTCache);
-    CDSConfig::enable_dumping_static_archive();
-  }
 
-  // -XX:AOTCache=<value> is alias for -Xshare:auto -XX:SharedArchiveFile=<value>
-  if (!FLAG_IS_DEFAULT(AOTCache)) {
+    // -XX:AOTCache=<value> (without AOTMode/AOTConfiguration) is alias for -Xshare:auto -XX:SharedArchiveFile=<value>
     assert(FLAG_IS_DEFAULT(SharedArchiveFile), "already checked");
     FLAG_SET_ERGO(SharedArchiveFile, AOTCache);
     UseSharedSpaces = true;
     RequireSharedSpaces = false;
-  }
-
-  // -XX:AOTConfiguration=<value> is alias for -XX:SharedClassListFile=<value>
-  // But can be used only with -XX:CreateAOTCache
-  if (!FLAG_IS_DEFAULT(AOTConfiguration)) {
-    if (FLAG_IS_DEFAULT(CreateAOTCache)) {
-      vm_exit_during_initialization("AOTConfiguration can be used only when CreateAOTCache is used");
+  } else {
+    if (FLAG_IS_DEFAULT(AOTConfiguration)) {
+      vm_exit_during_initialization("AOTMode cannot be used without setting AOTConfiguration");
     }
-    assert(FLAG_IS_DEFAULT(SharedClassListFile), "already checked");
-    FLAG_SET_ERGO(SharedClassListFile, AOTConfiguration);
+
+    if (strcmp(AOTMode, "record") == 0) {
+      if (!FLAG_IS_DEFAULT(AOTCache)) {
+        vm_exit_during_initialization("AOTCache must not be specified when using -XX:AOTMode=record");
+      }
+
+      assert(FLAG_IS_DEFAULT(DumpLoadedClassList), "already checked");
+      FLAG_SET_ERGO(DumpLoadedClassList, AOTConfiguration);
+      UseSharedSpaces = false;
+      RequireSharedSpaces = false;
+    } else if (strcmp(AOTMode, "create") == 0) {
+      if (FLAG_IS_DEFAULT(AOTCache)) {
+        vm_exit_during_initialization("AOTCache must be specified when using -XX:AOTMode=create");
+      }
+
+      assert(FLAG_IS_DEFAULT(SharedClassListFile), "already checked");
+      FLAG_SET_ERGO(SharedClassListFile, AOTConfiguration);
+      assert(FLAG_IS_DEFAULT(SharedArchiveFile), "already checked");
+      FLAG_SET_ERGO(SharedArchiveFile, AOTCache);
+
+      CDSConfig::enable_dumping_static_archive();
+    } else {
+      vm_exit_during_initialization(err_msg("Unrecognized AOTMode %s: must be record or create", AOTMode));
+    }
   }
 }
 

@@ -49,18 +49,20 @@ public class AOTFlags {
     }
 
     static void positiveTests() throws Exception {
-        // (1) Training Run with RecordAOTConfiguration
+        // (1) Training Run
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(
-            "-XX:RecordAOTConfiguration=" + aotConfigFile,
+            "-XX:AOTMode=record",
+            "-XX:AOTConfiguration=" + aotConfigFile,
             "-cp", appJar, helloClass);
 
         OutputAnalyzer out = CDSTestUtils.executeAndLog(pb, "train");
         out.shouldContain("Hello World");
 
-        // (2) Assembly Phase with CreateAOTCache/AOTConfiguration
+        // (2) Assembly Phase
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
-            "-XX:CreateAOTCache=" + aotCacheFile,
+            "-XX:AOTMode=create",
             "-XX:AOTConfiguration=" + aotConfigFile,
+            "-XX:AOTCache=" + aotCacheFile,
             "-Xlog:cds",
             "-cp", appJar);
         out = CDSTestUtils.executeAndLog(pb, "asm");
@@ -85,11 +87,11 @@ public class AOTFlags {
 
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-Xshare:off",
-            "-XX:RecordAOTConfiguration=" + aotConfigFile,
+            "-XX:AOTConfiguration=" + aotConfigFile,
             "-cp", appJar, helloClass);
 
         OutputAnalyzer out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("Option RecordAOTConfiguration" + mixOldNewErrSuffix);
+        out.shouldContain("Option AOTConfiguration" + mixOldNewErrSuffix);
 
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:SharedArchiveFile=" + aotCacheFile,
@@ -98,29 +100,48 @@ public class AOTFlags {
         out = CDSTestUtils.executeAndLog(pb, "neg");
         out.shouldContain("Option AOTCache" + mixOldNewErrSuffix);
 
-        // (2) Using more than one of RecordAOTConfiguration/CreateAOTCache/AOTCache
-        String onlyOneErr = "Only one of RecordAOTConfiguration, CreateAOTCache, and AOTCache can be used";
-        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
-            "-XX:CreateAOTCache=" + aotCacheFile,
-            "-XX:AOTCache=" + aotCacheFile,
-            "-cp", appJar, helloClass);
-
-        out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain(onlyOneErr);
-
-        // (3) CreateAOTCache/AOTConfiguration require each other
-        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
-            "-XX:CreateAOTCache=" + aotCacheFile,
-            "-cp", appJar, helloClass);
-
-        out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("AOTConfiguration must be specified when CreateAOTCache is used");
-
+        // (2) Use AOTConfiguration without AOTMode
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTConfiguration=" + aotConfigFile,
             "-cp", appJar, helloClass);
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("AOTConfiguration can be used only when CreateAOTCache is used");
+        out.shouldContain("AOTConfiguration cannot be used without setting AOTMode");
+
+        // (3) Use AOTMode without AOTConfiguration
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTMode=create",
+            "-cp", appJar, helloClass);
+
+        out = CDSTestUtils.executeAndLog(pb, "neg");
+        out.shouldContain("AOTMode cannot be used without setting AOTConfiguration");
+
+        // (4) Bad AOTMode
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTMode=foo",
+            "-XX:AOTConfiguration=" + aotConfigFile,
+            "-cp", appJar, helloClass);
+
+        out = CDSTestUtils.executeAndLog(pb, "neg");
+        out.shouldContain("Unrecognized AOTMode foo: must be record or create");
+
+        // (5) AOTCache specified with -XX:AOTMode=record
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTMode=record",
+            "-XX:AOTConfiguration=" + aotConfigFile,
+            "-XX:AOTCache=" + aotCacheFile,
+            "-cp", appJar, helloClass);
+
+        out = CDSTestUtils.executeAndLog(pb, "neg");
+        out.shouldContain("AOTCache must not be specified when using -XX:AOTMode=record");
+
+        // (5) AOTCache not specified with -XX:AOTMode=create
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTMode=create",
+            "-XX:AOTConfiguration=" + aotConfigFile,
+            "-cp", appJar, helloClass);
+
+        out = CDSTestUtils.executeAndLog(pb, "neg");
+        out.shouldContain("AOTCache must be specified when using -XX:AOTMode=create");
     }
 }
