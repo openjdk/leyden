@@ -273,11 +273,15 @@ See [here](https://docs.oracle.com/en/java/javase/21/vm/class-data-sharing.html)
 
 We use a small set of benchmarks to demonstrate the performance of the optimizations in the Leyden repo.
 
-- [helidon-quickstart-se](test/hotspot/jtreg/premain/helidon-quickstart-se): from https://helidon.io/docs/v4/se/guides/quickstart
-- [micronaut-first-app](test/hotspot/jtreg/premain/micronaut-first-app): from https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html
-- [quarkus-getting-started](test/hotspot/jtreg/premain/quarkus-getting-started): from https://quarkus.io/guides/getting-started
-- [spring-petclinic](test/hotspot/jtreg/premain/spring-petclinic): from https://github.com/spring-projects/spring-petclinic
-- *(FIXME: add a benchmark for javac)*
+| Benchmark  | Source |
+| ------------- | ------------- |
+|[helidon-quickstart-se](test/hotspot/jtreg/premain/helidon-quickstart-se) | https://helidon.io/docs/v4/se/guides/quickstart|
+|[micronaut-first-app](test/hotspot/jtreg/premain/micronaut-first-app) | https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
+|[quarkus-getting-started](test/hotspot/jtreg/premain/quarkus-getting-started) | https://quarkus.io/guides/getting-started|
+|[spring-boot-getting-started](test/hotspot/jtreg/premain/spring-boot-getting-started) | https://spring.io/guides/gs/spring-boot|
+|[spring-petclinic](test/hotspot/jtreg/premain/spring-petclinic) | https://github.com/spring-projects/spring-petclinic|
+
+*(FIXME: add a benchmark for javac)*
 
 ### Benchmarking Against JDK Main-line
 
@@ -425,6 +429,21 @@ xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static CDS", "premain custom static CDS only", "premain CDS + AOT"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 568, 395, 317]
+```
+
+### Spring-boot Getting Started Demo (3.53x improvement)
+
+```mermaid
+---
+config:
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static CDS", "premain custom static CDS only", "premain CDS + AOT"]
+    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+    bar [1000, 560, 394, 283]
 ```
 
 ### Spring PetClinic Demo (2.72x improvement)
