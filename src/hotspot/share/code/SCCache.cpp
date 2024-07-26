@@ -942,8 +942,7 @@ static bool check_entry(SCCEntry::Kind kind, uint id, uint comp_level, uint deco
   if (entry->kind() == kind) {
     assert(entry->id() == id, "sanity");
     if (kind != SCCEntry::Code || (!entry->not_entrant() && !entry->has_clinit_barriers() &&
-                                  entry->comp_level() == comp_level &&
-                                  (comp_level == CompLevel_limited_profile || entry->decompile() == decomp))) {
+                                  (entry->comp_level() == comp_level))) {
       return true; // Found
     }
   }
