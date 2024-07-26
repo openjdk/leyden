@@ -397,12 +397,15 @@ void CDSConfig::check_flag_aliases() {
       vm_exit_during_initialization("AOTConfiguration cannot be used without setting AOTMode");
     }
 
-    // -XX:AOTCache=<value> (without AOTMode/AOTConfiguration) is alias for -Xshare:auto -XX:SharedArchiveFile=<value>
-    assert(FLAG_IS_DEFAULT(SharedArchiveFile), "already checked");
-    FLAG_SET_ERGO(SharedArchiveFile, AOTCache);
-    UseSharedSpaces = true;
-    RequireSharedSpaces = false;
+    if (!FLAG_IS_DEFAULT(AOTCache)) {
+      // -XX:AOTCache=<value> (without AOTMode/AOTConfiguration) is alias for -Xshare:auto -XX:SharedArchiveFile=<value>
+      assert(FLAG_IS_DEFAULT(SharedArchiveFile), "already checked");
+      FLAG_SET_ERGO(SharedArchiveFile, AOTCache);
+      UseSharedSpaces = true;
+      RequireSharedSpaces = false;
+    }
   } else {
+    // AOTMode has been set
     if (FLAG_IS_DEFAULT(AOTConfiguration)) {
       vm_exit_during_initialization("AOTMode cannot be used without setting AOTConfiguration");
     }
