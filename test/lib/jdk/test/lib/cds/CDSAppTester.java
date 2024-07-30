@@ -28,6 +28,7 @@ import jdk.test.lib.cds.CDSTestUtils;
 import jdk.test.lib.process.ProcessTools;
 import jdk.test.lib.process.OutputAnalyzer;
 import jdk.test.lib.StringArrayUtils;
+import jtreg.SkippedException;
 
 /*
  * This is a base class used for testing CDS functionalities with complex applications.
@@ -56,6 +57,10 @@ abstract public class CDSAppTester {
     private int numProductionRuns = 0;
 
     public CDSAppTester(String name) {
+        if (CDSTestUtils.DYNAMIC_DUMP) {
+            throw new jtreg.SkippedException("Tests based on CDSAppTester should be excluded when -Dtest.dynamic.cds.archive is specified");
+        }
+
         // Old workflow
         this.name = name;
         classListFile = name() + ".classlist";
