@@ -23,8 +23,8 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/resolutionErrors.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -423,7 +423,7 @@ void ConstantPoolCache::remove_resolved_field_entries_if_non_deterministic() {
                     rfi->is_resolved(Bytecodes::_putstatic) ||
                     rfi->is_resolved(Bytecodes::_getfield)  ||
                     rfi->is_resolved(Bytecodes::_putfield);
-    if (resolved && ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
+    if (resolved && AOTConstantPoolResolver::is_resolution_deterministic(src_cp, cp_index)) {
       rfi->mark_and_relocate();
       archived = true;
     } else {
@@ -501,7 +501,7 @@ void ConstantPoolCache::remove_resolved_indy_entries_if_non_deterministic() {
     int cp_index = rei->constant_pool_index();
     bool archived = false;
     bool resolved = rei->is_resolved();
-    if (resolved && ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
+    if (resolved && AOTConstantPoolResolver::is_resolution_deterministic(src_cp, cp_index)) {
       rei->mark_and_relocate();
       archived = true;
     } else {
@@ -570,7 +570,7 @@ bool ConstantPoolCache::can_archive_resolved_method(ConstantPool* src_cp, Resolv
   int cp_index = method_entry->constant_pool_index();
   assert(src_cp->tag_at(cp_index).is_method() || src_cp->tag_at(cp_index).is_interface_method(), "sanity");
 
-  if (!ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
+  if (!AOTConstantPoolResolver::is_resolution_deterministic(src_cp, cp_index)) {
     return false;
   }
 

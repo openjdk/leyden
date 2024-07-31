@@ -775,7 +775,7 @@ bool CDSConfig::is_dumping_packages() {
 }
 
 bool CDSConfig::is_loading_packages() {
-  return UseSharedSpaces && is_loading_heap() && _is_loading_packages;
+  return UseSharedSpaces && is_using_full_module_graph() && _is_loading_packages;
 }
 
 bool CDSConfig::is_dumping_protection_domains() {

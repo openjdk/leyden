@@ -23,10 +23,10 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
-#include "cds/classPrelinker.hpp"
 #include "cds/lambdaFormInvokers.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/unregisteredClasses.hpp"
@@ -899,15 +899,15 @@ void ClassListParser::parse_constant_pool_tag() {
   }
 
   if (preresolve_class) {
-    ClassPrelinker::preresolve_class_cp_entries(THREAD, ik, &preresolve_list);
+    AOTConstantPoolResolver::preresolve_class_cp_entries(THREAD, ik, &preresolve_list);
   }
   if (preresolve_fmi) {
 // FIXME: too coarse; doesn't cover resolution of Class entries
 //    JavaThread::NoJavaCodeMark no_java_code(THREAD); // ensure no clinits are exectued
-    ClassPrelinker::preresolve_field_and_method_cp_entries(THREAD, ik, &preresolve_list);
+    AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(THREAD, ik, &preresolve_list);
   }
   if (preresolve_indy) {
-    ClassPrelinker::preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
+    AOTConstantPoolResolver::preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
   }
 }
 
@@ -952,7 +952,7 @@ void ClassListParser::parse_class_reflection_data_tag() {
   }
 
   if (CDSConfig::is_dumping_reflection_data()) {
-    ClassPrelinker::generate_reflection_data(THREAD, ik, rd_flags);
+    AOTConstantPoolResolver::generate_reflection_data(THREAD, ik, rd_flags);
   }
 }
 
@@ -1020,7 +1020,7 @@ void ClassListParser::parse_dynamic_proxy_tag() {
     return;
   }
 
-  ClassPrelinker::define_dynamic_proxy_class(loader, proxy_name, interfaces, access_flags, THREAD);
+  AOTConstantPoolResolver::define_dynamic_proxy_class(loader, proxy_name, interfaces, access_flags, THREAD);
   if (HAS_PENDING_EXCEPTION) {
     PENDING_EXCEPTION->print_on(tty);
     error("defineProxyClassForCDS failed");

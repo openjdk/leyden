@@ -23,6 +23,9 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotClassLinker.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveHeapWriter.hpp"
@@ -34,8 +37,6 @@
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/classPreinitializer.hpp"
-#include "cds/classPrelinker.hpp"
-#include "cds/classPreloader.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "cds/dynamicArchive.hpp"
@@ -434,7 +435,7 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
   StringTable::serialize_shared_table_header(soc);
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
-  ClassPreloader::serialize(soc, true);
+  AOTLinkedClassBulkLoader::serialize(soc, true);
   FinalImageRecipes::serialize(soc, true);
   TrainingData::serialize_training_data(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
@@ -545,8 +546,11 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
   ArchiveBuilder::OtherROAllocMark mark;
 
   SystemDictionaryShared::write_to_archive();
-  ClassPreloader::record_initiated_classes(true);
-  ClassPreloader::record_unregistered_classes();
+  AOTClassLinker::write_to_archive();
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    FinalImageRecipes::record_recipes();
+  }
+  AOTLinkedClassBulkLoader::record_unregistered_classes();
   TrainingData::dump_training_data();
   MetaspaceShared::write_method_handle_intrinsics();
 
@@ -591,14 +595,6 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   dump_java_heap_objects(_builder.klasses());
   dump_shared_symbol_table(_builder.symbols());
-
-  {
-    ArchiveBuilder::OtherROAllocMark mark;
-    ClassPreloader::record_preloaded_classes(true);
-    if (CDSConfig::is_dumping_preimage_static_archive()) {
-      FinalImageRecipes::record_recipes();
-    }
-  }
 
   log_info(cds)("Make classes shareable");
   _builder.make_klasses_shareable();
@@ -681,8 +677,7 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
 }
 
 void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
-  ClassPreloader::initialize();
-  ClassPrelinker::initialize();
+  AOTClassLinker::initialize();
 
   if (!jcmd_request && !CDSConfig::is_dumping_dynamic_archive()
       && !CDSConfig::is_dumping_preimage_static_archive()
@@ -735,7 +730,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
     for (Klass* klass = cld->klasses(); klass != nullptr; klass = klass->next_link()) {
       if (klass->is_instance_klass()) {
         InstanceKlass* ik = InstanceKlass::cast(klass);
-        ClassPrelinker::dumptime_resolve_constants(ik, CHECK);
+        AOTConstantPoolResolver::dumptime_resolve_constants(ik, CHECK);
         if (CDSConfig::is_dumping_preimage_static_archive()) {
           FinalImageRecipes::add_reflection_data_flags(ik, CHECK);
         }

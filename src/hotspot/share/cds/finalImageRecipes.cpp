@@ -23,10 +23,10 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPrelinker.hpp"
 #include "cds/finalImageRecipes.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -154,7 +154,7 @@ void FinalImageRecipes::apply_recipes_for_invokedynamic(TRAPS) {
       for (int j = 0; j < cp_indices->length(); j++) {
         preresolve_list.at_put(cp_indices->at(j), true);
       }
-      ClassPrelinker::preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
+      AOTConstantPoolResolver::preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
     }
   }
 }
@@ -167,7 +167,7 @@ void FinalImageRecipes::apply_recipes_for_reflection_data(JavaThread* current) {
     for (int i = 0; i < _reflect_klasses->length(); i++) {
       InstanceKlass* ik = _reflect_klasses->at(i);
       int rd_flags = _reflect_flags->at(i);
-      ClassPrelinker::generate_reflection_data(current, ik, rd_flags);
+      AOTConstantPoolResolver::generate_reflection_data(current, ik, rd_flags);
     }
   }
 }
@@ -176,7 +176,7 @@ void FinalImageRecipes::add_reflection_data_flags(InstanceKlass* ik, TRAPS) {
   assert(CDSConfig::is_dumping_preimage_static_archive(), "must be");
   if (SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->is_hidden() &&
       java_lang_Class::has_reflection_data(ik->java_mirror())) {
-    int rd_flags = ClassPrelinker::class_reflection_data_flags(ik, CHECK);
+    int rd_flags = AOTConstantPoolResolver::class_reflection_data_flags(ik, CHECK);
     if (_tmp_reflect_klasses == nullptr) {
       _tmp_reflect_klasses = new (mtClassShared) GrowableArray<InstanceKlass*>(100, mtClassShared);
       _tmp_reflect_flags = new (mtClassShared) GrowableArray<int>(100, mtClassShared);
@@ -233,7 +233,7 @@ void FinalImageRecipes::apply_recipes_for_dynamic_proxies(TRAPS) {
         interfaces()->obj_at_put(intf_index, k->java_mirror());
       }
 
-      ClassPrelinker::define_dynamic_proxy_class(loader, proxy_name, interfaces, info->_access_flags, CHECK);
+      AOTConstantPoolResolver::define_dynamic_proxy_class(loader, proxy_name, interfaces, info->_access_flags, CHECK);
     }
   }
 }

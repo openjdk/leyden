@@ -23,10 +23,10 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPrelinker.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.hpp"
@@ -3756,7 +3756,7 @@ JVM_ENTRY_PROF(void, JVM_LogDynamicProxy, JVM_LogDynamicProxy(JNIEnv *env, jobje
   oop loader_oop = JNIHandles::resolve(loader);
   objArrayOop interfaces_oop = objArrayOop(JNIHandles::resolve_non_null(interfaces));
 
-  ClassPrelinker::trace_dynamic_proxy_class(loader_oop, proxy_name_str, interfaces_oop, access_flags);
+  AOTConstantPoolResolver::trace_dynamic_proxy_class(loader_oop, proxy_name_str, interfaces_oop, access_flags);
 #endif // INCLUDE_CDS
 JVM_END
 

@@ -23,12 +23,12 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotClassLinker.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPrelinker.hpp"
-#include "cds/classPreloader.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "cds/dynamicArchive.hpp"
@@ -293,6 +293,8 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
     // but this should be enough for now
     _estimated_metaspaceobj_bytes += 200 * 1024 * 1024;
   }
+
+  AOTClassLinker::add_candidates();
 }
 
 #if INCLUDE_CDS_JAVA_HEAP
@@ -879,7 +881,7 @@ void ArchiveBuilder::make_klasses_shareable() {
       assert(k->is_instance_klass(), " must be");
       InstanceKlass* ik = InstanceKlass::cast(k);
       InstanceKlass* src_ik = get_source_addr(ik);
-      int preloaded = ClassPreloader::is_preloaded_class(src_ik);
+      int preloaded = AOTClassLinker::is_candidate(src_ik);
       int inited = ik->has_preinitialized_mirror();
       ADD_COUNT(num_instance_klasses);
       if (CDSConfig::is_dumping_dynamic_archive()) {
@@ -916,7 +918,7 @@ void ArchiveBuilder::make_klasses_shareable() {
         ADD_COUNT(num_unregistered_klasses);
       }
 
-      if (ClassPreloader::is_vm_class(src_ik)) {
+      if (AOTClassLinker::is_vm_class(src_ik)) {
         ADD_COUNT(num_vm_klasses);
       }
 
@@ -1012,7 +1014,7 @@ void ArchiveBuilder::serialize_dynamic_archivable_items(SerializeClosure* soc) {
   SymbolTable::serialize_shared_table_header(soc, false);
   SystemDictionaryShared::serialize_dictionary_headers(soc, false);
   DynamicArchive::serialize_array_klasses(soc);
-  ClassPreloader::serialize(soc, false);
+  AOTLinkedClassBulkLoader::serialize(soc, false);
   FinalImageRecipes::serialize(soc, false);
   TrainingData::serialize_training_data(soc);
 }

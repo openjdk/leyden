@@ -23,11 +23,11 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotClassLinker.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPrelinker.hpp"
-#include "cds/classPreloader.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/finalImageRecipes.hpp"
 #include "cds/heapShared.hpp"
@@ -56,13 +56,13 @@
 #include "runtime/timer.hpp"
 #include "runtime/signature.hpp"
 
-ClassPrelinker::ClassesTable* ClassPrelinker::_processed_classes = nullptr;
+AOTConstantPoolResolver::ClassesTable* AOTConstantPoolResolver::_processed_classes = nullptr;
 
-void ClassPrelinker::initialize() {
+void AOTConstantPoolResolver::initialize() {
   _processed_classes = new (mtClass)ClassesTable();
 }
 
-void ClassPrelinker::dispose() {
+void AOTConstantPoolResolver::dispose() {
   delete _processed_classes;
   _processed_classes = nullptr;
 }
@@ -71,7 +71,7 @@ void ClassPrelinker::dispose() {
 // the same information at both dump time and run time. This is a
 // necessary (but not sufficient) condition for pre-resolving cp_index
 // during CDS archive assembly.
-bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index) {
+bool AOTConstantPoolResolver::is_resolution_deterministic(ConstantPool* cp, int cp_index) {
   assert(!is_in_archivebuilder_buffer(cp), "sanity");
 
   if (cp->tag_at(cp_index).is_klass()) {
@@ -108,7 +108,7 @@ bool ClassPrelinker::is_resolution_deterministic(ConstantPool* cp, int cp_index)
   }
 }
 
-bool ClassPrelinker::is_class_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_class) {
+bool AOTConstantPoolResolver::is_class_resolution_deterministic(InstanceKlass* cp_holder, Klass* resolved_class) {
   assert(!is_in_archivebuilder_buffer(cp_holder), "sanity");
   assert(!is_in_archivebuilder_buffer(resolved_class), "sanity");
 
@@ -125,7 +125,7 @@ bool ClassPrelinker::is_class_resolution_deterministic(InstanceKlass* cp_holder,
       return true;
     }
 
-    if (!PreloadSharedClasses && ClassPreloader::is_vm_class(ik)) {
+    if (!PreloadSharedClasses && AOTClassLinker::is_vm_class(ik)) {
       if (ik->class_loader() != cp_holder->class_loader()) {
         // At runtime, cp_holder() may not be able to resolve to the same
         // ik. For example, a different version of ik may be defined in
@@ -134,19 +134,8 @@ bool ClassPrelinker::is_class_resolution_deterministic(InstanceKlass* cp_holder,
       } else {
         return true;
       }
-    } else if (PreloadSharedClasses && ClassPreloader::is_preloaded_class(ik)) {
-      if (cp_holder->is_shared_platform_class()) {
-        ClassPreloader::add_initiated_class(cp_holder, ik);
-        return true;
-      } else if (cp_holder->is_shared_app_class()) {
-        ClassPreloader::add_initiated_class(cp_holder, ik);
-        return true;
-      } else if (cp_holder->is_shared_boot_class()) {
-        assert(ik->class_loader() == nullptr, "a boot class can reference only boot classes");
-        return true;
-      } else if (cp_holder->is_hidden() && cp_holder->class_loader() == nullptr) { // FIXME -- use better checks!
-        return true;
-      }
+    } else if (PreloadSharedClasses && AOTClassLinker::try_add_candidate(ik)) {
+      return true;
     }
   } else if (resolved_class->is_objArray_klass()) {
     Klass* elem = ObjArrayKlass::cast(resolved_class)->bottom_klass();
@@ -162,7 +151,7 @@ bool ClassPrelinker::is_class_resolution_deterministic(InstanceKlass* cp_holder,
   return false;
 }
 
-void ClassPrelinker::dumptime_resolve_constants(InstanceKlass* ik, TRAPS) {
+void AOTConstantPoolResolver::dumptime_resolve_constants(InstanceKlass* ik, TRAPS) {
   if (!ik->is_linked()) {
     return;
   }
@@ -206,7 +195,7 @@ void ClassPrelinker::dumptime_resolve_constants(InstanceKlass* ik, TRAPS) {
 }
 
 // This works only for the boot/platform/app loaders
-Klass* ClassPrelinker::find_loaded_class(Thread* current, oop class_loader, Symbol* name) {
+Klass* AOTConstantPoolResolver::find_loaded_class(Thread* current, oop class_loader, Symbol* name) {
   HandleMark hm(current);
   Handle h_loader(current, class_loader);
   Klass* k = SystemDictionary::find_instance_or_array_klass(current, name,
@@ -229,13 +218,13 @@ Klass* ClassPrelinker::find_loaded_class(Thread* current, oop class_loader, Symb
   return nullptr;
 }
 
-Klass* ClassPrelinker::find_loaded_class(Thread* current, ConstantPool* cp, int class_cp_index) {
+Klass* AOTConstantPoolResolver::find_loaded_class(Thread* current, ConstantPool* cp, int class_cp_index) {
   Symbol* name = cp->klass_name_at(class_cp_index);
   return find_loaded_class(current, cp->pool_holder()->class_loader(), name);
 }
 
 #if INCLUDE_CDS_JAVA_HEAP
-void ClassPrelinker::resolve_string(constantPoolHandle cp, int cp_index, TRAPS) {
+void AOTConstantPoolResolver::resolve_string(constantPoolHandle cp, int cp_index, TRAPS) {
   if (CDSConfig::is_dumping_heap()) {
     int cache_index = cp->cp_to_object_index(cp_index);
     ConstantPool::string_at_impl(cp, cp_index, cache_index, CHECK);
@@ -243,7 +232,7 @@ void ClassPrelinker::resolve_string(constantPoolHandle cp, int cp_index, TRAPS) 
 }
 #endif
 
-void ClassPrelinker::preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
+void AOTConstantPoolResolver::preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
   if (!PreloadSharedClasses) {
     return;
   }
@@ -275,7 +264,7 @@ void ClassPrelinker::preresolve_class_cp_entries(JavaThread* current, InstanceKl
   }
 }
 
-void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
+void AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
   JavaThread* THREAD = current;
   constantPoolHandle cp(THREAD, ik->constants());
   if (cp->cache() == nullptr) {
@@ -314,7 +303,7 @@ void ClassPrelinker::preresolve_field_and_method_cp_entries(JavaThread* current,
   }
 }
 
-void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
+void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                            GrowableArray<bool>* preresolve_list, TRAPS) {
   methodHandle mh(THREAD, m);
   constantPoolHandle cp(THREAD, ik->constants());
@@ -389,7 +378,7 @@ void ClassPrelinker::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecod
   }
 }
 
-void ClassPrelinker::preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
+void AOTConstantPoolResolver::preresolve_indy_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
   JavaThread* THREAD = current;
   constantPoolHandle cp(THREAD, ik->constants());
   if (!CDSConfig::is_dumping_invokedynamic() || cp->cache() == nullptr) {
@@ -433,7 +422,7 @@ static bool has_clinit(InstanceKlass* ik) {
   return false;
 }
 
-bool ClassPrelinker::is_indy_resolution_deterministic(ConstantPool* cp, int cp_index) {
+bool AOTConstantPoolResolver::is_indy_resolution_deterministic(ConstantPool* cp, int cp_index) {
   assert(cp->tag_at(cp_index).is_invoke_dynamic(), "sanity");
   if (!CDSConfig::is_dumping_invokedynamic()) {
     return false;
@@ -489,7 +478,7 @@ bool ClassPrelinker::is_indy_resolution_deterministic(ConstantPool* cp, int cp_i
   return false;
 }
 #ifdef ASSERT
-bool ClassPrelinker::is_in_archivebuilder_buffer(address p) {
+bool AOTConstantPoolResolver::is_in_archivebuilder_buffer(address p) {
   if (!Thread::current()->is_VM_thread() || ArchiveBuilder::current() == nullptr) {
     return false;
   } else {
@@ -498,7 +487,7 @@ bool ClassPrelinker::is_in_archivebuilder_buffer(address p) {
 }
 #endif
 
-int ClassPrelinker::class_reflection_data_flags(InstanceKlass* ik, TRAPS) {
+int AOTConstantPoolResolver::class_reflection_data_flags(InstanceKlass* ik, TRAPS) {
   assert(java_lang_Class::has_reflection_data(ik->java_mirror()), "must be");
 
   HandleMark hm(THREAD);
@@ -514,7 +503,7 @@ int ClassPrelinker::class_reflection_data_flags(InstanceKlass* ik, TRAPS) {
   return flags;
 }
 
-void ClassPrelinker::generate_reflection_data(JavaThread* current, InstanceKlass* ik, int rd_flags) {
+void AOTConstantPoolResolver::generate_reflection_data(JavaThread* current, InstanceKlass* ik, int rd_flags) {
   log_info(cds)("Generate ReflectionData: %s (flags=" INT32_FORMAT_X ")", ik->external_name(), rd_flags);
   JavaThread* THREAD = current; // for exception macros
   JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
@@ -537,14 +526,14 @@ void ClassPrelinker::generate_reflection_data(JavaThread* current, InstanceKlass
   }
 }
 
-Klass* ClassPrelinker::resolve_boot_class_or_fail(const char* class_name, TRAPS) {
+Klass* AOTConstantPoolResolver::resolve_boot_class_or_fail(const char* class_name, TRAPS) {
   Handle class_loader;
   Handle protection_domain;
   TempNewSymbol class_name_sym = SymbolTable::new_symbol(class_name);
   return SystemDictionary::resolve_or_fail(class_name_sym, class_loader, protection_domain, true, THREAD);
 }
 
-void ClassPrelinker::trace_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags) {
+void AOTConstantPoolResolver::trace_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags) {
   if (interfaces->length() < 1) {
     return;
   }
@@ -567,7 +556,7 @@ void ClassPrelinker::trace_dynamic_proxy_class(oop loader, const char* proxy_nam
   }
 }
 
-void ClassPrelinker::init_dynamic_proxy_cache(TRAPS) {
+void AOTConstantPoolResolver::init_dynamic_proxy_cache(TRAPS) {
   static bool inited = false;
   if (inited) {
     return;
@@ -590,7 +579,7 @@ void ClassPrelinker::init_dynamic_proxy_cache(TRAPS) {
 }
 
 
-void ClassPrelinker::define_dynamic_proxy_class(Handle loader, Handle proxy_name, Handle interfaces, int access_flags, TRAPS) {
+void AOTConstantPoolResolver::define_dynamic_proxy_class(Handle loader, Handle proxy_name, Handle interfaces, int access_flags, TRAPS) {
   if (!CDSConfig::is_dumping_dynamic_proxy() || !ArchiveDynamicProxies) {
     return;
   }

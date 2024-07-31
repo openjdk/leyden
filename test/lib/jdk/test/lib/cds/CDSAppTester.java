@@ -46,7 +46,6 @@ abstract public class CDSAppTester {
     private final String staticArchiveFileLog;
     private final String dynamicArchiveFile;
     private final String dynamicArchiveFileLog;
-    private final String productionRunLog;
     private final String codeCacheFile;  // old workflow
     private final String codeCacheFileLog;
     private final String cdsFile;        // new workflow: -XX:CacheDataStore=<foo>.cds
@@ -54,6 +53,7 @@ abstract public class CDSAppTester {
     private final String cdsFilePreImage;        // new workflow: -XX:CacheDataStore=<foo>.cds
     private final String cdsFilePreImageLog;
     private final String aotFile;        // new workflow = cdsFile + ".code"
+    private int numProductionRuns = 0;
 
     public CDSAppTester(String name) {
         // Old workflow
@@ -64,8 +64,6 @@ abstract public class CDSAppTester {
         staticArchiveFileLog = staticArchiveFile + ".log";
         dynamicArchiveFile = name() + ".dynamic.jsa";
         dynamicArchiveFileLog = dynamicArchiveFile + ".log";
-        productionRunLog = name() + ".production.log";
-
         codeCacheFile = name() + ".code.jsa";
         codeCacheFileLog = codeCacheFile + ".log";
         cdsFile = name() + ".cds";
@@ -73,6 +71,14 @@ abstract public class CDSAppTester {
         cdsFilePreImage = cdsFile + ".preimage";
         cdsFilePreImageLog = cdsFilePreImage + ".log";
         aotFile = cdsFile + ".code";
+    }
+
+    private String productionRunLog() {
+        if (numProductionRuns == 0) {
+            return name() + ".production.log";
+        } else {
+            return name() + ".production." + numProductionRuns + ".log";
+        }
     }
 
     private enum Workflow {
@@ -273,9 +279,9 @@ abstract public class CDSAppTester {
                                                    "-XX:+LoadCachedCode",
                                                    "-XX:CachedCodeFile=" + codeCacheFile,
                                                    "-cp", classpath(runMode),
-                                                   logToFile(productionRunLog, "cds", "scc*=warning"));
+                                                   logToFile(productionRunLog(), "cds", "scc*=warning"));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
-        return executeAndCheck(cmdLine, runMode, productionRunLog);
+        return executeAndCheck(cmdLine, runMode, productionRunLog());
     }
 
     private String trainingLog(String file) {
@@ -345,10 +351,20 @@ abstract public class CDSAppTester {
     }
 
     private OutputAnalyzer productionRun() throws Exception {
+        return productionRun(null, null);
+    }
+
+    public OutputAnalyzer productionRun(String[] extraVmArgs) throws Exception {
+        return productionRun(extraVmArgs, null);
+    }
+
+    // After calling run(String[]), you can call this method to run the app again, with the AOTCache
+    // using different args to the VM and application.
+    public OutputAnalyzer productionRun(String[] extraVmArgs, String[] extraAppArgs) throws Exception {
         RunMode runMode = RunMode.PRODUCTION;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-cp", classpath(runMode),
-                                                   logToFile(productionRunLog, "cds"));
+                                                   logToFile(productionRunLog(), "cds"));
 
         if (isStaticWorkflow()) {
             cmdLine = StringArrayUtils.concat(cmdLine, "-XX:SharedArchiveFile=" + staticArchiveFile);
@@ -358,8 +374,19 @@ abstract public class CDSAppTester {
             cmdLine = StringArrayUtils.concat(cmdLine, "-XX:CacheDataStore=" + cdsFile);
         }
 
+        if (extraVmArgs != null) {
+            cmdLine = StringArrayUtils.concat(cmdLine, extraVmArgs);
+        }
+
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
-        return executeAndCheck(cmdLine, runMode, productionRunLog);
+
+        if (extraAppArgs != null) {
+            cmdLine = StringArrayUtils.concat(cmdLine, extraAppArgs);
+        }
+
+        OutputAnalyzer out = executeAndCheck(cmdLine, runMode, productionRunLog());
+        numProductionRuns ++;
+        return out;
     }
 
     public void run(String args[]) throws Exception {

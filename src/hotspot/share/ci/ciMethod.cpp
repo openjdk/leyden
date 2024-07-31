@@ -23,7 +23,7 @@
  */
 
 #include "precompiled.hpp"
-#include "cds/classPreloader.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "ci/ciCallProfile.hpp"
 #include "ci/ciExceptionHandler.hpp"
 #include "ci/ciInstanceKlass.hpp"
@@ -1151,7 +1151,7 @@ bool ciMethod::can_be_compiled() {
 
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      env->comp_level() == CompLevel_full_optimization && !ClassPreloader::class_preloading_finished()) {
+      env->comp_level() == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::class_preloading_finished()) {
     return false;
   }
 #endif

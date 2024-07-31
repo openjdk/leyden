@@ -396,6 +396,10 @@ void ArchiveUtils::log_to_classlist(BootstrapInfo* bootstrap_specifier, TRAPS) {
 
 // Used in logging: "boot", "boot2", "plat", "app" and "unreg";
 const char* ArchiveUtils::class_category(Klass* k) {
+  if (ArchiveBuilder::current()->is_in_buffer_space(k)) {
+    k = ArchiveBuilder::current()->get_source_addr(k);
+  }
+
   if (k->is_array_klass()) {
     return "array";
   } else {

@@ -23,7 +23,7 @@
  */
 
 #include "precompiled.hpp"
-#include "cds/classPreloader.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "code/scopeDesc.hpp"
 #include "code/SCCache.hpp"
 #include "compiler/compilationPolicy.hpp"
@@ -989,7 +989,7 @@ nmethod* CompilationPolicy::event(const methodHandle& method, const methodHandle
 
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      comp_level == CompLevel_full_optimization && !ClassPreloader::class_preloading_finished()) {
+      comp_level == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::class_preloading_finished()) {
     return nullptr;
   }
 #endif
@@ -1607,7 +1607,7 @@ CompLevel CompilationPolicy::call_event(const methodHandle& method, CompLevel cu
   }
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      next_level == CompLevel_full_optimization && !ClassPreloader::class_preloading_finished()) {
+      next_level == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::class_preloading_finished()) {
     next_level = cur_level;
   }
 #endif

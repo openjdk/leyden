@@ -25,9 +25,9 @@
 
 #include "precompiled.hpp"
 #include "c1/c1_Runtime1.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPreloader.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/methodProfiler.hpp"
@@ -328,15 +328,14 @@ static void call_initPhase2(TRAPS) {
 
   universe_post_module_init();
 
-  // Preload all boot classes outside of java.base module
-  ClassPreloader::runtime_preload(THREAD, Handle());
+  AOTLinkedClassBulkLoader::load_non_javabase_boot_classes(THREAD); 
   if (CDSConfig::is_using_full_module_graph()) {
     // SystemDictionary::java_{platform,system}_loader are already assigned. We can spin
     // this up a little quicker.
     assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
     assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
-    ClassPreloader::runtime_preload(THREAD, Handle(THREAD, SystemDictionary::java_platform_loader()));
-    ClassPreloader::runtime_preload(THREAD, Handle(THREAD, SystemDictionary::java_system_loader()));
+    AOTLinkedClassBulkLoader::load_platform_classes(THREAD);
+    AOTLinkedClassBulkLoader::load_app_classes(THREAD);
   }
 }
 
@@ -762,7 +761,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   bool force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
 
-  ClassPreloader::init_javabase_preloaded_classes(CHECK_JNI_ERR);
+  AOTLinkedClassBulkLoader::init_javabase_preloaded_classes(CHECK_JNI_ERR);
 
   // Start string deduplication thread if requested.
   if (StringDedup::is_enabled()) {
@@ -797,7 +796,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Initiate replay training processing once preloading is over.
   CompileBroker::init_training_replay();
 
-  ClassPreloader::replay_training_at_init_for_preloaded_classes(CHECK_JNI_ERR);
+  AOTLinkedClassBulkLoader::replay_training_at_init_for_preloaded_classes(CHECK_JNI_ERR);
 
   if (Continuations::enabled()) {
     // Initialize Continuation class now so that failure to create enterSpecial/doYield

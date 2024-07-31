@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef SHARE_CDS_CLASSPRELINKER_HPP
-#define SHARE_CDS_CLASSPRELINKER_HPP
+#ifndef SHARE_CDS_AOTCONSTANTPOOLRESOLVER_HPP
+#define SHARE_CDS_AOTCONSTANTPOOLRESOLVER_HPP
 
 #include "interpreter/bytecodes.hpp"
 #include "oops/oopsHierarchy.hpp"
@@ -42,7 +42,7 @@ class SerializeClosure;
 
 template <typename T> class GrowableArray;
 
-// ClassPrelinker is used to perform ahead-of-time linking of ConstantPool entries
+// AOTConstantPoolResolver is used to perform ahead-of-time linking of ConstantPool entries
 // for archived InstanceKlasses.
 //
 // At run time, Java classes are loaded dynamically and may be replaced with JVMTI.
@@ -52,8 +52,7 @@ template <typename T> class GrowableArray;
 // For example, a JVM_CONSTANT_Class reference to a supertype can be safely resolved
 // at dump time, because at run time we will load a class from the CDS archive only
 // if all of its supertypes are loaded from the CDS archive.
-class ClassPrelinker :  AllStatic {
-  class PreloadedKlassRecorder;
+class AOTConstantPoolResolver :  AllStatic {
   using ClassesTable = ResourceHashtable<InstanceKlass*, bool, 15889, AnyObj::C_HEAP, mtClassShared> ;
   static ClassesTable* _processed_classes;
 
@@ -103,4 +102,4 @@ public:
   static bool is_resolution_deterministic(ConstantPool* cp, int cp_index);
 };
 
-#endif // SHARE_CDS_CLASSPRELINKER_HPP
+#endif // SHARE_CDS_AOTCONSTANTPOOLRESOLVER_HPP

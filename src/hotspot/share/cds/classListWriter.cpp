@@ -23,10 +23,10 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPrelinker.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.hpp"
@@ -257,7 +257,7 @@ void ClassListWriter::write_reflection_data_for(InstanceKlass* ik) {
   }
   if (java_lang_Class::has_reflection_data(ik->java_mirror())) {
     EXCEPTION_MARK;
-    int rd_flags = ClassPrelinker::class_reflection_data_flags(ik, THREAD);
+    int rd_flags = AOTConstantPoolResolver::class_reflection_data_flags(ik, THREAD);
     if (!HAS_PENDING_EXCEPTION) {
       // We can't hold the lock when doing the upcall inside class_reflection_data_flags()
       MutexLocker lock2(ClassListFile_lock, Mutex::_no_safepoint_check_flag);

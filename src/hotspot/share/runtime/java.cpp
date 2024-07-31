@@ -23,10 +23,10 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPreloader.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/methodProfiler.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -179,7 +179,7 @@ void log_vm_init_stats(bool use_tty) {
     LogStreamHandle(Info, perf, class, link) log2;
     outputStream* out2 = use_tty ? tty : &log2;
     ClassLoader::print_counters(out2);
-    ClassPreloader::print_counters();
+    AOTLinkedClassBulkLoader::print_counters();
     out->cr();
     // FIXME: intermittent crashes
 //    if (CountBytecodesPerThread) {

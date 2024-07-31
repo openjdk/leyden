@@ -23,11 +23,11 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPrelinker.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classLoader.hpp"
@@ -293,7 +293,7 @@ void ConstantPool::iterate_archivable_resolved_references(Function function) {
     if (indy_entries != nullptr) {
       for (int i = 0; i < indy_entries->length(); i++) {
         ResolvedIndyEntry *rie = indy_entries->adr_at(i);
-        if (rie->is_resolved() && ClassPrelinker::is_resolution_deterministic(this, rie->constant_pool_index())) {
+        if (rie->is_resolved() && AOTConstantPoolResolver::is_resolution_deterministic(this, rie->constant_pool_index())) {
           int rr_index = rie->resolved_references_index();
           function(rr_index);
         }
@@ -568,7 +568,7 @@ void ConstantPool::remove_resolved_klass_if_non_deterministic(int cp_index) {
     can_archive = false;
   } else {
     ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
-    can_archive = ClassPrelinker::is_resolution_deterministic(src_cp, cp_index);
+    can_archive = AOTConstantPoolResolver::is_resolution_deterministic(src_cp, cp_index);
   }
 
   if (!can_archive) {
