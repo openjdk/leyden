@@ -101,7 +101,9 @@
   /* See CDSConfig::check_flag_aliases().                               */  \
                                                                             \
   product(ccstr, AOTMode, nullptr,                                          \
-          "record/create/on")                                               \
+          "Specifics how AOTCache should be created or used. Valid values " \
+          "are: off, record, create, auto, on; the default is auto")        \
+          constraint(AOTModeConstraintFunc, AtParse)                        \
                                                                             \
   product(ccstr, AOTConfiguration, nullptr,                                 \
           "Configuration information used by CreateAOTCache")               \

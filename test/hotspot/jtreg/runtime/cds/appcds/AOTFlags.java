@@ -77,6 +77,30 @@ public class AOTFlags {
         out = CDSTestUtils.executeAndLog(pb, "prod");
         out.shouldContain("Opened archive hello.aot.");
         out.shouldContain("Hello World");
+
+        // (4) AOTMode=off
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTCache=" + aotCacheFile,
+            "--show-version",
+            "-Xlog:cds",
+            "-XX:AOTMode=off",
+            "-cp", appJar, helloClass);
+        out = CDSTestUtils.executeAndLog(pb, "prod");
+        out.shouldNotContain(", sharing");
+        out.shouldNotContain("Opened archive hello.aot.");
+        out.shouldContain("Hello World");
+
+        // (5) AOTMode=auto
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTCache=" + aotCacheFile,
+            "--show-version",
+            "-Xlog:cds",
+            "-XX:AOTMode=auto",
+            "-cp", appJar, helloClass);
+        out = CDSTestUtils.executeAndLog(pb, "prod");
+        out.shouldContain(", sharing");
+        out.shouldContain("Opened archive hello.aot.");
+        out.shouldContain("Hello World");
     }
 
     static void negativeTests() throws Exception {
@@ -106,15 +130,22 @@ public class AOTFlags {
             "-cp", appJar, helloClass);
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("AOTConfiguration cannot be used without setting AOTMode");
+        out.shouldContain("AOTConfiguration can only be used only -XX:AOTMode=record or -XX:AOTMode=create");
 
         // (3) Use AOTMode without AOTConfiguration
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTMode=record",
+            "-cp", appJar, helloClass);
+
+        out = CDSTestUtils.executeAndLog(pb, "neg");
+        out.shouldContain("-XX:AOTMode=record cannot be used without setting AOTConfiguration");
+
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTMode=create",
             "-cp", appJar, helloClass);
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("AOTMode cannot be used without setting AOTConfiguration");
+        out.shouldContain("-XX:AOTMode=create cannot be used without setting AOTConfiguration");
 
         // (4) Bad AOTMode
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -123,7 +154,7 @@ public class AOTFlags {
             "-cp", appJar, helloClass);
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("Unrecognized AOTMode foo: must be record or create");
+        out.shouldContain("Unrecognized value foo for AOTMode. Must be one of the following: off, record, create, auto, on");
 
         // (5) AOTCache specified with -XX:AOTMode=record
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -143,5 +174,7 @@ public class AOTFlags {
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
         out.shouldContain("AOTCache must be specified when using -XX:AOTMode=create");
+
+        // (6) Bad AOTConfiguration
     }
 }

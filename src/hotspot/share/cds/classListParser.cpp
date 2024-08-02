@@ -48,6 +48,7 @@
 #include "oops/constantPool.inline.hpp"
 #include "oops/cpCache.inline.hpp"
 #include "runtime/atomic.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
@@ -75,9 +76,13 @@ ClassListParser::ClassListParser(const char* file, ParseMode parse_mode) :
   log_info(cds)("Parsing %s%s", file,
                 parse_lambda_forms_invokers_only() ? " (lambda form invokers only)" : "");
   if (!_file_input.is_open()) {
-    char errmsg[JVM_MAXPATHLEN];
-    os::lasterror(errmsg, JVM_MAXPATHLEN);
-    vm_exit_during_initialization("Loading classlist failed", errmsg);
+    char reason[JVM_MAXPATHLEN];
+    os::lasterror(reason, JVM_MAXPATHLEN);
+    vm_exit_during_initialization(err_msg("Loading %s %s failed",
+                                          FLAG_IS_DEFAULT(AOTConfiguration) ?
+                                          "classlist" : "AOTConfiguration file",
+                                          file),
+                                  reason);
   }
   _token = _line = nullptr;
   _interfaces = new (mtClass) GrowableArray<int>(10, mtClass);
