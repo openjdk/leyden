@@ -47,7 +47,7 @@ bool CDSConfig::_is_dumping_dynamic_archive = false;
 bool CDSConfig::_is_using_optimized_module_handling = true;
 bool CDSConfig::_is_dumping_full_module_graph = true;
 bool CDSConfig::_is_using_full_module_graph = true;
-bool CDSConfig::_has_preloaded_classes = false;
+bool CDSConfig::_has_aot_linked_classes = false;
 bool CDSConfig::_is_loading_invokedynamic = false;
 bool CDSConfig::_is_loading_packages = false;
 bool CDSConfig::_is_loading_protection_domains = false;
@@ -694,7 +694,7 @@ bool CDSConfig::is_tracing_dynamic_proxy() {
 // then this relationship between A and B cannot be changed at runtime. I.e., the app
 // cannot load alternative versions of A and B such that A is not a subtype of B.
 bool CDSConfig::preserve_all_dumptime_verification_states(const InstanceKlass* ik) {
-  return PreloadSharedClasses && SystemDictionaryShared::is_builtin(ik);
+  return is_dumping_aot_linked_classes() && SystemDictionaryShared::is_builtin(ik);
 }
 
 bool CDSConfig::is_using_archive() {
@@ -760,6 +760,33 @@ void CDSConfig::stop_using_full_module_graph(const char* reason) {
   }
 }
 
+bool CDSConfig::is_dumping_aot_linked_classes() {
+  if (is_dumping_preimage_static_archive()) {
+    return PreloadSharedClasses; // FIXME rename flag
+  } else if (is_dumping_dynamic_archive()) {
+    return is_using_full_module_graph() && PreloadSharedClasses; // FIXME rename flag
+  } else if (is_dumping_static_archive()) {
+    return is_dumping_full_module_graph() && PreloadSharedClasses; // FIXME rename flag
+  } else {
+    return false;
+  }
+}
+
+bool CDSConfig::is_using_aot_linked_classes() {
+  if (is_dumping_final_static_archive()) {
+    // We assume that the final image is being dumped with the exact same module graph as the training run,
+    // so all aot-linked classes can be loaded.
+    return _has_aot_linked_classes;
+  }
+  // Make sure we have the exact same module graph as in the assembly phase, or else
+  // some aot-linked classes may not be visible so cannot be loaded.
+  return is_using_full_module_graph() && _has_aot_linked_classes;
+}
+
+void CDSConfig::set_has_aot_linked_classes(bool is_static_archive, bool has_aot_linked_classes) {
+  _has_aot_linked_classes |= has_aot_linked_classes;
+}
+
 bool CDSConfig::is_loading_invokedynamic() {
   return UseSharedSpaces && is_loading_heap() && _is_loading_invokedynamic;
 }
@@ -768,14 +795,15 @@ bool CDSConfig::is_dumping_dynamic_proxy() {
   return is_dumping_full_module_graph() && is_dumping_invokedynamic();
 }
 
+// NOTE: do not upstream this to mainline yet.
 bool CDSConfig::is_initing_classes_at_dump_time() {
-  return is_dumping_heap() && PreloadSharedClasses;
+  return is_dumping_heap() && is_dumping_aot_linked_classes();
 }
 
 bool CDSConfig::is_dumping_invokedynamic() {
-  // Requires PreloadSharedClasses, or else the classes of some archived heap
+  // Requires is_dumping_aot_linked_classes(). Otherwise the classes of some archived heap
   // objects used by the archive indy callsites may be replaced at runtime.
-  return ArchiveInvokeDynamic && PreloadSharedClasses && is_dumping_heap();
+  return ArchiveInvokeDynamic && is_dumping_aot_linked_classes() && is_dumping_heap();
 }
 
 bool CDSConfig::is_dumping_packages() {

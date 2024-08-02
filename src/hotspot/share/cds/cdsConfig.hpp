@@ -38,7 +38,7 @@ class CDSConfig : public AllStatic {
   static bool _is_using_optimized_module_handling;
   static bool _is_dumping_full_module_graph;
   static bool _is_using_full_module_graph;
-  static bool _has_preloaded_classes;
+  static bool _has_aot_linked_classes;
   static bool _is_loading_invokedynamic;
   static bool _is_loading_packages;
   static bool _is_loading_protection_domains;
@@ -112,8 +112,9 @@ public:
   static bool is_logging_lambda_form_invokers()              NOT_CDS_RETURN_(false);
   static bool is_dumping_regenerated_lambdaform_invokers()   NOT_CDS_RETURN_(false);
 
-  static bool has_preloaded_classes()                        { CDS_ONLY(return _has_preloaded_classes); NOT_CDS(return false); }
-  static void set_has_preloaded_classes()                    { CDS_ONLY(_has_preloaded_classes = true); }
+  static bool is_dumping_aot_linked_classes()                NOT_CDS_RETURN_(false);
+  static bool is_using_aot_linked_classes()                  NOT_CDS_RETURN_(false);
+  static void set_has_aot_linked_classes(bool is_static_archive, bool has_aot_linked_classes) NOT_CDS_RETURN;
 
   // archive_path
 

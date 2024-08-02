@@ -408,9 +408,9 @@ const char* ArchiveUtils::class_category(Klass* k) {
       if (k->module() != nullptr &&
           k->module()->name() != nullptr &&
           k->module()->name()->equals("java.base")) {
-        return "boot"; // all boot classes in java.base -- they are loaded first with PreloadSharedClasses
+        return "boot"; // boot classes in java.base
       } else {
-        return "boot2"; // other boot classes -- they are loaded in a second phase with PreloadSharedClasses
+        return "boot2"; // boot classes outside of java.base
       }
     } else {
       if (loader == SystemDictionary::java_platform_loader()) {

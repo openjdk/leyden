@@ -123,7 +123,7 @@ void AOTClassLinker::add_candidate(InstanceKlass* ik) {
 bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
   assert(is_initialized(), "sanity");
 
-  if (!PreloadSharedClasses || !SystemDictionaryShared::is_builtin(ik)) {
+  if (!CDSConfig::is_dumping_aot_linked_classes() || !SystemDictionaryShared::is_builtin(ik)) {
     return false;
   }
 
@@ -152,12 +152,6 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
     }
   }
 
-  if (MetaspaceObj::is_shared(ik) && CDSConfig::is_dumping_dynamic_archive() && CDSConfig::has_preloaded_classes()) {
-    // This class has been marked as a AOT-loaded for the base archive, so no need to mark it as a candidate
-    // for the dynamic archive.
-    return true;
-  }
-
   InstanceKlass* s = ik->java_super();
   if (s != nullptr && !try_add_candidate(s)) {
     return false;
@@ -183,7 +177,7 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
 }
 
 void AOTClassLinker::add_candidates() {
-  if (PreloadSharedClasses) {
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
     GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
     for (GrowableArrayIterator<Klass*> it = klasses->begin(); it != klasses->end(); ++it) {
       Klass* k = *it;
@@ -197,7 +191,7 @@ void AOTClassLinker::add_candidates() {
 void AOTClassLinker::write_to_archive() {
   assert(is_initialized(), "sanity");
 
-  if (PreloadSharedClasses) {
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
     AOTLinkedClassTable* table = AOTLinkedClassTable::get(CDSConfig::is_dumping_static_archive());
     table->set_boot(write_classes(nullptr, true));
     table->set_boot2(write_classes(nullptr, false));
@@ -220,7 +214,10 @@ Array<InstanceKlass*>* AOTClassLinker::write_classes(oop class_loader, bool is_j
     }
 
     if (ik->is_shared() && CDSConfig::is_dumping_dynamic_archive()) {
-      if (!CDSConfig::has_preloaded_classes()) {
+      if (CDSConfig::is_using_aot_linked_classes()) {
+        // This class must have been recorded as a AOT-linked for the base archive,
+        // so no need do so again for the dynamic archive.
+      } else {
         list.append(ik);
       }
     } else {

@@ -1230,7 +1230,7 @@ void HeapShared::resolve_classes(JavaThread* current) {
     return; // nothing to do
   }
 
-  if (!CDSConfig::has_preloaded_classes()) {
+  if (!CDSConfig::is_using_aot_linked_classes()) {
     assert( _runtime_default_subgraph_info != nullptr, "must be");
     Array<Klass*>* klasses = _runtime_default_subgraph_info->subgraph_object_klasses();
     if (klasses != nullptr) {

@@ -214,7 +214,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _use_secondary_supers_table = UseSecondarySupersTable;
   _max_heap_size = MaxHeapSize;
   _use_optimized_module_handling = CDSConfig::is_using_optimized_module_handling();
-  _has_preloaded_classes = PreloadSharedClasses;
+  _has_preloaded_classes = CDSConfig::is_dumping_aot_linked_classes();
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
   _has_archived_invokedynamic = CDSConfig::is_dumping_invokedynamic();
   _has_archived_packages = CDSConfig::is_dumping_packages();
@@ -2444,6 +2444,7 @@ bool FileMapInfo::validate_leyden_config() {
   // These checks need to be done after FileMapInfo::initialize(), which gets called before Universe::heap()
   // is available.
   if (header()->has_preloaded_classes()) {
+    CDSConfig::set_has_aot_linked_classes(is_static(), true);
     if (JvmtiExport::should_post_class_file_load_hook()) {
       log_error(cds)("CDS archive has preloaded classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
       return false;

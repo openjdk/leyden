@@ -36,12 +36,5 @@ void AOTLinkedClassTable::serialize(SerializeClosure* soc) {
   soc->do_ptr((void**)&_boot2);
   soc->do_ptr((void**)&_platform);
   soc->do_ptr((void**)&_app);
-
-  if ((_boot     != nullptr && _boot->length()     > 0) ||
-      (_boot2    != nullptr && _boot2->length()    > 0) ||
-      (_platform != nullptr && _platform->length() > 0) ||
-      (_app      != nullptr && _app->length()      > 0)) {
-    CDSConfig::set_has_preloaded_classes();
-  }
 }
 

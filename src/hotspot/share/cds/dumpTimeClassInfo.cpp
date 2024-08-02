@@ -49,7 +49,7 @@ bool DumpTimeClassInfo::is_excluded() {
   }
   if (_failed_verification) {
     if (CDSConfig::preserve_all_dumptime_verification_states(_klass)) {
-      assert(PreloadSharedClasses, "sanity");
+      assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
       // If the verification states are preserved, _klass will be archived in unlinked state. This is
       // necessary to support the following scenario, where the verification of X requires that
       // A be a subclass of B:

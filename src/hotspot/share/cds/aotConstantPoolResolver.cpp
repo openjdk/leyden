@@ -125,7 +125,7 @@ bool AOTConstantPoolResolver::is_class_resolution_deterministic(InstanceKlass* c
       return true;
     }
 
-    if (!PreloadSharedClasses && AOTClassLinker::is_vm_class(ik)) {
+    if (!CDSConfig::is_dumping_aot_linked_classes() && AOTClassLinker::is_vm_class(ik)) {
       if (ik->class_loader() != cp_holder->class_loader()) {
         // At runtime, cp_holder() may not be able to resolve to the same
         // ik. For example, a different version of ik may be defined in
@@ -134,7 +134,7 @@ bool AOTConstantPoolResolver::is_class_resolution_deterministic(InstanceKlass* c
       } else {
         return true;
       }
-    } else if (PreloadSharedClasses && AOTClassLinker::try_add_candidate(ik)) {
+    } else if (CDSConfig::is_dumping_aot_linked_classes() && AOTClassLinker::try_add_candidate(ik)) {
       return true;
     }
   } else if (resolved_class->is_objArray_klass()) {
@@ -233,7 +233,7 @@ void AOTConstantPoolResolver::resolve_string(constantPoolHandle cp, int cp_index
 #endif
 
 void AOTConstantPoolResolver::preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
-  if (!PreloadSharedClasses) {
+  if (!CDSConfig::is_dumping_aot_linked_classes()) {
     return;
   }
   if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data())) {

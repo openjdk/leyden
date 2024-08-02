@@ -1809,6 +1809,9 @@ void MetaspaceShared::initialize_shared_spaces() {
     dynamic_mapinfo->unmap_region(MetaspaceShared::bm);
   }
 
+  log_info(cds)("Using AOT-linked classes: %s",
+                CDSConfig::is_using_aot_linked_classes() ? "true" : "false");
+
   // Set up LambdaFormInvokers::_lambdaform_lines for dynamic dump
   if (CDSConfig::is_dumping_dynamic_archive()) {
     // Read stored LF format lines stored in static archive

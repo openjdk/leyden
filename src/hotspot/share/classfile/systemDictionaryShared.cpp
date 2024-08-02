@@ -832,8 +832,9 @@ bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbo
     // verified during dump time. No need to record constraints as k won't be included in the dynamic archive.
     return false;
   }
-  if (PreloadSharedClasses && is_builtin(k)) {
+  if (CDSConfig::is_dumping_aot_linked_classes() && is_builtin(k)) {
     // There's no need to save verification constraints
+    // TODO -- double check the logic before integrating into mainline!!
     return false;
   }
 

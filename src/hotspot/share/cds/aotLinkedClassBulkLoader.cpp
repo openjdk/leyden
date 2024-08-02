@@ -93,7 +93,7 @@ void AOTLinkedClassBulkLoader::serialize(SerializeClosure* soc, bool is_static_a
 }
 
 bool AOTLinkedClassBulkLoader::class_preloading_finished() {
-  if (!CDSConfig::has_preloaded_classes()) {
+  if (!CDSConfig::is_using_aot_linked_classes()) {
     return true;
   } else {
     // The ConstantPools of preloaded classes have references to other preloaded classes. We don't
@@ -140,7 +140,7 @@ void AOTLinkedClassBulkLoader::load_app_classes(JavaThread* current) {
 }
 
 void AOTLinkedClassBulkLoader::load_impl(JavaThread* current, LoaderKind loader_kind, oop class_loader_oop) {
-  if (!CDSConfig::has_preloaded_classes()) {
+  if (!CDSConfig::is_using_aot_linked_classes()) {
     return;
   }
 
@@ -375,7 +375,7 @@ void AOTLinkedClassBulkLoader::replay_training_at_init(Array<InstanceKlass*>* cl
 }
 
 void AOTLinkedClassBulkLoader::replay_training_at_init_for_preloaded_classes(TRAPS) {
-  if (CDSConfig::has_preloaded_classes() && TrainingData::have_data()) {
+  if (CDSConfig::is_using_aot_linked_classes() && TrainingData::have_data()) {
     AOTLinkedClassTable* table = AOTLinkedClassTable::for_static_archive(); // not applicable for dynamic archive (?? why??)
     replay_training_at_init(table->boot(),     CHECK);
     replay_training_at_init(table->boot2(),    CHECK);
