@@ -27,7 +27,7 @@
 
 /*
  * @test id=static
- * @requires vm.cds
+ * @requires vm.cds.supports.aot.class.linking
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build EarlyClassLoading
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar EarlyClassLoadingApp.jar EarlyClassLoadingApp
@@ -36,7 +36,7 @@
 
 /*
  * @test id=dynamic
- * @requires vm.cds
+ * @requires vm.cds.supports.aot.class.linking
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build EarlyClassLoading
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar EarlyClassLoadingApp.jar EarlyClassLoadingApp

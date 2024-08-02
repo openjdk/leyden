@@ -25,7 +25,7 @@
 /*
  * @test
  * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
+ * @requires vm.cds.supports.aot.class.linking
  * @summary Test for verification of classes that are preloaded
  * @library /test/jdk/lib/testlibrary
  *          /test/lib
