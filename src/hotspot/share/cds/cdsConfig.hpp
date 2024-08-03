@@ -112,9 +112,9 @@ public:
   static bool is_logging_lambda_form_invokers()              NOT_CDS_RETURN_(false);
   static bool is_dumping_regenerated_lambdaform_invokers()   NOT_CDS_RETURN_(false);
 
-  static bool is_dumping_aot_linked_classes()                NOT_CDS_RETURN_(false);
-  static bool is_using_aot_linked_classes()                  NOT_CDS_RETURN_(false);
-  static void set_has_aot_linked_classes(bool is_static_archive, bool has_aot_linked_classes) NOT_CDS_RETURN;
+  static bool is_dumping_aot_linked_classes()                NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_using_aot_linked_classes()                  NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static void set_has_aot_linked_classes(bool is_static_archive, bool has_aot_linked_classes) NOT_CDS_JAVA_HEAP_RETURN;
 
   // archive_path
 
