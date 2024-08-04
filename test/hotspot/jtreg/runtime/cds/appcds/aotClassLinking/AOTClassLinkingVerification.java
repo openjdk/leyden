@@ -23,7 +23,9 @@
  */
 
 /*
- * @test
+ * @test In Leyden repo, classes that are linked during the assembly phase can
+ *       skip verification constraint checks. See JDK-8317269.
+ *       NOTE: this feature is not included when JDK-8315737 is upstreamed to the mainline.
  * @requires vm.cds
  * @requires vm.cds.supports.aot.class.linking
  * @summary Test for verification of classes that are preloaded
@@ -32,10 +34,10 @@
  *          /test/hotspot/jtreg/runtime/cds/appcds
  *          /test/hotspot/jtreg/runtime/cds/appcds/test-classes
  * @build GoodOldClass BadOldClass BadOldClass2 BadNewClass BadNewClass2
- * @build PreloadedClassesVerification
+ * @build AOTClassLinkingVerification
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar WhiteBox.jar jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app1.jar
- *                 PreloadedClassesVerificationApp
+ *                 AOTClassLinkingVerificationApp
  *                 Unlinked UnlinkedSuper
  *                 BadOldClass
  *                 BadOldClass2
@@ -46,7 +48,7 @@
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app2.jar
  *                 UnlinkedSub
  *                 Foo NotFoo
- * @run driver PreloadedClassesVerification
+ * @run driver AOTClassLinkingVerification
  */
 
 import java.io.File;
@@ -54,12 +56,12 @@ import java.lang.invoke.MethodHandles;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.whitebox.WhiteBox;
 
-public class PreloadedClassesVerification {
+public class AOTClassLinkingVerification {
     static final String app1Jar = ClassFileInstaller.getJarPath("app1.jar");
     static final String app2Jar = ClassFileInstaller.getJarPath("app2.jar");
     static final String wbJar = TestCommon.getTestJar("WhiteBox.jar");
     static final String bootAppendWhiteBox = "-Xbootclasspath/a:" + wbJar;
-    static final String mainClass = PreloadedClassesVerificationApp.class.getName();
+    static final String mainClass = AOTClassLinkingVerificationApp.class.getName();
 
     public static void main(String[] args) throws Exception {
         // Dump without app2.jar so:
@@ -76,21 +78,21 @@ public class PreloadedClassesVerification {
                                                      "BadNewClass2",
                                                      "GoodOldClass"),
                             bootAppendWhiteBox,
-                            "-XX:+PreloadSharedClasses",
+                            "-XX:+AOTClassLinking",
                             "-Xlog:cds+class=debug");
 
         TestCommon.run("-cp", app1Jar + File.pathSeparator + app2Jar,
                        "-XX:+UnlockDiagnosticVMOptions",
                        "-XX:+WhiteBoxAPI",
                        bootAppendWhiteBox,
-                       "PreloadedClassesVerificationApp", app1Jar)
+                       "AOTClassLinkingVerificationApp", app1Jar)
             .assertNormalExit();
     }
 }
 
-class PreloadedClassesVerificationApp {
+class AOTClassLinkingVerificationApp {
     static WhiteBox wb = WhiteBox.getWhiteBox();
-    static ClassLoader classLoader = PreloadedClassesVerificationApp.class.getClassLoader();
+    static ClassLoader classLoader = AOTClassLinkingVerificationApp.class.getClassLoader();
     static File app1Jar;
 
     public static void main(String[] args) throws Exception {

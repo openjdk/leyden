@@ -97,13 +97,21 @@ public class ClassFileLoadHookTest {
                 "" + ClassFileLoadHook.TestCaseId.SHARING_ON_CFLH_ON);
         TestCommon.checkExec(out);
 
-        // Leyden: if dumped with -XX:+PreloadSharedClasses, cannot use archive when CFLH
-        TestCommon.testDump(appJar, sharedClasses, "-XX:+PreloadSharedClasses");
+        // Leyden: if dumped with -XX:+AOTClassLinking, cannot use archive when CFLH
+        TestCommon.testDump(appJar, sharedClasses, useWb, "-XX:+AOTClassLinking");
         out = TestCommon.exec(appJar,
+                "-XX:+UnlockDiagnosticVMOptions",
+                "-XX:+WhiteBoxAPI", useWb,
                 "-agentlib:SimpleClassFileLoadHook=LoadMe,beforeHook,after_Hook",
+                "-Xlog:cds",
                 "ClassFileLoadHook",
                 "" + ClassFileLoadHook.TestCaseId.SHARING_ON_CFLH_ON);
-        out.shouldContain("CDS archive has preloaded classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
-        out.shouldNotHaveExitValue(0);
+        if (out.contains("Using AOT-linked classes: false")) {
+            // We are running with VM options that do not support -XX:+AOTClassLinking
+            out.shouldHaveExitValue(0);
+        } else {
+            out.shouldContain("CDS archive has preloaded classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
+            out.shouldNotHaveExitValue(0);
+        }
     }
 }

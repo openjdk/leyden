@@ -65,7 +65,7 @@ public class StringConcatStress2 {
 
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
-                "-XX:+PreloadSharedClasses",
+                "-XX:+AOTClassLinking",
                 "-XX:+ArchiveInvokeDynamic"
             };
         }

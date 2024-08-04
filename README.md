@@ -39,13 +39,12 @@ We have implemented the following improvements over the JDK main-line:
   - This feature is accessed with the new VM flag `-XX:CacheDataStore`.
   - This option simplifies the creation of the CDS archive, and also the testing
   of all the prototype features listed here.
-- <b>[Loaded Classes in CDS Archives (JDK-8315737)](https://openjdk.org/jeps/8315737)</b>:
+- <b>[Ahead-of-Time Class Loading & Linking (JDK-8315737)](https://openjdk.org/jeps/8315737)</b>:
   This gives
-  the JVM the ability to put classes in the <i>loaded</i> state as soon the application starts up. As a result,
+  the JVM the ability to put classes in the <i>linked</i> state as soon the application starts up. As a result,
   we can implement many other time shifting optimizations with considerably simplified assumptions.
-  - This feature is accessed with the new VM flag `-XX:+PreloadSharedClasses`.
-  (Note that this flag will be renamed when JDK-8315737
-    is integrated into the JDK main-line).
+  - This feature is accessed with the new VM flag `-XX:+AOTClassLinking`.
+  (Note that this flag was called `-XX:+PreloadSharedClasses` in the first Leyden EA release).
 - <b>[Method Profiles in CDS Archives (JDK-8325147)](https://openjdk.org/jeps/8325147)</b>: We store method profiles
   from training runs in the CDS archive, thereby enabling the JIT to begin compiling earlier during warmup.
   As a result, Java application can reach peak performance faster.

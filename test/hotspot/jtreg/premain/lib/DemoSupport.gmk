@@ -122,7 +122,7 @@ ${DEMO_CLASSLIST}: ${DEMO_JAR}
 ${DEMO_JSA}: ${DEMO_CLASSLIST}
 	rm -f ${DEMO_JSA}.log
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${DEMO_CLASSLIST} -XX:SharedArchiveFile=${DEMO_JSA} \
-	    -XX:+PreloadSharedClasses \
+	    -XX:+AOTClassLinking \
 	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_JSA}.log \
 	    ${DEMO_CMDLINE}
 

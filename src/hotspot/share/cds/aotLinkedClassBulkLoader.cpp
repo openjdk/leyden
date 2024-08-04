@@ -338,7 +338,7 @@ void AOTLinkedClassBulkLoader::jvmti_agent_error(InstanceKlass* expected, Instan
   ResourceMark rm;
   log_error(cds)("Unable to resolve %s class from CDS archive: %s", type, expected->external_name());
   log_error(cds)("Expected: " INTPTR_FORMAT ", actual: " INTPTR_FORMAT, p2i(expected), p2i(actual));
-  log_error(cds)("JVMTI class retransformation is not supported when archive was generated with -XX:+PreloadSharedClasses.");
+  log_error(cds)("JVMTI class retransformation is not supported when archive was generated with -XX:+AOTClassLinking.");
   MetaspaceShared::unrecoverable_loading_error();
 }
 

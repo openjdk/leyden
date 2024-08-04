@@ -468,23 +468,23 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       RequireSharedSpaces = true;
     }
 
-    if (FLAG_IS_DEFAULT(PreloadSharedClasses)) {
-      // New workflow - enable PreloadSharedClasses by default.
-      // TODO: make new workflow work, even when PreloadSharedClasses is false.
+    if (FLAG_IS_DEFAULT(AOTClassLinking)) {
+      // New workflow - enable AOTClassLinking by default.
+      // TODO: make new workflow work, even when AOTClassLinking is false.
       //
-      // NOTE: in old workflow, we cannot enable PreloadSharedClasses by default. That
+      // NOTE: in old workflow, we cannot enable AOTClassLinking by default. That
       // should be an opt-in option, per JEP nnn.
-      FLAG_SET_ERGO(PreloadSharedClasses, true);
+      FLAG_SET_ERGO(AOTClassLinking, true);
     }
 
     if (SharedArchiveFile != nullptr) {
       vm_exit_during_initialization("CacheDataStore and SharedArchiveFile cannot be both specified");
     }
-    if (!PreloadSharedClasses) {
+    if (!AOTClassLinking) {
       // TODO: in the forked JVM, we should ensure all classes are loaded from the hotspot.cds.preimage.
-      // PreloadSharedClasses only loads the classes for built-in loaders. We need to load the classes
+      // AOTClassLinking only loads the classes for built-in loaders. We need to load the classes
       // for custom loaders as well.
-      vm_exit_during_initialization("CacheDataStore requires PreloadSharedClasses");
+      vm_exit_during_initialization("CacheDataStore requires AOTClassLinking");
     }
 
     if (CDSPreimage == nullptr) {
@@ -545,7 +545,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
   }
 
   if (FLAG_IS_DEFAULT(UsePermanentHeapObjects)) {
-    if (StoreCachedCode || PreloadSharedClasses) {
+    if (StoreCachedCode || AOTClassLinking) {
       FLAG_SET_ERGO(UsePermanentHeapObjects, true);
     }
   }
@@ -555,8 +555,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     UsePermanentHeapObjects = true;
   }
 
-  if (PreloadSharedClasses) {
-    // If PreloadSharedClasses is specified, enable all these optimizations by default.
+  if (AOTClassLinking) {
+    // If AOTClassLinking is specified, enable all these optimizations by default.
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveFieldReferences, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveInvokeDynamic, true);
@@ -566,7 +566,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveProtectionDomains, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
   } else {
-    // All of these *might* depend on PreloadSharedClasses. Better be safe than sorry.
+    // All of these *might* depend on AOTClassLinking. Better be safe than sorry.
     // TODO: more fine-grained handling.
     FLAG_SET_ERGO(ArchiveDynamicProxies, false);
     FLAG_SET_ERGO(ArchiveFieldReferences, false);
@@ -641,14 +641,14 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     }
   }
 
-  if (PreloadSharedClasses) {
+  if (AOTClassLinking) {
     if ((is_dumping_preimage_static_archive() && !is_using_optimized_module_handling()) ||
         (is_dumping_final_static_archive()    && !is_dumping_full_module_graph())) {
       if (bad_module_prop_key != nullptr) {
         log_warning(cds)("optimized module handling/full module graph: disabled due to incompatible property: %s=%s",
                          bad_module_prop_key, bad_module_prop_value);
       }
-      vm_exit_during_initialization("CacheDataStore cannot be created because PreloadSharedClasses is enabled but full module graph is disabled");
+      vm_exit_during_initialization("CacheDataStore cannot be created because AOTClassLinking is enabled but full module graph is disabled");
     }
   }
 
@@ -762,11 +762,11 @@ void CDSConfig::stop_using_full_module_graph(const char* reason) {
 
 bool CDSConfig::is_dumping_aot_linked_classes() {
   if (is_dumping_preimage_static_archive()) {
-    return PreloadSharedClasses; // FIXME rename flag
+    return AOTClassLinking;
   } else if (is_dumping_dynamic_archive()) {
-    return is_using_full_module_graph() && PreloadSharedClasses; // FIXME rename flag
+    return is_using_full_module_graph() && AOTClassLinking;
   } else if (is_dumping_static_archive()) {
-    return is_dumping_full_module_graph() && PreloadSharedClasses; // FIXME rename flag
+    return is_dumping_full_module_graph() && AOTClassLinking;
   } else {
     return false;
   }

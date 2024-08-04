@@ -68,7 +68,7 @@ public class LeydenAndOldClasses {
                 out.shouldContain("OldClass@");
             } else if (runMode == RunMode.TRAINING || runMode == RunMode.TRAINING0 || runMode == RunMode.TRAINING1) {
                 // !!! Leyden Repo Only !!!
-                // When PreloadSharedClasses is enabled, we can safely archive old classes. See comments around
+                // When AOTClassLinking is enabled, we can safely archive old classes. See comments around
                 // CDSConfig::preserve_all_dumptime_verification_states().
                 out.shouldMatch("cds,class.* = 0x.* app *OldClass preloaded");
             }

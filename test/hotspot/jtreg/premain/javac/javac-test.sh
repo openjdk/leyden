@@ -322,7 +322,7 @@ JSA=javac-static${JSA_SUFFIX}.jsa
 CMD="$JVM_AND_ARGS \
     -Xshare:dump -XX:SharedArchiveFile=$JSA \
     -XX:SharedClassListFile=javac.classlist \
-    -XX:+PreloadSharedClasses \
+    -XX:+AOTClassLinking \
     -cp JavacBench.jar \
     -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=javac.staticdump.log::filesize=0"
 test-info "(STEP 2 of 5) Create Static $JSA" &&

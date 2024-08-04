@@ -463,7 +463,7 @@ hotspot_appcds_dynamic = \
  -runtime/cds/appcds/leyden/LeydenReflection.java \
  -runtime/cds/appcds/leyden/LeydenReflectionOldWF.java \
  -runtime/cds/appcds/methodHandles \
- -runtime/cds/appcds/preloadedClasses/EarlyClassLoading.java \
+ -runtime/cds/appcds/aotClassLinking/BulkLoaderTest.java \
  -runtime/cds/appcds/sharedStrings \
  -runtime/cds/appcds/resolvedConstants \
  -runtime/cds/appcds/ArchiveRelocationTest.java \

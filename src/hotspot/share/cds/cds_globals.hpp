@@ -127,7 +127,7 @@
           "child process to create the final image.")                       \
                                                                             \
   /* To be renamed to CDSLoadedClasses */                                   \
-  product(bool, PreloadSharedClasses, false,                                \
+  product(bool, AOTClassLinking, false,                                     \
           "Load all shared classes for the boot/platform/app loaders "      \
           "immediately at VM start-up")                                     \
                                                                             \

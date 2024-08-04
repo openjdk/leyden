@@ -22,37 +22,42 @@
  *
  */
 
-// AOT-linked classes are loaded into the VM early, before the module system is initialized. Make sure
-// that the Module, Package, CodeSource and ProtectionDomain of these classes are set up properly.
+// AOT-linked classes are loaded during VM bootstrap by the C++ class AOTLinkedClassBulkLoader.
+// Make sure that the Module, Package, CodeSource and ProtectionDomain of these classes are
+// set up properly.
 
 /*
  * @test id=static
  * @requires vm.cds.supports.aot.class.linking
  * @library /test/jdk/lib/testlibrary /test/lib
- * @build EarlyClassLoading
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar EarlyClassLoadingApp.jar EarlyClassLoadingApp
- * @run driver EarlyClassLoading STATIC
+ * @build BulkLoaderTest
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar BulkLoaderTestApp.jar BulkLoaderTestApp MyUtil
+ * @run driver BulkLoaderTest STATIC
  */
 
 /*
  * @test id=dynamic
  * @requires vm.cds.supports.aot.class.linking
  * @library /test/jdk/lib/testlibrary /test/lib
- * @build EarlyClassLoading
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar EarlyClassLoadingApp.jar EarlyClassLoadingApp
- * @run driver EarlyClassLoading DYNAMIC
+ * @build BulkLoaderTest
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar BulkLoaderTestApp.jar BulkLoaderTestApp MyUtil
+ * @run driver BulkLoaderTest DYNAMIC
  */
 
 import java.io.File;
+import java.lang.StackWalker.StackFrame;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.Set;
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
 
-public class EarlyClassLoading {
-    static final String appJar = ClassFileInstaller.getJarPath("EarlyClassLoadingApp.jar");
-    static final String mainClass = "EarlyClassLoadingApp";
+public class BulkLoaderTest {
+    static final String appJar = ClassFileInstaller.getJarPath("BulkLoaderTestApp.jar");
+    static final String mainClass = "BulkLoaderTestApp";
 
     public static void main(String[] args) throws Exception {
         test(args, true);
@@ -107,7 +112,8 @@ public class EarlyClassLoading {
         public String[] vmArgs(RunMode runMode) {
             String which =  archivePackageOopssAndProtectionDomains ? "+" : "-";
             return new String[] {
-                "-XX:+PreloadSharedClasses",
+                "-XX:+AOTClassLinking",
+                "-XX:+ArchiveInvokeDynamic",
                 "-XX:" + which + "ArchivePackages",
                 "-XX:" + which + "ArchiveProtectionDomains"
             };
@@ -125,7 +131,7 @@ public class EarlyClassLoading {
 // FIXME -- test hidden classes in boot2 (with a lambda expr in boot classpath)
 // FIXME -- test hidden classes in app (with a lambda expr in app classpath)
 
-class EarlyClassLoadingApp {
+class BulkLoaderTestApp {
     static String allPerms = "null.*<no principals>.*java.security.Permissions.*,*java.security.AllPermission.*<all permissions>.*<all actions>";
 
     public static void main(String args[]) throws Exception {
@@ -152,13 +158,13 @@ class EarlyClassLoadingApp {
               "jdk.internal.loader.ClassLoaders[$]PlatformClassLoader.*<no principals>.*java.security.Permissions.*"
               + "java.lang.RuntimePermission.*accessSystemModules");
 
-        check(EarlyClassLoadingApp.class,
+        check(BulkLoaderTestApp.class,
               "jdk.internal.loader.ClassLoaders[$]AppClassLoader@",
               "^unnamed module @",
               "package ",
-              "file:.*EarlyClassLoadingApp.jar <no signer certificates>",
+              "file:.*BulkLoaderTestApp.jar <no signer certificates>",
               "jdk.internal.loader.ClassLoaders[$]AppClassLoader.*<no principals>.*java.security.Permissions.*"
-              + "java.io.FilePermission.*EarlyClassLoadingApp.jar.*read");
+              + "java.io.FilePermission.*BulkLoaderTestApp.jar.*read");
 
         check(Class.forName("com.sun.tools.javac.Main"),
               "jdk.internal.loader.ClassLoaders[$]AppClassLoader@",
@@ -167,6 +173,22 @@ class EarlyClassLoadingApp {
               "jrt:/jdk.compiler <no signer certificates>",
               "jdk.internal.loader.ClassLoaders[$]AppClassLoader.*<no principals>.*java.security.Permissions.*"
               + "java.lang.RuntimePermission.*accessSystemModules");
+
+/*
+  FIXME - not working with -XX:+ArchiveInvokeDynamic
+
+        doit(() -> {
+            Class<?> lambdaClass = MyUtil.getCallerClass(1);
+            check(lambdaClass,
+              "jdk.internal.loader.ClassLoaders[$]AppClassLoader@",
+              "unnamed module",
+              "package ",
+              "file:.*BulkLoaderTestApp.jar <no signer certificates>",
+              "jdk.internal.loader.ClassLoaders[$]AppClassLoader.*<no principals>.*java.security.Permissions.*"
+              + "java.io.FilePermission.*BulkLoaderTestApp.jar.*read");
+
+          });
+*/
     }
 
     static void check(Class c, String loader, String module, String pkg, String codeSource, String protectionDomain) {
@@ -194,5 +216,22 @@ class EarlyClassLoadingApp {
         if (!matcher.find()) {
             throw new RuntimeException("Expected pattern \"" + pattern + "\" but got \"" + string + "\"");
         }
+    }
+
+    static void doit(Runnable t) {
+        t.run();
+    }
+}
+
+class MyUtil {
+    // depth is 0-based -- i.e., depth==0 returns the class of the immediate caller of getCallerClass
+    static Class<?> getCallerClass(int depth) {
+        // Need to add the frame of the getCallerClass -- so the immediate caller (depth==0) of this method
+        // is at stack.get(1) == stack.get(depth+1);
+        StackWalker walker = StackWalker.getInstance(
+            Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE,
+                   StackWalker.Option.SHOW_HIDDEN_FRAMES));
+        List<StackFrame> stack = walker.walk(s -> s.limit(depth+2).collect(Collectors.toList()));
+        return stack.get(depth+1).getDeclaringClass();
     }
 }

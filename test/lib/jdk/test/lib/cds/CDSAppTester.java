@@ -219,7 +219,7 @@ abstract public class CDSAppTester {
                                                              "cds+resolve=debug"));
         if (isLeydenOldWorkflow()) {
             cmdLine = StringArrayUtils.concat(cmdLine,
-                                              "-XX:+PreloadSharedClasses",
+                                              "-XX:+AOTClassLinking",
                                               "-XX:+ArchiveInvokeDynamic",
                                               "-XX:+ArchiveDynamicProxies",
                                               "-XX:+ArchiveReflectionData");
@@ -303,7 +303,7 @@ abstract public class CDSAppTester {
         File f = new File(cdsFile);
         f.delete();
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
-                                                   "-XX:+PreloadSharedClasses",
+                                                   "-XX:+AOTClassLinking",
                                                    "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
@@ -327,7 +327,7 @@ abstract public class CDSAppTester {
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:+CDSManualFinalImage",
-                                                   "-XX:+PreloadSharedClasses",
+                                                   "-XX:+AOTClassLinking",
                                                    "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
@@ -343,7 +343,7 @@ abstract public class CDSAppTester {
         f.delete();
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-XX:+UnlockDiagnosticVMOptions",
-                                                   "-XX:+PreloadSharedClasses",
+                                                   "-XX:+AOTClassLinking",
                                                    "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",

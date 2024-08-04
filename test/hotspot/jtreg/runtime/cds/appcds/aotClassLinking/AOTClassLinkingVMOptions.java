@@ -26,19 +26,19 @@
  * @test
  * @requires vm.cds
  * @requires vm.flagless
- * @summary Disable CDS when incompatible options related to PreloadSharedClasses are used
+ * @summary Disable CDS when incompatible options related to AOTClassLinking are used
  * @library /test/jdk/lib/testlibrary
  *          /test/lib
  *          /test/hotspot/jtreg/runtime/cds/appcds
  *          /test/hotspot/jtreg/runtime/cds/appcds/test-classes
  * @build Hello
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar Hello
- * @run driver PreloadedClassesVMOptions
+ * @run driver AOTClassLinkingVMOptions
  */
 
 import jdk.test.lib.helpers.ClassFileInstaller;
 
-public class PreloadedClassesVMOptions {
+public class AOTClassLinkingVMOptions {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
 
     static int testCaseNum = 0;
@@ -49,7 +49,7 @@ public class PreloadedClassesVMOptions {
 
     public static void main(String[] args) throws Exception {
         TestCommon.testDump(appJar, TestCommon.list("Hello"),
-                            "-XX:+PreloadSharedClasses");
+                            "-XX:+AOTClassLinking");
 
         testCase("Archived full module graph must be enabled at runtime");
         TestCommon.run("-cp", appJar, "-Djdk.module.validation=1", "Hello")
@@ -62,7 +62,7 @@ public class PreloadedClassesVMOptions {
             .assertAbnormalExit("CDS archive has preloaded classes." +
                                 " It cannot be used because GC used during dump time (G1) is not the same as runtime (Serial)");
 
-        // NOTE: tests for ClassFileLoadHook + PreloadSharedClasses is in 
+        // NOTE: tests for ClassFileLoadHook + AOTClassLinking is in 
         // ../jvmti/ClassFileLoadHookTest.java
     }
 }

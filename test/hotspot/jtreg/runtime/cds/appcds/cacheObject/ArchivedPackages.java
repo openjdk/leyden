@@ -62,7 +62,7 @@ public class ArchivedPackages {
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
                 "-Dcds.debug.archived.packages=true",
-                "-XX:+PreloadSharedClasses",
+                "-XX:+AOTClassLinking",
                 "-XX:+ArchivePackages"
             };
         }

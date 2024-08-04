@@ -139,11 +139,12 @@ static ArchivableStaticFieldInfo archive_subgraph_entry_fields[] = {
   {"java/util/ImmutableCollections",              "archivedObjects"},
   {"java/lang/ModuleLayer",                       "EMPTY_LAYER"},
   {"java/lang/module/Configuration",              "EMPTY_CONFIGURATION"},
-  {"jdk/internal/math/FDBigInteger",              "archivedCaches"},
-  {"java/lang/invoke/DirectMethodHandle",         "archivedObjects"},  // FIXME -- requires PreloadSharedClasses
-  {"java/lang/invoke/MethodType",                 "archivedObjects"},  // FIXME -- requires PreloadSharedClasses
-  {"java/lang/invoke/LambdaForm$NamedFunction",   "archivedObjects"},  // FIXME -- requires PreloadSharedClasses
-  {"java/lang/reflect/Proxy$ProxyBuilder",        "archivedData"},     // FIXME -- requires PreloadSharedClasses
+  {"jdk/internal/math/FDBigInteger",              "archivedCaches"},  // FIXME -- requires AOTClassLinking
+  {"java/lang/invoke/DirectMethodHandle",         "archivedObjects"}, // FIXME -- requires AOTClassLinking
+  {"java/lang/invoke/MethodType",                 "archivedObjects"}, // FIXME -- requires AOTClassLinking
+  {"java/lang/invoke/LambdaForm$NamedFunction",   "archivedObjects"}, // FIXME -- requires AOTClassLinking
+  {"java/lang/reflect/Proxy$ProxyBuilder",        "archivedData"},    // FIXME -- requires AOTClassLinking
+
 #ifndef PRODUCT
   {nullptr, nullptr}, // Extra slot for -XX:ArchiveHeapTestClass
 #endif
