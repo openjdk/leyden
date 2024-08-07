@@ -213,10 +213,6 @@ public class IndyTestBase {
                 aotOpts.setBenchmarkMode(true);
                 aotOpts.addPrefix("-Xlog:cds=debug", "-Xlog:scc");
             } else {
-                // Tell CDSTestUtils to not add the -XX:VerifyArchivedFields=1 flag, which seems to be causing a crash
-                // in the AOT code.
-                aotOpts.setBenchmarkMode(true);
-
                 aotOpts.addPrefix("-Xlog:class+load", "-Xlog:cds=debug", "-Xlog:scc+init,scc+exit");
                 if (mainClass.equals("ConcatA")) {
                     // Hard-code the printing of loopA for now

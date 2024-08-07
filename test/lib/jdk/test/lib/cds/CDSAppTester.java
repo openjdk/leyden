@@ -279,6 +279,8 @@ abstract public class CDSAppTester {
     private OutputAnalyzer oldProductionRun() throws Exception {
         RunMode runMode = RunMode.PRODUCTION;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
+                                                   "-XX:+UnlockDiagnosticVMOptions",
+                                                   "-XX:VerifyArchivedFields=2", // make sure archived heap objects are good.
                                                    "-XX:SharedArchiveFile=" + dynamicArchiveFile,
                                                    "-XX:+ReplayTraining",
                                                    "-XX:+LoadCachedCode",
@@ -368,6 +370,8 @@ abstract public class CDSAppTester {
     public OutputAnalyzer productionRun(String[] extraVmArgs, String[] extraAppArgs) throws Exception {
         RunMode runMode = RunMode.PRODUCTION;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
+                                                   "-XX:+UnlockDiagnosticVMOptions",
+                                                   "-XX:VerifyArchivedFields=2", // make sure archived heap objects are good.
                                                    "-cp", classpath(runMode),
                                                    logToFile(productionRunLog(), "cds"));
 
