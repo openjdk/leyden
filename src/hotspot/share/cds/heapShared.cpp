@@ -272,7 +272,7 @@ objArrayOop HeapShared::roots() {
   return roots;
 }
 
-static unsigned int oop_handle_hash(const OopHandle& oh) {
+inline unsigned int oop_handle_hash(const OopHandle& oh) {
   oop o = oh.resolve();
   if (o == nullptr) {
     return 0;
@@ -281,7 +281,7 @@ static unsigned int oop_handle_hash(const OopHandle& oh) {
   }
 }
 
-static bool oop_handle_equals(const OopHandle& a, const OopHandle& b) {
+inline bool oop_handle_equals(const OopHandle& a, const OopHandle& b) {
   return a.resolve() == b.resolve();
 }
 
@@ -762,7 +762,6 @@ void HeapShared::find_archivable_hidden_classes_helper(ArchivableStaticFieldInfo
   if (!CDSConfig::is_dumping_heap()) {
     return;
   }
-  int i;
   for (int i = 0; fields[i].valid(); ) {
     ArchivableStaticFieldInfo* info = &fields[i];
     const char* klass_name = info->klass_name;
@@ -2158,7 +2157,6 @@ void HeapShared::archive_object_subgraphs(ArchivableStaticFieldInfo fields[],
   //     by any of these static fields.
   //     At runtime, these classes are initialized before X's archived fields
   //     are restored by HeapShared::initialize_from_archived_subgraph().
-  int i;
   for (int i = 0; fields[i].valid(); ) {
     ArchivableStaticFieldInfo* info = &fields[i];
     const char* klass_name = info->klass_name;
