@@ -57,6 +57,7 @@ public class AOTFlags {
 
         OutputAnalyzer out = CDSTestUtils.executeAndLog(pb, "train");
         out.shouldContain("Hello World");
+        out.shouldHaveExitValue(0);
 
         // (2) Assembly Phase
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -68,6 +69,7 @@ public class AOTFlags {
         out = CDSTestUtils.executeAndLog(pb, "asm");
         out.shouldContain("Dumping shared data to file:");
         out.shouldMatch("cds.*hello[.]aot");
+        out.shouldHaveExitValue(0);
 
         // (3) Production Run with AOTCache
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -77,6 +79,7 @@ public class AOTFlags {
         out = CDSTestUtils.executeAndLog(pb, "prod");
         out.shouldContain("Opened archive hello.aot.");
         out.shouldContain("Hello World");
+        out.shouldHaveExitValue(0);
 
         // (4) AOTMode=off
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -89,6 +92,7 @@ public class AOTFlags {
         out.shouldNotContain(", sharing");
         out.shouldNotContain("Opened archive hello.aot.");
         out.shouldContain("Hello World");
+        out.shouldHaveExitValue(0);
 
         // (5) AOTMode=auto
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -101,6 +105,7 @@ public class AOTFlags {
         out.shouldContain(", sharing");
         out.shouldContain("Opened archive hello.aot.");
         out.shouldContain("Hello World");
+        out.shouldHaveExitValue(0);
     }
 
     static void negativeTests() throws Exception {
@@ -116,6 +121,7 @@ public class AOTFlags {
 
         OutputAnalyzer out = CDSTestUtils.executeAndLog(pb, "neg");
         out.shouldContain("Option AOTConfiguration" + mixOldNewErrSuffix);
+        out.shouldNotHaveExitValue(0);
 
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:SharedArchiveFile=" + aotCacheFile,
@@ -123,6 +129,7 @@ public class AOTFlags {
             "-cp", appJar, helloClass);
         out = CDSTestUtils.executeAndLog(pb, "neg");
         out.shouldContain("Option AOTCache" + mixOldNewErrSuffix);
+        out.shouldNotHaveExitValue(0);
 
         // (2) Use AOTConfiguration without AOTMode
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -130,7 +137,8 @@ public class AOTFlags {
             "-cp", appJar, helloClass);
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("AOTConfiguration can only be used only -XX:AOTMode=record or -XX:AOTMode=create");
+        out.shouldContain("AOTConfiguration can only be used with -XX:AOTMode=record or -XX:AOTMode=create");
+        out.shouldNotHaveExitValue(0);
 
         // (3) Use AOTMode without AOTConfiguration
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -146,15 +154,16 @@ public class AOTFlags {
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
         out.shouldContain("-XX:AOTMode=create cannot be used without setting AOTConfiguration");
+        out.shouldNotHaveExitValue(0);
 
         // (4) Bad AOTMode
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTMode=foo",
-            "-XX:AOTConfiguration=" + aotConfigFile,
             "-cp", appJar, helloClass);
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
         out.shouldContain("Unrecognized value foo for AOTMode. Must be one of the following: off, record, create, auto, on");
+        out.shouldNotHaveExitValue(0);
 
         // (5) AOTCache specified with -XX:AOTMode=record
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -165,6 +174,7 @@ public class AOTFlags {
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
         out.shouldContain("AOTCache must not be specified when using -XX:AOTMode=record");
+        out.shouldNotHaveExitValue(0);
 
         // (5) AOTCache not specified with -XX:AOTMode=create
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -174,7 +184,7 @@ public class AOTFlags {
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
         out.shouldContain("AOTCache must be specified when using -XX:AOTMode=create");
+        out.shouldNotHaveExitValue(0);
 
-        // (6) Bad AOTConfiguration
     }
 }

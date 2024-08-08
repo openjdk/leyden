@@ -399,17 +399,21 @@ void CDSConfig::check_flag_aliases() {
 
   if (FLAG_IS_DEFAULT(AOTMode) || strcmp(AOTMode, "auto") == 0 || strcmp(AOTMode, "on") == 0) {
     if (!FLAG_IS_DEFAULT(AOTConfiguration)) {
-      vm_exit_during_initialization("AOTConfiguration can only be used only -XX:AOTMode=record or -XX:AOTMode=create");
+      vm_exit_during_initialization("AOTConfiguration can only be used with -XX:AOTMode=record or -XX:AOTMode=create");
     }
 
     if (!FLAG_IS_DEFAULT(AOTCache)) {
-      // -XX:AOTCache=<value> (without AOTMode/AOTConfiguration) is alias for -Xshare:auto -XX:SharedArchiveFile=<value>
       assert(FLAG_IS_DEFAULT(SharedArchiveFile), "already checked");
       FLAG_SET_ERGO(SharedArchiveFile, AOTCache);
     }
 
     UseSharedSpaces = true;
-    RequireSharedSpaces = (!FLAG_IS_DEFAULT(AOTMode) && (strcmp(AOTMode, "on") == 0));
+    if (FLAG_IS_DEFAULT(AOTMode) || (strcmp(AOTMode, "auto") == 0)) {
+      RequireSharedSpaces = false;
+    } else {
+      assert(strcmp(AOTMode, "on") == 0, "already checked");
+      RequireSharedSpaces = true;
+    }
   } else if (strcmp(AOTMode, "off") == 0) {
     UseSharedSpaces = false;
     RequireSharedSpaces = false;

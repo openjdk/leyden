@@ -101,7 +101,7 @@
   /* See CDSConfig::check_flag_aliases().                               */  \
                                                                             \
   product(ccstr, AOTMode, nullptr,                                          \
-          "Specifics how AOTCache should be created or used. Valid values " \
+          "Specifies how AOTCache should be created or used. Valid values " \
           "are: off, record, create, auto, on; the default is auto")        \
           constraint(AOTModeConstraintFunc, AtParse)                        \
                                                                             \
@@ -109,7 +109,7 @@
           "Configuration information used by CreateAOTCache")               \
                                                                             \
   product(ccstr, AOTCache, nullptr,                                         \
-          "AOT Cache for improving start up and warm up")                   \
+          "Cache for improving start up and warm up")                       \
                                                                             \
                                                                             \
   /*========== New options added by Leyden =============================*/  \
