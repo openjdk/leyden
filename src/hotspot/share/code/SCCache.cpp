@@ -74,6 +74,9 @@
 #include "c1/c1_LIRAssembler.hpp"
 #include "gc/shared/c1/barrierSetC1.hpp"
 #include "gc/g1/c1/g1BarrierSetC1.hpp"
+#if INCLUDE_SHENANDOAHGC
+#include "gc/shenandoah/c1/shenandoahBarrierSetC1.hpp"
+#endif
 #include "gc/z/c1/zBarrierSetC1.hpp"
 #endif
 #ifdef COMPILER2
@@ -81,6 +84,9 @@
 #endif
 #if INCLUDE_JVMCI
 #include "jvmci/jvmci.hpp"
+#endif
+#if INCLUDE_SHENANDOAHGC
+#include "gc/shenandoah/shenandoahRuntime.hpp"
 #endif
 
 #include <sys/stat.h>
@@ -3494,11 +3500,11 @@ void SCCReader::print_on(outputStream* st) {
 
 #define _extrs_max 80
 #define _stubs_max 120
-#define _blobs_max 80
-#define _shared_blobs_max 16
+#define _blobs_max 100
+#define _shared_blobs_max 24
 #define _C2_blobs_max 21
 #define _C1_blobs_max (_blobs_max - _shared_blobs_max - _C2_blobs_max)
-#define _all_max 280
+#define _all_max 300
 
 #define SET_ADDRESS(type, addr)                           \
   {                                                       \
@@ -3537,6 +3543,18 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, CompressedOops::ptrs_base_addr());
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_post_entry);
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_pre_entry);
+
+#if INCLUDE_SHENANDOAHGC
+  SET_ADDRESS(_extrs, ShenandoahRuntime::arraycopy_barrier_oop_entry);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::arraycopy_barrier_narrow_oop_entry);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::write_ref_field_pre_entry);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_strong);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_strong_narrow);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_weak);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_weak_narrow);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_phantom);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_phantom_narrow);
+#endif
 
   SET_ADDRESS(_extrs, SharedRuntime::complete_monitor_unlocking_C);
   SET_ADDRESS(_extrs, SharedRuntime::enable_stack_reserved_zone);
@@ -3857,6 +3875,16 @@ void SCAddressTable::init_c1() {
     SET_ADDRESS(_C1_blobs, bs->_store_barrier_on_oop_field_without_healing);
   }
 #endif // INCLUDE_ZGC
+#if INCLUDE_SHENANDOAHGC
+  if (UseShenandoahGC) {
+    ShenandoahBarrierSetC1* bs = (ShenandoahBarrierSetC1*)BarrierSet::barrier_set()->barrier_set_c1();
+    SET_ADDRESS(_C1_blobs, bs->pre_barrier_c1_runtime_code_blob()->code_begin());
+    SET_ADDRESS(_C1_blobs, bs->load_reference_barrier_strong_rt_code_blob()->code_begin());
+    SET_ADDRESS(_C1_blobs, bs->load_reference_barrier_strong_native_rt_code_blob()->code_begin());
+    SET_ADDRESS(_C1_blobs, bs->load_reference_barrier_weak_rt_code_blob()->code_begin());
+    SET_ADDRESS(_C1_blobs, bs->load_reference_barrier_phantom_rt_code_blob()->code_begin());
+  }
+#endif // INCLUDE_SHENANDOAHGC
 #endif // COMPILER1
 
   assert(_C1_blobs_length <= _C1_blobs_max, "increase _C1_blobs_max to %d", _C1_blobs_length);
