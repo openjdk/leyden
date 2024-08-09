@@ -844,12 +844,13 @@ void SCCEntry::update_method_for_writing() {
 }
 
 void SCCEntry::print(outputStream* st) const {
-  st->print_cr(" SCA entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s%s]",
+  st->print_cr(" SCA entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s%s%s]",
                p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id, _decompile,
                (_not_entrant? "not_entrant" : "entrant"),
                (_loaded ? ", loaded" : ""),
                (_has_clinit_barriers ? ", has_clinit_barriers" : ""),
-               (_for_preload ? ", for_preload" : ""));
+               (_for_preload ? ", for_preload" : ""),
+               (_ignore_decompile ? ", ignore_decomp" : ""));
 }
 
 void* SCCEntry::operator new(size_t x, SCCache* cache) {
@@ -934,7 +935,8 @@ static bool check_entry(SCCEntry::Kind kind, uint id, uint comp_level, uint deco
   if (entry->kind() == kind) {
     assert(entry->id() == id, "sanity");
     if (kind != SCCEntry::Code || (!entry->not_entrant() && !entry->has_clinit_barriers() &&
-                                  (entry->comp_level() == comp_level))) {
+                                  (entry->comp_level() == comp_level) &&
+                                  (entry->ignore_decompile() || entry->decompile() == decomp))) {
       return true; // Found
     }
   }
@@ -2871,9 +2873,10 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
     const char* target_name = method->name_and_sig_as_C_string();
     uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
     bool clinit_brs = entry->has_clinit_barriers();
-    log_info(scc, nmethod)("%d (L%d): %s nmethod '%s' (decomp: %d, hash: " UINT32_FORMAT_X_0 "%s)",
+    log_info(scc, nmethod)("%d (L%d): %s nmethod '%s' (decomp: %d, hash: " UINT32_FORMAT_X_0 "%s%s)",
                            task->compile_id(), task->comp_level(), (preload ? "Preloading" : "Reading"),
-                           target_name, decomp, hash, (clinit_brs ? ", has clinit barriers" : ""));
+                           target_name, decomp, hash, (clinit_brs ? ", has clinit barriers" : ""),
+                           (entry->ignore_decompile() ? ", ignore_decomp" : ""));
   }
   ReadingMark rdmk;
   SCCReader reader(cache, entry, task);
@@ -3063,8 +3066,6 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
                      bool has_wide_vectors,
                      bool has_monitors,
                      bool has_scoped_access) {
-  CompileTask* task = ciEnv::current()->task();
-
   if (!CDSConfig::is_dumping_cached_code()) {
     return nullptr; // The metadata and heap in the CDS image haven't been finalized yet.
   }
@@ -3085,7 +3086,7 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
                                   frame_size, oop_maps, handler_table, nul_chk_table, compiler, comp_level,
                                   has_clinit_barriers, for_preload, has_unsafe_access, has_wide_vectors, has_monitors, has_scoped_access);
   if (entry == nullptr) {
-    log_info(scc, nmethod)("%d (L%d): nmethod store attempt failed", task->compile_id(), task->comp_level());
+    log_info(scc, nmethod)("%d (L%d): nmethod store attempt failed", comp_id, (int)comp_level);
   }
   return entry;
 }
@@ -3110,16 +3111,14 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
                                  bool has_wide_vectors,
                                  bool has_monitors,
                                  bool has_scoped_access) {
-  CompileTask* task = ciEnv::current()->task();
-
 //  if (method->is_hidden()) {
 //    ResourceMark rm;
-//    log_info(scc, nmethod)("%d (L%d): Skip hidden method '%s'", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string());
+//    log_info(scc, nmethod)("%d (L%d): Skip hidden method '%s'", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
 //    return nullptr;
 //  }
   if (buffer->before_expand() != nullptr) {
     ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip nmethod with expanded buffer '%s'", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string());
+    log_info(scc, nmethod)("%d (L%d): Skip nmethod with expanded buffer '%s'", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
     return nullptr;
   }
 #ifdef ASSERT
@@ -3139,12 +3138,12 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
   bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
   if (!builtin_loader) {
     ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip method '%s' loaded by custom class loader %s", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string(), holder->class_loader_data()->loader_name());
+    log_info(scc, nmethod)("%d (L%d): Skip method '%s' loaded by custom class loader %s", comp_id, (int)comp_level, method->name_and_sig_as_C_string(), holder->class_loader_data()->loader_name());
     return nullptr;
   }
   if (for_preload && !(method_in_cds && klass_in_cds)) {
     ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip method '%s' for preload: not in CDS", task->compile_id(), task->comp_level(), method->name_and_sig_as_C_string());
+    log_info(scc, nmethod)("%d (L%d): Skip method '%s' for preload: not in CDS", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
     return nullptr;
   }
   assert(!for_preload || method_in_cds, "sanity");
@@ -3154,12 +3153,21 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
   if (!align_write()) {
     return nullptr;
   }
-  _compile_id = task->compile_id();
-  _comp_level = task->comp_level();
+  _compile_id = comp_id;
+  _comp_level = (int)comp_level;
 
   uint entry_position = _write_position;
 
   uint decomp = (method->method_data() == nullptr) ? 0 : method->method_data()->decompile_count();
+
+  // Is this one-step workflow assembly phase?
+  // In this phase compilation is done based on saved profiling data
+  // without application run. Ignore decompilation counters in such case.
+  // Also ignore it for C1 code because it is decompiled unconditionally
+  // when C2 generated code is published.
+  bool ignore_decompile = (comp_level == CompLevel_limited_profile) ||
+                          CDSConfig::is_dumping_final_static_archive();
+
   // Write name
   uint name_offset = 0;
   uint name_size   = 0;
@@ -3168,8 +3176,9 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
   {
     ResourceMark rm;
     const char* name   = method->name_and_sig_as_C_string();
-    log_info(scc, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s) to Startup Code Cache '%s'",
-                           task->compile_id(), task->comp_level(), name, comp_level, decomp,
+    log_info(scc, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s%s) to Startup Code Cache '%s'",
+                           comp_id, (int)comp_level, name, comp_level, decomp,
+                           (ignore_decompile ? ", ignore_decomp" : ""),
                            (has_clinit_barriers ? ", has clinit barriers" : ""), _cache_path);
 
     LogStreamHandle(Info, scc, loader) log;
@@ -3318,7 +3327,7 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
   SCCEntry* entry = new (this) SCCEntry(entry_position, entry_size, name_offset, name_size,
                                         code_offset, code_size, reloc_offset, reloc_size,
                                         SCCEntry::Code, hash, (uint)comp_level, (uint)comp_id, decomp,
-                                        has_clinit_barriers, _for_preload);
+                                        has_clinit_barriers, _for_preload, ignore_decompile);
   if (method_in_cds) {
     entry->set_method(m);
   }
@@ -3332,7 +3341,7 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
     ResourceMark rm;
     const char* name   = method->name_and_sig_as_C_string();
     log_info(scc, nmethod)("%d (L%d): Wrote nmethod '%s'%s to Startup Code Cache '%s'",
-                           task->compile_id(), task->comp_level(), name, (_for_preload ? " (for preload)" : ""), _cache_path);
+                           comp_id, (int)comp_level, name, (_for_preload ? " (for preload)" : ""), _cache_path);
   }
   if (VerifyCachedCode) {
     return nullptr;

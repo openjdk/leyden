@@ -174,6 +174,8 @@ private:
   bool   _loaded;      // Code was loaded
   bool   _not_entrant; // Deoptimized
   bool   _load_fail;   // Failed to load due to some klass state
+  bool   _ignore_decompile; // ignore decompile counter if compilation is done
+                            // during "assembly" phase without running application
 
 public:
   SCCEntry(uint offset, uint size, uint name_offset, uint name_size,
@@ -182,7 +184,8 @@ public:
            Kind kind, uint id, uint comp_level = 0,
            uint comp_id = 0, uint decomp = 0,
            bool has_clinit_barriers = false,
-           bool for_preload = false) {
+           bool for_preload = false,
+           bool ignore_decompile = false) {
     _next         = nullptr;
     _method       = nullptr;
     _kind         = kind;
@@ -206,6 +209,7 @@ public:
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
+    _ignore_decompile = ignore_decompile;
   }
   void* operator new(size_t x, SCCache* cache);
   // Delete is a NOP
@@ -242,6 +246,7 @@ public:
   bool for_preload()  const { return _for_preload; }
   bool is_loaded()    const { return _loaded; }
   void set_loaded()         { _loaded = true; }
+  bool ignore_decompile() const { return _ignore_decompile; }
 
   bool not_entrant()  const { return _not_entrant; }
   void set_not_entrant()    { _not_entrant = true; }
