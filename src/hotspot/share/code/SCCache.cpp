@@ -3504,8 +3504,8 @@ void SCCReader::print_on(outputStream* st) {
 #define _extrs_max 80
 #define _stubs_max 120
 #define _blobs_max 80
-#define _shared_blobs_max 16
-#define _C2_blobs_max 21
+#define _shared_blobs_max 15
+#define _C2_blobs_max 22
 #define _C1_blobs_max (_blobs_max - _shared_blobs_max - _C2_blobs_max)
 #define _all_max 280
 
@@ -3784,7 +3784,6 @@ void SCAddressTable::init() {
   SET_ADDRESS(_blobs, SharedRuntime::polling_page_return_handler_blob()->entry_point());
 #ifdef COMPILER2
   SET_ADDRESS(_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
-  SET_ADDRESS(_blobs, SharedRuntime::uncommon_trap_blob()->entry_point());
 #endif
   SET_ADDRESS(_blobs, StubRoutines::throw_AbstractMethodError_entry());
   SET_ADDRESS(_blobs, StubRoutines::throw_IncompatibleClassChangeError_entry());
@@ -3801,6 +3800,7 @@ void SCAddressTable::init() {
 void SCAddressTable::init_opto() {
 #ifdef COMPILER2
   // OptoRuntime Blobs
+  SET_ADDRESS(_C2_blobs, OptoRuntime::uncommon_trap_blob()->entry_point());
   SET_ADDRESS(_C2_blobs, OptoRuntime::exception_blob()->entry_point());
   SET_ADDRESS(_C2_blobs, OptoRuntime::new_instance_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::new_array_Java());

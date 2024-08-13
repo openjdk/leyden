@@ -568,8 +568,8 @@ protected:
   NOT_PRODUCT(int _nesting;)
 
 public:
-  ReallocMark()   PRODUCT_RETURN;
-  void check()    PRODUCT_RETURN;
+  ReallocMark() PRODUCT_RETURN;
+  void check(Arena* arena = nullptr) PRODUCT_RETURN;
 };
 
 // Uses mmapped memory for all allocations. All allocations are initially

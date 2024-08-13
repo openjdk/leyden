@@ -119,7 +119,8 @@ address OptoRuntime::_notify_jvmti_vthread_mount                  = nullptr;
 address OptoRuntime::_notify_jvmti_vthread_unmount                = nullptr;
 #endif
 
-ExceptionBlob* OptoRuntime::_exception_blob;
+UncommonTrapBlob*   OptoRuntime::_uncommon_trap_blob;
+ExceptionBlob*      OptoRuntime::_exception_blob;
 
 PerfCounter* _perf_OptoRuntime_class_init_barrier_redundant_count = nullptr;
 
@@ -146,6 +147,7 @@ static bool check_compiled_frame(JavaThread* thread) {
 bool OptoRuntime::generate(ciEnv* env) {
   init_counters();
 
+  generate_uncommon_trap_blob();
   generate_exception_blob();
 
   // Note: tls: Means fetching the return oop out of the thread-local storage

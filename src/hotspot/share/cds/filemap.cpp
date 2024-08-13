@@ -2295,11 +2295,11 @@ bool FileMapInfo::map_heap_region_impl() {
   char* base;
 
   if (MetaspaceShared::use_windows_memory_mapping()) {
-    if (!read_region(MetaspaceShared::hp, addr, 
+    if (!read_region(MetaspaceShared::hp, addr,
                      align_up(_mapped_heap_memregion.byte_size(), os::vm_page_size()),
                      /* do_commit = */ true)) {
       dealloc_heap_region();
-      log_error(cds)("Failed to read archived heap region at " INTPTR_FORMAT, p2i(addr));
+      log_error(cds)("Failed to read archived heap region into " INTPTR_FORMAT, p2i(addr));
       return false;
     }
     // Checks for VerifySharedSpaces is already done inside read_region()

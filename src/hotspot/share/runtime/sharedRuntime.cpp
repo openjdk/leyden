@@ -101,10 +101,6 @@ SafepointBlob*      SharedRuntime::_polling_page_vectors_safepoint_handler_blob;
 SafepointBlob*      SharedRuntime::_polling_page_safepoint_handler_blob;
 SafepointBlob*      SharedRuntime::_polling_page_return_handler_blob;
 
-#ifdef COMPILER2
-UncommonTrapBlob*   SharedRuntime::_uncommon_trap_blob;
-#endif // COMPILER2
-
 nmethod*            SharedRuntime::_cont_doYield_stub;
 
 PerfTickCounters* SharedRuntime::_perf_resolve_opt_virtual_total_time = nullptr;
@@ -137,9 +133,6 @@ void SharedRuntime::generate_stubs() {
 
   generate_deopt_blob();
 
-#ifdef COMPILER2
-  generate_uncommon_trap_blob();
-#endif // COMPILER2
   if (UsePerfData) {
     EXCEPTION_MARK;
     NEWPERFTICKCOUNTERS(_perf_resolve_opt_virtual_total_time, SUN_CI, "resovle_opt_virtual_call");
