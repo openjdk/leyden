@@ -28,7 +28,7 @@
  *       NOTE: this feature is not included when JDK-8315737 is upstreamed to the mainline.
  * @requires vm.cds
  * @requires vm.cds.supports.aot.class.linking
- * @summary Test for verification of classes that are preloaded
+ * @summary Test for verification of classes that are aot-linked
  * @library /test/jdk/lib/testlibrary
  *          /test/lib
  *          /test/hotspot/jtreg/runtime/cds/appcds

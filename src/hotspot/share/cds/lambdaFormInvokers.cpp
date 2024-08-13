@@ -100,6 +100,15 @@ void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
     return;
   }
 
+  if (CDSConfig::is_dumping_dynamic_archive() && CDSConfig::is_dumping_aot_linked_classes() &&
+      CDSConfig::is_using_aot_linked_classes()) {
+    // The base archive may have some pre-resolved CP entries that point to the lambda form holder
+    // classes in the base archive. If we generate new versions of these classes, those CP entries
+    // will be pointing to invalid classes.
+    log_info(cds)("Base archive already have aot-linked lambda form holder classes. Cannot regenerate.");
+    return;
+  }
+
   ResourceMark rm(THREAD);
 
   Symbol* cds_name  = vmSymbols::jdk_internal_misc_CDS();

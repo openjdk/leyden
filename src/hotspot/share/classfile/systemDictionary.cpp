@@ -140,7 +140,9 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
   if (_java_platform_loader.is_empty()) {
     oop platform_loader = get_platform_class_loader_impl(CHECK);
     _java_platform_loader = OopHandle(Universe::vm_global(), platform_loader);
-    AOTLinkedClassBulkLoader::load_platform_classes(THREAD);
+    if (CDSConfig::is_dumping_final_static_archive()) {
+      AOTLinkedClassBulkLoader::load_platform_classes(THREAD);
+    }
   } else {
     // It must have been restored from the archived module graph
     assert(CDSConfig::is_using_archive(), "must be");
@@ -149,12 +151,14 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
       oop platform_loader = get_platform_class_loader_impl(CHECK);
       assert(_java_platform_loader.resolve() == platform_loader, "must be");
     )
-  }
+ }
 
   if (_java_system_loader.is_empty()) {
     oop system_loader = get_system_class_loader_impl(CHECK);
     _java_system_loader = OopHandle(Universe::vm_global(), system_loader);
-    AOTLinkedClassBulkLoader::load_app_classes(THREAD);
+    if (CDSConfig::is_dumping_final_static_archive()) {
+      AOTLinkedClassBulkLoader::load_app_classes(THREAD);
+    }
   } else {
     // It must have been restored from the archived module graph
     assert(CDSConfig::is_using_archive(), "must be");
@@ -1729,12 +1733,18 @@ void SystemDictionary::update_dictionary(JavaThread* current,
 }
 
 #if INCLUDE_CDS
-void SystemDictionary::preload_class(JavaThread* current,
-                                     InstanceKlass* k,
-                                     ClassLoaderData* loader_data) {
+// Indicate that loader_data has initiated the loading of class k, which
+// has already been defined by a parent loader.
+// This API should be used only by AOTLinkedClassBulkLoader
+void SystemDictionary::add_to_initiating_loader(JavaThread* current,
+                                                InstanceKlass* k,
+                                                ClassLoaderData* loader_data) {
+  assert(CDSConfig::is_using_aot_linked_classes(), "must be");
   assert_locked_or_safepoint(SystemDictionary_lock);
   Symbol* name  = k->name();
   Dictionary* dictionary = loader_data->dictionary();
+  assert(k->is_loaded(), "must be");
+  assert(k->class_loader_data() != loader_data, "only for classes defined by a parent loader");
   assert(dictionary->find_class(current, name) == nullptr, "sanity");
   dictionary->add_klass(current, name, k);
 }

@@ -1724,7 +1724,7 @@ MapArchiveResult MetaspaceShared::map_archive(FileMapInfo* mapinfo, char* mapped
     return MAP_ARCHIVE_SUCCESS; // The dynamic archive has not been specified. No error has happened -- trivially succeeded.
   }
 
-  if (!mapinfo->validate_leyden_config()) {
+  if (!mapinfo->validate_aot_class_linking()) {
     return MAP_ARCHIVE_OTHER_FAILURE;
   }
 
@@ -1809,8 +1809,11 @@ void MetaspaceShared::initialize_shared_spaces() {
     dynamic_mapinfo->unmap_region(MetaspaceShared::bm);
   }
 
-  log_info(cds)("Using AOT-linked classes: %s",
-                CDSConfig::is_using_aot_linked_classes() ? "true" : "false");
+  log_info(cds)("Using AOT-linked classes: %s (%s%s)",
+                CDSConfig::is_using_aot_linked_classes() ? "true" : "false",
+                static_mapinfo->header()->has_aot_linked_classes() ? "static archive: true" : "static archive: false",
+                (dynamic_mapinfo == nullptr) ? "" :
+                   (dynamic_mapinfo->header()->has_aot_linked_classes() ? ", dynamic archive: true" : ", dynamic archive: false"));
 
   // Set up LambdaFormInvokers::_lambdaform_lines for dynamic dump
   if (CDSConfig::is_dumping_dynamic_archive()) {

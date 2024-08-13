@@ -32,7 +32,6 @@
 #include "cds/finalImageRecipes.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
-#include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderExt.hpp"
 #include "classfile/dictionary.hpp"
@@ -40,29 +39,24 @@
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
-#include "interpreter/bytecode.hpp"
 #include "interpreter/bytecodeStream.hpp"
 #include "interpreter/interpreterRuntime.hpp"
-#include "interpreter/linkResolver.hpp"
-#include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
-#include "oops/fieldStreams.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/javaCalls.hpp"
-#include "runtime/perfData.inline.hpp"
-#include "runtime/timer.hpp"
-#include "runtime/signature.hpp"
 
 AOTConstantPoolResolver::ClassesTable* AOTConstantPoolResolver::_processed_classes = nullptr;
 
 void AOTConstantPoolResolver::initialize() {
+  assert(_processed_classes == nullptr, "must be");
   _processed_classes = new (mtClass)ClassesTable();
 }
 
 void AOTConstantPoolResolver::dispose() {
+  assert(_processed_classes != nullptr, "must be");
   delete _processed_classes;
   _processed_classes = nullptr;
 }
@@ -147,7 +141,7 @@ bool AOTConstantPoolResolver::is_class_resolution_deterministic(InstanceKlass* c
   } else if (resolved_class->is_typeArray_klass()) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -167,6 +161,7 @@ void AOTConstantPoolResolver::dumptime_resolve_constants(InstanceKlass* ik, TRAP
     switch (cp->tag_at(cp_index).value()) {
     case JVM_CONSTANT_String:
       resolve_string(cp, cp_index, CHECK); // may throw OOM when interning strings.
+      break;
     }
   }
 
@@ -233,7 +228,7 @@ void AOTConstantPoolResolver::resolve_string(constantPoolHandle cp, int cp_index
 #endif
 
 void AOTConstantPoolResolver::preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
-  if (!CDSConfig::is_dumping_aot_linked_classes()) {
+  if (!CDSConfig::is_dumping_aot_linked_classes()) { // TODO: Why is this check needed in Leyden?
     return;
   }
   if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data())) {

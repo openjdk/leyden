@@ -28,26 +28,19 @@
 #include "cds/aotLinkedClassTable.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
-#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/cdsProtectionDomain.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classLoader.hpp"
-#include "classfile/classLoaderExt.hpp"
 #include "classfile/dictionary.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
-#include "compiler/compilationPolicy.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "runtime/handles.inline.hpp"
-#include "runtime/perfData.inline.hpp"
-#include "runtime/timer.hpp"
-#include "services/management.hpp"
 
 AOTClassLinker::ClassesTable* AOTClassLinker::_vm_classes = nullptr;
 AOTClassLinker::ClassesTable* AOTClassLinker::_candidates = nullptr;
@@ -139,17 +132,6 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
     if (!SystemDictionaryShared::should_hidden_class_be_archived(ik)) {
       return false;
     }
-  } else {
-    // FIXME -- remove this check -- AOT-loaded classes require archived FMG
-
-    // Do not AOT-load any module classes that are not from the modules images,
-    // since such classes may not be loadable at runtime
-    int scp_index = ik->shared_classpath_index();
-    assert(scp_index >= 0, "must be");
-    SharedClassPathEntry* scp_entry = FileMapInfo::shared_path(scp_index);
-    if (scp_entry->in_named_module() && !scp_entry->is_modules_image()) {
-      return false;
-    }
   }
 
   InstanceKlass* s = ik->java_super();
@@ -168,9 +150,9 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
 
   add_candidate(ik);
 
-  if (log_is_enabled(Info, cds, preload)) {
+  if (log_is_enabled(Info, cds, aot, load)) {
     ResourceMark rm;
-    log_info(cds, preload)("%s %s", ArchiveUtils::class_category(ik), ik->external_name());
+    log_info(cds, aot, load)("%s %s", ArchiveUtils::class_category(ik), ik->external_name());
   }
 
   return true;
@@ -229,7 +211,7 @@ Array<InstanceKlass*>* AOTClassLinker::write_classes(oop class_loader, bool is_j
     return nullptr;
   } else {
     const char* category = ArchiveUtils::class_category(list.at(0));
-    log_info(cds, preload)("written %d class(es) for category %s", list.length(), category);
+    log_info(cds, aot, load)("written %d class(es) for category %s", list.length(), category);
     return ArchiveUtils::archive_array(&list);
   }
 }

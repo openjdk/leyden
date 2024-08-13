@@ -23,7 +23,6 @@
  */
 
 #include "precompiled.hpp"
-#include "cds/aotClassLinker.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotLinkedClassTable.hpp"
 #include "cds/archiveBuilder.hpp"
@@ -42,6 +41,7 @@
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "compiler/compilationPolicy.hpp"
+#include "gc/shared/gcVMOperations.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/instanceKlass.hpp"
@@ -188,8 +188,8 @@ void AOTLinkedClassBulkLoader::load_table(AOTLinkedClassTable* table, LoaderKind
   case LoaderKind::PLATFORM:
     {
       const char* category = "plat ";
-      load_initiated_classes(THREAD, category, loader, table->boot());
-      load_initiated_classes(THREAD, category, loader, table->boot2());
+      initiate_loading(THREAD, category, loader, table->boot());
+      initiate_loading(THREAD, category, loader, table->boot2());
 
       load_classes(loader_kind, table->platform(), category, loader, CHECK);
     }
@@ -197,9 +197,9 @@ void AOTLinkedClassBulkLoader::load_table(AOTLinkedClassTable* table, LoaderKind
   case LoaderKind::APP:
     {
       const char* category = "app  ";
-      load_initiated_classes(THREAD, category, loader, table->boot());
-      load_initiated_classes(THREAD, category, loader, table->boot2());
-      load_initiated_classes(THREAD, category, loader, table->platform());
+      initiate_loading(THREAD, category, loader, table->boot());
+      initiate_loading(THREAD, category, loader, table->boot2());
+      initiate_loading(THREAD, category, loader, table->platform());
 
       load_classes(loader_kind, table->app(), category, loader, CHECK);
     }
@@ -218,11 +218,11 @@ void AOTLinkedClassBulkLoader::load_classes(LoaderKind loader_kind, Array<Instan
       _perf_classes_preloaded->inc();
     }
     InstanceKlass* ik = classes->at(i);
-    if (log_is_enabled(Info, cds, preload)) {
+    if (log_is_enabled(Info, cds, aot, load)) {
       ResourceMark rm;
-      log_info(cds, preload)("%s %s%s%s", category, ik->external_name(),
-                             ik->is_loaded() ? " (already loaded)" : "",
-                             ik->is_hidden() ? " (hidden)" : "");
+      log_info(cds, aot, load)("%s %s%s%s", category, ik->external_name(),
+                               ik->is_loaded() ? " (already loaded)" : "",
+                               ik->is_hidden() ? " (hidden)" : "");
     }
 
     if (!ik->is_loaded()) {
@@ -259,8 +259,16 @@ void AOTLinkedClassBulkLoader::load_classes(LoaderKind loader_kind, Array<Instan
   }
 }
 
-void AOTLinkedClassBulkLoader::load_initiated_classes(JavaThread* current, const char* category,
-                                                      Handle loader, Array<InstanceKlass*>* classes) {
+// Initiate loading of the <classes> in the <loader>. The <classes> should have already been loaded
+// by a parent loader of the <loader>. This is necessary for handling pre-resolved CP entries.
+//
+// For example, we initiate the loading of java/lang/String in the AppClassLoader. This will allow
+// any App classes to have a pre-resolved ConstantPool entry that references java/lang/String.
+//
+// TODO: we can limit the number of initiated classes to only those that are actually referenced by
+// AOT-linked classes loaded by <loader>.
+void AOTLinkedClassBulkLoader::initiate_loading(JavaThread* current, const char* category,
+                                                Handle loader, Array<InstanceKlass*>* classes) {
   if (classes == nullptr) {
     return;
   }
@@ -272,13 +280,13 @@ void AOTLinkedClassBulkLoader::load_initiated_classes(JavaThread* current, const
     InstanceKlass* ik = classes->at(i);
     assert(ik->is_loaded(), "must have already been loaded by a parent loader");
     if (ik->is_public() && !ik->is_hidden()) {
-      if (log_is_enabled(Info, cds, preload)) {
+      if (log_is_enabled(Info, cds, aot, load)) {
         ResourceMark rm;
         const char* defining_loader = (ik->class_loader() == nullptr ? "boot" : "plat");
-        log_info(cds, preload)("%s %s (initiated, defined by %s)", category, ik->external_name(),
-                               defining_loader);
+        log_info(cds, aot, load)("%s %s (initiated, defined by %s)", category, ik->external_name(),
+                                 defining_loader);
       }
-      SystemDictionary::preload_class(current, ik, loader_data);
+      SystemDictionary::add_to_initiating_loader(current, ik, loader_data);
     }
   }
 }

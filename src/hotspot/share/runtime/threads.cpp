@@ -328,14 +328,22 @@ static void call_initPhase2(TRAPS) {
 
   universe_post_module_init();
 
-  AOTLinkedClassBulkLoader::load_non_javabase_boot_classes(THREAD); 
-  if (CDSConfig::is_using_full_module_graph()) {
-    // SystemDictionary::java_{platform,system}_loader are already assigned. We can spin
-    // this up a little quicker.
-    assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
-    assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
-    AOTLinkedClassBulkLoader::load_platform_classes(THREAD);
-    AOTLinkedClassBulkLoader::load_app_classes(THREAD);
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    AOTLinkedClassBulkLoader::load_non_javabase_boot_classes(THREAD); 
+    if (CDSConfig::is_using_full_module_graph()) {
+      assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
+      assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
+      AOTLinkedClassBulkLoader::load_platform_classes(THREAD);
+      AOTLinkedClassBulkLoader::load_app_classes(THREAD);
+    } else {
+      // Special case -- we assume that the final archive has the same module graph
+      // as the training run.
+      // AOTLinkedClassBulkLoader will be called for the platform/system loaders
+      // inside SystemDictionary::compute_java_loaders().
+      assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+      assert(SystemDictionary::java_platform_loader() == nullptr, "must be");
+      assert(SystemDictionary::java_system_loader() == nullptr,   "must be");
+    }
   }
 }
 

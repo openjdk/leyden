@@ -30,8 +30,9 @@
  * @test id=static
  * @requires vm.cds.supports.aot.class.linking
  * @library /test/jdk/lib/testlibrary /test/lib
+ * @build InitiatingLoaderTester
  * @build BulkLoaderTest
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar BulkLoaderTestApp.jar BulkLoaderTestApp MyUtil
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar BulkLoaderTestApp.jar BulkLoaderTestApp MyUtil InitiatingLoaderTester
  * @run driver BulkLoaderTest STATIC
  */
 
@@ -39,8 +40,9 @@
  * @test id=dynamic
  * @requires vm.cds.supports.aot.class.linking
  * @library /test/jdk/lib/testlibrary /test/lib
+ * @build InitiatingLoaderTester
  * @build BulkLoaderTest
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar BulkLoaderTestApp.jar BulkLoaderTestApp MyUtil
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar BulkLoaderTestApp.jar BulkLoaderTestApp MyUtil InitiatingLoaderTester
  * @run driver BulkLoaderTest DYNAMIC
  */
 
@@ -86,12 +88,13 @@ public class BulkLoaderTest {
         {
             String extraVmArgs[] = {
                 "-Xshare:on",
+                "-Xlog:cds",
                 "-Djdk.module.showModuleResolution=true"
             };
             t.setCheckExitValue(false);
             OutputAnalyzer out = t.productionRun(extraVmArgs);
             out.shouldHaveExitValue(1);
-            out.shouldContain("CDS archive has preloaded classes. It cannot be used when archived full module graph is not used.");
+            out.shouldContain("CDS archive has aot-linked classes. It cannot be used when archived full module graph is not used.");
             t.setCheckExitValue(true);
         }
     }
@@ -112,6 +115,7 @@ public class BulkLoaderTest {
         public String[] vmArgs(RunMode runMode) {
             String which =  archivePackageOopssAndProtectionDomains ? "+" : "-";
             return new String[] {
+                "-Xlog:cds,cds+aot+load",
                 "-XX:+AOTClassLinking",
                 "-XX:+ArchiveInvokeDynamic",
                 "-XX:" + which + "ArchivePackages",
@@ -129,12 +133,17 @@ public class BulkLoaderTest {
 }
 
 // FIXME -- test hidden classes in boot2 (with a lambda expr in boot classpath)
-// FIXME -- test hidden classes in app (with a lambda expr in app classpath)
 
 class BulkLoaderTestApp {
     static String allPerms = "null.*<no principals>.*java.security.Permissions.*,*java.security.AllPermission.*<all permissions>.*<all actions>";
 
     public static void main(String args[]) throws Exception {
+        checkClasses();
+        checkInitiatingLoader();
+    }
+
+    // Check the ClassLoader/Module/Package/ProtectionDomain/CodeSource of classes that are aot-linked
+    static void checkClasses() throws Exception {
         check(String.class,
               "null",  // loader
               "module java.base",
@@ -220,6 +229,24 @@ class BulkLoaderTestApp {
 
     static void doit(Runnable t) {
         t.run();
+    }
+
+    static void checkInitiatingLoader() throws Exception {
+        try {
+            InitiatingLoaderTester.tryAccess();
+        } catch (IllegalAccessError t) {
+            if (t.getMessage().contains("cannot access class jdk.internal.misc.Unsafe (in module java.base)")) {
+                System.out.println("Expected exception:");
+                t.printStackTrace(System.out);
+                // Class.forName() should still work. We just can't resolve it in CP entries.
+                Class<?> c = Class.forName("jdk.internal.misc.Unsafe");
+                System.out.println("App loader can still resolve by name: " + c);
+                return;
+            }
+            throw new RuntimeException("Unexpected exception", t);
+        }
+
+        throw new RuntimeException("Should not have succeeded");
     }
 }
 

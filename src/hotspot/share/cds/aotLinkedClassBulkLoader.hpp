@@ -54,7 +54,7 @@ class AOTLinkedClassBulkLoader :  AllStatic {
 
   static void load_impl(JavaThread* current, LoaderKind loader_kind, oop class_loader_oop);
   static void load_table(AOTLinkedClassTable* table, LoaderKind loader_kind, Handle loader, TRAPS);
-  static void load_initiated_classes(JavaThread* current, const char* category, Handle loader, Array<InstanceKlass*>* classes);
+  static void initiate_loading(JavaThread* current, const char* category, Handle loader, Array<InstanceKlass*>* classes);
   static void load_classes(LoaderKind loader_kind, Array<InstanceKlass*>* classes, const char* category, Handle loader, TRAPS);
   static void load_class_quick(InstanceKlass* ik, ClassLoaderData* loader_data, Handle domain, TRAPS);
   static void load_hidden_class(ClassLoaderData* loader_data, InstanceKlass* ik, TRAPS);
@@ -66,7 +66,6 @@ class AOTLinkedClassBulkLoader :  AllStatic {
 public:
   static void serialize(SerializeClosure* soc, bool is_static_archive);
   static void record_unregistered_classes();
-  static void record_heap_roots() NOT_CDS_JAVA_HEAP_RETURN;
 
   static void load_javabase_boot_classes(JavaThread* current);
   static void load_non_javabase_boot_classes(JavaThread* current);

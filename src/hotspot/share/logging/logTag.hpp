@@ -38,6 +38,7 @@ class outputStream;
   LOG_TAG(age) \
   LOG_TAG(alloc) \
   LOG_TAG(annotation) \
+  LOG_TAG(aot) \
   LOG_TAG(arguments) \
   LOG_TAG(array) \
   LOG_TAG(attach) \
@@ -159,7 +160,6 @@ class outputStream;
   LOG_TAG(placeholders) \
   LOG_TAG(precompile) \
   LOG_TAG(preempt) \
-  LOG_TAG(preload) \
   LOG_TAG(preorder)  /* Trace all classes loaded in order referenced (not loaded) */ \
   LOG_TAG(preview)   /* Trace loading of preview feature types */ \
   LOG_TAG(profiling) \

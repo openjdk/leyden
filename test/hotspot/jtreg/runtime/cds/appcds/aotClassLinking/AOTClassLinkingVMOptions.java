@@ -53,13 +53,13 @@ public class AOTClassLinkingVMOptions {
 
         testCase("Archived full module graph must be enabled at runtime");
         TestCommon.run("-cp", appJar, "-Djdk.module.validation=1", "Hello")
-            .assertAbnormalExit("CDS archive has preloaded classes." +
+            .assertAbnormalExit("CDS archive has aot-linked classes." +
                                 " It cannot be used when archived full module graph is not used");
 
 
         testCase("Dumptime/runtime GC must be the same");
         TestCommon.run("-cp", appJar, "-XX:+UseSerialGC", "Hello")
-            .assertAbnormalExit("CDS archive has preloaded classes." +
+            .assertAbnormalExit("CDS archive has aot-linked classes." +
                                 " It cannot be used because GC used during dump time (G1) is not the same as runtime (Serial)");
 
         // NOTE: tests for ClassFileLoadHook + AOTClassLinking is in 

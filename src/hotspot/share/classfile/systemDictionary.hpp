@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -78,8 +78,8 @@ class Symbol;
 template <class E> class GrowableArray;
 
 class SystemDictionary : AllStatic {
-  friend class BootstrapInfo;
   friend class AOTLinkedClassBulkLoader;
+  friend class BootstrapInfo;
   friend class vmClasses;
   friend class VMStructs;
 
@@ -291,8 +291,8 @@ public:
                                   const char* message);
   static const char* find_nest_host_error(const constantPoolHandle& pool, int which);
 
-  static void preload_class(JavaThread* current,  InstanceKlass* k,
-                            ClassLoaderData* loader_data) NOT_CDS_RETURN;
+  static void add_to_initiating_loader(JavaThread* current, InstanceKlass* k,
+                                       ClassLoaderData* loader_data) NOT_CDS_RETURN;
 protected:
   static InstanceKlass* _well_known_klasses[];
 

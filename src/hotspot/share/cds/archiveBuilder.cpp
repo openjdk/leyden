@@ -824,13 +824,13 @@ void ArchiveBuilder::relocate_metaspaceobj_embedded_pointers() {
 
 #define ADD_COUNT(x) \
   x += 1; \
-  x ## _p += preloaded; \
+  x ## _a += aotloaded; \
   x ## _i += inited;
 
 #define DECLARE_INSTANCE_KLASS_COUNTER(x) \
   int x = 0; \
-  int x ## _p = 0; \
-  int x ## _i = 0; \
+  int x ## _a = 0; \
+  int x ## _i = 0;
 
 void ArchiveBuilder::make_klasses_shareable() {
   DECLARE_INSTANCE_KLASS_COUNTER(num_instance_klasses);
@@ -864,7 +864,7 @@ void ArchiveBuilder::make_klasses_shareable() {
     const char* unlinked = "";
     const char* hidden = "";
     const char* generated = "";
-    const char* preloaded_msg = "";
+    const char* aotloaded_msg = "";
     const char* inited_msg = "";
     Klass* k = get_buffered_addr(klasses()->at(i));
     k->remove_java_mirror();
@@ -881,7 +881,7 @@ void ArchiveBuilder::make_klasses_shareable() {
       assert(k->is_instance_klass(), " must be");
       InstanceKlass* ik = InstanceKlass::cast(k);
       InstanceKlass* src_ik = get_source_addr(ik);
-      int preloaded = AOTClassLinker::is_candidate(src_ik);
+      int aotloaded = AOTClassLinker::is_candidate(src_ik);
       int inited = ik->has_preinitialized_mirror();
       ADD_COUNT(num_instance_klasses);
       if (CDSConfig::is_dumping_dynamic_archive()) {
@@ -944,8 +944,8 @@ void ArchiveBuilder::make_klasses_shareable() {
       if (ik->is_generated_shared_class()) {
         generated = " generated";
       }
-      if (preloaded) {
-        preloaded_msg = " preloaded";
+      if (aotloaded) {
+        aotloaded_msg = " aot-loaded";
       }
       if (inited) {
         inited_msg = " inited";
@@ -959,12 +959,12 @@ void ArchiveBuilder::make_klasses_shareable() {
       ResourceMark rm;
       log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s", i,
                             p2i(to_requested(k)), type, k->external_name(),
-                            hidden, unlinked, generated, preloaded_msg, inited_msg);
+                            hidden, unlinked, generated, aotloaded_msg, inited_msg);
     }
   }
 
-#define STATS_FORMAT    "= %5d, preloaded = %5d, inited = %5d"
-#define STATS_PARAMS(x) num_ ## x, num_ ## x ## _p, num_ ## x ## _i
+#define STATS_FORMAT    "= %5d, aot-loaded = %5d, inited = %5d"
+#define STATS_PARAMS(x) num_ ## x, num_ ## x ## _a, num_ ## x ## _i
 
   log_info(cds)("Number of classes %d", num_instance_klasses + num_obj_array_klasses + num_type_array_klasses);
   log_info(cds)("    instance classes   " STATS_FORMAT, STATS_PARAMS(instance_klasses));

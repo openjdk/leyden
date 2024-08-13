@@ -224,7 +224,7 @@ private:
   bool   _allow_archiving_with_java_agent; // setting of the AllowArchivingWithJavaAgent option
   bool   _use_optimized_module_handling;// No module-relation VM options were specified, so we can skip
                                         // some expensive operations.
-  bool   _has_preloaded_classes;        // Does the CDS archive have preloaded classes?
+  bool   _has_aot_linked_classes;       // Was the CDS archive created with -XX:+AOTClassLinking
   bool   _has_full_module_graph;        // Does this CDS archive contain the full archived module graph?
   bool   _has_archived_invokedynamic;   // Does the archive have preresolved invokedynamic CP entries?
   bool   _has_archived_packages;
@@ -275,7 +275,7 @@ public:
   char* mapped_base_address()              const { return _mapped_base_address; }
   bool has_platform_or_app_classes()       const { return _has_platform_or_app_classes; }
   bool has_non_jar_in_classpath()          const { return _has_non_jar_in_classpath; }
-  bool has_preloaded_classes()             const { return _has_preloaded_classes; }
+  bool has_aot_linked_classes()            const { return _has_aot_linked_classes; }
   int gc_kind()                            const { return _gc_kind; }
   const char* gc_name()                    const { return _gc_name; }
   size_t ptrmap_size_in_bits()             const { return _ptrmap_size_in_bits; }
@@ -494,8 +494,8 @@ public:
   static void check_nonempty_dir_in_shared_path_table();
   bool check_module_paths();
   bool validate_shared_path_table();
-  void validate_non_existent_class_paths();
-  bool validate_leyden_config();
+  bool validate_non_existent_class_paths();
+  bool validate_aot_class_linking();
   static void set_shared_path_table(FileMapInfo* info) {
     _shared_path_table = info->header()->shared_path_table();
   }
