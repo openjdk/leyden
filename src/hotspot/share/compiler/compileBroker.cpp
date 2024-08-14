@@ -608,8 +608,8 @@ void CompileQueue::mark_on_stack() {
 
 
 CompileQueue* CompileBroker::compile_queue(int comp_level, bool is_scc) {
-  if (is_c2_compile(comp_level)) return (is_scc ? _sc2_compile_queue : _c2_compile_queue);
-  if (is_c1_compile(comp_level)) return (is_scc ? _sc1_compile_queue : _c1_compile_queue);
+  if (is_c2_compile(comp_level)) return ((is_scc  && (_sc_count > 0)) ? _sc2_compile_queue : _c2_compile_queue);
+  if (is_c1_compile(comp_level)) return ((is_scc && (_sc_count > 0)) ? _sc1_compile_queue : _c1_compile_queue);
   return nullptr;
 }
 
@@ -1553,7 +1553,7 @@ SCCEntry* CompileBroker::find_scc_entry(const methodHandle& method, int osr_bci,
                                         CompileTask::CompileReason compile_reason,
                                         bool requires_online_compilation) {
   SCCEntry* scc_entry = nullptr;
-  if (_sc_count > 0 && osr_bci == InvocationEntryBci && !requires_online_compilation && SCCache::is_on_for_read()) {
+  if (osr_bci == InvocationEntryBci && !requires_online_compilation && SCCache::is_on_for_read()) {
     // Check for cached code.
     if (compile_reason == CompileTask::Reason_Preload) {
       scc_entry = method->scc_entry();
