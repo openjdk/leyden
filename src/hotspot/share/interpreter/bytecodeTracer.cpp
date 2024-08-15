@@ -131,10 +131,10 @@ class BytecodePrinter {
       int bci = (int)(bcp - method->code_base());
       st->print("[%ld] ", (long) Thread::current()->osthread()->thread_id());
       if (Verbose) {
-        st->print("%8ld  %4d  " INTPTR_FORMAT " " INTPTR_FORMAT " %s",
+        st->print(JLONG_FORMAT_W(8) "  %4d  " INTPTR_FORMAT " " INTPTR_FORMAT " %s",
             BytecodeCounter::counter_value(), bci, tos, tos2, Bytecodes::name(code));
       } else {
-        st->print("%8ld  %4d  %s",
+        st->print(JLONG_FORMAT_W(8) "  %4d  %s",
             BytecodeCounter::counter_value(), bci, Bytecodes::name(code));
       }
       print_attributes(bci, st);

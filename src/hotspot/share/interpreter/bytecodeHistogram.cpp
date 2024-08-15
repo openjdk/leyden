@@ -49,7 +49,7 @@ double BytecodeCounter::frequency() {
 }
 
 void BytecodeCounter::print() {
-  tty->print_cr("%ld bytecodes executed in %.1fs (%.3fMHz)",
+  tty->print_cr(JLONG_FORMAT " bytecodes executed in %.1fs (%.3fMHz)",
                 counter_value(), elapsed_time(), frequency() / 1000000.0);
 }
 

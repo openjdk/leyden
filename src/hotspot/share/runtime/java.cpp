@@ -246,7 +246,7 @@ void log_vm_init_stats(bool use_tty) {
 
 void print_bytecode_count() {
   if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
-    tty->print_cr("[BytecodeCounter::counter_value = %ld]", BytecodeCounter::counter_value());
+    tty->print_cr("[BytecodeCounter::counter_value = " JLONG_FORMAT "]", BytecodeCounter::counter_value());
   }
 }
 

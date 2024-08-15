@@ -3601,11 +3601,13 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, StubRoutines::x86::arrays_hashcode_powers_of_31());
 #endif
 
+#ifdef COMPILER1
 #ifdef X86
   SET_ADDRESS(_extrs, LIR_Assembler::float_signmask_pool);
   SET_ADDRESS(_extrs, LIR_Assembler::double_signmask_pool);
   SET_ADDRESS(_extrs, LIR_Assembler::float_signflip_pool);
   SET_ADDRESS(_extrs, LIR_Assembler::double_signflip_pool);
+#endif
 #endif
 
   // Stubs

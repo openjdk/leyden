@@ -1727,10 +1727,10 @@ void InstanceKlass::call_class_initializer(TRAPS) {
     LogStreamHandle(Debug, init) log;
     if (log.is_enabled()) {
       ResourceMark rm(THREAD);
-      log.print("%d Initialized in %.3fms (total: %ldms); ",
+      log.print("%d Initialized in %.3fms (total: " JLONG_FORMAT "ms); ",
                 init_id, timer.seconds() * 1000.0, ClassLoader::class_init_time_ms());
       if (CountBytecodes || CountBytecodesPerThread) {
-        log.print("executed %ld bytecodes; ", bc_executed);
+        log.print("executed " JLONG_FORMAT " bytecodes; ", bc_executed);
       }
       name()->print_value_on(&log);
       log.print_cr(" by thread " PTR_FORMAT " \"%s\" (" PTR_FORMAT ")",

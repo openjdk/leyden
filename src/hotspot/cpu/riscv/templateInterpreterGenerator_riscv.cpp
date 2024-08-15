@@ -1761,6 +1761,16 @@ void TemplateInterpreterGenerator::set_vtos_entry_points(Template* t,
 
 //-----------------------------------------------------------------------------
 
+void TemplateInterpreterGenerator::count_bytecode() {
+  __ mv(x7, (address) &BytecodeCounter::_counter_value);
+  __ atomic_addw(noreg, 1, x7);
+}
+
+void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
+  __ mv(x7, (address) &BytecodeHistogram::_counters[t->bytecode()]);
+  __ atomic_addw(noreg, 1, x7);
+}
+
 // Non-product code
 #ifndef PRODUCT
 address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
@@ -1777,16 +1787,6 @@ address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
   __ ret();                                   // return from result handler
 
   return entry;
-}
-
-void TemplateInterpreterGenerator::count_bytecode() {
-  __ mv(x7, (address) &BytecodeCounter::_counter_value);
-  __ atomic_addw(noreg, 1, x7);
-}
-
-void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
-  __ mv(x7, (address) &BytecodeHistogram::_counters[t->bytecode()]);
-  __ atomic_addw(noreg, 1, x7);
 }
 
 void TemplateInterpreterGenerator::histogram_bytecode_pair(Template* t) {

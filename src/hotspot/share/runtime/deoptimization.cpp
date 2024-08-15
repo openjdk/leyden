@@ -3001,7 +3001,7 @@ void Deoptimization::init_counters() {
 #define PRINT_COUNTER(sub, name) { \
   jlong count = _perf_##sub##_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-50s = %4ldms (elapsed) %4ldms (thread) (%5ld events)", #sub "::" #name, \
+    st->print_cr("  %-50s = " JLONG_FORMAT_W(4) "ms (elapsed) " JLONG_FORMAT_W(4) "ms (thread) (" JLONG_FORMAT_W(5) " events)", #sub "::" #name, \
                  _perf_##sub##_##name##_timer->elapsed_counter_value_ms(), \
                  _perf_##sub##_##name##_timer->thread_counter_value_ms(), \
                  count); \

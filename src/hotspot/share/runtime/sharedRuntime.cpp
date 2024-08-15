@@ -149,23 +149,23 @@ void SharedRuntime::generate_stubs() {
 void SharedRuntime::print_counters_on(outputStream* st) {
   st->print_cr("SharedRuntime:");
   if (UsePerfData) {
-    st->print_cr("  resolve_opt_virtual_call: %5ldms (elapsed) %5ldms (thread) / %5d events",
+    st->print_cr("  resolve_opt_virtual_call: " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
                  _perf_resolve_opt_virtual_total_time->elapsed_counter_value_ms(),
                  _perf_resolve_opt_virtual_total_time->thread_counter_value_ms(),
                  _resolve_opt_virtual_ctr);
-    st->print_cr("  resolve_virtual_call:     %5ldms (elapsed) %5ldms (thread) / %5d events",
+    st->print_cr("  resolve_virtual_call:     " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
                  _perf_resolve_virtual_total_time->elapsed_counter_value_ms(),
                  _perf_resolve_virtual_total_time->thread_counter_value_ms(),
                  _resolve_virtual_ctr);
-    st->print_cr("  resolve_static_call:      %5ldms (elapsed) %5ldms (thread) / %5d events",
+    st->print_cr("  resolve_static_call:      " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
                  _perf_resolve_static_total_time->elapsed_counter_value_ms(),
                  _perf_resolve_static_total_time->thread_counter_value_ms(),
                  _resolve_static_ctr);
-    st->print_cr("  handle_wrong_method:      %5ldms (elapsed) %5ldms (thread) / %5d events",
+    st->print_cr("  handle_wrong_method:      " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
                  _perf_handle_wrong_method_total_time->elapsed_counter_value_ms(),
                  _perf_handle_wrong_method_total_time->thread_counter_value_ms(),
                  _wrong_method_ctr);
-    st->print_cr("  ic_miss:                  %5ldms (elapsed) %5ldms (thread) / %5d events",
+    st->print_cr("  ic_miss:                  " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
                  _perf_ic_miss_total_time->elapsed_counter_value_ms(),
                  _perf_ic_miss_total_time->thread_counter_value_ms(),
                  _ic_miss_ctr);
@@ -180,7 +180,7 @@ void SharedRuntime::print_counters_on(outputStream* st) {
                                                           _perf_resolve_static_total_time->thread_counter_value() +
                                                           _perf_handle_wrong_method_total_time->thread_counter_value() +
                                                           _perf_ic_miss_total_time->thread_counter_value());
-    st->print_cr("Total:                      %5ldms (elapsed) %5ldms (thread)", total_elapsed_time_ms, total_thread_time_ms);
+    st->print_cr("Total:                      " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread)", total_elapsed_time_ms, total_thread_time_ms);
   } else {
     st->print_cr("  no data (UsePerfData is turned off)");
   }

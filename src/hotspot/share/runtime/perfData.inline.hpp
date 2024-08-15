@@ -51,11 +51,11 @@ inline bool PerfDataManager::exists(const char* name) {
   }
 }
 
-inline long PerfTickCounters::elapsed_counter_value_ms() const {
+inline jlong PerfTickCounters::elapsed_counter_value_ms() const {
   return Management::ticks_to_ms(_elapsed_counter->get_value());
 }
 
-inline long PerfTickCounters::thread_counter_value_ms() const {
+inline jlong PerfTickCounters::thread_counter_value_ms() const {
   return Management::ticks_to_ms(_thread_counter->get_value());
 }
 
