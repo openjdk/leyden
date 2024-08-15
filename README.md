@@ -1,68 +1,73 @@
 # Leyden Early Access Release
 
-The purpose of the Leyden Early Access Release is to prototype improvements in 
-startup time, in time to peak performance, and in footprint of Java programs, as a part of 
-[Project Leyden](https://openjdk.org/projects/leyden). We would like to solicit feedback from
-the Java community, with the hope that some of these improvements can be eventually
-incoporated in future Java releases.
+The purpose of the Leyden Early Access Release is to prototype improvements to
+the startup time, time to peak performance, and footprint of Java programs, as a part of 
+[Project Leyden](https://openjdk.org/projects/leyden). We solicit feedback from
+the Java community, with the hope that some of these improvements can eventually be
+incoporated into future JDK releases.
 
 ## 0. Disclaimers
 
 - *This release contains experimental and unstable code from the
    Leyden "[premain](https://github.com/openjdk/leyden/blob/premain/)" prototype.
    It is not intended to be used in a production environment.*
+
 - *The experimental features in this release may be changed or removed without notice.
-   Command line flags and workflows are likely to change.*
+   Command line flags and workflows will change.*
 
 ## 1. Overview
 
 The Leyden "[premain](https://github.com/openjdk/leyden/blob/premain/)" prototype
 includes many optimizations that shift work from run time to earlier
-experimental executions of the application, which are
-called <i>training runs</i>. In a training run, we pre-compute various kinds of information.
+executions of the application, which are
+called _training runs_. In a training run, we pre-compute various kinds of information.
 Importantly, we pre-compile
 bytecode to native code, guided by observations of the application's actual behavior
 during the training run.
 
-We have implemented the following improvements over the JDK main-line:
+We have implemented the following improvements over the JDK main line:
 
-- <b>[Unified Cache Data Storage (JDK-8320264)](https://openjdk.org/jeps/8320264)</b>:
-  This enhancement to [CDS] is foundational to the other features.
+- **[Ahead-of-Time Class Loading & Linking (JEP 483)](https://openjdk.org/jeps/483)**:
+  This gives
+  the JVM the ability to put classes in the _linked_ state as soon the application starts up. As a result,
+  we can implement many other time shifting optimizations with considerably simplified assumptions.
+  - This feature is accessed with the new VM flag `-XX:+PreloadSharedClasses`.
+
+- **[Unified Ahead-of-Time Cache (JEP draft 8320264)](https://openjdk.org/jeps/8320264)**:
+  This enhancement to [CDS] is foundational to the features that follow.
   - It enables [CDS] to store not only class metadata and heap objects (as before),
   but also profiling data and compiled code.
   - This feature is accessed with the new VM flag `-XX:CacheDataStore`.
   - This option simplifies the creation of the CDS archive, and also the testing
   of all the prototype features listed here.
-- <b>[Loaded Classes in CDS Archives (JDK-8315737)](https://openjdk.org/jeps/8315737)</b>:
-  This gives
-  the JVM the ability to put classes in the <i>loaded</i> state as soon the application starts up. As a result,
-  we can implement many other time shifting optimizations with considerably simplified assumptions.
-  - This feature is accessed with the new VM flag `-XX:+PreloadSharedClasses`.
-  (Note that this flag will be renamed when JDK-8315737
-    is integrated into the JDK main-line).
-- <b>[Method Profiles in CDS Archives (JDK-8325147)](https://openjdk.org/jeps/8325147)</b>: We store method profiles
+
+- **[Ahead-of-Time Method Profiling (JEP draft 8325147)](https://openjdk.org/jeps/8325147)**: We store method profiles
   from training runs in the CDS archive, thereby enabling the JIT to begin compiling earlier during warmup.
-  As a result, Java application can reach peak performance faster.
+  As a result, Java applications can reach peak performance faster.
   - This feature is enabled by the new VM flags `-XX:+RecordTraining` and `-XX:+ReplayTraining`.
-- <b>Ahead-of-time resolution of constant pool entries</b>: the new VM flags `-XX:+ArchiveFieldReferences`,
+
+- **Ahead-of-time resolution of constant pool entries**: the new VM flags `-XX:+ArchiveFieldReferences`,
   `-XX:+ArchiveMethodReferences` and `-XX:+ArchiveInvokeDynamic` makes it possible to resolve many
   constant pool entries during the training run. This allows the application to start up faster. Also,
   the existence of resolved constant pool entries allows the AOT compiler to generate better code.
-- <b>Ahead-of-time compilation of Java methods</b>: Methods that are frequently used during the training run can be
+
+- **[Ahead-of-Time Code Compilation (JEP draft 8335368)](https://openjdk.org/jeps/8335368)**: Methods that are frequently used during the training run can be
   compiled and stored along with the CDS archive. As a result, as soon as the application starts up
   in the production run, its methods can be can be natively executed.
   - This feature is enabled by the new VM flags `-XX:+StoreCachedCode`, `-XX:+LoadCachedCode`, and `-XX:CachedCodeFile`.
   - Currently, the native code is stored in a separate file, but our plans is to eventually store the native code
     inside the CDS archive file.
-- <b>Ahead-of-time generation of [Dynamic Proxies](https://docs.oracle.com/en/java/javase/22/docs/api/java.base/java/lang/reflect/Proxy.html)</b>:
+
+- **Ahead-of-time generation of [Dynamic Proxies](https://docs.oracle.com/en/java/javase/22/docs/api/java.base/java/lang/reflect/Proxy.html)**:
   Dynamic proxies are frequently used by popular application frameworks. We can improve start-up time by generating these proxies ahead of time.
   - This feature is enabled by the new VM flag `-XX:+ArchiveDynamicProxies`.
-- <b>Ahead-of-time generation of reflection data</b>: Reflection data (such as instances of
+
+- **Ahead-of-time generation of reflection data**: Reflection data (such as instances of
   `java.lang.reflect.Method`) are generated by the JVM to support `java.lang.reflect` operations. We can
   generate these ahead of time to improve start-up.
   - This feature is enabled by the new VM flag `-XX:+ArchiveReflectionData`.
-- <b>Class Loader Lookup Cache</b>: Sometimes application frameworks may perform many repeated lookups of classes by name (with `Class.forName()`,
-  etc.). This optimization allows such lookups to be done quickly without repeatedly scanning the classpath.
+
+- **Class Not Found Cache**: Sometimes application frameworks repeatedly try to load classes that do not exist. This optimization allows such failing lookups to be done quickly without repeatedly scanning the class path.
   - This feature is enabled by the new VM flag `-XX:+ArchiveLoaderLookupCache`.
 
 The flag `-XX:CacheDataStore` automatically enables the whole bundle
@@ -70,7 +75,9 @@ of features listed above.  This simplifies testing of the whole
 prototype.  If necessary for more detailed testing, each feature can
 be individually disabled by negating its associated flag.
 
-[CDS]: <https://docs.oracle.com/en/java/javase/22/vm/class-data-sharing.html>
+The names of all of these VM flags will change in a future EA build as we transition from the old “CDS” terminology to the new “AOT” terminology, as discussed [here](https://openjdk.org/jeps/483#History).
+
+[CDS]: https://docs.oracle.com/en/java/javase/22/vm/class-data-sharing.html
 
 ## 2. Trying out Leyden Features
 
@@ -103,10 +110,10 @@ $ java -cp JavacBenchApp.jar JavacBenchApp 50
 Generated source code for 51 classes and compiled them in 893 ms
 ```
 
-Now, we can perform a <b>training run</b> and create the Leyden cache files.
+Now, we can perform a _training run_ and create the Leyden cache files.
 
-<b>Note: Any files `JavacBenchApp.cds*` created by previous tests must
-be deleted, before new ones are created.</b>:
+**Note: Any files `JavacBenchApp.cds*` created by previous tests must
+be deleted, before new ones are created.**:
 
 ```
 $ rm -fv JavacBenchApp.cds*
@@ -122,7 +129,7 @@ Two files are created:
 - `JavacBenchApp.cds.code`: This file contains AOT-compiled methods, optimized for the execution behaviors observed during the training run.
   (Data in this file will be merged into `JavacBenchApp.cds` in a future release.)
 
-Now, we can make a <b>production run</b> of the program with the cache files. It finishes in 423 ms, or more than twice as fast as
+Now, we can make a _production run_ of the program with the cache files. It finishes in 423 ms, or more than twice as fast as
 before.
 
 ```
