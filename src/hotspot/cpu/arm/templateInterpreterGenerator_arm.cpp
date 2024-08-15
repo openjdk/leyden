@@ -1561,6 +1561,15 @@ void TemplateInterpreterGenerator::set_vtos_entry_points (Template* t, address& 
 
 //------------------------------------------------------------------------------------------------------------------------
 
+void TemplateInterpreterGenerator::count_bytecode() {
+  __ inc_global_counter((address) &BytecodeCounter::_counter_value, 0, Rtemp, R2_tmp, true);
+}
+
+
+void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
+  __ inc_global_counter((address)&BytecodeHistogram::_counters[0], sizeof(BytecodeHistogram::_counters[0]) * t->bytecode(), Rtemp, R2_tmp, true);
+}
+
 // Non-product code
 #ifndef PRODUCT
 address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
@@ -1585,17 +1594,6 @@ address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
 
   return entry;
 }
-
-
-void TemplateInterpreterGenerator::count_bytecode() {
-  __ inc_global_counter((address) &BytecodeCounter::_counter_value, 0, Rtemp, R2_tmp, true);
-}
-
-
-void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
-  __ inc_global_counter((address)&BytecodeHistogram::_counters[0], sizeof(BytecodeHistogram::_counters[0]) * t->bytecode(), Rtemp, R2_tmp, true);
-}
-
 
 void TemplateInterpreterGenerator::histogram_bytecode_pair(Template* t) {
   const Register Rindex_addr = R2_tmp;

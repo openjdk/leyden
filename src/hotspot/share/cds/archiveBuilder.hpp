@@ -429,7 +429,8 @@ public:
   bool has_been_archived(address src_addr) const;
   address get_buffered_addr(address src_addr) const;
   template <typename T> T get_buffered_addr(T src_addr) const {
-    return (T)get_buffered_addr((address)src_addr);
+    CDS_ONLY(return (T)get_buffered_addr((address)src_addr);)
+    NOT_CDS(return nullptr;)
   }
 
   address get_source_addr(address buffered_addr) const;

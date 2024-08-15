@@ -2947,6 +2947,49 @@ void Deoptimization::print_statistics_on(outputStream* st) {
   print_statistics_on("SC Tier5 (preloaded)", 9, st);
 }
 
+#define DO_COUNTERS(macro) \
+  macro(Deoptimization, fetch_unroll_info)   \
+  macro(Deoptimization, unpack_frames) \
+  macro(Deoptimization, uncommon_trap_inner) \
+  macro(Deoptimization, uncommon_trap)
+
+#define INIT_COUNTER(sub, name) \
+  NEWPERFTICKCOUNTERS(_perf_##sub##_##name##_timer, SUN_RT, #sub "::" #name) \
+  NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_RT, #sub "::" #name "_count");
+
+void Deoptimization::init_counters() {
+  if (ProfileRuntimeCalls && UsePerfData) {
+    EXCEPTION_MARK;
+
+    DO_COUNTERS(INIT_COUNTER)
+
+    if (HAS_PENDING_EXCEPTION) {
+      vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
+    }
+  }
+}
+#undef INIT_COUNTER
+
+#define PRINT_COUNTER(sub, name) { \
+  jlong count = _perf_##sub##_##name##_count->get_value(); \
+  if (count > 0) { \
+    st->print_cr("  %-50s = " JLONG_FORMAT_W(4) "ms (elapsed) " JLONG_FORMAT_W(4) "ms (thread) (" JLONG_FORMAT_W(5) " events)", #sub "::" #name, \
+                 _perf_##sub##_##name##_timer->elapsed_counter_value_ms(), \
+                 _perf_##sub##_##name##_timer->thread_counter_value_ms(), \
+                 count); \
+  }}
+
+void Deoptimization::print_counters_on(outputStream* st) {
+  if (ProfileRuntimeCalls && UsePerfData) {
+    DO_COUNTERS(PRINT_COUNTER)
+  } else {
+    st->print_cr("  Deoptimization: no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
+  }
+}
+
+#undef PRINT_COUNTER
+#undef DO_COUNTERS
+
 #else // COMPILER2_OR_JVMCI
 
 
@@ -2980,7 +3023,7 @@ int Deoptimization::trap_state_has_reason(int trap_state, int reason) {
   return 0;
 }
 
-void Deoptimization::gather_statistics(DeoptReason reason, DeoptAction action,
+void Deoptimization::gather_statistics(nmethod* nm, DeoptReason reason, DeoptAction action,
                                        Bytecodes::Code bc) {
   // no update
 }
@@ -2991,47 +3034,16 @@ const char* Deoptimization::format_trap_state(char* buf, size_t buflen,
   return buf;
 }
 
-#endif // COMPILER2_OR_JVMCI
-
-#define DO_COUNTERS(macro) \
-  macro(Deoptimization, fetch_unroll_info)   \
-  macro(Deoptimization, unpack_frames) \
-  macro(Deoptimization, uncommon_trap_inner) \
-  macro(Deoptimization, uncommon_trap)
-
-#define INIT_COUNTER(sub, name) \
-  NEWPERFTICKCOUNTERS(_perf_##sub##_##name##_timer, SUN_RT, #sub "::" #name) \
-  NEWPERFEVENTCOUNTER(_perf_##sub##_##name##_count, SUN_RT, #sub "::" #name "_count");
-
 void Deoptimization::init_counters() {
-  if (ProfileRuntimeCalls && UsePerfData) {
-    EXCEPTION_MARK;
-
-    DO_COUNTERS(INIT_COUNTER)
-
-    if (HAS_PENDING_EXCEPTION) {
-      vm_exit_during_initialization("jvm_perf_init failed unexpectedly");
-    }
-  }
+  // nothing to do
 }
-#undef INIT_COUNTER
-
-#define PRINT_COUNTER(sub, name) { \
-  jlong count = _perf_##sub##_##name##_count->get_value(); \
-  if (count > 0) { \
-    st->print_cr("  %-50s = %4ldms (elapsed) %4ldms (thread) (%5ld events)", #sub "::" #name, \
-                 _perf_##sub##_##name##_timer->elapsed_counter_value_ms(), \
-                 _perf_##sub##_##name##_timer->thread_counter_value_ms(), \
-                 count); \
-  }}
 
 void Deoptimization::print_counters_on(outputStream* st) {
-  if (ProfileRuntimeCalls && UsePerfData) {
-    DO_COUNTERS(PRINT_COUNTER)
-  } else {
-    st->print_cr("  Deoptimization: no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
-  }
+  // no output
 }
 
-#undef PRINT_COUNTER
-#undef DO_COUNTERS
+void Deoptimization::print_statistics_on(outputStream* st) {
+  // no output
+}
+
+#endif // COMPILER2_OR_JVMCI

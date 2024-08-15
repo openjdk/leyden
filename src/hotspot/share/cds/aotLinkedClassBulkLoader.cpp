@@ -399,7 +399,7 @@ void AOTLinkedClassBulkLoader::print_counters() {
     LogStreamHandle(Info, init) log;
     if (log.is_enabled()) {
       log.print_cr("AOTLinkedClassBulkLoader:");
-      log.print_cr("  preload:           %ldms (elapsed) %ld (thread) / %ld events",
+      log.print_cr("  preload:           " JLONG_FORMAT "ms (elapsed) " JLONG_FORMAT " (thread) / " JLONG_FORMAT " events",
                    _perf_class_preload_counters->elapsed_counter_value_ms(),
                    _perf_class_preload_counters->thread_counter_value_ms(),
                    _perf_classes_preloaded->get_value());

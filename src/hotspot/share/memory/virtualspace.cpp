@@ -531,11 +531,11 @@ void ReservedHeapSpace::initialize_compressed_heap(const size_t size, size_t ali
   const size_t attach_point_alignment = lcm(alignment, os_attach_point_alignment);
 
   char *aligned_heap_base_min_address = (char *)align_up((void *)HeapBaseMinAddress, alignment);
-  size_t noaccess_prefix = (((aligned_heap_base_min_address + size) > (char*)OopEncodingHeapMax) || UseCompatibleCompressedOops) ?
+  size_t noaccess_prefix = (((aligned_heap_base_min_address + size) > (char*)OopEncodingHeapMax) LP64_ONLY(|| UseCompatibleCompressedOops)) ?
     noaccess_prefix_size(alignment) : 0;
 
   // Attempt to alloc at user-given address.
-  if (!FLAG_IS_DEFAULT(HeapBaseMinAddress) || UseCompatibleCompressedOops) {
+  if (!FLAG_IS_DEFAULT(HeapBaseMinAddress) LP64_ONLY(|| UseCompatibleCompressedOops)) {
     try_reserve_heap(size + noaccess_prefix, alignment, page_size, aligned_heap_base_min_address);
     if (_base != aligned_heap_base_min_address) { // Enforce this exact address.
       release();
@@ -556,7 +556,7 @@ void ReservedHeapSpace::initialize_compressed_heap(const size_t size, size_t ali
 
     // Attempt to allocate so that we can run without base and scale (32-Bit unscaled compressed oops).
     // Give it several tries from top of range to bottom.
-    if (aligned_heap_base_min_address + size <= (char *)UnscaledOopHeapMax && !UseCompatibleCompressedOops) {
+    if (aligned_heap_base_min_address + size <= (char *)UnscaledOopHeapMax LP64_ONLY(&& !UseCompatibleCompressedOops)) {
 
       // Calc address range within we try to attach (range of possible start addresses).
       char* const highest_start = align_down((char *)UnscaledOopHeapMax - size, attach_point_alignment);
@@ -569,7 +569,7 @@ void ReservedHeapSpace::initialize_compressed_heap(const size_t size, size_t ali
     char *zerobased_max = (char *)OopEncodingHeapMax;
 
     // Give it several tries from top of range to bottom.
-    if (!UseCompatibleCompressedOops &&
+    if (LP64_ONLY(!UseCompatibleCompressedOops &&)
         aligned_heap_base_min_address + size <= zerobased_max &&    // Zerobased theoretical possible.
         ((_base == nullptr) ||                        // No previous try succeeded.
          (_base + size > zerobased_max))) {        // Unscaled delivered an arbitrary address.
@@ -638,7 +638,7 @@ ReservedHeapSpace::ReservedHeapSpace(size_t size, size_t alignment, size_t page_
 
   if (UseCompressedOops) {
     initialize_compressed_heap(size, alignment, page_size);
-    if (_size > size || UseCompatibleCompressedOops) {
+    if (_size > size LP64_ONLY(|| UseCompatibleCompressedOops)) {
       // We allocated heap with noaccess prefix.
       // It can happen we get a zerobased/unscaled heap with noaccess prefix,
       // if we had to try at arbitrary address.

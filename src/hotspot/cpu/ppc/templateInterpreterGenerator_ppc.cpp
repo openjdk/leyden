@@ -2180,6 +2180,20 @@ void TemplateInterpreterGenerator::set_vtos_entry_points(Template* t,
 
 //-----------------------------------------------------------------------------
 
+void TemplateInterpreterGenerator::count_bytecode() {
+  int offs = __ load_const_optimized(R11_scratch1, (address) &BytecodeCounter::_counter_value, R12_scratch2, true);
+  __ lwz(R12_scratch2, offs, R11_scratch1);
+  __ addi(R12_scratch2, R12_scratch2, 1);
+  __ stw(R12_scratch2, offs, R11_scratch1);
+}
+
+void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
+  int offs = __ load_const_optimized(R11_scratch1, (address) &BytecodeHistogram::_counters[t->bytecode()], R12_scratch2, true);
+  __ lwz(R12_scratch2, offs, R11_scratch1);
+  __ addi(R12_scratch2, R12_scratch2, 1);
+  __ stw(R12_scratch2, offs, R11_scratch1);
+}
+
 // Non-product code
 #ifndef PRODUCT
 address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
@@ -2265,20 +2279,6 @@ address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
   __ blr();
   BLOCK_COMMENT("} trace_code");
   return entry;
-}
-
-void TemplateInterpreterGenerator::count_bytecode() {
-  int offs = __ load_const_optimized(R11_scratch1, (address) &BytecodeCounter::_counter_value, R12_scratch2, true);
-  __ lwz(R12_scratch2, offs, R11_scratch1);
-  __ addi(R12_scratch2, R12_scratch2, 1);
-  __ stw(R12_scratch2, offs, R11_scratch1);
-}
-
-void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
-  int offs = __ load_const_optimized(R11_scratch1, (address) &BytecodeHistogram::_counters[t->bytecode()], R12_scratch2, true);
-  __ lwz(R12_scratch2, offs, R11_scratch1);
-  __ addi(R12_scratch2, R12_scratch2, 1);
-  __ stw(R12_scratch2, offs, R11_scratch1);
 }
 
 void TemplateInterpreterGenerator::histogram_bytecode_pair(Template* t) {

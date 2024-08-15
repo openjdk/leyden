@@ -230,10 +230,14 @@ void log_vm_init_stats(bool use_tty) {
     if (ProfileRuntimeCalls) {
       out->print_cr(" (%d nested events):", ProfileVMCallContext::nested_runtime_calls_count());
 
-      Runtime1::print_counters_on(out);
-      OptoRuntime::print_counters_on(out);
       InterpreterRuntime::print_counters_on(out);
+#ifdef COMPILER1
+      Runtime1::print_counters_on(out);
+#endif
+#ifdef COMPILER2
+      OptoRuntime::print_counters_on(out);
       Deoptimization::print_counters_on(out);
+#endif
     } else {
       out->print_cr(": no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
     }
@@ -246,7 +250,7 @@ void log_vm_init_stats(bool use_tty) {
 
 void print_bytecode_count() {
   if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
-    tty->print_cr("[BytecodeCounter::counter_value = %ld]", BytecodeCounter::counter_value());
+    tty->print_cr("[BytecodeCounter::counter_value = " JLONG_FORMAT "]", BytecodeCounter::counter_value());
   }
 }
 
@@ -329,9 +333,11 @@ static void print_method_invocation_histogram() {}
 
 // General statistics printing (profiling ...)
 void print_statistics() {
+#if INCLUDE_CDS
   if (ReplayTraining && PrintTrainingInfo) {
     TrainingData::print_archived_training_data_on(tty);
   }
+#endif
   if (CITime) {
     CompileBroker::print_times();
   }
@@ -512,7 +518,9 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 #endif
 
+#if INCLUDE_CDS
   MethodProfiler::process_method_hotness();
+#endif
 
   // Actual shutdown logic begins here.
 

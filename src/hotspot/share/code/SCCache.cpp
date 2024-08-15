@@ -3547,12 +3547,14 @@ void SCAddressTable::init() {
 #endif
 
   SET_ADDRESS(_extrs, CompressedOops::ptrs_base_addr());
+#if INCLUDE_G1GC
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_post_entry);
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_pre_entry);
+#endif
 
   SET_ADDRESS(_extrs, SharedRuntime::complete_monitor_unlocking_C);
   SET_ADDRESS(_extrs, SharedRuntime::enable_stack_reserved_zone);
-#ifdef AMD64
+#if defined(AMD64) && !defined(ZERO)
   SET_ADDRESS(_extrs, SharedRuntime::montgomery_multiply);
   SET_ADDRESS(_extrs, SharedRuntime::montgomery_square);
 #endif // AMD64
@@ -3564,12 +3566,14 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, SharedRuntime::dlog);
   SET_ADDRESS(_extrs, SharedRuntime::dlog10);
   SET_ADDRESS(_extrs, SharedRuntime::dpow);
-  SET_ADDRESS(_extrs, SharedRuntime::drem);
   SET_ADDRESS(_extrs, SharedRuntime::dsin);
   SET_ADDRESS(_extrs, SharedRuntime::dtan);
   SET_ADDRESS(_extrs, SharedRuntime::f2i);
   SET_ADDRESS(_extrs, SharedRuntime::f2l);
+#ifndef ZERO
+  SET_ADDRESS(_extrs, SharedRuntime::drem);
   SET_ADDRESS(_extrs, SharedRuntime::frem);
+#endif
   SET_ADDRESS(_extrs, SharedRuntime::l2d);
   SET_ADDRESS(_extrs, SharedRuntime::l2f);
   SET_ADDRESS(_extrs, SharedRuntime::ldiv);
@@ -3597,18 +3601,22 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, JavaThread::verify_cross_modify_fence_failure);
 #endif
 
+#ifndef ZERO
 #if defined(AMD64) || defined(AARCH64) || defined(RISCV64)
   SET_ADDRESS(_extrs, MacroAssembler::debug64);
 #endif
 #if defined(AMD64)
   SET_ADDRESS(_extrs, StubRoutines::x86::arrays_hashcode_powers_of_31());
 #endif
+#endif
 
+#ifdef COMPILER1
 #ifdef X86
   SET_ADDRESS(_extrs, LIR_Assembler::float_signmask_pool);
   SET_ADDRESS(_extrs, LIR_Assembler::double_signmask_pool);
   SET_ADDRESS(_extrs, LIR_Assembler::float_signflip_pool);
   SET_ADDRESS(_extrs, LIR_Assembler::double_signflip_pool);
+#endif
 #endif
 
   // addresses of fields in AOT runtime constants area
@@ -3737,7 +3745,7 @@ void SCAddressTable::init() {
   SET_ADDRESS(_stubs, StubRoutines::f2hf_adr());
   SET_ADDRESS(_stubs, StubRoutines::hf2f_adr());
 
-#if defined(AMD64)
+#if defined(AMD64) && !defined(ZERO)
   SET_ADDRESS(_stubs, StubRoutines::x86::d2i_fixup());
   SET_ADDRESS(_stubs, StubRoutines::x86::f2i_fixup());
   SET_ADDRESS(_stubs, StubRoutines::x86::d2l_fixup());
@@ -3757,7 +3765,7 @@ void SCAddressTable::init() {
     SET_ADDRESS(_stubs, StubRoutines::x86::vector_iota_indices() + i * 64);
   }
 #endif
-#if defined(AARCH64)
+#if defined(AARCH64) && !defined(ZERO)
   SET_ADDRESS(_stubs, StubRoutines::aarch64::d2i_fixup());
   SET_ADDRESS(_stubs, StubRoutines::aarch64::f2i_fixup());
   SET_ADDRESS(_stubs, StubRoutines::aarch64::d2l_fixup());

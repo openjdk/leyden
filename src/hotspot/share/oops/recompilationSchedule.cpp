@@ -48,6 +48,7 @@ void RecompilationSchedule::prepare(TRAPS) {
   if (!TrainingData::need_data()) {
     return;
   }
+#if INCLUDE_CDS
   auto nmethods = MethodProfiler::sampled_nmethods();
   GrowableArray<MethodTrainingData*> dyn_schedule;
   for (auto it = nmethods->begin(); it != nmethods->end(); ++it) {
@@ -69,6 +70,7 @@ void RecompilationSchedule::prepare(TRAPS) {
   for (auto it = dyn_schedule.begin(); it != dyn_schedule.end(); ++it) {
     _schedule_for_dumping->at_put(i++, *it);
   }
+#endif
 }
 
 #if INCLUDE_CDS

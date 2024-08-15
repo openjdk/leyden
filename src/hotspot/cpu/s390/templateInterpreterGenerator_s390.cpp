@@ -2301,6 +2301,17 @@ void TemplateInterpreterGenerator::set_vtos_entry_points(Template* t,
 
 //-----------------------------------------------------------------------------
 
+// Make feasible for old CPUs.
+void TemplateInterpreterGenerator::count_bytecode() {
+  __ load_absolute_address(Z_R1_scratch, (address) &BytecodeCounter::_counter_value);
+  __ add2mem_32(Address(Z_R1_scratch), 1, Z_R0_scratch);
+}
+
+void TemplateInterpreterGenerator::histogram_bytecode(Template * t) {
+  __ load_absolute_address(Z_R1_scratch, (address)&BytecodeHistogram::_counters[ t->bytecode() ]);
+  __ add2mem_32(Address(Z_R1_scratch), 1, Z_tmp_1);
+}
+
 #ifndef PRODUCT
 address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
   address entry = __ pc();
@@ -2335,17 +2346,6 @@ address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
   __ z_br(Z_R14); // return
 
   return entry;
-}
-
-// Make feasible for old CPUs.
-void TemplateInterpreterGenerator::count_bytecode() {
-  __ load_absolute_address(Z_R1_scratch, (address) &BytecodeCounter::_counter_value);
-  __ add2mem_32(Address(Z_R1_scratch), 1, Z_R0_scratch);
-}
-
-void TemplateInterpreterGenerator::histogram_bytecode(Template * t) {
-  __ load_absolute_address(Z_R1_scratch, (address)&BytecodeHistogram::_counters[ t->bytecode() ]);
-  __ add2mem_32(Address(Z_R1_scratch), 1, Z_tmp_1);
 }
 
 void TemplateInterpreterGenerator::histogram_bytecode_pair(Template * t) {

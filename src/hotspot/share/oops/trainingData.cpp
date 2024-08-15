@@ -82,13 +82,16 @@ void TrainingData::initialize() {
   RecompilationSchedule::initialize();
 }
 
+#if INCLUDE_CDS
 static void verify_archived_entry(TrainingData* td, const TrainingData::Key* k) {
   guarantee(TrainingData::Key::can_compute_cds_hash(k), "");
   TrainingData* td1 = TrainingData::lookup_archived_training_data(k);
   guarantee(td == td1, "");
 }
+#endif
 
 void TrainingData::verify() {
+#if INCLUDE_CDS
   if (TrainingData::have_data()) {
     archived_training_data_dictionary()->iterate([&](TrainingData* td) {
       if (td->is_KlassTrainingData()) {
@@ -110,6 +113,7 @@ void TrainingData::verify() {
       }
     });
   }
+#endif
 }
 
 MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
@@ -134,7 +138,7 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
     return nullptr; // allocation failure
   }
   Key key(method());
-  TrainingData* td = have_data()? lookup_archived_training_data(&key) : nullptr;
+  TrainingData* td = CDS_ONLY(have_data() ? lookup_archived_training_data(&key) :) nullptr;
   if (td != nullptr) {
     mtd = td->as_MethodTrainingData();
     method->init_training_data(mtd);  // Cache the pointer for next time.
@@ -247,7 +251,7 @@ uint CompileTrainingData::compute_init_deps_left(bool count_initialized) {
         ++left;
       } else if (holder->is_shared_unregistered_class()) {
         Key k(holder);
-        if (!Key::can_compute_cds_hash(&k)) {
+        if (CDS_ONLY(!Key::can_compute_cds_hash(&k)) NOT_CDS(true)) {
           ++left; // FIXME: !!! init tracking doesn't work well for custom loaders !!!
         }
       }
@@ -374,7 +378,7 @@ void CompileTrainingData::prepare(Visitor& visitor) {
 
 KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_not_found) {
   Key key(holder);
-  TrainingData* td = have_data() ? lookup_archived_training_data(&key) : nullptr;
+  TrainingData* td = CDS_ONLY(have_data() ? lookup_archived_training_data(&key) :) nullptr;
   KlassTrainingData* ktd = nullptr;
   if (td != nullptr) {
     ktd = td->as_KlassTrainingData();
@@ -733,6 +737,7 @@ TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {
 #endif
 
 KlassTrainingData* TrainingData::lookup_for(InstanceKlass* ik) {
+#if INCLUDE_CDS
   if (TrainingData::have_data() && ik != nullptr && ik->is_loaded()) {
     TrainingData::Key key(ik);
     TrainingData* td = TrainingData::lookup_archived_training_data(&key);
@@ -740,10 +745,12 @@ KlassTrainingData* TrainingData::lookup_for(InstanceKlass* ik) {
       return td->as_KlassTrainingData();
     }
   }
+#endif
   return nullptr;
 }
 
 MethodTrainingData* TrainingData::lookup_for(Method* m) {
+#if INCLUDE_CDS
   if (TrainingData::have_data() && m != nullptr) {
     KlassTrainingData* holder_ktd = TrainingData::lookup_for(m->method_holder());
     if (holder_ktd != nullptr) {
@@ -754,6 +761,7 @@ MethodTrainingData* TrainingData::lookup_for(Method* m) {
       }
     }
   }
+#endif
   return nullptr;
 }
 
@@ -764,14 +772,18 @@ void TrainingData::DepList<T>::metaspace_pointers_do(MetaspaceClosure* iter) {
 
 void KlassTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
   log_trace(cds)("Iter(KlassTrainingData): %p", this);
+#if INCLUDE_CDS
   TrainingData::metaspace_pointers_do(iter);
+#endif
   _comp_deps.metaspace_pointers_do(iter);
   iter->push(&_holder);
 }
 
 void MethodTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
   log_trace(cds)("Iter(MethodTrainingData): %p", this);
+#if INCLUDE_CDS
   TrainingData::metaspace_pointers_do(iter);
+#endif
   iter->push(&_klass);
   iter->push((Method**)&_holder);
   for (int i = 0; i < CompLevel_count; i++) {
@@ -783,7 +795,9 @@ void MethodTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
 
 void CompileTrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
   log_trace(cds)("Iter(CompileTrainingData): %p", this);
+#if INCLUDE_CDS
   TrainingData::metaspace_pointers_do(iter);
+#endif
   _init_deps.metaspace_pointers_do(iter);
   _ci_records.metaspace_pointers_do(iter);
   iter->push(&_method);
@@ -826,9 +840,11 @@ CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int 
 
 void TrainingDataPrinter::do_value(TrainingData* td) {
 #ifdef ASSERT
+#if INCLUDE_CDS
   TrainingData::Key key(td->key()->meta());
   assert(td == TrainingData::archived_training_data_dictionary()->lookup(td->key(), TrainingData::Key::cds_hash(td->key()), -1), "");
   assert(td == TrainingData::archived_training_data_dictionary()->lookup(&key, TrainingData::Key::cds_hash(&key), -1), "");
+#endif
 #endif // ASSERT
 
   const char* type = (td->is_KlassTrainingData()   ? "K" :
