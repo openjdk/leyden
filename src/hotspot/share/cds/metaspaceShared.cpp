@@ -924,6 +924,24 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
   SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
+  _method_handle_intrinsics->sort([] (Method** a, Method** b) -> int {
+    Symbol* a_holder = (*a)->method_holder()->name();
+    Symbol* b_holder = (*b)->method_holder()->name();
+    if (a_holder != b_holder) {
+      return a_holder->cmp(b_holder);
+    }
+    Symbol* a_name = (*a)->name();
+    Symbol* b_name = (*b)->name();
+    if (a_name != b_name) {
+      return a_name->cmp(b_name);
+    }
+    Symbol* a_signature = (*a)->signature();
+    Symbol* b_signature = (*b)->signature();
+    if (a_signature != b_signature) {
+      return a_signature->cmp(b_signature);
+    }
+    return 0;
+  });
 
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_heap()) {
