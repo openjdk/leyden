@@ -51,10 +51,11 @@ We have implemented the following improvements over the JDK main line:
   As a result, Java applications can reach peak performance faster.
   - This feature is enabled by the new VM flags `-XX:+RecordTraining` and `-XX:+ReplayTraining`.
 
-- **Ahead-of-time resolution of constant pool entries**: the new VM flags `-XX:+ArchiveFieldReferences`,
-  `-XX:+ArchiveMethodReferences` and `-XX:+ArchiveInvokeDynamic` makes it possible to resolve many
-  constant pool entries during the training run. This allows the application to start up faster. Also,
+- **Ahead-of-time resolution of constant pool entries**: many
+  constant pool entries are resolved during the assembly phase. This allows the application to start up faster. Also,
   the existence of resolved constant pool entries allows the AOT compiler to generate better code.
+  For diagnostic purposes, you can use `-XX:+UnlockDiagnosticVMOptions -XX:-AOTInvokeDynamicLinking`
+  to disable the AOT linking of constant pool entries for the `invokedynamic` bytecode.
 
 - **[Ahead-of-Time Code Compilation (JEP draft 8335368)](https://openjdk.org/jeps/8335368)**: Methods that are frequently used during the training run can be
   compiled and stored along with the CDS archive. As a result, as soon as the application starts up

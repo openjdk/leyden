@@ -48,7 +48,7 @@ bool CDSConfig::_is_using_optimized_module_handling = true;
 bool CDSConfig::_is_dumping_full_module_graph = true;
 bool CDSConfig::_is_using_full_module_graph = true;
 bool CDSConfig::_has_aot_linked_classes = false;
-bool CDSConfig::_is_loading_invokedynamic = false;
+bool CDSConfig::_has_archived_invokedynamic = false;
 bool CDSConfig::_is_loading_packages = false;
 bool CDSConfig::_is_loading_protection_domains = false;
 bool CDSConfig::_is_security_manager_allowed = false;
@@ -561,22 +561,18 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
 
   if (AOTClassLinking) {
     // If AOTClassLinking is specified, enable all these optimizations by default.
+    FLAG_SET_ERGO_IF_DEFAULT(AOTInvokeDynamicLinking, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, true);
-    FLAG_SET_ERGO_IF_DEFAULT(ArchiveFieldReferences, true);
-    FLAG_SET_ERGO_IF_DEFAULT(ArchiveInvokeDynamic, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
-    FLAG_SET_ERGO_IF_DEFAULT(ArchiveMethodReferences, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchivePackages, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveProtectionDomains, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
   } else {
     // All of these *might* depend on AOTClassLinking. Better be safe than sorry.
     // TODO: more fine-grained handling.
+    FLAG_SET_ERGO(AOTInvokeDynamicLinking, false);
     FLAG_SET_ERGO(ArchiveDynamicProxies, false);
-    FLAG_SET_ERGO(ArchiveFieldReferences, false);
-    FLAG_SET_ERGO(ArchiveInvokeDynamic, false);
     FLAG_SET_ERGO(ArchiveLoaderLookupCache, false);
-    FLAG_SET_ERGO(ArchiveMethodReferences, false);
     FLAG_SET_ERGO(ArchivePackages, false);
     FLAG_SET_ERGO(ArchiveProtectionDomains, false);
     FLAG_SET_ERGO(ArchiveReflectionData, false);
@@ -608,6 +604,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     // Disable UseStringDeduplication while dumping CDS archive.
     UseStringDeduplication = false;
 
+    // Don't use SoftReferences so that some java.lang.invoke tables can be archived.
     Arguments::PropertyList_add(new SystemProperty("java.lang.invoke.MethodHandle.NO_SOFT_CACHE", "true", false));
   }
 
@@ -797,7 +794,7 @@ void CDSConfig::set_has_aot_linked_classes(bool is_static_archive, bool has_aot_
 }
 
 bool CDSConfig::is_loading_invokedynamic() {
-  return UseSharedSpaces && is_loading_heap() && _is_loading_invokedynamic;
+  return UseSharedSpaces && is_using_full_module_graph() && _has_archived_invokedynamic;
 }
 
 bool CDSConfig::is_dumping_dynamic_proxies() {
@@ -812,7 +809,7 @@ bool CDSConfig::is_initing_classes_at_dump_time() {
 bool CDSConfig::is_dumping_invokedynamic() {
   // Requires is_dumping_aot_linked_classes(). Otherwise the classes of some archived heap
   // objects used by the archive indy callsites may be replaced at runtime.
-  return ArchiveInvokeDynamic && is_dumping_aot_linked_classes() && is_dumping_heap();
+  return AOTInvokeDynamicLinking && is_dumping_aot_linked_classes() && is_dumping_heap();
 }
 
 bool CDSConfig::is_dumping_packages() {

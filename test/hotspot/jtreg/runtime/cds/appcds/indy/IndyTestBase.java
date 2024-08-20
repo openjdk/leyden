@@ -140,8 +140,7 @@ public class IndyTestBase {
         System.out.println("#" + testNumber + ": Dump static archive");
         CDSOptions opts = (new CDSOptions())
             .addPrefix("-XX:SharedClassListFile=" + classList,
-                       "-XX:+AOTClassLinking",
-                       "-XX:+ArchiveInvokeDynamic",
+                       "-XX:+AOTClassLinking",  // by default enables AOTInvokeDynamicLinking
                        "-XX:+ArchiveDynamicProxies",
                        "-XX:+ArchiveReflectionData",
                        "-cp", appJar,

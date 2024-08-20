@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -34,14 +34,14 @@
 # e.g.
 #
 # bash.sh /jdk3/bld/le4/images/jdk/bin/java
-# bash.sh /jdk3/bld/le4/images/jdk/bin/java -XX:-ArchiveInvokeDynamic
+# bash.sh /jdk3/bld/le4/images/jdk/bin/java -XX:+UnlockDiagnosticVMOptions -XX:-AOTInvokeDynamicLinking
 
 # These options are enabled by default for training run. You can either disable them in the command-line
 # as shown above, or edit the following line
 #
 # The training run uses two JVM processes. We add "pid" to the log to distinguish their output.
 TRAINING_OPTS="${TRAINING_OPTS} -Xlog:scc -Xlog:cds=debug::uptime,tags,pid"
-TRAINING_OPTS="${TRAINING_OPTS} -XX:+ArchiveInvokeDynamic"
+TRAINING_OPTS="${TRAINING_OPTS} -XX:+AOTClassLinking"
 #TRAINING_OPTS="${TRAINING_OPTS} -XX:+RecordTraining"
 
 # These options are enabled by default for training run. 

@@ -96,9 +96,8 @@
            "do not map the archive")                                        \
            range(0, 2)                                                      \
                                                                             \
-  /*========== New "AOT" flags =========================================*/  \
-  /* These are aliases of -Xshare:dump, -XX:SharedArchiveFile=..., etc. */  \
-  /* See CDSConfig::check_flag_aliases().                               */  \
+  /* The following 3 flags are aliases of -Xshare:dump, */                  \
+  /* -XX:SharedArchiveFile=..., etc. See CDSConfig::check_flag_aliases()*/  \
                                                                             \
   product(ccstr, AOTMode, nullptr,                                          \
           "Specifies how AOTCache should be created or used. Valid values " \
@@ -111,6 +110,13 @@
   product(ccstr, AOTCache, nullptr,                                         \
           "Cache for improving start up and warm up")                       \
                                                                             \
+  product(bool, AOTInvokeDynamicLinking, false, DIAGNOSTIC,                 \
+          "AOT-link JVM_CONSTANT_InvokeDynamic entries in archived "        \
+          "ConstantPools according to profile")                             \
+                                                                            \
+  product(bool, AOTClassLinking, false,                                     \
+          "Load/link all archived classes for the boot/platform/app "       \
+          "loaders before application main")                                \
                                                                             \
   /*========== New options added by Leyden =============================*/  \
                                                                             \
@@ -126,11 +132,6 @@
           "(** internal use only **) -- if false, automatically launch a "  \
           "child process to create the final image.")                       \
                                                                             \
-  /* To be renamed to CDSLoadedClasses */                                   \
-  product(bool, AOTClassLinking, false,                                     \
-          "Load all shared classes for the boot/platform/app loaders "      \
-          "immediately at VM start-up")                                     \
-                                                                            \
   product(bool, PrelinkSharedClasses, true,                                 \
           "Link all shared classes for the boot/platform/app loaders "      \
           "immediately at VM start-up")                                     \
@@ -138,18 +139,8 @@
   product(bool, ArchiveDynamicProxies, false,                               \
           "Archive classes generated for java/lang/reflect/Proxy")          \
                                                                             \
-  product(bool, ArchiveFieldReferences, true,                               \
-          "Archive resolved JVM_CONSTANT_Fieldref in ConstantPool")         \
-                                                                            \
-  product(bool, ArchiveInvokeDynamic, false,                                \
-          "Archive resolved JVM_CONSTANT_InvokeDynamic in ConstantPool")    \
-                                                                            \
   product(bool, ArchiveLoaderLookupCache, false,                            \
           "Archive app loader's positive and negative lookup cache")        \
-                                                                            \
-  product(bool, ArchiveMethodReferences, true,                              \
-          "Archive resolved JVM_CONSTANT_Methodref and "                    \
-          "JVM_CONSTANT_InterfaceMethodref in ConstantPool")                \
                                                                             \
   product(bool, ArchivePackages, false,                                     \
           "Archive the java.lang.ClassLoader::{packages,package2certs} "    \

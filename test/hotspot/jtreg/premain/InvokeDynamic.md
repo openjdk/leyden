@@ -5,8 +5,13 @@
 
 This document is current as of the GIT revision date. It describes the behavior of the branch that contains this document.
 
-CDS Indy optimization is enabled by the -XX:+ArchiveInvokeDynamic flag. This must be specified when
-creating the **static CDS archive**. I.e., with -Xshare:dump.
+CDS Indy optimization is enabled by the `-XX:+AOTInvokeDynamicLinking` flag. This flag
+is enabled by default if you specify `-XX:AOTClassLinking`. It affect only the assembly of the
+static CDS archive. I.e., with `-Xshare:dump` or `-XX:CacheDataStore=<file>.aot`
+
+If you suspect there's a bug, you can explicitly disable this optimization
+with `-XX:+UnlockDiagnosticVMOptions -XX:-AOTInvokeDynamicLinking`, and rerun your tests.
+
 
 Notes:
 
@@ -78,13 +83,13 @@ java -cp ConcatA.jar ConcatA
 )
 ```
 
-Then, create classlist, dump static archive with `-XX:+ArchiveInvokeDynamic` and run it. The `-Xshare:dump` step prints some warnings,
-which can be ignored.
+Then, create classlist, dump static archive with `-XX:+AOTClassLinking` and run it. The `-Xshare:dump` step prints some warnings,
+which can be ignored for now.
 
 
 ```
 java -Xshare:off -cp ~/tmp/ConcatA.jar -XX:DumpLoadedClassList=concata.lst ConcatA
-java -XX:+ArchiveInvokeDynamic -Xshare:dump -XX:SharedClassListFile=concata.lst -cp ~/tmp/ConcatA.jar -XX:SharedArchiveFile=concata.jsa
+java -Xshare:dump -XX:+AOTClassLinking -XX:SharedClassListFile=concata.lst -cp ~/tmp/ConcatA.jar -XX:SharedArchiveFile=concata.jsa
 java -cp ~/tmp/ConcatA.jar -XX:SharedArchiveFile=concata.jsa ConcatA
 ```
 
@@ -100,7 +105,7 @@ java -Xlog:methodhandles -cp ~/tmp/ConcatA.jar ConcatA
 
 The second one shows a lot more output than the first one.
 
-You can also use `-XX:+TraceBytecodes`. With `-XX:+ArchiveInvokeDynamic`, you can see that the first
+You can also use `-XX:+TraceBytecodes`. With `-Xshare:dump -XX:+AOTClassLinking`, you can see that the first
 indy for string concat took only a handful of bytecodes before reaching the `StringConcatHelper.simpleConcat()`
 method. The BSM is completely skipped.
 

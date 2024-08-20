@@ -2618,7 +2618,7 @@ bool FileMapHeader::validate() {
     }
 
     if (_has_archived_invokedynamic) {
-      CDSConfig::set_is_loading_invokedynamic();
+      CDSConfig::set_has_archived_invokedynamic();
     }
     if (_has_archived_packages) {
       CDSConfig::set_is_loading_packages();

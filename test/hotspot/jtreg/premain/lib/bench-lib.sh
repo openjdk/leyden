@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -187,7 +187,7 @@ function dump_one_jvm () {
     local APPID=$APP-jvm$1
 
     if $JAVA --version > /dev/null; then
-        if $JAVA -XX:+PrintFlagsFinal --version | grep ArchiveInvokeDynamic > /dev/null; then
+        if $JAVA -XX:+PrintFlagsFinal --version | grep CDSManualFinalImage > /dev/null; then
             local is_premain=1
             local type_msg="(premain 5 step)"
         else
@@ -214,7 +214,7 @@ function dump_one_jvm () {
 
     else
         # FIXME -- add support for new workflow
-        LEYDEN_OPTS="-XX:+ArchiveInvokeDynamic"
+        LEYDEN_OPTS="-XX:+AOTClassLinking"
 
         echo "(Premain STEP 1 of 5) Dump classlist"
         (set -x; $JAVA -Xshare:off -XX:DumpLoadedClassList=$APPID.classlist $CMDLINE) || exit 1

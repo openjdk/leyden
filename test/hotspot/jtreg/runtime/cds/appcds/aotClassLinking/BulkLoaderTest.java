@@ -117,7 +117,6 @@ public class BulkLoaderTest {
             return new String[] {
                 "-Xlog:cds,cds+aot+load",
                 "-XX:+AOTClassLinking",
-                "-XX:+ArchiveInvokeDynamic",
                 "-XX:" + which + "ArchivePackages",
                 "-XX:" + which + "ArchiveProtectionDomains"
             };
@@ -184,7 +183,7 @@ class BulkLoaderTestApp {
               + "java.lang.RuntimePermission.*accessSystemModules");
 
 /*
-  FIXME - not working with -XX:+ArchiveInvokeDynamic
+  FIXME - not working with -XX:+AOTInvokeDynamicLinking
 
         doit(() -> {
             Class<?> lambdaClass = MyUtil.getCallerClass(1);

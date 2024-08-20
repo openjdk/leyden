@@ -7,7 +7,7 @@ condenser pipeline](https://openjdk.org/projects/leyden/notes/03-toward-condense
 
 - The caches are stored in the file specified by the `-XX:CacheDataStore=<app>.cds` option
     - The implementation is still a work in progress. AOT integration is not done yet.
-    - As an imtermediate step, the AOT cache may be stored in a separate file.
+    - As an intermediate step, the AOT cache may be stored in a separate file.
 
 - The `-XX:CacheDataStore` option is intended to be a replacement for the existing
   `-XX:SharedArchiveFile` option.

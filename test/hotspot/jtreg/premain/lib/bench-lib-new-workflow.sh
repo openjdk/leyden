@@ -198,7 +198,7 @@ function dump_one_jvm () {
     local APPID=$APP-jvm$1
 
     if $JAVA --version > /dev/null; then
-        if $JAVA -XX:+PrintFlagsFinal --version | grep ArchiveInvokeDynamic > /dev/null; then
+        if $JAVA -XX:+PrintFlagsFinal --version | grep CDSManualFinalImage > /dev/null; then
             local is_premain=1
             local type_msg="(premain )"
         else
@@ -233,7 +233,7 @@ function dump_one_jvm () {
                        -Xlog:cds=debug,cds+class=debug:file=$APPID-premain-static.dump.log::filesize=0 $CMDLINE) || exit 1
 
 
-        LEYDEN_OPTS="-XX:+ArchiveInvokeDynamic $LEYDEN_CALLER_OPTS"
+        LEYDEN_OPTS="$LEYDEN_CALLER_OPTS"
 
         echo "(Premain) Dump Leyden archive"
         (set -x; $JAVA -XX:CacheDataStore=$APPID.cds $LEYDEN_OPTS $CMDLINE) || exit 1

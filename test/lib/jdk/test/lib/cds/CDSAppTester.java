@@ -220,7 +220,6 @@ abstract public class CDSAppTester {
         if (isLeydenOldWorkflow()) {
             cmdLine = StringArrayUtils.concat(cmdLine,
                                               "-XX:+AOTClassLinking",
-                                              "-XX:+ArchiveInvokeDynamic",
                                               "-XX:+ArchiveDynamicProxies",
                                               "-XX:+ArchiveReflectionData");
         }
@@ -306,7 +305,6 @@ abstract public class CDSAppTester {
         f.delete();
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-XX:+AOTClassLinking",
-                                                   "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
@@ -330,7 +328,6 @@ abstract public class CDSAppTester {
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:+CDSManualFinalImage",
                                                    "-XX:+AOTClassLinking",
-                                                   "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
@@ -346,7 +343,6 @@ abstract public class CDSAppTester {
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:+AOTClassLinking",
-                                                   "-XX:+ArchiveInvokeDynamic",
                                                    "-XX:+ArchiveDynamicProxies",
                                                  //"-XX:+ArchiveReflectionData",
                                                    "-XX:CacheDataStore=" + cdsFile,
