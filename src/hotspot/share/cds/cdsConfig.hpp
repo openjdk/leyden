@@ -144,8 +144,8 @@ public:
 
   static bool is_dumping_reflection_data()                   NOT_CDS_JAVA_HEAP_RETURN_(false);
 
-  static bool is_dumping_dynamic_proxy()                     NOT_CDS_JAVA_HEAP_RETURN_(false);
-  static bool is_tracing_dynamic_proxy()                     NOT_CDS_RETURN_(false);
+  static bool is_dumping_dynamic_proxies()                   NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_logging_dynamic_proxies()                   NOT_CDS_RETURN_(false);
 
   static bool is_initing_classes_at_dump_time()              NOT_CDS_JAVA_HEAP_RETURN_(false);
 

@@ -51,7 +51,11 @@ void FinalImageRecipes::record_recipes_impl() {
   ResourceMark rm;
   GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
 
-  // For CDSConfig::is_dumping_invokedynamic()
+  // The recipes are recorded regardless of CDSConfig::is_dumping_{invokedynamic,dynamic_proxies,reflection_data}().
+  // If some of these options are not enabled, the corresponding recipes will be
+  // ignored during the final image assembly.
+
+  // InvokeDynamic
   GrowableArray<InstanceKlass*> tmp_indy_klasses;
   GrowableArray<Array<int>*> tmp_indy_cp_indices;
   int total_indys_to_resolve = 0;
@@ -92,7 +96,7 @@ void FinalImageRecipes::record_recipes_impl() {
   }
   log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_indy_klasses.length());
 
-  // For CDSConfig::is_dumping_reflection_data()
+  // Reflection Data
   int reflect_count = 0;
   if (_tmp_reflect_klasses != nullptr) {
     for (int i = _tmp_reflect_klasses->length() - 1; i >= 0; i--) {
@@ -116,7 +120,7 @@ void FinalImageRecipes::record_recipes_impl() {
   log_info(cds)("ReflectionData of %d classes will be archived in final CDS image", reflect_count);
 
   // Dynamic Proxies
-  if (_tmp_dynamic_proxy_classes != nullptr && ArchiveDynamicProxies) {
+  if (_tmp_dynamic_proxy_classes != nullptr) {
     int len = _tmp_dynamic_proxy_classes->length();
     _dynamic_proxy_classes = ArchiveBuilder::new_ro_array<DynamicProxyClassInfo>(len);
     ArchivePtrMarker::mark_pointer(&_dynamic_proxy_classes);
@@ -130,6 +134,7 @@ void FinalImageRecipes::record_recipes_impl() {
       ResourceMark rm;
       GrowableArray<Klass*> buffered_interfaces;
       for (int j = 0; j < tmp_info->_interfaces->length(); j++) {
+        // FIXME: tmp_info->_interfaces->at(j) could be excluded from archive!
         buffered_interfaces.append(ArchiveBuilder::current()->get_buffered_addr(tmp_info->_interfaces->at(j)));
       }
       info->_interfaces = ArchiveUtils::archive_array(&buffered_interfaces);
@@ -144,7 +149,7 @@ void FinalImageRecipes::record_recipes_impl() {
 void FinalImageRecipes::apply_recipes_for_invokedynamic(TRAPS) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
 
-  if (_indy_klasses != nullptr) {
+  if (CDSConfig::is_dumping_invokedynamic() && _indy_klasses != nullptr) {
     assert(_indy_cp_indices != nullptr, "must be");
     for (int i = 0; i < _indy_klasses->length(); i++) {
       InstanceKlass* ik = _indy_klasses->at(i);
@@ -162,7 +167,7 @@ void FinalImageRecipes::apply_recipes_for_invokedynamic(TRAPS) {
 void FinalImageRecipes::apply_recipes_for_reflection_data(JavaThread* current) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
 
-  if (_reflect_klasses != nullptr) {
+  if (CDSConfig::is_dumping_reflection_data() && _reflect_klasses != nullptr) {
     assert(_reflect_flags != nullptr, "must be");
     for (int i = 0; i < _reflect_klasses->length(); i++) {
       InstanceKlass* ik = _reflect_klasses->at(i);
@@ -202,6 +207,8 @@ void FinalImageRecipes::add_dynamic_proxy_class(oop loader, const char* proxy_na
     _tmp_dynamic_proxy_classes = new (mtClassShared) GrowableArray<TmpDynamicProxyClassInfo>(32, mtClassShared);
   }
 
+  log_info(cds, dynamic, proxy)("Adding proxy name %s", proxy_name);
+
   TmpDynamicProxyClassInfo info;
   info._loader_type = loader_type;
   info._access_flags = access_flags;
@@ -210,12 +217,17 @@ void FinalImageRecipes::add_dynamic_proxy_class(oop loader, const char* proxy_na
   for (int i = 0; i < interfaces->length(); i++) {
     Klass* intf = java_lang_Class::as_Klass(interfaces->obj_at(i));
     info._interfaces->append(intf);
+
+    if (log_is_enabled(Info, cds, dynamic, proxy)) {
+      ResourceMark rm;
+      log_info(cds, dynamic, proxy)("interface[%d] = %s", i, intf->external_name());
+    }
   }
   _tmp_dynamic_proxy_classes->append(info);
 }
 
 void FinalImageRecipes::apply_recipes_for_dynamic_proxies(TRAPS) {
-  if (ArchiveDynamicProxies && _dynamic_proxy_classes != nullptr) {
+  if (CDSConfig::is_dumping_dynamic_proxies() && _dynamic_proxy_classes != nullptr) {
     for (int proxy_index = 0; proxy_index < _dynamic_proxy_classes->length(); proxy_index++) {
       DynamicProxyClassInfo* info = _dynamic_proxy_classes->adr_at(proxy_index);
 

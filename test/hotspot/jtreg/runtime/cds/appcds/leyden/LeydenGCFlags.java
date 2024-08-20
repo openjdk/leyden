@@ -27,6 +27,9 @@
  * @summary CDS should fail to load if production time GC flags do not match training run.
  * @requires vm.flagless
  * @requires vm.cds.write.archived.java.heap
+ * @requires vm.gc.ZSinglegen
+ * @requires vm.gc.Serial
+ * @requires vm.gc.Parallel
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build LeydenGCFlags
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar HelloApp

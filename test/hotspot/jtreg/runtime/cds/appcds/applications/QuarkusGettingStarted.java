@@ -89,7 +89,7 @@ public class QuarkusGettingStarted {
     private static String getArtifact() throws Exception {
         Map<String, Path> artifacts = ArtifactResolver.resolve(QuarkusGettingStarted.class);
         Path path = artifacts.get("io.quarkus.quarkus-getting-started-1.0.0b");
-        return path.toString() + "/getting-started-1.0.0-SNAPSHOT-runner.jar";
+        return path.toString() + File.separator + "getting-started-1.0.0-SNAPSHOT-runner.jar";
     }
 
     static class QuarkusGettingStartedTester extends CDSAppTester {

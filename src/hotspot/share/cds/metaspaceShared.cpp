@@ -1097,6 +1097,8 @@ void MetaspaceShared::fork_and_dump_final_static_archive() {
       vm_direct_exit(status);
     } else {
       log_info(cds)("Child process finished; status = %d", status);
+      // On Windows, need WRITE permission to remove the file.
+      WINDOWS_ONLY(chmod(SharedArchiveFile, _S_IREAD | _S_IWRITE));
       status = remove(SharedArchiveFile);
       if (status != 0) {
         log_error(cds)("Failed to remove CDSPreimage file %s", SharedArchiveFile);

@@ -22,6 +22,42 @@
  *
  */
 
+
+/*
+ * @test id=static
+ * @requires vm.cds
+ * @summary run Spring Pet Clinic demo with the classic static archive workflow
+ * @library /test/lib
+ * @run driver/timeout=120 SpringPetClinic STATIC
+ */
+
+/*
+ * @test id=dynamic
+ * @requires vm.cds
+ * @summary run Spring Pet Clinic demo with the classic dynamic archive workflow
+ * @library /test/lib
+ * @run driver/timeout=120 SpringPetClinic DYNAMIC
+ */
+
+/*
+ * @test id=leyden
+ * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
+ * @summary run Spring Pet Clinic demo with leyden-premain "new workflow"
+ * @library /test/lib
+ * @run driver/timeout=120 SpringPetClinic LEYDEN
+ */
+
+/*
+ * @test id=leyden_old
+ * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
+ * @summary run Spring Pet Clinic demo with leyden-premain
+ * @library /test/lib
+ * @run driver/timeout=120 SpringPetClinic LEYDEN_OLD
+ */
+
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;

@@ -3701,7 +3701,7 @@ JVM_END
 
 JVM_ENTRY_PROF(void, JVM_LogDynamicProxy, JVM_LogDynamicProxy(JNIEnv *env, jobject loader, jstring proxy_name, jobjectArray interfaces, jint access_flags))
 #if INCLUDE_CDS
-  assert(CDSConfig::is_tracing_dynamic_proxy(),  "sanity");
+  assert(CDSConfig::is_logging_dynamic_proxies(),  "sanity");
 
   ResourceMark rm(THREAD);
   oop proxy_name_oop = JNIHandles::resolve_non_null(proxy_name);

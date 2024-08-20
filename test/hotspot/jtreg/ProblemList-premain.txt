@@ -51,6 +51,16 @@ runtime/cds/appcds/dynamicArchive/TestDynamicRegenerateHolderClasses.java 831814
 runtime/cds/appcds/dynamicArchive/TestLambdaInvokers.java 8318142 generic-all
 runtime/cds/appcds/javaldr/ExceptionDuringDumpAtObjectsInitPhase.java 8318142 generic-all
 
+# Windows path handling
+runtime/cds/appcds/applications/SpringPetClinic.java#dynamic 8338613 windows-all
+runtime/cds/appcds/applications/SpringPetClinic.java#leyden 8338613 windows-all
+runtime/cds/appcds/applications/SpringPetClinic.java#leyden_old 8338613 windows-all
+runtime/cds/appcds/applications/SpringPetClinic.java#static 8338613 windows-all
+
+# Windows failures
+runtime/cds/appcds/leyden/LeydenReflection.java 8338604 windows-all
+runtime/cds/appcds/leyden/LeydenReflectionOldWF.java 8338604 windows-all
+
 # Misc failures -- need to investigate
 runtime/logging/ItablesTest.java 8318142 generic-all
 runtime/logging/VerificationTest.java 8318142 generic-all

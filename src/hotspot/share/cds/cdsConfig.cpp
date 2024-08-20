@@ -65,7 +65,7 @@ int CDSConfig::get_status() {
          (is_logging_lambda_form_invokers() ? IS_LOGGING_LAMBDA_FORM_INVOKERS : 0) |
          (is_using_archive()                ? IS_USING_ARCHIVE : 0) |
          (is_dumping_heap()                 ? IS_DUMPING_HEAP : 0) |
-         (is_tracing_dynamic_proxy()        ? IS_LOGGING_DYNAMIC_PROXIES : 0) |
+         (is_logging_dynamic_proxies()      ? IS_LOGGING_DYNAMIC_PROXIES : 0) |
          (is_dumping_packages()             ? IS_DUMPING_PACKAGES : 0) |
          (is_dumping_protection_domains()   ? IS_DUMPING_PROTECTION_DOMAINS : 0);
 }
@@ -582,6 +582,11 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO(ArchiveReflectionData, false);
   }
 
+#ifdef _WINDOWS
+  // This optimization is not working on Windows for some reason. See JDK-8338604.
+  FLAG_SET_ERGO(ArchiveReflectionData, false);
+#endif
+
   if (is_dumping_static_archive()) {
     if (is_dumping_preimage_static_archive() || is_dumping_final_static_archive()) {
       // Don't tweak execution mode
@@ -687,7 +692,7 @@ bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
   }
 }
 
-bool CDSConfig::is_tracing_dynamic_proxy() {
+bool CDSConfig::is_logging_dynamic_proxies() {
   return ClassListWriter::is_enabled() || is_dumping_preimage_static_archive();
 }
 
@@ -795,8 +800,8 @@ bool CDSConfig::is_loading_invokedynamic() {
   return UseSharedSpaces && is_loading_heap() && _is_loading_invokedynamic;
 }
 
-bool CDSConfig::is_dumping_dynamic_proxy() {
-  return is_dumping_full_module_graph() && is_dumping_invokedynamic();
+bool CDSConfig::is_dumping_dynamic_proxies() {
+  return is_dumping_full_module_graph() && is_dumping_invokedynamic() && ArchiveDynamicProxies;
 }
 
 // NOTE: do not upstream this to mainline yet.

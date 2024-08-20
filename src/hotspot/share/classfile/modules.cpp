@@ -641,7 +641,7 @@ void Modules::define_archived_modules(Handle h_platform_loader, Handle h_system_
 
 void Modules::check_cds_restrictions(Handle module1, Handle module2, TRAPS) {
   if (CDSConfig::is_dumping_full_module_graph() && Universe::is_module_initialized()) {
-    if (ArchiveDynamicProxies && (is_dynamic_proxy_module(module1) || is_dynamic_proxy_module(module2))) {
+    if (CDSConfig::is_dumping_dynamic_proxies() && (is_dynamic_proxy_module(module1) || is_dynamic_proxy_module(module2))) {
       // The only the we allow is to add or modify the jdk.proxy?? modules that are used for dynamic proxies.
     } else {
       THROW_MSG(vmSymbols::java_lang_UnsupportedOperationException(),

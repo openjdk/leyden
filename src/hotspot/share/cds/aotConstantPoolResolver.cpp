@@ -575,7 +575,7 @@ void AOTConstantPoolResolver::init_dynamic_proxy_cache(TRAPS) {
 
 
 void AOTConstantPoolResolver::define_dynamic_proxy_class(Handle loader, Handle proxy_name, Handle interfaces, int access_flags, TRAPS) {
-  if (!CDSConfig::is_dumping_dynamic_proxy() || !ArchiveDynamicProxies) {
+  if (!CDSConfig::is_dumping_dynamic_proxies()) {
     return;
   }
   init_dynamic_proxy_cache(CHECK);

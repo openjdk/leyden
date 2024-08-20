@@ -89,7 +89,7 @@ public class MicronautFirstApp {
     private static String getArtifact() throws Exception {
         Map<String, Path> artifacts = ArtifactResolver.resolve(MicronautFirstApp.class);
         Path path = artifacts.get("io.micronaut.micronaut-first-app-1.0.0");
-        return path.toString() + "/default-0.1.jar";
+        return path.toString() + File.separator + "default-0.1.jar";
     }
 
     static class MicronautFirstAppTester extends CDSAppTester {

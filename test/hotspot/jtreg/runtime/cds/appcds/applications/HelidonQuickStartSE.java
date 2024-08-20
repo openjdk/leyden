@@ -87,9 +87,10 @@ public class HelidonQuickStartSE {
     }
 
     private static String getArtifact() throws Exception {
+        String sep = File.separator;
         Map<String, Path> artifacts = ArtifactResolver.resolve(HelidonQuickStartSE.class);
         Path path = artifacts.get("io.helidon.helidon-quickstart-se-4.0.7");
-        return path.toString() + "/target/helidon-quickstart-se.jar";
+        return path.toString() + sep + "target" + sep + "helidon-quickstart-se.jar";
     }
 
     static class HelidonQuickStartSETester extends CDSAppTester {
