@@ -728,6 +728,7 @@ class SerializeClosure;
   JFR_TEMPLATES(template)                                                                                         \
                                                                                                                   \
   /* CDS */                                                                                                       \
+  template(createArchivedObjects,                           "createArchivedObjects")                              \
   template(dumpSharedArchive,                               "dumpSharedArchive")                                  \
   template(dumpSharedArchive_signature,                     "(ZLjava/lang/String;)Ljava/lang/String;")            \
   template(generateLambdaFormHolderClasses,                 "generateLambdaFormHolderClasses")                    \

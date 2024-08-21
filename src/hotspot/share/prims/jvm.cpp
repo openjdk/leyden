@@ -2916,7 +2916,7 @@ static void thread_entry(JavaThread* thread, TRAPS) {
 
 JVM_ENTRY_PROF(void, JVM_StartThread, JVM_StartThread(JNIEnv* env, jobject jthread))
 #if INCLUDE_CDS
-  if (CDSConfig::is_dumping_classic_static_archive()) {
+  if (CDSConfig::allow_only_single_java_thread()) {
     // During java -Xshare:dump, if we allow multiple Java threads to
     // execute in parallel, symbols and classes may be loaded in
     // random orders which will make the resulting CDS archive

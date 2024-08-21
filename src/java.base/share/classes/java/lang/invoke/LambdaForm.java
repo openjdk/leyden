@@ -1166,7 +1166,7 @@ class LambdaForm {
             }
         }
 
-        static void dumpSharedArchive() {
+        static void createArchivedObjects() {
             archivedObjects = new MethodType[1];
             archivedObjects[0] = INVOKER_METHOD_TYPE;
         }

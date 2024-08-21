@@ -123,12 +123,12 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
   ADD_EXCL("sun/invoke/util/ValueConversions",           "ONE_INT",                // E
                                                          "ZERO_INT");              // E
 
-// Leyden-specific-begin
-  ADD_EXCL("java/lang/invoke/DirectMethodHandle",        "LONG_OBJ_TYPE",  // TEMP archive MethodTypes
-                                                         "OBJ_OBJ_TYPE");  // TEMP archive MethodTypes
+ if (CDSConfig::is_dumping_invokedynamic()) {
+  ADD_EXCL("java/lang/invoke/DirectMethodHandle",        "LONG_OBJ_TYPE",
+                                                         "OBJ_OBJ_TYPE");
 
-  ADD_EXCL("sun/invoke/util/Wrapper",                    "FLOAT_ZERO",     // ? there is a cache??
-                                                         "DOUBLE_ZERO");   // ? there is a cache??
+  ADD_EXCL("sun/invoke/util/Wrapper",                    "FLOAT_ZERO",
+                                                         "DOUBLE_ZERO");
 
   ADD_EXCL("java/lang/invoke/BoundMethodHandle$Specializer",   "BMH_TRANSFORMS",
                                                                "SPECIES_DATA_ACCESSOR");
@@ -139,7 +139,7 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
   ADD_EXCL("java/lang/invoke/SimpleMethodHandle",              "BMH_SPECIES");
 
   ADD_EXCL("java/lang/invoke/StringConcatFactory",             "NEW_ARRAY");
-// Leyden-specific-end
+ }
 
 # undef ADD_EXCL
 
@@ -233,7 +233,6 @@ void CDSHeapVerifier::add_static_obj_field(InstanceKlass* ik, oop field, Symbol*
       field->klass() == vmClasses::LambdaForm_klass()) {
     // LambdaForm and MethodType are non-modifiable and are not tested for object equality, so
     // it's OK if the static fields are reinitialized at runtime with alternative instances.
-    // (TODO: double check is this is correct)
     return;
   }
   StaticFieldInfo info = {ik, name};
@@ -251,13 +250,14 @@ inline bool CDSHeapVerifier::do_entry(oop& orig_obj, HeapShared::CachedOopInfo& 
       // should be flagged by CDSHeapVerifier.
       return true; /* keep on iterating */
     }
+    if (info->_holder->is_hidden()) {
+      return true;
+    }
     ResourceMark rm;
-
     char* class_name = info->_holder->name()->as_C_string();
     char* field_name = info->_name->as_C_string();
     if (strstr(class_name, "java/lang/invoke/BoundMethodHandle$Species_") == class_name &&
         strcmp(field_name, "BMH_SPECIES") == 0) {
-      // FIXME: is this really OK??
       return true;
     }
     LogStream ls(Log(cds, heap)::warning());

@@ -896,11 +896,13 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_invokedynamic()) {
-    // We also assume no other Java threads are running
-    // This makes sure that the MethodType and MethodTypeForm objects are clean.
+    // This makes sure that the MethodType and MethodTypeForm tables won't be updated
+    // concurrently when we are saving their contents into a side table.
+    assert(CDSConfig::allow_only_single_java_thread(), "Required");
+
     JavaValue result(T_VOID);
     JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
-                           vmSymbols::dumpSharedArchive(),
+                           vmSymbols::createArchivedObjects(),
                            vmSymbols::void_method_signature(),
                            CHECK);
   }

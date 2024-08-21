@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -884,7 +884,7 @@ sealed class DirectMethodHandle extends MethodHandle {
         }
     }
 
-    static void dumpSharedArchive() {
+    static void createArchivedObjects() {
         archivedObjects = new MethodType[2];
         archivedObjects[0] = OBJ_OBJ_TYPE;
         archivedObjects[1] = LONG_OBJ_TYPE;

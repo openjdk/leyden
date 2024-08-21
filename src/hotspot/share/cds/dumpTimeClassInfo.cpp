@@ -175,8 +175,6 @@ DumpTimeClassInfo* DumpTimeSharedClassTable::allocate_info(InstanceKlass* k) {
   DumpTimeClassInfo* p = put_if_absent(k, &created);
   assert(created, "must not exist in table");
   p->_klass = k;
-  //ResourceMark rm;
-  //tty->print_cr("allocate_info %p %s", k, k->external_name());
   return p;
 }
 

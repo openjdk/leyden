@@ -32,7 +32,6 @@ import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.function.Supplier;
 import java.util.HashMap;
@@ -259,7 +258,7 @@ class MethodType
     private static @Stable MethodType[] objectOnlyTypes;
 
     @SuppressWarnings("unchecked")
-    static void doit() {
+    private static void initializeFromArchive() {
         CDS.initializeFromArchive(MethodType.class);
         if (archivedObjects != null) {
             archivedMethodTypes = (HashMap<MethodType,MethodType>)archivedObjects[0];
@@ -269,7 +268,7 @@ class MethodType
         }
     }
     static {
-        doit();
+        initializeFromArchive();
     }
 
     /**
@@ -1436,55 +1435,44 @@ s.writeObject(this.parameterArray());
         return mt;
     }
 
-    static HashMap<MethodType,MethodType> archive(Archiver archiver) {
-        HashMap<MethodType,MethodType> archivedSet = new HashMap<>();
+    static HashMap<MethodType,MethodType> copyInternTable() {
+        HashMap<MethodType,MethodType> copy = new HashMap<>();
 
         for (Iterator<MethodType> i = internTable.iterator(); i.hasNext(); ) {
             MethodType t = i.next();
-            MethodType a = archiver.clean(t);
-            if (a != null) {
-                archivedSet.put(a, a);
+            if (canBeArchived(t)) {
+                copy.put(t, t);
             }
         }
 
-        return archivedSet;
+        return copy;
     }
 
-    static class Archiver {
-        ArrayList<MethodType> archived = new ArrayList<>();
-
-        MethodType clean(MethodType t) {
-            if (t == null || t.form == null) { // HACK!
-                return null;
-            }
-            if (archived.contains(t)) {
-                return t;
-            }
-
-            archived.add(t);
-            return t;
+    static boolean canBeArchived(MethodType t) {
+        if (t.form == null) { // FIXME why?
+            return false;
+        } else {
+            return true;
         }
     }
 
     // This is called from C code.
-    static void dumpSharedArchive() {
+    static void createArchivedObjects() {
         // Call these first, as the <clinit> of these classes may add
         // new MethodTypes into internTable.
-        DirectMethodHandle.dumpSharedArchive();
-        LambdaForm.NamedFunction.dumpSharedArchive();
-
-        Archiver archiver = new Archiver();
+        DirectMethodHandle.createArchivedObjects();
+        LambdaForm.NamedFunction.createArchivedObjects();
 
         MethodType[] objectOnlyTypesCopy = new MethodType[objectOnlyTypes.length];
         for (int i = 0; i < objectOnlyTypes.length; i++) {
-            MethodType t = archiver.clean(objectOnlyTypes[i]);
-            if (t != null) {
+            MethodType t = objectOnlyTypes[i];
+            if (t != null && canBeArchived(t)) {
                 objectOnlyTypesCopy[i] = t;
             }
         }
 
         archivedObjects = new Object[2];
-        archivedObjects[0] = archive(archiver);
+        archivedObjects[0] = copyInternTable();
         archivedObjects[1] = objectOnlyTypesCopy;
     }
 }

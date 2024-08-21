@@ -678,6 +678,11 @@ bool CDSConfig::is_dumping_final_static_archive() {
   return CacheDataStore != nullptr && CDSPreimage != nullptr;
 }
 
+bool CDSConfig::allow_only_single_java_thread() {
+  // See comments in JVM_StartThread()
+  return is_dumping_classic_static_archive() || is_dumping_final_static_archive();
+}
+
 bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
   if (is_dumping_final_static_archive()) {
     // Not yet supported in new workflow -- the training data may point

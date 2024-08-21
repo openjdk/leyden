@@ -104,6 +104,7 @@ public:
 
   // Misc CDS features
   static bool preserve_all_dumptime_verification_states(const InstanceKlass* ik);
+  static bool allow_only_single_java_thread()                NOT_CDS_RETURN_(false);
 
   // optimized_module_handling -- can we skip some expensive operations related to modules?
   static bool is_using_optimized_module_handling()           { return CDS_ONLY(_is_using_optimized_module_handling) NOT_CDS(false); }

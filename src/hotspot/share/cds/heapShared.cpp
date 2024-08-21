@@ -139,7 +139,7 @@ static ArchivableStaticFieldInfo archive_subgraph_entry_fields[] = {
   {"java/util/ImmutableCollections",              "archivedObjects"},
   {"java/lang/ModuleLayer",                       "EMPTY_LAYER"},
   {"java/lang/module/Configuration",              "EMPTY_CONFIGURATION"},
-  {"jdk/internal/math/FDBigInteger",              "archivedCaches"},  // FIXME -- requires AOTClassLinking
+  {"jdk/internal/math/FDBigInteger",              "archivedCaches"},
   {"java/lang/invoke/DirectMethodHandle",         "archivedObjects"}, // FIXME -- requires AOTClassLinking
   {"java/lang/invoke/MethodType",                 "archivedObjects"}, // FIXME -- requires AOTClassLinking
   {"java/lang/invoke/LambdaForm$NamedFunction",   "archivedObjects"}, // FIXME -- requires AOTClassLinking
@@ -962,8 +962,11 @@ void KlassSubGraphInfo::add_subgraph_object_klass(Klass* orig_k) {
   }
 
   if (buffered_k->is_instance_klass()) {
-    if (!CDSConfig::is_dumping_invokedynamic()) {
-      // FIXME: this supports Lambda Proxy classes
+    if (CDSConfig::is_dumping_invokedynamic()) {
+      assert(InstanceKlass::cast(buffered_k)->is_shared_boot_class() ||
+             HeapShared::is_lambda_proxy_klass(InstanceKlass::cast(buffered_k)),
+            "we can archive only instances of boot classes or lambda proxy classes");
+    } else {
       assert(InstanceKlass::cast(buffered_k)->is_shared_boot_class(),
              "must be boot class");
     }
@@ -1536,6 +1539,7 @@ class WalkOopAndArchiveClosure: public BasicOopIterateClosure {
   bool _record_klasses_only;
   KlassSubGraphInfo* _subgraph_info;
   oop _referencing_obj;
+
   // The following are for maintaining a stack for determining
   // CachedOopInfo::_referrer
   static WalkOopAndArchiveClosure* _current;
@@ -1563,6 +1567,7 @@ class WalkOopAndArchiveClosure: public BasicOopIterateClosure {
     oop obj = RawAccess<>::oop_load(p);
     if (!CompressedOops::is_null(obj)) {
       size_t field_delta = pointer_delta(p, _referencing_obj, sizeof(char));
+
       if (!_record_klasses_only && log_is_enabled(Debug, cds, heap)) {
         ResourceMark rm;
         log_debug(cds, heap)("(%d) %s[" SIZE_FORMAT "] ==> " PTR_FORMAT " size " SIZE_FORMAT " %s", _level,
@@ -1612,8 +1617,8 @@ HeapShared::CachedOopInfo HeapShared::make_cached_oop_info(oop obj) {
   return CachedOopInfo(referrer, points_to_oops_checker.result());
 }
 
-// We currently allow only the box classes, which are initialized very early by
-// HeapShared::init_box_classes().
+// We currently allow only the box classes, as well as j.l.Object, which are
+// initialized very early by HeapShared::init_box_classes().
 bool HeapShared::can_mirror_be_used_in_subgraph(oop orig_java_mirror) {
   return java_lang_Class::is_primitive(orig_java_mirror)
     || orig_java_mirror == vmClasses::Boolean_klass()->java_mirror()
@@ -1682,29 +1687,18 @@ bool HeapShared::archive_reachable_objects_from(int level,
     // these objects that are referenced (directly or indirectly) by static fields.
     ResourceMark rm;
     log_error(cds, heap)("Cannot archive object of class %s", orig_obj->klass()->external_name());
+    WalkOopAndArchiveClosure* walker = WalkOopAndArchiveClosure::current();
+    if (walker != nullptr) {
+      LogStream ls(Log(cds, heap)::error());
+      CDSHeapVerifier::trace_to_root(&ls, walker->referencing_obj());
+    }
     exit_on_error();
   }
 
-#if 0
-  if (java_lang_Class::is_instance(orig_obj) && subgraph_info != _default_subgraph_info) {
-    if (can_mirror_be_used_in_subgraph(orig_obj)) {
-      orig_obj = scratch_java_mirror(orig_obj);
-      assert(orig_obj != nullptr, "must be archived");
-    } else {
-      // Don't follow the fields -- they will be nulled out when the mirror was copied
-
-      // FIXME - we should preserve the static fields of LambdaForm classes (and other hidden classes?)
-      // so we need to walk the oop fields.
-      orig_obj = scratch_java_mirror(orig_obj);
-      assert(orig_obj != nullptr, "must be archived");
-    }
-  }
-#else
   if (java_lang_Class::is_instance(orig_obj)) {
     orig_obj = scratch_java_mirror(orig_obj);
     assert(orig_obj != nullptr, "must be archived");
   }
-#endif
 
   if (has_been_seen_during_subgraph_recording(orig_obj)) {
     // orig_obj has already been archived and traced. Nothing more to do.
@@ -1996,7 +1990,7 @@ void HeapShared::init_subgraph_entry_fields(ArchivableStaticFieldInfo fields[],
     const char* test_class_name = ArchiveHeapTestClass;
 #else
     bool is_test_class = false;
-    const char* test_class_name = "";
+    const char* test_class_name = ""; // avoid C++ printf checks warnings.
 #endif
 
     if (is_test_class) {

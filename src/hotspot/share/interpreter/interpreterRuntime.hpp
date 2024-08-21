@@ -101,8 +101,7 @@ class InterpreterRuntime: AllStatic {
                                        constantPoolHandle& pool, TRAPS);
   static void cds_resolve_invokedynamic(int raw_index,
                                         constantPoolHandle& pool, TRAPS);
- private:
-
+private:
   // Statics & fields
   static void resolve_getfield(JavaThread* current);
   static void resolve_putfield(JavaThread* current);
