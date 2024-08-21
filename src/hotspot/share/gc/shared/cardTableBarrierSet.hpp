@@ -106,6 +106,11 @@ public:
 
   virtual void print_on(outputStream* st) const;
 
+  // The AOT code cache manager needs to know the current card shift
+  // and, for some barrier sets, the region grain size shift
+  uint card_shift() const { return _card_table->card_shift(); }
+  virtual uint grain_shift() { return 0; }
+
   template <DecoratorSet decorators, typename BarrierSetT = CardTableBarrierSet>
   class AccessBarrier: public ModRefBarrierSet::AccessBarrier<decorators, BarrierSetT> {};
 };

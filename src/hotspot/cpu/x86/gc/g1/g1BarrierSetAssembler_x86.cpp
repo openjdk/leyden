@@ -24,7 +24,9 @@
 
 #include "precompiled.hpp"
 #include "asm/macroAssembler.inline.hpp"
+#if INCLUDE_CDS
 #include "code/SCCache.hpp"
+#endif
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -285,11 +287,32 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
 
   // Does store cross heap regions?
 
+#if INCLUDE_CDS
+  // AOT code needs to load the barrier grain shift from the aot
+  // runtime constants area in the code cache otherwise we can compile
+  // it as an immediate operand
+
+  if (StoreCachedCode) {
+    address grain_shift_addr = AOTRuntimeConstants::grain_shift_address();
+    __ movptr(tmp, store_addr);
+    __ xorptr(tmp, new_val);
+    __ push(rscratch1);
+    __ push(rcx);
+    __ lea(rscratch1, ExternalAddress(grain_shift_addr));
+    __ movq(rcx, Address(rscratch1, 0));
+    __ shrptr(tmp);
+    __ pop(rcx);
+    __ pop(rscratch1);
+    __ jcc(Assembler::equal, done);
+  } else {
+#endif // INCLUDE_CDS
   __ movptr(tmp, store_addr);
   __ xorptr(tmp, new_val);
   __ shrptr(tmp, G1HeapRegion::LogOfHRGrainBytes);
   __ jcc(Assembler::equal, done);
-
+#if INCLUDE_CDS
+  }
+#endif // INCLUDE_CDS
   // crosses regions, storing null?
 
   __ cmpptr(new_val, NULL_WORD);
@@ -298,10 +321,30 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
   // storing region crossing non-null, is card already dirty?
 
   const Register card_addr = tmp;
-  const Register cardtable = tmp2;
 
   __ movptr(card_addr, store_addr);
-  __ shrptr(card_addr, CardTable::card_shift());
+#if INCLUDE_CDS
+  // AOT code needs to load the barrier card shift from the aot
+  // runtime constants area in the code cache otherwise we can compile
+  // it as an immediate operand
+  if (StoreCachedCode) {
+    address card_shift_addr = AOTRuntimeConstants::card_shift_address();
+    __ push(rscratch1);
+    __ push(rcx);
+    __ lea(rscratch1, ExternalAddress(card_shift_addr));
+    __ movq(rcx, Address(rscratch1, 0));
+    __ shrptr(card_addr);
+    __ pop(rcx);
+    __ pop(rscratch1);
+  } else {
+#endif // INCLUDE_CDS
+    __ shrptr(card_addr, CardTable::card_shift());
+#if INCLUDE_CDS
+  }
+#endif // INCLUDE_CDS
+
+  const Register cardtable = tmp2;
+
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
   if (SCCache::is_on_for_write()) {

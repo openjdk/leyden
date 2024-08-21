@@ -24,6 +24,9 @@
 
 #include "precompiled.hpp"
 #include "classfile/javaClasses.hpp"
+#if INCLUDE_CDS
+#include "code/SCCache.hpp"
+#endif
 #include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -440,8 +443,20 @@ void G1BarrierSetC2::post_barrier(GraphKit* kit,
   // Must use ctrl to prevent "integerized oop" existing across safepoint
   Node* cast =  __ CastPX(__ ctrl(), adr);
 
+  Node* card_shift;
+#if INCLUDE_CDS
+  if (StoreCachedCode) {
+    // load the card shift from the AOT Runtime Constants area
+    Node* card_shift_adr =  __ makecon(TypeRawPtr::make(AOTRuntimeConstants::card_shift_address()));
+    card_shift  = __ load(__ ctrl(), card_shift_adr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
+  } else {
+#endif
+  card_shift = __ ConI(CardTable::card_shift());
+#if INCLUDE_CDS
+  }
+#endif
   // Divide pointer by card size
-  Node* card_offset = __ URShiftX( cast, __ ConI(CardTable::card_shift()) );
+  Node* card_offset = __ URShiftX( cast, card_shift );
 
   // Combine card table base and card offset
   Node* card_adr = __ AddP(no_base, byte_map_base_node(kit), card_offset );
@@ -454,8 +469,19 @@ void G1BarrierSetC2::post_barrier(GraphKit* kit,
     // Should be able to do an unsigned compare of region_size instead of
     // and extra shift. Do we have an unsigned compare??
     // Node* region_size = __ ConI(1 << G1HeapRegion::LogOfHRGrainBytes);
+#if INCLUDE_CDS
+    Node* xor_res = __ XorX( cast,  __ CastPX(__ ctrl(), val));
+    if (StoreCachedCode)  {
+      // load the grain shift from the AOT Runtime Constants area
+      Node* grain_shift_adr =  __ makecon(TypeRawPtr::make(AOTRuntimeConstants::grain_shift_address()));
+      Node* grain_shift  = __ load(__ ctrl(), grain_shift_adr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
+      xor_res = __ URShiftX( xor_res, grain_shift);
+    } else {
+      xor_res = __ URShiftX ( xor_res, __ ConI(checked_cast<jint>(G1HeapRegion::LogOfHRGrainBytes)));
+    }
+#else
     Node* xor_res =  __ URShiftX ( __ XorX( cast,  __ CastPX(__ ctrl(), val)), __ ConI(checked_cast<jint>(G1HeapRegion::LogOfHRGrainBytes)));
-
+#endif
     // if (xor_res == 0) same region so skip
     __ if_then(xor_res, BoolTest::ne, zeroX, likely); {
 

@@ -10426,4 +10426,21 @@ void MacroAssembler::restore_legacy_gprs() {
   movq(rax, Address(rsp, 15 * wordSize));
   addq(rsp, 16 * wordSize);
 }
+
+void MacroAssembler::load_aotrc_address(address a, Register reg) {
+#if INCLUDE_CDS
+#ifndef PRODUCT
+  assert(AOTRuntimeConstants::is_aotrc_address(a), "address out of range for data area");
+#endif
+  if (SCCache::is_on_for_write()) {
+    // all aotrc field addresses should be registered in the SCC address table
+    lea(reg, ExternalAddress(a));
+  } else {
+    mov64(reg, (uint64_t)a);
+  }
+#else
+  ShouldNotReachHere();
+#endif
+}
+
 #endif

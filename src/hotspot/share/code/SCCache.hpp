@@ -602,4 +602,30 @@ public:
   static void new_workflow_load_cache() NOT_CDS_JAVA_HEAP_RETURN;
 };
 
+// forward declare friend class
+class SCCache;
+// code cache internal runtime constants area used by AOT code
+class AOTRuntimeConstants {
+ friend class SCCache;
+  uint _grain_shift;
+  uint _card_shift;
+  static address _field_addresses_list[];
+  static AOTRuntimeConstants _aot_runtime_constants;
+  // private constructor for unique singleton
+  AOTRuntimeConstants() { }
+  // private for use by friend class SCCache
+  static void initialize_from_runtime();
+ public:
+  static bool is_aotrc_address(address adr) {
+    address base = (address)&_aot_runtime_constants;
+    address hi = base + sizeof(AOTRuntimeConstants);
+    return (base <= adr && adr < hi);
+  }
+  static address grain_shift_address() { return (address)&_aot_runtime_constants._grain_shift; }
+  static address card_shift_address() { return (address)&_aot_runtime_constants._card_shift; }
+  static address* field_addresses_list() {
+    return _field_addresses_list;
+  }
+};
+
 #endif // SHARE_CODE_SCCACHE_HPP

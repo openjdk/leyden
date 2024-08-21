@@ -313,6 +313,7 @@ public:
       Raw::clone(src, dst, size);
     }
   };
+
 };
 
 template<typename T>

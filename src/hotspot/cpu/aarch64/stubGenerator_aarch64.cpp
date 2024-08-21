@@ -460,7 +460,7 @@ class StubGenerator: public StubCodeGenerator {
     return start;
   }
 
-  // Continuation point for runtime calls returning with a pending
+// Continuation point for runtime calls returning with a pending
   // exception.  The pending exception check happened in the runtime
   // or native call stub.  The pending exception in Thread is
   // converted into a Java-level exception.

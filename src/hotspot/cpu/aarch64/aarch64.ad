@@ -1116,6 +1116,7 @@ definitions %{
 source_hpp %{
 
 #include "asm/macroAssembler.hpp"
+#include "ci/ciUtilities.hpp"
 #include "gc/shared/barrierSetAssembler.hpp"
 #include "gc/shared/cardTable.hpp"
 #include "gc/shared/cardTableBarrierSet.hpp"
@@ -3418,10 +3419,6 @@ encode %{
     __ mov(dst_reg, (uint64_t)1);
   %}
 
-  enc_class aarch64_enc_mov_byte_map_base(iRegP dst, immByteMapBase src) %{
-    __ load_byte_map_base($dst$$Register);
-  %}
-
   enc_class aarch64_enc_mov_n(iRegN dst, immN src) %{
     Register dst_reg = as_Register($dst$$reg);
     address con = (address)$src$$constant;
@@ -4524,7 +4521,19 @@ operand immByteMapBase()
 %{
   // Get base of card map
   predicate(BarrierSet::barrier_set()->is_a(BarrierSet::CardTableBarrierSet) &&
-            (CardTable::CardValue*)n->get_ptr() == ((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base());
+            is_card_table_address((address)(n->get_ptr())));
+  match(ConP);
+
+  op_cost(0);
+  format %{ %}
+  interface(CONST_INTER);
+%}
+
+// AOT Runtime Constants Address
+operand immAOTRuntimeConstantsAddress()
+%{
+  // Check if the address is in the range of AOT Runtime Constants
+  predicate(is_aotrc_address((address)(n->get_ptr())));
   match(ConP);
 
   op_cost(0);
@@ -6781,7 +6790,23 @@ instruct loadByteMapBase(iRegPNoSp dst, immByteMapBase con)
   ins_cost(INSN_COST);
   format %{ "adr  $dst, $con\t# Byte Map Base" %}
 
-  ins_encode(aarch64_enc_mov_byte_map_base(dst, con));
+  ins_encode %{
+    __ load_byte_map_base($dst$$Register);
+  %}
+
+  ins_pipe(ialu_imm);
+%}
+
+instruct loadAOTRCAddress(iRegPNoSp dst, immAOTRuntimeConstantsAddress con)
+%{
+  match(Set dst con);
+
+  ins_cost(INSN_COST);
+  format %{ "adr  $dst, $con\t# AOT Runtime Constants Address" %}
+
+  ins_encode %{
+    __ load_aotrc_address((address)$con$$constant, $dst$$Register);
+  %}
 
   ins_pipe(ialu_imm);
 %}

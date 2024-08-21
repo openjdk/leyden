@@ -161,6 +161,9 @@ void SCCache::init2() {
       exit_vm_on_load_failure();
     }
   }
+  // initialize aot runtime constants as appropriate to this runtime
+  AOTRuntimeConstants::initialize_from_runtime();
+
   if (!verify_vm_config()) {
     close();
     exit_vm_on_load_failure();
@@ -3608,6 +3611,11 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, LIR_Assembler::double_signflip_pool);
 #endif
 
+  // addresses of fields in AOT runtime constants area
+  address* p = AOTRuntimeConstants::field_addresses_list();
+  while (*p != nullptr) {
+    SET_ADDRESS(_extrs, *p++);
+  }
   // Stubs
   SET_ADDRESS(_stubs, StubRoutines::method_entry_barrier());
   SET_ADDRESS(_stubs, StubRoutines::forward_exception_entry());
@@ -4141,3 +4149,20 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
   }
   return id;
 }
+
+void AOTRuntimeConstants::initialize_from_runtime() {
+  BarrierSet* bs = BarrierSet::barrier_set();
+  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
+    CardTableBarrierSet* ctbs = ((CardTableBarrierSet*)bs);
+    _aot_runtime_constants._grain_shift = ctbs->grain_shift();
+    _aot_runtime_constants._card_shift = ctbs->card_shift();
+  }
+}
+
+AOTRuntimeConstants AOTRuntimeConstants::_aot_runtime_constants;
+
+address AOTRuntimeConstants::_field_addresses_list[] = {
+  grain_shift_address(),
+  card_shift_address(),
+  nullptr
+};

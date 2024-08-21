@@ -235,7 +235,6 @@ address UnsafeMemoryAccess::page_error_continue_pc(address pc) {
   return nullptr;
 }
 
-
 static BufferBlob* initialize_stubs(StubCodeGenerator::StubsKind kind,
                                     int code_size, int max_aligned_stubs,
                                     const char* timer_msg,

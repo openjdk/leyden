@@ -33,6 +33,7 @@
 #include "runtime/stubCodeGenerator.hpp"
 #include "runtime/threadWXSetters.inline.hpp"
 #include "utilities/macros.hpp"
+#include "utilities/sizes.hpp"
 
 // StubRoutines provides entry points to assembly routines used by
 // compiled code and the run-time system. Platform-specific entry
@@ -327,7 +328,6 @@ class StubRoutines: AllStatic {
 
   static CallStub call_stub()                              { return CAST_TO_FN_PTR(CallStub, _call_stub_entry); }
 
-  // Exceptions
   static address forward_exception_entry()                 { return _forward_exception_entry; }
   // Implicit exceptions
   static address throw_AbstractMethodError_entry()         { return _throw_AbstractMethodError_entry; }

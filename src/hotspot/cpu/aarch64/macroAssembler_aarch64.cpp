@@ -29,6 +29,9 @@
 #include "ci/ciEnv.hpp"
 #include "ci/ciUtilities.hpp"
 #include "code/compiledIC.hpp"
+#if INCLUDE_CDS
+#include "code/SCCache.hpp"
+#endif
 #include "compiler/compileTask.hpp"
 #include "compiler/disassembler.hpp"
 #include "compiler/oopMap.hpp"
@@ -5465,12 +5468,32 @@ void MacroAssembler::load_byte_map_base(Register reg) {
 
   // Strictly speaking the byte_map_base isn't an address at all, and it might
   // even be negative. It is thus materialised as a constant.
+#if INCLUDE_CDS
   if (SCCache::is_on_for_write()) {
     // SCA needs relocation info for card table base
     lea(reg, ExternalAddress(reinterpret_cast<address>(byte_map_base)));
   } else {
+#endif
     mov(reg, (uint64_t)byte_map_base);
+#if INCLUDE_CDS
   }
+#endif
+}
+
+void MacroAssembler::load_aotrc_address(address a, Register reg) {
+#if INCLUDE_CDS
+#ifndef PRODUCT
+  assert(AOTRuntimeConstants::is_aotrc_address(a), "address out of range for data area");
+#endif
+  if (SCCache::is_on_for_write()) {
+    // all aotrc field addresses should be registered in the SCC address table
+    lea(reg, ExternalAddress(a));
+  } else {
+    mov(reg, (uint64_t)a);
+  }
+#else
+  ShouldNotReachHere();
+#endif
 }
 
 void MacroAssembler::build_frame(int framesize) {
