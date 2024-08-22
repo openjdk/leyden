@@ -3636,7 +3636,7 @@ void SCAddressTable::init() {
   SET_ADDRESS(_stubs, StubRoutines::cont_returnBarrier());
   SET_ADDRESS(_stubs, StubRoutines::cont_returnBarrierExc());
 
-  JFR_ONLY(SET_ADDRESS(_stubs, StubRoutines::jfr_write_checkpoint());)
+  JFR_ONLY(SET_ADDRESS(_stubs, SharedRuntime::jfr_write_checkpoint());)
 
 
   SET_ADDRESS(_stubs, StubRoutines::jbyte_arraycopy());
@@ -3793,11 +3793,12 @@ void SCAddressTable::init() {
 #ifdef COMPILER2
   SET_ADDRESS(_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
 #endif
-  SET_ADDRESS(_blobs, StubRoutines::throw_AbstractMethodError_entry());
-  SET_ADDRESS(_blobs, StubRoutines::throw_IncompatibleClassChangeError_entry());
-  SET_ADDRESS(_blobs, StubRoutines::throw_NullPointerException_at_call_entry());
-  SET_ADDRESS(_blobs, StubRoutines::throw_StackOverflowError_entry());
-  SET_ADDRESS(_blobs, StubRoutines::throw_delayed_StackOverflowError_entry());
+
+  SET_ADDRESS(_blobs, SharedRuntime::throw_AbstractMethodError_entry());
+  SET_ADDRESS(_blobs, SharedRuntime::throw_IncompatibleClassChangeError_entry());
+  SET_ADDRESS(_blobs, SharedRuntime::throw_NullPointerException_at_call_entry());
+  SET_ADDRESS(_blobs, SharedRuntime::throw_StackOverflowError_entry());
+  SET_ADDRESS(_blobs, SharedRuntime::throw_delayed_StackOverflowError_entry());
 
   assert(_blobs_length <= _shared_blobs_max, "increase _shared_blobs_max to %d", _blobs_length);
   _final_blobs_length = _blobs_length;
