@@ -232,7 +232,7 @@ $ docker run --rm -v /repos/leyden/build/linux-x64/images/jdk:/jdk -v $(pwd):/te
 Error occurred during initialization of VM
 Unable to use shared archive.
 ```
-### Only G1GC, SerialGC and ParallelGC are Supported
+### Only G1GC, SerialGC, ParallelGC, EpsilonGC are Supported
 
 Currently, if you use any other garbage collector in combination with `-XX:CacheDataStore`, the VM will
 exit with an error.
@@ -241,7 +241,7 @@ exit with an error.
 $ java -XX:+UseZGC -XX:CacheDataStore=foo --version
 Error occurred during initialization of VM
 Cannot create the CacheDataStore: UseCompressedClassPointers must be enabled, and collector
-must be G1, Parallel, or Serial
+must be G1, Parallel, Serial, or Epsilon
 ```
 
 
