@@ -150,7 +150,7 @@ public:
       if (_disable_writing) {
         return false;
       }
-      return (UseG1GC || UseParallelGC || UseSerialGC) && UseCompressedClassPointers;
+      return (UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC) && UseCompressedClassPointers;
     )
     NOT_CDS_JAVA_HEAP(return false;)
   }

@@ -44,7 +44,7 @@ import jdk.test.lib.StringArrayUtils;
 public class LeydenGCFlags {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
     static final String mainClass = "HelloApp";
-    static final String ERROR_GC_SUPPORTED = "Cannot create the CacheDataStore: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, or Serial";
+    static final String ERROR_GC_SUPPORTED = "Cannot create the CacheDataStore: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, or Epsilon";
     static final String ERROR_GC_MISMATCH = "CDS archive has aot-linked classes. It cannot be used because GC used during dump time (.*) is not the same as runtime (.*)";
     static final String ERROR_COOP_MISMATCH = "Disable Startup Code Cache: 'HelloApp.cds.code' was created with CompressedOops::shift.. = .* vs current .*";
 
