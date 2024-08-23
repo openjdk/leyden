@@ -299,7 +299,7 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
     __ push(rscratch1);
     __ push(rcx);
     __ lea(rscratch1, ExternalAddress(grain_shift_addr));
-    __ movq(rcx, Address(rscratch1, 0));
+    __ movptr(rcx, Address(rscratch1, 0));
     __ shrptr(tmp);
     __ pop(rcx);
     __ pop(rscratch1);
@@ -332,7 +332,7 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
     __ push(rscratch1);
     __ push(rcx);
     __ lea(rscratch1, ExternalAddress(card_shift_addr));
-    __ movq(rcx, Address(rscratch1, 0));
+    __ movptr(rcx, Address(rscratch1, 0));
     __ shrptr(card_addr);
     __ pop(rcx);
     __ pop(rscratch1);
