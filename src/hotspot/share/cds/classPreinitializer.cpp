@@ -62,6 +62,18 @@ bool ClassPreinitializer::is_forced_preinit_class(InstanceKlass* ik) {
     "java/lang/invoke/BoundMethodHandle$Specializer",
     "java/lang/invoke/MethodHandles$Lookup",
 
+    // TODO:
+    // This is needed since JDK-8338532. Without this, when
+    // archived heap objects are used, the class init order is not
+    // expected by the jdk/internal/constant bootstrap code and we
+    // will get a null pointer exception.
+    //
+    // When bootstraping has intricated/fragile order, it's probably
+    // better to archive all related classes in an initialized state
+    // (i.e., take a snapshot). The existing approach in
+    // heapShared::resolve_or_init_classes_for_subgraph_of() won't work.
+    "jdk/internal/constant/PrimitiveClassDescImpl",
+
   //TODO: these use java.lang.ClassValue$Entry which is a subtype of WeakReference
   //"java/lang/reflect/Proxy$ProxyBuilder",
   //"java/lang/reflect/Proxy",
