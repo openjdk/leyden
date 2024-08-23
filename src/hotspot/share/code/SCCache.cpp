@@ -3923,8 +3923,12 @@ void SCCache::load_strings() {
   uint* sizes = (uint*)addr(strings_offset);
   uint* hashs = (uint*)addr(strings_offset + data_size);
   strings_size -= 2 * data_size;
-  _C_strings_buf = addr(strings_offset + 2 * data_size);
-  const char* p = _C_strings_buf;
+  // We have to keep cached strings longer than _cache buffer
+  // because they are refernced from compiled code which may
+  // still be executed on VM exit after _cache is freed.
+  char* p = NEW_C_HEAP_ARRAY(char, strings_size+1, mtCode);
+  memcpy(p, addr(strings_offset + 2 * data_size), strings_size);
+  _C_strings_buf = p;
   assert(strings_count <= MAX_STR_COUNT, "sanity");
   for (uint i = 0; i < strings_count; i++) {
     _C_strings[i] = p;
