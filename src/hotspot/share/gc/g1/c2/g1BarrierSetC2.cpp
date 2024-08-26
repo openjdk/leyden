@@ -445,16 +445,15 @@ void G1BarrierSetC2::post_barrier(GraphKit* kit,
 
   Node* card_shift;
 #if INCLUDE_CDS
-  if (StoreCachedCode) {
+  if (SCCache::is_on_for_write()) {
     // load the card shift from the AOT Runtime Constants area
     Node* card_shift_adr =  __ makecon(TypeRawPtr::make(AOTRuntimeConstants::card_shift_address()));
     card_shift  = __ load(__ ctrl(), card_shift_adr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);
-  } else {
+  } else
 #endif
-  card_shift = __ ConI(CardTable::card_shift());
-#if INCLUDE_CDS
+  {
+    card_shift = __ ConI(CardTable::card_shift());
   }
-#endif
   // Divide pointer by card size
   Node* card_offset = __ URShiftX( cast, card_shift );
 
@@ -471,7 +470,7 @@ void G1BarrierSetC2::post_barrier(GraphKit* kit,
     // Node* region_size = __ ConI(1 << G1HeapRegion::LogOfHRGrainBytes);
 #if INCLUDE_CDS
     Node* xor_res = __ XorX( cast,  __ CastPX(__ ctrl(), val));
-    if (StoreCachedCode)  {
+    if (SCCache::is_on_for_write())  {
       // load the grain shift from the AOT Runtime Constants area
       Node* grain_shift_adr =  __ makecon(TypeRawPtr::make(AOTRuntimeConstants::grain_shift_address()));
       Node* grain_shift  = __ load(__ ctrl(), grain_shift_adr, TypeInt::INT, T_BYTE, Compile::AliasIdxRaw);

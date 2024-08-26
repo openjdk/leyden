@@ -602,8 +602,6 @@ public:
   static void new_workflow_load_cache() NOT_CDS_JAVA_HEAP_RETURN;
 };
 
-// forward declare friend class
-class SCCache;
 // code cache internal runtime constants area used by AOT code
 class AOTRuntimeConstants {
  friend class SCCache;
@@ -616,7 +614,7 @@ class AOTRuntimeConstants {
   // private for use by friend class SCCache
   static void initialize_from_runtime();
  public:
-  static bool is_aotrc_address(address adr) {
+  static bool contains(address adr) {
     address base = (address)&_aot_runtime_constants;
     address hi = base + sizeof(AOTRuntimeConstants);
     return (base <= adr && adr < hi);

@@ -58,6 +58,4 @@ template <typename T> T ci_card_table_address_as() {
 
 bool is_card_table_address(address adr);
 
-bool is_aotrc_address(address adr);
-
 #endif // SHARE_CI_CIUTILITIES_HPP

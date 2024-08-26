@@ -1116,7 +1116,6 @@ definitions %{
 source_hpp %{
 
 #include "asm/macroAssembler.hpp"
-#include "ci/ciUtilities.hpp"
 #include "gc/shared/barrierSetAssembler.hpp"
 #include "gc/shared/cardTable.hpp"
 #include "gc/shared/cardTableBarrierSet.hpp"
@@ -4437,7 +4436,7 @@ operand immByteMapBase()
 operand immAOTRuntimeConstantsAddress()
 %{
   // Check if the address is in the range of AOT Runtime Constants
-  predicate(is_aotrc_address((address)(n->get_ptr())));
+  predicate(AOTRuntimeConstants::contains((address)(n->get_ptr())));
   match(ConP);
 
   op_cost(0);
@@ -6580,7 +6579,7 @@ instruct loadAOTRCAddress(iRegPNoSp dst, immAOTRuntimeConstantsAddress con)
   format %{ "adr  $dst, $con\t# AOT Runtime Constants Address" %}
 
   ins_encode %{
-    __ load_aotrc_address((address)$con$$constant, $dst$$Register);
+    __ load_aotrc_address($dst$$Register, (address)$con$$constant);
   %}
 
   ins_pipe(ialu_imm);

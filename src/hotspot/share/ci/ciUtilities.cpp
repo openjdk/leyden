@@ -24,9 +24,6 @@
 
 #include "precompiled.hpp"
 #include "ci/ciUtilities.hpp"
-#if INCLUDE_CDS
-#include "code/SCCache.hpp"
-#endif
 #include "gc/shared/cardTableBarrierSet.hpp"
 #include "gc/shared/cardTable.hpp"
 #include "gc/shared/collectedHeap.hpp"
@@ -60,14 +57,5 @@ bool is_card_table_address(address adr) {
       return adr == ci_card_table_address_as<address>();
     }
   }
-  return false;
-}
-
-bool is_aotrc_address(address adr) {
-#if INCLUDE_CDS
-  if (Universe::is_fully_initialized()) {
-    return AOTRuntimeConstants::is_aotrc_address(adr);
-  }
-#endif
   return false;
 }

@@ -5480,11 +5480,9 @@ void MacroAssembler::load_byte_map_base(Register reg) {
 #endif
 }
 
-void MacroAssembler::load_aotrc_address(address a, Register reg) {
+void MacroAssembler::load_aotrc_address(Register reg, address a) {
 #if INCLUDE_CDS
-#ifndef PRODUCT
-  assert(AOTRuntimeConstants::is_aotrc_address(a), "address out of range for data area");
-#endif
+  assert(AOTRuntimeConstants::contains(a), "address out of range for data area");
   if (SCCache::is_on_for_write()) {
     // all aotrc field addresses should be registered in the SCC address table
     lea(reg, ExternalAddress(a));

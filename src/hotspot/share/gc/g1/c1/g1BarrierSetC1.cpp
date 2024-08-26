@@ -172,7 +172,7 @@ void G1BarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Opr new_v
     __ move(addr, xor_res);
     __ logical_xor(xor_res, new_val, xor_res);
 #if INCLUDE_CDS
-    if (StoreCachedCode) {
+    if (SCCache::is_on_for_write()) {
       __ move(grain_shift_addr, grain_shift_reg);
       __ move(xor_res, xor_shift_res);
       __ move(grain_shift_indirect, grain_shift);
@@ -180,35 +180,33 @@ void G1BarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Opr new_v
                               grain_shift,
                               xor_shift_res,
                               LIR_Opr::illegalOpr());
-    } else {
+    } else
 #endif
-    __ move(xor_res, xor_shift_res);
-    __ unsigned_shift_right(xor_shift_res,
-                            LIR_OprFact::intConst(checked_cast<jint>(G1HeapRegion::LogOfHRGrainBytes)),
-                            xor_shift_res,
-                            LIR_Opr::illegalOpr());
-#if INCLUDE_CDS
+    {
+      __ move(xor_res, xor_shift_res);
+      __ unsigned_shift_right(xor_shift_res,
+                              LIR_OprFact::intConst(checked_cast<jint>(G1HeapRegion::LogOfHRGrainBytes)),
+                              xor_shift_res,
+                              LIR_Opr::illegalOpr());
     }
-#endif
   } else {
     __ logical_xor(addr, new_val, xor_res);
 #if INCLUDE_CDS
-    if (StoreCachedCode) {
+    if (SCCache::is_on_for_write()) {
       __ move(grain_shift_addr, grain_shift_reg);
       __ move(grain_shift_indirect, grain_shift);
       __ unsigned_shift_right(xor_res,
                               grain_shift,
                               xor_shift_res,
                               LIR_Opr::illegalOpr());
-    } else {
+    } else
 #endif
-    __ unsigned_shift_right(xor_res,
-                            LIR_OprFact::intConst(checked_cast<jint>(G1HeapRegion::LogOfHRGrainBytes)),
-                            xor_shift_res,
-                            LIR_Opr::illegalOpr());
-#if INCLUDE_CDS
+    {
+      __ unsigned_shift_right(xor_res,
+                              LIR_OprFact::intConst(checked_cast<jint>(G1HeapRegion::LogOfHRGrainBytes)),
+                              xor_shift_res,
+                              LIR_Opr::illegalOpr());
     }
-#endif
   }
 
   __ cmp(lir_cond_notEqual, xor_shift_res, LIR_OprFact::intptrConst(NULL_WORD));

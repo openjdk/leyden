@@ -213,22 +213,20 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
   // AOT code needs to load the barrier grain shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
-
-  if (StoreCachedCode) {
+  if (SCCache::is_on_for_write()) {
     address grain_shift_address = (address)AOTRuntimeConstants::grain_shift_address();
     __ eor(tmp1, store_addr, new_val);
     __ lea(tmp2, ExternalAddress(grain_shift_address));
     __ ldrb(tmp2, tmp2);
     __ lsrv(tmp1, tmp1, tmp2);
     __ cbz(tmp1, done);
-  } else {
+  } else
 #endif
-  __ eor(tmp1, store_addr, new_val);
-  __ lsr(tmp1, tmp1, G1HeapRegion::LogOfHRGrainBytes);
-  __ cbz(tmp1, done);
-#if INCLUDE_CDS
+  {
+    __ eor(tmp1, store_addr, new_val);
+    __ lsr(tmp1, tmp1, G1HeapRegion::LogOfHRGrainBytes);
+    __ cbz(tmp1, done);
   }
-#endif
   // crosses regions, storing null?
 
   __ cbz(new_val, done);
@@ -241,17 +239,16 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
   // AOT code needs to load the barrier card shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
-  if (StoreCachedCode) {
+  if (SCCache::is_on_for_write()) {
     address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
     __ lea(tmp2, ExternalAddress(card_shift_address));
     __ ldrb(tmp2, tmp2);
     __ lsrv(card_addr, store_addr, tmp2);
-  } else {
+  } else
 #endif
-  __ lsr(card_addr, store_addr, CardTable::card_shift());
-#if INCLUDE_CDS
+  {
+    __ lsr(card_addr, store_addr, CardTable::card_shift());
   }
-#endif
 
   // get the address of the card
   __ load_byte_map_base(tmp2);

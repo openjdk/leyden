@@ -292,7 +292,7 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
 
-  if (StoreCachedCode) {
+  if (SCCache::is_on_for_write()) {
     address grain_shift_addr = AOTRuntimeConstants::grain_shift_address();
     __ movptr(tmp, store_addr);
     __ xorptr(tmp, new_val);
@@ -304,15 +304,14 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
     __ pop(rcx);
     __ pop(rscratch1);
     __ jcc(Assembler::equal, done);
-  } else {
+  } else
 #endif // INCLUDE_CDS
-  __ movptr(tmp, store_addr);
-  __ xorptr(tmp, new_val);
-  __ shrptr(tmp, G1HeapRegion::LogOfHRGrainBytes);
-  __ jcc(Assembler::equal, done);
-#if INCLUDE_CDS
+  {
+    __ movptr(tmp, store_addr);
+    __ xorptr(tmp, new_val);
+    __ shrptr(tmp, G1HeapRegion::LogOfHRGrainBytes);
+    __ jcc(Assembler::equal, done);
   }
-#endif // INCLUDE_CDS
   // crosses regions, storing null?
 
   __ cmpptr(new_val, NULL_WORD);
@@ -327,7 +326,7 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
   // AOT code needs to load the barrier card shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
-  if (StoreCachedCode) {
+  if (SCCache::is_on_for_write()) {
     address card_shift_addr = AOTRuntimeConstants::card_shift_address();
     __ push(rscratch1);
     __ push(rcx);
@@ -336,12 +335,11 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
     __ shrptr(card_addr);
     __ pop(rcx);
     __ pop(rscratch1);
-  } else {
+  } else
 #endif // INCLUDE_CDS
+  {
     __ shrptr(card_addr, CardTable::card_shift());
-#if INCLUDE_CDS
   }
-#endif // INCLUDE_CDS
 
   const Register cardtable = tmp2;
 

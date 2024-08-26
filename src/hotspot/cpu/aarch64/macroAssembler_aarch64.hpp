@@ -1411,7 +1411,7 @@ public:
   void load_byte_map_base(Register reg);
 
   // Load a constant address in the AOT Runtime Constants area
-  void load_aotrc_address(address a, Register reg);
+  void load_aotrc_address(Register reg, address a);
 
   // Prolog generator routines to support switch between x86 code and
   // generated ARM code
