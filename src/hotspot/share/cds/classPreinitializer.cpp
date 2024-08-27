@@ -251,6 +251,8 @@ bool ClassPreinitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
 
   if (ik->is_hidden()) {
     return HeapShared::is_archivable_hidden_klass(ik);
+  } else if (ik->is_initialized() && ik->java_super() == vmClasses::Enum_klass()) {
+    return true;
   } else {
     return ClassPreinitializer::can_be_preinited_locked(ik);
   }

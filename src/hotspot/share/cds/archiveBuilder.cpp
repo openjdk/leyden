@@ -862,6 +862,7 @@ void ArchiveBuilder::make_klasses_shareable() {
   for (int i = 0; i < klasses()->length(); i++) {
     const char* type;
     const char* unlinked = "";
+    const char* kind = "";
     const char* hidden = "";
     const char* generated = "";
     const char* aotloaded_msg = "";
@@ -936,6 +937,12 @@ void ArchiveBuilder::make_klasses_shareable() {
         }
       }
 
+      if (ik->is_interface()) {
+        kind = " interface";
+      } else if (src_ik->java_super() == vmClasses::Enum_klass()) {
+        kind = " enum";
+      }
+
       if (ik->is_hidden()) {
         ADD_COUNT(num_hidden_klasses);
         hidden = " hidden";
@@ -957,9 +964,9 @@ void ArchiveBuilder::make_klasses_shareable() {
 
     if (log_is_enabled(Debug, cds, class)) {
       ResourceMark rm;
-      log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s", i,
+      log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s%s", i,
                             p2i(to_requested(k)), type, k->external_name(),
-                            hidden, unlinked, generated, aotloaded_msg, inited_msg);
+                            kind, hidden, unlinked, generated, aotloaded_msg, inited_msg);
     }
   }
 

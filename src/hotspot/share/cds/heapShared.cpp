@@ -117,7 +117,7 @@ size_t HeapShared::_total_obj_size;
 #define ARCHIVE_TEST_FIELD_NAME "archivedObjects"
 static Array<char>* _archived_ArchiveHeapTestClass = nullptr;
 static const char* _test_class_name = nullptr;
-static const Klass* _test_class = nullptr;
+static Klass* _test_class = nullptr;
 static const ArchivedKlassSubGraphInfoRecord* _test_class_record = nullptr;
 #endif
 
@@ -1737,9 +1737,15 @@ bool HeapShared::archive_reachable_objects_from(int level,
   WalkOopAndArchiveClosure walker(level, record_klasses_only, subgraph_info, orig_obj);
   orig_obj->oop_iterate(&walker);
 
-  if (CDSEnumKlass::is_enum_obj(orig_obj)) {
-    CDSEnumKlass::archive_enum_obj(level + 1, subgraph_info, orig_obj);
+  if (CDSConfig::is_initing_classes_at_dump_time()) {
+    // The enum klasses are archived with preinitialized mirror.
+    // See ClassPreinitializer::can_archive_preinitialized_mirror.
+  } else {
+    if (CDSEnumKlass::is_enum_obj(orig_obj)) {
+      CDSEnumKlass::handle_enum_obj(level + 1, subgraph_info, orig_obj);
+    }
   }
+
   return true;
 }
 
@@ -2126,6 +2132,25 @@ bool HeapShared::is_a_test_class_in_unnamed_module(Klass* ik) {
   }
 
   return false;
+}
+
+void HeapShared::initialize_test_class_from_archive(JavaThread* current) {
+  Klass* k = _test_class;
+  if (k != nullptr && ArchiveHeapLoader::is_in_use()) {
+    JavaThread* THREAD = current;
+    ExceptionMark em(THREAD);
+    const ArchivedKlassSubGraphInfoRecord* record =
+      resolve_or_init_classes_for_subgraph_of(k, /*do_init=*/false, THREAD);
+
+    // The _test_class is in the unnamed module, so it can't call CDS.initializeFromArchive()
+    // from its <clinit> method. So we set up its "archivedObjects" field first, before
+    // calling its <clinit>. This is not strictly clean, but it's a convenient way to write unit
+    // test cases (see test/hotspot/jtreg/runtime/cds/appcds/cacheObject/ArchiveHeapTestClass.java).
+    if (record != nullptr) {
+      init_archived_fields_for(k, record);
+    }
+    resolve_or_init_classes_for_subgraph_of(k, /*do_init=*/true, THREAD);
+  }
 }
 #endif
 

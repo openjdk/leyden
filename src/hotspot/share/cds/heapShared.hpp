@@ -457,6 +457,7 @@ private:
 
 #ifndef PRODUCT
   static bool is_a_test_class_in_unnamed_module(Klass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static void initialize_test_class_from_archive(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 #endif
 
   static void add_to_permanent_index_table(oop obj, int index);

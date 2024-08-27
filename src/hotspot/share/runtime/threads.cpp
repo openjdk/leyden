@@ -347,6 +347,10 @@ static void call_initPhase2(TRAPS) {
       assert(SystemDictionary::java_system_loader() == nullptr,   "must be");
     }
   }
+
+#ifndef PRODUCT
+  HeapShared::initialize_test_class_from_archive(THREAD);
+#endif
 }
 
 // Phase 3. final setup - set security manager, system class loader and TCCL
