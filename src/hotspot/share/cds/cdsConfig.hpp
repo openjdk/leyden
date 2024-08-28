@@ -130,6 +130,7 @@ public:
 
   static bool is_dumping_heap()                              NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_loading_heap()                              NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_initing_classes_at_dump_time()              NOT_CDS_JAVA_HEAP_RETURN_(false);
 
   static bool is_dumping_invokedynamic()                     NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_loading_invokedynamic()                     NOT_CDS_JAVA_HEAP_RETURN_(false);
@@ -147,8 +148,6 @@ public:
 
   static bool is_dumping_dynamic_proxies()                   NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_logging_dynamic_proxies()                   NOT_CDS_RETURN_(false);
-
-  static bool is_initing_classes_at_dump_time()              NOT_CDS_JAVA_HEAP_RETURN_(false);
 
   // full_module_graph (requires optimized_module_handling)
   static bool is_dumping_full_module_graph()                 { return CDS_ONLY(_is_dumping_full_module_graph) NOT_CDS(false); }

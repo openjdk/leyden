@@ -23,9 +23,9 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotClassInitializer.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPreinitializer.hpp"
 #include "dumpTimeClassInfo.inline.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -38,7 +38,7 @@
 //
 // This is a hard-coded list of classes that are safe to preinitialize at dump time. It needs
 // to be updated if the Java source code changes.
-bool ClassPreinitializer::is_forced_preinit_class(InstanceKlass* ik) {
+bool AOTClassInitializer::is_forced_preinit_class(InstanceKlass* ik) {
   if (!CDSConfig::is_dumping_invokedynamic()) {
     return false;
   }
@@ -73,6 +73,9 @@ bool ClassPreinitializer::is_forced_preinit_class(InstanceKlass* ik) {
     // (i.e., take a snapshot). The existing approach in
     // heapShared::resolve_or_init_classes_for_subgraph_of() won't work.
     "jdk/internal/constant/PrimitiveClassDescImpl",
+    "jdk/internal/constant/ReferenceClassDescImpl",
+    "java/lang/constant/ConstantDescs",
+    "sun/invoke/util/Wrapper",
 
   //TODO: these use java.lang.ClassValue$Entry which is a subtype of WeakReference
   //"java/lang/reflect/Proxy$ProxyBuilder",
@@ -102,8 +105,8 @@ bool ClassPreinitializer::is_forced_preinit_class(InstanceKlass* ik) {
 }
 
 // check_can_be_preinited() is quite costly, so we cache the results inside
-// DumpTimeClassInfo::_can_be_preinited. See also ClassPreinitializer::reset_preinit_check().
-bool ClassPreinitializer::check_can_be_preinited(InstanceKlass* ik) {
+// DumpTimeClassInfo::_can_be_preinited. See also AOTClassInitializer::reset_preinit_check().
+bool AOTClassInitializer::check_can_be_preinited(InstanceKlass* ik) {
   ResourceMark rm;
 
   if (!SystemDictionaryShared::is_builtin(ik)) {
@@ -141,7 +144,7 @@ bool ClassPreinitializer::check_can_be_preinited(InstanceKlass* ik) {
   return true;
 }
 
-bool ClassPreinitializer::has_non_default_static_fields(InstanceKlass* ik) {
+bool AOTClassInitializer::has_non_default_static_fields(InstanceKlass* ik) {
   oop mirror = ik->java_mirror();
 
   for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
@@ -194,12 +197,12 @@ bool ClassPreinitializer::has_non_default_static_fields(InstanceKlass* ik) {
   return true;
 }
 
-bool ClassPreinitializer::can_be_preinited(InstanceKlass* ik) {
+bool AOTClassInitializer::can_be_preinited(InstanceKlass* ik) {
   MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
   return can_be_preinited_locked(ik);
 }
 
-bool ClassPreinitializer::can_be_preinited_locked(InstanceKlass* ik) {
+bool AOTClassInitializer::can_be_preinited_locked(InstanceKlass* ik) {
   if (!CDSConfig::is_initing_classes_at_dump_time()) {
     return false;
   }
@@ -207,14 +210,14 @@ bool ClassPreinitializer::can_be_preinited_locked(InstanceKlass* ik) {
   assert_lock_strong(DumpTimeTable_lock);
   DumpTimeClassInfo* info = SystemDictionaryShared::get_info_locked(ik);
   if (!info->has_done_preinit_check()) {
-    info->set_can_be_preinited(ClassPreinitializer::check_can_be_preinited(ik));
+    info->set_can_be_preinited(AOTClassInitializer::check_can_be_preinited(ik));
   }
   return info->can_be_preinited();
 }
 
 // Initialize a class at dump time, if possible.
-void ClassPreinitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
-  if (!ik->is_initialized() && ClassPreinitializer::can_be_preinited(ik)) {
+void AOTClassInitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
+  if (!ik->is_initialized() && AOTClassInitializer::can_be_preinited(ik)) {
     if (log_is_enabled(Info, cds, init)) {
       ResourceMark rm;
       log_info(cds, init)("preinitializing %s", ik->external_name());
@@ -223,18 +226,18 @@ void ClassPreinitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
   }
 }
 
-// ClassPreinitializer::can_be_preinited(ik) is called in two different phases:
+// AOTClassInitializer::can_be_preinited(ik) is called in two different phases:
 //
 // [1] Before the VM_PopulateDumpSharedSpace safepoint:
-//     when MetaspaceShared::link_shared_classes calls ClassPreinitializer::maybe_preinit_class(ik)
+//     when MetaspaceShared::link_shared_classes calls AOTClassInitializer::maybe_preinit_class(ik)
 // [2] Inside the VM_PopulateDumpSharedSpace safepoint
-//     when HeapShared::archive_java_mirrors() calls ClassPreinitializer::can_archive_preinitialized_mirror(ik)
+//     when HeapShared::archive_java_mirrors() calls AOTClassInitializer::can_archive_preinitialized_mirror(ik)
 //
 // Between the two phases, some Java code may have been executed to contaminate the
 // some initialized mirrors. So we call reset_preinit_check() at the beginning of the
 // [2] so that we will re-run has_non_default_static_fields() on all the classes.
 // As a result, phase [2] may archive fewer mirrors that were initialized in phase [1].
-void ClassPreinitializer::reset_preinit_check() {
+void AOTClassInitializer::reset_preinit_check() {
   auto iterator = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
     if (info.can_be_preinited()) {
       info.reset_preinit_check();
@@ -243,7 +246,7 @@ void ClassPreinitializer::reset_preinit_check() {
   SystemDictionaryShared::dumptime_table()->iterate_all_live_classes(iterator);
 }
 
-bool ClassPreinitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
+bool AOTClassInitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
   assert(!ArchiveBuilder::current()->is_in_buffer_space(ik), "must be source klass");
   if (!CDSConfig::is_initing_classes_at_dump_time()) {
     return false;
@@ -253,7 +256,13 @@ bool ClassPreinitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
     return HeapShared::is_archivable_hidden_klass(ik);
   } else if (ik->is_initialized() && ik->java_super() == vmClasses::Enum_klass()) {
     return true;
+  } else if (ik->is_initialized() &&
+             (ik->name()->equals("jdk/internal/constant/PrimitiveClassDescImpl") ||
+              ik->name()->equals("jdk/internal/constant/ReferenceClassDescImpl") ||
+              ik->name()->equals("java/lang/constant/ConstantDescs") ||
+              ik->name()->equals("sun/invoke/util/Wrapper"))) {
+    return true;
   } else {
-    return ClassPreinitializer::can_be_preinited_locked(ik);
+    return AOTClassInitializer::can_be_preinited_locked(ik);
   }
 }

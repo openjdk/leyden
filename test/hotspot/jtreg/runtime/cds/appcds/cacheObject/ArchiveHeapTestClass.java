@@ -27,7 +27,7 @@
  * @bug 8214781 8293187
  * @summary Test for the -XX:ArchiveHeapTestClass flag
  * @requires vm.debug == true & vm.cds.write.archived.java.heap
- * @modules java.base/sun.invoke.util java.base/jdk.internal.misc java.logging
+ * @modules java.logging
  * @library /test/jdk/lib/testlibrary /test/lib
  *          /test/hotspot/jtreg/runtime/cds/appcds
  *          /test/hotspot/jtreg/runtime/cds/appcds/test-classes
@@ -160,10 +160,10 @@ public class ArchiveHeapTestClass {
         mustFail(output, "Class java.util.logging.Level not allowed in archive heap");
 
         testCase("Complex enums");
-        output = dumpBootAndHello(CDSTestClassG_name, "-XX:+AOTClassLinking");
+        output = dumpBootAndHello(CDSTestClassG_name, "-XX:+AOTClassLinking", "-Xlog:cds+class=debug");
         mustSucceed(output);
 
-        TestCommon.run("-Xbootclasspath/a:" + bootJar, "-cp", appJar, "-Xlog:cds+heap",
+        TestCommon.run("-Xbootclasspath/a:" + bootJar, "-cp", appJar, "-Xlog:cds+heap,cds+init",
                        CDSTestClassG_name)
             .assertNormalExit("init subgraph " + CDSTestClassG_name,
                               "Initialized from CDS");

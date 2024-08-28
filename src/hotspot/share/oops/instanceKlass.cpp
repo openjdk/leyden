@@ -784,6 +784,11 @@ void InstanceKlass::initialize(TRAPS) {
 static bool are_super_types_initialized(InstanceKlass* ik) {
   InstanceKlass* s = ik->java_super();
   if (s != nullptr && !s->is_initialized()) {
+    if (log_is_enabled(Info, cds, init)) {
+      ResourceMark rm;
+      log_info(cds, init)("%s takes slow path because super class %s is not initialized",
+                          ik->external_name(), s->external_name());
+    }
     return false;
   }
 
@@ -795,6 +800,11 @@ static bool are_super_types_initialized(InstanceKlass* ik) {
     for (int i = 0; i < len; i++) {
       InstanceKlass* intf = interfaces->at(i);
       if (!intf->is_initialized()) {
+        if (log_is_enabled(Info, cds, init)) {
+          ResourceMark rm;
+          log_info(cds, init)("%s takes slow path because interface %s is not initialized",
+                              ik->external_name(), intf->external_name());
+        }
         return false;
       }
     }

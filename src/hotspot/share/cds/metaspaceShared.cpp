@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotClassInitializer.hpp"
 #include "cds/aotClassLinker.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
@@ -36,7 +37,6 @@
 #include "cds/cds_globals.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPreinitializer.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "cds/dynamicArchive.hpp"
@@ -711,7 +711,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
             has_linked |= try_link_class(THREAD, ik);
           }
           if (CDSConfig::is_dumping_heap() && ik->is_linked() && !ik->is_initialized()) {
-            ClassPreinitializer::maybe_preinit_class(ik, CHECK);
+            AOTClassInitializer::maybe_preinit_class(ik, CHECK);
           }
         }
       }

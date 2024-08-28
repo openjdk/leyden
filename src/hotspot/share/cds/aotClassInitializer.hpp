@@ -22,15 +22,15 @@
  *
  */
 
-#ifndef SHARE_CDS_CLASSPREINITIALIZER_HPP
-#define SHARE_CDS_CLASSPREINITIALIZER_HPP
+#ifndef SHARE_CDS_AOTCLASSINITIALIZER_HPP
+#define SHARE_CDS_AOTCLASSINITIALIZER_HPP
 
 #include "memory/allStatic.hpp"
 #include "utilities/exceptions.hpp"
 
 class InstanceKlass;
 
-class ClassPreinitializer : AllStatic {
+class AOTClassInitializer : AllStatic {
   static bool has_non_default_static_fields(InstanceKlass* ik);
   static bool is_forced_preinit_class(InstanceKlass* ik);
 
@@ -50,4 +50,4 @@ public:
   static bool can_archive_preinitialized_mirror(InstanceKlass* src_ik);
 };
 
-#endif // SHARE_CDS_CLASSPREINITIALIZER_HPP
+#endif // SHARE_CDS_AOTCLASSINITIALIZER_HPP

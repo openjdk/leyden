@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotClassInitializer.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveHeapWriter.hpp"
@@ -30,7 +31,6 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEnumKlass.hpp"
 #include "cds/cdsHeapVerifier.hpp"
-#include "cds/classPreinitializer.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classLoaderData.hpp"
@@ -426,6 +426,7 @@ bool HeapShared::archive_object(oop obj) {
   if (ArchiveHeapWriter::is_too_large_to_archive(obj->size())) {
     log_debug(cds, heap)("Cannot archive, object (" PTR_FORMAT ") is too large: " SIZE_FORMAT,
                          p2i(obj), obj->size());
+    debug_trace();
     return false;
   } else {
     count_allocation(obj->size());
@@ -437,8 +438,19 @@ bool HeapShared::archive_object(oop obj) {
 
     if (log_is_enabled(Debug, cds, heap)) {
       ResourceMark rm;
-      log_debug(cds, heap)("Archived heap object " PTR_FORMAT " : %s",
-                           p2i(obj), obj->klass()->external_name());
+      LogTarget(Debug, cds, heap) log;
+      LogStream out(log);
+      out.print("Archived heap object " PTR_FORMAT " : %s ",
+                p2i(obj), obj->klass()->external_name());
+      if (java_lang_Class::is_instance(obj)) {
+        Klass* k = java_lang_Class::as_Klass(obj);
+        if (k != nullptr) {
+          out.print("%s", k->external_name());
+        } else {
+          out.print("primitive");
+        }
+      }
+      out.cr();
     }
 
     if (java_lang_Module::is_instance(obj) && Modules::check_archived_module_oop(obj)) {
@@ -580,7 +592,7 @@ void HeapShared::copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop 
     assert(ik->is_initialized(), "must be");
   }
 
-  if (!ik->is_initialized() || !ClassPreinitializer::can_archive_preinitialized_mirror(ik)) {
+  if (!ik->is_initialized() || !AOTClassInitializer::can_archive_preinitialized_mirror(ik)) {
     return;
   }
 
@@ -624,6 +636,11 @@ void HeapShared::copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop 
       nfields ++;
     }
   }
+
+  // Class::reflectData use SoftReference, which cannot be archived. Set it
+  // to null and it will be recreated at runtime.
+  java_lang_Class::set_reflection_data(m, nullptr);
+
   if (log_is_enabled(Info, cds, init)) {
     ResourceMark rm;
     log_debug(cds, init)("copied %3d field(s) in preinitialized mirror %s%s", nfields, ik->external_name(),
@@ -644,7 +661,7 @@ static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
 }
 
 void HeapShared::archive_java_mirrors() {
-  ClassPreinitializer::reset_preinit_check();
+  AOTClassInitializer::reset_preinit_check();
 
   for (int i = T_BOOLEAN; i < T_VOID+1; i++) {
     BasicType bt = (BasicType)i;
@@ -653,7 +670,7 @@ void HeapShared::archive_java_mirrors() {
       oop m = _scratch_basic_type_mirrors[i].resolve();
       assert(m != nullptr, "sanity");
       copy_java_mirror_hashcode(orig_mirror, m);
-      bool success = archive_reachable_objects_from(1, _default_subgraph_info, orig_mirror);
+      bool success = archive_reachable_objects_from(1, _default_subgraph_info, m);
       assert(success, "sanity");
 
       log_trace(cds, heap, mirror)(
@@ -666,6 +683,7 @@ void HeapShared::archive_java_mirrors() {
 
   GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
   assert(klasses != nullptr, "sanity");
+
   for (int i = 0; i < klasses->length(); i++) {
     Klass* orig_k = klasses->at(i);
     oop orig_mirror = orig_k->java_mirror();
@@ -679,8 +697,16 @@ void HeapShared::archive_java_mirrors() {
         guarantee(success, "");
         java_lang_Class::set_reflection_data(m, reflection_data);
       }
+    }
+  }
+
+  for (int i = 0; i < klasses->length(); i++) {
+    Klass* orig_k = klasses->at(i);
+    oop orig_mirror = orig_k->java_mirror();
+    oop m = scratch_java_mirror(orig_k);
+    if (m != nullptr) {
       Klass* buffered_k = ArchiveBuilder::get_buffered_klass(orig_k);
-      bool success = archive_reachable_objects_from(1, _default_subgraph_info, orig_mirror);
+      bool success = archive_reachable_objects_from(1, _default_subgraph_info, m);
       guarantee(success, "scratch mirrors must point to only archivable objects");
       buffered_k->set_archived_java_mirror(append_root(m));
       ResourceMark rm;
@@ -1111,8 +1137,8 @@ void ArchivedKlassSubGraphInfoRecord::init(KlassSubGraphInfo* info) {
 }
 
 class HeapShared::CopyKlassSubGraphInfoToArchive : StackObj {
-public:
   CompactHashtableWriter* _writer;
+public:
   CopyKlassSubGraphInfoToArchive(CompactHashtableWriter* writer) : _writer(writer) {}
 
   bool do_entry(Klass* klass, KlassSubGraphInfo& info) {
@@ -1131,6 +1157,9 @@ ArchivedKlassSubGraphInfoRecord* HeapShared::archive_subgraph_info(KlassSubGraph
   ArchivedKlassSubGraphInfoRecord* record =
       (ArchivedKlassSubGraphInfoRecord*)ArchiveBuilder::ro_region_alloc(sizeof(ArchivedKlassSubGraphInfoRecord));
   record->init(info);
+  if (info ==  _default_subgraph_info) {
+    _runtime_default_subgraph_info = record;
+  }
   return record;
 }
 
@@ -1152,8 +1181,6 @@ void HeapShared::write_subgraph_info_table() {
   CopyKlassSubGraphInfoToArchive copy(&writer);
   d_table->iterate(&copy);
   writer.dump(&_run_time_subgraph_info_table, "subgraphs");
-
-  _runtime_default_subgraph_info = archive_subgraph_info(_default_subgraph_info);
 
 #ifndef PRODUCT
   if (ArchiveHeapTestClass != nullptr) {
@@ -1191,7 +1218,6 @@ void HeapShared::serialize_tables(SerializeClosure* soc) {
 
   _run_time_subgraph_info_table.serialize_header(soc);
   soc->do_ptr(&_runtime_default_subgraph_info);
-
 }
 
 static void verify_the_heap(Klass* k, const char* which) {
@@ -1671,6 +1697,14 @@ void HeapShared::exit_on_error() {
   MetaspaceShared::unrecoverable_writing_error();
 }
 
+void HeapShared::debug_trace() {
+  WalkOopAndArchiveClosure* walker = WalkOopAndArchiveClosure::current();
+  if (walker != nullptr) {
+    LogStream ls(Log(cds, heap)::error());
+    CDSHeapVerifier::trace_to_root(&ls, walker->referencing_obj());
+  }
+}
+
 // (1) If orig_obj has not been archived yet, archive it.
 // (2) If orig_obj has not been seen yet (since start_recording_subgraph() was called),
 //     trace all  objects that are reachable from it, and make sure these objects are archived.
@@ -1686,13 +1720,24 @@ bool HeapShared::archive_reachable_objects_from(int level,
     // If you get an error here, you probably made a change in the JDK library that has added
     // these objects that are referenced (directly or indirectly) by static fields.
     ResourceMark rm;
-    log_error(cds, heap)("Cannot archive object of class %s", orig_obj->klass()->external_name());
-    WalkOopAndArchiveClosure* walker = WalkOopAndArchiveClosure::current();
-    if (walker != nullptr) {
-      LogStream ls(Log(cds, heap)::error());
-      CDSHeapVerifier::trace_to_root(&ls, walker->referencing_obj());
-    }
+    log_error(cds, heap)("Cannot archive object " PTR_FORMAT " of class %s", p2i(orig_obj), orig_obj->klass()->external_name());
+    debug_trace();
     exit_on_error();
+  }
+
+  if (log_is_enabled(Debug, cds, heap) && java_lang_Class::is_instance(orig_obj)) {
+    ResourceMark rm;
+    LogTarget(Debug, cds, heap) log;
+    LogStream out(log);
+    out.print("Found java mirror " PTR_FORMAT " ", p2i(orig_obj));
+    Klass* k = java_lang_Class::as_Klass(orig_obj);
+    if (k != nullptr) {
+      out.print("%s", k->external_name());
+    } else {
+      out.print("primitive");
+    }
+    out.print_cr("; scratch mirror = "  PTR_FORMAT,
+                 p2i(scratch_java_mirror(orig_obj)));
   }
 
   if (java_lang_Class::is_instance(orig_obj)) {
@@ -1739,7 +1784,7 @@ bool HeapShared::archive_reachable_objects_from(int level,
 
   if (CDSConfig::is_initing_classes_at_dump_time()) {
     // The enum klasses are archived with preinitialized mirror.
-    // See ClassPreinitializer::can_archive_preinitialized_mirror.
+    // See AOTClassInitializer::can_archive_preinitialized_mirror.
   } else {
     if (CDSEnumKlass::is_enum_obj(orig_obj)) {
       CDSEnumKlass::handle_enum_obj(level + 1, subgraph_info, orig_obj);
@@ -1881,35 +1926,26 @@ void HeapShared::verify_reachable_objects_from(oop obj) {
 // Make sure that these are only instances of the very few specific types
 // that we can handle.
 void HeapShared::check_default_subgraph_classes() {
+  if (CDSConfig::is_initing_classes_at_dump_time()) {
+    return;
+  }
+
   GrowableArray<Klass*>* klasses = _default_subgraph_info->subgraph_object_klasses();
   int num = klasses->length();
-  int warned = 0;
   for (int i = 0; i < num; i++) {
     Klass* subgraph_k = klasses->at(i);
-    if (log_is_enabled(Info, cds, heap)) {
+    Symbol* name = ArchiveBuilder::current()->get_source_addr(subgraph_k->name());
+    if (subgraph_k->is_instance_klass() &&
+        name != vmSymbols::java_lang_Class() &&
+        name != vmSymbols::java_lang_String() &&
+        name != vmSymbols::java_lang_ArithmeticException() &&
+        name != vmSymbols::java_lang_ArrayIndexOutOfBoundsException() &&
+        name != vmSymbols::java_lang_ArrayStoreException() &&
+        name != vmSymbols::java_lang_ClassCastException() &&
+        name != vmSymbols::java_lang_InternalError() &&
+        name != vmSymbols::java_lang_NullPointerException()) {
       ResourceMark rm;
-      log_info(cds, heap)(
-          "Archived object klass (default subgraph %d) => %s",
-          i, subgraph_k->external_name());
-    }
-
-    if (subgraph_k->is_instance_klass()) {
-      InstanceKlass* ik = InstanceKlass::cast(subgraph_k);
-      Symbol* name = ArchiveBuilder::current()->get_source_addr(ik->name());
-      if (name != vmSymbols::java_lang_Class() &&
-          name != vmSymbols::java_lang_String() &&
-          name != vmSymbols::java_lang_ArithmeticException() &&
-          name != vmSymbols::java_lang_ArrayIndexOutOfBoundsException() &&
-          name != vmSymbols::java_lang_ArrayStoreException() &&
-          name != vmSymbols::java_lang_ClassCastException() &&
-          name != vmSymbols::java_lang_InternalError() &&
-          name != vmSymbols::java_lang_NullPointerException() &&
-          !is_archivable_hidden_klass(ik)) {
-        ResourceMark rm;
-        const char* category = ArchiveUtils::class_category(ik);
-        log_info(cds)("TODO: Archived unusual klass (default subgraph %2d) => %-5s %s",
-                      ++warned, category, ik->external_name());
-      }
+      fatal("default subgraph cannot have objects of type %s", subgraph_k->external_name());
     }
   }
 }

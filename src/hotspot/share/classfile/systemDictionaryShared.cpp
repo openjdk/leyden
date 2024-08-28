@@ -29,7 +29,6 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPreinitializer.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"

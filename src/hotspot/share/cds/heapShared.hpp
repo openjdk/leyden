@@ -185,6 +185,7 @@ private:
 
   static void count_allocation(size_t size);
   static void print_stats();
+  static void debug_trace();
 public:
   static unsigned oop_hash(oop const& p);
   static unsigned string_oop_hash(oop const& string) {
