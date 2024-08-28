@@ -466,6 +466,10 @@ extern int errno;
 #define ERR_PIPE 2
 #define ERR_ARGS 3
 
+#ifndef VERSION_STRING
+#error VERSION_STRING must be defined
+#endif
+
 void error (int fd, int err) {
     if (write (fd, &err, sizeof(err)) != sizeof(err)) {
         /* Not sure what to do here. I have no one to speak to. */
@@ -475,6 +479,7 @@ void error (int fd, int err) {
 }
 
 void shutItDown() {
+    fprintf(stdout, "jspawnhelper version %s\n", VERSION_STRING);
     fprintf(stdout, "This command is not for general use and should ");
     fprintf(stdout, "only be run as the result of a call to\n");
     fprintf(stdout, "ProcessBuilder.start() or Runtime.exec() in a java ");
@@ -558,19 +563,29 @@ JDK_spawn_process(int argc, char *argv[]) {
     int r, fdinr, fdinw, fdout;
     sigset_t unblock_signals;
 
-    if (argc != 2) {
-        shutItDown();
-    }
-
 #ifdef DEBUG
     jtregSimulateCrash(0, 4);
 #endif
-    r = sscanf (argv[1], "%d:%d:%d", &fdinr, &fdinw, &fdout);
+
+    if (argc != 3) {
+        fprintf(stdout, "Incorrect number of arguments: %d\n", argc);
+        shutItDown();
+    }
+
+    if (strcmp(argv[1], VERSION_STRING) != 0) {
+        fprintf(stdout, "Incorrect Java version: %s\n", argv[1]);
+        shutItDown();
+    }
+
+    r = sscanf (argv[2], "%d:%d:%d", &fdinr, &fdinw, &fdout);
     if (r == 3 && fcntl(fdinr, F_GETFD) != -1 && fcntl(fdinw, F_GETFD) != -1) {
         fstat(fdinr, &buf);
-        if (!S_ISFIFO(buf.st_mode))
+        if (!S_ISFIFO(buf.st_mode)) {
+            fprintf(stdout, "Incorrect input pipe\n");
             shutItDown();
+        }
     } else {
+        fprintf(stdout, "Incorrect FD array data: %s\n", argv[2]);
         shutItDown();
     }
 

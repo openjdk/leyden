@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,21 +25,21 @@
 
 package jdk.internal.classfile.impl;
 
+import java.lang.classfile.BufWriter;
+import java.lang.classfile.ClassReader;
+import java.lang.classfile.Label;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.attribute.StackMapFrameInfo;
+import java.lang.classfile.attribute.StackMapFrameInfo.*;
+import java.lang.classfile.constantpool.ClassEntry;
 import java.lang.constant.ConstantDescs;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.reflect.AccessFlag;
 import java.util.List;
+import java.util.Objects;
 import java.util.TreeMap;
-import java.lang.classfile.BufWriter;
-
-import java.lang.classfile.constantpool.ClassEntry;
-import java.lang.classfile.attribute.StackMapFrameInfo;
-import java.lang.classfile.attribute.StackMapFrameInfo.*;
-import java.lang.classfile.ClassReader;
 
 import static java.lang.classfile.ClassFile.*;
-import java.lang.classfile.Label;
-import java.lang.classfile.MethodModel;
 
 public class StackMapDecoder {
 
@@ -161,13 +161,14 @@ public class StackMapDecoder {
 
     private static void writeTypeInfo(BufWriterImpl bw, VerificationTypeInfo vti) {
         bw.writeU1(vti.tag());
-        switch (vti) {
-            case SimpleVerificationTypeInfo svti ->
+        switch (vti.tag()) {
+            case VT_TOP, VT_INTEGER, VT_FLOAT, VT_DOUBLE, VT_LONG, VT_NULL, VT_UNINITIALIZED_THIS ->
                 {}
-            case ObjectVerificationTypeInfo ovti ->
-                bw.writeIndex(ovti.className());
-            case UninitializedVerificationTypeInfo uvti ->
-                bw.writeU2(bw.labelContext().labelToBci(uvti.newTarget()));
+            case VT_OBJECT ->
+                bw.writeIndex(((ObjectVerificationTypeInfo)vti).className());
+            case VT_UNINITIALIZED ->
+                bw.writeU2(bw.labelContext().labelToBci(((UninitializedVerificationTypeInfo)vti).newTarget()));
+            default -> throw new IllegalArgumentException("Invalid verification type tag: " + vti.tag());
         }
     }
 
@@ -231,7 +232,7 @@ public class StackMapDecoder {
             case VT_LONG -> SimpleVerificationTypeInfo.ITEM_LONG;
             case VT_NULL -> SimpleVerificationTypeInfo.ITEM_NULL;
             case VT_UNINITIALIZED_THIS -> SimpleVerificationTypeInfo.ITEM_UNINITIALIZED_THIS;
-            case VT_OBJECT -> new ObjectVerificationTypeInfoImpl((ClassEntry)classReader.entryByIndex(u2()));
+            case VT_OBJECT -> new ObjectVerificationTypeInfoImpl(classReader.entryByIndex(u2(), ClassEntry.class));
             case VT_UNINITIALIZED -> new UninitializedVerificationTypeInfoImpl(ctx.getLabel(u2()));
             default -> throw new IllegalArgumentException("Invalid verification type tag: " + tag);
         };
@@ -242,6 +243,20 @@ public class StackMapDecoder {
 
         @Override
         public int tag() { return VT_OBJECT; }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o instanceof ObjectVerificationTypeInfoImpl that) {
+                return Objects.equals(className, that.className);
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(className);
+        }
 
         @Override
         public String toString() {
@@ -271,5 +286,9 @@ public class StackMapDecoder {
                                            List<VerificationTypeInfo> locals,
                                            List<VerificationTypeInfo> stack)
             implements StackMapFrameInfo {
+        public StackMapFrameImpl {
+            locals = List.copyOf(locals);
+            stack = List.copyOf(stack);
+        }
     }
 }
