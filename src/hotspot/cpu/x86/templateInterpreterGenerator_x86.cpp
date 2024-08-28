@@ -1788,7 +1788,11 @@ void TemplateInterpreterGenerator::set_vtos_entry_points(Template* t,
 //-----------------------------------------------------------------------------
 
 void TemplateInterpreterGenerator::count_bytecode() {
+#ifdef _LP64
   __ incrementq(ExternalAddress((address) &BytecodeCounter::_counter_value), rscratch1);
+#else
+  Unimplemented();
+#endif
 }
 
 void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {

@@ -317,10 +317,10 @@ public:
 
   virtual void metaspace_pointers_do(MetaspaceClosure *iter);
 
+  static void init_dumptime_table(TRAPS);
+
 #if INCLUDE_CDS
   virtual void remove_unshareable_info() {}
-#endif
-  static void init_dumptime_table(TRAPS);
   static void iterate_roots(MetaspaceClosure* it);
   static void dump_training_data();
   static void cleanup_training_data();
@@ -330,6 +330,7 @@ public:
   static size_t estimate_size_for_archive();
 
   static TrainingData* lookup_archived_training_data(const Key* k);
+#endif
 
   static KlassTrainingData*  lookup_for(InstanceKlass* ik);
   static MethodTrainingData* lookup_for(Method* m);
@@ -400,7 +401,7 @@ class KlassTrainingData : public TrainingData {
   virtual void print_value_on(outputStream* st) const { print_on(st, true); }
 
   virtual void prepare(Visitor& visitor);
-  virtual void cleanup(Visitor& visitor);
+  virtual void cleanup(Visitor& visitor) NOT_CDS_RETURN;
 
   MetaspaceObj::Type type() const {
     return KlassTrainingDataType;
@@ -611,7 +612,7 @@ public:
   void notice_jit_observation(ciEnv* env, ciBaseObject* what);
 
   virtual void prepare(Visitor& visitor);
-  virtual void cleanup(Visitor& visitor);
+  virtual void cleanup(Visitor& visitor) NOT_CDS_RETURN;
 
   void print_on(outputStream* st, bool name_only) const;
   virtual void print_on(outputStream* st) const { print_on(st, false); }
@@ -730,7 +731,7 @@ class MethodTrainingData : public TrainingData {
   virtual void print_value_on(outputStream* st) const { print_on(st, true); }
 
   virtual void prepare(Visitor& visitor);
-  virtual void cleanup(Visitor& visitor);
+  virtual void cleanup(Visitor& visitor) NOT_CDS_RETURN;
 
   template<typename FN>
   void iterate_all_compiles(FN fn) const { // lambda enabled API

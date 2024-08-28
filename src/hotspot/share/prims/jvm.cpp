@@ -4231,8 +4231,10 @@ void perf_jvm_init() {
 #define PRINT_COUNTER(name) {\
   jlong count = _perf_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-40s = %4ldms (elapsed) %4ldms (thread) (%5ld events)", #name, \
-                 _perf_##name##_timer->elapsed_counter_value_ms(), _perf_##name##_timer->thread_counter_value_ms(), count); \
+    st->print_cr("  %-40s = " JLONG_FORMAT_W(4) "ms (elapsed) " JLONG_FORMAT_W(4) "ms (thread) (" JLONG_FORMAT_W(5) " events)", \
+                 #name,                                                   \
+                 _perf_##name##_timer->elapsed_counter_value_ms(),        \
+                 _perf_##name##_timer->thread_counter_value_ms(), count); \
   }}
 
 void perf_jvm_print_on(outputStream* st) {

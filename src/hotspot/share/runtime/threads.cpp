@@ -24,7 +24,6 @@
  */
 
 #include "precompiled.hpp"
-#include "c1/c1_Runtime1.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
@@ -66,7 +65,6 @@
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/oop.inline.hpp"
-#include "opto/runtime.hpp"
 #include "oops/symbol.hpp"
 #include "prims/jvm_misc.hpp"
 #include "prims/jvmtiAgentList.hpp"
@@ -116,8 +114,12 @@
 #include "jvmci/jvmci.hpp"
 #include "jvmci/jvmciEnv.hpp"
 #endif
+#ifdef COMPILER1
+#include "c1/c1_Runtime1.hpp"
+#endif
 #ifdef COMPILER2
 #include "opto/idealGraphPrinter.hpp"
+#include "opto/runtime.hpp"
 #endif
 #if INCLUDE_JFR
 #include "jfr/jfr.hpp"
@@ -764,8 +766,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Start the monitor deflation thread:
   MonitorDeflationThread::initialize();
 
+#if INCLUDE_CDS
   // Start the method sampler
   MethodProfiler::initialize();
+#endif
 
   bool force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
 
