@@ -251,26 +251,6 @@ class MethodType
 
     static final Class<?>[] NO_PTYPES = {};
 
-    private static Object[] archivedObjects;
-
-    private static @Stable HashMap<MethodType,MethodType> archivedMethodTypes;
-
-    private static @Stable MethodType[] objectOnlyTypes;
-
-    @SuppressWarnings("unchecked")
-    private static void initializeFromArchive() {
-        CDS.initializeFromArchive(MethodType.class);
-        if (archivedObjects != null) {
-            archivedMethodTypes = (HashMap<MethodType,MethodType>)archivedObjects[0];
-            objectOnlyTypes = (MethodType[])archivedObjects[1];
-        } else {
-            objectOnlyTypes = new MethodType[20];
-        }
-    }
-    static {
-        initializeFromArchive();
-    }
-
     /**
      * Finds or creates an instance of the given method type.
      * @param rtype  the return type
@@ -429,8 +409,8 @@ class MethodType
             ptypes = NO_PTYPES; trusted = true;
         }
         MethodType primordialMT = new MethodType(rtype, ptypes);
-        if (archivedMethodTypes != null) {
-            MethodType mt = archivedMethodTypes.get(primordialMT);
+        if (AOTHolder.archivedMethodTypes != null) {
+            MethodType mt = AOTHolder.archivedMethodTypes.get(primordialMT);
             if (mt != null) {
                 return mt;
             }
@@ -455,6 +435,11 @@ class MethodType
         return internTable.intern(mt);
     }
 
+    static class AOTHolder {
+        private static final @Stable MethodType[] objectOnlyTypes = new MethodType[20];
+        private static @Stable HashMap<MethodType,MethodType> archivedMethodTypes;
+    }
+
     /**
      * Finds or creates a method type whose components are {@code Object} with an optional trailing {@code Object[]} array.
      * Convenience method for {@link #methodType(java.lang.Class, java.lang.Class[]) methodType}.
@@ -471,16 +456,16 @@ class MethodType
         checkSlotCount(objectArgCount);
         int ivarargs = (!finalArray ? 0 : 1);
         int ootIndex = objectArgCount*2 + ivarargs;
-        if (ootIndex < objectOnlyTypes.length) {
-            mt = objectOnlyTypes[ootIndex];
+        if (ootIndex < AOTHolder.objectOnlyTypes.length) {
+            mt = AOTHolder.objectOnlyTypes[ootIndex];
             if (mt != null)  return mt;
         }
         Class<?>[] ptypes = new Class<?>[objectArgCount + ivarargs];
         Arrays.fill(ptypes, Object.class);
         if (ivarargs != 0)  ptypes[objectArgCount] = Object[].class;
         mt = makeImpl(Object.class, ptypes, true);
-        if (ootIndex < objectOnlyTypes.length) {
-            objectOnlyTypes[ootIndex] = mt;     // cache it here also!
+        if (ootIndex < AOTHolder.objectOnlyTypes.length) {
+            AOTHolder.objectOnlyTypes[ootIndex] = mt;     // cache it here also!
         }
         return mt;
     }
@@ -1458,21 +1443,13 @@ s.writeObject(this.parameterArray());
 
     // This is called from C code.
     static void createArchivedObjects() {
-        // Call these first, as the <clinit> of these classes may add
-        // new MethodTypes into internTable.
-        DirectMethodHandle.createArchivedObjects();
-        LambdaForm.NamedFunction.createArchivedObjects();
-
-        MethodType[] objectOnlyTypesCopy = new MethodType[objectOnlyTypes.length];
-        for (int i = 0; i < objectOnlyTypes.length; i++) {
-            MethodType t = objectOnlyTypes[i];
-            if (t != null && canBeArchived(t)) {
-                objectOnlyTypesCopy[i] = t;
+        for (int i = 0; i < AOTHolder.objectOnlyTypes.length; i++) {
+            MethodType t = AOTHolder.objectOnlyTypes[i];
+            if (t != null && !canBeArchived(t)) {
+                AOTHolder.objectOnlyTypes[i] = null; // FIXME why?
             }
         }
 
-        archivedObjects = new Object[2];
-        archivedObjects[0] = copyInternTable();
-        archivedObjects[1] = objectOnlyTypesCopy;
+        AOTHolder.archivedMethodTypes = copyInternTable();
     }
 }

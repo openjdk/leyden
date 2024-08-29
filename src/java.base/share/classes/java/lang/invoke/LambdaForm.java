@@ -25,7 +25,6 @@
 
 package java.lang.invoke;
 
-import jdk.internal.misc.CDS;
 import java.lang.classfile.TypeKind;
 import jdk.internal.perf.PerfCounter;
 import jdk.internal.vm.annotation.DontInline;
@@ -1153,22 +1152,9 @@ class LambdaForm {
             return super.hashCode();
         }
 
-        static final MethodType INVOKER_METHOD_TYPE;
-        private static @Stable MethodType[] archivedObjects;
-
-        static {
-            CDS.initializeFromArchive(NamedFunction.class);
-            if (archivedObjects != null) {
-                INVOKER_METHOD_TYPE = archivedObjects[0];
-            } else {
-                INVOKER_METHOD_TYPE =
-                    MethodType.methodType(Object.class, MethodHandle.class, Object[].class);
-            }
-        }
-
-        static void createArchivedObjects() {
-            archivedObjects = new MethodType[1];
-            archivedObjects[0] = INVOKER_METHOD_TYPE;
+        static class AOTHolder {
+            static final MethodType INVOKER_METHOD_TYPE =
+                MethodType.methodType(Object.class, MethodHandle.class, Object[].class);
         }
 
         private static MethodHandle computeInvoker(MethodTypeForm typeForm) {
@@ -1179,7 +1165,7 @@ class LambdaForm {
             mh = DirectMethodHandle.make(invoker);
             MethodHandle mh2 = typeForm.cachedMethodHandle(MethodTypeForm.MH_NF_INV);
             if (mh2 != null)  return mh2;  // benign race
-            if (!mh.type().equals(INVOKER_METHOD_TYPE))
+            if (!mh.type().equals(AOTHolder.INVOKER_METHOD_TYPE))
                 throw newInternalError(mh.debugString());
             return typeForm.setCachedMethodHandle(MethodTypeForm.MH_NF_INV, mh);
         }

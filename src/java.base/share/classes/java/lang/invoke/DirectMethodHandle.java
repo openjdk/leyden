@@ -25,7 +25,6 @@
 
 package java.lang.invoke;
 
-import jdk.internal.misc.CDS;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.Stable;
@@ -869,50 +868,34 @@ sealed class DirectMethodHandle extends MethodHandle {
         return nf;
     }
 
-    private static final MethodType OBJ_OBJ_TYPE;
-    private static final MethodType LONG_OBJ_TYPE;
-    private static @Stable MethodType[] archivedObjects;
-
-    static {
-        CDS.initializeFromArchive(DirectMethodHandle.class);
-        if (archivedObjects != null) {
-            OBJ_OBJ_TYPE = archivedObjects[0];
-            LONG_OBJ_TYPE = archivedObjects[1];
-        } else {
-            OBJ_OBJ_TYPE = MethodType.methodType(Object.class, Object.class);
-            LONG_OBJ_TYPE = MethodType.methodType(long.class, Object.class);
-        }
-    }
-
-    static void createArchivedObjects() {
-        archivedObjects = new MethodType[2];
-        archivedObjects[0] = OBJ_OBJ_TYPE;
-        archivedObjects[1] = LONG_OBJ_TYPE;
+    static class AOTHolder {
+        private static final MethodType OBJ_OBJ_TYPE = MethodType.methodType(Object.class, Object.class);
+        private static final MethodType LONG_OBJ_TYPE = MethodType.methodType(long.class, Object.class);
     }
 
     private static NamedFunction createFunction(byte func) {
         try {
             switch (func) {
                 case NF_internalMemberName:
-                    return getNamedFunction("internalMemberName", OBJ_OBJ_TYPE);
+                    return getNamedFunction("internalMemberName", AOTHolder.OBJ_OBJ_TYPE);
                 case NF_internalMemberNameEnsureInit:
-                    return getNamedFunction("internalMemberNameEnsureInit", OBJ_OBJ_TYPE);
+                    return getNamedFunction("internalMemberNameEnsureInit", AOTHolder.OBJ_OBJ_TYPE);
                 case NF_ensureInitialized:
                     return getNamedFunction("ensureInitialized", MethodType.methodType(void.class, Object.class));
                 case NF_fieldOffset:
-                    return getNamedFunction("fieldOffset", LONG_OBJ_TYPE);
+                    return getNamedFunction("fieldOffset", AOTHolder.LONG_OBJ_TYPE);
                 case NF_checkBase:
-                    return getNamedFunction("checkBase", OBJ_OBJ_TYPE);
+                    return getNamedFunction("checkBase", AOTHolder.OBJ_OBJ_TYPE);
                 case NF_staticBase:
-                    return getNamedFunction("staticBase", OBJ_OBJ_TYPE);
+                    return getNamedFunction("staticBase", AOTHolder.OBJ_OBJ_TYPE);
                 case NF_staticOffset:
-                    return getNamedFunction("staticOffset", LONG_OBJ_TYPE);
+                    return getNamedFunction("staticOffset", AOTHolder.LONG_OBJ_TYPE);
                 case NF_checkCast:
                     return getNamedFunction("checkCast", MethodType.methodType(Object.class, Object.class, Object.class));
                 case NF_allocateInstance:
-                    return getNamedFunction("allocateInstance", OBJ_OBJ_TYPE);
+                    return getNamedFunction("allocateInstance", AOTHolder.OBJ_OBJ_TYPE);
                 case NF_constructorMethod:
-                    return getNamedFunction("constructorMethod", OBJ_OBJ_TYPE);
+                    return getNamedFunction("constructorMethod", AOTHolder.OBJ_OBJ_TYPE);
                 case NF_UNSAFE:
                     MemberName member = new MemberName(MethodHandleStatics.class, "UNSAFE", Unsafe.class, REF_getStatic);
                     return new NamedFunction(
@@ -920,7 +903,7 @@ sealed class DirectMethodHandle extends MethodHandle {
                                                                   DirectMethodHandle.class, LM_TRUSTED,
                                                                   NoSuchFieldException.class));
                 case NF_checkReceiver:
-                    member = new MemberName(DirectMethodHandle.class, "checkReceiver", OBJ_OBJ_TYPE, REF_invokeVirtual);
+                    member = new MemberName(DirectMethodHandle.class, "checkReceiver", AOTHolder.OBJ_OBJ_TYPE, REF_invokeVirtual);
                     return new NamedFunction(
                             MemberName.getFactory().resolveOrFail(REF_invokeVirtual, member,
                                                                   DirectMethodHandle.class, LM_TRUSTED,

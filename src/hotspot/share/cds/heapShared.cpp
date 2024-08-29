@@ -140,9 +140,6 @@ static ArchivableStaticFieldInfo archive_subgraph_entry_fields[] = {
   {"java/lang/ModuleLayer",                       "EMPTY_LAYER"},
   {"java/lang/module/Configuration",              "EMPTY_CONFIGURATION"},
   {"jdk/internal/math/FDBigInteger",              "archivedCaches"},
-  {"java/lang/invoke/DirectMethodHandle",         "archivedObjects"}, // FIXME -- requires AOTClassLinking
-  {"java/lang/invoke/MethodType",                 "archivedObjects"}, // FIXME -- requires AOTClassLinking
-  {"java/lang/invoke/LambdaForm$NamedFunction",   "archivedObjects"}, // FIXME -- requires AOTClassLinking
   {"java/lang/reflect/Proxy$ProxyBuilder",        "archivedData"},    // FIXME -- requires AOTClassLinking
 
 #ifndef PRODUCT
@@ -1410,58 +1407,6 @@ HeapShared::resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAP
     if (log_is_enabled(Info, cds, heap)) {
       ResourceMark rm;
       log_info(cds, heap)("%s subgraph %s ", do_init ? "init" : "resolve", k->external_name());
-    }
-
-    if (do_init && k->name() == vmSymbols::java_lang_invoke_MethodType()) {
-      // FIXME - hack.
-      //
-      // (The real fix would be to archive the MethodType class in its already initialized state. That
-      //  way we don't need to re-execute the <clinit> methods)
-      //
-      // We need to do this to break a cycle in the way the archived subgraphs are restored. Without this block, we
-      // have the following sequence
-      //
-      // MethodType.<clinit>()
-      //  -> CDS.initializeFromArchive(MethodType.class);
-      //   -> (this "if" block)
-      //   -> resolve_or_init("MethodType", ...); // this does nothing because MethodType.<clinit> is already executing
-      //   -> resolve_or_init("DirectMethodHandle", ...); // this class is in record->subgraph_object_klasses();
-      //      -> DirectMethodHandle.<clinit>()
-      //          -> MethodType.methodType()
-      //             -> MethodType.genericMethodType()
-      //               -> aaload MethodType.objectOnlyTypes[n]; <<<< here
-      //
-      // We need to restore MethodType.objectOnlyTypes here, or else the above aaload will
-      // get an NPE.
-      Array<int>* entry_field_records = record->entry_field_records();
-      assert(entry_field_records != nullptr, "must be");
-      int efr_len = entry_field_records->length();
-      assert(efr_len == 2, "must be");
-      int root_index = entry_field_records->at(1);
-      oop obj = get_root(root_index, /*clear=*/false);
-      if (obj != nullptr) {
-        objArrayOop archivedObjects = objArrayOop(obj);
-        InstanceKlass* ik = InstanceKlass::cast(k);
-        oop m = ik->java_mirror();
-
-        {
-          fieldDescriptor fd;
-          TempNewSymbol name = SymbolTable::new_symbol("archivedMethodTypes");
-          TempNewSymbol sig  = SymbolTable::new_symbol("Ljava/util/HashMap;");
-          Klass* result = ik->find_field(name, sig, true, &fd);
-          assert(result != nullptr, "must be");
-          m->obj_field_put(fd.offset(), archivedObjects->obj_at(0));
-        }
-
-        {
-          fieldDescriptor fd;
-          TempNewSymbol name = SymbolTable::new_symbol("objectOnlyTypes");
-          TempNewSymbol sig  = SymbolTable::new_symbol("[Ljava/lang/invoke/MethodType;");
-          Klass* result = ik->find_field(name, sig, true, &fd);
-          assert(result != nullptr, "must be");
-          m->obj_field_put(fd.offset(), archivedObjects->obj_at(1));
-        }
-      }
     }
 
     resolve_or_init(k, do_init, CHECK_NULL);
