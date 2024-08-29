@@ -394,9 +394,6 @@ private:
                                              KlassSubGraphInfo* subgraph_info,
                                              oop orig_obj);
 
-#ifndef PRODUCT
-  static ResourceBitMap calculate_oopmap(MemRegion region); // marks all the oop pointers
-#endif
   static void add_to_dumped_interned_strings(oop string);
 
   static void track_scratch_object(oop orig_obj, oop scratch_obj);
