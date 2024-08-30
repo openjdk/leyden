@@ -120,6 +120,10 @@
                                                                             \
   /*========== New options added by Leyden =============================*/  \
                                                                             \
+  product(ccstr, CacheOnlyClassesIn, nullptr,                               \
+          "If set, only classes loaded from these JAR files will be "       \
+          "stored in the AOTCache")                                         \
+                                                                            \
   product(ccstr, CacheDataStore, nullptr,                                   \
           "If valid, use the specified file for SharedArchiveFile; "        \
           "otherwise the specified file is generated at program exit")      \

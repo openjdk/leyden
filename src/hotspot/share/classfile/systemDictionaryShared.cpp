@@ -375,6 +375,12 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     }
   }
 
+  if (ClassLoaderExt::should_be_excluded(k)) {
+    ResourceMark rm;
+    log_info(cds)("Skipping %s: excluded via -XX:CacheOnlyClassesIn", k->name()->as_C_string());
+    return true;
+  }
+
   return false; // false == k should NOT be excluded
 }
 

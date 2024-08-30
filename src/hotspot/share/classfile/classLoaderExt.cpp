@@ -58,6 +58,7 @@ jshort ClassLoaderExt::_max_used_path_index = 0;
 bool ClassLoaderExt::_has_app_classes = false;
 bool ClassLoaderExt::_has_platform_classes = false;
 bool ClassLoaderExt::_has_non_jar_in_classpath = false;
+int ClassLoaderExt::_app_class_exclusion_start_path_index = INT_MAX;
 
 void ClassLoaderExt::append_boot_classpath(ClassPathEntry* new_entry) {
   if (CDSConfig::is_using_archive()) {
@@ -366,3 +367,14 @@ void ClassLoaderExt::check_invalid_classpath_index(s2 classpath_index, InstanceK
     }
   }
 }
+
+// -XX:CacheOnlyClassesIn=
+bool ClassLoaderExt::should_be_excluded(InstanceKlass* k) {
+  int path_index = k->shared_classpath_index();
+  if (path_index >= _app_class_exclusion_start_path_index  && path_index < _app_module_paths_start_index) {
+    return true;
+  } else {
+    return false;
+  }
+}
+

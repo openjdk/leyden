@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -44,6 +44,15 @@ public:
   }
 
   const char* get_next();
+
+  // Number of characters have been consumed from the input (this->_classpath)
+  // ClasspathStream cps("a:b:c");
+  // cps.next();    /* returns "a" */
+  // cps.next();    /* returns "b" */
+  // cps.num_chars_consumed() == 3;
+  size_t num_chars_consumed() {
+    return (size_t)_start;
+  }
 };
 
 #endif // SHARE_UTILITIES_CLASSPATHSTREAM_HPP

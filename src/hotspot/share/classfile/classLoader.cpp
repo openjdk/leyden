@@ -582,10 +582,39 @@ void ClassLoader::setup_app_search_path(JavaThread* current, const char *class_p
   ResourceMark rm(current);
   ClasspathStream cp_stream(class_path);
 
+  int exclusion_start_index = INT_MAX;
+  size_t limit = SIZE_MAX;
+  if (CacheOnlyClassesIn != nullptr) {
+    char* appclasspath = Arguments::get_appclasspath();
+    bool bad = false;
+    if (strstr(appclasspath, CacheOnlyClassesIn) != appclasspath) {
+      bad = true;
+    } else {
+      limit = strlen(CacheOnlyClassesIn);
+      if (limit > 0 && limit < strlen(appclasspath)
+          && CacheOnlyClassesIn[limit-1] != os::path_separator()[0]
+          && appclasspath[limit] != os::path_separator()[0]) {
+        bad = true;
+      }
+    }
+    if (bad) {
+      vm_exit_during_initialization(err_msg("CacheOnlyClassesIn \"%s\" must be a proper prefix of the CLASSPATH \"%s\"",
+                                            CacheOnlyClassesIn, appclasspath));
+    }
+  }
+
   while (cp_stream.has_next()) {
+    if (cp_stream.num_chars_consumed() >= limit && exclusion_start_index == INT_MAX) {
+      exclusion_start_index = num_boot_classpath_entries() + num_app_classpath_entries();
+    }
     const char* path = cp_stream.get_next();
     update_class_path_entry_list(current, path, /* check_for_duplicates */ true,
                                  /* is_boot_append */ false, /* from_class_path_attr */ false);
+  }
+
+  ClassLoaderExt::set_app_class_exclusion_start_path_index(exclusion_start_index);
+  if (exclusion_start_index != INT_MAX) {
+    log_info(cds)("Exclude all app classes whose shared_classpath_index is greater than %d", exclusion_start_index);
   }
 }
 
