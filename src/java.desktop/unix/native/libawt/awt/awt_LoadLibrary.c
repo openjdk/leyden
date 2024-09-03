@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -98,9 +98,6 @@ JNIEXPORT jboolean JNICALL AWTIsHeadless() {
   #define HEADLESS_PATH "/libawt_headless.so"
 #endif
 
-typedef jboolean (*JVM_IsStaticJDK_t)();
-static JVM_IsStaticJDK_t IsStaticJDK = NULL;
-
 jint
 AWT_OnLoad(JavaVM *vm, void *reserved)
 {
@@ -120,35 +117,28 @@ AWT_OnLoad(JavaVM *vm, void *reserved)
 
     jvm = vm;
 
-    // IsStaticJDK is defined by libjvm. Check if it is statically linked.
-    IsStaticJDK = (JVM_IsStaticJDK_t)dlsym(RTLD_DEFAULT, "JVM_IsStaticJDK");
-    jboolean isStaticJDK = (IsStaticJDK != NULL) && (IsStaticJDK)();
-    if (!isStaticJDK) {
-        /* Get address of this library and the directory containing it. */
-        dladdr((void *)AWT_OnLoad, &dlinfo);
-        realpath((char *)dlinfo.dli_fname, buf);
-        len = strlen(buf);
-        p = strrchr(buf, '/');
-    }
-
     /*
      * The code below is responsible for
      * loading appropriate awt library, i.e. libawt_xawt or libawt_headless
      */
 
 #ifdef MACOSX
-        tk = LWAWT_PATH;
+    tk = LWAWT_PATH;
 #else
-        tk = XAWT_PATH;
-#endif
+    tk = XAWT_PATH;
 
-#ifndef MACOSX
     if (AWTIsHeadless()) {
         tk = HEADLESS_PATH;
     }
 #endif
 
-    if (!isStaticJDK) {
+    if (!JVM_IsStaticallyLinked()) {
+        /* Get address of this library and the directory containing it. */
+        dladdr((void *)AWT_OnLoad, &dlinfo);
+        realpath((char *)dlinfo.dli_fname, buf);
+        len = strlen(buf);
+        p = strrchr(buf, '/');
+
         /* Calculate library name to load */
         strncpy(p, tk, MAXPATHLEN-len-1);
 
@@ -160,8 +150,10 @@ AWT_OnLoad(JavaVM *vm, void *reserved)
 
         awtHandle = dlopen(buf, RTLD_LAZY | RTLD_GLOBAL);
     } else {
+        // FIXME: This should be integrated into mainline.
         awtHandle = dlopen(NULL, RTLD_LAZY);
     }
+
     return JNI_VERSION_1_2;
 }
 

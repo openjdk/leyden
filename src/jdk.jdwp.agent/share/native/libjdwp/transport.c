@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,6 +23,7 @@
  * questions.
  */
 
+#include "jvm.h"
 #include "util.h"
 #include "utf_util.h"
 #include "transport.h"
@@ -121,35 +122,34 @@ static void *
 loadTransportLibrary(const char *libdir, const char *name)
 {
     char buf[MAXPATHLEN*2+100];
-    // IsStaticJDK is defined by libjli. Check if it is statically linked.
-    jboolean isStaticJDK = dbgsysIsStaticJDK();
-    if (!isStaticJDK) {
-        void *handle;
-        char libname[MAXPATHLEN+2];
-        const char *plibdir;
 
-        /* Convert libdir from UTF-8 to platform encoding */
-        plibdir = NULL;
-        if ( libdir != NULL ) {
-            int  len;
-
-            len = (int)strlen(libdir);
-            (void)utf8ToPlatform((jbyte*)libdir, len, buf, (int)sizeof(buf));
-            plibdir = buf;
-        }
-
-        /* Construct library name (simple name or full path) */
-        dbgsysBuildLibName(libname, sizeof(libname), plibdir, name);
-        if (strlen(libname) == 0) {
-            return NULL;
-        }
-
-        /* dlopen (unix) / LoadLibrary (windows) the transport library */
-        handle = dbgsysLoadLibrary(libname, buf, sizeof(buf));
-        return handle;
-    } else {
+    if (JVM_IsStaticallyLinked()) {
         return (dbgsysLoadLibrary(NULL, buf, sizeof(buf)));
     }
+
+    void *handle;
+    char libname[MAXPATHLEN+2];
+    const char *plibdir;
+
+    /* Convert libdir from UTF-8 to platform encoding */
+    plibdir = NULL;
+    if ( libdir != NULL ) {
+        int  len;
+
+        len = (int)strlen(libdir);
+        (void)utf8ToPlatform((jbyte*)libdir, len, buf, (int)sizeof(buf));
+        plibdir = buf;
+    }
+
+    /* Construct library name (simple name or full path) */
+    dbgsysBuildLibName(libname, sizeof(libname), plibdir, name);
+    if (strlen(libname) == 0) {
+        return NULL;
+    }
+
+    /* dlopen (unix) / LoadLibrary (windows) the transport library */
+    handle = dbgsysLoadLibrary(libname, buf, sizeof(buf));
+    return handle;
 }
 
 /*
