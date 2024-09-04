@@ -69,6 +69,7 @@
 #include "runtime/timerTrace.hpp"
 #include "runtime/threadIdentifier.hpp"
 #include "utilities/ostream.hpp"
+#include "utilities/spinYield.hpp"
 #ifdef COMPILER1
 #include "c1/c1_Runtime1.hpp"
 #include "c1/c1_LIRAssembler.hpp"
@@ -719,12 +720,14 @@ SCCache::~SCCache() {
   // Stop any further access to cache.
   // Checked on entry to load_nmethod() and store_nmethod().
   _closing = true;
-  if (_for_read && _reading_nmethod > 0) {
+  if (_for_read) {
     // Wait for all load_nmethod() finish.
-    // TODO: may be have new separate locker for SCA.
-    MonitorLocker locker(Compilation_lock, Mutex::_no_safepoint_check_flag);
-    while (_reading_nmethod > 0) {
-      locker.wait(10); // Wait 10 ms
+    // This is still racy: we cannot guarantee no one started reading
+    // nmethods after we closed the cache. We need to bail from readers
+    // when they detect the cache is closed. TODO: Fix this properly.
+    SpinYield spin;
+    while (Atomic::load(&_reading_nmethod) > 0) {
+      spin.wait();
     }
   }
   // Prevent writing code into cache while we are closing it.
