@@ -361,6 +361,10 @@ size_t ArchiveBuilder::estimate_archive_size() {
   size_t training_data_est = TrainingData::estimate_size_for_archive();
   _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est;
 
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
+    _estimated_hashtable_bytes += _klasses->length() * 16 * sizeof(Klass*);
+  }
+
   if (CDSConfig::is_dumping_final_static_archive()) {
     _estimated_hashtable_bytes += 200 * 1024 * 1024; // FIXME -- need to iterate archived symbols??
   }
@@ -824,7 +828,7 @@ void ArchiveBuilder::relocate_metaspaceobj_embedded_pointers() {
 
 #define ADD_COUNT(x) \
   x += 1; \
-  x ## _a += aotloaded; \
+  x ## _a += aotlinked; \
   x ## _i += inited;
 
 #define DECLARE_INSTANCE_KLASS_COUNTER(x) \
@@ -865,7 +869,7 @@ void ArchiveBuilder::make_klasses_shareable() {
     const char* kind = "";
     const char* hidden = "";
     const char* generated = "";
-    const char* aotloaded_msg = "";
+    const char* aotlinked_msg = "";
     const char* inited_msg = "";
     Klass* k = get_buffered_addr(klasses()->at(i));
     k->remove_java_mirror();
@@ -882,7 +886,7 @@ void ArchiveBuilder::make_klasses_shareable() {
       assert(k->is_instance_klass(), " must be");
       InstanceKlass* ik = InstanceKlass::cast(k);
       InstanceKlass* src_ik = get_source_addr(ik);
-      int aotloaded = AOTClassLinker::is_candidate(src_ik);
+      int aotlinked = AOTClassLinker::is_candidate(src_ik);
       int inited = ik->has_preinitialized_mirror();
       ADD_COUNT(num_instance_klasses);
       if (CDSConfig::is_dumping_dynamic_archive()) {
@@ -951,8 +955,8 @@ void ArchiveBuilder::make_klasses_shareable() {
       if (ik->is_generated_shared_class()) {
         generated = " generated";
       }
-      if (aotloaded) {
-        aotloaded_msg = " aot-loaded";
+      if (aotlinked) {
+        aotlinked_msg = " aot-linked";
       }
       if (inited) {
         inited_msg = " inited";
@@ -966,11 +970,11 @@ void ArchiveBuilder::make_klasses_shareable() {
       ResourceMark rm;
       log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s%s", i,
                             p2i(to_requested(k)), type, k->external_name(),
-                            kind, hidden, unlinked, generated, aotloaded_msg, inited_msg);
+                            kind, hidden, unlinked, generated, aotlinked_msg, inited_msg);
     }
   }
 
-#define STATS_FORMAT    "= %5d, aot-loaded = %5d, inited = %5d"
+#define STATS_FORMAT    "= %5d, aot-linked = %5d, inited = %5d"
 #define STATS_PARAMS(x) num_ ## x, num_ ## x ## _a, num_ ## x ## _i
 
   log_info(cds)("Number of classes %d", num_instance_klasses + num_obj_array_klasses + num_type_array_klasses);
