@@ -1051,10 +1051,14 @@ void ciEnv::register_method(ciMethod* target,
     MutexLocker ml(Compile_lock);
     NoSafepointVerifier nsv;
 
-    if (scc_entry != nullptr && scc_entry->not_entrant()) {
-      // This shared code was marked invalid while it was loaded
-      code_buffer->free_blob();
-      return;
+    if (scc_entry != nullptr) {
+      // Invalid compilation states:
+      //  - SCCache is closed, SCC entry is garbage.
+      //  - SCC entry indicates this shared code was marked invalid while it was loaded.
+      if (!SCCache::is_on() || scc_entry->not_entrant()) {
+        code_buffer->free_blob();
+        return;
+      }
     }
 
     // Change in Jvmti state may invalidate compilation.

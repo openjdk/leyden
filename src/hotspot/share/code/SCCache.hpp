@@ -436,15 +436,22 @@ private:
                           bool has_monitors,
                           bool has_scoped_access);
 
-  static volatile int _reading_nmethod;
+  // States:
+  //   S >= 0: allow new readers, S readers are currently active
+  //   S <  0: no new readers are allowed; (-S-1) readers are currently active
+  //     (special case: S = -1 means no readers are active, and would never be active again)
+  static volatile int _nmethod_readers;
+
+  static void wait_for_no_nmethod_readers();
 
   class ReadingMark {
+  private:
+    bool _failed;
   public:
-    ReadingMark() {
-      Atomic::inc(&_reading_nmethod);
-    }
-    ~ReadingMark() {
-      Atomic::dec(&_reading_nmethod);
+    ReadingMark();
+    ~ReadingMark();
+    bool failed() {
+      return _failed;
     }
   };
 
@@ -577,6 +584,10 @@ public:
     SCCache* cache = open_for_read();
     if (cache != nullptr) {
       ReadingMark rdmk;
+      if (rdmk.failed()) {
+        // Cache is closed, cannot touch anything.
+        return;
+      }
 
       uint count = cache->_load_header->entries_count();
       uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]

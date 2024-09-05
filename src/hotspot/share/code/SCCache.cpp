@@ -69,6 +69,7 @@
 #include "runtime/timerTrace.hpp"
 #include "runtime/threadIdentifier.hpp"
 #include "utilities/ostream.hpp"
+#include "utilities/spinYield.hpp"
 #ifdef COMPILER1
 #include "c1/c1_Runtime1.hpp"
 #include "c1/c1_LIRAssembler.hpp"
@@ -710,7 +711,7 @@ bool SCCHeader::verify_config(const char* cache_path, uint load_size) const {
   return true;
 }
 
-volatile int SCCache::_reading_nmethod = 0;
+volatile int SCCache::_nmethod_readers = 0;
 
 SCCache::~SCCache() {
   if (_closing) {
@@ -719,13 +720,9 @@ SCCache::~SCCache() {
   // Stop any further access to cache.
   // Checked on entry to load_nmethod() and store_nmethod().
   _closing = true;
-  if (_for_read && _reading_nmethod > 0) {
+  if (_for_read) {
     // Wait for all load_nmethod() finish.
-    // TODO: may be have new separate locker for SCA.
-    MonitorLocker locker(Compilation_lock, Mutex::_no_safepoint_check_flag);
-    while (_reading_nmethod > 0) {
-      locker.wait(10); // Wait 10 ms
-    }
+    wait_for_no_nmethod_readers();
   }
   // Prevent writing code into cache while we are closing it.
   // This lock held by ciEnv::register_method() which calls store_nmethod().
@@ -2882,6 +2879,11 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
                            (entry->ignore_decompile() ? ", ignore_decomp" : ""));
   }
   ReadingMark rdmk;
+  if (rdmk.failed()) {
+    // Cache is closed, cannot touch anything.
+    return false;
+  }
+
   SCCReader reader(cache, entry, task);
   bool success = reader.compile(env, target, entry_bci, compiler);
   if (success) {
@@ -3375,6 +3377,10 @@ void SCCache::print_statistics_on(outputStream* st) {
   SCCache* cache = open_for_read();
   if (cache != nullptr) {
     ReadingMark rdmk;
+    if (rdmk.failed()) {
+      // Cache is closed, cannot touch anything.
+      return;
+    }
 
     uint count = cache->_load_header->entries_count();
     uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
@@ -3426,6 +3432,10 @@ void SCCache::print_on(outputStream* st) {
   SCCache* cache = open_for_read();
   if (cache != nullptr) {
     ReadingMark rdmk;
+    if (rdmk.failed()) {
+      // Cache is closed, cannot touch anything.
+      return;
+    }
 
     uint count = cache->_load_header->entries_count();
     uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
@@ -4179,3 +4189,57 @@ address AOTRuntimeConstants::_field_addresses_list[] = {
   card_shift_address(),
   nullptr
 };
+
+
+void SCCache::wait_for_no_nmethod_readers() {
+  while (true) {
+    int cur = Atomic::load(&_nmethod_readers);
+    int upd = -(cur + 1);
+    if (cur >= 0 && Atomic::cmpxchg(&_nmethod_readers, cur, upd) == cur) {
+      // Success, no new readers should appear.
+      break;
+    }
+  }
+
+  // Now wait for all readers to leave.
+  SpinYield w;
+  while (Atomic::load(&_nmethod_readers) != -1) {
+    w.wait();
+  }
+}
+
+SCCache::ReadingMark::ReadingMark() {
+  while (true) {
+    int cur = Atomic::load(&_nmethod_readers);
+    if (cur < 0) {
+      // Cache is already closed, cannot proceed.
+      _failed = true;
+      return;
+    }
+    if (Atomic::cmpxchg(&_nmethod_readers, cur, cur + 1) == cur) {
+      // Successfully recorded ourselves as entered.
+      _failed = false;
+      return;
+    }
+  }
+}
+
+SCCache::ReadingMark::~ReadingMark() {
+  if (_failed) {
+    return;
+  }
+  while (true) {
+    int cur = Atomic::load(&_nmethod_readers);
+    if (cur > 0) {
+      // Cache is open, we are counting down towards 0.
+      if (Atomic::cmpxchg(&_nmethod_readers, cur, cur - 1) == cur) {
+        return;
+      }
+    } else {
+      // Cache is closed, we are counting up towards -1.
+      if (Atomic::cmpxchg(&_nmethod_readers, cur, cur + 1) == cur) {
+        return;
+      }
+    }
+  }
+}
