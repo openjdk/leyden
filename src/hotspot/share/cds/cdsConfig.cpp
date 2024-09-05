@@ -452,6 +452,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
   check_flag_aliases();
 
   if (CacheDataStore != nullptr) {
+#if 0
     // Leyden temp work-around:
     //
     // By default, when using CacheDataStore, use the HeapBasedNarrowOop mode so that
@@ -466,6 +467,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     // because it is unable to load the AOT code cache.
 #ifdef _LP64
     FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true);
+#endif
 #endif
 
     // Leyden temp: make sure the user knows if CDS archive somehow fails to load.

@@ -398,6 +398,11 @@ class MacroAssembler: public Assembler {
   void encode_heap_oop_not_null(Register dst, Register src);
   void decode_heap_oop_not_null(Register dst, Register src);
 
+  void encode_heap_oop_for_aot(Register r);
+  void decode_heap_oop_for_aot(Register r);
+  void encode_heap_oop_not_null_for_aot(Register r);
+  void decode_heap_oop_not_null_for_aot(Register r);
+
   void set_narrow_oop(Register dst, jobject obj);
   void set_narrow_oop(Address dst, jobject obj);
   void cmp_narrow_oop(Register dst, jobject obj);

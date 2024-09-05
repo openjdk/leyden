@@ -5774,12 +5774,40 @@ void MacroAssembler::verify_heapbase(const char* msg) {
 }
 #endif
 
+void MacroAssembler::encode_heap_oop_for_aot(Register r) {
+  assert(SCCache::is_on_for_write(), "should be for AOT code");
+  Register oop = r;
+  if (r == rcx) {
+    push(rscratch1);
+    movq(rscratch1, r);
+    oop = rscratch1;
+  } else {
+    push(rcx);
+  }
+  testq(oop, oop);
+  movptr(rcx, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
+  cmovq(Assembler::equal, oop, rcx);
+  subq(oop, rcx);
+  movptr(rcx, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
+  shrq(oop);
+  if (r == rcx) {
+    mov(r, rscratch1);
+    pop(rscratch1);
+  } else {
+    pop(rcx);
+  }
+}
+
 // Algorithm must match oop.inline.hpp encode_heap_oop.
 void MacroAssembler::encode_heap_oop(Register r) {
 #ifdef ASSERT
   verify_heapbase("MacroAssembler::encode_heap_oop: heap base corrupted?");
 #endif
   verify_oop_msg(r, "broken oop in encode_heap_oop");
+  if (SCCache::is_on_for_write()) {
+    encode_heap_oop_for_aot(r);
+    return;
+  }
   if (CompressedOops::base() == nullptr) {
     if (CompressedOops::shift() != 0) {
       assert (LogMinObjAlignmentInBytes == CompressedOops::shift(), "decode alg wrong");
@@ -5791,6 +5819,28 @@ void MacroAssembler::encode_heap_oop(Register r) {
   cmovq(Assembler::equal, r, r12_heapbase);
   subq(r, r12_heapbase);
   shrq(r, LogMinObjAlignmentInBytes);
+}
+
+void MacroAssembler::encode_heap_oop_not_null_for_aot(Register r) {
+  assert(SCCache::is_on_for_write(), "should be for AOT code");
+  Register oop = r;
+  if (r == rcx) {
+    push(rscratch1);
+    movq(rscratch1, r);
+    oop = rscratch1;
+  } else {
+    push(rcx);
+  }
+  movptr(rcx, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
+  subq(oop, rcx);
+  movptr(rcx, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
+  shrq(oop);
+  if (r == rcx) {
+    mov(r, rscratch1);
+    pop(rscratch1);
+  } else {
+    pop(rcx);
+  }
 }
 
 void MacroAssembler::encode_heap_oop_not_null(Register r) {
@@ -5805,6 +5855,10 @@ void MacroAssembler::encode_heap_oop_not_null(Register r) {
   }
 #endif
   verify_oop_msg(r, "broken oop in encode_heap_oop_not_null");
+  if (SCCache::is_on_for_write()) {
+    encode_heap_oop_not_null_for_aot(r);
+    return;
+  }
   if (CompressedOops::base() != nullptr) {
     subq(r, r12_heapbase);
   }
@@ -5829,6 +5883,10 @@ void MacroAssembler::encode_heap_oop_not_null(Register dst, Register src) {
   if (dst != src) {
     movq(dst, src);
   }
+  if (SCCache::is_on_for_write()) {
+    encode_heap_oop_not_null_for_aot(dst);
+    return;
+  }
   if (CompressedOops::base() != nullptr) {
     subq(dst, r12_heapbase);
   }
@@ -5838,10 +5896,39 @@ void MacroAssembler::encode_heap_oop_not_null(Register dst, Register src) {
   }
 }
 
-void  MacroAssembler::decode_heap_oop(Register r) {
+void MacroAssembler::decode_heap_oop_for_aot(Register r) {
+  assert(SCCache::is_on_for_write(), "should be for AOT code");
+  Label done;
+  Register narrowOop = r;
+  if (r == rcx) {
+    push(rscratch1);
+    movq(rscratch1, r);
+    narrowOop = rscratch1;
+  } else {
+    push(rcx);
+  }
+  movptr(rcx, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
+  shlq(narrowOop);
+  jccb(Assembler::equal, done);
+  movptr(rcx, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
+  addq(narrowOop, rcx);
+  bind(done);
+  if (r == rcx) {
+    movq(r, rscratch1);
+    pop(rscratch1);
+  } else {
+    pop(rcx);
+  }
+}
+
+void MacroAssembler::decode_heap_oop(Register r) {
 #ifdef ASSERT
   verify_heapbase("MacroAssembler::decode_heap_oop: heap base corrupted?");
 #endif
+  if (SCCache::is_on_for_write()) {
+    decode_heap_oop_for_aot(r);
+    return;
+  }
   if (CompressedOops::base() == nullptr) {
     if (CompressedOops::shift() != 0) {
       assert (LogMinObjAlignmentInBytes == CompressedOops::shift(), "decode alg wrong");
@@ -5857,13 +5944,39 @@ void  MacroAssembler::decode_heap_oop(Register r) {
   verify_oop_msg(r, "broken oop in decode_heap_oop");
 }
 
-void  MacroAssembler::decode_heap_oop_not_null(Register r) {
+void MacroAssembler::decode_heap_oop_not_null_for_aot(Register r) {
+  assert(SCCache::is_on_for_write(), "should be for AOT code");
+  Register narrowOop = r;
+  if (r == rcx) {
+    push(rscratch1);
+    movq(rscratch1, r);
+    narrowOop = rscratch1;
+  } else {
+    push(rcx);
+  }
+  movptr(rcx, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
+  shlq(narrowOop);
+  movptr(rcx, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
+  addq(narrowOop, rcx);
+  if (r == rcx) {
+    movq(r, rscratch1);
+    pop(rscratch1);
+  } else {
+    pop(rcx);
+  }
+}
+
+void MacroAssembler::decode_heap_oop_not_null(Register r) {
   // Note: it will change flags
   assert (UseCompressedOops, "should only be used for compressed headers");
   assert (Universe::heap() != nullptr, "java heap should be initialized");
   // Cannot assert, unverified entry point counts instructions (see .ad file)
   // vtableStubs also counts instructions in pd_code_size_limit.
   // Also do not verify_oop as this is called by verify_oop.
+  if (SCCache::is_on_for_write()) {
+    decode_heap_oop_not_null_for_aot(r);
+    return;
+  }
   if (CompressedOops::shift() != 0) {
     assert(LogMinObjAlignmentInBytes == CompressedOops::shift(), "decode alg wrong");
     shlq(r, LogMinObjAlignmentInBytes);
@@ -5882,6 +5995,13 @@ void  MacroAssembler::decode_heap_oop_not_null(Register dst, Register src) {
   // Cannot assert, unverified entry point counts instructions (see .ad file)
   // vtableStubs also counts instructions in pd_code_size_limit.
   // Also do not verify_oop as this is called by verify_oop.
+  if (SCCache::is_on_for_write()) {
+    if (dst != src) {
+      movq(dst, src);
+    }
+    decode_heap_oop_not_null_for_aot(dst);
+    return;
+  }
   if (CompressedOops::shift() != 0) {
     assert(LogMinObjAlignmentInBytes == CompressedOops::shift(), "decode alg wrong");
     if (LogMinObjAlignmentInBytes == Address::times_8) {

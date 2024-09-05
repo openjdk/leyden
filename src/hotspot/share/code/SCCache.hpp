@@ -618,6 +618,9 @@ class AOTRuntimeConstants {
  friend class SCCache;
   uint _grain_shift;
   uint _card_shift;
+  address _coops_base;
+  uint _coops_shift;
+
   static address _field_addresses_list[];
   static AOTRuntimeConstants _aot_runtime_constants;
   // private constructor for unique singleton
@@ -632,6 +635,9 @@ class AOTRuntimeConstants {
   }
   static address grain_shift_address() { return (address)&_aot_runtime_constants._grain_shift; }
   static address card_shift_address() { return (address)&_aot_runtime_constants._card_shift; }
+  static address coops_base_address() { return (address)&_aot_runtime_constants._coops_base; }
+  static address coops_shift_address() { return (address)&_aot_runtime_constants._coops_shift; }
+
   static address* field_addresses_list() {
     return _field_addresses_list;
   }

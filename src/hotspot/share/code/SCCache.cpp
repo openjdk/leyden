@@ -676,8 +676,9 @@ bool SCConfig::verify(const char* cache_path) const {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with RestrictContended = %s", cache_path, RestrictContended ? "false" : "true");
     return false;
   }
-  if (_compressedOopShift != (uint)CompressedOops::shift()) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedOops::shift() = %d vs current %d", cache_path, _compressedOopShift, CompressedOops::shift());
+  if (UseCompatibleCompressedOops && (_compressedOopShift != (uint)CompressedOops::shift())) {
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedOops::shift() = %d vs current %d and UseCompatibleCompressedOops=%s", cache_path, _compressedOopShift, CompressedOops::shift(),
+                           UseCompatibleCompressedOops ? "true" : "false");
     return false;
   }
   if (_compressedKlassShift != (uint)CompressedKlassPointers::shift()) {
@@ -4180,6 +4181,10 @@ void AOTRuntimeConstants::initialize_from_runtime() {
     _aot_runtime_constants._grain_shift = ctbs->grain_shift();
     _aot_runtime_constants._card_shift = ctbs->card_shift();
   }
+  if (UseCompressedOops) {
+    _aot_runtime_constants._coops_base = CompressedOops::base();
+    _aot_runtime_constants._coops_shift = CompressedOops::shift();
+  }
 }
 
 AOTRuntimeConstants AOTRuntimeConstants::_aot_runtime_constants;
@@ -4187,6 +4192,8 @@ AOTRuntimeConstants AOTRuntimeConstants::_aot_runtime_constants;
 address AOTRuntimeConstants::_field_addresses_list[] = {
   grain_shift_address(),
   card_shift_address(),
+  coops_base_address(),
+  coops_shift_address(),
   nullptr
 };
 
