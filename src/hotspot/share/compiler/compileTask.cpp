@@ -256,10 +256,10 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
       ss.print(UINT64_FORMAT, (uint64_t) tty->time_stamp().milliseconds());
       st->print("%7s ", ss.freeze());
     }
-    { // Time after creation
+    { // Time waiting to be put on queue
       stringStream ss;
       if (time_created != 0 && time_queued != 0) {
-        ss.print("C%.1f", TimeHelper::counter_to_millis(time_queued - time_created));
+        ss.print("W%.1f", TimeHelper::counter_to_millis(time_queued - time_created));
       }
       st->print("%7s ", ss.freeze());
     }
@@ -270,10 +270,10 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
       }
       st->print("%7s ", ss.freeze());
     }
-    { // Time in work
+    { // Time in compilation
       stringStream ss;
       if (time_started != 0 && time_finished != 0) {
-        ss.print("W%.1f", TimeHelper::counter_to_millis(time_finished - time_started));
+        ss.print("C%.1f", TimeHelper::counter_to_millis(time_finished - time_started));
       }
       st->print("%7s ", ss.freeze());
     }
