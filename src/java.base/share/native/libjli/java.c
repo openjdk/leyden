@@ -1550,10 +1550,13 @@ ParseArguments(int *pargc, char ***pargv,
     }
 
     if (mode == LM_SOURCE) {
-        // Leyden: Supplying add-modules would break full module graph dumping,
-        // which will prevent CacheDataStore use. There is no other way to use
-        // CacheDataStore with source launcher at the moment. TODO: Figure this out.
-        if (!cacheDataStore) {
+        // Supplying add-modules would break full module graph dumping, which will
+        // prevent CacheDataStore use. There is no other way to use CacheDataStore
+        // with source launcher at the moment. Drop the add-modules, print warning
+        // message, and hope for the best. // TODO: Figure this out.
+        if (cacheDataStore) {
+          JLI_ReportErrorMessage(CFG_WARN6);
+        } else {
           AddOption("--add-modules=ALL-DEFAULT", NULL);
         }
         *pwhat = SOURCE_LAUNCHER_MAIN_ENTRY;

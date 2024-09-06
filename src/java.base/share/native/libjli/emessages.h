@@ -77,6 +77,7 @@
 #define CFG_WARN3       "Warning: Missing VM type on line %d of `%s'"
 #define CFG_WARN4       "Warning: Missing server class VM on line %d of `%s'"
 #define CFG_WARN5       "Warning: Unknown VM type on line %d of `%s'"
+#define CFG_WARN6       "Warning: CacheDataStore cannot be used with default source launcher environment, disabling --add-modules=ALL-DEFAULT"
 
 #define CFG_ERROR1      "Error: Corrupt jvm.cfg file; cycle in alias list."
 #define CFG_ERROR2      "Error: Unable to resolve VM alias %s"
