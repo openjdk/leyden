@@ -121,9 +121,10 @@ class CompileTask : public CHeapObj<mtCompiler> {
   CompileTask*         _prev;
   bool                 _is_free;
   // Fields used for logging why the compilation was initiated:
-  jlong                _time_created; // time when task was enqueued
+  jlong                _time_created; // time when task was created
   jlong                _time_queued;  // time when task was enqueued
   jlong                _time_started; // time when compilation started
+  jlong                _time_finished; // time when compilation finished
   Method*              _hot_method;   // which method actually triggered this task
   jobject              _hot_method_holder;
   int                  _hot_count;    // information about its invocation counter
@@ -213,6 +214,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   void         mark_success()                    { _is_success = true; }
   void         mark_queued(jlong time)           { _time_queued = time; }
   void         mark_started(jlong time)          { _time_started = time; }
+  void         mark_finished(jlong time)         { _time_finished = time; }
 
   int          comp_level()                      { return _comp_level;}
   void         set_comp_level(int comp_level)    { _comp_level = comp_level;}
@@ -251,7 +253,7 @@ private:
                                       bool is_scc = false, bool is_preload = false,
                                       const char* compiler_name = nullptr,
                                       const char* msg = nullptr, bool short_form = false, bool cr = true,
-                                      jlong time_created = 0, jlong time_queued = 0, jlong time_started = 0);
+                                      jlong time_created = 0, jlong time_queued = 0, jlong time_started = 0, jlong time_finished = 0);
 
 public:
   void         print(outputStream* st = tty, const char* msg = nullptr, bool short_form = false, bool cr = true);
