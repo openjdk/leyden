@@ -1555,9 +1555,9 @@ ParseArguments(int *pargc, char ***pargv,
         // with source launcher at the moment. Drop the add-modules, print warning
         // message, and hope for the best. // TODO: Figure this out.
         if (cacheDataStore) {
-          JLI_ReportErrorMessage(CFG_WARN6);
+            JLI_ReportErrorMessage(CFG_WARN6);
         } else {
-          AddOption("--add-modules=ALL-DEFAULT", NULL);
+            AddOption("--add-modules=ALL-DEFAULT", NULL);
         }
         *pwhat = SOURCE_LAUNCHER_MAIN_ENTRY;
         // adjust (argc, argv) so that the name of the source file
