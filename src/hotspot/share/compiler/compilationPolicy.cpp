@@ -907,6 +907,12 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       continue;
     }
     Method* method = task->method();
+    if (task->is_scc()) {
+      // AOT task, it should load fast, take it, and go.
+      max_task = task;
+      max_method = method;
+      break;
+    }
     methodHandle mh(THREAD, method);
     if (task->can_become_stale() && is_stale(t, TieredCompileTaskTimeout, mh) && !is_old(mh)) {
       if (PrintTieredEvents) {
