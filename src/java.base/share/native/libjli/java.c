@@ -86,6 +86,7 @@ static jboolean _have_classpath = JNI_FALSE;
 static const char *_fVersion;
 static jboolean _wc_enabled = JNI_FALSE;
 static jboolean dumpSharedSpaces = JNI_FALSE; /* -Xshare:dump */
+static jboolean cacheDataStore = JNI_FALSE; /* -XX:CacheDataStore */
 
 /*
  * Entries for splash screen environment variables.
@@ -1522,6 +1523,9 @@ ParseArguments(int *pargc, char ***pargv,
             // Alias for -Xshare:dump
             dumpSharedSpaces = JNI_TRUE;
         }
+        if (JLI_StrCCmp(arg, "-XX:CacheDataStore") == 0) {
+            cacheDataStore = JNI_TRUE;
+        }
     }
 
     if (*pwhat == NULL && --argc >= 0) {
@@ -1546,7 +1550,12 @@ ParseArguments(int *pargc, char ***pargv,
     }
 
     if (mode == LM_SOURCE) {
-        AddOption("--add-modules=ALL-DEFAULT", NULL);
+        // Leyden: Supplying add-modules would break full module graph dumping,
+        // which will prevent CacheDataStore use. There is no other way to use
+        // CacheDataStore with source launcher at the moment. TODO: Figure this out.
+        if (!cacheDataStore) {
+          AddOption("--add-modules=ALL-DEFAULT", NULL);
+        }
         *pwhat = SOURCE_LAUNCHER_MAIN_ENTRY;
         // adjust (argc, argv) so that the name of the source file
         // is included in the args passed to the source launcher
