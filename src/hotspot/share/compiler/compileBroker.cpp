@@ -2661,6 +2661,8 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
     }
   }
 
+  task->mark_finished(os::elapsed_counter());
+
   if (tdata != nullptr) {
     tdata->record_compilation_end(task);
   }
@@ -2714,6 +2716,11 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   // only after the setting of the bits. See also 14012000 above.
   method->clear_queued_for_compilation();
   method->set_pending_queue_processed(false);
+
+  if (PrintCompilation) {
+    ResourceMark rm;
+    task->print_tty();
+  }
 }
 
 /**
