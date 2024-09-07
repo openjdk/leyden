@@ -1188,10 +1188,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  if (x->is_scc() && !y->is_scc()) {
-    // x has cached code
-    return true;
-  }
+  assert(!x->is_scc() && !y->is_scc(), "SC tasks are not expected here");
   if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }
