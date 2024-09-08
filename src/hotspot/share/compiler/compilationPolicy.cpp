@@ -906,6 +906,11 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       task = next_task;
       continue;
     }
+    if (task->is_scc()) {
+      // SCC tasks are on separate queue, and they should load fast. There is no need to walk
+      // the rest of the queue, just take the task and go.
+      return task;
+    }
     Method* method = task->method();
     methodHandle mh(THREAD, method);
     if (task->can_become_stale() && is_stale(t, TieredCompileTaskTimeout, mh) && !is_old(mh)) {
@@ -1183,10 +1188,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  if (x->is_scc() && !y->is_scc()) {
-    // x has cached code
-    return true;
-  }
+  assert(!x->is_scc() && !y->is_scc(), "SC tasks are not expected here");
   if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }
