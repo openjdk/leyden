@@ -49,10 +49,8 @@ class MethodTrainingData;
 class TrainingDataDumper;
 class TrainingDataSetLocker;
 class DumpTimeTrainingDataInfo;
-class TrainingDataDictionary;
 class RunTimeClassInfo;
 class RunTimeMethodDataInfo;
-
 
 class TrainingData : public Metadata {
   friend KlassTrainingData;
@@ -207,6 +205,7 @@ class TrainingData : public Metadata {
     }
   };
 
+  typedef OffsetCompactHashtable<const TrainingData::Key*, TrainingData*, TrainingData::Key::equals> TrainingDataDictionary;
 private:
   Key _key;
 
@@ -782,7 +781,6 @@ public:
   }
 };
 
-class TrainingDataDictionary : public OffsetCompactHashtable<const TrainingData::Key*, TrainingData*, TrainingData::Key::equals> {};
 
 class TrainingDataPrinter : StackObj {
   outputStream* _st;

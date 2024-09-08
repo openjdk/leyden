@@ -56,8 +56,8 @@
 #include "utilities/xmlstream.hpp"
 
 TrainingData::TrainingDataSet TrainingData::_training_data_set(1024, 0x3fffffff);
-TrainingDataDictionary TrainingData::_archived_training_data_dictionary;
-TrainingDataDictionary TrainingData::_archived_training_data_dictionary_for_dumping;
+TrainingData::TrainingDataDictionary TrainingData::_archived_training_data_dictionary;
+TrainingData::TrainingDataDictionary TrainingData::_archived_training_data_dictionary_for_dumping;
 GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>* TrainingData::_dumptime_training_data_dictionary = nullptr;
 int TrainingData::TrainingDataLocker::_lock_mode;
 volatile bool TrainingData::TrainingDataLocker::_snapshot = false;
