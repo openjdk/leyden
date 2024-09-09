@@ -1412,7 +1412,7 @@ void SharedRuntime::trigger_action_from_c1(JavaThread* current)
   }
 }
 
-RRT_LEAF(void, SharedRuntime::trigger_action_from_c2(JavaThread* current))
+JRT_LEAF(void, SharedRuntime::trigger_action_from_c2(JavaThread* current))
 {
   vframeStream vfst(current);//, true);
   if(!vfst.at_end()) {

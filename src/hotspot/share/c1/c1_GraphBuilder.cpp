@@ -42,7 +42,7 @@
 #include "jfr/jfrEvents.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/oop.inline.hpp"
-#include "runtime/globals_extensions.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/vm_version.hpp"
 #include "utilities/bitMap.inline.hpp"
