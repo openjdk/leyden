@@ -1162,7 +1162,7 @@ JRT_ENTRY(void, InterpreterRuntime::trigger_action_before_call(JavaThread* curre
   ResourceMark rm(current);
   methodHandle m (current, last_frame.method());
   if(m->is_trigger()) {
-    SharedRuntime::trigger_action("from interpreter before call");
+    SharedRuntime::trigger_action("from interpreter before call", CHECK);
   }
 }
 JRT_END
@@ -1173,7 +1173,7 @@ JRT_ENTRY(void, InterpreterRuntime::trigger_action_on_enter(JavaThread* current)
   ResourceMark rm(current);
   methodHandle m (current, last_frame.method());
   if(m->is_trigger()) {
-    SharedRuntime::trigger_action("from interpreter on enter");
+    SharedRuntime::trigger_action("from interpreter on enter", CHECK);
   }
 }
 JRT_END

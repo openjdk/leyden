@@ -346,8 +346,8 @@ class SharedRuntime: AllStatic {
   static methodHandle resolve_helper(bool is_virtual, bool is_optimized, TRAPS);
 
   // MNCMNC
-  static void trigger_action(const char* info);
-  
+  static void trigger_action(const char* info, TRAPS);
+
  private:
   // deopt blob
   static void generate_deopt_blob(void);

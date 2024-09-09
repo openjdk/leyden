@@ -1397,9 +1397,23 @@ methodHandle SharedRuntime::find_callee_method(TRAPS) {
   return callee_method;
 }
 
-void SharedRuntime::trigger_action(const char* info)
+void SharedRuntime::trigger_action(const char* info, TRAPS)
 {
-    tty->print_cr("SharedRuntime::trigger_action %s", info);
+  tty->print_cr("SharedRuntime::trigger_action %s", info);
+
+  Symbol* system_name  = vmSymbols::java_lang_System();
+  Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
+  JavaValue result(T_OBJECT);
+  JavaCallArguments args;
+  args.push_int(0);
+  JavaCalls::call_static(&result,
+                         system_klass,
+                         vmSymbols::exit_method_name(),
+                         vmSymbols::int_void_signature(),
+                         &args, CHECK);
+  if (!HAS_PENDING_EXCEPTION) {
+    tty->print_cr("Came back from System.exit!");
+  }
 }
 
 // Resolves a call.
@@ -1455,9 +1469,9 @@ methodHandle SharedRuntime::resolve_helper(bool is_virtual, bool is_optimized, T
 
   // MNCMNC shouldnt trigger from here as this can even be a call to the interpreter
   // which would also call trigger_action
-  if (callee_method->is_trigger()) {
-    SharedRuntime::trigger_action("SharedRuntime");
-  }
+  //if (callee_method->is_trigger()) {
+  //  SharedRuntime::trigger_action("SharedRuntime");
+  //}
 
   if (invoke_code == Bytecodes::_invokestatic) {
     assert(callee_method->method_holder()->is_initialized() ||
