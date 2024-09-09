@@ -1558,7 +1558,7 @@ void Runtime1::init_counters() {
     if (count > 0) { \
       st->print_cr("  %-50s = " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) (" JLONG_FORMAT_W(5) " events)", #sub "::" #name, \
                    _perf_##sub##_##name##_timer->elapsed_counter_value_us(), \
-                   _perf_##sub##_##name##_timer->thread_counter_value_us( ), \
+                   _perf_##sub##_##name##_timer->thread_counter_value_us(), \
                    count); \
     }}}
 
