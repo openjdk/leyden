@@ -627,7 +627,7 @@ static jlong total_elapsed_time_in_ms() {
 #define PRINT_COUNTER(name) {\
   jlong count = _perf_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-40s = " JLONG_FORMAT_W(4) "ms (" JLONG_FORMAT_W(5) " events)", #name, _perf_##name##_timer->elapsed_counter_value_ms(), count); \
+    st->print_cr("  %-40s = " JLONG_FORMAT_W(6) "us (" JLONG_FORMAT_W(5) " events)", #name, _perf_##name##_timer->elapsed_counter_value_us(), count); \
   }}
 
 void VMThread::print_counters_on(outputStream* st) {
