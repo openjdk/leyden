@@ -347,6 +347,7 @@ class SharedRuntime: AllStatic {
 
   // MNCMNC
   static void trigger_action_from_c1(JavaThread* current);//TRAPS);
+  static void trigger_action_from_c2(JavaThread* current);//TRAPS);
   static void trigger_action(const char* info, TRAPS);
 
  private:

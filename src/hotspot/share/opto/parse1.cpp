@@ -38,6 +38,7 @@
 #include "opto/rootnode.hpp"
 #include "opto/runtime.hpp"
 #include "opto/type.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/safepointMechanism.hpp"
 #include "runtime/sharedRuntime.hpp"
@@ -1206,6 +1207,10 @@ void Parse::do_method_entry() {
   set_sp(0);                         // Java Stack Pointer
 
   NOT_PRODUCT( count_compiled_calls(true/*at_method_entry*/, false/*is_inline*/); )
+
+  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) {
+    make_trigger_action();
+  }
 
   if (C->env()->dtrace_method_probes()) {
     make_dtrace_method_entry(method());

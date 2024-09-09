@@ -1400,21 +1400,33 @@ methodHandle SharedRuntime::find_callee_method(TRAPS) {
 void SharedRuntime::trigger_action_from_c1(JavaThread* current)
 {
   vframeStream vfst(current);//, true);
-  //assert(!vfst.at_end(), "Java frame must exist");
-  //Method m = vfst.method();
-
-  ResourceMark rm(current);
-  methodHandle caller(current, vfst.method());
-  //Symbol* name = caller->name();
-  //if (name != nullptr) {
-  //  tty->print_cr("method = %s", name->as_C_string());
-  //}
-  if(caller->is_trigger()) {
-    JRT_BLOCK
-      SharedRuntime::trigger_action("from c1", CHECK);
-    JRT_BLOCK_END
+  if(!vfst.at_end()) {
+    //assert(!vfst.at_end(), "Java frame must exist");
+    ResourceMark rm(current);
+    methodHandle caller(current, vfst.method());
+    if(caller->is_trigger()) {
+      JRT_BLOCK
+        SharedRuntime::trigger_action("from c1", CHECK);
+      JRT_BLOCK_END
+    }
   }
 }
+
+RRT_LEAF(void, SharedRuntime::trigger_action_from_c2(JavaThread* current))
+{
+  vframeStream vfst(current);//, true);
+  if(!vfst.at_end()) {
+    //assert(!vfst.at_end(), "Java frame must exist");
+    ResourceMark rm(current);
+    methodHandle caller(current, vfst.method());
+    if(caller->is_trigger()) {
+      JRT_BLOCK
+        SharedRuntime::trigger_action("from c2", CHECK);
+      JRT_BLOCK_END
+    }
+  }
+}
+JRT_END
 
 void SharedRuntime::trigger_action(const char* info, TRAPS)
 {
