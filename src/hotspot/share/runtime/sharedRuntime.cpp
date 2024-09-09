@@ -1397,10 +1397,31 @@ methodHandle SharedRuntime::find_callee_method(TRAPS) {
   return callee_method;
 }
 
+void SharedRuntime::trigger_action_from_c1(JavaThread* current)
+{
+  vframeStream vfst(current);//, true);
+  //assert(!vfst.at_end(), "Java frame must exist");
+  //Method m = vfst.method();
+
+  ResourceMark rm(current);
+  methodHandle caller(current, vfst.method());
+  //Symbol* name = caller->name();
+  //if (name != nullptr) {
+  //  tty->print_cr("method = %s", name->as_C_string());
+  //}
+  if(caller->is_trigger()) {
+    JRT_BLOCK
+      SharedRuntime::trigger_action("from c1", CHECK);
+    JRT_BLOCK_END
+  }
+}
+
 void SharedRuntime::trigger_action(const char* info, TRAPS)
 {
   tty->print_cr("SharedRuntime::trigger_action %s", info);
 
+  JavaThread* current = THREAD;
+  ResourceMark rm(current);
   Symbol* system_name  = vmSymbols::java_lang_System();
   Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
   JavaValue result(T_OBJECT);

@@ -43,6 +43,7 @@
 #include "prims/jvmtiThreadState.hpp"
 #include "runtime/basicLock.hpp"
 #include "runtime/frame.inline.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/safepointMechanism.hpp"
 #include "runtime/sharedRuntime.hpp"
@@ -1399,7 +1400,9 @@ void InterpreterMacroAssembler::_interp_verify_oop(Register reg, TosState state,
 void InterpreterMacroAssembler::verify_FPU(int stack_depth, TosState state) { ; }
 
 void InterpreterMacroAssembler::trigger_action_on_enter() {
-  call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::trigger_action_on_enter));
+  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) {
+    call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::trigger_action_on_enter));
+  }
 }
 
 void InterpreterMacroAssembler::notify_method_entry() {

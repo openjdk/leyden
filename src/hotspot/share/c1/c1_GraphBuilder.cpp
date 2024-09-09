@@ -42,6 +42,7 @@
 #include "jfr/jfrEvents.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/oop.inline.hpp"
+#include "runtime/globals_extensions.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/vm_version.hpp"
 #include "utilities/bitMap.inline.hpp"
@@ -4062,6 +4063,11 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
                                : state()->local_at(0);
     sync_handler = new BlockBegin(SynchronizationEntryBCI);
     inline_sync_entry(lock, sync_handler);
+  }
+
+  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) {
+    Values* args = new Values(0);
+    append(new RuntimeCall(voidType, "trigger_action_from_c1", CAST_FROM_FN_PTR(address, SharedRuntime::trigger_action_from_c1), args));
   }
 
   if (compilation()->env()->dtrace_method_probes()) {

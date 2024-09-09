@@ -2323,8 +2323,6 @@ void TemplateTable::resolve_cache_and_index_for_field(int byte_no,
 
   Label resolved, clinit_barrier_slow;
 
-  __ call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::trigger_action_before_call));
-
   Bytecodes::Code code = bytecode();
   switch (code) {
   case Bytecodes::_nofast_getfield: code = Bytecodes::_getfield; break;

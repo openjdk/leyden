@@ -41,6 +41,7 @@
 #include "gc/shared/c1/barrierSetC1.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/methodCounters.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stubRoutines.hpp"
 #include "runtime/vm_version.hpp"
@@ -2662,6 +2663,14 @@ void LIRGenerator::do_Base(Base* x) {
     _instruction_for_operand.at_put_grow(dest->vreg_number(), local, nullptr);
 #endif
     java_index += type2size[t];
+  }
+
+  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) {
+    BasicTypeList signature;
+    signature.append(LP64_ONLY(T_LONG) NOT_LP64(T_INT));    // thread
+    LIR_OprList* args = new LIR_OprList();
+    args->append(getThreadPointer());
+    call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::trigger_action_from_c1), voidType, nullptr);
   }
 
   if (compilation()->env()->dtrace_method_probes()) {
