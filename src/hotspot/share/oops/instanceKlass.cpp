@@ -44,6 +44,7 @@
 #include "code/dependencyContext.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
+#include "compiler/compilerOracle.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "interpreter/bytecodeHistogram.hpp"
 #include "interpreter/bytecodeStream.hpp"
@@ -82,6 +83,7 @@
 #include "runtime/deoptimization.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/javaThread.inline.hpp"
@@ -1076,19 +1078,15 @@ void InstanceKlass::link_methods(TRAPS) {
   PerfTraceElapsedTime timer(ClassLoader::perf_ik_link_methods_time());
   ResourceMark rm(THREAD);
   
+  bool addingAOTTriggers = !FLAG_IS_DEFAULT(AOTCreateOnMethodEntry);
+
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {
     methodHandle m(THREAD, methods()->at(i));
   
-    // MNCMNC: if this is "outputMessage"
-    char* sig = m->signature()->as_C_string();
-    char* name = m->name()->as_C_string();
-    if (strcmp(name, "outputMessage") == 0) {
-      tty->print_cr("MNCMNC: found outputMessage");
-      if (strcmp(sig, "(Ljava/lang/String;)V") == 0) {
-        tty->print_cr("MNCMNC: found outputMessage sig");
-        m->set_is_trigger(true);
-      }
+    if (addingAOTTriggers && CompilerOracle::should_trigger_at(m)) {
+      tty->print_cr("MNCMNC: adding trigger to method = %s", m->external_name());
+      m->set_is_trigger(true);
     }
 
     // Set up method entry points for compiler and interpreter    .
