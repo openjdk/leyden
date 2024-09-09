@@ -1074,10 +1074,22 @@ void InstanceKlass::rewrite_class(TRAPS) {
 // executed more than once.
 void InstanceKlass::link_methods(TRAPS) {
   PerfTraceElapsedTime timer(ClassLoader::perf_ik_link_methods_time());
-
+  ResourceMark rm(THREAD);
+  
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {
     methodHandle m(THREAD, methods()->at(i));
+  
+    // MNCMNC: if this is "outputMessage"
+    char* sig = m->signature()->as_C_string();
+    char* name = m->name()->as_C_string();
+    if (strcmp(name, "outputMessage") == 0) {
+      tty->print_cr("MNCMNC: found outputMessage");
+      if (strcmp(sig, "(Ljava/lang/String;)V") == 0) {
+        tty->print_cr("MNCMNC: found outputMessage sig");
+        m->set_is_trigger(true);
+      }
+    }
 
     // Set up method entry points for compiler and interpreter    .
     m->link_method(m, CHECK);

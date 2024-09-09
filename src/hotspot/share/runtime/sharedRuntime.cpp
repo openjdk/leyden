@@ -1397,6 +1397,11 @@ methodHandle SharedRuntime::find_callee_method(TRAPS) {
   return callee_method;
 }
 
+void SharedRuntime::trigger_action(const char* info)
+{
+    tty->print_cr("SharedRuntime::trigger_action %s", info);
+}
+
 // Resolves a call.
 methodHandle SharedRuntime::resolve_helper(bool is_virtual, bool is_optimized, TRAPS) {
   JavaThread* current = THREAD;
@@ -1447,6 +1452,12 @@ methodHandle SharedRuntime::resolve_helper(bool is_virtual, bool is_optimized, T
                   p2i(caller_frame.pc()), p2i(callee_method->code()));
   }
 #endif
+
+  // MNCMNC shouldnt trigger from here as this can even be a call to the interpreter
+  // which would also call trigger_action
+  if (callee_method->is_trigger()) {
+    SharedRuntime::trigger_action("SharedRuntime");
+  }
 
   if (invoke_code == Bytecodes::_invokestatic) {
     assert(callee_method->method_holder()->is_initialized() ||

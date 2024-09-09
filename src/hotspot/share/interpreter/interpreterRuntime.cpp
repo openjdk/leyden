@@ -1156,6 +1156,30 @@ void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
   pool->cache()->set_dynamic_call(info, raw_index);
 }
 
+// MNCMNC
+JRT_ENTRY(void, InterpreterRuntime::trigger_action_before_call(JavaThread* current)) {
+  LastFrameAccessor last_frame(current);
+  // extract receiver from the outgoing argument list if necessary
+  ResourceMark rm(current);
+  methodHandle m (current, last_frame.method());
+  if(m->is_trigger()) {
+    SharedRuntime::trigger_action("from interpreter before call");
+  }
+}
+JRT_END
+
+// MNCMNC
+JRT_ENTRY(void, InterpreterRuntime::trigger_action_on_enter(JavaThread* current)) {
+  LastFrameAccessor last_frame(current);
+  // extract receiver from the outgoing argument list if necessary
+  ResourceMark rm(current);
+  methodHandle m (current, last_frame.method());
+  if(m->is_trigger()) {
+    SharedRuntime::trigger_action("from interpreter on enter");
+  }
+}
+JRT_END
+
 // This function is the interface to the assembly code. It returns the resolved
 // cpCache entry.  This doesn't safepoint, but the helper routines safepoint.
 // This function will check for redefinition!

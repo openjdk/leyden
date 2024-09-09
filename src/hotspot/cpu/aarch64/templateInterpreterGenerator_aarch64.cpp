@@ -1257,6 +1257,8 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
 #endif
   }
 
+ __ call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::trigger_action_on_enter));
+
   // start execution
 #ifdef ASSERT
   {
@@ -1721,6 +1723,8 @@ address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized) {
   }
 #endif
 
+  __ call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::trigger_action_on_enter));
+  
   // jvmti support
   __ notify_method_entry();
 
