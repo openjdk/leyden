@@ -135,7 +135,7 @@ class CompilerOracle : AllStatic {
   static void print_command(CompileCommandEnum option, const char* name, enum OptionType type);
 
   // Shared for parsing CompileOnly and AOTTrigger
-  static bool parse_for_command(char* line, CompileCommandEnum command, const char* error_prefix);
+  static bool parse_for_command(char* line, CompileCommandEnum command, const char* error_prefix, uint* count = nullptr);
 
   // The core parser.
   static bool parse_from_input(inputStream::Input* input,

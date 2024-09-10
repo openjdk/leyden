@@ -247,6 +247,10 @@ uint SharedRuntime::_resolve_static_ctr = 0;
 uint SharedRuntime::_resolve_virtual_ctr = 0;
 uint SharedRuntime::_resolve_opt_virtual_ctr = 0;
 
+// For AOT
+uint SharedRuntime::_trigger_count = 0;
+uint SharedRuntime::_trigger_limit = 1;
+
 #ifndef PRODUCT
 uint SharedRuntime::_implicit_null_throws = 0;
 uint SharedRuntime::_implicit_div0_throws = 0;
@@ -1426,20 +1430,24 @@ void SharedRuntime::trigger_action(const char* info, TRAPS)
 {
   tty->print_cr("SharedRuntime::trigger_action %s", info);
 
-  JavaThread* current = THREAD;
-  ResourceMark rm(current);
-  Symbol* system_name  = vmSymbols::java_lang_System();
-  Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
-  JavaValue result(T_OBJECT);
-  JavaCallArguments args;
-  args.push_int(0);
-  JavaCalls::call_static(&result,
-                         system_klass,
-                         vmSymbols::exit_method_name(),
-                         vmSymbols::int_void_signature(),
-                         &args, CHECK);
-  if (!HAS_PENDING_EXCEPTION) {
-    tty->print_cr("Came back from System.exit!");
+  Atomic::inc(&_trigger_count);
+  if(_trigger_count >= _trigger_limit)
+  {
+    JavaThread* current = THREAD;
+    ResourceMark rm(current);
+    Symbol* system_name  = vmSymbols::java_lang_System();
+    Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
+    JavaValue result(T_OBJECT);
+    JavaCallArguments args;
+    args.push_int(0);
+    JavaCalls::call_static(&result,
+                          system_klass,
+                          vmSymbols::exit_method_name(),
+                          vmSymbols::int_void_signature(),
+                          &args, CHECK);
+    if (!HAS_PENDING_EXCEPTION) {
+      tty->print_cr("Came back from System.exit!");
+    }
   }
 }
 

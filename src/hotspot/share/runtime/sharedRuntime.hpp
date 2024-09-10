@@ -349,8 +349,14 @@ class SharedRuntime: AllStatic {
   static void trigger_action_from_c1(JavaThread* current);//TRAPS);
   static void trigger_action_from_c2(JavaThread* current);//TRAPS);
   static void trigger_action(const char* info, TRAPS);
+  static void set_trigger_limit(uint limit) { Atomic::store(&_trigger_limit, limit); }
 
  private:
+
+  // AOT
+  static uint _trigger_count;
+  static uint _trigger_limit;
+
   // deopt blob
   static void generate_deopt_blob(void);
 

@@ -40,6 +40,7 @@
 #include "runtime/handles.inline.hpp"
 #include "runtime/jniHandles.hpp"
 #include "runtime/os.hpp"
+#include "runtime/sharedRuntime.hpp"
 #include "utilities/istream.hpp"
 #include "utilities/parseInteger.hpp"
 
@@ -1156,7 +1157,7 @@ bool compilerOracle_init() {
   return success;
 }
 
-bool CompilerOracle::parse_for_command(char* line, CompileCommandEnum command, const char* error_prefix) {
+bool CompilerOracle::parse_for_command(char* line, CompileCommandEnum command, const char* error_prefix, uint* count) {
   if (line[0] == '\0') {
     return true;
   }
@@ -1170,10 +1171,20 @@ bool CompilerOracle::parse_for_command(char* line, CompileCommandEnum command, c
     }
     method_pattern = strtok_r(line, ",", &line);
     if (method_pattern != nullptr) {
-      TypedMethodOptionMatcher* matcher = TypedMethodOptionMatcher::parse_method_pattern(method_pattern, error_buf, sizeof(error_buf));
-      if (matcher != nullptr) {
-        register_command(matcher, command, true);
-        continue;
+      // if method pattern starts with count=, then parse the count
+      if (count != nullptr && strncmp(method_pattern, "count=", 6) == 0) {
+        int number = atoi(method_pattern + 6);
+        if (number > 0) {
+          *count = (uint)number;
+          continue;
+        }
+        strcpy(error_buf, "count must be a valid integer > 0");
+      } else {
+        TypedMethodOptionMatcher* matcher = TypedMethodOptionMatcher::parse_method_pattern(method_pattern, error_buf, sizeof(error_buf));
+        if (matcher != nullptr) {
+          register_command(matcher, command, true);
+          continue;
+        }
       }
     }
     ttyLocker ttyl;
@@ -1192,7 +1203,12 @@ bool CompilerOracle::parse_compile_only(char* line) {
 }
 
 bool CompilerOracle::parse_aot_trigger(char* line) {
-  return parse_for_command(line, CompileCommandEnum::TriggerAtExecute, "AOTCreateOnMethodEntry");
+  uint count = 0;
+  bool result = parse_for_command(line, CompileCommandEnum::TriggerAtExecute, "AOTCreateOnMethodEntry", &count);
+  if (result && count > 0) {
+    SharedRuntime::set_trigger_limit(count);
+  }
+  return result;
 }
 
 CompileCommandEnum CompilerOracle::string_to_option(const char* name) {

@@ -1156,18 +1156,6 @@ void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
   pool->cache()->set_dynamic_call(info, raw_index);
 }
 
-// MNCMNC
-JRT_ENTRY(void, InterpreterRuntime::trigger_action_before_call(JavaThread* current)) {
-  LastFrameAccessor last_frame(current);
-  ResourceMark rm(current);
-  methodHandle m (current, last_frame.method());
-  if(m->is_trigger()) {
-    SharedRuntime::trigger_action("from interpreter before call", CHECK);
-  }
-}
-JRT_END
-
-// MNCMNC
 JRT_ENTRY(void, InterpreterRuntime::trigger_action_on_enter(JavaThread* current)) {
   LastFrameAccessor last_frame(current);
   ResourceMark rm(current);
