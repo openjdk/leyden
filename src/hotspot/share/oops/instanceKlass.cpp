@@ -1078,7 +1078,7 @@ void InstanceKlass::link_methods(TRAPS) {
   PerfTraceElapsedTime timer(ClassLoader::perf_ik_link_methods_time());
   ResourceMark rm(THREAD);
   
-  bool addingAOTTriggers = !FLAG_IS_DEFAULT(AOTCreateOnMethodEntry);
+  bool addingAOTTriggers = (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) && CDSPreimage == nullptr;
 
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {

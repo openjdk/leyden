@@ -1208,7 +1208,7 @@ void Parse::do_method_entry() {
 
   NOT_PRODUCT( count_compiled_calls(true/*at_method_entry*/, false/*is_inline*/); )
 
-  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) {
+  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry) && CDSPreimage == nullptr) {
     make_trigger_action();
   }
 

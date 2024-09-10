@@ -2665,7 +2665,7 @@ void LIRGenerator::do_Base(Base* x) {
     java_index += type2size[t];
   }
 
-  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) {
+  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry) && CDSPreimage == nullptr) {
     BasicTypeList signature;
     signature.append(LP64_ONLY(T_LONG) NOT_LP64(T_INT));    // thread
     LIR_OprList* args = new LIR_OprList();

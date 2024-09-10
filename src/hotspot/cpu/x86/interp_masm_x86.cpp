@@ -1932,7 +1932,7 @@ void InterpreterMacroAssembler::increment_mask_and_jump(Address counter_addr, Ad
 }
 
 void InterpreterMacroAssembler::trigger_action_on_enter() {
-  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) {
+  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry) && CDSPreimage == nullptr) {
     call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::trigger_action_on_enter));
   }
 }

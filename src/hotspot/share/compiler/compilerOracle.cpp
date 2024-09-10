@@ -1131,8 +1131,10 @@ bool compilerOracle_init() {
   if (!CompilerOracle::parse_from_string(CompileOnly, CompilerOracle::parse_compile_only)) {
     success = false;
   }
-  if (!CompilerOracle::parse_from_string(AOTCreateOnMethodEntry, CompilerOracle::parse_aot_trigger)) {
-    success = false;
+  if (CDSPreimage == nullptr) {
+    if (!CompilerOracle::parse_from_string(AOTCreateOnMethodEntry, CompilerOracle::parse_aot_trigger)) {
+      success = false;
+    }
   }
   if (CompilerOracle::has_command_file()) {
     if (!CompilerOracle::parse_from_file()) {

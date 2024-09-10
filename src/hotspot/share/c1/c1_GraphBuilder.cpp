@@ -4065,7 +4065,7 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
     inline_sync_entry(lock, sync_handler);
   }
 
-  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry)) {
+  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry) && CDSPreimage == nullptr) {
     Values* args = new Values(0);
     append(new RuntimeCall(voidType, "trigger_action_from_c1", CAST_FROM_FN_PTR(address, SharedRuntime::trigger_action_from_c1), args));
   }
