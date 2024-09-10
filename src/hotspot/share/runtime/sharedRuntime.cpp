@@ -1397,6 +1397,7 @@ methodHandle SharedRuntime::find_callee_method(TRAPS) {
   return callee_method;
 }
 
+// will fold these two methods together once we've finished debugging issues
 JRT_BLOCK_ENTRY(void, SharedRuntime::trigger_action_from_c1(JavaThread* current))
 {
   ResourceMark rm(current);
