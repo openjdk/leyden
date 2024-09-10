@@ -33,6 +33,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 
 /*
  * @test id=static
+ * @key external-dep
  * @requires vm.cds
  * @summary run MicronautFirstApp with the classic static archive workflow
  * @library /test/lib
@@ -41,6 +42,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 
 /*
  * @test id=dynamic
+ * @key external-dep
  * @requires vm.cds
  * @summary run MicronautFirstApp with the classic dynamic archive workflow
  * @library /test/lib
@@ -49,6 +51,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 
 /*
  * @test id=leyden
+ * @key external-dep
  * @requires vm.cds
  * @requires vm.cds.write.archived.java.heap
  * @summary un MicronautFirstApp with the Leyden workflow
@@ -58,6 +61,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 
 /*
  * @test id=leyden_old
+ * @key external-dep
  * @requires vm.cds
  * @requires vm.cds.write.archived.java.heap
  * @summary un MicronautFirstApp with the "OLD" Leyden workflow
