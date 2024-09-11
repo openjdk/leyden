@@ -676,11 +676,13 @@ bool SCConfig::verify(const char* cache_path) const {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with RestrictContended = %s", cache_path, RestrictContended ? "false" : "true");
     return false;
   }
+#ifdef _LP64
   if (UseCompatibleCompressedOops && (_compressedOopShift != (uint)CompressedOops::shift())) {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedOops::shift() = %d vs current %d and UseCompatibleCompressedOops=%s", cache_path, _compressedOopShift, CompressedOops::shift(),
                            UseCompatibleCompressedOops ? "true" : "false");
     return false;
   }
+#endif
   if (_compressedKlassShift != (uint)CompressedKlassPointers::shift()) {
     log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedKlassPointers::shift() = %d vs current %d", cache_path, _compressedKlassShift, CompressedKlassPointers::shift());
     return false;
