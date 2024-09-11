@@ -4970,6 +4970,10 @@ void MacroAssembler::encode_heap_oop(Register d, Register s) {
   verify_heapbase("MacroAssembler::encode_heap_oop: heap base corrupted?");
 #endif
   verify_oop_msg(s, "broken oop in encode_heap_oop");
+  if (SCCache::is_on_for_write()) {
+    encode_heap_oop_for_aot(d, s);
+    return;
+  }
   if (CompressedOops::base() == nullptr) {
     if (CompressedOops::shift() != 0) {
       assert (LogMinObjAlignmentInBytes == CompressedOops::shift(), "decode alg wrong");
@@ -5003,6 +5007,10 @@ void MacroAssembler::encode_heap_oop_not_null(Register r) {
   }
 #endif
   verify_oop_msg(r, "broken oop in encode_heap_oop_not_null");
+  if (SCCache::is_on_for_write()) {
+    encode_heap_oop_not_null_for_aot(r, r);
+    return;
+  }
   if (CompressedOops::base() != nullptr) {
     sub(r, r, rheapbase);
   }
@@ -5023,7 +5031,10 @@ void MacroAssembler::encode_heap_oop_not_null(Register dst, Register src) {
   }
 #endif
   verify_oop_msg(src, "broken oop in encode_heap_oop_not_null2");
-
+  if (SCCache::is_on_for_write()) {
+    encode_heap_oop_not_null_for_aot(dst, src);
+    return;
+  }
   Register data = src;
   if (CompressedOops::base() != nullptr) {
     sub(dst, src, rheapbase);
@@ -5042,6 +5053,10 @@ void  MacroAssembler::decode_heap_oop(Register d, Register s) {
 #ifdef ASSERT
   verify_heapbase("MacroAssembler::decode_heap_oop: heap base corrupted?");
 #endif
+  if (SCCache::is_on_for_write()) {
+    decode_heap_oop_for_aot(d, s);
+    return;
+  }
   if (CompressedOops::base() == nullptr) {
     if (CompressedOops::shift() != 0 || d != s) {
       lsl(d, s, CompressedOops::shift());
@@ -5063,6 +5078,10 @@ void  MacroAssembler::decode_heap_oop_not_null(Register r) {
   // Cannot assert, unverified entry point counts instructions (see .ad file)
   // vtableStubs also counts instructions in pd_code_size_limit.
   // Also do not verify_oop as this is called by verify_oop.
+  if (SCCache::is_on_for_write()) {
+    decode_heap_oop_not_null_for_aot(r, r);
+    return;
+  }
   if (CompressedOops::shift() != 0) {
     assert(LogMinObjAlignmentInBytes == CompressedOops::shift(), "decode alg wrong");
     if (CompressedOops::base() != nullptr) {
@@ -5081,6 +5100,10 @@ void  MacroAssembler::decode_heap_oop_not_null(Register dst, Register src) {
   // Cannot assert, unverified entry point counts instructions (see .ad file)
   // vtableStubs also counts instructions in pd_code_size_limit.
   // Also do not verify_oop as this is called by verify_oop.
+  if (SCCache::is_on_for_write()) {
+    decode_heap_oop_not_null_for_aot(dst, src);
+    return;
+  }
   if (CompressedOops::shift() != 0) {
     assert(LogMinObjAlignmentInBytes == CompressedOops::shift(), "decode alg wrong");
     if (CompressedOops::base() != nullptr) {
@@ -5094,6 +5117,80 @@ void  MacroAssembler::decode_heap_oop_not_null(Register dst, Register src) {
       mov(dst, src);
     }
   }
+}
+
+static Register pick_different_tmp(Register dst, Register src) {
+  Register tmp = r0;
+  if (tmp == src || tmp == dst) {
+    tmp = r1;
+    if (tmp == src || tmp == dst) {
+      tmp = r2;
+    }
+  }
+  return tmp;
+}
+
+void MacroAssembler::encode_heap_oop_for_aot(Register dst, Register src) {
+  assert(SCCache::is_on_for_write(), "should be for AOT code");
+  Register tmp = pick_different_tmp(dst, src);
+  RegSet regs = RegSet::of(tmp);
+
+  push(regs, sp);
+  lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
+  ldr(tmp, tmp);
+  subs(dst, src, tmp);
+  csel(dst, dst, zr, Assembler::HS);
+  lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
+  ldrw(tmp, tmp);
+  lsrv(dst, dst, tmp);
+  pop(regs, sp);
+}
+
+void MacroAssembler::encode_heap_oop_not_null_for_aot(Register dst, Register src) {
+  assert(SCCache::is_on_for_write(), "should be for AOT code");
+  Register tmp = pick_different_tmp(dst, src);
+  RegSet regs = RegSet::of(tmp);
+
+  push(regs, sp);
+  lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
+  ldr(tmp, tmp);
+  sub(dst, src, tmp);
+  lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
+  ldrw(tmp, tmp);
+  lsrv(dst, dst, tmp);
+  pop(regs, sp);
+}
+
+void MacroAssembler::decode_heap_oop_for_aot(Register dst, Register src) {
+  assert(SCCache::is_on_for_write(), "should be for AOT code");
+  Register tmp = pick_different_tmp(dst, src);
+  RegSet regs = RegSet::of(tmp);
+
+  push(regs, sp);
+  lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
+  ldrw(tmp, tmp);
+  lslv(dst, src, tmp);
+  lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
+  ldr(tmp, tmp);
+  cmp(dst, zr);
+  csel(tmp, zr, tmp, EQ);
+  add(dst, dst, tmp);
+  pop(regs, sp);
+}
+
+void MacroAssembler::decode_heap_oop_not_null_for_aot(Register dst, Register src) {
+  assert(SCCache::is_on_for_write(), "should be for AOT code");
+  Register tmp = pick_different_tmp(dst, src);
+  RegSet regs = RegSet::of(tmp);
+
+  push(regs, sp);
+  lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
+  ldrw(tmp, tmp);
+  lslv(dst, src, tmp);
+  lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
+  ldr(tmp, tmp);
+  add(dst, dst, tmp);
+  pop(regs, sp);
 }
 
 MacroAssembler::KlassDecodeMode MacroAssembler::_klass_decode_mode(KlassDecodeNone);

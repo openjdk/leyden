@@ -5172,7 +5172,7 @@ operand indOffX2P(iRegL reg, immLOffset off)
 
 operand indirectN(iRegN reg)
 %{
-  predicate(CompressedOops::shift() == 0);
+  predicate(CompressedOops::shift() == 0 && !SCCache::is_on_for_write());
   constraint(ALLOC_IN_RC(ptr_reg));
   match(DecodeN reg);
   op_cost(0);
@@ -5187,7 +5187,7 @@ operand indirectN(iRegN reg)
 
 operand indIndexScaledI2LN(iRegN reg, iRegI ireg, immIScale scale)
 %{
-  predicate(CompressedOops::shift() == 0 && size_fits_all_mem_uses(n->as_AddP(), n->in(AddPNode::Offset)->in(2)->get_int()));
+  predicate(CompressedOops::shift() == 0 && size_fits_all_mem_uses(n->as_AddP(), n->in(AddPNode::Offset)->in(2)->get_int()) && !SCCache::is_on_for_write());
   constraint(ALLOC_IN_RC(ptr_reg));
   match(AddP (DecodeN reg) (LShiftL (ConvI2L ireg) scale));
   op_cost(0);
@@ -5202,7 +5202,7 @@ operand indIndexScaledI2LN(iRegN reg, iRegI ireg, immIScale scale)
 
 operand indIndexScaledN(iRegN reg, iRegL lreg, immIScale scale)
 %{
-  predicate(CompressedOops::shift() == 0 && size_fits_all_mem_uses(n->as_AddP(), n->in(AddPNode::Offset)->in(2)->get_int()));
+  predicate(CompressedOops::shift() == 0 && size_fits_all_mem_uses(n->as_AddP(), n->in(AddPNode::Offset)->in(2)->get_int()) && !SCCache::is_on_for_write());
   constraint(ALLOC_IN_RC(ptr_reg));
   match(AddP (DecodeN reg) (LShiftL lreg scale));
   op_cost(0);
@@ -5217,7 +5217,7 @@ operand indIndexScaledN(iRegN reg, iRegL lreg, immIScale scale)
 
 operand indIndexI2LN(iRegN reg, iRegI ireg)
 %{
-  predicate(CompressedOops::shift() == 0);
+  predicate(CompressedOops::shift() == 0  && !SCCache::is_on_for_write());
   constraint(ALLOC_IN_RC(ptr_reg));
   match(AddP (DecodeN reg) (ConvI2L ireg));
   op_cost(0);
@@ -5232,7 +5232,7 @@ operand indIndexI2LN(iRegN reg, iRegI ireg)
 
 operand indIndexN(iRegN reg, iRegL lreg)
 %{
-  predicate(CompressedOops::shift() == 0);
+  predicate(CompressedOops::shift() == 0 && !SCCache::is_on_for_write());
   constraint(ALLOC_IN_RC(ptr_reg));
   match(AddP (DecodeN reg) lreg);
   op_cost(0);
@@ -5247,7 +5247,7 @@ operand indIndexN(iRegN reg, iRegL lreg)
 
 operand indOffIN(iRegN reg, immIOffset off)
 %{
-  predicate(CompressedOops::shift() == 0);
+  predicate(CompressedOops::shift() == 0 && !SCCache::is_on_for_write());
   constraint(ALLOC_IN_RC(ptr_reg));
   match(AddP (DecodeN reg) off);
   op_cost(0);
@@ -5262,7 +5262,7 @@ operand indOffIN(iRegN reg, immIOffset off)
 
 operand indOffLN(iRegN reg, immLOffset off)
 %{
-  predicate(CompressedOops::shift() == 0);
+  predicate(CompressedOops::shift() == 0 && !SCCache::is_on_for_write());
   constraint(ALLOC_IN_RC(ptr_reg));
   match(AddP (DecodeN reg) off);
   op_cost(0);
@@ -7790,7 +7790,7 @@ instruct convP2I(iRegINoSp dst, iRegP src) %{
 // in case of 32bit oops (heap < 4Gb).
 instruct convN2I(iRegINoSp dst, iRegN src)
 %{
-  predicate(CompressedOops::shift() == 0);
+  predicate(CompressedOops::shift() == 0 && !SCCache::is_on_for_write());
   match(Set dst (ConvL2I (CastP2X (DecodeN src))));
 
   ins_cost(INSN_COST);
