@@ -58,7 +58,7 @@ class methodHandle;
   option(Break, "break", Bool) \
   option(BreakAtExecute, "BreakAtExecute", Bool) \
   option(BreakAtCompile, "BreakAtCompile", Bool) \
-  option(TriggerAtExecute, "TriggerAtExecute", Bool) \
+  option(EndTrainingOnEnter, "EndTrainingOnEnter", Bool) \
   option(MemLimit, "MemLimit", Intx) \
   option(MemStat, "MemStat", Uintx) \
   option(PrintAssembly, "PrintAssembly", Bool) \
@@ -170,8 +170,8 @@ class CompilerOracle : AllStatic {
   // Tells whether to break when compiling method
   static bool should_break_at(const methodHandle& method);
 
-  // Tells whether to 'trigger' when executing method
-  static bool should_trigger_at(const methodHandle& method);
+  // Tells whether to 'trigger end of training' when executing method
+  static bool should_trigger_end_of_training_at(const methodHandle& method);
 
   // Tells whether there are any methods to print for print_method_statistics()
   static bool should_print_methods();

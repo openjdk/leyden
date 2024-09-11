@@ -302,9 +302,9 @@
           range(0, 100)                                                     \
                                                                             \
   /* compiler directives */                                                 \
-  product(ccstrlist, AOTCreateOnMethodEntry, "",                            \
+  product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \
           "List of methods (pkg/class.name) to trigger end of AOT "         \
-          "training run")                                                   \
+          "training run.  Optional ',count=N' where N is > 0")              \
                                                                             \
   product(ccstrlist, CompileOnly, "",                                       \
           "List of methods (pkg/class.name) to restrict compilation to")    \

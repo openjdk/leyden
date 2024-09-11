@@ -2665,12 +2665,12 @@ void LIRGenerator::do_Base(Base* x) {
     java_index += type2size[t];
   }
 
-  if (!FLAG_IS_DEFAULT(AOTCreateOnMethodEntry) && CDSPreimage == nullptr) {
+  if (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry) && CDSPreimage == nullptr) {
     BasicTypeList signature;
     signature.append(LP64_ONLY(T_LONG) NOT_LP64(T_INT));    // thread
     LIR_OprList* args = new LIR_OprList();
     args->append(getThreadPointer());
-    call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::trigger_action_from_c1), voidType, nullptr);
+    call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c1), voidType, nullptr);
   }
 
   if (compilation()->env()->dtrace_method_probes()) {

@@ -34,11 +34,10 @@
 #include "opto/runtime.hpp"
 #include "runtime/sharedRuntime.hpp"
 
-// MNCMNC
-void GraphKit::make_trigger_action() {
-  const TypeFunc *call_type    = OptoRuntime::trigger_action_from_c2_Type();
-  address         call_address = CAST_FROM_FN_PTR(address, SharedRuntime::trigger_action_from_c2);
-  const char     *call_name    = "trigger_action_from_c2";
+void GraphKit::make_end_training_check() {
+  const TypeFunc *call_type    = OptoRuntime::end_training_check_c2_Type();
+  address         call_address = CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c2);
+  const char     *call_name    = "end_training_check_c2";
 
   // Get base of thread-local storage area
   Node* thread = _gvn.transform( new ThreadLocalNode() );

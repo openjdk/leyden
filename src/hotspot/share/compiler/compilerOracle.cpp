@@ -499,8 +499,8 @@ bool CompilerOracle::should_break_at(const methodHandle& method) {
   return check_predicate(CompileCommandEnum::Break, method);
 }
 
-bool CompilerOracle::should_trigger_at(const methodHandle& method) {
-  return check_predicate(CompileCommandEnum::TriggerAtExecute, method);
+bool CompilerOracle::should_trigger_end_of_training_at(const methodHandle& method) {
+  return check_predicate(CompileCommandEnum::EndTrainingOnEnter, method);
 }
 
 void CompilerOracle::tag_blackhole_if_possible(const methodHandle& method) {
@@ -1133,7 +1133,7 @@ bool compilerOracle_init() {
     success = false;
   }
   if (CDSPreimage == nullptr) {
-    if (!CompilerOracle::parse_from_string(AOTCreateOnMethodEntry, CompilerOracle::parse_aot_trigger)) {
+    if (!CompilerOracle::parse_from_string(AOTEndTrainingOnMethodEntry, CompilerOracle::parse_aot_trigger)) {
       success = false;
     }
   }
@@ -1204,9 +1204,9 @@ bool CompilerOracle::parse_compile_only(char* line) {
 
 bool CompilerOracle::parse_aot_trigger(char* line) {
   uint count = 0;
-  bool result = parse_for_command(line, CompileCommandEnum::TriggerAtExecute, "AOTCreateOnMethodEntry", &count);
+  bool result = parse_for_command(line, CompileCommandEnum::EndTrainingOnEnter, "AOTEndTrainingOnMethodEntry", &count);
   if (result && count > 0) {
-    SharedRuntime::set_trigger_limit(count);
+    SharedRuntime::set_end_training_predicate(count);
   }
   return result;
 }

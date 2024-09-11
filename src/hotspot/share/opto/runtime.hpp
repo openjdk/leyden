@@ -314,7 +314,7 @@ private:
 #endif
 
   // AOT
-  static const TypeFunc* trigger_action_from_c2_Type();
+  static const TypeFunc* end_training_check_c2_Type();
 
   // Dtrace support
   static const TypeFunc* dtrace_method_entry_exit_Type();

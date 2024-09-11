@@ -1273,7 +1273,7 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
 #endif
 
   // AOT training run support
-  __ trigger_action_on_enter();
+  __ end_training_check();
 
   // jvmti support
   __ notify_method_entry();
@@ -1725,7 +1725,7 @@ address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized) {
 #endif
 
   // AOT training run support
-  __ trigger_action_on_enter();
+  __ end_training_check();
 
   // jvmti support
   __ notify_method_entry();

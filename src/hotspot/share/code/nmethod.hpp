@@ -514,11 +514,11 @@ public:
                                      OopMapSet* oop_maps,
                                      int exception_handler = -1);
 
-  Method* method       () const { return _method; }
-  bool is_native_method() const { return _method != nullptr && _method->is_native(); }
-  bool is_java_method  () const { return _method != nullptr && !_method->is_native(); }
-  bool is_osr_method   () const { return _entry_bci != InvocationEntryBci; }
-  bool is_trigger_method() const { return _method != nullptr && _method->is_trigger(); } 
+  Method* method              () const { return _method; }
+  bool is_native_method       () const { return _method != nullptr && _method->is_native(); }
+  bool is_java_method         () const { return _method != nullptr && !_method->is_native(); }
+  bool is_osr_method          () const { return _entry_bci != InvocationEntryBci; }
+  bool is_end_training_trigger() const { return _method != nullptr && _method->is_end_training_trigger(); } 
 
   // Compiler task identification.  Note that all OSR methods
   // are numbered in an independent sequence if CICountOSR is true,

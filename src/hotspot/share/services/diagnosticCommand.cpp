@@ -993,7 +993,7 @@ void ClassesDCmd::execute(DCmdSource source, TRAPS) {
 }
 
 void AOTEndTrainingDCmd::execute(DCmdSource source, TRAPS) {
-  SharedRuntime::trigger_action("from diagnostic Command", CHECK);
+  SharedRuntime::end_training(CHECK);
 }
 
 #if INCLUDE_CDS

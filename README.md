@@ -159,6 +159,13 @@ $ java -XX:CacheDataStore=JavacBenchApp.cds -cp JavacBenchApp.jar JavacBenchApp 
 Generated source code for 51 classes and compiled them in 423 ms
 ```
 
+By default, training runs end when the application terminates.  You have two other options to end training runs:
+
+- -XX:AOTEndTrainingOnMethodEntry=<method1,method2,...>[,count=100]
+- jcmd \<pid> AOT.end_training
+
+Note that AOTEndTrainingOnMethodEntry uses the same format as CompileOnly and the default count is 1
+
 ### Optional VM Flags
 
 When you create the file `JavacBenchApp.cds` with the flag `-XX:CacheDataStore`,

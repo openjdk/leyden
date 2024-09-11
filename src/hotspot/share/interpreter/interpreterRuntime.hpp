@@ -92,7 +92,7 @@ class InterpreterRuntime: AllStatic {
 
   static void resolve_from_cache(JavaThread* current, Bytecodes::Code bytecode);
 
-  static void trigger_action_on_enter(JavaThread* current);
+  static void end_training_check(JavaThread* current);
 
   // Used by AOTConstantPoolResolver
   static void resolve_get_put(Bytecodes::Code bytecode, int field_index,

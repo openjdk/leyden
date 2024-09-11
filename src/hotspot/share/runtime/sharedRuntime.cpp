@@ -248,8 +248,8 @@ uint SharedRuntime::_resolve_virtual_ctr = 0;
 uint SharedRuntime::_resolve_opt_virtual_ctr = 0;
 
 // For AOT
-uint SharedRuntime::_trigger_count = 0;
-uint SharedRuntime::_trigger_limit = 1;
+uint SharedRuntime::_end_training_count = 0;
+uint SharedRuntime::_end_training_predicate = 1;
 
 #ifndef PRODUCT
 uint SharedRuntime::_implicit_null_throws = 0;
@@ -1401,46 +1401,41 @@ methodHandle SharedRuntime::find_callee_method(TRAPS) {
   return callee_method;
 }
 
-// will fold these two methods together once we've finished debugging issues
-JRT_BLOCK_ENTRY(void, SharedRuntime::trigger_action_from_c1(JavaThread* current))
+JRT_BLOCK_ENTRY(void, SharedRuntime::end_training_check_c1(JavaThread* current))
 {
   ResourceMark rm(current);
   Method* method = current->callee_target();
-  if(method->is_trigger()) {
+  if(method->is_end_training_trigger()) {
     JRT_BLOCK
-      SharedRuntime::trigger_counted_action("from c1", CHECK);
+      SharedRuntime::end_training_check(CHECK);
     JRT_BLOCK_END
   }
 }
 JRT_END
 
-JRT_BLOCK_ENTRY(void, SharedRuntime::trigger_action_from_c2(JavaThread* current))
+JRT_BLOCK_ENTRY(void, SharedRuntime::end_training_check_c2(JavaThread* current))
 {
   ResourceMark rm(current);
   Method* method = current->callee_target();
-  if(method->is_trigger()) {
+  if(method->is_end_training_trigger()) {
     JRT_BLOCK
-      SharedRuntime::trigger_counted_action("from c2", CHECK);
+      SharedRuntime::end_training_check(CHECK);
     JRT_BLOCK_END
   }
 }
 JRT_END
 
-void SharedRuntime::trigger_counted_action(const char* info, TRAPS)
+void SharedRuntime::end_training_check(TRAPS)
 {
-  tty->print_cr("SharedRuntime::trigger_counted_action %s", info);
-
-  Atomic::inc(&_trigger_count);
-  if(_trigger_count >= _trigger_limit)
+  Atomic::inc(&_end_training_count);
+  if(_end_training_count >= _end_training_predicate)
   {
-    SharedRuntime::trigger_action(info, CHECK);
+    SharedRuntime::end_training(CHECK);
   }
 }
 
-void SharedRuntime::trigger_action(const char* info, TRAPS)
+void SharedRuntime::end_training(TRAPS)
 {
-  tty->print_cr("SharedRuntime::trigger_action %s", info);
-
   JavaThread* current = THREAD;
   ResourceMark rm(current);
   Symbol* system_name  = vmSymbols::java_lang_System();
@@ -1453,9 +1448,6 @@ void SharedRuntime::trigger_action(const char* info, TRAPS)
                         vmSymbols::exit_method_name(),
                         vmSymbols::int_void_signature(),
                         &args, CHECK);
-  if (!HAS_PENDING_EXCEPTION) {
-    tty->print_cr("Came back from System.exit!");
-  }
 }
 
 // Resolves a call.
@@ -1508,12 +1500,6 @@ methodHandle SharedRuntime::resolve_helper(bool is_virtual, bool is_optimized, T
                   p2i(caller_frame.pc()), p2i(callee_method->code()));
   }
 #endif
-
-  // MNCMNC shouldnt trigger from here as this can even be a call to the interpreter
-  // which would also call trigger_action
-  //if (callee_method->is_trigger()) {
-  //  SharedRuntime::trigger_action("SharedRuntime");
-  //}
 
   if (invoke_code == Bytecodes::_invokestatic) {
     assert(callee_method->method_holder()->is_initialized() ||

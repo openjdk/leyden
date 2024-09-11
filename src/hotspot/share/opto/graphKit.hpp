@@ -672,7 +672,7 @@ class GraphKit : public Phase {
   Node* load_array_element(Node* ary, Node* idx, const TypeAryPtr* arytype, bool set_ctrl);
 
   //---------------- AOT support --------------------
-  void make_trigger_action();
+  void make_end_training_check();
   
   //---------------- Dtrace support --------------------
   void make_dtrace_method_entry_exit(ciMethod* method, bool is_entry);

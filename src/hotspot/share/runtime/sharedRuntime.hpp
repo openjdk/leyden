@@ -346,17 +346,17 @@ class SharedRuntime: AllStatic {
   static methodHandle resolve_helper(bool is_virtual, bool is_optimized, TRAPS);
 
   // MNCMNC
-  static void trigger_action_from_c1(JavaThread* current);//TRAPS);
-  static void trigger_action_from_c2(JavaThread* current);//TRAPS);
-  static void trigger_counted_action(const char* info, TRAPS);
-  static void trigger_action(const char* info, TRAPS);
-  static void set_trigger_limit(uint limit) { Atomic::store(&_trigger_limit, limit); }
+  static void end_training_check_c1(JavaThread* current);//TRAPS);
+  static void end_training_check_c2(JavaThread* current);//TRAPS);
+  static void end_training_check(TRAPS);
+  static void end_training(TRAPS);
+  static void set_end_training_predicate(uint predicate) { Atomic::store(&_end_training_predicate, predicate); }
 
  private:
 
   // AOT
-  static uint _trigger_count;
-  static uint _trigger_limit;
+  static uint _end_training_count;
+  static uint _end_training_predicate;
 
   // deopt blob
   static void generate_deopt_blob(void);
