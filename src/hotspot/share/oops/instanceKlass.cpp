@@ -1077,13 +1077,13 @@ void InstanceKlass::rewrite_class(TRAPS) {
 void InstanceKlass::link_methods(TRAPS) {
   PerfTraceElapsedTime timer(ClassLoader::perf_ik_link_methods_time());
   ResourceMark rm(THREAD);
-  
+
   bool addingAOTTriggers = (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry)) && CDSPreimage == nullptr;
 
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {
     methodHandle m(THREAD, methods()->at(i));
-  
+
     if (addingAOTTriggers && CompilerOracle::should_trigger_end_of_training_at(m)) {
       m->set_is_end_training_trigger(true);
     }

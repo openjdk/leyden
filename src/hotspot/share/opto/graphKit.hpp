@@ -673,7 +673,7 @@ class GraphKit : public Phase {
 
   //---------------- AOT support --------------------
   void make_end_training_check();
-  
+
   //---------------- Dtrace support --------------------
   void make_dtrace_method_entry_exit(ciMethod* method, bool is_entry);
   void make_dtrace_method_entry(ciMethod* method) {
