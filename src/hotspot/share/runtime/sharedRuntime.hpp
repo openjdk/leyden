@@ -345,9 +345,9 @@ class SharedRuntime: AllStatic {
   // compiled code.
   static methodHandle resolve_helper(bool is_virtual, bool is_optimized, TRAPS);
 
-  // MNCMNC
-  static void end_training_check_c1(JavaThread* current);//TRAPS);
-  static void end_training_check_c2(JavaThread* current);//TRAPS);
+  // AOT support
+  static void end_training_check_c1(JavaThread* current);
+  static void end_training_check_c2(JavaThread* current);
   static void end_training_check(TRAPS);
   static void end_training(TRAPS);
   static void set_end_training_predicate(uint predicate) { Atomic::store(&_end_training_predicate, predicate); }
@@ -355,8 +355,9 @@ class SharedRuntime: AllStatic {
  private:
 
   // AOT
-  static uint _end_training_count;
-  static uint _end_training_predicate;
+  static uint volatile _end_training_count;
+  static uint          _end_training_predicate;
+  static int  volatile _end_training_triggered;
 
   // deopt blob
   static void generate_deopt_blob(void);

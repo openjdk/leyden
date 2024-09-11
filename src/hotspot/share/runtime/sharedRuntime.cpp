@@ -248,8 +248,9 @@ uint SharedRuntime::_resolve_virtual_ctr = 0;
 uint SharedRuntime::_resolve_opt_virtual_ctr = 0;
 
 // For AOT
-uint SharedRuntime::_end_training_count = 0;
-uint SharedRuntime::_end_training_predicate = 1;
+uint volatile SharedRuntime::_end_training_count = 0;
+uint          SharedRuntime::_end_training_predicate = 1;
+int  volatile SharedRuntime::_end_training_triggered = 0;
 
 #ifndef PRODUCT
 uint SharedRuntime::_implicit_null_throws = 0;
@@ -1403,25 +1404,17 @@ methodHandle SharedRuntime::find_callee_method(TRAPS) {
 
 JRT_BLOCK_ENTRY(void, SharedRuntime::end_training_check_c1(JavaThread* current))
 {
-  ResourceMark rm(current);
-  Method* method = current->callee_target();
-  if(method->is_end_training_trigger()) {
-    JRT_BLOCK
-      SharedRuntime::end_training_check(CHECK);
-    JRT_BLOCK_END
-  }
+  JRT_BLOCK
+    SharedRuntime::end_training_check(CHECK);
+  JRT_BLOCK_END
 }
 JRT_END
 
 JRT_BLOCK_ENTRY(void, SharedRuntime::end_training_check_c2(JavaThread* current))
 {
-  ResourceMark rm(current);
-  Method* method = current->callee_target();
-  if(method->is_end_training_trigger()) {
-    JRT_BLOCK
-      SharedRuntime::end_training_check(CHECK);
-    JRT_BLOCK_END
-  }
+  JRT_BLOCK
+    SharedRuntime::end_training_check(CHECK);
+  JRT_BLOCK_END
 }
 JRT_END
 
@@ -1436,18 +1429,21 @@ void SharedRuntime::end_training_check(TRAPS)
 
 void SharedRuntime::end_training(TRAPS)
 {
-  JavaThread* current = THREAD;
-  ResourceMark rm(current);
-  Symbol* system_name  = vmSymbols::java_lang_System();
-  Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
-  JavaValue result(T_OBJECT);
-  JavaCallArguments args;
-  args.push_int(0);
-  JavaCalls::call_static(&result,
-                        system_klass,
-                        vmSymbols::exit_method_name(),
-                        vmSymbols::int_void_signature(),
-                        &args, CHECK);
+  // This should only execute once
+  if (Atomic::cmpxchg(&_end_training_triggered, 0, 1) == 0) {
+    JavaThread* current = THREAD;
+    ResourceMark rm(current);
+    Symbol* system_name  = vmSymbols::java_lang_System();
+    Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
+    JavaValue result(T_OBJECT);
+    JavaCallArguments args;
+    args.push_int(0);
+    JavaCalls::call_static(&result,
+                          system_klass,
+                          vmSymbols::exit_method_name(),
+                          vmSymbols::int_void_signature(),
+                          &args, CHECK);
+  }
 }
 
 // Resolves a call.

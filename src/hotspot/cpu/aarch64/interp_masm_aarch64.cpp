@@ -1401,6 +1401,8 @@ void InterpreterMacroAssembler::verify_FPU(int stack_depth, TosState state) { ; 
 
 void InterpreterMacroAssembler::end_training_check() {
   if (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry) && CDSPreimage == nullptr) {
+    // this code will be used for all methods of the same type and so we can't
+    // check the method flag while generating the code
     call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
   }
 }

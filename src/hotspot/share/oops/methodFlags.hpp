@@ -60,7 +60,7 @@ class MethodFlags {
    status(on_stack_flag               , 1 << 15) /* RedefineClasses support to keep Metadata from being cleaned */ \
    status(pending_queue_processed     , 1 << 16) \
    status(is_end_training_trigger     , 1 << 17) \
-  /* end of list */
+   /* end of list */
 
 #define M_STATUS_ENUM_NAME(name, value)    _misc_##name = value,
   enum {

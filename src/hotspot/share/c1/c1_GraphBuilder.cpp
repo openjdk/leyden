@@ -4066,8 +4066,10 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
   }
 
   if (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry) && CDSPreimage == nullptr) {
-    Values* args = new Values(0);
-    append(new RuntimeCall(voidType, "end_training_check_c1", CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c1), args));
+    if(callee->is_end_training_trigger()) {
+      Values* args = new Values(0);
+      append(new RuntimeCall(voidType, "end_training_check_c1", CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c1), args));
+    }
   }
 
   if (compilation()->env()->dtrace_method_probes()) {

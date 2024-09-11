@@ -1209,7 +1209,9 @@ void Parse::do_method_entry() {
   NOT_PRODUCT( count_compiled_calls(true/*at_method_entry*/, false/*is_inline*/); )
 
   if (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry) && CDSPreimage == nullptr) {
-    make_end_training_check();
+    if (method()->is_end_training_trigger()) {
+      make_end_training_check();
+    }
   }
 
   if (C->env()->dtrace_method_probes()) {
