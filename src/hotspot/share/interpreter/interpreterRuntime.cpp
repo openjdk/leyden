@@ -1161,7 +1161,7 @@ JRT_ENTRY(void, InterpreterRuntime::trigger_action_on_enter(JavaThread* current)
   ResourceMark rm(current);
   methodHandle m (current, last_frame.method());
   if(m->is_trigger()) {
-    SharedRuntime::trigger_action("from interpreter on enter", CHECK);
+    SharedRuntime::trigger_counted_action("from interpreter on enter", CHECK);
   }
 }
 JRT_END

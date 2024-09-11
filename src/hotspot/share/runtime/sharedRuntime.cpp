@@ -1408,7 +1408,7 @@ JRT_BLOCK_ENTRY(void, SharedRuntime::trigger_action_from_c1(JavaThread* current)
   Method* method = current->callee_target();
   if(method->is_trigger()) {
     JRT_BLOCK
-      SharedRuntime::trigger_action("from c1", CHECK);
+      SharedRuntime::trigger_counted_action("from c1", CHECK);
     JRT_BLOCK_END
   }
 }
@@ -1420,34 +1420,41 @@ JRT_BLOCK_ENTRY(void, SharedRuntime::trigger_action_from_c2(JavaThread* current)
   Method* method = current->callee_target();
   if(method->is_trigger()) {
     JRT_BLOCK
-      SharedRuntime::trigger_action("from c2", CHECK);
+      SharedRuntime::trigger_counted_action("from c2", CHECK);
     JRT_BLOCK_END
   }
 }
 JRT_END
 
-void SharedRuntime::trigger_action(const char* info, TRAPS)
+void SharedRuntime::trigger_counted_action(const char* info, TRAPS)
 {
-  tty->print_cr("SharedRuntime::trigger_action %s", info);
+  tty->print_cr("SharedRuntime::trigger_counted_action %s", info);
 
   Atomic::inc(&_trigger_count);
   if(_trigger_count >= _trigger_limit)
   {
-    JavaThread* current = THREAD;
-    ResourceMark rm(current);
-    Symbol* system_name  = vmSymbols::java_lang_System();
-    Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
-    JavaValue result(T_OBJECT);
-    JavaCallArguments args;
-    args.push_int(0);
-    JavaCalls::call_static(&result,
-                          system_klass,
-                          vmSymbols::exit_method_name(),
-                          vmSymbols::int_void_signature(),
-                          &args, CHECK);
-    if (!HAS_PENDING_EXCEPTION) {
-      tty->print_cr("Came back from System.exit!");
-    }
+    SharedRuntime::trigger_action(info, CHECK);
+  }
+}
+
+void SharedRuntime::trigger_action(const char* info, TRAPS)
+{
+  tty->print_cr("SharedRuntime::trigger_action %s", info);
+
+  JavaThread* current = THREAD;
+  ResourceMark rm(current);
+  Symbol* system_name  = vmSymbols::java_lang_System();
+  Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
+  JavaValue result(T_OBJECT);
+  JavaCallArguments args;
+  args.push_int(0);
+  JavaCalls::call_static(&result,
+                        system_klass,
+                        vmSymbols::exit_method_name(),
+                        vmSymbols::int_void_signature(),
+                        &args, CHECK);
+  if (!HAS_PENDING_EXCEPTION) {
+    tty->print_cr("Came back from System.exit!");
   }
 }
 

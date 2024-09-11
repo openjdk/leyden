@@ -348,6 +348,7 @@ class SharedRuntime: AllStatic {
   // MNCMNC
   static void trigger_action_from_c1(JavaThread* current);//TRAPS);
   static void trigger_action_from_c2(JavaThread* current);//TRAPS);
+  static void trigger_counted_action(const char* info, TRAPS);
   static void trigger_action(const char* info, TRAPS);
   static void set_trigger_limit(uint limit) { Atomic::store(&_trigger_limit, limit); }
 
