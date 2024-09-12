@@ -217,7 +217,8 @@ private:
   static TrainingDataSet _training_data_set;
   static TrainingDataDictionary _archived_training_data_dictionary;
   static TrainingDataDictionary _archived_training_data_dictionary_for_dumping;
-  static GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>* _dumptime_training_data_dictionary;
+  typedef GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared> DumptimeTrainingDataDictionary;
+  static DumptimeTrainingDataDictionary* _dumptime_training_data_dictionary;
 public:
   // Returns the key under which this TD is installed, or else
   // Key::EMPTY if it is not installed.

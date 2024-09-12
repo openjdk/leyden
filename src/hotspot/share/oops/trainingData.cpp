@@ -58,7 +58,7 @@
 TrainingData::TrainingDataSet TrainingData::_training_data_set(1024, 0x3fffffff);
 TrainingData::TrainingDataDictionary TrainingData::_archived_training_data_dictionary;
 TrainingData::TrainingDataDictionary TrainingData::_archived_training_data_dictionary_for_dumping;
-GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>* TrainingData::_dumptime_training_data_dictionary = nullptr;
+TrainingData::DumptimeTrainingDataDictionary* TrainingData::_dumptime_training_data_dictionary = nullptr;
 int TrainingData::TrainingDataLocker::_lock_mode;
 volatile bool TrainingData::TrainingDataLocker::_snapshot = false;
 
@@ -487,7 +487,7 @@ void TrainingData::init_dumptime_table(TRAPS) {
   if (!need_data()) {
     return;
   }
-  _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>();
+  _dumptime_training_data_dictionary = new DumptimeTrainingDataDictionary();
   if (CDSConfig::is_dumping_final_static_archive()) {
     _archived_training_data_dictionary.iterate([&](TrainingData* record) {
       _dumptime_training_data_dictionary->append(record);
