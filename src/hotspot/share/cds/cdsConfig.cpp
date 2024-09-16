@@ -671,6 +671,10 @@ bool CDSConfig::is_dumping_preimage_static_archive() {
   return _is_dumping_static_archive && CacheDataStore != nullptr && CDSPreimage == nullptr;
 }
 
+bool CDSConfig::is_dumping_preimage_static_archive_with_triggers() {
+  return _is_dumping_static_archive && CacheDataStore != nullptr && CDSPreimage == nullptr && !FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry);
+}
+
 bool CDSConfig::is_dumping_final_static_archive() {
   if (CDSPreimage != nullptr) {
     assert(CacheDataStore != nullptr, "must be"); // should have been properly initialized by arguments.cpp

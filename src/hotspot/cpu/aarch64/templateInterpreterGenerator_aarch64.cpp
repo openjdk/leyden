@@ -1272,11 +1272,11 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
   }
 #endif
 
-  // AOT training run support
-  __ end_training_check();
-
   // jvmti support
   __ notify_method_entry();
+
+  // AOT training run support
+  __ end_training_check();
 
   // work registers
   const Register t = r17;
@@ -1724,11 +1724,11 @@ address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized) {
   }
 #endif
 
-  // AOT training run support
-  __ end_training_check();
-
   // jvmti support
   __ notify_method_entry();
+
+  // AOT training run support
+  __ end_training_check();
 
   __ dispatch_next(vtos);
 

@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "interp_masm_x86.hpp"
 #include "interpreter/interpreter.hpp"
@@ -39,7 +40,6 @@
 #include "prims/jvmtiThreadState.hpp"
 #include "runtime/basicLock.hpp"
 #include "runtime/frame.inline.hpp"
-#include "runtime/globals_extension.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/safepointMechanism.hpp"
 #include "runtime/sharedRuntime.hpp"
@@ -1932,7 +1932,7 @@ void InterpreterMacroAssembler::increment_mask_and_jump(Address counter_addr, Ad
 }
 
 void InterpreterMacroAssembler::end_training_check() {
-  if (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry) && CDSPreimage == nullptr) {
+  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers()) {
     call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
   }
 }

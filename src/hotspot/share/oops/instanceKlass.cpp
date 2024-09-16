@@ -83,7 +83,6 @@
 #include "runtime/deoptimization.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
-#include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/javaThread.inline.hpp"
@@ -1076,10 +1075,7 @@ void InstanceKlass::rewrite_class(TRAPS) {
 // executed more than once.
 void InstanceKlass::link_methods(TRAPS) {
   PerfTraceElapsedTime timer(ClassLoader::perf_ik_link_methods_time());
-  ResourceMark rm(THREAD);
-
-  bool addingAOTTriggers = (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry)) && CDSPreimage == nullptr;
-
+  bool addingAOTTriggers = CDSConfig::is_dumping_preimage_static_archive_with_triggers();
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {
     methodHandle m(THREAD, methods()->at(i));

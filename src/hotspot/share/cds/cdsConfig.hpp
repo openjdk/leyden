@@ -93,9 +93,10 @@ public:
                                                                     || is_dumping_final_static_archive(); }
   static void enable_dumping_static_archive()                { CDS_ONLY(_is_dumping_static_archive = true); }
 
-  static bool is_dumping_classic_static_archive()            NOT_CDS_RETURN_(false); // -Xshare:dump
-  static bool is_dumping_preimage_static_archive()           NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping
-  static bool is_dumping_final_static_archive()              NOT_CDS_RETURN_(false); // 2nd phase of -XX:CacheDataStore dumping
+  static bool is_dumping_classic_static_archive()                NOT_CDS_RETURN_(false); // -Xshare:dump
+  static bool is_dumping_preimage_static_archive()               NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping
+  static bool is_dumping_preimage_static_archive_with_triggers() NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping with triggers
+  static bool is_dumping_final_static_archive()                  NOT_CDS_RETURN_(false); // 2nd phase of -XX:CacheDataStore dumping
 
   // dynamic_archive
   static bool is_dumping_dynamic_archive()                   { return CDS_ONLY(_is_dumping_dynamic_archive) NOT_CDS(false); }

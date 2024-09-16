@@ -994,7 +994,11 @@ void ClassesDCmd::execute(DCmdSource source, TRAPS) {
 }
 
 void AOTEndTrainingDCmd::execute(DCmdSource source, TRAPS) {
-  SharedRuntime::end_training(CHECK);
+  if (!CDSConfig::is_dumping_preimage_static_archive()) {
+    output()->print_cr("Must be in training run");
+  } else {
+    SharedRuntime::end_training(CHECK);
+  }
 }
 
 #if INCLUDE_CDS

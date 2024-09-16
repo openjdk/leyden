@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/metaspaceShared.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/stringTable.hpp"
@@ -1430,20 +1431,9 @@ void SharedRuntime::end_training_check(TRAPS)
 
 void SharedRuntime::end_training(TRAPS)
 {
-  // This should only execute once
   if (Atomic::cmpxchg(&_end_training_triggered, 0, 1) == 0) {
-    JavaThread* current = THREAD;
-    ResourceMark rm(current);
-    Symbol* system_name  = vmSymbols::java_lang_System();
-    Klass*  system_klass = SystemDictionary::resolve_or_fail(system_name, true /*throw error*/,  CHECK);
-    JavaValue result(T_OBJECT);
-    JavaCallArguments args;
-    args.push_int(0);
-    JavaCalls::call_static(&result,
-                          system_klass,
-                          vmSymbols::exit_method_name(),
-                          vmSymbols::int_void_signature(),
-                          &args, CHECK);
+    MetaspaceShared::preload_and_dump(CHECK);
+    assert(!THREAD->has_pending_exception(), "must be");
   }
 }
 
