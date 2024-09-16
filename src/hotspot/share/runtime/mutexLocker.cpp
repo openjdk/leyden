@@ -453,10 +453,10 @@ int MutexLockerImpl::name2id(const char* name) {
 void MutexLockerImpl::print_counter_on(outputStream* st, const char* name, bool is_unique, int idx) {
   jlong count = _perf_lock_count[idx]->get_value();
   if (count > 0) {
-    st->print_cr("  %3d: %s%40s = " JLONG_FORMAT_W(5) "ms (" JLONG_FORMAT_W(5) "ms) / " JLONG_FORMAT_W(9) " events",
+    st->print_cr("  %3d: %s%40s = " JLONG_FORMAT_W(5) "us (" JLONG_FORMAT_W(5) "us) / " JLONG_FORMAT_W(9) " events",
                  idx, (is_unique ? " " : "M"), name,
-                 Management::ticks_to_ms(_perf_lock_hold_time[idx]->get_value()),
-                 Management::ticks_to_ms(_perf_lock_wait_time[idx]->get_value()),
+                 Management::ticks_to_us(_perf_lock_hold_time[idx]->get_value()),
+                 Management::ticks_to_us(_perf_lock_wait_time[idx]->get_value()),
                  count);
   }
 }
@@ -478,10 +478,10 @@ void MutexLockerImpl::print_counters_on(outputStream* st) {
     jlong total_wait_time = accumulate_lock_counters(_perf_lock_wait_time);
     jlong total_hold_time = accumulate_lock_counters(_perf_lock_hold_time);
 
-    st->print_cr("MutexLocker: Total: %d named locks (%d unique names); hold = " JLONG_FORMAT "ms (wait = " JLONG_FORMAT "ms) / " JLONG_FORMAT " events for thread \"main\"",
+    st->print_cr("MutexLocker: Total: %d named locks (%d unique names); hold = " JLONG_FORMAT "us (wait = " JLONG_FORMAT "us) / " JLONG_FORMAT " events for thread \"main\"",
                  _num_mutex, _num_names,
-                 Management::ticks_to_ms(total_hold_time),
-                 Management::ticks_to_ms(total_wait_time),
+                 Management::ticks_to_us(total_hold_time),
+                 Management::ticks_to_us(total_wait_time),
                  total_count);
     for (int i = 0; i < _num_names; i++) {
       print_counter_on(st, _names[i], _is_unique[i], i+1);

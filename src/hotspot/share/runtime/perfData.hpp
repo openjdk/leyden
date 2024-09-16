@@ -643,6 +643,7 @@ public:
     return _elapsed_counter->get_value();
   }
   inline jlong elapsed_counter_value_ms() const;
+  inline jlong elapsed_counter_value_us() const;
 
   PerfCounter* thread_counter() const {
     return _thread_counter;
@@ -651,6 +652,7 @@ public:
     return _thread_counter->get_value();
   }
   inline jlong thread_counter_value_ms() const;
+  inline jlong thread_counter_value_us() const;
 
   void reset() {
     _elapsed_counter->reset();
