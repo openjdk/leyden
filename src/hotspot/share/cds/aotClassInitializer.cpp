@@ -136,7 +136,7 @@ bool AOTClassInitializer::check_can_be_preinited(InstanceKlass* ik) {
       log_info(cds, init)("cannot initialize %s (has <clinit>)", ik->external_name());
       return false;
     }
-    if (ik->is_initialized() && !has_non_default_static_fields(ik)) {
+    if (ik->is_initialized() && !has_default_static_fields(ik)) {
       return false;
     }
   }
@@ -144,7 +144,7 @@ bool AOTClassInitializer::check_can_be_preinited(InstanceKlass* ik) {
   return true;
 }
 
-bool AOTClassInitializer::has_non_default_static_fields(InstanceKlass* ik) {
+bool AOTClassInitializer::has_default_static_fields(InstanceKlass* ik) {
   oop mirror = ik->java_mirror();
 
   for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
@@ -235,7 +235,7 @@ void AOTClassInitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
 //
 // Between the two phases, some Java code may have been executed to contaminate the
 // some initialized mirrors. So we call reset_preinit_check() at the beginning of the
-// [2] so that we will re-run has_non_default_static_fields() on all the classes.
+// [2] so that we will re-run has_default_static_fields() on all the classes.
 // As a result, phase [2] may archive fewer mirrors that were initialized in phase [1].
 void AOTClassInitializer::reset_preinit_check() {
   auto iterator = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
