@@ -491,7 +491,7 @@ address TemplateInterpreterGenerator::generate_method_entry(
 
   // We expect the normal and native entry points to be generated first so we can reuse them.
   if (!synchronized && !end_training_trigger) {
-    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native 
+    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native
                                                      : Interpreter::zerolocals);
   } else if (synchronized && !end_training_trigger) {
     entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_synchronized
