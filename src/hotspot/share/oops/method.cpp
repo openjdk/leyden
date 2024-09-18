@@ -1246,6 +1246,7 @@ void Method::remove_unshareable_flags() {
   set_is_not_c1_compilable(false);
   set_is_not_c2_osr_compilable(false);
   set_on_stack_flag(false);
+  set_is_end_training_trigger(false);
 }
 #endif
 
