@@ -31,7 +31,7 @@
 class InstanceKlass;
 
 class AOTClassInitializer : AllStatic {
-  static bool has_non_default_static_fields(InstanceKlass* ik);
+  static bool has_default_static_fields(InstanceKlass* ik);
   static bool is_forced_preinit_class(InstanceKlass* ik);
 
   static bool check_can_be_preinited(InstanceKlass* ik);
