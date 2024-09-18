@@ -803,7 +803,7 @@ address TemplateInterpreterGenerator::generate_Float_floatToFloat16_entry() { re
 // than the typical interpreter frame setup.
 //
 
-address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
+address TemplateInterpreterGenerator::generate_native_entry(bool synchronized, bool end_training_trigger) {
   // determine code generation flags
   bool inc_counter  = UseCompiler || CountCompiledCalls;
 
@@ -1137,7 +1137,7 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
 //
 // Generic interpreted method entry to (asm) interpreter
 //
-address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized) {
+address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized, bool end_training_trigger) {
   // determine code generation flags
   bool inc_counter  = UseCompiler || CountCompiledCalls;
 

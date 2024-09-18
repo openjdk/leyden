@@ -403,7 +403,7 @@ public:
       return "End AOT training and create the cache.";
     }
     static const char* impact() {
-      return "High: [insert reason here]";
+      return "Medium: Pause time depends on number of loaded classes";
     }
     static const JavaPermission permission() {
     JavaPermission p = {"java.lang.management.ManagementPermission",

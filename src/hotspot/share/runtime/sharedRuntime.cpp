@@ -1421,18 +1421,22 @@ JRT_END
 
 void SharedRuntime::end_training_check(TRAPS)
 {
-  Atomic::inc(&_end_training_count);
-  if(_end_training_count >= _end_training_predicate)
-  {
-    SharedRuntime::end_training(CHECK);
+  if (_end_training_triggered == 0) {
+    Atomic::inc(&_end_training_count);
+    if(_end_training_count >= _end_training_predicate)
+    {
+      SharedRuntime::end_training(CHECK);
+    }
   }
 }
 
 void SharedRuntime::end_training(TRAPS)
 {
-  if (Atomic::cmpxchg(&_end_training_triggered, 0, 1) == 0) {
-    MetaspaceShared::preload_and_dump(CHECK);
-    assert(!THREAD->has_pending_exception(), "must be");
+  if (_end_training_triggered == 0) {
+    if (Atomic::cmpxchg(&_end_training_triggered, 0, 1) == 0) {
+      MetaspaceShared::preload_and_dump(CHECK);
+      assert(!THREAD->has_pending_exception(), "must be");
+    }
   }
 }
 

@@ -1932,9 +1932,7 @@ void InterpreterMacroAssembler::increment_mask_and_jump(Address counter_addr, Ad
 }
 
 void InterpreterMacroAssembler::end_training_check() {
-  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers()) {
-    call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
-  }
+  call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
 }
 
 void InterpreterMacroAssembler::notify_method_entry() {

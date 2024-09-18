@@ -83,14 +83,20 @@ class TemplateInterpreterGenerator: public AbstractInterpreterGenerator {
 
   void generate_all();
 
+  // helpers for method entry generation
+  bool is_synchronized_method(AbstractInterpreter::MethodKind kind);
+  bool is_end_training_trigger_method(AbstractInterpreter::MethodKind kind);
+  bool is_intrinsic_method(AbstractInterpreter::MethodKind kind);
+  bool is_abstract_method(AbstractInterpreter::MethodKind kind);
+
   // entry point generator
   address generate_method_entry(AbstractInterpreter::MethodKind kind, bool native);
 
   // generate intrinsic method entries
   address generate_intrinsic_entry(AbstractInterpreter::MethodKind kind);
 
-  address generate_normal_entry(bool synchronized);
-  address generate_native_entry(bool synchronized);
+  address generate_normal_entry(bool synchronized, bool end_training_trigger);
+  address generate_native_entry(bool synchronized, bool end_training_trigger);
   address generate_abstract_entry(void);
   address generate_math_entry(AbstractInterpreter::MethodKind kind);
   address generate_Reference_get_entry();

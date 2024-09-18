@@ -1400,11 +1400,7 @@ void InterpreterMacroAssembler::_interp_verify_oop(Register reg, TosState state,
 void InterpreterMacroAssembler::verify_FPU(int stack_depth, TosState state) { ; }
 
 void InterpreterMacroAssembler::end_training_check() {
-  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers()) {
-    // this code will be used for all methods of the same type and so we can't
-    // check the method flag while generating the code
-    call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
-  }
+  call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
 }
 
 void InterpreterMacroAssembler::notify_method_entry() {

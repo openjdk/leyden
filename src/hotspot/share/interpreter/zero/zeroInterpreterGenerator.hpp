@@ -39,8 +39,8 @@ class ZeroInterpreterGenerator: public AbstractInterpreterGenerator {
   address generate_slow_signature_handler();
 
   address generate_method_entry(AbstractInterpreter::MethodKind kind);
-  address generate_normal_entry(bool synchronized);
-  address generate_native_entry(bool synchronized);
+  address generate_normal_entry(bool synchronized, bool end_training_trigger);
+  address generate_native_entry(bool synchronized, bool end_training_trigger);
   address generate_abstract_entry();
   address generate_math_entry(AbstractInterpreter::MethodKind kind);
   address generate_empty_entry();

@@ -1157,12 +1157,8 @@ void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
 }
 
 JRT_ENTRY(void, InterpreterRuntime::end_training_check(JavaThread* current)) {
-  LastFrameAccessor last_frame(current);
-  ResourceMark rm(current);
-  methodHandle m (current, last_frame.method());
-  if(m->is_end_training_trigger()) {
+
     SharedRuntime::end_training_check(CHECK);
-  }
 }
 JRT_END
 
