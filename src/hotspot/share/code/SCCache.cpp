@@ -678,8 +678,7 @@ bool SCConfig::verify(const char* cache_path) const {
   }
 #ifdef _LP64
   if (UseCompatibleCompressedOops && (_compressedOopShift != (uint)CompressedOops::shift())) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedOops::shift() = %d vs current %d and UseCompatibleCompressedOops=%s", cache_path, _compressedOopShift, CompressedOops::shift(),
-                           UseCompatibleCompressedOops ? "true" : "false");
+    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedOops::shift() = %d vs current %d and UseCompatibleCompressedOops=true", cache_path, _compressedOopShift, CompressedOops::shift());
     return false;
   }
 #endif

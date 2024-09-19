@@ -616,10 +616,10 @@ public:
 // code cache internal runtime constants area used by AOT code
 class AOTRuntimeConstants {
  friend class SCCache;
-  uint _grain_shift;
-  uint _card_shift;
   address _coops_base;
   uint _coops_shift;
+  uint _grain_shift;
+  uint _card_shift;
 
   static address _field_addresses_list[];
   static AOTRuntimeConstants _aot_runtime_constants;
