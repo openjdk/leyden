@@ -120,7 +120,7 @@ public class LeydenEndTrainingTrigger {
                 mainClass, runMode.name()
             };
         }
-        
+
         @Override
         public String[] vmArgs(RunMode runMode) {
             if (runMode == RunMode.TRAINING && triggerMethod.length() > 0) {
