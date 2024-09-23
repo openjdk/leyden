@@ -176,10 +176,12 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
 }
 
 void MethodTrainingData::print_on(outputStream* st, bool name_only) const {
-  _klass->print_on(st, true);
-  st->print(".");
-  name()->print_symbol_on(st);
-  signature()->print_symbol_on(st);
+  if (has_holder()) {
+    _klass->print_on(st, true);
+    st->print(".");
+    name()->print_symbol_on(st);
+    signature()->print_symbol_on(st);
+  }
   if (name_only) {
     return;
   }
@@ -409,8 +411,8 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
 }
 
 void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
-  name()->print_symbol_on(st);
   if (has_holder()) {
+    name()->print_symbol_on(st);
     switch (holder()->init_state()) {
       case InstanceKlass::allocated:            st->print("[A]"); break;
       case InstanceKlass::loaded:               st->print("[D]"); break;
