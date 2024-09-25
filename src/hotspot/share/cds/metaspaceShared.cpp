@@ -572,6 +572,27 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   DEBUG_ONLY(SystemDictionaryShared::NoClassLoadingMark nclm);
 
+  _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
+  SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
+  _method_handle_intrinsics->sort([] (Method** a, Method** b) -> int {
+    Symbol* a_holder = (*a)->method_holder()->name();
+    Symbol* b_holder = (*b)->method_holder()->name();
+    if (a_holder != b_holder) {
+      return a_holder->cmp(b_holder);
+    }
+    Symbol* a_name = (*a)->name();
+    Symbol* b_name = (*b)->name();
+    if (a_name != b_name) {
+      return a_name->cmp(b_name);
+    }
+    Symbol* a_signature = (*a)->signature();
+    Symbol* b_signature = (*b)->signature();
+    if (a_signature != b_signature) {
+      return a_signature->cmp(b_signature);
+    }
+    return 0;
+  });
+
   FileMapInfo::check_nonempty_dir_in_shared_path_table();
 
   NOT_PRODUCT(SystemDictionary::verify();)
@@ -894,20 +915,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     }
   }
 
-#if INCLUDE_CDS_JAVA_HEAP
-  if (CDSConfig::is_dumping_invokedynamic()) {
-    // This makes sure that the MethodType and MethodTypeForm tables won't be updated
-    // concurrently when we are saving their contents into a side table.
-    assert(CDSConfig::allow_only_single_java_thread(), "Required");
-
-    JavaValue result(T_VOID);
-    JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
-                           vmSymbols::createArchivedObjects(),
-                           vmSymbols::void_method_signature(),
-                           CHECK);
-  }
-#endif
-
   // Rewrite and link classes
   log_info(cds)("Rewriting and linking classes ...");
   // Link any classes which got missed. This would happen if we have loaded classes that
@@ -924,27 +931,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
 
-  _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
-  SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
-  _method_handle_intrinsics->sort([] (Method** a, Method** b) -> int {
-    Symbol* a_holder = (*a)->method_holder()->name();
-    Symbol* b_holder = (*b)->method_holder()->name();
-    if (a_holder != b_holder) {
-      return a_holder->cmp(b_holder);
-    }
-    Symbol* a_name = (*a)->name();
-    Symbol* b_name = (*b)->name();
-    if (a_name != b_name) {
-      return a_name->cmp(b_name);
-    }
-    Symbol* a_signature = (*a)->signature();
-    Symbol* b_signature = (*b)->signature();
-    if (a_signature != b_signature) {
-      return a_signature->cmp(b_signature);
-    }
-    return 0;
-  });
-
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_heap()) {
     if (!HeapShared::is_archived_boot_layer_available(THREAD)) {
@@ -959,6 +945,18 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
     if (ArchiveLoaderLookupCache) {
       SystemDictionaryShared::create_loader_positive_lookup_cache(CHECK);
+    }
+
+    if (CDSConfig::is_dumping_invokedynamic()) {
+      // This makes sure that the MethodType and MethodTypeForm tables won't be updated
+      // concurrently when we are saving their contents into a side table.
+      assert(CDSConfig::allow_only_single_java_thread(), "Required");
+
+      JavaValue result(T_VOID);
+      JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
+                             vmSymbols::createArchivedObjects(),
+                             vmSymbols::void_method_signature(),
+                             CHECK);
     }
 
     // Do this at the very end, when no Java code will be executed. Otherwise
