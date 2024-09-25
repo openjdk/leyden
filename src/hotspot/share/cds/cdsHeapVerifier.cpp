@@ -129,11 +129,17 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
     ADD_EXCL("java/lang/invoke/MemberName$Factory",       "INSTANCE");             // D
     ADD_EXCL("java/lang/invoke/InvokerBytecodeGenerator", "MEMBERNAME_FACTORY");   // D
     ADD_EXCL("java/lang/invoke/SimpleMethodHandle",       "BMH_SPECIES");          // D
-
-    // These are always the same as Boolean$AOTHolder::{TRUE,FALSE}
-    ADD_EXCL("java/lang/Boolean",                         "TRUE",                  // E
-                                                          "FALSE");                // E
   }
+
+  // These are used by BuiltinClassLoader::negativeLookupCache, etc but seem to be
+  // OK. TODO - we should copletely disable the caching unless ArchiveLoaderLookupCache
+  // is enabled
+  ADD_EXCL("java/lang/Boolean",                           "TRUE",                  // E
+                                                          "FALSE");                // E
+  
+  ADD_EXCL("java/lang/Boolean$AOTHolder",                 "TRUE",                  // E
+                                                          "FALSE");                // E
+  
 
 # undef ADD_EXCL
 
