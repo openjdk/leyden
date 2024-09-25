@@ -213,6 +213,7 @@ bool AOTClassInitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
   if (CDSConfig::is_dumping_invokedynamic()) {
     if (name->equals("java/lang/Boolean$AOTHolder") ||
         name->equals("java/lang/Character$CharacterCache") ||
+        name->equals("java/lang/invoke/BoundMethodHandle$AOTHolder") ||
         name->equals("java/lang/invoke/BoundMethodHandle$Specializer") ||
         name->equals("java/lang/invoke/ClassSpecializer") ||
         name->equals("java/lang/invoke/DelegatingMethodHandle") ||
@@ -228,6 +229,7 @@ bool AOTClassInitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
         name->equals("java/lang/invoke/MethodHandle") ||
         name->equals("java/lang/invoke/MethodHandles$Lookup") ||
         name->equals("java/lang/invoke/MethodType$AOTHolder") ||
+        name->starts_with("java/lang/invoke/BoundMethodHandle$Species_") ||
         name->starts_with("java/lang/invoke/ClassSpecializer$")) {
       assert(ik->is_initialized(), "must be");
       return true;
