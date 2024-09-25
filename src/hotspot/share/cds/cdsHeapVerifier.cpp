@@ -124,23 +124,16 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
   ADD_EXCL("sun/invoke/util/ValueConversions",           "ONE_INT",                // E
                                                          "ZERO_INT");              // E
 
- if (CDSConfig::is_dumping_invokedynamic()) {
-  ADD_EXCL("java/lang/invoke/DirectMethodHandle",        "LONG_OBJ_TYPE",
-                                                         "OBJ_OBJ_TYPE");
+  if (CDSConfig::is_dumping_invokedynamic()) {
+    ADD_EXCL("java/lang/invoke/MethodHandles",            "IMPL_NAMES");           // D
+    ADD_EXCL("java/lang/invoke/MemberName$Factory",       "INSTANCE");             // D
+    ADD_EXCL("java/lang/invoke/InvokerBytecodeGenerator", "MEMBERNAME_FACTORY");   // D
+    ADD_EXCL("java/lang/invoke/SimpleMethodHandle",       "BMH_SPECIES");          // D
 
-  ADD_EXCL("sun/invoke/util/Wrapper",                    "FLOAT_ZERO",
-                                                         "DOUBLE_ZERO");
-
-  ADD_EXCL("java/lang/invoke/BoundMethodHandle$Specializer",   "BMH_TRANSFORMS",
-                                                               "SPECIES_DATA_ACCESSOR");
-  ADD_EXCL("java/lang/invoke/BoundMethodHandle",               "SPECIALIZER");
-  ADD_EXCL("java/lang/invoke/DelegatingMethodHandle",          "NF_getTarget");
-  ADD_EXCL("java/lang/invoke/MethodHandleImpl$ArrayAccessor",  "OBJECT_ARRAY_GETTER",
-                                                               "OBJECT_ARRAY_SETTER");
-  ADD_EXCL("java/lang/invoke/SimpleMethodHandle",              "BMH_SPECIES");
-
-  ADD_EXCL("java/lang/invoke/StringConcatFactory",             "NEW_ARRAY");
- }
+    // These are always the same as Boolean$AOTHolder::{TRUE,FALSE}
+    ADD_EXCL("java/lang/Boolean",                         "TRUE",                  // E
+                                                          "FALSE");                // E
+  }
 
 # undef ADD_EXCL
 
@@ -157,7 +150,7 @@ CDSHeapVerifier::~CDSHeapVerifier() {
 
 class CDSHeapVerifier::CheckStaticFields : public FieldClosure {
   CDSHeapVerifier* _verifier;
-  InstanceKlass* _ik;
+  InstanceKlass* _ik; // The class whose static fields are being checked.
   const char** _exclusions;
 public:
   CheckStaticFields(CDSHeapVerifier* verifier, InstanceKlass* ik)
@@ -172,7 +165,7 @@ public:
 
     oop static_obj_field = _ik->java_mirror()->obj_field(fd->offset());
     if (static_obj_field != nullptr) {
-      Klass* klass = static_obj_field->klass();
+      Klass* klass_of_field = static_obj_field->klass();
       if (_exclusions != nullptr) {
         for (const char** p = _exclusions; *p != nullptr; p++) {
           if (fd->name()->equals(*p)) {
@@ -192,20 +185,20 @@ public:
         // This field points to an archived mirror.
         return;
       }
-      if (klass->has_archived_enum_objs()) {
-        // This klass is a subclass of java.lang.Enum. If any instance of this klass
-        // has been archived, we will archive all static fields of this klass.
+      if (klass_of_field->has_archived_enum_objs()) {
+        // This field is an Enum. If any instance of this Enum has been archived, we will archive
+        // all static fields of this Enum as well.
         // See HeapShared::initialize_enum_klass().
         return;
       }
-      if (klass->is_instance_klass()) {
-        if (InstanceKlass::cast(klass)->is_initialized() &&
-            AOTClassInitializer::can_archive_preinitialized_mirror(InstanceKlass::cast(klass))) {
+      if (klass_of_field->is_instance_klass()) {
+        if (InstanceKlass::cast(klass_of_field)->is_initialized() &&
+            AOTClassInitializer::can_archive_initialized_mirror(InstanceKlass::cast(klass_of_field))) {
           return;
         }
       }
 
-      if (AOTClassInitializer::can_archive_preinitialized_mirror(_ik)) {
+      if (AOTClassInitializer::can_archive_initialized_mirror(_ik)) {
         return;
       }
 
@@ -240,12 +233,18 @@ void CDSHeapVerifier::do_klass(Klass* k) {
 }
 
 void CDSHeapVerifier::add_static_obj_field(InstanceKlass* ik, oop field, Symbol* name) {
-  if (field->klass() == vmClasses::MethodType_klass() ||
-      field->klass() == vmClasses::LambdaForm_klass()) {
-    // LambdaForm and MethodType are non-modifiable and are not tested for object equality, so
-    // it's OK if the static fields are reinitialized at runtime with alternative instances.
+  if (field->klass() == vmClasses::MethodType_klass()) {
+    // The identity of MethodTypes are preserved between assembly phase and production runs
+    // (by MethodType::AOTHolder::archivedMethodTypes). No need to check.
     return;
   }
+  if (field->klass() == vmClasses::LambdaForm_klass()) {
+    // LambdaForms are non-modifiable and are not tested for object equality, so
+    // it's OK if static fields of the LambdaForm type are reinitialized at runtime with
+    // alternative instances. No need to check.
+    return;
+  }
+
   StaticFieldInfo info = {ik, name};
   _table.put(field, info);
 }

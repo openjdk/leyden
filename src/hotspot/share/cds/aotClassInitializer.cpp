@@ -162,7 +162,7 @@ void AOTClassInitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
 // [1] Before the VM_PopulateDumpSharedSpace safepoint:
 //     when MetaspaceShared::link_shared_classes calls AOTClassInitializer::maybe_preinit_class(ik)
 // [2] Inside the VM_PopulateDumpSharedSpace safepoint
-//     when HeapShared::archive_java_mirrors() calls AOTClassInitializer::can_archive_preinitialized_mirror(ik)
+//     when HeapShared::archive_java_mirrors() calls AOTClassInitializer::can_archive_initialized_mirror(ik)
 //
 // Between the two phases, some Java code may have been executed to contaminate the
 // some initialized mirrors. So we call reset_preinit_check() at the beginning of the
@@ -177,7 +177,7 @@ void AOTClassInitializer::reset_preinit_check() {
   SystemDictionaryShared::dumptime_table()->iterate_all_live_classes(iterator);
 }
 
-bool AOTClassInitializer::can_archive_preinitialized_mirror(InstanceKlass* ik) {
+bool AOTClassInitializer::can_archive_initialized_mirror(InstanceKlass* ik) {
   assert(!ArchiveBuilder::current()->is_in_buffer_space(ik), "must be source klass");
   if (!CDSConfig::is_initing_classes_at_dump_time()) {
     return false;

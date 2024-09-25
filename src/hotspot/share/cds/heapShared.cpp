@@ -127,7 +127,6 @@ static const ArchivedKlassSubGraphInfoRecord* _test_class_record = nullptr;
 //
 
 static ArchivableStaticFieldInfo archive_subgraph_entry_fields[] = {
-  {"java/lang/Boolean",                           "archivedCache"},
   {"java/lang/Integer$IntegerCache",              "archivedCache"},
   {"java/lang/Long$LongCache",                    "archivedCache"},
   {"java/lang/Byte$ByteCache",                    "archivedCache"},
@@ -566,7 +565,6 @@ bool HeapShared::is_lambda_form_klass(InstanceKlass* ik) {
     (ik->name()->starts_with("java/lang/invoke/LambdaForm$MH+") ||
      ik->name()->starts_with("java/lang/invoke/LambdaForm$DMH+") ||
      ik->name()->starts_with("java/lang/invoke/LambdaForm$BMH+"));
-     
 }
 
 bool HeapShared::is_lambda_proxy_klass(InstanceKlass* ik) {
@@ -577,7 +575,7 @@ bool HeapShared::is_archivable_hidden_klass(InstanceKlass* ik) {
   return CDSConfig::is_dumping_invokedynamic() && (is_lambda_form_klass(ik) || is_lambda_proxy_klass(ik));
 }
 
-void HeapShared::copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop m) {
+void HeapShared::copy_aot_initialized_mirror(Klass* orig_k, oop orig_mirror, oop m) {
   if (!orig_k->is_instance_klass()) {
     return;
   }
@@ -589,7 +587,7 @@ void HeapShared::copy_preinitialized_mirror(Klass* orig_k, oop orig_mirror, oop 
     assert(ik->is_initialized(), "must be");
   }
 
-  if (!ik->is_initialized() || !AOTClassInitializer::can_archive_preinitialized_mirror(ik)) {
+  if (!ik->is_initialized() || !AOTClassInitializer::can_archive_initialized_mirror(ik)) {
     return;
   }
 
@@ -689,7 +687,7 @@ void HeapShared::archive_java_mirrors() {
     oop m = scratch_java_mirror(orig_k);
     if (m != nullptr) {
       copy_java_mirror_hashcode(orig_mirror, m);
-      copy_preinitialized_mirror(orig_k, orig_mirror, m);
+      copy_aot_initialized_mirror(orig_k, orig_mirror, m);
       if (CDSConfig::is_dumping_reflection_data() && java_lang_Class::has_reflection_data(orig_mirror)) {
         oop reflection_data = java_lang_Class::reflection_data(orig_mirror);
         bool success = archive_reachable_objects_from(1, _default_subgraph_info, reflection_data);
@@ -872,9 +870,9 @@ void HeapShared::archive_objects(ArchiveHeapInfo *heap_info) {
     if (UseCompressedOops || UseG1GC) {
       log_info(cds)("Heap range = [" PTR_FORMAT " - "  PTR_FORMAT "]",
                     UseCompressedOops ? p2i(CompressedOops::begin()) :
-                                         p2i((address)G1CollectedHeap::heap()->reserved().start()),
+                                        p2i((address)G1CollectedHeap::heap()->reserved().start()),
                     UseCompressedOops ? p2i(CompressedOops::end()) :
-                                         p2i((address)G1CollectedHeap::heap()->reserved().end()));
+                                        p2i((address)G1CollectedHeap::heap()->reserved().end()));
     }
     copy_objects();
 
@@ -1309,7 +1307,7 @@ void HeapShared::initialize_java_lang_invoke(TRAPS) {
   }
 }
 
-void HeapShared::initialize_default_subgraph_classes(Handle loader, TRAPS) {
+void HeapShared::initialize_default_subgraph_classes(Handle class_loader, TRAPS) {
   if (!ArchiveHeapLoader::is_in_use()) {
     return;
   }
@@ -1324,7 +1322,7 @@ void HeapShared::initialize_default_subgraph_classes(Handle loader, TRAPS) {
           // This class is not yet loaded. We will initialize it in a later phase.
           continue;
         }
-        if (k->class_loader() == loader()) {
+        if (k->class_loader() == class_loader()) {
           if (pass == 0) {
             if (k->is_instance_klass()) {
               InstanceKlass::cast(k)->link_class(CHECK);
@@ -1731,7 +1729,7 @@ bool HeapShared::archive_reachable_objects_from(int level,
 
   if (CDSConfig::is_initing_classes_at_dump_time()) {
     // The enum klasses are archived with preinitialized mirror.
-    // See AOTClassInitializer::can_archive_preinitialized_mirror.
+    // See AOTClassInitializer::can_archive_initialized_mirror.
   } else {
     if (CDSEnumKlass::is_enum_obj(orig_obj)) {
       CDSEnumKlass::handle_enum_obj(level + 1, subgraph_info, orig_obj);
