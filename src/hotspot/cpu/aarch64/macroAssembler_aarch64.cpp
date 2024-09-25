@@ -5135,6 +5135,9 @@ void MacroAssembler::encode_heap_oop_for_aot(Register dst, Register src) {
   Register tmp = pick_different_tmp(dst, src);
   RegSet regs = RegSet::of(tmp);
 
+  // n.b. this relies on a cmp+csel sequence instead of a cbnz but
+  // only because the C2 encoding declares that it kills the flags
+  // register
   push(regs, sp);
   lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
   ldr(tmp, tmp);
@@ -5166,15 +5169,19 @@ void MacroAssembler::decode_heap_oop_for_aot(Register dst, Register src) {
   Register tmp = pick_different_tmp(dst, src);
   RegSet regs = RegSet::of(tmp);
 
+  // n.b. this uses a branch instead of cmp+csel to avoid side-effects
+  // to the flags register.
   push(regs, sp);
+  mov(dst, src);
+  Label done;
+  cbz(dst, done);
   lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_shift_address()));
   ldrw(tmp, tmp);
-  lslv(dst, src, tmp);
+  lslv(dst, dst, tmp);
   lea(tmp, ExternalAddress(AOTRuntimeConstants::coops_base_address()));
   ldr(tmp, tmp);
-  cmp(dst, zr);
-  csel(tmp, zr, tmp, EQ);
   add(dst, dst, tmp);
+  bind(done);
   pop(regs, sp);
 }
 
