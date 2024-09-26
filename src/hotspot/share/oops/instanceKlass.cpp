@@ -590,6 +590,12 @@ void InstanceKlass::deallocate_record_components(ClassLoaderData* loader_data,
 // This function deallocates the metadata and C heap pointers that the
 // InstanceKlass points to.
 void InstanceKlass::deallocate_contents(ClassLoaderData* loader_data) {
+#if INCLUDE_CDS_JAVA_HEAP
+    if (CDSConfig::is_dumping_heap()) {
+      HeapShared::remove_scratch_objects(this);
+    }
+#endif
+
   // Orphan the mirror first, CMS thinks it's still live.
   if (java_mirror() != nullptr) {
     java_lang_Class::set_klass(java_mirror(), nullptr);
@@ -711,12 +717,6 @@ void InstanceKlass::deallocate_contents(ClassLoaderData* loader_data) {
   set_annotations(nullptr);
 
   SystemDictionaryShared::handle_class_unloading(this);
-
-#if INCLUDE_CDS_JAVA_HEAP
-  if (CDSConfig::is_dumping_heap()) {
-    HeapShared::remove_scratch_objects(this);
-  }
-#endif
 }
 
 bool InstanceKlass::is_record() const {

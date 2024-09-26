@@ -598,6 +598,16 @@ void HeapShared::remove_scratch_objects(Klass* k) {
   if (k->is_instance_klass()) {
     _scratch_references_table->remove(InstanceKlass::cast(k)->constants());
   }
+  oop mirror = k->java_mirror();
+  if (mirror != nullptr) {
+    OopHandle tmp(&mirror);
+    OopHandle* v = _orig_to_scratch_object_table->get(tmp);
+    if (v != nullptr) {
+      oop scratch_mirror = v->resolve();
+      java_lang_Class::set_klass(scratch_mirror, nullptr);
+      _orig_to_scratch_object_table->remove(tmp);
+    }
+  }
 }
 
 bool HeapShared::is_lambda_form_klass(InstanceKlass* ik) {
