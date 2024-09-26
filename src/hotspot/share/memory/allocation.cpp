@@ -75,14 +75,16 @@ void* MetaspaceObj::operator new(size_t size, ClassLoaderData* loader_data,
                                  size_t word_size,
                                  MetaspaceObj::Type type, TRAPS) throw() {
   // Klass has its own operator new
-  return Metaspace::allocate(loader_data, word_size, type, THREAD);
+  assert(type != ClassType, "class has its own operator new");
+  return Metaspace::allocate(loader_data, word_size, type, /*use_class_space*/ false, THREAD);
 }
 
 void* MetaspaceObj::operator new(size_t size, ClassLoaderData* loader_data,
                                  size_t word_size,
                                  MetaspaceObj::Type type) throw() {
   assert(!Thread::current()->is_Java_thread(), "only allowed by non-Java thread");
-  return Metaspace::allocate(loader_data, word_size, type);
+  assert(type != ClassType, "class has its own operator new");
+  return Metaspace::allocate(loader_data, word_size, type, /*use_class_space*/ false);
 }
 
 

@@ -34,7 +34,7 @@ template <typename T>
 inline void* Array<T>::operator new(size_t size, ClassLoaderData* loader_data, int length, TRAPS) throw() {
   size_t word_size = Array::size(length);
   return (void*) Metaspace::allocate(loader_data, word_size,
-                                     MetaspaceObj::array_type(sizeof(T)), THREAD);
+                                     MetaspaceObj::array_type(sizeof(T)), false, THREAD);
 }
 
 template <typename T>
@@ -42,7 +42,7 @@ inline void* Array<T>::operator new(size_t size, ClassLoaderData* loader_data, i
   //assert(T is training data, "");
   size_t word_size = Array::size(length);
   return (void*) Metaspace::allocate(loader_data, word_size,
-                                     MetaspaceObj::array_type(sizeof(T)));
+                                     MetaspaceObj::array_type(sizeof(T)), false);
 }
 
 template <typename T>

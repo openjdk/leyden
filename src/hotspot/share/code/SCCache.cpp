@@ -3863,8 +3863,8 @@ void SCAddressTable::init_opto() {
 void SCAddressTable::init_c1() {
 #ifdef COMPILER1
   // Runtime1 Blobs
-  for (int i = 0; i < Runtime1::number_of_ids; i++) {
-    Runtime1::StubID id = (Runtime1::StubID)i;
+  for (int i = 0; i < (int)(C1StubId::NUM_STUBIDS); i++) {
+    C1StubId id = (C1StubId)i;
     if (Runtime1::blob_for(id) == nullptr) {
       log_info(scc, init)("C1 blob %s is missing", Runtime1::name_for(id));
       continue;
