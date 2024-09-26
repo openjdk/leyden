@@ -106,10 +106,6 @@ ciSymbol*        ciEnv::_unloaded_cisymbol = nullptr;
 ciInstanceKlass* ciEnv::_unloaded_ciinstance_klass = nullptr;
 ciObjArrayKlass* ciEnv::_unloaded_ciobjarrayklass = nullptr;
 
-jobject ciEnv::_ArrayIndexOutOfBoundsException_handle = nullptr;
-jobject ciEnv::_ArrayStoreException_handle = nullptr;
-jobject ciEnv::_ClassCastException_handle = nullptr;
-
 #ifndef PRODUCT
 static bool firstEnv = true;
 #endif /* PRODUCT */
@@ -164,10 +160,16 @@ ciEnv::ciEnv(CompileTask* task)
   o = Universe::arithmetic_exception_instance();
   assert(o != nullptr, "should have been initialized");
   _ArithmeticException_instance = get_object(o)->as_instance();
+  o = Universe::array_index_out_of_bounds_exception_instance();
+  assert(o != nullptr, "should have been initialized");
+  _ArrayIndexOutOfBoundsException_instance = get_object(o)->as_instance();
+  o = Universe::array_store_exception_instance();
+  assert(o != nullptr, "should have been initialized");
+  _ArrayStoreException_instance = get_object(o)->as_instance();
+  o = Universe::class_cast_exception_instance();
+  assert(o != nullptr, "should have been initialized");
+  _ClassCastException_instance = get_object(o)->as_instance();
 
-  _ArrayIndexOutOfBoundsException_instance = nullptr;
-  _ArrayStoreException_instance = nullptr;
-  _ClassCastException_instance = nullptr;
   _the_null_string = nullptr;
   _the_min_jint_string = nullptr;
 
@@ -388,28 +390,6 @@ ciInstanceKlass* ciEnv::get_box_klass_for_primitive_type(BasicType type) {
       assert(false, "not a primitive: %s", type2name(type));
       return nullptr;
   }
-}
-
-ciInstance* ciEnv::ArrayIndexOutOfBoundsException_instance() {
-  if (_ArrayIndexOutOfBoundsException_instance == nullptr) {
-    VM_ENTRY_MARK;
-    _ArrayIndexOutOfBoundsException_instance = get_object(Universe::array_index_oob_exception_instance())->as_instance();
-  }
-  return _ArrayIndexOutOfBoundsException_instance;
-}
-ciInstance* ciEnv::ArrayStoreException_instance() {
-  if (_ArrayStoreException_instance == nullptr) {
-    VM_ENTRY_MARK;
-    _ArrayStoreException_instance = get_object(Universe::array_store_exception_instance())->as_instance();
-  }
-  return _ArrayStoreException_instance;
-}
-ciInstance* ciEnv::ClassCastException_instance() {
-  if (_ClassCastException_instance == nullptr) {
-    VM_ENTRY_MARK;
-    _ClassCastException_instance = get_object(Universe::class_cast_exception_instance())->as_instance();
-  }
-  return _ClassCastException_instance;
 }
 
 ciInstance* ciEnv::the_null_string() {

@@ -3557,7 +3557,7 @@ void SCAddressTable::init() {
   SET_ADDRESS(_extrs, Runtime1::trace_block_entry);
 #endif
 
-  SET_ADDRESS(_extrs, CompressedOops::ptrs_base_addr());
+  SET_ADDRESS(_extrs, CompressedOops::base_addr());
 #if INCLUDE_G1GC
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_post_entry);
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_pre_entry);

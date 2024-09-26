@@ -144,7 +144,7 @@ class TrainingData : public Metadata {
   class TrainingDataSet {
     friend TrainingData;
     ResizeableResourceHashtable<const Key*, TrainingData*,
-                                AnyObj::C_HEAP, MEMFLAGS::mtCompiler,
+                                AnyObj::C_HEAP, MemTag::mtCompiler,
                                 &TrainingData::Key::hash,
                                 &TrainingData::Key::equals>
       _table;

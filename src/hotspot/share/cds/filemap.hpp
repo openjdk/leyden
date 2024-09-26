@@ -456,7 +456,7 @@ public:
   void  write_header();
   void  write_region(int region, char* base, size_t size,
                      bool read_only, bool allow_exec);
-  size_t remove_bitmap_leading_zeros(CHeapBitMap* map);
+  size_t remove_bitmap_zeros(CHeapBitMap* map);
   char* write_bitmap_region(CHeapBitMap* rw_ptrmap, CHeapBitMap* ro_ptrmap,
                             CHeapBitMap* cc_ptrmap, ArchiveHeapInfo* heap_info,
                             size_t &size_in_bytes);
