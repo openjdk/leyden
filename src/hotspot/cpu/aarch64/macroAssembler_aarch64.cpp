@@ -5120,14 +5120,8 @@ void  MacroAssembler::decode_heap_oop_not_null(Register dst, Register src) {
 }
 
 static Register pick_different_tmp(Register dst, Register src) {
-  Register tmp = r0;
-  if (tmp == src || tmp == dst) {
-    tmp = r1;
-    if (tmp == src || tmp == dst) {
-      tmp = r2;
-    }
-  }
-  return tmp;
+  auto tmps = RegSet::of(r0, r1, r2) - RegSet::of(src, dst);
+  return *tmps.begin();
 }
 
 void MacroAssembler::encode_heap_oop_for_aot(Register dst, Register src) {
