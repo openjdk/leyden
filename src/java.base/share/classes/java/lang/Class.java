@@ -4664,7 +4664,7 @@ public final class Class<T> implements java.io.Serializable,
             return Wrapper.forPrimitiveType(this).basicTypeString();
 
         if (isArray()) {
-            return "[" + componentType.descriptorString();
+            return "[".concat(componentType.descriptorString());
         } else if (isHidden()) {
             String name = getName();
             int index = name.indexOf('/');
@@ -4677,11 +4677,7 @@ public final class Class<T> implements java.io.Serializable,
                     .toString();
         } else {
             String name = getName().replace('.', '/');
-            return new StringBuilder(name.length() + 2)
-                    .append('L')
-                    .append(name)
-                    .append(';')
-                    .toString();
+            return StringConcatHelper.concat("L", name, ";");
         }
     }
 

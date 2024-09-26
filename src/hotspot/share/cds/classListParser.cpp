@@ -486,7 +486,7 @@ void ClassListParser::check_class_name(const char* class_name) {
     err = "class name too long";
   } else {
     assert(Symbol::max_length() < INT_MAX && len < INT_MAX, "must be");
-    if (!UTF8::is_legal_utf8((const unsigned char*)class_name, (int)len, /*version_leq_47*/false)) {
+    if (!UTF8::is_legal_utf8((const unsigned char*)class_name, len, /*version_leq_47*/false)) {
       err = "class name is not valid UTF8";
     }
   }
@@ -1084,3 +1084,4 @@ void ClassListParser::parse_loader_negative_cache_tag() {
     }
   }
 }
+

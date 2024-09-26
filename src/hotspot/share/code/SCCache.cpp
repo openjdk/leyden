@@ -2689,8 +2689,9 @@ bool SCCache::write_oop(jobject& jo) {
       return false;
     }
     ResourceMark rm;
-    int length = 0;
-    const char* string = java_lang_String::as_utf8_string(obj, length);
+    size_t length_sz = 0;
+    const char* string = java_lang_String::as_utf8_string(obj, length_sz);
+    int length = (int)length_sz; // FIXME -- cast
     length++; // write tailing '/0'
     n = write_bytes(&length, sizeof(int));
     if (n != sizeof(int)) {

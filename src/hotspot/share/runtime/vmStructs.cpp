@@ -2016,8 +2016,6 @@
   /************************************************************/          \
                                                                           \
   declare_constant(JVM_ACC_WRITTEN_FLAGS)                                 \
-  declare_constant(JVM_ACC_HAS_FINALIZER)                                 \
-  declare_constant(JVM_ACC_IS_CLONEABLE_FAST)                             \
                                                                           \
   declare_constant(JVM_CONSTANT_Utf8)                                     \
   declare_constant(JVM_CONSTANT_Unicode)                                  \
