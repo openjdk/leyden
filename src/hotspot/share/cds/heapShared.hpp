@@ -144,7 +144,7 @@ class HeapShared: AllStatic {
   friend class VerifySharedOopClosure;
 
 public:
-  // Can this VM write a heap region into the CDS archive? Currently only {G1|Parallel|Serial}+compressed_cp
+  // Can this VM write a heap region into the CDS archive? Currently only {G1|Parallel|Serial|Epsilon}+compressed_cp
   static bool can_write() {
     CDS_JAVA_HEAP_ONLY(
       if (_disable_writing) {
@@ -303,11 +303,11 @@ private:
   static KlassSubGraphInfo* _default_subgraph_info;
   static ArchivedKlassSubGraphInfoRecord* _runtime_default_subgraph_info;
 
-  static GrowableArrayCHeap<oop, mtClassShared>* _pending_roots;
+  static GrowableArrayCHeap<OopHandle, mtClassShared>* _pending_roots;
   static GrowableArrayCHeap<oop, mtClassShared>* _trace; // for debugging unarchivable objects
   static GrowableArrayCHeap<const char*, mtClassShared>* _context; // for debugging unarchivable objects
-  static OopHandle _roots;
-  static int _permobj_segments;
+  static GrowableArrayCHeap<OopHandle, mtClassShared>* _root_segments;
+  static int _root_segment_max_elem_count;
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
   static MetaspaceObjToOopHandleTable* _scratch_java_mirror_table;
   static MetaspaceObjToOopHandleTable* _scratch_references_table;
@@ -370,6 +370,8 @@ private:
   static bool can_mirror_be_used_in_subgraph(oop orig_java_mirror);
   static void archive_java_mirrors();
   static void archive_strings();
+  static int get_archived_object_permanent_index_locked(oop obj);
+
  public:
   static void exit_on_error();
   static void reset_archived_object_states(TRAPS);
@@ -421,15 +423,14 @@ private:
   // Dump-time only. Returns the index of the root, which can be used at run time to read
   // the root using get_root(index, ...).
   static int append_root(oop obj);
-  static GrowableArrayCHeap<oop, mtClassShared>* pending_roots() { return _pending_roots; }
+  static GrowableArrayCHeap<OopHandle, mtClassShared>* pending_roots() { return _pending_roots; }
 
   // Dump-time and runtime
-  static objArrayOop roots();
+  static objArrayOop root_segment(int segment_idx);
   static oop get_root(int index, bool clear=false);
 
   // Run-time only
   static void clear_root(int index);
-  static void set_permobj_segments(int n) { _permobj_segments = n; }
   static void setup_test_class(const char* test_class_name) PRODUCT_RETURN;
 #endif // INCLUDE_CDS_JAVA_HEAP
 
@@ -449,8 +450,9 @@ private:
 
   static void init_for_dumping(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void write_subgraph_info_table() NOT_CDS_JAVA_HEAP_RETURN;
-  static void serialize_misc_info(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_roots(oop roots_oop) NOT_CDS_JAVA_HEAP_RETURN;
+  static void add_root_segment(objArrayOop segment_oop) NOT_CDS_JAVA_HEAP_RETURN;
+  static void init_root_segment_sizes(int max_size) NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize_tables(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
 
 #ifndef PRODUCT
@@ -458,7 +460,8 @@ private:
   static void initialize_test_class_from_archive(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 #endif
 
-  static void add_to_permanent_index_table(oop obj, int index);
+  static void add_to_permanent_index_table(oop obj);
+
   // AOT-compile time only: get a stable index for an archived object.
   // Returns 0 if obj is not archived.
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);

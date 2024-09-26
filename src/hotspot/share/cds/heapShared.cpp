@@ -157,14 +157,14 @@ static ArchivableStaticFieldInfo fmg_archive_subgraph_entry_fields[] = {
 
 KlassSubGraphInfo* HeapShared::_default_subgraph_info;
 ArchivedKlassSubGraphInfoRecord* HeapShared::_runtime_default_subgraph_info;
-GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_pending_roots = nullptr;
+GrowableArrayCHeap<OopHandle, mtClassShared>* HeapShared::_pending_roots = nullptr;
 GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_trace = nullptr;
 GrowableArrayCHeap<const char*, mtClassShared>* HeapShared::_context = nullptr;
-OopHandle HeapShared::_roots;
+GrowableArrayCHeap<OopHandle, mtClassShared>* HeapShared::_root_segments;
+int HeapShared::_root_segment_max_elem_count;
 OopHandle HeapShared::_scratch_basic_type_mirrors[T_VOID+1];
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_java_mirror_table = nullptr;
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_references_table = nullptr;
-int HeapShared::_permobj_segments = 0;
 
 static bool is_subgraph_root_class_of(ArchivableStaticFieldInfo fields[], InstanceKlass* ik) {
   for (int i = 0; fields[i].valid(); i++) {
@@ -246,14 +246,21 @@ int HeapShared::append_root(oop obj) {
   // No GC should happen since we aren't scanning _pending_roots.
   assert(Thread::current() == (Thread*)VMThread::vm_thread(), "should be in vm thread");
 
-  if (_pending_roots == nullptr) {
-    _pending_roots = new GrowableArrayCHeap<oop, mtClassShared>(500);
+  if (UsePermanentHeapObjects && obj != nullptr) {
+    int n = get_archived_object_permanent_index_locked(obj);
+    assert(n >= 0, "must have been added");
+    return n;
   }
 
-  return _pending_roots->append(obj);
+  if (_pending_roots == nullptr) {
+    _pending_roots = new GrowableArrayCHeap<OopHandle, mtClassShared>(500);
+  }
+
+  OopHandle oh(Universe::vm_global(), obj);
+  return _pending_roots->append(oh);
 }
 
-objArrayOop HeapShared::roots() {
+objArrayOop HeapShared::root_segment(int segment_idx) {
   if (CDSConfig::is_dumping_heap() && !CDSConfig::is_dumping_final_static_archive()) {
     assert(Thread::current() == (Thread*)VMThread::vm_thread(), "should be in vm thread");
     if (!HeapShared::can_write()) {
@@ -263,9 +270,9 @@ objArrayOop HeapShared::roots() {
     assert(CDSConfig::is_using_archive(), "must be");
   }
 
-  objArrayOop roots = (objArrayOop)_roots.resolve();
-  assert(roots != nullptr, "should have been initialized");
-  return roots;
+  objArrayOop segment = (objArrayOop)_root_segments->at(segment_idx).resolve();
+  assert(segment != nullptr, "should have been initialized");
+  return segment;
 }
 
 inline unsigned int oop_handle_hash(const OopHandle& oh) {
@@ -322,38 +329,18 @@ class ArchivedObjectPermanentIndexTable: public ResourceHashtable<OopHandle, int
 
 static ArchivedObjectPermanentIndexTable* _permanent_index_table = nullptr;
 
-void HeapShared::add_to_permanent_index_table(oop obj, int index) {
+void HeapShared::add_to_permanent_index_table(oop obj) {
   assert_locked_or_safepoint(ArchivedObjectTables_lock);
 
-  if (_permanent_index_table == nullptr) {
-    _permanent_index_table = new (mtClass)ArchivedObjectPermanentIndexTable();
-  }
-  OopHandle oh(Universe::vm_global(), obj);
-  _permanent_index_table->put(oh, index);
-}
-
-int HeapShared::get_archived_object_permanent_index(oop obj) {
-  if (!UsePermanentHeapObjects) {
-    return -1;
-  }
-  if (!CDSConfig::is_dumping_heap() && _permobj_segments <= 0) {
-    return -1;
-  }
-
-  MutexLocker ml(ArchivedObjectTables_lock, Mutex::_no_safepoint_check_flag);
-
-  if (!CDSConfig::is_dumping_heap() && _permanent_index_table == nullptr) {
-    int first_permobj_segment = roots()->length() - _permobj_segments;
-    for (int i = 0; i < _permobj_segments; i++) {
-      objArrayOop a = (objArrayOop)roots()->obj_at(i + first_permobj_segment);
-      for (int j = 0; j < a->length(); j++) {
-        int index = (i << ArchiveHeapWriter::PERMOBJ_SEGMENT_MAX_SHIFT) + j;
-        add_to_permanent_index_table(a->obj_at(j), index);
-      }
+  assert(CDSConfig::is_dumping_heap(), "must be");
+  if (UsePermanentHeapObjects) {
+    if (_permanent_index_table == nullptr) {
+      _permanent_index_table = new (mtClass)ArchivedObjectPermanentIndexTable();
     }
-  }
+    if (_pending_roots == nullptr) {
+      _pending_roots = new GrowableArrayCHeap<OopHandle, mtClassShared>(500);
+    }
 
-  if (_permanent_index_table != nullptr) {
     if (_orig_to_scratch_object_table != nullptr) {
       OopHandle orig(&obj);
       OopHandle* v = _orig_to_scratch_object_table->get(orig);
@@ -361,12 +348,62 @@ int HeapShared::get_archived_object_permanent_index(oop obj) {
         obj = v->resolve();
       }
     }
-    OopHandle tmp(&obj);
-    int* v = _permanent_index_table->get(tmp);
-    if (v != nullptr) {
-      int n = *v;
-      return n;
+
+    OopHandle oh(Universe::vm_global(), obj);
+    int index = _pending_roots->append(oh);
+    _permanent_index_table->put_when_absent(oh, index);
+  }
+}
+
+int HeapShared::get_archived_object_permanent_index(oop obj) {
+  MutexLocker ml(ArchivedObjectTables_lock, Mutex::_no_safepoint_check_flag);
+  return get_archived_object_permanent_index_locked(obj);
+}
+
+// Can be called in the "old" workflow.
+int HeapShared::get_archived_object_permanent_index_locked(oop obj) {
+  assert_locked_or_safepoint(ArchivedObjectTables_lock);
+  if (!UsePermanentHeapObjects) {
+    return -1;
+  }
+  if (!CDSConfig::is_dumping_heap() && !ArchiveHeapLoader::is_in_use()) {
+    return -1;
+  }
+
+  if (_permanent_index_table == nullptr) {
+    if (!ArchiveHeapLoader::is_in_use()) {
+      // Called in the old workflow
+      return -1;
+    } else {
+      _permanent_index_table = new (mtClass)ArchivedObjectPermanentIndexTable();
+      int count = 0;
+      for (int segment_idx = 0; segment_idx < _root_segments->length(); segment_idx++) {
+        objArrayOop segment = (objArrayOop)_root_segments->at(segment_idx).resolve();
+        for (int i = 0; i < segment->length(); i++, count++) {
+          oop root = segment->obj_at(i);
+          if (root != nullptr) {
+            OopHandle tmp(Universe::vm_global(), root);
+            int index = count;
+            _permanent_index_table->put_when_absent(tmp, index);
+          }
+        }
+      }
     }
+  }
+
+  if (_orig_to_scratch_object_table != nullptr) {
+    OopHandle orig(&obj);
+    OopHandle* v = _orig_to_scratch_object_table->get(orig);
+    if (v != nullptr) {
+      obj = v->resolve();
+    }
+  }
+
+  OopHandle tmp(&obj);
+  int* v = _permanent_index_table->get(tmp);
+  if (v != nullptr) {
+    int n = *v;
+    return n;
   }
 
   return -1;
@@ -374,16 +411,14 @@ int HeapShared::get_archived_object_permanent_index(oop obj) {
 
 oop HeapShared::get_archived_object(int permanent_index) {
   if (ArchiveHeapLoader::is_in_use()) {
-    assert(_permobj_segments > 0, "must be");
-
-    int first_permobj_segment = roots()->length() - _permobj_segments;
-    int upper = permanent_index >> ArchiveHeapWriter::PERMOBJ_SEGMENT_MAX_SHIFT;
-    int lower = permanent_index &  ArchiveHeapWriter::PERMOBJ_SEGMENT_MAX_MASK;
-    objArrayOop a = (objArrayOop)roots()->obj_at(upper + first_permobj_segment);
-    return a->obj_at(lower);
+    return get_root(permanent_index);
   } else {
     assert(CDSConfig::is_dumping_heap(), "must be");
-    return ArchiveHeapWriter::get_perm_object_by_index(permanent_index);
+    if (_pending_roots != nullptr) {
+      return _pending_roots->at(permanent_index).resolve();
+    } else {
+      return nullptr;
+    }
   }
 }
 
@@ -391,8 +426,10 @@ oop HeapShared::get_archived_object(int permanent_index) {
 oop HeapShared::get_root(int index, bool clear) {
   assert(index >= 0, "sanity");
   assert(!CDSConfig::is_dumping_heap() && CDSConfig::is_using_archive(), "runtime only");
-  assert(!_roots.is_empty(), "must have loaded shared heap");
-  oop result = roots()->obj_at(index);
+  assert(!_root_segments->is_empty(), "must have loaded shared heap");
+  int seg_idx = index / _root_segment_max_elem_count;
+  int int_idx = index % _root_segment_max_elem_count;
+  oop result = root_segment(seg_idx)->obj_at(int_idx);
   if (clear) {
     clear_root(index);
   }
@@ -403,11 +440,13 @@ void HeapShared::clear_root(int index) {
   assert(index >= 0, "sanity");
   assert(CDSConfig::is_using_archive(), "must be");
   if (ArchiveHeapLoader::is_in_use()) {
+    int seg_idx = index / _root_segment_max_elem_count;
+    int int_idx = index % _root_segment_max_elem_count;
     if (log_is_enabled(Debug, cds, heap)) {
-      oop old = roots()->obj_at(index);
+      oop old = root_segment(seg_idx)->obj_at(int_idx);
       log_debug(cds, heap)("Clearing root %d: was " PTR_FORMAT, index, p2i(old));
     }
-    roots()->obj_at_put(index, nullptr);
+    root_segment(seg_idx)->obj_at_put(int_idx, nullptr);
   }
 }
 
@@ -425,6 +464,7 @@ bool HeapShared::archive_object(oop obj) {
     debug_trace();
     return false;
   } else {
+    add_to_permanent_index_table(obj);
     count_allocation(obj->size());
     ArchiveHeapWriter::add_source_obj(obj);
     CachedOopInfo info = make_cached_oop_info(obj);
@@ -660,13 +700,17 @@ static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
 void HeapShared::archive_java_mirrors() {
   AOTClassInitializer::reset_preinit_check();
 
+  _orig_to_scratch_object_table->iterate([&](OopHandle o, OopHandle s) {
+    copy_java_mirror_hashcode(o.resolve(), s.resolve());
+    return true;
+  });
+
   for (int i = T_BOOLEAN; i < T_VOID+1; i++) {
     BasicType bt = (BasicType)i;
     if (!is_reference_type(bt)) {
       oop orig_mirror = Universe::java_mirror(bt);
       oop m = _scratch_basic_type_mirrors[i].resolve();
       assert(m != nullptr, "sanity");
-      copy_java_mirror_hashcode(orig_mirror, m);
       bool success = archive_reachable_objects_from(1, _default_subgraph_info, m);
       assert(success, "sanity");
 
@@ -686,7 +730,6 @@ void HeapShared::archive_java_mirrors() {
     oop orig_mirror = orig_k->java_mirror();
     oop m = scratch_java_mirror(orig_k);
     if (m != nullptr) {
-      copy_java_mirror_hashcode(orig_mirror, m);
       copy_aot_initialized_mirror(orig_k, orig_mirror, m);
       if (CDSConfig::is_dumping_reflection_data() && java_lang_Class::has_reflection_data(orig_mirror)) {
         oop reflection_data = java_lang_Class::reflection_data(orig_mirror);
@@ -882,7 +925,11 @@ void HeapShared::archive_objects(ArchiveHeapInfo *heap_info) {
     check_default_subgraph_classes();
   }
 
-  ArchiveHeapWriter::write(_pending_roots, heap_info);
+  GrowableArrayCHeap<oop, mtClassShared>* roots = new GrowableArrayCHeap<oop, mtClassShared>(_pending_roots->length());
+  for (int i = 0; i < _pending_roots->length(); i++) {
+    roots->append(_pending_roots->at(i).resolve());
+  }
+  ArchiveHeapWriter::write(roots, heap_info);
 }
 
 void HeapShared::copy_interned_strings() {
@@ -1192,15 +1239,17 @@ void HeapShared::write_subgraph_info_table() {
   }
 }
 
-void HeapShared::serialize_misc_info(SerializeClosure* soc) {
-  soc->do_int(&_permobj_segments);
+void HeapShared::add_root_segment(objArrayOop segment_oop) {
+  assert(segment_oop != nullptr, "must be");
+  assert(ArchiveHeapLoader::is_in_use(), "must be");
+  if (_root_segments == nullptr) {
+    _root_segments = new GrowableArrayCHeap<OopHandle, mtClassShared>(10);
+  }
+  _root_segments->push(OopHandle(Universe::vm_global(), segment_oop));
 }
 
-void HeapShared::init_roots(oop roots_oop) {
-  if (roots_oop != nullptr) {
-    assert(ArchiveHeapLoader::is_in_use(), "must be");
-    _roots = OopHandle(Universe::vm_global(), roots_oop);
-  }
+void HeapShared::init_root_segment_sizes(int max_size_in_bytes) {
+  _root_segment_max_elem_count = (max_size_in_bytes - arrayOopDesc::header_size_in_bytes()) / heapOopSize; 
 }
 
 void HeapShared::serialize_tables(SerializeClosure* soc) {
