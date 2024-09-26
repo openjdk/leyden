@@ -52,7 +52,8 @@ template <typename T> class GrowableArray;
 // at dump time, because at run time we will load a class from the CDS archive only
 // if all of its supertypes are loaded from the CDS archive.
 class AOTConstantPoolResolver :  AllStatic {
-  using ClassesTable = ResourceHashtable<InstanceKlass*, bool, 15889, AnyObj::C_HEAP, mtClassShared> ;
+  static const int TABLE_SIZE = 15889; // prime number
+  using ClassesTable = ResourceHashtable<InstanceKlass*, bool, TABLE_SIZE, AnyObj::C_HEAP, mtClassShared> ;
   static ClassesTable* _processed_classes;
 
 #ifdef ASSERT
@@ -78,6 +79,11 @@ class AOTConstantPoolResolver :  AllStatic {
   // fmi = FieldRef/MethodRef/InterfaceMethodRef
   static void maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m, Bytecodes::Code bc, int raw_index,
                                     GrowableArray<bool>* resolve_fmi_list, TRAPS);
+
+  static bool check_lambda_metafactory_signature(ConstantPool* cp, Symbol* sig, bool check_return_type);
+  static bool check_lambda_metafactory_methodtype_arg(ConstantPool* cp, int bsms_attribute_index, int arg_i);
+  static bool check_lambda_metafactory_methodhandle_arg(ConstantPool* cp, int bsms_attribute_index, int arg_i);
+
 public:
   static void initialize();
   static void dispose();
