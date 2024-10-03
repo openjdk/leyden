@@ -1206,7 +1206,7 @@ bool CompilerOracle::parse_aot_trigger(char* line) {
   uint count = 0;
   bool result = parse_for_command(line, CompileCommandEnum::EndTrainingOnEnter, "AOTEndTrainingOnMethodEntry", &count);
   if (result && count > 0) {
-    SharedRuntime::set_end_training_predicate(count);
+    //SharedRuntime::set_end_training_predicate(count);
   }
   return result;
 }

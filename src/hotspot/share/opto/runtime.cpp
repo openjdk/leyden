@@ -1817,8 +1817,8 @@ const TypeFunc *OptoRuntime::class_id_load_barrier_Type() {
 #endif
 
 //-----------------------------------------------------------------------------
-// AOT
-const TypeFunc *OptoRuntime::end_training_check_c2_Type() {
+// runtime upcall support
+const TypeFunc *OptoRuntime::runtime_up_call_Type() {
   // create input type (domain)
   const Type **fields = TypeTuple::fields(1);
   fields[TypeFunc::Parms+0] = TypeRawPtr::BOTTOM; // Thread-local storage

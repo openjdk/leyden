@@ -32,24 +32,26 @@
 #include "opto/parse.hpp"
 #include "opto/rootnode.hpp"
 #include "opto/runtime.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 
-void GraphKit::make_end_training_check() {
-  const TypeFunc *call_type    = OptoRuntime::end_training_check_c2_Type();
-  address         call_address = CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c2);
-  const char     *call_name    = "end_training_check_c2";
+void GraphKit::install_on_method_entry_runtime_upcalls(ciMethod* method) {
+  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, method);
+  while (upcall != nullptr) {
+    // Get base of thread-local storage area
+    Node* thread = _gvn.transform( new ThreadLocalNode() );
+    kill_dead_locals();
 
-  // Get base of thread-local storage area
-  Node* thread = _gvn.transform( new ThreadLocalNode() );
+    // For some reason, this call reads only raw memory.
+    const TypeFunc *call_type   = OptoRuntime::runtime_up_call_Type();
+    const TypePtr* raw_adr_type = TypeRawPtr::BOTTOM;
+    make_runtime_call(RC_LEAF | RC_NARROW_MEM,
+                      call_type, upcall->upcall_address(),
+                      upcall->upcall_name(), raw_adr_type,
+                      thread);
 
-  kill_dead_locals();
-
-  // For some reason, this call reads only raw memory.
-  const TypePtr* raw_adr_type = TypeRawPtr::BOTTOM;
-  make_runtime_call(RC_LEAF | RC_NARROW_MEM,
-                    call_type, call_address,
-                    call_name, raw_adr_type,
-                    thread);
+    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, method, upcall);
+  }
 }
 
 //------------------------------make_dtrace_method_entry_exit ----------------

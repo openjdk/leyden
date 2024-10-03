@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/cdsEndTrainingUpcall.hpp"
 #include "cds/cds_globals.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/classLoaderHierarchyDCmd.hpp"
@@ -995,9 +996,11 @@ void ClassesDCmd::execute(DCmdSource source, TRAPS) {
 
 void AOTEndTrainingDCmd::execute(DCmdSource source, TRAPS) {
   if (!CDSConfig::is_dumping_preimage_static_archive()) {
-    output()->print_cr("Must be in training run");
+    output()->print_cr("Error! Not a training run");
+  } else if (CDSEndTrainingUpcall::end_training(THREAD)) {
+    output()->print_cr("Training ended successfully");
   } else {
-    SharedRuntime::end_training(CHECK);
+    output()->print_cr("Error! Failed to end training");
   }
 }
 

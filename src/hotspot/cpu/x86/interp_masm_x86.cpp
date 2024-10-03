@@ -41,6 +41,7 @@
 #include "runtime/basicLock.hpp"
 #include "runtime/frame.inline.hpp"
 #include "runtime/javaThread.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/safepointMechanism.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/powerOfTwo.hpp"
@@ -1931,8 +1932,11 @@ void InterpreterMacroAssembler::increment_mask_and_jump(Address counter_addr, Ad
   }
 }
 
-void InterpreterMacroAssembler::end_training_check() {
-  call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
+void InterpreterMacroAssembler::generate_runtime_upcalls_on_method_entry()
+{
+  //get_method(c_rarg1);
+  //call_VM(noreg, RuntimeUpcalls::on_method_entry_upcall_address());
+  call_VM(noreg,CAST_FROM_FN_PTR(address, InterpreterRuntime::on_method_entry_upcall_redirect));//, rthread, c_rarg1);
 }
 
 void InterpreterMacroAssembler::notify_method_entry() {

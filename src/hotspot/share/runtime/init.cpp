@@ -93,6 +93,12 @@ bool compileBroker_init();
 void dependencyContext_init();
 void dependencies_init();
 
+// initialize upcalls before class loading
+bool runtimeUpcalls_open_registration();
+bool cdsEndTrainingUpcall_register_upcalls();
+bool cdsNOPUpcall_register_upcalls();
+bool runtimeUpcalls_close_registration();
+
 // Initialization after compiler initialization
 bool universe_post_init();  // must happen after compiler_init
 void javaClasses_init();    // must happen after vtable initialization
@@ -185,6 +191,16 @@ jint init_globals2() {
   }
   dependencyContext_init();
   dependencies_init();
+
+  // initialize upcalls before class loading
+  runtimeUpcalls_open_registration();
+  if (!cdsEndTrainingUpcall_register_upcalls()) {
+    return JNI_EINVAL;
+  }
+  if (!cdsNOPUpcall_register_upcalls()) {
+    return JNI_EINVAL;
+  }
+  runtimeUpcalls_close_registration();
 
   if (!compileBroker_init()) {
     return JNI_EINVAL;

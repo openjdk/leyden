@@ -40,6 +40,7 @@
 #include "opto/runtime.hpp"
 #include "opto/type.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/safepointMechanism.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/bitMap.inline.hpp"
@@ -1212,9 +1213,7 @@ void Parse::do_method_entry() {
     make_dtrace_method_entry(method());
   }
 
-  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers() && method()->is_end_training_trigger()) {
-    make_end_training_check();
-  }
+  install_on_method_entry_runtime_upcalls(method());
 
 #ifdef ASSERT
   // Narrow receiver type when it is too broad for the method being parsed.

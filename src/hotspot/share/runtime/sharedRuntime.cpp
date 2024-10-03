@@ -248,11 +248,6 @@ uint SharedRuntime::_resolve_static_ctr = 0;
 uint SharedRuntime::_resolve_virtual_ctr = 0;
 uint SharedRuntime::_resolve_opt_virtual_ctr = 0;
 
-// For AOT
-uint volatile SharedRuntime::_end_training_count = 0;
-uint          SharedRuntime::_end_training_predicate = 1;
-int  volatile SharedRuntime::_end_training_triggered = 0;
-
 #ifndef PRODUCT
 uint SharedRuntime::_implicit_null_throws = 0;
 uint SharedRuntime::_implicit_div0_throws = 0;
@@ -1401,43 +1396,6 @@ methodHandle SharedRuntime::find_callee_method(TRAPS) {
   }
   assert(callee_method()->is_method(), "must be");
   return callee_method;
-}
-
-JRT_BLOCK_ENTRY(void, SharedRuntime::end_training_check_c1(JavaThread* current))
-{
-  JRT_BLOCK
-    SharedRuntime::end_training_check(CHECK);
-  JRT_BLOCK_END
-}
-JRT_END
-
-JRT_BLOCK_ENTRY(void, SharedRuntime::end_training_check_c2(JavaThread* current))
-{
-  JRT_BLOCK
-    SharedRuntime::end_training_check(CHECK);
-  JRT_BLOCK_END
-}
-JRT_END
-
-void SharedRuntime::end_training_check(TRAPS)
-{
-  if (_end_training_triggered == 0) {
-    Atomic::inc(&_end_training_count);
-    if(_end_training_count >= _end_training_predicate)
-    {
-      SharedRuntime::end_training(CHECK);
-    }
-  }
-}
-
-void SharedRuntime::end_training(TRAPS)
-{
-  if (_end_training_triggered == 0) {
-    if (Atomic::cmpxchg(&_end_training_triggered, 0, 1) == 0) {
-      MetaspaceShared::preload_and_dump(CHECK);
-      assert(!THREAD->has_pending_exception(), "must be");
-    }
-  }
 }
 
 // Resolves a call.

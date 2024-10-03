@@ -30,6 +30,8 @@
 #include "c1/c1_LIRAssembler.hpp"
 #include "c1/c1_MacroAssembler.hpp"
 #include "c1/c1_Runtime1.hpp"
+#include "cds/cdsEndTrainingUpcall.hpp"
+#include "cds/cdsNOPUpcall.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
@@ -305,6 +307,8 @@ const char* Runtime1::name_for_address(address entry) {
 #define FUNCTION_CASE(a, f) \
   if ((intptr_t)a == CAST_FROM_FN_PTR(intptr_t, f))  return #f
 
+  FUNCTION_CASE(entry, CDSEndTrainingUpcall::end_training_check);
+  FUNCTION_CASE(entry, CDSNOPUpcall::nop);
   FUNCTION_CASE(entry, os::javaTimeMillis);
   FUNCTION_CASE(entry, os::javaTimeNanos);
   FUNCTION_CASE(entry, SharedRuntime::OSR_migration_end);
@@ -328,7 +332,6 @@ const char* Runtime1::name_for_address(address entry) {
   FUNCTION_CASE(entry, SharedRuntime::lmul);
   FUNCTION_CASE(entry, SharedRuntime::lrem);
   FUNCTION_CASE(entry, SharedRuntime::lrem);
-  FUNCTION_CASE(entry, SharedRuntime::end_training_check_c1);
   FUNCTION_CASE(entry, SharedRuntime::dtrace_method_entry);
   FUNCTION_CASE(entry, SharedRuntime::dtrace_method_exit);
   FUNCTION_CASE(entry, is_instance_of);
@@ -348,6 +351,12 @@ const char* Runtime1::name_for_address(address entry) {
   FUNCTION_CASE(entry, StubRoutines::dtan());
 
 #undef FUNCTION_CASE
+
+  // Runtime upcalls also has a map of address to names
+  /*const char* upcall_name = RuntimeUpcalls::upcall_name_for(entry);
+  if (upcall_name != nullptr) {
+    return upcall_name;
+  }*/
 
   // Soft float adds more runtime names.
   return pd_name_for_address(entry);

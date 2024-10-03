@@ -43,6 +43,7 @@
 #include "jfr/jfrEvents.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/oop.inline.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/vm_version.hpp"
 #include "utilities/bitMap.inline.hpp"
@@ -4071,9 +4072,11 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
     append(new RuntimeCall(voidType, "dtrace_method_entry", CAST_FROM_FN_PTR(address, SharedRuntime::dtrace_method_entry), args));
   }
 
-  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers() && callee->is_end_training_trigger()) {
+  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, callee);
+  while (upcall != nullptr) {
     Values* args = new Values(0);
-    append(new RuntimeCall(voidType, "end_training_check_c1", CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c1), args));
+    append(new RuntimeCall(voidType, upcall->upcall_name(), upcall->upcall_address(), args));
+    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, callee, upcall);
   }
 
   if (profile_inlined_calls()) {

@@ -69,6 +69,7 @@
 #include "runtime/jfieldIDWorkaround.hpp"
 #include "runtime/osThread.hpp"
 #include "runtime/perfData.inline.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stackWatermarkSet.hpp"
 #include "runtime/stubRoutines.hpp"
@@ -1156,9 +1157,8 @@ void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
   pool->cache()->set_dynamic_call(info, raw_index);
 }
 
-JRT_ENTRY(void, InterpreterRuntime::end_training_check(JavaThread* current)) {
-
-    SharedRuntime::end_training_check(CHECK);
+JRT_BLOCK_ENTRY(void, InterpreterRuntime::on_method_entry_upcall_redirect(JavaThread* current)) {//, Method* method)) {
+    RuntimeUpcalls::on_method_entry_upcall_redirect(current);//, method);
 }
 JRT_END
 

@@ -45,6 +45,7 @@
 #include "runtime/basicLock.hpp"
 #include "runtime/frame.inline.hpp"
 #include "runtime/javaThread.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/safepointMechanism.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/powerOfTwo.hpp"
@@ -1399,8 +1400,10 @@ void InterpreterMacroAssembler::_interp_verify_oop(Register reg, TosState state,
 
 void InterpreterMacroAssembler::verify_FPU(int stack_depth, TosState state) { ; }
 
-void InterpreterMacroAssembler::end_training_check() {
-  call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
+void InterpreterMacroAssembler::generate_runtime_upcalls_on_method_entry()
+{
+  //get_method(c_rarg1);
+  call_VM(noreg,CAST_FROM_FN_PTR(address, InterpreterRuntime::on_method_entry_upcall_redirect));//, rthread, c_rarg1);
 }
 
 void InterpreterMacroAssembler::notify_method_entry() {
