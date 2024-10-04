@@ -1402,8 +1402,15 @@ void InterpreterMacroAssembler::verify_FPU(int stack_depth, TosState state) { ; 
 
 void InterpreterMacroAssembler::generate_runtime_upcalls_on_method_entry()
 {
-  //get_method(c_rarg1);
-  call_VM(noreg,CAST_FROM_FN_PTR(address, InterpreterRuntime::on_method_entry_upcall_redirect));//, rthread, c_rarg1);
+  address upcall = RuntimeUpcalls::on_method_entry_upcall_address();
+  if (RuntimeUpcalls::does_upcall_need_method_parameter(upcall)) {
+    //push(state);
+    get_method(c_rarg1);
+    call_VM(noreg,upcall, rthread, c_rarg1);
+    //pop(state);
+  } else {
+    call_VM(noreg,upcall);
+  }
 }
 
 void InterpreterMacroAssembler::notify_method_entry() {

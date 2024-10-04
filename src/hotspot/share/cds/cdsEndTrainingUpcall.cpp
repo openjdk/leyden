@@ -71,7 +71,7 @@ bool CDSEndTrainingUpcall::end_training(JavaThread* current)
     if (Atomic::cmpxchg(&_triggered, 0, 1) == 0) {
       MetaspaceShared::preload_and_dump(current);
       assert(!current->has_pending_exception(), "must be");
-     return true;
+      return true;
     }
   }
   return false;

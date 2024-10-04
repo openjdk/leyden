@@ -159,28 +159,26 @@ bool RuntimeUpcalls::register_upcall(RuntimeUpcallType upcallType, RuntimeUpcall
   return true;
 }
 
-void RuntimeUpcalls::upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current)//, Method* method)
+void RuntimeUpcalls::upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current, Method* method)
 {
-    // call all upcalls for method
-    MethodDetails* method = nullptr;
-    RuntimeUpcallInfo* upcall = get_first_upcall(upcallType, method);
-    while (upcall != nullptr) {
-      upcall->upcall()(current);
-      upcall = get_next_upcall(upcallType, method, upcall);
-    }
+  // call all upcalls for method that it matches
+  MethodDetails* md = nullptr;
+  RuntimeUpcallInfo* upcall = get_first_upcall(upcallType, md);
+  while (upcall != nullptr) {
+    upcall->upcall()(current);
+    upcall = get_next_upcall(upcallType, md, upcall);
+  }
 }
 
-// used by the interpreter which can only install 1 hook for now
-void RuntimeUpcalls::on_method_entry_upcall_redirect(TRAPS)//JavaThread* current)//, Method* method)
-{
-  upcall_redirect(onMethodEntry, CHECK);//current, method);
+JRT_BLOCK_ENTRY(void, RuntimeUpcalls::on_method_entry_upcall_redirect(JavaThread* current, Method* method)) {
+    RuntimeUpcalls::upcall_redirect(onMethodEntry, current, method);
 }
+JRT_END
 
-// used by the interpreter which can only install 1 hook for now
-void RuntimeUpcalls::on_method_exit_upcall_redirect(TRAPS)//JavaThread* current)//, Method* method)
-{
-  upcall_redirect(onMethodExit, CHECK);//current, method);
+JRT_BLOCK_ENTRY(void, RuntimeUpcalls::on_method_exit_upcall_redirect(JavaThread* current, Method* method)) {
+    RuntimeUpcalls::upcall_redirect(onMethodExit, current, method);
 }
+JRT_END
 
 //-------------------------------RuntimeUpcalls---------------------------------------
 
@@ -257,13 +255,34 @@ RuntimeUpcallInfo* RuntimeUpcalls::get_first_upcall(RuntimeUpcallType upcallType
   return get_next_upcall(upcallType, MethodDetails::Create(method), nullptr);
 }
 
+bool RuntimeUpcalls::does_upcall_need_method_parameter(address upcall_address)
+{
+  // redirect needs the method parameter for filtering
+  if((upcall_address == CAST_FROM_FN_PTR(address, RuntimeUpcalls::on_method_entry_upcall_redirect)) ||
+     (upcall_address == CAST_FROM_FN_PTR(address, RuntimeUpcalls::on_method_exit_upcall_redirect))) {
+    return true;
+  }
+
+  return false;
+}
+
 address RuntimeUpcalls::on_method_entry_upcall_address()
 {
+  // optimised case when there's only one upcall (no need to redirect)
+  if(_upcalls[onMethodEntry] != nullptr && _upcalls[onMethodEntry]->length() == 1) {
+    return _upcalls[onMethodEntry]->at(0)->upcall_address();
+  }
+
   return CAST_FROM_FN_PTR(address, RuntimeUpcalls::on_method_entry_upcall_redirect);
 }
 
 address RuntimeUpcalls::on_method_exit_upcall_address()
 {
+  // optimised case when there's only one upcall (no need to redirect)
+  if(_upcalls[onMethodExit] != nullptr && _upcalls[onMethodExit]->length() == 1) {
+    return _upcalls[onMethodExit]->at(0)->upcall_address();
+  }
+
   return CAST_FROM_FN_PTR(address, RuntimeUpcalls::on_method_exit_upcall_redirect);
 }
 

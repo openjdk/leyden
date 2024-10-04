@@ -1157,11 +1157,6 @@ void InterpreterRuntime::cds_resolve_invokedynamic(int raw_index,
   pool->cache()->set_dynamic_call(info, raw_index);
 }
 
-JRT_BLOCK_ENTRY(void, InterpreterRuntime::on_method_entry_upcall_redirect(JavaThread* current)) {//, Method* method)) {
-    RuntimeUpcalls::on_method_entry_upcall_redirect(current);//, method);
-}
-JRT_END
-
 // This function is the interface to the assembly code. It returns the resolved
 // cpCache entry.  This doesn't safepoint, but the helper routines safepoint.
 // This function will check for redefinition!

@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef SHARE_RUNTIME_UPCALLS_HPP
-#define SHARE_RUNTIME_UPCALLS_HPP
+#ifndef SHARE_RUNTIME_RUNTIME_UPCALLS_HPP
+#define SHARE_RUNTIME_RUNTIME_UPCALLS_HPP
 
 #include "code/codeBlob.hpp"
 #include "code/vmreg.hpp"
@@ -113,15 +113,15 @@ private:
 
   static void mark_for_upcalls(RuntimeUpcallType upcallType, const methodHandle& method);
   static bool register_upcall(RuntimeUpcallType upcallType, RuntimeUpcallInfo* info);
-  static void upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current);//, Method* method);
+  static void upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current, Method* method);
 
   static RuntimeUpcallInfo* get_first_upcall(RuntimeUpcallType upcallType, MethodDetails* method);
   static RuntimeUpcallInfo* get_next_upcall(RuntimeUpcallType upcallType, MethodDetails* method, RuntimeUpcallInfo* prev);
 
-public:
+  static void on_method_entry_upcall_redirect(JavaThread* current, Method* method);
+  static void on_method_exit_upcall_redirect(JavaThread* current, Method* method);
 
-  static void on_method_entry_upcall_redirect(JavaThread* current);//, Method* method);
-  static void on_method_exit_upcall_redirect(JavaThread* current);//, Method* method);
+public:
 
   static bool               open_upcall_registration();
   static void               close_upcall_registration();
@@ -136,6 +136,8 @@ public:
 
   static address            on_method_entry_upcall_address();
   static address            on_method_exit_upcall_address();
+
+  static bool               does_upcall_need_method_parameter(address upcall_address);
 
   static const char*        get_name_for_upcall_address(address upcall_address);
 };
