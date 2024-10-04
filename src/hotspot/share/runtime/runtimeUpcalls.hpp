@@ -136,6 +136,8 @@ public:
 
   static address            on_method_entry_upcall_address();
   static address            on_method_exit_upcall_address();
+
+  static const char*        get_name_for_upcall_address(address upcall_address);
 };
 
 #endif // SHARE_RUNTIME_RUNTIME_UPCALLS_HPP

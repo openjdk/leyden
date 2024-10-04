@@ -184,7 +184,6 @@ void RuntimeUpcalls::on_method_exit_upcall_redirect(TRAPS)//JavaThread* current)
 
 //-------------------------------RuntimeUpcalls---------------------------------------
 
-// called from instanceKlass::link_methods
 void RuntimeUpcalls::install_upcalls(const methodHandle& method)
 {
   for (int i = 0; i < RuntimeUpcallType::numTypes; i++) {
@@ -266,4 +265,19 @@ address RuntimeUpcalls::on_method_entry_upcall_address()
 address RuntimeUpcalls::on_method_exit_upcall_address()
 {
   return CAST_FROM_FN_PTR(address, RuntimeUpcalls::on_method_exit_upcall_redirect);
+}
+
+const char* RuntimeUpcalls::get_name_for_upcall_address(address upcall_address)
+{
+  for(int i = 0; i < RuntimeUpcallType::numTypes; i++) {
+    if (_upcalls[i] != nullptr) {
+      for (int j = 0; j < _upcalls[i]->length(); j++) {
+        RuntimeUpcallInfo* upcall = _upcalls[i]->at(j);
+        if (upcall->upcall_address() == upcall_address) {
+          return upcall->upcall_name();
+        }
+      }
+    }
+  }
+  return nullptr;
 }
