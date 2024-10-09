@@ -27,14 +27,15 @@
  * @summary CDS should fail to load if production time GC flags do not match training run.
  * @requires vm.flagless
  * @requires vm.cds.write.archived.java.heap
- * @requires vm.gc.ZSinglegen
- * @requires vm.gc.Serial
- * @requires vm.gc.Parallel
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build LeydenGCFlags
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar HelloApp
- * @run driver LeydenGCFlags
+ * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI LeydenGCFlags
  */
+
+import jdk.test.whitebox.WhiteBox;
+import jdk.test.whitebox.gc.GC;
 
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
@@ -44,7 +45,7 @@ import jdk.test.lib.StringArrayUtils;
 public class LeydenGCFlags {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
     static final String mainClass = "HelloApp";
-    static final String ERROR_GC_SUPPORTED = "Cannot create the CacheDataStore: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, or Epsilon";
+    static final String ERROR_GC_SUPPORTED = "Cannot create the CacheDataStore: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah";
     static final String ERROR_GC_MISMATCH = "CDS archive has aot-linked classes. It cannot be used because GC used during dump time (.*) is not the same as runtime (.*)";
     static final String ERROR_COOP_MISMATCH = "Disable Startup Code Cache: 'HelloApp.cds.code' was created with CompressedOops::shift.. = .* vs current .*";
 
@@ -55,18 +56,30 @@ public class LeydenGCFlags {
     static String productFailPattern;
 
     public static void main(String[] args) throws Exception {
-        // ZGC not supported for now
-        fail_dump("-XX:+UseZGC",  "-Xmx8g",  ERROR_GC_SUPPORTED);
+        if (GC.Z.isSupported()) {
+            // ZGC not supported for now
+            fail_dump("-XX:+UseZGC",  "-Xmx8g",  ERROR_GC_SUPPORTED);
+        }
 
-        // Serial and Parallel collector are allowed to be used, as long as the same one is used
-        // between training and production
-        good("-XX:+UseSerialGC",   "-XX:+UseSerialGC");
-        good("-XX:+UseParallelGC", "-XX:+UseParallelGC");
+        // Serial, Parallel and Shenandoah collectors are allowed to be used,
+        // as long as the same one is used between training and production
+        if (GC.Serial.isSupported()) {
+            good("-XX:+UseSerialGC",   "-XX:+UseSerialGC");
+        }
+        if (GC.Parallel.isSupported()) {
+            good("-XX:+UseParallelGC", "-XX:+UseParallelGC");
+        }
+        if (GC.Shenandoah.isSupported()) {
+            good("-XX:+UseShenandoahGC", "-XX:+UseShenandoahGC");
+        }
 
         // Fail if production uses a different collector than training
-        fail_run("-XX:+UseParallelGC", "-XX:+UseG1GC",        ERROR_GC_MISMATCH );
-        fail_run(null,                 "-XX:+UseParallelGC",  ERROR_GC_MISMATCH );
-
+        if (GC.Parallel.isSupported() && GC.G1.isSupported()) {
+            fail_run("-XX:+UseParallelGC", "-XX:+UseG1GC",        ERROR_GC_MISMATCH );
+        }
+        if (GC.Parallel.isSupported()) {
+            fail_run(null,                 "-XX:+UseParallelGC",  ERROR_GC_MISMATCH );
+        }
 
        if (false) { // Disabled for now, as on MacOS we cannot guarantee to get differnt coop encodings
         // Different oop encodings
