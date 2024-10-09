@@ -3570,10 +3570,10 @@ void SCAddressTable::init() {
 #endif
 
 #if INCLUDE_SHENANDOAHGC
-  SET_ADDRESS(_extrs, ShenandoahRuntime::arraycopy_barrier_oop_entry);
-  SET_ADDRESS(_extrs, ShenandoahRuntime::arraycopy_barrier_narrow_oop_entry);
-  SET_ADDRESS(_extrs, ShenandoahRuntime::write_ref_field_pre_entry);
-  SET_ADDRESS(_extrs, ShenandoahRuntime::shenandoah_clone_barrier);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::arraycopy_barrier_oop);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::arraycopy_barrier_narrow_oop);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::write_ref_field_pre);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::clone_barrier);
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_strong);
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_strong_narrow);
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_weak);
