@@ -28,6 +28,7 @@
 #include "c1/c1_Compilation.hpp"
 #include "c1/c1_GraphBuilder.hpp"
 #include "c1/c1_InstructionPrinter.hpp"
+#include "cds/cdsConfig.hpp"
 #include "ci/ciCallSite.hpp"
 #include "ci/ciField.hpp"
 #include "ci/ciKlass.hpp"
@@ -4077,6 +4078,11 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
     Values* args = new Values(1);
     args->push(append(new Constant(new MethodConstant(method()))));
     append(new RuntimeCall(voidType, "dtrace_method_entry", CAST_FROM_FN_PTR(address, SharedRuntime::dtrace_method_entry), args));
+  }
+
+  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers() && callee->is_end_training_trigger()) {
+    Values* args = new Values(0);
+    append(new RuntimeCall(voidType, "end_training_check_c1", CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c1), args));
   }
 
   if (profile_inlined_calls()) {

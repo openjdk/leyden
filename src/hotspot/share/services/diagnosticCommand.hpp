@@ -395,6 +395,24 @@ public:
   virtual void execute(DCmdSource source, TRAPS);
 };
 
+class AOTEndTrainingDCmd : public DCmd {
+public:
+  AOTEndTrainingDCmd(outputStream* output, bool heap) : DCmd(output, heap) { }
+    static const char* name() { return "AOT.end_training"; }
+    static const char* description() {
+      return "End AOT training and create the cache.";
+    }
+    static const char* impact() {
+      return "Medium: Pause time depends on number of loaded classes";
+    }
+    static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+      return p;
+    }
+    virtual void execute(DCmdSource source, TRAPS);
+};
+
 #if INCLUDE_CDS
 class DumpSharedArchiveDCmd: public DCmdWithParser {
 protected:

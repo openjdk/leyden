@@ -1861,6 +1861,22 @@ const TypeFunc *OptoRuntime::class_id_load_barrier_Type() {
 #endif
 
 //-----------------------------------------------------------------------------
+// AOT
+const TypeFunc *OptoRuntime::end_training_check_c2_Type() {
+  // create input type (domain)
+  const Type **fields = TypeTuple::fields(1);
+  fields[TypeFunc::Parms+0] = TypeRawPtr::BOTTOM; // Thread-local storage
+  const TypeTuple *domain = TypeTuple::make(TypeFunc::Parms+1,fields);
+
+  // create result type (range)
+  fields = TypeTuple::fields(0);
+
+  const TypeTuple *range = TypeTuple::make(TypeFunc::Parms+0,fields);
+
+  return TypeFunc::make(domain,range);
+}
+
+//-----------------------------------------------------------------------------
 // Dtrace support.  entry and exit probes have the same signature
 const TypeFunc *OptoRuntime::dtrace_method_entry_exit_Type() {
   // create input type (domain)

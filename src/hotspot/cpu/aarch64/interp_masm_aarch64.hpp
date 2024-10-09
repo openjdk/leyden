@@ -303,6 +303,9 @@ class InterpreterMacroAssembler: public MacroAssembler {
 
   typedef enum { NotifyJVMTI, SkipNotifyJVMTI } NotifyMethodExitMode;
 
+  // support for AOT
+  void end_training_check();
+
   // support for jvmti/dtrace
   void notify_method_entry();
   void notify_method_exit(TosState state, NotifyMethodExitMode mode);

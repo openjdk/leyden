@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/cdsConfig.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "interp_masm_x86.hpp"
 #include "interpreter/interpreter.hpp"
@@ -1927,6 +1928,10 @@ void InterpreterMacroAssembler::increment_mask_and_jump(Address counter_addr, Ad
   if (where != nullptr) {
     jcc(Assembler::zero, *where);
   }
+}
+
+void InterpreterMacroAssembler::end_training_check() {
+  call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
 }
 
 void InterpreterMacroAssembler::notify_method_entry() {

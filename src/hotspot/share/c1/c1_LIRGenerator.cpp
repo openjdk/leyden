@@ -30,6 +30,7 @@
 #include "c1/c1_LIRAssembler.hpp"
 #include "c1/c1_LIRGenerator.hpp"
 #include "c1/c1_ValueStack.hpp"
+#include "cds/cdsConfig.hpp"
 #include "ci/ciArrayKlass.hpp"
 #include "ci/ciInstance.hpp"
 #include "ci/ciObjArray.hpp"
@@ -2674,6 +2675,14 @@ void LIRGenerator::do_Base(Base* x) {
     __ metadata2reg(method()->constant_encoding(), meth);
     args->append(meth);
     call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::dtrace_method_entry), voidType, nullptr);
+  }
+
+  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers() && method()->is_end_training_trigger()) {
+    BasicTypeList signature;
+    signature.append(LP64_ONLY(T_LONG) NOT_LP64(T_INT));    // thread
+    LIR_OprList* args = new LIR_OprList();
+    args->append(getThreadPointer());
+    call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c1), voidType, nullptr);
   }
 
   if (method()->is_synchronized()) {

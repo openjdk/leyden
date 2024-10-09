@@ -121,12 +121,12 @@ address ZeroInterpreterGenerator::generate_method_entry(
   if (native) {
     entry_point = Interpreter::entry_for_kind(synchronized ? Interpreter::native_synchronized : Interpreter::native);
     if (entry_point == nullptr) {
-      entry_point = generate_native_entry(synchronized);
+      entry_point = generate_native_entry(synchronized, false);
     }
   } else {
     entry_point = Interpreter::entry_for_kind(synchronized ? Interpreter::zerolocals_synchronized : Interpreter::zerolocals);
     if (entry_point == nullptr) {
-      entry_point = generate_normal_entry(synchronized);
+      entry_point = generate_normal_entry(synchronized, false);
     }
   }
 
@@ -176,10 +176,10 @@ address ZeroInterpreterGenerator::generate_Reference_get_entry(void) {
   return generate_entry((address) ZeroInterpreter::Reference_get_entry);
 }
 
-address ZeroInterpreterGenerator::generate_native_entry(bool synchronized) {
+address ZeroInterpreterGenerator::generate_native_entry(bool synchronized, bool end_training_trigger) {
   return generate_entry((address) ZeroInterpreter::native_entry);
 }
 
-address ZeroInterpreterGenerator::generate_normal_entry(bool synchronized) {
+address ZeroInterpreterGenerator::generate_normal_entry(bool synchronized, bool end_training_trigger) {
   return generate_entry((address) ZeroInterpreter::normal_entry);
 }

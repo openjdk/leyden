@@ -1150,7 +1150,7 @@ void TemplateInterpreterGenerator::bang_stack_shadow_pages(bool native_call) {
 // Interpreter stub for calling a native method. (asm interpreter)
 // This sets up a somewhat different looking stack for calling the
 // native method than the typical interpreter frame setup.
-address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
+address TemplateInterpreterGenerator::generate_native_entry(bool synchronized, bool end_training_trigger) {
   // determine code generation flags
   bool inc_counter  = UseCompiler || CountCompiledCalls;
 
@@ -1268,6 +1268,11 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
 
   // jvmti support
   __ notify_method_entry();
+
+  // AOT training run support
+  if (end_training_trigger) {
+    __ end_training_check();
+  }
 
   // work registers
   const Register t = r17;
@@ -1573,7 +1578,7 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
 //
 // Generic interpreted method entry to (asm) interpreter
 //
-address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized) {
+address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized, bool end_training_trigger) {
   // determine code generation flags
   bool inc_counter  = UseCompiler || CountCompiledCalls;
 
@@ -1717,6 +1722,11 @@ address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized) {
 
   // jvmti support
   __ notify_method_entry();
+
+  // AOT training run support
+  if (end_training_trigger) {
+    __ end_training_check();
+  }
 
   __ dispatch_next(vtos);
 

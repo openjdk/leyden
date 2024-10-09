@@ -40,6 +40,7 @@
 #include "runtime/handles.inline.hpp"
 #include "runtime/jniHandles.hpp"
 #include "runtime/os.hpp"
+#include "runtime/sharedRuntime.hpp"
 #include "utilities/istream.hpp"
 #include "utilities/parseInteger.hpp"
 
@@ -496,6 +497,10 @@ bool CompilerOracle::should_log(const methodHandle& method) {
 
 bool CompilerOracle::should_break_at(const methodHandle& method) {
   return check_predicate(CompileCommandEnum::Break, method);
+}
+
+bool CompilerOracle::should_trigger_end_of_training_at(const methodHandle& method) {
+  return check_predicate(CompileCommandEnum::EndTrainingOnEnter, method);
 }
 
 void CompilerOracle::tag_blackhole_if_possible(const methodHandle& method) {
@@ -1127,6 +1132,11 @@ bool compilerOracle_init() {
   if (!CompilerOracle::parse_from_string(CompileOnly, CompilerOracle::parse_compile_only)) {
     success = false;
   }
+  if (CDSPreimage == nullptr) {
+    if (!CompilerOracle::parse_from_string(AOTEndTrainingOnMethodEntry, CompilerOracle::parse_aot_trigger)) {
+      success = false;
+    }
+  }
   if (CompilerOracle::has_command_file()) {
     if (!CompilerOracle::parse_from_file()) {
       success = false;
@@ -1147,7 +1157,7 @@ bool compilerOracle_init() {
   return success;
 }
 
-bool CompilerOracle::parse_compile_only(char* line) {
+bool CompilerOracle::parse_for_command(char* line, CompileCommandEnum command, const char* error_prefix, uint* count) {
   if (line[0] == '\0') {
     return true;
   }
@@ -1161,14 +1171,24 @@ bool CompilerOracle::parse_compile_only(char* line) {
     }
     method_pattern = strtok_r(line, ",", &line);
     if (method_pattern != nullptr) {
-      TypedMethodOptionMatcher* matcher = TypedMethodOptionMatcher::parse_method_pattern(method_pattern, error_buf, sizeof(error_buf));
-      if (matcher != nullptr) {
-        register_command(matcher, CompileCommandEnum::CompileOnly, true);
-        continue;
+      // if method pattern starts with count=, then parse the count
+      if (count != nullptr && strncmp(method_pattern, "count=", 6) == 0) {
+        int number = atoi(method_pattern + 6);
+        if (number > 0) {
+          *count = (uint)number;
+          continue;
+        }
+        strcpy(error_buf, "count must be a valid integer > 0");
+      } else {
+        TypedMethodOptionMatcher* matcher = TypedMethodOptionMatcher::parse_method_pattern(method_pattern, error_buf, sizeof(error_buf));
+        if (matcher != nullptr) {
+          register_command(matcher, command, true);
+          continue;
+        }
       }
     }
     ttyLocker ttyl;
-    tty->print_cr("CompileOnly: An error occurred during parsing");
+    tty->print_cr("%s: An error occurred during parsing", error_prefix);
     if (*error_buf != '\0') {
       tty->print_cr("Error: %s", error_buf);
     }
@@ -1176,6 +1196,19 @@ bool CompilerOracle::parse_compile_only(char* line) {
     return false;
   } while (method_pattern != nullptr && line != nullptr);
   return true;
+}
+
+bool CompilerOracle::parse_compile_only(char* line) {
+  return parse_for_command(line, CompileCommandEnum::CompileOnly, "CompileOnly");
+}
+
+bool CompilerOracle::parse_aot_trigger(char* line) {
+  uint count = 0;
+  bool result = parse_for_command(line, CompileCommandEnum::EndTrainingOnEnter, "AOTEndTrainingOnMethodEntry", &count);
+  if (result && count > 0) {
+    SharedRuntime::set_end_training_predicate(count);
+  }
+  return result;
 }
 
 CompileCommandEnum CompilerOracle::string_to_option(const char* name) {

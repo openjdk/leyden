@@ -167,17 +167,20 @@ AbstractInterpreter::MethodKind AbstractInterpreter::method_kind(const methodHan
       return abstract;
     }
     assert(!m->is_method_handle_intrinsic(), "overlapping bits here, watch out");
-    return m->is_synchronized() ? native_synchronized : native;
+    if (m->is_synchronized()) {
+      return m->is_end_training_trigger() ? native_synchronized_end_training_trigger : native_synchronized;
+    }
+    return m->is_end_training_trigger() ? native_end_training_trigger : native;
   }
 
   // Synchronized?
   if (m->is_synchronized()) {
-    return zerolocals_synchronized;
+    return m->is_end_training_trigger() ? zerolocals_synchronized_end_training_trigger : zerolocals_synchronized;
   }
 
   // Empty method?
   if (m->is_empty_method()) {
-    return empty;
+    return m->is_end_training_trigger() ? empty_end_training_trigger : empty;
   }
 
   // Getter method?
@@ -191,7 +194,7 @@ AbstractInterpreter::MethodKind AbstractInterpreter::method_kind(const methodHan
   }
 
   // Note: for now: zero locals for all non-empty methods
-  return zerolocals;
+  return m->is_end_training_trigger() ? zerolocals_end_training_trigger : zerolocals;
 }
 
 vmIntrinsics::ID AbstractInterpreter::method_intrinsic(MethodKind kind) {

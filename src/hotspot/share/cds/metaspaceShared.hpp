@@ -61,6 +61,7 @@ class MetaspaceShared : AllStatic {
   static char* _requested_base_address;
   static Array<Method*>* _archived_method_handle_intrinsics;
   static bool _use_optimized_module_handling;
+  static int volatile _preimage_static_archive_dumped;
 
  public:
   enum {

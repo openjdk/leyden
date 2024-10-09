@@ -1177,7 +1177,7 @@ void TemplateInterpreterGenerator::bang_stack_shadow_pages(bool native_call) {
 //   abstract stack (grows up)
 //     [  IJava (caller of JNI callee)  ]  <-- ASP
 //        ...
-address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
+address TemplateInterpreterGenerator::generate_native_entry(bool synchronized, bool end_training_trigger) {
 
   address entry = __ pc();
 
@@ -1602,7 +1602,7 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
 
 // Generic interpreted method entry to (asm) interpreter.
 //
-address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized) {
+address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized, bool end_training_trigger) {
   bool inc_counter = UseCompiler || CountCompiledCalls;
   address entry = __ pc();
   // Generate the code to allocate the interpreter stack frame.
