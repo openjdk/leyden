@@ -252,6 +252,8 @@ void ArchiveHeapWriter::copy_roots_to_buffer(GrowableArrayCHeap<oop, mtClassShar
                         size_elems, size_bytes, p2i(seg_oop));
   }
 
+  assert(root_index == roots->length(), "Post-condition: All roots are handled");
+
   _heap_root_segments = segments;
 }
 
