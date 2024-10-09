@@ -286,6 +286,16 @@ void G1BarrierSetAssembler::g1_write_barrier_pre(MacroAssembler* masm,
   __ bind(done);
 }
 
+// return a register that differs from tmp and is not rcx
+
+static Register pick_different_not_rcx(Register tmp) {
+  if (tmp == rscratch1) {
+    return rax;
+  } else {
+    return rscratch1;
+  }
+}
+
 static void generate_post_barrier_fast_path(MacroAssembler* masm,
                                             const Register store_addr,
                                             const Register new_val,
@@ -302,15 +312,17 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
 
   if (SCCache::is_on_for_write()) {
     address grain_shift_addr = AOTRuntimeConstants::grain_shift_address();
-    __ movptr(tmp, store_addr);
-    __ xorptr(tmp, new_val);
-    __ push(rscratch1);
+    Register save = pick_different_not_rcx(tmp);
+    __ push(save);
+    __ movptr(save, store_addr);
+    __ xorptr(save, new_val);
     __ push(rcx);
-    __ lea(rscratch1, ExternalAddress(grain_shift_addr));
-    __ movptr(rcx, Address(rscratch1, 0));
-    __ shrptr(tmp);
+    __ lea(rcx, ExternalAddress(grain_shift_addr));
+    __ movptr(rcx, Address(rcx, 0));
+    __ shrptr(save);
     __ pop(rcx);
-    __ pop(rscratch1);
+    __ mov(tmp, save);
+    __ pop(save);
     __ jcc(Assembler::equal, done);
   } else
 #endif // INCLUDE_CDS
@@ -334,13 +346,16 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   // it as an immediate operand
   if (SCCache::is_on_for_write()) {
     address card_shift_addr = AOTRuntimeConstants::card_shift_address();
-    __ push(rscratch1);
+    Register save = pick_different_not_rcx(tmp);
+    __ push(save);
+    __ mov(save, tmp);
     __ push(rcx);
-    __ lea(rscratch1, ExternalAddress(card_shift_addr));
-    __ movptr(rcx, Address(rscratch1, 0));
-    __ shrptr(tmp);
+    __ lea(rcx, ExternalAddress(card_shift_addr));
+    __ movptr(rcx, Address(rcx, 0));
+    __ shrptr(save);
     __ pop(rcx);
-    __ pop(rscratch1);
+    __ mov(tmp, save);
+    __ pop(save);
   } else
 #endif // INCLUDE_CDS
   {
