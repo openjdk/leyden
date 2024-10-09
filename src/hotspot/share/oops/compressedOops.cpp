@@ -65,7 +65,7 @@ void CompressedOops::initialize(const ReservedHeapSpace& heap_space) {
   }
   if ((uint64_t)heap_space.end() <= OopEncodingHeapMax) {
     // Did reserve heap below 32Gb. Can use base == 0;
-    set_base(0);
+    set_base(nullptr);
   } else {
     set_base((address)heap_space.compressed_oop_base());
   }
@@ -120,7 +120,7 @@ CompressedOops::Mode CompressedOops::mode() {
     return DisjointBaseNarrowOop;
   }
 
-  if (base() != 0) {
+  if (base() != nullptr) {
     return HeapBasedNarrowOop;
   }
 
@@ -171,7 +171,7 @@ void CompressedOops::print_mode(outputStream* st) {
 
   st->print(", Compressed Oops mode: %s", mode_to_string(mode()));
 
-  if (base() != 0) {
+  if (base() != nullptr) {
     st->print(": " PTR_FORMAT, p2i(base()));
   }
 
