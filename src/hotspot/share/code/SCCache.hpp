@@ -271,7 +271,6 @@ private:
   uint     _blobs_length;
   uint     _C1_blobs_length;
   uint     _C2_blobs_length;
-  uint     _final_blobs_length;
 
   bool _extrs_complete;
   bool _early_stubs_complete;
