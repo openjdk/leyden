@@ -175,6 +175,13 @@ void SCCache::init2() {
     close();
     exit_vm_on_load_failure();
   }
+
+  // initialize the table of external routines so we can save
+  // generated code blobs that reference them
+  init_extrs_table();
+  // initialize the table of initial stubs so we can save
+  // generated code blobs that reference them
+  init_early_stubs_table();
 }
 
 void SCCache::print_timers_on(outputStream* st) {
@@ -243,6 +250,8 @@ void SCCache::close() {
         }
 
         LogStreamHandle(Info, scc, codecache) info_scc;
+        // need a lock to traverse the code cache
+        MutexLocker locker(CodeCache_lock, Mutex::_no_safepoint_check_flag);
         if (info_scc.is_enabled()) {
           NMethodIterator iter(NMethodIterator::all);
           while (iter.next()) {
@@ -580,10 +589,28 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
   _table = new SCAddressTable();
 }
 
-void SCCache::init_table() {
+void SCCache::init_extrs_table() {
   SCCache* cache = SCCache::cache();
   if (cache != nullptr && cache->_table != nullptr) {
-    cache->_table->init();
+    cache->_table->init_extrs();
+  }
+}
+void SCCache::init_early_stubs_table() {
+  SCCache* cache = SCCache::cache();
+  if (cache != nullptr && cache->_table != nullptr) {
+    cache->_table->init_early_stubs();
+  }
+}
+void SCCache::init_shared_blobs_table() {
+  SCCache* cache = SCCache::cache();
+  if (cache != nullptr && cache->_table != nullptr) {
+    cache->_table->init_shared_blobs();
+  }
+}
+void SCCache::init_stubs_table() {
+  SCCache* cache = SCCache::cache();
+  if (cache != nullptr && cache->_table != nullptr) {
+    cache->_table->init_stubs();
   }
 }
 
@@ -3535,17 +3562,11 @@ void SCCReader::print_on(outputStream* st) {
     assert(type##_length <= type##_max, "increase size"); \
   }
 
-static bool initializing = false;
-void SCAddressTable::init() {
-  if (_complete || initializing) return; // Done already
-  initializing = true;
+static bool initializing_extrs = false;
+void SCAddressTable::init_extrs() {
+  if (_extrs_complete || initializing_extrs) return; // Done already
+  initializing_extrs = true;
   _extrs_addr = NEW_C_HEAP_ARRAY(address, _extrs_max, mtCode);
-  _stubs_addr = NEW_C_HEAP_ARRAY(address, _stubs_max, mtCode);
-  _blobs_addr = NEW_C_HEAP_ARRAY(address, _blobs_max, mtCode);
-
-  // Divide _blobs_addr array to chunks because they could be initialized in parrallel
-  _C2_blobs_addr = _blobs_addr + _shared_blobs_max;// C2 blobs addresses stored after shared blobs
-  _C1_blobs_addr = _C2_blobs_addr + _C2_blobs_max; // C1 blobs addresses stored after C2 blobs
 
   _extrs_length = 0;
   _stubs_length = 0;
@@ -3654,9 +3675,68 @@ void SCAddressTable::init() {
   while (*p != nullptr) {
     SET_ADDRESS(_extrs, *p++);
   }
+
+  _extrs_complete = true;
+  log_info(scc,init)("External addresses recorded");
+}
+
+static bool initializing_early_stubs = false;
+void SCAddressTable::init_early_stubs() {
+  if (_complete || initializing_early_stubs) return; // Done already
+  initializing_early_stubs = true;
+  _stubs_addr = NEW_C_HEAP_ARRAY(address, _stubs_max, mtCode);
+  _stubs_length = 0;
+  SET_ADDRESS(_stubs, StubRoutines::forward_exception_entry());
+  _early_stubs_complete = true;
+  log_info(scc,init)("early stubs recorded");
+}
+
+static bool initializing_shared_blobs = false;
+void SCAddressTable::init_shared_blobs() {
+  if (_complete || initializing_shared_blobs) return; // Done already
+  initializing_shared_blobs = true;
+  _blobs_addr = NEW_C_HEAP_ARRAY(address, _blobs_max, mtCode);
+  // Divide _blobs_addr array to chunks because they could be initialized in parrallel
+  _C2_blobs_addr = _blobs_addr + _shared_blobs_max;// C2 blobs addresses stored after shared blobs
+  _C1_blobs_addr = _C2_blobs_addr + _C2_blobs_max; // C1 blobs addresses stored after C2 blobs
+  _blobs_length = 0;       // for shared blobs
+  _C1_blobs_length = 0;
+  _C2_blobs_length = 0;
+  _final_blobs_length = 0; // Depends on numnber of C1 blobs
+  // Blobs
+  SET_ADDRESS(_blobs, SharedRuntime::get_handle_wrong_method_stub());
+  SET_ADDRESS(_blobs, SharedRuntime::get_ic_miss_stub());
+  SET_ADDRESS(_blobs, SharedRuntime::get_resolve_opt_virtual_call_stub());
+  SET_ADDRESS(_blobs, SharedRuntime::get_resolve_virtual_call_stub());
+  SET_ADDRESS(_blobs, SharedRuntime::get_resolve_static_call_stub());
+  SET_ADDRESS(_blobs, SharedRuntime::deopt_blob()->entry_point());
+  SET_ADDRESS(_blobs, SharedRuntime::polling_page_safepoint_handler_blob()->entry_point());
+  SET_ADDRESS(_blobs, SharedRuntime::polling_page_return_handler_blob()->entry_point());
+#ifdef COMPILER2
+  SET_ADDRESS(_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
+#endif
+  assert(_blobs_length <= _shared_blobs_max, "increase _shared_blobs_max to %d", _blobs_length);
+  _final_blobs_length = _blobs_length;
+  log_info(scc,init)("Early shared blobs recorded");
+}
+
+static bool initializing_stubs = false;
+void SCAddressTable::init_stubs() {
+  if (_complete || initializing_stubs) return; // Done already
+  initializing_stubs = true;
+  // final blobs
+  SET_ADDRESS(_blobs, SharedRuntime::throw_AbstractMethodError_entry());
+  SET_ADDRESS(_blobs, SharedRuntime::throw_IncompatibleClassChangeError_entry());
+  SET_ADDRESS(_blobs, SharedRuntime::throw_NullPointerException_at_call_entry());
+  SET_ADDRESS(_blobs, SharedRuntime::throw_StackOverflowError_entry());
+  SET_ADDRESS(_blobs, SharedRuntime::throw_delayed_StackOverflowError_entry());
+  assert(_blobs_length <= _shared_blobs_max, "increase _shared_blobs_max to %d", _blobs_length);
+  _final_blobs_length = _blobs_length;
+  _shared_blobs_complete = true;
+  log_info(scc,init)("All shared blobs recorded");
+
   // Stubs
   SET_ADDRESS(_stubs, StubRoutines::method_entry_barrier());
-  SET_ADDRESS(_stubs, StubRoutines::forward_exception_entry());
 /*
   SET_ADDRESS(_stubs, StubRoutines::throw_AbstractMethodError_entry());
   SET_ADDRESS(_stubs, StubRoutines::throw_IncompatibleClassChangeError_entry());
@@ -3819,29 +3899,8 @@ void SCAddressTable::init() {
   SET_ADDRESS(_stubs, StubRoutines::aarch64::spin_wait());
 #endif
 
-  // Blobs
-  SET_ADDRESS(_blobs, SharedRuntime::get_handle_wrong_method_stub());
-  SET_ADDRESS(_blobs, SharedRuntime::get_ic_miss_stub());
-  SET_ADDRESS(_blobs, SharedRuntime::get_resolve_opt_virtual_call_stub());
-  SET_ADDRESS(_blobs, SharedRuntime::get_resolve_virtual_call_stub());
-  SET_ADDRESS(_blobs, SharedRuntime::get_resolve_static_call_stub());
-  SET_ADDRESS(_blobs, SharedRuntime::deopt_blob()->entry_point());
-  SET_ADDRESS(_blobs, SharedRuntime::polling_page_safepoint_handler_blob()->entry_point());
-  SET_ADDRESS(_blobs, SharedRuntime::polling_page_return_handler_blob()->entry_point());
-#ifdef COMPILER2
-  SET_ADDRESS(_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
-#endif
-
-  SET_ADDRESS(_blobs, SharedRuntime::throw_AbstractMethodError_entry());
-  SET_ADDRESS(_blobs, SharedRuntime::throw_IncompatibleClassChangeError_entry());
-  SET_ADDRESS(_blobs, SharedRuntime::throw_NullPointerException_at_call_entry());
-  SET_ADDRESS(_blobs, SharedRuntime::throw_StackOverflowError_entry());
-  SET_ADDRESS(_blobs, SharedRuntime::throw_delayed_StackOverflowError_entry());
-
-  assert(_blobs_length <= _shared_blobs_max, "increase _shared_blobs_max to %d", _blobs_length);
-  _final_blobs_length = _blobs_length;
   _complete = true;
-  log_info(scc,init)("External addresses and stubs recorded");
+  log_info(scc,init)("Stubs recorded");
 }
 
 void SCAddressTable::init_opto() {
@@ -4033,7 +4092,7 @@ void SCCache::add_new_C_string(const char* str) {
 }
 
 void SCAddressTable::add_C_string(const char* str) {
-  if (str != nullptr && _complete && (_opto_complete || _c1_complete)) {
+  if (str != nullptr && _extrs_complete) {
     // Check previous strings address
     for (int i = 0; i < _C_strings_count; i++) {
       if (_C_strings[i] == str) {
@@ -4097,7 +4156,7 @@ int search_address(address addr, address* table, uint length) {
 }
 
 address SCAddressTable::address_for_id(int idx) {
-  if (!_complete) {
+  if (!_extrs_complete) {
     fatal("SCA table is not complete");
   }
   if (idx == -1) {
@@ -4132,7 +4191,7 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
   if (addr == (address)-1) { // Static call stub has jump to itself
     return id;
   }
-  if (!_complete) {
+  if (!_extrs_complete) {
     fatal("SCA table is not complete");
   }
   // Seach for C string

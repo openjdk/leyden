@@ -273,6 +273,9 @@ private:
   uint     _C2_blobs_length;
   uint     _final_blobs_length;
 
+  bool _extrs_complete;
+  bool _early_stubs_complete;
+  bool _shared_blobs_complete;
   bool _complete;
   bool _opto_complete;
   bool _c1_complete;
@@ -282,12 +285,18 @@ public:
     _extrs_addr = nullptr;
     _stubs_addr = nullptr;
     _blobs_addr = nullptr;
+    _extrs_complete = false;
+    _early_stubs_complete = false;
+    _shared_blobs_complete = false;
     _complete = false;
     _opto_complete = false;
     _c1_complete = false;
   }
   ~SCAddressTable();
-  void init();
+  void init_extrs();
+  void init_early_stubs();
+  void init_shared_blobs();
+  void init_stubs();
   void init_opto();
   void init_c1();
   void add_C_string(const char* str);
@@ -470,7 +479,10 @@ public:
   void load_strings();
   int store_strings();
 
-  static void init_table();
+  static void init_extrs_table();
+  static void init_early_stubs_table();
+  static void init_shared_blobs_table();
+  static void init_stubs_table();
   static void init_opto_table();
   static void init_c1_table();
   address address_for_id(int id) const { return _table->address_for_id(id); }

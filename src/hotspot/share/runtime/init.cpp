@@ -166,6 +166,7 @@ jint init_globals() {
   InterfaceSupport_init();
   VMRegImpl::set_regName();  // need this before generate_stubs (for printing oop maps).
   SharedRuntime::generate_stubs();
+  SCCache::init_shared_blobs_table();  // need this after generate_stubs
   return JNI_OK;
 }
 
@@ -204,6 +205,7 @@ jint init_globals2() {
   }
   compiler_stubs_init(false /* in_compiler_thread */); // compiler's intrinsics stubs
   final_stubs_init();    // final StubRoutines stubs
+  SCCache::init_stubs_table();
   MethodHandles::generate_adapters();
   SystemDictionary::restore_archived_method_handle_intrinsics();
 
