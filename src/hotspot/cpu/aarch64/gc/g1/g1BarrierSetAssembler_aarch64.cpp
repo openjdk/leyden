@@ -236,7 +236,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   }
   // Storing region crossing non-null, is card young?
 
- #if INCLUDE_CDS
+#if INCLUDE_CDS
   // AOT code needs to load the barrier card shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
@@ -316,7 +316,7 @@ static void generate_c2_barrier_runtime_call(MacroAssembler* masm, G1BarrierStub
     __ mov(c_rarg0, arg);
   }
   __ mov(c_rarg1, rthread);
-  __ mov(rscratch1, runtime_path);
+  __ lea(rscratch1, RuntimeAddress(runtime_path));
   __ blr(rscratch1);
 }
 
