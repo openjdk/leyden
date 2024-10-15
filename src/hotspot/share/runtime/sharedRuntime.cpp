@@ -3363,7 +3363,7 @@ void AdapterHandlerLibrary::serialize(SerializeClosure* sc) {
 }
 
 void AdapterHandlerLibrary::populate_adapter_handler_table() {
-  PerfTraceElapsedTime timer(ClassLoader::perf_method_adapters_time());
+  PerfTraceElapsedTime timer(ClassLoader::perf_load_adapter_table_time());
   assert(_adapter_handler_table != nullptr, "_adapter_handler_table is not initialized");
   if (_archived_adapter_handler_list != nullptr) {
     log_info(cds)("Found adapter handlers list (size=%d) in the AOT cache", _archived_adapter_handler_list->length());
