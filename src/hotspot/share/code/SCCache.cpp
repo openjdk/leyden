@@ -1139,6 +1139,12 @@ bool SCCache::finish_write() {
 
     SCCEntry* entries_address = _store_entries; // Pointer to latest entry
     uint not_entrant_nb = 0;
+    uint stubs_count = 0;
+    uint adapters_count = 0;
+    uint shared_blobs_count = 0;
+    uint c1_blobs_count = 0;
+    uint opto_blobs_count = 0;
+    uint total_blobs_count = 0;
     uint max_size = 0;
     // Add old entries first
     if (_for_read && (_load_header != nullptr)) {
@@ -1158,6 +1164,20 @@ bool SCCache::finish_write() {
         } else if (_load_entries[i].for_preload() && _load_entries[i].method() != nullptr) {
           // record entrant first version code for pre-loading
           preload_entries[preload_entries_cnt++] = entries_count;
+	} else if (entries_address[i].kind() == SCCEntry::Adapter) {
+	  adapters_count++;
+	} else if (entries_address[i].kind() == SCCEntry::Stub) {
+	  stubs_count++;
+	} else if (entries_address[i].kind() == SCCEntry::Blob) {
+	  total_blobs_count++;
+	  if (entries_address[i].comp_level() == CompLevel_none) {
+	    shared_blobs_count++;
+	  } else if (entries_address[i].comp_level() == CompLevel_simple) {
+	    c1_blobs_count++;
+	  } else {
+	    assert(entries_address[i].comp_level() == CompLevel_full_optimization, "must be!");
+	    opto_blobs_count++;
+	  }
         }
         {
           uint size = align_up(_load_entries[i].size(), DATA_ALIGNMENT);
@@ -1256,7 +1276,12 @@ bool SCCache::finish_write() {
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
     current += entries_size;
     log_info(scc, exit)("Wrote %d SCCEntry entries (%d were not entrant, %d max size) to Startup Code Cache '%s'", entries_count, not_entrant_nb, max_size, _cache_path);
-
+    log_info(scc, exit)("  Stubs: total=%d", stubs_count);
+    log_info(scc, exit)("  Adapters: total=%d", adapters_count);
+    log_info(scc, exit)("  Shared Blobs: total=%d",shared_blobs_count);
+    log_info(scc, exit)("  C1 Blobs: total=%d", c1_blobs_count);
+    log_info(scc, exit)("  Opto Blobs: total=%d", opto_blobs_count);
+    log_info(scc, exit)("  All Blobs: total=%d", total_blobs_count);
     uint size = (current - start);
     assert(size <= total_size, "%d > %d", size , total_size);
 
@@ -1972,7 +1997,6 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
 
 bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code_offset) {
   assert(code_offset == align_up(code_offset, DATA_ALIGNMENT), "%d not aligned to %d", code_offset, DATA_ALIGNMENT);
-  assert(buffer->blob() != nullptr, "sanity");
   SCCodeSection* scc_cs = (SCCodeSection*)addr(code_offset);
   for (int i = 0; i < (int)CodeBuffer::SECT_LIMIT; i++) {
     CodeSection* cs = buffer->code_section(i);
@@ -2006,6 +2030,82 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
     cs->set_end(code_start + orig_size);
   }
 
+  return true;
+}
+
+bool SCCache::load_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
+#ifdef ASSERT
+  LogStreamHandle(Debug, scc, stubs) log;
+  if (log.is_enabled()) {
+    FlagSetting fs(PrintRelocations, true);
+    buffer->print_on(&log);
+  }
+#endif
+  SCCache* cache = open_for_read();
+  if (cache == nullptr) {
+    return false;
+  }
+  log_info(scc, stubs)("Looking up adapter %s (0x%x) in Startup Code Cache '%s'",
+                       name, id, _cache->cache_path());
+  SCCEntry* entry = cache->find_entry(SCCEntry::Adapter, id);
+  if (entry == nullptr) {
+    return false;
+  }
+  SCCReader reader(cache, entry, nullptr);
+  return reader.compile_adapter(buffer, name, offsets);
+}
+bool SCCReader::compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]) {
+  uint entry_position = _entry->offset();
+  // Read name
+  uint name_offset = entry_position + _entry->name_offset();
+  uint name_size = _entry->name_size(); // Includes '/0'
+  const char* stored_name = addr(name_offset);
+  log_info(scc, stubs)("%d (L%d): Reading adapter '%s' from Startup Code Cache '%s'",
+                       compile_id(), comp_level(), name, _cache->cache_path());
+  if (strncmp(stored_name, name, (name_size - 1)) != 0) {
+    log_warning(scc)("%d (L%d): Saved adapter's name '%s' is different from '%s'",
+                     compile_id(), comp_level(), stored_name, name);
+    // n.b. this is not fatal -- we have just seen a hash id clash
+    // so no need to call cache->set_failed()
+    return false;
+  }
+  // Create fake original CodeBuffer
+  CodeBuffer orig_buffer(name);
+  // Read code
+  uint code_offset = entry_position + _entry->code_offset();
+  if (!read_code(buffer, &orig_buffer, code_offset)) {
+    return false;
+  }
+  // Read relocations
+  uint reloc_offset = entry_position + _entry->reloc_offset();
+  set_read_position(reloc_offset);
+  if (!read_relocations(buffer, &orig_buffer, nullptr, nullptr)) {
+    return false;
+  }
+  uint offset = read_position();
+  int offsets_count = *(int*)addr(offset);
+  offset += sizeof(int);
+  assert(offsets_count == 4, "wrong caller expectations");
+  set_read_position(offset);
+  for (int i = 0; i < offsets_count; i++) {
+    uint32_t arg = *(uint32_t*)addr(offset);
+    offset += sizeof(uint32_t);
+    log_debug(scc, stubs)("%d (L%d): Reading adapter '%s'  offsets[%d] == 0x%x from Startup Code Cache '%s'",
+                         compile_id(), comp_level(), stored_name, i, arg, _cache->cache_path());
+    offsets[i] = arg;
+  }
+  log_debug(scc, stubs)("%d (L%d): Read adapter '%s' with '%d' args from Startup Code Cache '%s'",
+                       compile_id(), comp_level(), stored_name, offsets_count, _cache->cache_path());
+#ifdef ASSERT
+  LogStreamHandle(Debug, scc, stubs) log;
+  if (log.is_enabled()) {
+    FlagSetting fs(PrintRelocations, true);
+    buffer->print_on(&log);
+    buffer->decode();
+  }
+#endif
+  // mark entry as loaded
+  ((SCCEntry *)_entry)->set_loaded();
   return true;
 }
 
@@ -2250,6 +2350,72 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
   } // for(i < SECT_LIMIT)
   FREE_C_HEAP_ARRAY(uint, reloc_data);
   return success;
+}
+
+bool SCCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
+  SCCache* cache = open_for_write();
+  if (cache == nullptr) {
+    return false;
+  }
+  log_info(scc, stubs)("Writing adapter '%s' (0x%x) to Startup Code Cache '%s'", name, id, cache->_cache_path);
+#ifdef ASSERT
+  LogStreamHandle(Debug, scc, stubs) log;
+  if (log.is_enabled()) {
+    FlagSetting fs(PrintRelocations, true);
+    buffer->print_on(&log);
+    buffer->decode();
+  }
+#endif
+  // we need to take a lock to stop C1 and C2 compiler threads racing to
+  // write blobs in parallel with each other or with later nmethods
+  // TODO - maybe move this up to selected callers so we only lock
+  // when saving a c1 or opto blob
+  MutexLocker ml(Compile_lock);
+  if (!cache->align_write()) {
+    return false;
+  }
+  uint entry_position = cache->_write_position;
+  // Write name
+  uint name_offset = cache->_write_position - entry_position;
+  uint name_size = (uint)strlen(name) + 1; // Includes '/0'
+  uint n = cache->write_bytes(name, name_size);
+  if (n != name_size) {
+    return false;
+  }
+  // Write code section
+  if (!cache->align_write()) {
+    return false;
+  }
+  uint code_offset = cache->_write_position - entry_position;
+  uint code_size = 0;
+  if (!cache->write_code(buffer, code_size)) {
+    return false;
+  }
+  // Write relocInfo array
+  uint reloc_offset = cache->_write_position - entry_position;
+  uint reloc_size = 0;
+  if (!cache->write_relocations(buffer, reloc_size)) {
+    return false;
+  }
+  int extras_count = 4;
+  n = cache->write_bytes(&extras_count, sizeof(int));
+  if (n != sizeof(int)) {
+    return false;
+  }
+  for (int i = 0; i < 4; i++) {
+    uint32_t arg = offsets[i];
+    log_debug(scc, stubs)("Writing adapter '%s' (0x%x) offsets[%d] == 0x%x to Startup Code Cache '%s'", name, id, i, arg, cache->_cache_path);
+    n = cache->write_bytes(&arg, sizeof(uint32_t));
+    if (n != sizeof(uint32_t)) {
+      return false;
+    }
+  }
+  uint entry_size = cache->_write_position - entry_position;
+  SCCEntry* entry = new (cache) SCCEntry(entry_position, entry_size, name_offset, name_size,
+                                          code_offset, code_size, reloc_offset, reloc_size,
+                                        SCCEntry::Adapter, id, 0);
+  log_info(scc, stubs)("Wrote adapter '%s' (0x%x) to Startup Code Cache '%s'", name, id, cache->_cache_path);
+  return true;
 }
 
 bool SCCache::write_code(CodeBuffer* buffer, uint& code_size) {
@@ -3393,7 +3559,7 @@ static void print_helper1(outputStream* st, const char* name, int count) {
     st->print(" %s=%d", name, count);
   }
 }
-static void print_helper(outputStream* st, const char* name, int stats[6+3][6], int idx) {
+static void print_helper(outputStream* st, const char* name, int stats[6+3+1][6], int idx) {
   int total = stats[idx][0];
   if (total > 0) {
     st->print("  %s:", name);
@@ -3420,7 +3586,8 @@ void SCCache::print_statistics_on(outputStream* st) {
     uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
     SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
 
-    int stats[6 + 3][6] = {0};
+    // Entries are None, Adapter, Stub, Blob x 3 levels, Code x 6 levels
+    int stats[6 + 3 + 1][6] = {0};
     for (uint i = 0; i < count; i++) {
       int index = search_entries[2*i + 1];
       SCCEntry* entry = &(load_entries[index]);
@@ -3450,6 +3617,7 @@ void SCCache::print_statistics_on(outputStream* st) {
     print_helper(st, "None", stats, SCCEntry::None);
     print_helper(st, "Stub", stats, SCCEntry::Stub);
     print_helper(st, "Blob", stats, SCCEntry::Blob);
+    print_helper(st, "Adapters", stats, SCCEntry::Adapter);
     for (int lvl = 0; lvl <= CompLevel_full_optimization + 1; lvl++) {
       ResourceMark rm;
       stringStream ss;
@@ -3616,6 +3784,19 @@ void SCAddressTable::init_extrs() {
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_phantom);
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_phantom_narrow);
 #endif
+  SET_ADDRESS(_extrs, SharedRuntime::fixup_callers_callsite);
+
+  SET_ADDRESS(_extrs, SharedRuntime::log_jni_monitor_still_held);
+  SET_ADDRESS(_extrs, SharedRuntime::rc_trace_method_entry);
+  SET_ADDRESS(_extrs, SharedRuntime::reguard_yellow_pages);
+  SET_ADDRESS(_extrs, SharedRuntime::dtrace_method_exit);
+
+  SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method);
+  SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method_abstract);
+  SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method_ic_miss);
+  SET_ADDRESS(_extrs, SharedRuntime::resolve_opt_virtual_call_C);
+  SET_ADDRESS(_extrs, SharedRuntime::resolve_virtual_call_C);
+  SET_ADDRESS(_extrs, SharedRuntime::resolve_static_call_C);
 
   SET_ADDRESS(_extrs, SharedRuntime::complete_monitor_unlocking_C);
   SET_ADDRESS(_extrs, SharedRuntime::enable_stack_reserved_zone);
@@ -4019,7 +4200,11 @@ SCAddressTable::~SCAddressTable() {
   }
 }
 
+#ifdef PRODUCT
 #define MAX_STR_COUNT 200
+#else
+#define MAX_STR_COUNT 500
+#endif
 static const char* _C_strings[MAX_STR_COUNT] = {nullptr};
 static int _C_strings_count = 0;
 static int _C_strings_s[MAX_STR_COUNT] = {0};

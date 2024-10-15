@@ -758,6 +758,8 @@ class AdapterHandlerLibrary: public AllStatic {
   static void print_handler(const CodeBlob* b) { print_handler_on(tty, b); }
   static void print_handler_on(outputStream* st, const CodeBlob* b);
   static bool contains(const CodeBlob* b);
+  static const char* name(AdapterFingerPrint* fingerprint);
+  static uint32_t id(AdapterFingerPrint* fingerprint);
 #ifndef PRODUCT
   static void print_statistics_on(outputStream* st);
 #endif // PRODUCT

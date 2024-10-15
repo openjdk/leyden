@@ -145,9 +145,10 @@ class SCCEntry {
 public:
   enum Kind {
     None = 0,
-    Stub = 1,
-    Blob = 2,
-    Code = 3
+    Adapter = 1,
+    Stub = 2,
+    Blob = 3,
+    Code = 4
   };
 
 private:
@@ -359,6 +360,8 @@ public:
   bool compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler);
   bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
+  bool compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]);
+
   Klass* read_klass(const methodHandle& comp_method, bool shared);
   Method* read_method(const methodHandle& comp_method, bool shared);
 
@@ -530,6 +533,9 @@ public:
 
   static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset);
   static bool store_exception_blob(CodeBuffer* buffer, int pc_offset);
+
+  static bool load_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]);
+  static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]);
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level);
 
