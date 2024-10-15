@@ -450,6 +450,8 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
 
 
   LambdaFormInvokers::serialize(soc);
+  AdapterHandlerLibrary::serialize(soc);
+
   soc->do_tag(666);
 }
 
@@ -556,6 +558,9 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
 
   // Write lambform lines into archive
   LambdaFormInvokers::dump_static_archive_invokers();
+  if (CDSConfig::is_dumping_adapters()) {
+    AdapterHandlerLibrary::dump_adapter_handler_list();
+  }
   // Write module name into archive
   CDS_JAVA_HEAP_ONLY(Modules::dump_main_module_name();)
   // Write the other data to the output array.

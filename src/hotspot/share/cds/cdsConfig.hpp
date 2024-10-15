@@ -161,6 +161,7 @@ public:
   static void disable_dumping_cached_code()                  NOT_CDS_RETURN;
   static void enable_dumping_cached_code()                   NOT_CDS_RETURN;
 
+  static bool is_dumping_adapters()                          NOT_CDS_RETURN_(false);
 };
 
 #endif // SHARE_CDS_CDSCONFIG_HPP

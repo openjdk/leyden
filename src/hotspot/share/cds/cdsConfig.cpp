@@ -867,3 +867,7 @@ void CDSConfig::disable_dumping_cached_code() {
 void CDSConfig::enable_dumping_cached_code() {
   _is_dumping_cached_code = true;
 }
+
+bool CDSConfig::is_dumping_adapters() {
+  return (ArchiveAdapters && is_dumping_final_static_archive());
+}

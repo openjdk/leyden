@@ -168,6 +168,9 @@
                                                                             \
   product(bool, SkipArchiveHeapVerification, false,                         \
           "Skip verification of CDS archive heap")                          \
+                                                                            \
+  product(bool, ArchiveAdapters, false,                                     \
+          "Archive AdapterFingerPrint and AdapterHandlerEntry")             \
 
 // end of CDS_FLAGS
 

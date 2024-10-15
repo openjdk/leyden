@@ -23,11 +23,14 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/archiveBuilder.hpp"
+#include "cds/archiveUtils.inline.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/SCCache.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/nmethod.inline.hpp"
@@ -156,8 +159,6 @@ void SharedRuntime::generate_stubs() {
     generate_throw_exception(SharedStubId::throw_NullPointerException_at_call_id,
                              CAST_FROM_FN_PTR(address, SharedRuntime::throw_NullPointerException_at_call));
 
-  AdapterHandlerLibrary::initialize();
-
 #if COMPILER2_OR_JVMCI
   // Vectors are generated only by C2 and JVMCI.
   bool support_wide = is_wide_vector(MaxVectorSize);
@@ -187,6 +188,10 @@ void SharedRuntime::generate_stubs() {
       vm_exit_during_initialization("SharedRuntime::generate_stubs() failed unexpectedly");
     }
   }
+}
+
+void SharedRuntime::init_adapter_library() {
+  AdapterHandlerLibrary::initialize();
 }
 
 void SharedRuntime::print_counters_on(outputStream* st) {
@@ -2263,7 +2268,7 @@ static int _compact; // number of equals calls with compact signature
 
 // A simple wrapper class around the calling convention information
 // that allows sharing of adapters for the same calling convention.
-class AdapterFingerPrint : public CHeapObj<mtCode> {
+class AdapterFingerPrint : public MetaspaceObj {
  private:
   enum {
     _basic_type_bits = 4,
@@ -2274,12 +2279,29 @@ class AdapterFingerPrint : public CHeapObj<mtCode> {
   // TO DO:  Consider integrating this with a more global scheme for compressing signatures.
   // For now, 4 bits per components (plus T_VOID gaps after double/long) is not excessive.
 
-  union {
-    int  _compact[_compact_int_count];
-    int* _fingerprint;
-  } _value;
-  int _length; // A negative length indicates the fingerprint is in the compact form,
-               // Otherwise _value._fingerprint is the array.
+  int _length;
+  int _value[_compact_int_count];
+
+  // Private construtor. Use allocate() to get an instance.
+  AdapterFingerPrint(int total_args_passed, BasicType* sig_bt) {
+    // Pack the BasicTypes with 8 per int
+    _length = (total_args_passed + (_basic_types_per_int-1)) / _basic_types_per_int;
+    int sig_index = 0;
+    for (int index = 0; index < _length; index++) {
+      int value = 0;
+      for (int byte = 0; sig_index < total_args_passed && byte < _basic_types_per_int; byte++) {
+	int bt = adapter_encoding(sig_bt[sig_index++]);
+	assert((bt & _basic_type_mask) == bt, "must fit in 4 bits");
+	value = (value << _basic_type_bits) | bt;
+      }
+      _value[index] = value;
+    }
+  }
+
+  // Call deallocate instead
+  ~AdapterFingerPrint() {
+    FreeHeap(this);
+  }
 
   // Remap BasicTypes that are handled equivalently by the adapters.
   // These are correct for the current system but someday it might be
@@ -2316,57 +2338,39 @@ class AdapterFingerPrint : public CHeapObj<mtCode> {
     }
   }
 
- public:
-  AdapterFingerPrint(int total_args_passed, BasicType* sig_bt) {
-    // The fingerprint is based on the BasicType signature encoded
-    // into an array of ints with eight entries per int.
-    int* ptr;
-    int len = (total_args_passed + (_basic_types_per_int-1)) / _basic_types_per_int;
-    if (len <= _compact_int_count) {
-      assert(_compact_int_count == 3, "else change next line");
-      _value._compact[0] = _value._compact[1] = _value._compact[2] = 0;
-      // Storing the signature encoded as signed chars hits about 98%
-      // of the time.
-      _length = -len;
-      ptr = _value._compact;
-    } else {
-      _length = len;
-      _value._fingerprint = NEW_C_HEAP_ARRAY(int, _length, mtCode);
-      ptr = _value._fingerprint;
-    }
-
-    // Now pack the BasicTypes with 8 per int
-    int sig_index = 0;
-    for (int index = 0; index < len; index++) {
-      int value = 0;
-      for (int byte = 0; sig_index < total_args_passed && byte < _basic_types_per_int; byte++) {
-        int bt = adapter_encoding(sig_bt[sig_index++]);
-        assert((bt & _basic_type_mask) == bt, "must fit in 4 bits");
-        value = (value << _basic_type_bits) | bt;
-      }
-      ptr[index] = value;
-    }
+  void* operator new(size_t size, size_t fp_size) throw() {
+    assert(fp_size >= size, "sanity check");
+    void* p = AllocateHeap(fp_size, mtCode);
+    memset(p, 0, fp_size);
+    return p;
   }
 
-  ~AdapterFingerPrint() {
-    if (_length > 0) {
-      FREE_C_HEAP_ARRAY(int, _value._fingerprint);
-    }
+ public:
+  static int allocation_size(int total_args_passed, BasicType* sig_bt) {
+    int len = (total_args_passed + (_basic_types_per_int-1)) / _basic_types_per_int;
+    return sizeof(AdapterFingerPrint) + (len > _compact_int_count ? (len - _compact_int_count) * sizeof(int) : 0);
+  }
+
+  static AdapterFingerPrint* allocate(int total_args_passed, BasicType* sig_bt) {
+    int size_in_bytes = allocation_size(total_args_passed, sig_bt);
+    return new (size_in_bytes) AdapterFingerPrint(total_args_passed, sig_bt);
+  }
+
+  static void deallocate(AdapterFingerPrint* fp) {
+    fp->~AdapterFingerPrint();
   }
 
   int value(int index) {
-    if (_length < 0) {
-      return _value._compact[index];
-    }
-    return _value._fingerprint[index];
+    return _value[index];
   }
+
   int length() {
     if (_length < 0) return -_length;
     return _length;
   }
 
   bool is_compact() {
-    return _length <= 0;
+    return _length <= _compact_int_count;
   }
 
   unsigned int compute_hash() {
@@ -2426,24 +2430,79 @@ class AdapterFingerPrint : public CHeapObj<mtCode> {
     return st.as_string();
   }
 
+  BasicType* as_basic_type(int& nargs) {
+    nargs = 0;
+    GrowableArray<BasicType> btarray;
+    bool long_prev = false;
+    for (int i = 0; i < length(); i++) {
+      unsigned val = (unsigned)value(i);
+      // args are packed so that first/lower arguments are in the highest
+      // bits of each int value, so iterate from highest to the lowest
+      for (int j = 32 - _basic_type_bits; j >= 0; j -= _basic_type_bits) {
+	unsigned v = (val >> j) & _basic_type_mask;
+	if (v == 0) continue;
+	if (long_prev) {
+	  long_prev = false;
+	  if (v == T_VOID) {
+            btarray.append(T_LONG);
+	  } else {
+            btarray.append(T_OBJECT); // it could be T_ARRAY; it shouldn't matter
+	  }
+	}
+        switch (v) {
+          case T_INT: // fallthrough
+          case T_FLOAT: // fallthrough
+          case T_DOUBLE:
+          case T_VOID:
+            btarray.append((BasicType)v);
+            break;
+          case T_LONG:
+            long_prev = true;
+            break;
+          default: ShouldNotReachHere();
+        }
+      }
+    }
+    if (long_prev) {
+      btarray.append(T_OBJECT);
+    }
+
+    nargs = btarray.length();
+    BasicType* sig_bt = NEW_RESOURCE_ARRAY(BasicType, nargs);
+    int index = 0;
+    GrowableArrayIterator<BasicType> iter = btarray.begin();
+    while (iter != btarray.end()) {
+      sig_bt[index++] = *iter;
+      ++iter;
+    }
+    assert(index == btarray.length(), "sanity check");
+#ifdef ASSERT
+    {
+      AdapterFingerPrint* compare_fp = AdapterFingerPrint::allocate(nargs, sig_bt);
+      assert(this->equals(compare_fp), "sanity check");
+      AdapterFingerPrint::deallocate(compare_fp);
+    }
+#endif
+    return sig_bt;
+  }
+
   bool equals(AdapterFingerPrint* other) {
     if (other->_length != _length) {
       return false;
-    }
-    if (_length < 0) {
-      assert(_compact_int_count == 3, "else change next line");
-      return _value._compact[0] == other->_value._compact[0] &&
-             _value._compact[1] == other->_value._compact[1] &&
-             _value._compact[2] == other->_value._compact[2];
     } else {
       for (int i = 0; i < _length; i++) {
-        if (_value._fingerprint[i] != other->_value._fingerprint[i]) {
+        if (_value[i] != other->_value[i]) {
           return false;
         }
       }
     }
     return true;
   }
+
+  // methods required by virtue of being a MetaspaceObj
+  void metaspace_pointers_do(MetaspaceClosure* it) { return; /* nothing to do here */ }
+  int size() const { return heap_word_size(sizeof(AdapterFingerPrint) + (_length > _compact_int_count ? (_length - _compact_int_count) * sizeof(int) : 0)); }
+  MetaspaceObj::Type type() const { return AdapterFingerPrintType; }
 
   static bool equals(AdapterFingerPrint* const& fp1, AdapterFingerPrint* const& fp2) {
     NOT_PRODUCT(_equals++);
@@ -2461,16 +2520,16 @@ using AdapterHandlerTable = ResourceHashtable<AdapterFingerPrint*, AdapterHandle
                   AdapterFingerPrint::compute_hash,
                   AdapterFingerPrint::equals>;
 static AdapterHandlerTable* _adapter_handler_table;
+static GrowableArray<AdapterHandlerEntry*>* _adapter_handler_list = nullptr;
 
 // Find a entry with the same fingerprint if it exists
-static AdapterHandlerEntry* lookup(int total_args_passed, BasicType* sig_bt) {
+static AdapterHandlerEntry* lookup(AdapterFingerPrint* fp) {
   NOT_PRODUCT(_lookups++);
   assert_lock_strong(AdapterHandlerLibrary_lock);
-  AdapterFingerPrint fp(total_args_passed, sig_bt);
-  AdapterHandlerEntry** entry = _adapter_handler_table->get(&fp);
+  AdapterHandlerEntry** entry = _adapter_handler_table->get(fp);
   if (entry != nullptr) {
 #ifndef PRODUCT
-    if (fp.is_compact()) _compact++;
+    if (fp->is_compact()) _compact++;
     _hits++;
 #endif
     return *entry;
@@ -2500,6 +2559,8 @@ AdapterHandlerEntry* AdapterHandlerLibrary::_int_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_int_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_obj_arg_handler = nullptr;
+Array<AdapterHandlerEntry*>* AdapterHandlerLibrary::_archived_adapter_handler_list = nullptr;
+
 const int AdapterHandlerLibrary_size = 16*K;
 BufferBlob* AdapterHandlerLibrary::_buffer = nullptr;
 
@@ -2535,6 +2596,7 @@ void AdapterHandlerLibrary::initialize() {
   AdapterBlob* obj_obj_arg_blob = nullptr;
   {
     _adapter_handler_table = new (mtCode) AdapterHandlerTable();
+    populate_adapter_handler_table();
     MutexLocker mu(AdapterHandlerLibrary_lock);
 
     // Create a special handler for abstract methods.  Abstract methods
@@ -2543,30 +2605,30 @@ void AdapterHandlerLibrary::initialize() {
     // Pass wrong_method_abstract for the c2i transitions to return
     // AbstractMethodError for invalid invocations.
     address wrong_method_abstract = SharedRuntime::get_handle_wrong_method_abstract_stub();
-    _abstract_method_handler = AdapterHandlerLibrary::new_entry(new AdapterFingerPrint(0, nullptr),
+    _abstract_method_handler = AdapterHandlerLibrary::new_entry(AdapterFingerPrint::allocate(0, nullptr),
                                                                 SharedRuntime::throw_AbstractMethodError_entry(),
                                                                 wrong_method_abstract, wrong_method_abstract);
 
     _buffer = BufferBlob::create("adapters", AdapterHandlerLibrary_size);
-    _no_arg_handler = create_adapter(no_arg_blob, 0, nullptr, true);
+    _no_arg_handler = create_simple_adapter(no_arg_blob, 0, nullptr);
 
     BasicType obj_args[] = { T_OBJECT };
-    _obj_arg_handler = create_adapter(obj_arg_blob, 1, obj_args, true);
+    _obj_arg_handler = create_simple_adapter(obj_arg_blob, 1, obj_args);
 
     BasicType int_args[] = { T_INT };
-    _int_arg_handler = create_adapter(int_arg_blob, 1, int_args, true);
+    _int_arg_handler = create_simple_adapter(int_arg_blob, 1, int_args);
 
     BasicType obj_int_args[] = { T_OBJECT, T_INT };
-    _obj_int_arg_handler = create_adapter(obj_int_arg_blob, 2, obj_int_args, true);
+    _obj_int_arg_handler = create_simple_adapter(obj_int_arg_blob, 2, obj_int_args);
 
     BasicType obj_obj_args[] = { T_OBJECT, T_OBJECT };
-    _obj_obj_arg_handler = create_adapter(obj_obj_arg_blob, 2, obj_obj_args, true);
+    _obj_obj_arg_handler = create_simple_adapter(obj_obj_arg_blob, 2, obj_obj_args);
 
     assert(no_arg_blob != nullptr &&
-          obj_arg_blob != nullptr &&
-          int_arg_blob != nullptr &&
-          obj_int_arg_blob != nullptr &&
-          obj_obj_arg_blob != nullptr, "Initial adapters must be properly created");
+           obj_arg_blob != nullptr &&
+           int_arg_blob != nullptr &&
+           obj_int_arg_blob != nullptr &&
+           obj_obj_arg_blob != nullptr, "Initial adapters must be properly created");
   }
 
   // Outside of the lock
@@ -2577,14 +2639,28 @@ void AdapterHandlerLibrary::initialize() {
   post_adapter_creation(obj_obj_arg_blob, _obj_obj_arg_handler);
 }
 
+AdapterHandlerEntry* AdapterHandlerLibrary::create_simple_adapter(AdapterBlob*& new_adapter,
+                                                                  int total_args_passed,
+                                                                  BasicType* sig_bt) {
+  AdapterFingerPrint* fp = AdapterFingerPrint::allocate(total_args_passed, sig_bt);
+  // We may find the adapter in the table if it is loaded from the AOT cache
+  AdapterHandlerEntry* entry = lookup(fp);
+  assert(entry == nullptr || (entry->is_shared() && !entry->is_linked()), "Non null AdapterHandlerEntry should be in the AOT cache in unlinked state");
+  entry = create_adapter(new_adapter, fp, total_args_passed, sig_bt, true, entry);
+  if (entry->is_shared()) {
+    AdapterFingerPrint::deallocate(fp);
+  }
+  return entry;
+}
+
 AdapterHandlerEntry* AdapterHandlerLibrary::new_entry(AdapterFingerPrint* fingerprint,
                                                       address i2c_entry,
                                                       address c2i_entry,
                                                       address c2i_unverified_entry,
                                                       address c2i_no_clinit_check_entry) {
   // Insert an entry into the table
-  return new AdapterHandlerEntry(fingerprint, i2c_entry, c2i_entry, c2i_unverified_entry,
-                                 c2i_no_clinit_check_entry);
+  return AdapterHandlerEntry::allocate(fingerprint, i2c_entry, c2i_entry, c2i_unverified_entry,
+                                       c2i_no_clinit_check_entry);
 }
 
 AdapterHandlerEntry* AdapterHandlerLibrary::get_simple_adapter(const methodHandle& method) {
@@ -2694,23 +2770,27 @@ AdapterHandlerEntry* AdapterHandlerLibrary::get_adapter(const methodHandle& meth
     MutexLocker mu(AdapterHandlerLibrary_lock);
 
     // Lookup method signature's fingerprint
-    entry = lookup(total_args_passed, sig_bt);
+    AdapterFingerPrint *fp = AdapterFingerPrint::allocate(total_args_passed, sig_bt);
+    entry = lookup(fp);
 
     if (entry != nullptr) {
 #ifdef ASSERT
       if (VerifyAdapterSharing) {
         AdapterBlob* comparison_blob = nullptr;
-        AdapterHandlerEntry* comparison_entry = create_adapter(comparison_blob, total_args_passed, sig_bt, false);
+        AdapterFingerPrint* comparison_fp = AdapterFingerPrint::allocate(total_args_passed, sig_bt);
+        AdapterHandlerEntry* comparison_entry = create_adapter(comparison_blob, comparison_fp, total_args_passed, sig_bt, false);
         assert(comparison_blob == nullptr, "no blob should be created when creating an adapter for comparison");
         assert(comparison_entry->compare_code(entry), "code must match");
+        AdapterFingerPrint::deallocate(comparison_fp);
         // Release the one just created and return the original
         delete comparison_entry;
       }
 #endif
+      AdapterFingerPrint::deallocate(fp);
       return entry;
     }
 
-    entry = create_adapter(new_adapter, total_args_passed, sig_bt, /* allocate_code_blob */ true);
+    entry = create_adapter(new_adapter, fp, total_args_passed, sig_bt, /* allocate_code_blob */ true);
   }
 
   // Outside of the lock
@@ -2721,18 +2801,14 @@ AdapterHandlerEntry* AdapterHandlerLibrary::get_adapter(const methodHandle& meth
 }
 
 AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_adapter,
+                                                           AdapterFingerPrint* fingerprint,
                                                            int total_args_passed,
                                                            BasicType* sig_bt,
-                                                           bool allocate_code_blob) {
+                                                           bool allocate_code_blob,
+                                                           AdapterHandlerEntry* cached_entry) {
   if (log_is_enabled(Info, perf, class, link)) {
     ClassLoader::perf_method_adapters_count()->inc();
   }
-
-  // StubRoutines::_final_stubs_code is initialized after this function can be called. As a result,
-  // VerifyAdapterCalls and VerifyAdapterSharing can fail if we re-use code that generated prior
-  // to all StubRoutines::_final_stubs_code being set. Checks refer to runtime range checks generated
-  // in an I2C stub that ensure that an I2C stub is called from an interpreter frame or stubs.
-  bool contains_all_checks = StubRoutines::final_stubs_code() != nullptr;
 
   VMRegPair stack_regs[16];
   VMRegPair* regs = (total_args_passed <= 16) ? stack_regs : NEW_RESOURCE_ARRAY(VMRegPair, total_args_passed);
@@ -2745,15 +2821,15 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_ada
   buffer.insts()->initialize_shared_locs((relocInfo*)buffer_locs,
                                           sizeof(buffer_locs)/sizeof(relocInfo));
 
-  // Make a C heap allocated version of the fingerprint to store in the adapter
-  AdapterFingerPrint* fingerprint = new AdapterFingerPrint(total_args_passed, sig_bt);
   MacroAssembler _masm(&buffer);
-  AdapterHandlerEntry* entry = SharedRuntime::generate_i2c2i_adapters(&_masm,
-                                                total_args_passed,
-                                                comp_args_on_stack,
-                                                sig_bt,
-                                                regs,
-                                                fingerprint);
+  AdapterHandlerEntry* entry = (cached_entry != nullptr) ? cached_entry : AdapterHandlerLibrary::new_entry(fingerprint);
+  ResourceMark rm; //for AdapterFingerPrint::as_basic_args_string()
+  SharedRuntime::generate_i2c2i_adapters(&_masm,
+                                         total_args_passed,
+                                         comp_args_on_stack,
+                                         sig_bt,
+                                         regs,
+                                         entry);
 
 #ifdef ASSERT
   if (VerifyAdapterSharing) {
@@ -2793,9 +2869,7 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_ada
   }
 #endif
 
-  // Add the entry only if the entry contains all required checks (see sharedRuntime_xxx.cpp)
-  // The checks are inserted only if -XX:+VerifyAdapterCalls is specified.
-  if (contains_all_checks || !VerifyAdapterCalls) {
+  if (cached_entry == nullptr) {
     assert_lock_strong(AdapterHandlerLibrary_lock);
     _adapter_handler_table->put(fingerprint, entry);
   }
@@ -2826,9 +2900,50 @@ void AdapterHandlerEntry::relocate(address new_base) {
   assert(base_address() == new_base, "");
 }
 
+void AdapterHandlerEntry::metaspace_pointers_do(MetaspaceClosure* it) {
+  LogStreamHandle(Trace, cds) lsh;
+  if (lsh.is_enabled()) {
+    lsh.print("Iter(AdapterHandlerEntry): %p(%s)", this, _fingerprint->as_basic_args_string());
+    lsh.cr();
+  }
+  it->push(&_fingerprint);
+}
+
+void AdapterHandlerEntry::remove_unshareable_info() {
+  _i2c_entry = nullptr;
+  _c2i_entry = nullptr;
+  _c2i_unverified_entry = nullptr;
+  _c2i_no_clinit_check_entry = nullptr;
+  _linked = false;
+}
+
+void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
+  PerfTraceElapsedTime timer(ClassLoader::perf_method_adapters_time());
+  if (is_linked()) {
+    return;
+  }
+  AdapterBlob* blob = nullptr;
+  {
+    MutexLocker mu(AdapterHandlerLibrary_lock);
+    assert(_fingerprint != nullptr, "_fingerprint must not be null");
+#ifdef ASSERT
+    AdapterHandlerEntry** entry = _adapter_handler_table->get(_fingerprint);
+    assert(entry != nullptr, "AdapterHandlerEntry not found in the table");
+    assert(*entry == this, "sanity check");
+#endif
+    ResourceMark rm;
+    int nargs;
+    BasicType* bt = _fingerprint->as_basic_type(nargs);
+    AdapterHandlerLibrary::create_adapter(blob, _fingerprint, nargs, bt, true, this);
+  }
+  // Outside of the lock
+  if (blob != nullptr) {
+    post_adapter_creation(blob, this);
+  }
+  assert(_linked, "AdapterHandlerEntry must now be linked");
+}
 
 AdapterHandlerEntry::~AdapterHandlerEntry() {
-  delete _fingerprint;
 #ifdef ASSERT
   FREE_C_HEAP_ARRAY(unsigned char, _saved_code);
 #endif
@@ -3185,6 +3300,55 @@ void AdapterHandlerEntry::print_adapter_on(outputStream* st) const {
     st->print(" c2iNCI: " INTPTR_FORMAT, p2i(get_c2i_no_clinit_check_entry()));
   }
   st->cr();
+}
+
+bool AdapterHandlerLibrary::is_abstract_method_adapter(AdapterHandlerEntry* entry) {
+  if (entry == _abstract_method_handler) {
+    return true;
+  }
+  return false;
+}
+
+void AdapterHandlerLibrary::dump_adapter_handler_list() {
+  GrowableArray<AdapterHandlerEntry*> buffered_handlers;
+  auto handler_collector = [&] (AdapterFingerPrint* fp, AdapterHandlerEntry* entry) {
+    LogStreamHandle(Trace, cds) lsh;
+    if (ArchiveBuilder::current()->has_been_archived((address)entry)) {
+      AdapterHandlerEntry* buffered = ArchiveBuilder::current()->get_buffered_addr(entry);
+      assert(buffered != nullptr,"sanity check");
+      buffered_handlers.append(buffered);
+      if (lsh.is_enabled()) {
+	address runtime_addr = (address)buffered + ArchiveBuilder::current()->buffer_to_requested_delta();
+	log_trace(cds)("Added adapter handler %p (buffered=%p, runtime=%p)", entry, buffered, runtime_addr);
+      }
+    } else {
+      if (lsh.is_enabled()) {
+        log_trace(cds)("Skipping adapter handler %p as it is not archived", entry);
+      }
+    }
+  };
+  _adapter_handler_table->iterate_all(handler_collector);
+  _archived_adapter_handler_list = ArchiveUtils::archive_array(&buffered_handlers);
+  log_info(cds)("Dumped adapter handlers list (size=%d)", _adapter_handler_table->number_of_entries());
+}
+
+void AdapterHandlerLibrary::serialize(SerializeClosure* sc) {
+  sc->do_ptr((void**)&_archived_adapter_handler_list);
+}
+
+void AdapterHandlerLibrary::populate_adapter_handler_table() {
+  PerfTraceElapsedTime timer(ClassLoader::perf_method_adapters_time());
+  assert(_adapter_handler_table != nullptr, "_adapter_handler_table is not initialized");
+  if (_archived_adapter_handler_list != nullptr) {
+    log_info(cds)("Found adapter handlers list (size=%d) in the AOT cache", _archived_adapter_handler_list->length());
+    log_trace(cds)("Populating _adapter_handler_table");
+    for (int i =0; i < _archived_adapter_handler_list->length(); i++) {
+      AdapterHandlerEntry* entry = _archived_adapter_handler_list->at(i);
+      assert(entry->fingerprint() != nullptr, "Fingerpring must not be null");
+      _adapter_handler_table->put(entry->fingerprint(), entry);
+      log_trace(cds)("Added entry=%p, fp=%p", entry, entry->fingerprint());
+    }
+  }
 }
 
 JRT_LEAF(void, SharedRuntime::enable_stack_reserved_zone(JavaThread* current))

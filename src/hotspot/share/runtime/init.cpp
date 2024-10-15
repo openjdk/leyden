@@ -167,6 +167,7 @@ jint init_globals() {
   VMRegImpl::set_regName();  // need this before generate_stubs (for printing oop maps).
   SharedRuntime::generate_stubs();
   SCCache::init_shared_blobs_table();  // need this after generate_stubs
+  SharedRuntime::init_adapter_library(); // do this after SCCache::init_shared_blobs_table
   return JNI_OK;
 }
 
