@@ -28,8 +28,6 @@
 #endif
 #include "asm/macroAssembler.hpp"
 #include "asm/macroAssembler.inline.hpp"
-#include "cds/cdsConfig.hpp"
-#include "code/SCCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/debugInfoRec.hpp"
 #include "code/nativeInst.hpp"
@@ -1012,22 +1010,6 @@ void SharedRuntime::generate_i2c2i_adapters(MacroAssembler *masm,
                                             AdapterHandlerEntry* entry) {
   address i2c_entry = __ pc();
 
-  const char* name = AdapterHandlerLibrary::name(entry->fingerprint());
-  const uint32_t id = AdapterHandlerLibrary::id(entry->fingerprint());
-  // we need to avoid restoring code that might refer to stub routines
-  // until we know they are available likewise we don't want to save
-  // early generated adapters that try to refernce them
-  {
-    // see if we can load the code rather than generate it
-    CodeBuffer* buffer = masm->code();
-    uint32_t offsets[4];
-    if (SCCache::load_adapter(buffer, id, name, offsets)) {
-      assert(offsets[0] == 0, "sanity check");
-      entry->set_entry_points(i2c_entry, i2c_entry + offsets[1], i2c_entry + offsets[2], i2c_entry + offsets[3]);
-      return;
-    }
-  }
-
   gen_i2c_adapter(masm, total_args_passed, comp_args_on_stack, sig_bt, regs);
 
   // -------------------------------------------------------------------------
@@ -1086,17 +1068,6 @@ void SharedRuntime::generate_i2c2i_adapters(MacroAssembler *masm,
   bs->c2i_entry_barrier(masm);
 
   gen_c2i_adapter(masm, total_args_passed, comp_args_on_stack, sig_bt, regs, skip_fixup);
-
-  if (CDSConfig::is_dumping_adapters()) {
-    // try to save generated code
-    CodeBuffer* buffer = masm->code();
-    uint32_t offsets[4];
-    offsets[0] = 0;
-    offsets[1] = c2i_entry - i2c_entry;
-    offsets[2] = c2i_unverified_entry - i2c_entry;
-    offsets[3] = c2i_no_clinit_check_entry - i2c_entry;
-    SCCache::store_adapter(buffer, id, name, offsets);
-  }
 
   entry->set_entry_points(i2c_entry, c2i_entry, c2i_unverified_entry, c2i_no_clinit_check_entry);
   return;

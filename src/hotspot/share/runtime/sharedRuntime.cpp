@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
+#include "cds/cdsConfig.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/stringTable.hpp"
@@ -2800,6 +2801,20 @@ AdapterHandlerEntry* AdapterHandlerLibrary::get_adapter(const methodHandle& meth
   return entry;
 }
 
+bool AdapterHandlerLibrary::lookup_aot_cache(AdapterHandlerEntry* entry, MacroAssembler* masm) {
+  const char* name = AdapterHandlerLibrary::name(entry->fingerprint());
+  const uint32_t id = AdapterHandlerLibrary::id(entry->fingerprint());
+  CodeBuffer* buffer = masm->code();
+  uint32_t offsets[4];
+  if (SCCache::load_adapter(buffer, id, name, offsets)) {
+    address i2c_entry = masm->pc();
+    assert(offsets[0] == 0, "sanity check");
+    entry->set_entry_points(i2c_entry, i2c_entry + offsets[1], i2c_entry + offsets[2], i2c_entry + offsets[3]);
+    return true;
+  }
+  return false;
+}
+
 AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_adapter,
                                                            AdapterFingerPrint* fingerprint,
                                                            int total_args_passed,
@@ -2810,27 +2825,38 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_ada
     ClassLoader::perf_method_adapters_count()->inc();
   }
 
-  VMRegPair stack_regs[16];
-  VMRegPair* regs = (total_args_passed <= 16) ? stack_regs : NEW_RESOURCE_ARRAY(VMRegPair, total_args_passed);
-
-  // Get a description of the compiled java calling convention and the largest used (VMReg) stack slot usage
-  int comp_args_on_stack = SharedRuntime::java_calling_convention(sig_bt, regs, total_args_passed);
   BufferBlob* buf = buffer_blob(); // the temporary code buffer in CodeCache
   CodeBuffer buffer(buf);
   short buffer_locs[20];
   buffer.insts()->initialize_shared_locs((relocInfo*)buffer_locs,
                                           sizeof(buffer_locs)/sizeof(relocInfo));
 
-  MacroAssembler _masm(&buffer);
+  MacroAssembler masm(&buffer);
   AdapterHandlerEntry* entry = (cached_entry != nullptr) ? cached_entry : AdapterHandlerLibrary::new_entry(fingerprint);
-  ResourceMark rm; //for AdapterFingerPrint::as_basic_args_string()
-  SharedRuntime::generate_i2c2i_adapters(&_masm,
-                                         total_args_passed,
-                                         comp_args_on_stack,
-                                         sig_bt,
-                                         regs,
-                                         entry);
+  if (!lookup_aot_cache(entry, &masm)) {
+    VMRegPair stack_regs[16];
+    VMRegPair* regs = (total_args_passed <= 16) ? stack_regs : NEW_RESOURCE_ARRAY(VMRegPair, total_args_passed);
 
+    // Get a description of the compiled java calling convention and the largest used (VMReg) stack slot usage
+    int comp_args_on_stack = SharedRuntime::java_calling_convention(sig_bt, regs, total_args_passed);
+    SharedRuntime::generate_i2c2i_adapters(&masm,
+					   total_args_passed,
+					   comp_args_on_stack,
+					   sig_bt,
+					   regs,
+					   entry);
+    if (CDSConfig::is_dumping_adapters()) {
+      // try to save generated code
+      const char* name = AdapterHandlerLibrary::name(entry->fingerprint());
+      const uint32_t id = AdapterHandlerLibrary::id(entry->fingerprint());
+      uint32_t offsets[4];
+      offsets[0] = 0;
+      offsets[1] = entry->get_c2i_entry() - entry->get_i2c_entry();
+      offsets[2] = entry->get_c2i_unverified_entry() - entry->get_i2c_entry();
+      offsets[3] = entry->get_c2i_no_clinit_check_entry() - entry->get_i2c_entry();
+      SCCache::store_adapter(&buffer, id, name, offsets);
+    }
+  }
 #ifdef ASSERT
   if (VerifyAdapterSharing) {
     entry->save_code(buf->code_begin(), buffer.insts_size());

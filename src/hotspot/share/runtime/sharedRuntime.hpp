@@ -769,7 +769,11 @@ class AdapterHandlerLibrary: public AllStatic {
 
   static BufferBlob* buffer_blob();
   static void initialize();
+  static AdapterHandlerEntry* create_simple_adapter(AdapterBlob*& new_adapter,
+                                                    int total_args_passed,
+                                                    BasicType* sig_bt);
   static AdapterHandlerEntry* get_simple_adapter(const methodHandle& method);
+  static bool lookup_aot_cache(AdapterHandlerEntry* entry, MacroAssembler* masm);
  public:
 
   static AdapterHandlerEntry* new_entry(AdapterFingerPrint* fingerprint,
@@ -779,9 +783,6 @@ class AdapterHandlerLibrary: public AllStatic {
                                         address c2i_no_clinit_check_entry = nullptr);
   static void create_native_wrapper(const methodHandle& method);
   static AdapterHandlerEntry* get_adapter(const methodHandle& method);
-  static AdapterHandlerEntry* create_simple_adapter(AdapterBlob*& new_adapter,
-                                                    int total_args_passed,
-                                                    BasicType* sig_bt);
   static AdapterHandlerEntry* create_adapter(AdapterBlob*& new_adapter,
                                              AdapterFingerPrint* fingerprint,
                                              int total_args_passed,
