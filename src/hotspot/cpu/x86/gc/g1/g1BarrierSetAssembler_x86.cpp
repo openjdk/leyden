@@ -286,14 +286,12 @@ void G1BarrierSetAssembler::g1_write_barrier_pre(MacroAssembler* masm,
   __ bind(done);
 }
 
-// return a register that differs from tmp and is not rcx
+// return a register that differs from reg1, reg2, reg3 and is not rcx
 
-static Register pick_different_not_rcx(Register tmp) {
-  if (tmp == rscratch1) {
-    return rax;
-  } else {
-    return rscratch1;
-  }
+static Register pick_different_reg(Register reg1, Register reg2 = noreg, Register reg3= noreg, Register reg4 = noreg) {
+  RegSet available = (RegSet::of(rscratch1, rscratch2, rax, rbx) + rdx -
+                      RegSet::of(reg1, reg2, reg3, reg4));
+  return *(available.begin());
 }
 
 static void generate_post_barrier_fast_path(MacroAssembler* masm,
@@ -312,7 +310,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
 
   if (SCCache::is_on_for_write()) {
     address grain_shift_addr = AOTRuntimeConstants::grain_shift_address();
-    Register save = pick_different_not_rcx(tmp);
+    Register save = pick_different_reg(rcx, tmp, new_val, store_addr);
     __ push(save);
     __ movptr(save, store_addr);
     __ xorptr(save, new_val);
@@ -346,7 +344,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   // it as an immediate operand
   if (SCCache::is_on_for_write()) {
     address card_shift_addr = AOTRuntimeConstants::card_shift_address();
-    Register save = pick_different_not_rcx(tmp);
+    Register save = pick_different_reg(rcx, tmp);
     __ push(save);
     __ mov(save, tmp);
     __ push(rcx);
