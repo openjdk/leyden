@@ -197,13 +197,14 @@ class ciMethod : public ciMetadata {
   // Code size for inlining decisions.
   int code_size_for_inlining();
 
-  bool caller_sensitive()       const { return get_Method()->caller_sensitive();       }
-  bool force_inline()           const { return get_Method()->force_inline();           }
-  bool dont_inline()            const { return get_Method()->dont_inline();            }
-  bool intrinsic_candidate()    const { return get_Method()->intrinsic_candidate();    }
-  bool is_static_initializer()  const { return get_Method()->is_static_initializer();  }
-  bool changes_current_thread() const { return get_Method()->changes_current_thread(); }
-  bool deprecated()             const { return is_loaded() && get_Method()->deprecated(); }
+  bool caller_sensitive()        const { return get_Method()->caller_sensitive();       }
+  bool force_inline()            const { return get_Method()->force_inline();           }
+  bool dont_inline()             const { return get_Method()->dont_inline();            }
+  bool intrinsic_candidate()     const { return get_Method()->intrinsic_candidate();    }
+  bool is_static_initializer()   const { return get_Method()->is_static_initializer();  }
+  bool changes_current_thread()  const { return get_Method()->changes_current_thread(); }
+  bool deprecated()              const { return is_loaded() && get_Method()->deprecated(); }
+  bool is_end_training_trigger() const { return get_Method()->is_end_training_trigger(); }
 
   bool check_intrinsic_candidate() const {
     if (intrinsic_id() == vmIntrinsics::_blackhole) {

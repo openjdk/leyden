@@ -1301,7 +1301,7 @@ address TemplateInterpreterGenerator::generate_math_entry(AbstractInterpreter::M
 // Interpreter stub for calling a native method. (asm interpreter).
 // This sets up a somewhat different looking stack for calling the
 // native method than the typical interpreter frame setup.
-address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
+address TemplateInterpreterGenerator::generate_native_entry(bool synchronized, bool end_training_trigger) {
   // Determine code generation flags.
   bool inc_counter = UseCompiler || CountCompiledCalls;
 
@@ -1657,7 +1657,7 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized) {
 //
 // Generic interpreted method entry to template interpreter.
 //
-address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized) {
+address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized, bool end_training_trigger) {
   address entry_point = __ pc();
 
   bool inc_counter = UseCompiler || CountCompiledCalls;

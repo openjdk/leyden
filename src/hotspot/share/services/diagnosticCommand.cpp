@@ -56,6 +56,7 @@
 #include "runtime/javaCalls.hpp"
 #include "runtime/jniHandles.hpp"
 #include "runtime/os.hpp"
+#include "runtime/sharedRuntime.hpp"
 #include "runtime/vmOperations.hpp"
 #include "runtime/vm_version.hpp"
 #include "services/diagnosticArgument.hpp"
@@ -134,6 +135,7 @@ void DCmd::register_dcmds(){
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CompileQueueDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CodeListDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CodeCacheDCmd>(full_export, true, false));
+  DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<AOTEndTrainingDCmd>(full_export, true, false));
 #ifdef LINUX
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<PerfMapDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<TrimCLibcHeapDCmd>(full_export, true, false));
@@ -990,6 +992,14 @@ public:
 void ClassesDCmd::execute(DCmdSource source, TRAPS) {
   VM_PrintClasses vmop(output(), _verbose.value());
   VMThread::execute(&vmop);
+}
+
+void AOTEndTrainingDCmd::execute(DCmdSource source, TRAPS) {
+  if (!CDSConfig::is_dumping_preimage_static_archive()) {
+    output()->print_cr("Must be in training run");
+  } else {
+    SharedRuntime::end_training(CHECK);
+  }
 }
 
 #if INCLUDE_CDS

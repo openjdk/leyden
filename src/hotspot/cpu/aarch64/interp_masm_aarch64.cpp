@@ -25,6 +25,7 @@
 
 #include "precompiled.hpp"
 #include "asm/macroAssembler.inline.hpp"
+#include "cds/cdsConfig.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetAssembler.hpp"
@@ -1398,6 +1399,9 @@ void InterpreterMacroAssembler::_interp_verify_oop(Register reg, TosState state,
 
 void InterpreterMacroAssembler::verify_FPU(int stack_depth, TosState state) { ; }
 
+void InterpreterMacroAssembler::end_training_check() {
+  call_VM(noreg, CAST_FROM_FN_PTR(address, InterpreterRuntime::end_training_check));
+}
 
 void InterpreterMacroAssembler::notify_method_entry() {
   // Whenever JVMTI is interp_only_mode, method entry/exit events are sent to

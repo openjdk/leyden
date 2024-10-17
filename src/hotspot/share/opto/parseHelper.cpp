@@ -34,6 +34,24 @@
 #include "opto/runtime.hpp"
 #include "runtime/sharedRuntime.hpp"
 
+void GraphKit::make_end_training_check() {
+  const TypeFunc *call_type    = OptoRuntime::end_training_check_c2_Type();
+  address         call_address = CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c2);
+  const char     *call_name    = "end_training_check_c2";
+
+  // Get base of thread-local storage area
+  Node* thread = _gvn.transform( new ThreadLocalNode() );
+
+  kill_dead_locals();
+
+  // For some reason, this call reads only raw memory.
+  const TypePtr* raw_adr_type = TypeRawPtr::BOTTOM;
+  make_runtime_call(RC_LEAF | RC_NARROW_MEM,
+                    call_type, call_address,
+                    call_name, raw_adr_type,
+                    thread);
+}
+
 //------------------------------make_dtrace_method_entry_exit ----------------
 // Dtrace -- record entry or exit of a method if compiled with dtrace support
 void GraphKit::make_dtrace_method_entry_exit(ciMethod* method, bool is_entry) {

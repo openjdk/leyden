@@ -334,6 +334,7 @@ const char* Runtime1::name_for_address(address entry) {
   FUNCTION_CASE(entry, SharedRuntime::lmul);
   FUNCTION_CASE(entry, SharedRuntime::lrem);
   FUNCTION_CASE(entry, SharedRuntime::lrem);
+  FUNCTION_CASE(entry, SharedRuntime::end_training_check_c1);
   FUNCTION_CASE(entry, SharedRuntime::dtrace_method_entry);
   FUNCTION_CASE(entry, SharedRuntime::dtrace_method_exit);
   FUNCTION_CASE(entry, is_instance_of);

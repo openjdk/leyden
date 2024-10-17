@@ -44,6 +44,7 @@
 #include "code/dependencyContext.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
+#include "compiler/compilerOracle.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "interpreter/bytecodeHistogram.hpp"
 #include "interpreter/bytecodeStream.hpp"
@@ -1080,10 +1081,14 @@ void InstanceKlass::rewrite_class(TRAPS) {
 // executed more than once.
 void InstanceKlass::link_methods(TRAPS) {
   PerfTraceElapsedTime timer(ClassLoader::perf_ik_link_methods_time());
-
+  bool addingAOTTriggers = CDSConfig::is_dumping_preimage_static_archive_with_triggers();
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {
     methodHandle m(THREAD, methods()->at(i));
+
+    if (addingAOTTriggers && CompilerOracle::should_trigger_end_of_training_at(m)) {
+      m->set_is_end_training_trigger(true);
+    }
 
     // Set up method entry points for compiler and interpreter    .
     m->link_method(m, CHECK);

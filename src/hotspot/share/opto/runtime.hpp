@@ -336,6 +336,9 @@ private:
   static const TypeFunc* notify_jvmti_vthread_Type();
 #endif
 
+  // AOT
+  static const TypeFunc* end_training_check_c2_Type();
+
   // Dtrace support
   static const TypeFunc* dtrace_method_entry_exit_Type();
   static const TypeFunc* dtrace_object_alloc_Type();
