@@ -2263,7 +2263,8 @@ void SharedRuntime::print_call_statistics_on(outputStream* st) {
 #ifndef PRODUCT
 static int _lookups; // number of calls to lookup
 static int _equals;  // number of buckets checked with matching hash
-static int _hits;    // number of successful lookups
+static int _archived_hits;    // number of successful lookups in archived table
+static int _runtime_hits; // number of successful lookups in runtime table
 static int _compact; // number of equals calls with compact signature
 #endif
 
@@ -2524,16 +2525,27 @@ static AdapterHandlerTable* _adapter_handler_table;
 static GrowableArray<AdapterHandlerEntry*>* _adapter_handler_list = nullptr;
 
 // Find a entry with the same fingerprint if it exists
-static AdapterHandlerEntry* lookup(AdapterFingerPrint* fp) {
+AdapterHandlerEntry* AdapterHandlerLibrary::lookup(AdapterFingerPrint* fp) {
   NOT_PRODUCT(_lookups++);
-  assert_lock_strong(AdapterHandlerLibrary_lock);
-  AdapterHandlerEntry** entry = _adapter_handler_table->get(fp);
+  // Search archived table first. It is read-only table so can be searched without lock
+  AdapterHandlerEntry* entry = _archived_adapter_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
   if (entry != nullptr) {
 #ifndef PRODUCT
-    if (fp->is_compact()) _compact++;
-    _hits++;
+    if (fp->is_compact()) {
+      _compact++;
+    }
+    _archived_hits++;
 #endif
-    return *entry;
+    return entry;
+  }
+  assert_lock_strong(AdapterHandlerLibrary_lock);
+  AdapterHandlerEntry** entry_p = _adapter_handler_table->get(fp);
+  if (entry_p != nullptr) {
+#ifndef PRODUCT
+    if (fp->is_compact()) _compact++;
+    _runtime_hits++;
+#endif
+    return *entry_p;
   }
   return nullptr;
 }
@@ -2547,8 +2559,9 @@ void AdapterHandlerLibrary::print_statistics_on(outputStream* st) {
   ts.print(st, "AdapterHandlerTable");
   st->print_cr("AdapterHandlerTable (table_size=%d, entries=%d)",
                _adapter_handler_table->table_size(), _adapter_handler_table->number_of_entries());
-  st->print_cr("AdapterHandlerTable: lookups %d equals %d hits %d compact %d",
-               _lookups, _equals, _hits, _compact);
+  int total_hits = _archived_hits + _runtime_hits;
+  st->print_cr("AdapterHandlerTable: lookups %d equals %d hits %d (archived=%d+runtime=%d) compact %d",
+               _lookups, _equals, total_hits, _archived_hits, _runtime_hits, _compact);
 }
 #endif // !PRODUCT
 
@@ -2561,6 +2574,7 @@ AdapterHandlerEntry* AdapterHandlerLibrary::_obj_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_int_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_obj_arg_handler = nullptr;
 Array<AdapterHandlerEntry*>* AdapterHandlerLibrary::_archived_adapter_handler_list = nullptr;
+ArchivedAdapterTable AdapterHandlerLibrary::_archived_adapter_table;
 
 const int AdapterHandlerLibrary_size = 16*K;
 BufferBlob* AdapterHandlerLibrary::_buffer = nullptr;
@@ -2597,7 +2611,7 @@ void AdapterHandlerLibrary::initialize() {
   AdapterBlob* obj_obj_arg_blob = nullptr;
   {
     _adapter_handler_table = new (mtCode) AdapterHandlerTable();
-    populate_adapter_handler_table();
+    //populate_adapter_handler_table();
     MutexLocker mu(AdapterHandlerLibrary_lock);
 
     // Create a special handler for abstract methods.  Abstract methods
@@ -2953,9 +2967,9 @@ void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
     MutexLocker mu(AdapterHandlerLibrary_lock);
     assert(_fingerprint != nullptr, "_fingerprint must not be null");
 #ifdef ASSERT
-    AdapterHandlerEntry** entry = _adapter_handler_table->get(_fingerprint);
-    assert(entry != nullptr, "AdapterHandlerEntry not found in the table");
-    assert(*entry == this, "sanity check");
+    AdapterHandlerEntry* entry = AdapterHandlerLibrary::lookup(_fingerprint);
+    //AdapterHandlerEntry** entry = _adapter_handler_table->get(_fingerprint);
+    assert(entry == this, "sanity check");
 #endif
     ResourceMark rm;
     int nargs;
@@ -3333,6 +3347,57 @@ bool AdapterHandlerLibrary::is_abstract_method_adapter(AdapterHandlerEntry* entr
     return true;
   }
   return false;
+}
+
+class CopyAdapterTableToArchive : StackObj {
+private:
+  CompactHashtableWriter* _writer;
+  ArchiveBuilder* _builder;
+public:
+  CopyAdapterTableToArchive(CompactHashtableWriter* writer) : _writer(writer),
+                                                             _builder(ArchiveBuilder::current())
+  {}
+
+  bool do_entry(AdapterFingerPrint* fp, AdapterHandlerEntry* entry) {
+    LogStreamHandle(Trace, cds) lsh;
+    if (ArchiveBuilder::current()->has_been_archived((address)entry)) {
+      assert(ArchiveBuilder::current()->has_been_archived((address)fp), "must be");
+      AdapterFingerPrint* buffered_fp = ArchiveBuilder::current()->get_buffered_addr(fp);
+      assert(buffered_fp != nullptr,"sanity check");
+      AdapterHandlerEntry* buffered_entry = ArchiveBuilder::current()->get_buffered_addr(entry);
+      assert(buffered_entry != nullptr,"sanity check");
+
+      uint hash = fp->compute_hash();
+      u4 delta = _builder->buffer_to_offset_u4((address)buffered_entry);
+      _writer->add(hash, delta);
+      if (lsh.is_enabled()) {
+	address fp_runtime_addr = (address)buffered_fp + ArchiveBuilder::current()->buffer_to_requested_delta();
+	address entry_runtime_addr = (address)buffered_entry + ArchiveBuilder::current()->buffer_to_requested_delta();
+	log_trace(cds)("Added fp=%p, entry=%p to the archived adater table", buffered_fp, buffered_entry);
+      }
+    } else {
+      if (lsh.is_enabled()) {
+        log_trace(cds)("Skipping adapter handler %p as it is not archived", entry);
+      }
+    }
+    return true;
+  }
+};
+
+size_t AdapterHandlerLibrary::estimate_size_for_archive() {
+  return CompactHashtableWriter::estimate_size(_adapter_handler_table->number_of_entries());
+}
+
+void AdapterHandlerLibrary::archive_adapter_table() {
+  CompactHashtableStats stats;
+  CompactHashtableWriter writer(_adapter_handler_table->number_of_entries(), &stats);
+  CopyAdapterTableToArchive copy(&writer);
+  _adapter_handler_table->iterate(&copy);
+  writer.dump(&_archived_adapter_table, "archived adapter table");
+}
+
+void AdapterHandlerLibrary::serialize_shared_table_header(SerializeClosure* soc) {
+  _archived_adapter_table.serialize_header(soc);
 }
 
 void AdapterHandlerLibrary::dump_adapter_handler_list() {

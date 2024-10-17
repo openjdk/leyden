@@ -25,6 +25,7 @@
 #ifndef SHARE_RUNTIME_SHAREDRUNTIME_HPP
 #define SHARE_RUNTIME_SHAREDRUNTIME_HPP
 
+#include "classfile/compactHashtable.hpp"
 #include "code/codeBlob.hpp"
 #include "code/vmreg.hpp"
 #include "interpreter/linkResolver.hpp"
@@ -755,6 +756,8 @@ class AdapterHandlerEntry : public MetaspaceObj {
   void restore_unshareable_info(TRAPS);
 };
 
+class ArchivedAdapterTable;
+
 class AdapterHandlerLibrary: public AllStatic {
   friend class SharedRuntime;
  private:
@@ -766,6 +769,7 @@ class AdapterHandlerLibrary: public AllStatic {
   static AdapterHandlerEntry* _obj_int_arg_handler;
   static AdapterHandlerEntry* _obj_obj_arg_handler;
   static Array<AdapterHandlerEntry*>* _archived_adapter_handler_list;
+  static ArchivedAdapterTable _archived_adapter_table;
 
   static BufferBlob* buffer_blob();
   static void initialize();
@@ -789,6 +793,7 @@ class AdapterHandlerLibrary: public AllStatic {
                                              BasicType* sig_bt,
                                              bool allocate_code_blob,
                                              AdapterHandlerEntry* cached_entry = nullptr);
+  static AdapterHandlerEntry* lookup(AdapterFingerPrint* fp);
 
   static void print_handler(const CodeBlob* b) { print_handler_on(tty, b); }
   static void print_handler_on(outputStream* st, const CodeBlob* b);
@@ -800,9 +805,20 @@ class AdapterHandlerLibrary: public AllStatic {
 #endif // PRODUCT
 
   static bool is_abstract_method_adapter(AdapterHandlerEntry* adapter);
+  static size_t estimate_size_for_archive();
+  static void archive_adapter_table();
+  static void serialize_shared_table_header(SerializeClosure* soc);
   static void dump_adapter_handler_list();
   static void populate_adapter_handler_table();
   static void serialize(SerializeClosure* sc);
+  static bool EQUALS(AdapterHandlerEntry* entry, AdapterFingerPrint* fp, int len_unused) {
+    return entry->fingerprint() == fp;
+  }
 };
+
+class ArchivedAdapterTable : public OffsetCompactHashtable<
+  AdapterFingerPrint*,
+  AdapterHandlerEntry*,
+  AdapterHandlerLibrary::EQUALS> {};
 
 #endif // SHARE_RUNTIME_SHAREDRUNTIME_HPP

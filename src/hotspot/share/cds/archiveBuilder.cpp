@@ -359,7 +359,8 @@ size_t ArchiveBuilder::estimate_archive_size() {
   size_t symbol_table_est = SymbolTable::estimate_size_for_archive();
   size_t dictionary_est = SystemDictionaryShared::estimate_size_for_archive();
   size_t training_data_est = TrainingData::estimate_size_for_archive();
-  _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est;
+  size_t adapter_data_est = AdapterHandlerLibrary::estimate_size_for_archive();
+  _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est + adapter_data_est;
 
   if (CDSConfig::is_dumping_aot_linked_classes()) {
     _estimated_hashtable_bytes += _klasses->length() * 16 * sizeof(Klass*);
