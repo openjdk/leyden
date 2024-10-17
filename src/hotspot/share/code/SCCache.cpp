@@ -2353,6 +2353,7 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
 }
 
 bool SCCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
+  assert(CDSConfig::is_dumping_adapters(), "must be");
   SCCache* cache = open_for_write();
   if (cache == nullptr) {
     return false;
