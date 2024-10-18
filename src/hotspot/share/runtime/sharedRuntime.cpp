@@ -2611,7 +2611,6 @@ void AdapterHandlerLibrary::initialize() {
   AdapterBlob* obj_obj_arg_blob = nullptr;
   {
     _adapter_handler_table = new (mtCode) AdapterHandlerTable();
-    //populate_adapter_handler_table();
     MutexLocker mu(AdapterHandlerLibrary_lock);
 
     // Create a special handler for abstract methods.  Abstract methods
@@ -3398,48 +3397,6 @@ void AdapterHandlerLibrary::archive_adapter_table() {
 
 void AdapterHandlerLibrary::serialize_shared_table_header(SerializeClosure* soc) {
   _archived_adapter_table.serialize_header(soc);
-}
-
-void AdapterHandlerLibrary::dump_adapter_handler_list() {
-  GrowableArray<AdapterHandlerEntry*> buffered_handlers;
-  auto handler_collector = [&] (AdapterFingerPrint* fp, AdapterHandlerEntry* entry) {
-    LogStreamHandle(Trace, cds) lsh;
-    if (ArchiveBuilder::current()->has_been_archived((address)entry)) {
-      AdapterHandlerEntry* buffered = ArchiveBuilder::current()->get_buffered_addr(entry);
-      assert(buffered != nullptr,"sanity check");
-      buffered_handlers.append(buffered);
-      if (lsh.is_enabled()) {
-	address runtime_addr = (address)buffered + ArchiveBuilder::current()->buffer_to_requested_delta();
-	log_trace(cds)("Added adapter handler %p (buffered=%p, runtime=%p)", entry, buffered, runtime_addr);
-      }
-    } else {
-      if (lsh.is_enabled()) {
-        log_trace(cds)("Skipping adapter handler %p as it is not archived", entry);
-      }
-    }
-  };
-  _adapter_handler_table->iterate_all(handler_collector);
-  _archived_adapter_handler_list = ArchiveUtils::archive_array(&buffered_handlers);
-  log_info(cds)("Dumped adapter handlers list (size=%d)", _adapter_handler_table->number_of_entries());
-}
-
-void AdapterHandlerLibrary::serialize(SerializeClosure* sc) {
-  sc->do_ptr((void**)&_archived_adapter_handler_list);
-}
-
-void AdapterHandlerLibrary::populate_adapter_handler_table() {
-  PerfTraceElapsedTime timer(ClassLoader::perf_load_adapter_table_time());
-  assert(_adapter_handler_table != nullptr, "_adapter_handler_table is not initialized");
-  if (_archived_adapter_handler_list != nullptr) {
-    log_info(cds)("Found adapter handlers list (size=%d) in the AOT cache", _archived_adapter_handler_list->length());
-    log_trace(cds)("Populating _adapter_handler_table");
-    for (int i =0; i < _archived_adapter_handler_list->length(); i++) {
-      AdapterHandlerEntry* entry = _archived_adapter_handler_list->at(i);
-      assert(entry->fingerprint() != nullptr, "Fingerpring must not be null");
-      _adapter_handler_table->put(entry->fingerprint(), entry);
-      log_trace(cds)("Added entry=%p, fp=%p", entry, entry->fingerprint());
-    }
-  }
 }
 
 JRT_LEAF(void, SharedRuntime::enable_stack_reserved_zone(JavaThread* current))

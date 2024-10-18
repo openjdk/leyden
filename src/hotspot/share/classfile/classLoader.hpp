@@ -177,7 +177,6 @@ class ClassLoader: AllStatic {
   static PerfCounter* _perf_preresolve_time;
   static PerfCounter* _perf_ik_link_methods_time;
   static PerfCounter* _perf_method_adapters_time;
-  static PerfCounter* _perf_load_adapter_table_time;
   static PerfCounter* _perf_ik_link_methods_count;
   static PerfCounter* _perf_method_adapters_count;
 
@@ -316,7 +315,6 @@ class ClassLoader: AllStatic {
   static PerfCounter* perf_preresolve_time() { return _perf_preresolve_time; }
   static PerfCounter* perf_ik_link_methods_time() { return _perf_ik_link_methods_time; }
   static PerfCounter* perf_method_adapters_time() { return _perf_method_adapters_time; }
-  static PerfCounter* perf_load_adapter_table_time() { return _perf_load_adapter_table_time; }
   static PerfCounter* perf_ik_link_methods_count() { return _perf_ik_link_methods_count; }
   static PerfCounter* perf_method_adapters_count() { return _perf_method_adapters_count; }
 

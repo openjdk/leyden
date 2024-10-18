@@ -808,9 +808,6 @@ class AdapterHandlerLibrary: public AllStatic {
   static size_t estimate_size_for_archive();
   static void archive_adapter_table();
   static void serialize_shared_table_header(SerializeClosure* soc);
-  static void dump_adapter_handler_list();
-  static void populate_adapter_handler_table();
-  static void serialize(SerializeClosure* sc);
   static bool EQUALS(AdapterHandlerEntry* entry, AdapterFingerPrint* fp, int len_unused) {
     return entry->fingerprint() == fp;
   }

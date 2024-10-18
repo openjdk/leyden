@@ -558,40 +558,6 @@ void SharedRuntime::gen_i2c_adapter(MacroAssembler *masm,
   // If this happens, control eventually transfers back to the compiled
   // caller, but with an uncorrected stack, causing delayed havoc.
 
-  if (VerifyAdapterCalls &&
-      (Interpreter::code() != nullptr || StubRoutines::final_stubs_code() != nullptr)) {
-#if 0
-    // So, let's test for cascading c2i/i2c adapters right now.
-    //  assert(Interpreter::contains($return_addr) ||
-    //         StubRoutines::contains($return_addr),
-    //         "i2c adapter must return to an interpreter frame");
-    __ block_comment("verify_i2c { ");
-    Label L_ok;
-    if (Interpreter::code() != nullptr) {
-      range_check(masm, rax, r11,
-                  Interpreter::code()->code_start(), Interpreter::code()->code_end(),
-                  L_ok);
-    }
-    if (StubRoutines::initial_stubs_code() != nullptr) {
-      range_check(masm, rax, r11,
-                  StubRoutines::initial_stubs_code()->code_begin(),
-                  StubRoutines::initial_stubs_code()->code_end(),
-                  L_ok);
-    }
-    if (StubRoutines::final_stubs_code() != nullptr) {
-      range_check(masm, rax, r11,
-                  StubRoutines::final_stubs_code()->code_begin(),
-                  StubRoutines::final_stubs_code()->code_end(),
-                  L_ok);
-    }
-    const char* msg = "i2c adapter must return to an interpreter frame";
-    __ block_comment(msg);
-    __ stop(msg);
-    __ bind(L_ok);
-    __ block_comment("} verify_i2ce ");
-#endif
-  }
-
   // Cut-out for having no stack args.
   int comp_words_on_stack = align_up(comp_args_on_stack*VMRegImpl::stack_slot_size, wordSize)>>LogBytesPerWord;
   if (comp_args_on_stack) {

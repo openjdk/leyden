@@ -130,7 +130,6 @@ PerfCounter*    ClassLoader::_perf_preinit_time = nullptr;
 PerfCounter*    ClassLoader::_perf_preresolve_time = nullptr;
 PerfCounter*    ClassLoader::_perf_ik_link_methods_time = nullptr;
 PerfCounter*    ClassLoader::_perf_method_adapters_time = nullptr;
-PerfCounter*    ClassLoader::_perf_load_adapter_table_time = nullptr;
 PerfCounter*    ClassLoader::_perf_ik_link_methods_count = nullptr;
 PerfCounter*    ClassLoader::_perf_method_adapters_count = nullptr;
 PerfCounter*    ClassLoader::_unsafe_defineClassCallCounter = nullptr;
@@ -157,8 +156,6 @@ void ClassLoader::print_counters(outputStream *st) {
                    Management::ticks_to_us(_perf_ik_link_methods_time->get_value())   , _perf_ik_link_methods_count->get_value());
       st->print_cr("  method adapters:                 " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
                    Management::ticks_to_us(_perf_method_adapters_time->get_value())   , _perf_method_adapters_count->get_value());
-      st->print_cr("  load method adapters table:      " JLONG_FORMAT_W(6) "us",
-                   Management::ticks_to_us(_perf_load_adapter_table_time->get_value()));
       if (CountBytecodes || CountBytecodesPerThread) {
         st->print_cr("; executed " JLONG_FORMAT " bytecodes", ClassLoader::class_init_bytecodes_count());
       }
@@ -1499,7 +1496,6 @@ void ClassLoader::initialize(TRAPS) {
 
       NEWPERFTICKCOUNTER(_perf_ik_link_methods_time, SUN_CLS, "linkMethodsTime");
       NEWPERFTICKCOUNTER(_perf_method_adapters_time, SUN_CLS, "makeAdaptersTime");
-      NEWPERFTICKCOUNTER(_perf_load_adapter_table_time, SUN_CLS, "loadAdapterTableTime");
       NEWPERFEVENTCOUNTER(_perf_ik_link_methods_count, SUN_CLS, "linkMethodsCount");
       NEWPERFEVENTCOUNTER(_perf_method_adapters_count, SUN_CLS, "makeAdaptersCount");
 

@@ -449,7 +449,6 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
   soc->do_ptr((void**)&_archived_method_handle_intrinsics);
 
   LambdaFormInvokers::serialize(soc);
-  AdapterHandlerLibrary::serialize(soc);
   AdapterHandlerLibrary::serialize_shared_table_header(soc);
 
   soc->do_tag(666);
@@ -559,7 +558,6 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
   // Write lambform lines into archive
   LambdaFormInvokers::dump_static_archive_invokers();
   if (CDSConfig::is_dumping_adapters()) {
-    AdapterHandlerLibrary::dump_adapter_handler_list();
     AdapterHandlerLibrary::archive_adapter_table();
   }
   // Write module name into archive
