@@ -2347,6 +2347,22 @@ class AdapterFingerPrint : public MetaspaceObj {
     return p;
   }
 
+  template<typename Function>
+  void iterate_args(Function function) {
+    for (int i = 0; i < length(); i++) {
+      unsigned val = (unsigned)value(i);
+      // args are packed so that first/lower arguments are in the highest
+      // bits of each int value, so iterate from highest to the lowest
+      for (int j = 32 - _basic_type_bits; j >= 0; j -= _basic_type_bits) {
+        unsigned v = (val >> j) & _basic_type_mask;
+        if (v == 0) {
+          continue;
+        }
+        function(v);
+      }
+    }
+  }
+
  public:
   static int allocation_size(int total_args_passed, BasicType* sig_bt) {
     int len = (total_args_passed + (_basic_types_per_int-1)) / _basic_types_per_int;
@@ -2394,39 +2410,27 @@ class AdapterFingerPrint : public MetaspaceObj {
     return st.as_string();
   }
 
-  // Reconstitutes the basic type arguments from the fingerprint,
-  // producing strings like LIJDF
   const char* as_basic_args_string() {
     stringStream st;
     bool long_prev = false;
-    for (int i = 0; i < length(); i++) {
-      unsigned val = (unsigned)value(i);
-      // args are packed so that first/lower arguments are in the highest
-      // bits of each int value, so iterate from highest to the lowest
-      for (int j = 32 - _basic_type_bits; j >= 0; j -= _basic_type_bits) {
-        unsigned v = (val >> j) & _basic_type_mask;
-        if (v == 0) {
-          assert(i == length() - 1, "Only expect zeroes in the last word");
-          continue;
-        }
-        if (long_prev) {
-          long_prev = false;
-          if (v == T_VOID) {
-            st.print("J");
-          } else {
-            st.print("L");
-          }
-        }
-        switch (v) {
-          case T_INT:    st.print("I");    break;
-          case T_LONG:   long_prev = true; break;
-          case T_FLOAT:  st.print("F");    break;
-          case T_DOUBLE: st.print("D");    break;
-          case T_VOID:   break;
-          default: ShouldNotReachHere();
-        }
+    iterate_args([&] (int arg) {
+      if (long_prev) {
+	long_prev = false;
+	if (arg == T_VOID) {
+	  st.print("J");
+	} else {
+	  st.print("L");
+	}
       }
-    }
+      switch (arg) {
+	case T_INT:    st.print("I");    break;
+	case T_LONG:   long_prev = true; break;
+	case T_FLOAT:  st.print("F");    break;
+	case T_DOUBLE: st.print("D");    break;
+	case T_VOID:   break;
+	default: ShouldNotReachHere();
+      }
+    });
     if (long_prev) {
       st.print("L");
     }
@@ -2437,35 +2441,30 @@ class AdapterFingerPrint : public MetaspaceObj {
     nargs = 0;
     GrowableArray<BasicType> btarray;
     bool long_prev = false;
-    for (int i = 0; i < length(); i++) {
-      unsigned val = (unsigned)value(i);
-      // args are packed so that first/lower arguments are in the highest
-      // bits of each int value, so iterate from highest to the lowest
-      for (int j = 32 - _basic_type_bits; j >= 0; j -= _basic_type_bits) {
-	unsigned v = (val >> j) & _basic_type_mask;
-	if (v == 0) continue;
-	if (long_prev) {
-	  long_prev = false;
-	  if (v == T_VOID) {
-            btarray.append(T_LONG);
-	  } else {
-            btarray.append(T_OBJECT); // it could be T_ARRAY; it shouldn't matter
-	  }
+
+    iterate_args([&] (int arg) {
+      if (long_prev) {
+	long_prev = false;
+	if (arg == T_VOID) {
+	  btarray.append(T_LONG);
+	} else {
+	  btarray.append(T_OBJECT); // it could be T_ARRAY; it shouldn't matter
 	}
-        switch (v) {
-          case T_INT: // fallthrough
-          case T_FLOAT: // fallthrough
-          case T_DOUBLE:
-          case T_VOID:
-            btarray.append((BasicType)v);
-            break;
-          case T_LONG:
-            long_prev = true;
-            break;
-          default: ShouldNotReachHere();
-        }
       }
-    }
+      switch (arg) {
+	case T_INT: // fallthrough
+	case T_FLOAT: // fallthrough
+	case T_DOUBLE:
+	case T_VOID:
+	  btarray.append((BasicType)arg);
+	  break;
+	case T_LONG:
+	  long_prev = true;
+	  break;
+	default: ShouldNotReachHere();
+      }
+    });
+
     if (long_prev) {
       btarray.append(T_OBJECT);
     }
