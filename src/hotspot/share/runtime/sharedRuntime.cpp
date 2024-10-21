@@ -2379,7 +2379,8 @@ class AdapterFingerPrint : public MetaspaceObj {
     int hash = 0;
     for (int i = 0; i < length(); i++) {
       int v = value(i);
-      hash = (hash << 8) ^ v ^ (hash >> 5);
+      //Add arithmetic operation to the hash, like +3 to improve hashing
+      hash = ((hash << 8) ^ v ^ (hash >> 5)) + 3;
     }
     return (unsigned int)hash;
   }
