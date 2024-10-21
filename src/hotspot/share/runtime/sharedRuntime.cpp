@@ -2528,7 +2528,7 @@ static GrowableArray<AdapterHandlerEntry*>* _adapter_handler_list = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::lookup(AdapterFingerPrint* fp) {
   NOT_PRODUCT(_lookups++);
   // Search archived table first. It is read-only table so can be searched without lock
-  AdapterHandlerEntry* entry = _archived_adapter_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
+  AdapterHandlerEntry* entry = _archived_adapter_handler_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
   if (entry != nullptr) {
 #ifndef PRODUCT
     if (fp->is_compact()) {
@@ -2573,8 +2573,7 @@ AdapterHandlerEntry* AdapterHandlerLibrary::_int_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_int_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_obj_arg_handler = nullptr;
-Array<AdapterHandlerEntry*>* AdapterHandlerLibrary::_archived_adapter_handler_list = nullptr;
-ArchivedAdapterTable AdapterHandlerLibrary::_archived_adapter_table;
+ArchivedAdapterTable AdapterHandlerLibrary::_archived_adapter_handler_table;
 
 const int AdapterHandlerLibrary_size = 16*K;
 BufferBlob* AdapterHandlerLibrary::_buffer = nullptr;
@@ -2814,13 +2813,12 @@ AdapterHandlerEntry* AdapterHandlerLibrary::get_adapter(const methodHandle& meth
   return entry;
 }
 
-bool AdapterHandlerLibrary::lookup_aot_cache(AdapterHandlerEntry* entry, MacroAssembler* masm) {
+bool AdapterHandlerLibrary::lookup_aot_cache(AdapterHandlerEntry* entry, CodeBuffer* buffer) {
   const char* name = AdapterHandlerLibrary::name(entry->fingerprint());
   const uint32_t id = AdapterHandlerLibrary::id(entry->fingerprint());
-  CodeBuffer* buffer = masm->code();
   uint32_t offsets[4];
   if (SCCache::load_adapter(buffer, id, name, offsets)) {
-    address i2c_entry = masm->pc();
+    address i2c_entry = buffer->insts_begin();
     assert(offsets[0] == 0, "sanity check");
     entry->set_entry_points(i2c_entry, i2c_entry + offsets[1], i2c_entry + offsets[2], i2c_entry + offsets[3]);
     return true;
@@ -2844,9 +2842,9 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_ada
   buffer.insts()->initialize_shared_locs((relocInfo*)buffer_locs,
                                           sizeof(buffer_locs)/sizeof(relocInfo));
 
-  MacroAssembler masm(&buffer);
   AdapterHandlerEntry* entry = (cached_entry != nullptr) ? cached_entry : AdapterHandlerLibrary::new_entry(fingerprint);
-  if (!lookup_aot_cache(entry, &masm)) {
+  if (!lookup_aot_cache(entry, &buffer)) {
+    MacroAssembler masm(&buffer);
     VMRegPair stack_regs[16];
     VMRegPair* regs = (total_args_passed <= 16) ? stack_regs : NEW_RESOURCE_ARRAY(VMRegPair, total_args_passed);
 
@@ -2949,11 +2947,7 @@ void AdapterHandlerEntry::metaspace_pointers_do(MetaspaceClosure* it) {
 }
 
 void AdapterHandlerEntry::remove_unshareable_info() {
-  _i2c_entry = nullptr;
-  _c2i_entry = nullptr;
-  _c2i_unverified_entry = nullptr;
-  _c2i_no_clinit_check_entry = nullptr;
-  _linked = false;
+  set_entry_points(nullptr, nullptr, nullptr, nullptr, false);
 }
 
 void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
@@ -2967,7 +2961,6 @@ void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
     assert(_fingerprint != nullptr, "_fingerprint must not be null");
 #ifdef ASSERT
     AdapterHandlerEntry* entry = AdapterHandlerLibrary::lookup(_fingerprint);
-    //AdapterHandlerEntry** entry = _adapter_handler_table->get(_fingerprint);
     assert(entry == this, "sanity check");
 #endif
     ResourceMark rm;
@@ -3392,11 +3385,11 @@ void AdapterHandlerLibrary::archive_adapter_table() {
   CompactHashtableWriter writer(_adapter_handler_table->number_of_entries(), &stats);
   CopyAdapterTableToArchive copy(&writer);
   _adapter_handler_table->iterate(&copy);
-  writer.dump(&_archived_adapter_table, "archived adapter table");
+  writer.dump(&_archived_adapter_handler_table, "archived adapter table");
 }
 
 void AdapterHandlerLibrary::serialize_shared_table_header(SerializeClosure* soc) {
-  _archived_adapter_table.serialize_header(soc);
+  _archived_adapter_handler_table.serialize_header(soc);
 }
 
 JRT_LEAF(void, SharedRuntime::enable_stack_reserved_zone(JavaThread* current))

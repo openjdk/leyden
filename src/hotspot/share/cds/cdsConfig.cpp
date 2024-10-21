@@ -32,6 +32,7 @@
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/moduleEntry.hpp"
 #include "classfile/systemDictionaryShared.hpp"
+#include "code/SCCache.hpp"
 #include "include/jvm_io.h"
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"
@@ -541,6 +542,10 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         set_new_workflow_default_CachedCodeFile();
         // Cannot dump cached code until metadata and heap are dumped.
         disable_dumping_cached_code();
+      }
+      if (StoreCachedCode) {
+	log_info(cds)("ArchiveAdapters is enabled");
+	FLAG_SET_ERGO_IF_DEFAULT(ArchiveAdapters, true);
       }
     }
   } else {

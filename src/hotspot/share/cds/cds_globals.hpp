@@ -170,7 +170,8 @@
           "Skip verification of CDS archive heap")                          \
                                                                             \
   product(bool, ArchiveAdapters, false,                                     \
-          "Archive AdapterFingerPrint and AdapterHandlerEntry")             \
+          "Archive AdapterFingerPrint and AdapterHandlerEntry."             \
+          "Requires AOT code cache")                                        \
 
 // end of CDS_FLAGS
 

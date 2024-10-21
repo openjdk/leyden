@@ -720,12 +720,12 @@ class AdapterHandlerEntry : public MetaspaceObj {
   {
     return new (mtCode) AdapterHandlerEntry(fingerprint, i2c_entry, c2i_entry, c2i_unverified_entry, c2i_no_clinit_check_entry);
   }
-  void set_entry_points(address i2c_entry, address c2i_entry, address c2i_unverified_entry, address c2i_no_clinit_check_entry) {
+  void set_entry_points(address i2c_entry, address c2i_entry, address c2i_unverified_entry, address c2i_no_clinit_check_entry, bool linked = true) {
     _i2c_entry = i2c_entry;
     _c2i_entry = c2i_entry;
     _c2i_unverified_entry = c2i_unverified_entry;
     _c2i_no_clinit_check_entry = c2i_no_clinit_check_entry;
-    _linked = true;
+    _linked = linked;
   }
 
   address get_i2c_entry()                  const { return _i2c_entry; }
@@ -768,8 +768,7 @@ class AdapterHandlerLibrary: public AllStatic {
   static AdapterHandlerEntry* _obj_arg_handler;
   static AdapterHandlerEntry* _obj_int_arg_handler;
   static AdapterHandlerEntry* _obj_obj_arg_handler;
-  static Array<AdapterHandlerEntry*>* _archived_adapter_handler_list;
-  static ArchivedAdapterTable _archived_adapter_table;
+  static ArchivedAdapterTable _archived_adapter_handler_table;
 
   static BufferBlob* buffer_blob();
   static void initialize();
@@ -777,7 +776,7 @@ class AdapterHandlerLibrary: public AllStatic {
                                                     int total_args_passed,
                                                     BasicType* sig_bt);
   static AdapterHandlerEntry* get_simple_adapter(const methodHandle& method);
-  static bool lookup_aot_cache(AdapterHandlerEntry* entry, MacroAssembler* masm);
+  static bool lookup_aot_cache(AdapterHandlerEntry* entry, CodeBuffer* buffer);
  public:
 
   static AdapterHandlerEntry* new_entry(AdapterFingerPrint* fingerprint,
