@@ -2652,16 +2652,23 @@ void AdapterHandlerLibrary::initialize() {
   post_adapter_creation(obj_obj_arg_blob, _obj_obj_arg_handler);
 }
 
-AdapterHandlerEntry* AdapterHandlerLibrary::create_simple_adapter(AdapterBlob*& new_adapter,
+AdapterHandlerEntry* AdapterHandlerLibrary::create_simple_adapter(AdapterBlob*& adapter_blob,
                                                                   int total_args_passed,
                                                                   BasicType* sig_bt) {
   AdapterFingerPrint* fp = AdapterFingerPrint::allocate(total_args_passed, sig_bt);
   // We may find the adapter in the table if it is loaded from the AOT cache
   AdapterHandlerEntry* entry = lookup(fp);
-  assert(entry == nullptr || (entry->is_shared() && !entry->is_linked()), "Non null AdapterHandlerEntry should be in the AOT cache in unlinked state");
-  entry = create_adapter(new_adapter, fp, total_args_passed, sig_bt, true, entry);
-  if (entry->is_shared()) {
+  if (entry != nullptr) {
+    assert(entry->is_shared() && !entry->is_linked(), "Non null AdapterHandlerEntry should be in the AOT cache in unlinked state");
+    if (!link_adapter_handler(entry, adapter_blob)) {
+      if (generate_adapter_code(adapter_blob, entry, total_args_passed, sig_bt, true)) {
+        return nullptr;
+      }
+    }
+    // AdapterFingerPrint is already in the cache, no need to keep this one
     AdapterFingerPrint::deallocate(fp);
+  } else {
+    entry = create_adapter(adapter_blob, fp, total_args_passed, sig_bt, true);
   }
   return entry;
 }
@@ -2813,25 +2820,45 @@ AdapterHandlerEntry* AdapterHandlerLibrary::get_adapter(const methodHandle& meth
   return entry;
 }
 
-bool AdapterHandlerLibrary::lookup_aot_cache(AdapterHandlerEntry* entry, CodeBuffer* buffer) {
-  const char* name = AdapterHandlerLibrary::name(entry->fingerprint());
-  const uint32_t id = AdapterHandlerLibrary::id(entry->fingerprint());
+bool AdapterHandlerLibrary::lookup_aot_cache(AdapterHandlerEntry* handler, CodeBuffer* buffer) {
+  ResourceMark rm;
+  const char* name = AdapterHandlerLibrary::name(handler->fingerprint());
+  const uint32_t id = AdapterHandlerLibrary::id(handler->fingerprint());
   uint32_t offsets[4];
   if (SCCache::load_adapter(buffer, id, name, offsets)) {
     address i2c_entry = buffer->insts_begin();
     assert(offsets[0] == 0, "sanity check");
-    entry->set_entry_points(i2c_entry, i2c_entry + offsets[1], i2c_entry + offsets[2], i2c_entry + offsets[3]);
+    handler->set_entry_points(i2c_entry, i2c_entry + offsets[1], i2c_entry + offsets[2], i2c_entry + offsets[3]);
     return true;
   }
   return false;
 }
 
-AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_adapter,
-                                                           AdapterFingerPrint* fingerprint,
-                                                           int total_args_passed,
-                                                           BasicType* sig_bt,
-                                                           bool allocate_code_blob,
-                                                           AdapterHandlerEntry* cached_entry) {
+#ifndef PRODUCT
+void AdapterHandlerLibrary::print_adapter_handler_info(AdapterHandlerEntry* handler, AdapterBlob* adapter_blob) {
+  ttyLocker ttyl;
+  ResourceMark rm;
+  int insts_size = adapter_blob->code_size();
+  handler->print_adapter_on(tty);
+  tty->print_cr("i2c argument handler for: %s %s (%d bytes generated)",
+		handler->fingerprint()->as_basic_args_string(),
+		handler->fingerprint()->as_string(), insts_size);
+  tty->print_cr("c2i argument handler starts at " INTPTR_FORMAT, p2i(handler->get_c2i_entry()));
+  if (Verbose || PrintStubCode) {
+    address first_pc = handler->base_address();
+    if (first_pc != nullptr) {
+      Disassembler::decode(first_pc, first_pc + insts_size, tty, &adapter_blob->asm_remarks());
+      tty->cr();
+    }
+  }
+}
+#endif // PRODUCT
+
+bool AdapterHandlerLibrary::generate_adapter_code(AdapterBlob*& adapter_blob,
+                                                  AdapterHandlerEntry* handler,
+                                                  int total_args_passed,
+                                                  BasicType* sig_bt,
+                                                  bool allocate_code_blob) {
   if (log_is_enabled(Info, perf, class, link)) {
     ClassLoader::perf_method_adapters_count()->inc();
   }
@@ -2840,77 +2867,100 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& new_ada
   CodeBuffer buffer(buf);
   short buffer_locs[20];
   buffer.insts()->initialize_shared_locs((relocInfo*)buffer_locs,
-                                          sizeof(buffer_locs)/sizeof(relocInfo));
+                                         sizeof(buffer_locs)/sizeof(relocInfo));
+  MacroAssembler masm(&buffer);
+  VMRegPair stack_regs[16];
+  VMRegPair* regs = (total_args_passed <= 16) ? stack_regs : NEW_RESOURCE_ARRAY(VMRegPair, total_args_passed);
 
-  AdapterHandlerEntry* entry = (cached_entry != nullptr) ? cached_entry : AdapterHandlerLibrary::new_entry(fingerprint);
-  if (!lookup_aot_cache(entry, &buffer)) {
-    MacroAssembler masm(&buffer);
-    VMRegPair stack_regs[16];
-    VMRegPair* regs = (total_args_passed <= 16) ? stack_regs : NEW_RESOURCE_ARRAY(VMRegPair, total_args_passed);
-
-    // Get a description of the compiled java calling convention and the largest used (VMReg) stack slot usage
-    int comp_args_on_stack = SharedRuntime::java_calling_convention(sig_bt, regs, total_args_passed);
-    SharedRuntime::generate_i2c2i_adapters(&masm,
-					   total_args_passed,
-					   comp_args_on_stack,
-					   sig_bt,
-					   regs,
-					   entry);
-    if (CDSConfig::is_dumping_adapters()) {
-      // try to save generated code
-      const char* name = AdapterHandlerLibrary::name(entry->fingerprint());
-      const uint32_t id = AdapterHandlerLibrary::id(entry->fingerprint());
-      uint32_t offsets[4];
-      offsets[0] = 0;
-      offsets[1] = entry->get_c2i_entry() - entry->get_i2c_entry();
-      offsets[2] = entry->get_c2i_unverified_entry() - entry->get_i2c_entry();
-      offsets[3] = entry->get_c2i_no_clinit_check_entry() - entry->get_i2c_entry();
-      SCCache::store_adapter(&buffer, id, name, offsets);
-    }
+  // Get a description of the compiled java calling convention and the largest used (VMReg) stack slot usage
+  int comp_args_on_stack = SharedRuntime::java_calling_convention(sig_bt, regs, total_args_passed);
+  SharedRuntime::generate_i2c2i_adapters(&masm,
+					 total_args_passed,
+					 comp_args_on_stack,
+					 sig_bt,
+					 regs,
+					 handler);
+  if (CDSConfig::is_dumping_adapters()) {
+    // try to save generated code
+    const char* name = AdapterHandlerLibrary::name(handler->fingerprint());
+    const uint32_t id = AdapterHandlerLibrary::id(handler->fingerprint());
+    uint32_t offsets[4];
+    offsets[0] = 0;
+    offsets[1] = handler->get_c2i_entry() - handler->get_i2c_entry();
+    offsets[2] = handler->get_c2i_unverified_entry() - handler->get_i2c_entry();
+    offsets[3] = handler->get_c2i_no_clinit_check_entry() - handler->get_i2c_entry();
+    SCCache::store_adapter(&buffer, id, name, offsets);
   }
 #ifdef ASSERT
   if (VerifyAdapterSharing) {
-    entry->save_code(buf->code_begin(), buffer.insts_size());
+    handler->save_code(buf->code_begin(), buffer.insts_size());
     if (!allocate_code_blob) {
-      return entry;
+      return true;
     }
   }
 #endif
 
-  new_adapter = AdapterBlob::create(&buffer);
-  NOT_PRODUCT(int insts_size = buffer.insts_size());
-  if (new_adapter == nullptr) {
+  adapter_blob = AdapterBlob::create(&buffer);
+  if (adapter_blob == nullptr) {
     // CodeCache is full, disable compilation
     // Ought to log this but compile log is only per compile thread
     // and we're some non descript Java thread.
-    return nullptr;
+    return true;
   }
-  entry->relocate(new_adapter->content_begin());
+  handler->relocate(adapter_blob->content_begin());
 #ifndef PRODUCT
   // debugging support
   if (PrintAdapterHandlers || PrintStubCode) {
-    ttyLocker ttyl;
-    entry->print_adapter_on(tty);
-    tty->print_cr("i2c argument handler #%d for: %s %s (%d bytes generated)",
-                  _adapter_handler_table->number_of_entries(), fingerprint->as_basic_args_string(),
-                  fingerprint->as_string(), insts_size);
-    tty->print_cr("c2i argument handler starts at " INTPTR_FORMAT, p2i(entry->get_c2i_entry()));
-    if (Verbose || PrintStubCode) {
-      address first_pc = entry->base_address();
-      if (first_pc != nullptr) {
-        Disassembler::decode(first_pc, first_pc + insts_size, tty
-                             NOT_PRODUCT(COMMA &new_adapter->asm_remarks()));
-        tty->cr();
-      }
-    }
+    print_adapter_handler_info(handler, adapter_blob);
   }
 #endif
+  return true;
+}
 
-  if (cached_entry == nullptr) {
-    assert_lock_strong(AdapterHandlerLibrary_lock);
-    _adapter_handler_table->put(fingerprint, entry);
+AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& adapter_blob,
+                                                           AdapterFingerPrint* fingerprint,
+                                                           int total_args_passed,
+                                                           BasicType* sig_bt,
+                                                           bool allocate_code_blob) {
+  AdapterHandlerEntry* handler = AdapterHandlerLibrary::new_entry(fingerprint);
+  if (!generate_adapter_code(adapter_blob, handler, total_args_passed, sig_bt, allocate_code_blob)) {
+    return nullptr;
   }
-  return entry;
+  assert_lock_strong(AdapterHandlerLibrary_lock);
+  _adapter_handler_table->put(fingerprint, handler);
+  return handler;
+}
+
+bool AdapterHandlerLibrary::link_adapter_handler(AdapterHandlerEntry* handler, AdapterBlob*& adapter_blob) {
+#ifndef PRODUCT
+  if (TestAdapterLinkFailure) {
+    return false;
+  }
+#endif
+  BufferBlob* buf = buffer_blob(); // the temporary code buffer in CodeCache
+  CodeBuffer buffer(buf);
+  short buffer_locs[20];
+  buffer.insts()->initialize_shared_locs((relocInfo*)buffer_locs,
+                                         sizeof(buffer_locs)/sizeof(relocInfo));
+
+  if (!lookup_aot_cache(handler, &buffer)) {
+    return false;
+  }
+  adapter_blob = AdapterBlob::create(&buffer);
+  if (adapter_blob == nullptr) {
+    // CodeCache is full, disable compilation
+    // Ought to log this but compile log is only per compile thread
+    // and we're some non descript Java thread.
+    return false;
+  }
+  handler->relocate(adapter_blob->content_begin());
+#ifndef PRODUCT
+  // debugging support
+  if (PrintAdapterHandlers || PrintStubCode) {
+    print_adapter_handler_info(handler, adapter_blob);
+  }
+#endif
+  return true;
 }
 
 address AdapterHandlerEntry::base_address() {
@@ -2955,7 +3005,7 @@ void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
   if (is_linked()) {
     return;
   }
-  AdapterBlob* blob = nullptr;
+  AdapterBlob* adapter_blob = nullptr;
   {
     MutexLocker mu(AdapterHandlerLibrary_lock);
     assert(_fingerprint != nullptr, "_fingerprint must not be null");
@@ -2963,14 +3013,26 @@ void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
     AdapterHandlerEntry* entry = AdapterHandlerLibrary::lookup(_fingerprint);
     assert(entry == this, "sanity check");
 #endif
-    ResourceMark rm;
-    int nargs;
-    BasicType* bt = _fingerprint->as_basic_type(nargs);
-    AdapterHandlerLibrary::create_adapter(blob, _fingerprint, nargs, bt, true, this);
+    if (!AdapterHandlerLibrary::link_adapter_handler(this, adapter_blob)) {
+      ResourceMark rm;
+      log_warning(cds)("Failed to link AdapterHandlerEntry to its code in the AOT code cache");
+      int nargs;
+      BasicType* bt = _fingerprint->as_basic_type(nargs);
+      if (!AdapterHandlerLibrary::generate_adapter_code(adapter_blob, this, nargs, bt, true)) {
+	if (!is_init_completed()) {
+	  // Don't throw exceptions during VM initialization because java.lang.* classes
+	  // might not have been initialized, causing problems when constructing the
+	  // Java exception object.
+	  vm_exit_during_initialization("Out of space in CodeCache for adapters");
+	} else {
+	  THROW_MSG(vmSymbols::java_lang_OutOfMemoryError(), "Out of space in CodeCache for adapters");
+	}
+      }
+    }
   }
   // Outside of the lock
-  if (blob != nullptr) {
-    post_adapter_creation(blob, this);
+  if (adapter_blob != nullptr) {
+    post_adapter_creation(adapter_blob, this);
   }
   assert(_linked, "AdapterHandlerEntry must now be linked");
 }

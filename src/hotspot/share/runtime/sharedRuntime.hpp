@@ -776,7 +776,15 @@ class AdapterHandlerLibrary: public AllStatic {
                                                     int total_args_passed,
                                                     BasicType* sig_bt);
   static AdapterHandlerEntry* get_simple_adapter(const methodHandle& method);
-  static bool lookup_aot_cache(AdapterHandlerEntry* entry, CodeBuffer* buffer);
+  static bool lookup_aot_cache(AdapterHandlerEntry* handler, CodeBuffer* buffer);
+  static AdapterHandlerEntry* create_adapter(AdapterBlob*& new_adapter,
+                                             AdapterFingerPrint* fingerprint,
+                                             int total_args_passed,
+                                             BasicType* sig_bt,
+                                             bool allocate_code_blob);
+#ifndef PRODUCT
+  static void print_adapter_handler_info(AdapterHandlerEntry* handler, AdapterBlob* adapter_blob);
+#endif // PRODUCT
  public:
 
   static AdapterHandlerEntry* new_entry(AdapterFingerPrint* fingerprint,
@@ -786,13 +794,13 @@ class AdapterHandlerLibrary: public AllStatic {
                                         address c2i_no_clinit_check_entry = nullptr);
   static void create_native_wrapper(const methodHandle& method);
   static AdapterHandlerEntry* get_adapter(const methodHandle& method);
-  static AdapterHandlerEntry* create_adapter(AdapterBlob*& new_adapter,
-                                             AdapterFingerPrint* fingerprint,
-                                             int total_args_passed,
-                                             BasicType* sig_bt,
-                                             bool allocate_code_blob,
-                                             AdapterHandlerEntry* cached_entry = nullptr);
   static AdapterHandlerEntry* lookup(AdapterFingerPrint* fp);
+  static bool link_adapter_handler(AdapterHandlerEntry* handler, AdapterBlob*& adapter_blob);
+  static bool generate_adapter_code(AdapterBlob*& adapter_blob,
+                                    AdapterHandlerEntry* handler,
+                                    int total_args_passed,
+				    BasicType* sig_bt,
+				    bool allocate_code_blob);
 
   static void print_handler(const CodeBlob* b) { print_handler_on(tty, b); }
   static void print_handler_on(outputStream* st, const CodeBlob* b);
