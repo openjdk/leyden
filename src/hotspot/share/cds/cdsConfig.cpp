@@ -544,8 +544,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         disable_dumping_cached_code();
       }
       if (StoreCachedCode) {
-	log_info(cds)("ArchiveAdapters is enabled");
-	FLAG_SET_ERGO_IF_DEFAULT(ArchiveAdapters, true);
+        log_info(cds)("ArchiveAdapters is enabled");
+        FLAG_SET_ERGO_IF_DEFAULT(ArchiveAdapters, true);
       }
     }
   } else {

@@ -2415,20 +2415,20 @@ class AdapterFingerPrint : public MetaspaceObj {
     bool long_prev = false;
     iterate_args([&] (int arg) {
       if (long_prev) {
-	long_prev = false;
-	if (arg == T_VOID) {
-	  st.print("J");
-	} else {
-	  st.print("L");
-	}
+        long_prev = false;
+        if (arg == T_VOID) {
+          st.print("J");
+        } else {
+          st.print("L");
+        }
       }
       switch (arg) {
-	case T_INT:    st.print("I");    break;
-	case T_LONG:   long_prev = true; break;
-	case T_FLOAT:  st.print("F");    break;
-	case T_DOUBLE: st.print("D");    break;
-	case T_VOID:   break;
-	default: ShouldNotReachHere();
+        case T_INT:    st.print("I");    break;
+        case T_LONG:   long_prev = true; break;
+        case T_FLOAT:  st.print("F");    break;
+        case T_DOUBLE: st.print("D");    break;
+        case T_VOID:   break;
+        default: ShouldNotReachHere();
       }
     });
     if (long_prev) {
@@ -2444,24 +2444,24 @@ class AdapterFingerPrint : public MetaspaceObj {
 
     iterate_args([&] (int arg) {
       if (long_prev) {
-	long_prev = false;
-	if (arg == T_VOID) {
-	  btarray.append(T_LONG);
-	} else {
-	  btarray.append(T_OBJECT); // it could be T_ARRAY; it shouldn't matter
-	}
+        long_prev = false;
+        if (arg == T_VOID) {
+          btarray.append(T_LONG);
+        } else {
+          btarray.append(T_OBJECT); // it could be T_ARRAY; it shouldn't matter
+        }
       }
       switch (arg) {
-	case T_INT: // fallthrough
-	case T_FLOAT: // fallthrough
-	case T_DOUBLE:
-	case T_VOID:
-	  btarray.append((BasicType)arg);
-	  break;
-	case T_LONG:
-	  long_prev = true;
-	  break;
-	default: ShouldNotReachHere();
+        case T_INT: // fallthrough
+        case T_FLOAT: // fallthrough
+        case T_DOUBLE:
+        case T_VOID:
+          btarray.append((BasicType)arg);
+          break;
+        case T_LONG:
+          long_prev = true;
+          break;
+        default: ShouldNotReachHere();
       }
     });
 

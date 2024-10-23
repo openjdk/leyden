@@ -1164,20 +1164,20 @@ bool SCCache::finish_write() {
         } else if (_load_entries[i].for_preload() && _load_entries[i].method() != nullptr) {
           // record entrant first version code for pre-loading
           preload_entries[preload_entries_cnt++] = entries_count;
-	} else if (entries_address[i].kind() == SCCEntry::Adapter) {
-	  adapters_count++;
-	} else if (entries_address[i].kind() == SCCEntry::Stub) {
-	  stubs_count++;
-	} else if (entries_address[i].kind() == SCCEntry::Blob) {
-	  total_blobs_count++;
-	  if (entries_address[i].comp_level() == CompLevel_none) {
-	    shared_blobs_count++;
-	  } else if (entries_address[i].comp_level() == CompLevel_simple) {
-	    c1_blobs_count++;
-	  } else {
-	    assert(entries_address[i].comp_level() == CompLevel_full_optimization, "must be!");
-	    opto_blobs_count++;
-	  }
+        } else if (entries_address[i].kind() == SCCEntry::Adapter) {
+          adapters_count++;
+        } else if (entries_address[i].kind() == SCCEntry::Stub) {
+          stubs_count++;
+        } else if (entries_address[i].kind() == SCCEntry::Blob) {
+          total_blobs_count++;
+          if (entries_address[i].comp_level() == CompLevel_none) {
+            shared_blobs_count++;
+          } else if (entries_address[i].comp_level() == CompLevel_simple) {
+            c1_blobs_count++;
+          } else {
+            assert(entries_address[i].comp_level() == CompLevel_full_optimization, "must be!");
+            opto_blobs_count++;
+          }
         }
         {
           uint size = align_up(_load_entries[i].size(), DATA_ALIGNMENT);
@@ -4362,7 +4362,7 @@ address SCAddressTable::address_for_id(int idx) {
   if (id > (_c_str_base + _c_str_max)) {
     return (address)os::init + idx;
   }
-  if (idx < 0) { 
+  if (idx < 0) {
     fatal("Incorrect id %d for SCA table", id);
   }
   // no need to compare unsigned id against 0
@@ -4421,14 +4421,14 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
       // Search in code blobs
        id = search_address(addr, _blobs_addr, _blobs_length);
       if (id == -1) {
-	id_base = _C1_blobs_base;
-	// search C1 blobs
-	id = search_address(addr, _C1_blobs_addr, _C1_blobs_length);
+        id_base = _C1_blobs_base;
+        // search C1 blobs
+        id = search_address(addr, _C1_blobs_addr, _C1_blobs_length);
       }
       if (id == -1) {
-	id_base = _C2_blobs_base;
-	// search C2 blobs
-	id = search_address(addr, _C2_blobs_addr, _C2_blobs_length);
+        id_base = _C2_blobs_base;
+        // search C2 blobs
+        id = search_address(addr, _C2_blobs_addr, _C2_blobs_length);
       }
       if (id < 0) {
         fatal("Address " INTPTR_FORMAT " for Blob:%s is missing in SCA table", p2i(addr), cb->name());
