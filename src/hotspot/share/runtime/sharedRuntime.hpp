@@ -749,14 +749,16 @@ class AdapterHandlerEntry : public MetaspaceObj {
   void print_adapter_on(outputStream* st) const;
 
   void metaspace_pointers_do(MetaspaceClosure* it);
-  int size() const { return (int)heap_word_size(sizeof(AdapterHandlerEntry)); }
+  int size() const {return (int)heap_word_size(sizeof(AdapterHandlerEntry)); }
   MetaspaceObj::Type type() const { return AdapterHandlerEntryType; }
 
-  void remove_unshareable_info();
-  void restore_unshareable_info(TRAPS);
+  void remove_unshareable_info() NOT_CDS_RETURN;
+  void restore_unshareable_info(TRAPS) NOT_CDS_RETURN;
 };
 
+#if INCLUDE_CDS
 class ArchivedAdapterTable;
+#endif // INCLUDE_CDS
 
 class AdapterHandlerLibrary: public AllStatic {
   friend class SharedRuntime;
@@ -768,8 +770,9 @@ class AdapterHandlerLibrary: public AllStatic {
   static AdapterHandlerEntry* _obj_arg_handler;
   static AdapterHandlerEntry* _obj_int_arg_handler;
   static AdapterHandlerEntry* _obj_obj_arg_handler;
+#if INCLUDE_CDS
   static ArchivedAdapterTable _archived_adapter_handler_table;
-
+#endif // INCLUDE_CDS
   static BufferBlob* buffer_blob();
   static void initialize();
   static AdapterHandlerEntry* create_simple_adapter(AdapterBlob*& new_adapter,
@@ -795,12 +798,11 @@ class AdapterHandlerLibrary: public AllStatic {
   static void create_native_wrapper(const methodHandle& method);
   static AdapterHandlerEntry* get_adapter(const methodHandle& method);
   static AdapterHandlerEntry* lookup(AdapterFingerPrint* fp);
-  static bool link_adapter_handler(AdapterHandlerEntry* handler, AdapterBlob*& adapter_blob);
   static bool generate_adapter_code(AdapterBlob*& adapter_blob,
                                     AdapterHandlerEntry* handler,
                                     int total_args_passed,
-				    BasicType* sig_bt,
-				    bool allocate_code_blob);
+                                    BasicType* sig_bt,
+                                    bool allocate_code_blob);
 
   static void print_handler(const CodeBlob* b) { print_handler_on(tty, b); }
   static void print_handler_on(outputStream* st, const CodeBlob* b);
@@ -812,17 +814,21 @@ class AdapterHandlerLibrary: public AllStatic {
 #endif // PRODUCT
 
   static bool is_abstract_method_adapter(AdapterHandlerEntry* adapter);
-  static size_t estimate_size_for_archive();
-  static void archive_adapter_table();
-  static void serialize_shared_table_header(SerializeClosure* soc);
+
+  static bool link_adapter_handler(AdapterHandlerEntry* handler, AdapterBlob*& adapter_blob) NOT_CDS_RETURN_(false);
+  static size_t estimate_size_for_archive() NOT_CDS_RETURN_(0);
+  static void archive_adapter_table() NOT_CDS_RETURN;
+  static void serialize_shared_table_header(SerializeClosure* soc) NOT_CDS_RETURN;
   static bool EQUALS(AdapterHandlerEntry* entry, AdapterFingerPrint* fp, int len_unused) {
     return entry->fingerprint() == fp;
   }
 };
 
+#if INCLUDE_CDS
 class ArchivedAdapterTable : public OffsetCompactHashtable<
   AdapterFingerPrint*,
   AdapterHandlerEntry*,
   AdapterHandlerLibrary::EQUALS> {};
+#endif // INCLUDE_CDS
 
 #endif // SHARE_RUNTIME_SHAREDRUNTIME_HPP

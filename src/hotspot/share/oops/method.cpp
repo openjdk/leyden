@@ -399,11 +399,13 @@ void Method::metaspace_pointers_do(MetaspaceClosure* it) {
   } else {
     it->push(&_constMethod);
   }
+#if INCLUDE_CDS
   if (CDSConfig::is_dumping_adapters()) {
     if (!AdapterHandlerLibrary::is_abstract_method_adapter(_adapter)) {
       it->push(&_adapter);
     }
   }
+#endif
   it->push(&_method_data);
   it->push(&_method_counters);
   NOT_PRODUCT(it->push(&_name);)

@@ -2527,6 +2527,7 @@ static GrowableArray<AdapterHandlerEntry*>* _adapter_handler_list = nullptr;
 // Find a entry with the same fingerprint if it exists
 AdapterHandlerEntry* AdapterHandlerLibrary::lookup(AdapterFingerPrint* fp) {
   NOT_PRODUCT(_lookups++);
+#if INCLUDE_CDS
   // Search archived table first. It is read-only table so can be searched without lock
   AdapterHandlerEntry* entry = _archived_adapter_handler_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
   if (entry != nullptr) {
@@ -2538,6 +2539,7 @@ AdapterHandlerEntry* AdapterHandlerLibrary::lookup(AdapterFingerPrint* fp) {
 #endif
     return entry;
   }
+#endif // INCLUDE_CDS
   assert_lock_strong(AdapterHandlerLibrary_lock);
   AdapterHandlerEntry** entry_p = _adapter_handler_table->get(fp);
   if (entry_p != nullptr) {
@@ -2573,8 +2575,9 @@ AdapterHandlerEntry* AdapterHandlerLibrary::_int_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_int_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_obj_arg_handler = nullptr;
+#if INCLUDE_CDS
 ArchivedAdapterTable AdapterHandlerLibrary::_archived_adapter_handler_table;
-
+#endif // INCLUDE_CDS
 const int AdapterHandlerLibrary_size = 16*K;
 BufferBlob* AdapterHandlerLibrary::_buffer = nullptr;
 
@@ -2931,6 +2934,7 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& adapter
   return handler;
 }
 
+#if INCLUDE_CDS
 bool AdapterHandlerLibrary::link_adapter_handler(AdapterHandlerEntry* handler, AdapterBlob*& adapter_blob) {
 #ifndef PRODUCT
   if (TestAdapterLinkFailure) {
@@ -2962,6 +2966,58 @@ bool AdapterHandlerLibrary::link_adapter_handler(AdapterHandlerEntry* handler, A
 #endif
   return true;
 }
+
+class CopyAdapterTableToArchive : StackObj {
+private:
+  CompactHashtableWriter* _writer;
+  ArchiveBuilder* _builder;
+public:
+  CopyAdapterTableToArchive(CompactHashtableWriter* writer) : _writer(writer),
+                                                             _builder(ArchiveBuilder::current())
+  {}
+
+  bool do_entry(AdapterFingerPrint* fp, AdapterHandlerEntry* entry) {
+    LogStreamHandle(Trace, cds) lsh;
+    if (ArchiveBuilder::current()->has_been_archived((address)entry)) {
+      assert(ArchiveBuilder::current()->has_been_archived((address)fp), "must be");
+      AdapterFingerPrint* buffered_fp = ArchiveBuilder::current()->get_buffered_addr(fp);
+      assert(buffered_fp != nullptr,"sanity check");
+      AdapterHandlerEntry* buffered_entry = ArchiveBuilder::current()->get_buffered_addr(entry);
+      assert(buffered_entry != nullptr,"sanity check");
+
+      uint hash = fp->compute_hash();
+      u4 delta = _builder->buffer_to_offset_u4((address)buffered_entry);
+      _writer->add(hash, delta);
+      if (lsh.is_enabled()) {
+	address fp_runtime_addr = (address)buffered_fp + ArchiveBuilder::current()->buffer_to_requested_delta();
+	address entry_runtime_addr = (address)buffered_entry + ArchiveBuilder::current()->buffer_to_requested_delta();
+	log_trace(cds)("Added fp=%p, entry=%p to the archived adater table", buffered_fp, buffered_entry);
+      }
+    } else {
+      if (lsh.is_enabled()) {
+        log_trace(cds)("Skipping adapter handler %p as it is not archived", entry);
+      }
+    }
+    return true;
+  }
+};
+
+size_t AdapterHandlerLibrary::estimate_size_for_archive() {
+  return CompactHashtableWriter::estimate_size(_adapter_handler_table->number_of_entries());
+}
+
+void AdapterHandlerLibrary::archive_adapter_table() {
+  CompactHashtableStats stats;
+  CompactHashtableWriter writer(_adapter_handler_table->number_of_entries(), &stats);
+  CopyAdapterTableToArchive copy(&writer);
+  _adapter_handler_table->iterate(&copy);
+  writer.dump(&_archived_adapter_handler_table, "archived adapter table");
+}
+
+void AdapterHandlerLibrary::serialize_shared_table_header(SerializeClosure* soc) {
+  _archived_adapter_handler_table.serialize_header(soc);
+}
+#endif // INCLUDE_CDS
 
 address AdapterHandlerEntry::base_address() {
   address base = _i2c_entry;
@@ -2996,6 +3052,7 @@ void AdapterHandlerEntry::metaspace_pointers_do(MetaspaceClosure* it) {
   it->push(&_fingerprint);
 }
 
+#if INCLUDE_CDS
 void AdapterHandlerEntry::remove_unshareable_info() {
   set_entry_points(nullptr, nullptr, nullptr, nullptr, false);
 }
@@ -3039,6 +3096,7 @@ void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
   }
   assert(_linked, "AdapterHandlerEntry must now be linked");
 }
+#endif // INCLUDE_CDS
 
 AdapterHandlerEntry::~AdapterHandlerEntry() {
 #ifdef ASSERT
@@ -3404,57 +3462,6 @@ bool AdapterHandlerLibrary::is_abstract_method_adapter(AdapterHandlerEntry* entr
     return true;
   }
   return false;
-}
-
-class CopyAdapterTableToArchive : StackObj {
-private:
-  CompactHashtableWriter* _writer;
-  ArchiveBuilder* _builder;
-public:
-  CopyAdapterTableToArchive(CompactHashtableWriter* writer) : _writer(writer),
-                                                             _builder(ArchiveBuilder::current())
-  {}
-
-  bool do_entry(AdapterFingerPrint* fp, AdapterHandlerEntry* entry) {
-    LogStreamHandle(Trace, cds) lsh;
-    if (ArchiveBuilder::current()->has_been_archived((address)entry)) {
-      assert(ArchiveBuilder::current()->has_been_archived((address)fp), "must be");
-      AdapterFingerPrint* buffered_fp = ArchiveBuilder::current()->get_buffered_addr(fp);
-      assert(buffered_fp != nullptr,"sanity check");
-      AdapterHandlerEntry* buffered_entry = ArchiveBuilder::current()->get_buffered_addr(entry);
-      assert(buffered_entry != nullptr,"sanity check");
-
-      uint hash = fp->compute_hash();
-      u4 delta = _builder->buffer_to_offset_u4((address)buffered_entry);
-      _writer->add(hash, delta);
-      if (lsh.is_enabled()) {
-	address fp_runtime_addr = (address)buffered_fp + ArchiveBuilder::current()->buffer_to_requested_delta();
-	address entry_runtime_addr = (address)buffered_entry + ArchiveBuilder::current()->buffer_to_requested_delta();
-	log_trace(cds)("Added fp=%p, entry=%p to the archived adater table", buffered_fp, buffered_entry);
-      }
-    } else {
-      if (lsh.is_enabled()) {
-        log_trace(cds)("Skipping adapter handler %p as it is not archived", entry);
-      }
-    }
-    return true;
-  }
-};
-
-size_t AdapterHandlerLibrary::estimate_size_for_archive() {
-  return CompactHashtableWriter::estimate_size(_adapter_handler_table->number_of_entries());
-}
-
-void AdapterHandlerLibrary::archive_adapter_table() {
-  CompactHashtableStats stats;
-  CompactHashtableWriter writer(_adapter_handler_table->number_of_entries(), &stats);
-  CopyAdapterTableToArchive copy(&writer);
-  _adapter_handler_table->iterate(&copy);
-  writer.dump(&_archived_adapter_handler_table, "archived adapter table");
-}
-
-void AdapterHandlerLibrary::serialize_shared_table_header(SerializeClosure* soc) {
-  _archived_adapter_handler_table.serialize_header(soc);
 }
 
 JRT_LEAF(void, SharedRuntime::enable_stack_reserved_zone(JavaThread* current))
