@@ -2503,7 +2503,7 @@ class AdapterFingerPrint : public MetaspaceObj {
 
   // methods required by virtue of being a MetaspaceObj
   void metaspace_pointers_do(MetaspaceClosure* it) { return; /* nothing to do here */ }
-  int size() const { return heap_word_size(sizeof(AdapterFingerPrint) + (_length > _compact_int_count ? (_length - _compact_int_count) * sizeof(int) : 0)); }
+  int size() const { return (int)heap_word_size(sizeof(AdapterFingerPrint) + (_length > _compact_int_count ? (_length - _compact_int_count) * sizeof(int) : 0)); }
   MetaspaceObj::Type type() const { return AdapterFingerPrintType; }
 
   static bool equals(AdapterFingerPrint* const& fp1, AdapterFingerPrint* const& fp2) {

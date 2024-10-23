@@ -474,7 +474,7 @@ class SharedRuntime: AllStatic {
                                int max_arg,
                                const BasicType *sig_bt,
                                const VMRegPair *regs,
-                               AdapterHandlerEntry* entry);
+                               AdapterHandlerEntry* handler);
 
   static void gen_i2c_adapter(MacroAssembler *_masm,
                               int total_args_passed,
@@ -749,7 +749,7 @@ class AdapterHandlerEntry : public MetaspaceObj {
   void print_adapter_on(outputStream* st) const;
 
   void metaspace_pointers_do(MetaspaceClosure* it);
-  int size() const { return heap_word_size(sizeof(AdapterHandlerEntry)); }
+  int size() const { return (int)heap_word_size(sizeof(AdapterHandlerEntry)); }
   MetaspaceObj::Type type() const { return AdapterHandlerEntryType; }
 
   void remove_unshareable_info();
