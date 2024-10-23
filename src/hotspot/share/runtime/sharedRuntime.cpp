@@ -2905,7 +2905,7 @@ bool AdapterHandlerLibrary::generate_adapter_code(AdapterBlob*& adapter_blob,
     // CodeCache is full, disable compilation
     // Ought to log this but compile log is only per compile thread
     // and we're some non descript Java thread.
-    return true;
+    return false;
   }
   handler->relocate(adapter_blob->content_begin());
 #ifndef PRODUCT
@@ -3002,6 +3002,9 @@ void AdapterHandlerEntry::remove_unshareable_info() {
 
 void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
   PerfTraceElapsedTime timer(ClassLoader::perf_method_adapters_time());
+  // A fixed set of simple adapters are eagerly linked during JVM initialization
+  // in AdapterHandlerTable::initialize().
+  // Others may already have been linked because they are shared by other methods.
   if (is_linked()) {
     return;
   }
