@@ -2021,6 +2021,9 @@ const int ObjectAlignmentInBytes = 8;
                                                                             \
   product(bool, StressSecondarySupers, false, DIAGNOSTIC,                   \
           "Use a terrible hash function in order to generate many collisions.") \
+                                                                            \
+  develop(bool, TestAdapterLinkFailure, false,                              \
+          "Test failure of adapter linking when loading from AOT cache.")   \
 
 
 // end of RUNTIME_FLAGS

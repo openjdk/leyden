@@ -359,7 +359,8 @@ size_t ArchiveBuilder::estimate_archive_size() {
   size_t symbol_table_est = SymbolTable::estimate_size_for_archive();
   size_t dictionary_est = SystemDictionaryShared::estimate_size_for_archive();
   size_t training_data_est = TrainingData::estimate_size_for_archive();
-  _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est;
+  size_t adapter_data_est = AdapterHandlerLibrary::estimate_size_for_archive();
+  _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est + adapter_data_est;
 
   if (CDSConfig::is_dumping_aot_linked_classes()) {
     _estimated_hashtable_bytes += _klasses->length() * 16 * sizeof(Klass*);
@@ -614,6 +615,13 @@ ArchiveBuilder::FollowMode ArchiveBuilder::get_follow_mode(MetaspaceClosure::Ref
              ref->msotype() == MetaspaceObj::MethodTrainingDataType ||
              ref->msotype() == MetaspaceObj::CompileTrainingDataType) {
       return TrainingData::need_data() ? make_a_copy : set_to_null;
+  } else if (ref->msotype() == MetaspaceObj::AdapterHandlerEntryType) {
+    if (CDSConfig::is_dumping_adapters()) {
+      AdapterHandlerEntry* entry = (AdapterHandlerEntry*)ref->obj();
+      return AdapterHandlerLibrary::is_abstract_method_adapter(entry) ? set_to_null : make_a_copy;
+    } else {
+      return set_to_null;
+    }
   } else {
     if (ref->msotype() == MetaspaceObj::ClassType) {
       Klass* klass = (Klass*)ref->obj();

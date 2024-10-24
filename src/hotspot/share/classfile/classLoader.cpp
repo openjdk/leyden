@@ -150,11 +150,11 @@ void ClassLoader::print_counters(outputStream *st) {
   // we print to the passed in outputStream as requested.
   if (log_is_enabled(Info, perf, class, link)) {
       st->print_cr("ClassLoader:");
-      st->print_cr(   "  clinit:               " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
+      st->print_cr("  clinit:                          " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
                    ClassLoader::class_init_time_ms(), ClassLoader::class_init_count());
-      st->print_cr("  link methods:         " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
+      st->print_cr("  link methods:                    " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
                    Management::ticks_to_us(_perf_ik_link_methods_time->get_value())   , _perf_ik_link_methods_count->get_value());
-      st->print_cr("  method adapters:      " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
+      st->print_cr("  method adapters:                 " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
                    Management::ticks_to_us(_perf_method_adapters_time->get_value())   , _perf_method_adapters_count->get_value());
       if (CountBytecodes || CountBytecodesPerThread) {
         st->print_cr("; executed " JLONG_FORMAT " bytecodes", ClassLoader::class_init_bytecodes_count());
