@@ -2292,9 +2292,9 @@ class AdapterFingerPrint : public MetaspaceObj {
     for (int index = 0; index < _length; index++) {
       int value = 0;
       for (int byte = 0; sig_index < total_args_passed && byte < _basic_types_per_int; byte++) {
-	int bt = adapter_encoding(sig_bt[sig_index++]);
-	assert((bt & _basic_type_mask) == bt, "must fit in 4 bits");
-	value = (value << _basic_type_bits) | bt;
+        int bt = adapter_encoding(sig_bt[sig_index++]);
+        assert((bt & _basic_type_mask) == bt, "must fit in 4 bits");
+        value = (value << _basic_type_bits) | bt;
       }
       _value[index] = value;
     }
@@ -2844,8 +2844,8 @@ void AdapterHandlerLibrary::print_adapter_handler_info(AdapterHandlerEntry* hand
   int insts_size = adapter_blob->code_size();
   handler->print_adapter_on(tty);
   tty->print_cr("i2c argument handler for: %s %s (%d bytes generated)",
-		handler->fingerprint()->as_basic_args_string(),
-		handler->fingerprint()->as_string(), insts_size);
+                handler->fingerprint()->as_basic_args_string(),
+                handler->fingerprint()->as_string(), insts_size);
   tty->print_cr("c2i argument handler starts at " INTPTR_FORMAT, p2i(handler->get_c2i_entry()));
   if (Verbose || PrintStubCode) {
     address first_pc = handler->base_address();
@@ -2878,11 +2878,11 @@ bool AdapterHandlerLibrary::generate_adapter_code(AdapterBlob*& adapter_blob,
   // Get a description of the compiled java calling convention and the largest used (VMReg) stack slot usage
   int comp_args_on_stack = SharedRuntime::java_calling_convention(sig_bt, regs, total_args_passed);
   SharedRuntime::generate_i2c2i_adapters(&masm,
-					 total_args_passed,
-					 comp_args_on_stack,
-					 sig_bt,
-					 regs,
-					 handler);
+                                         total_args_passed,
+                                         comp_args_on_stack,
+                                         sig_bt,
+                                         regs,
+                                         handler);
   if (CDSConfig::is_dumping_adapters()) {
     // try to save generated code
     const char* name = AdapterHandlerLibrary::name(handler->fingerprint());
@@ -2989,9 +2989,9 @@ public:
       u4 delta = _builder->buffer_to_offset_u4((address)buffered_entry);
       _writer->add(hash, delta);
       if (lsh.is_enabled()) {
-	address fp_runtime_addr = (address)buffered_fp + ArchiveBuilder::current()->buffer_to_requested_delta();
-	address entry_runtime_addr = (address)buffered_entry + ArchiveBuilder::current()->buffer_to_requested_delta();
-	log_trace(cds)("Added fp=%p, entry=%p to the archived adater table", buffered_fp, buffered_entry);
+        address fp_runtime_addr = (address)buffered_fp + ArchiveBuilder::current()->buffer_to_requested_delta();
+        address entry_runtime_addr = (address)buffered_entry + ArchiveBuilder::current()->buffer_to_requested_delta();
+        log_trace(cds)("Added fp=%p, entry=%p to the archived adater table", buffered_fp, buffered_entry);
       }
     } else {
       if (lsh.is_enabled()) {
@@ -3079,14 +3079,14 @@ void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
       int nargs;
       BasicType* bt = _fingerprint->as_basic_type(nargs);
       if (!AdapterHandlerLibrary::generate_adapter_code(adapter_blob, this, nargs, bt, true)) {
-	if (!is_init_completed()) {
-	  // Don't throw exceptions during VM initialization because java.lang.* classes
-	  // might not have been initialized, causing problems when constructing the
-	  // Java exception object.
-	  vm_exit_during_initialization("Out of space in CodeCache for adapters");
-	} else {
-	  THROW_MSG(vmSymbols::java_lang_OutOfMemoryError(), "Out of space in CodeCache for adapters");
-	}
+        if (!is_init_completed()) {
+          // Don't throw exceptions during VM initialization because java.lang.* classes
+          // might not have been initialized, causing problems when constructing the
+          // Java exception object.
+          vm_exit_during_initialization("Out of space in CodeCache for adapters");
+        } else {
+          THROW_MSG(vmSymbols::java_lang_OutOfMemoryError(), "Out of space in CodeCache for adapters");
+        }
       }
     }
   }
