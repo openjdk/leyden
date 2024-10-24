@@ -2367,10 +2367,8 @@ bool SCCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, u
     buffer->decode();
   }
 #endif
-  // we need to take a lock to stop C1 and C2 compiler threads racing to
+  // we need to take a lock to stop main thread racing with C1 and C2 compiler threads to
   // write blobs in parallel with each other or with later nmethods
-  // TODO - maybe move this up to selected callers so we only lock
-  // when saving a c1 or opto blob
   MutexLocker ml(Compile_lock);
   if (!cache->align_write()) {
     return false;
@@ -2483,6 +2481,11 @@ bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
     buffer->decode();
   }
 #endif
+  // we need to take a lock to stop C1 and C2 compiler threads racing to
+  // write blobs in parallel with each other or with later nmethods
+  // TODO - maybe move this up to selected callers so we only lock
+  // when saving a c1 or opto blob
+  MutexLocker ml(Compile_lock);
   if (!cache->align_write()) {
     return false;
   }
