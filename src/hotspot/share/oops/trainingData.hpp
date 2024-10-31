@@ -334,6 +334,15 @@ public:
 
   static KlassTrainingData*  lookup_for(InstanceKlass* ik);
   static MethodTrainingData* lookup_for(Method* m);
+
+  template<typename TrainingDataType, typename... ArgTypes>
+  static TrainingDataType* allocate(ArgTypes... args) {
+    assert(need_data() || have_data(), "");
+    if (TrainingDataLocker::can_add()) {
+      return new (mtClassShared) TrainingDataType(args...);
+    }
+    return nullptr;
+  }
 };
 
 class KlassTrainingData : public TrainingData {
@@ -423,7 +432,9 @@ class KlassTrainingData : public TrainingData {
 
   void verify();
 
-  static KlassTrainingData* allocate(InstanceKlass* holder);
+  static KlassTrainingData* allocate(InstanceKlass* holder) {
+    return TrainingData::allocate<KlassTrainingData>(holder);
+  }
 
   template<typename FN>
   void iterate_all_comp_deps(FN fn) const { // lambda enabled API
@@ -436,6 +447,7 @@ class KlassTrainingData : public TrainingData {
 
 // Information about particular JIT tasks.
 class CompileTrainingData : public TrainingData {
+  friend TrainingData;
   friend KlassTrainingData;
 
   // Used by CDS. These classes need to access the private default constructor.
@@ -552,7 +564,6 @@ private:
   ciRecords _ci_records;
 
   CompileTrainingData();
-  // (should we also capture counters or MDO state or replay data?)
   CompileTrainingData(MethodTrainingData* mtd,
                       int level,
                       int compile_id)
@@ -635,7 +646,9 @@ public:
 
   void verify();
 
-  static CompileTrainingData* allocate(MethodTrainingData* mtd, int level, int compile_id);
+  static CompileTrainingData* allocate(MethodTrainingData* mtd, int level, int compile_id) {
+    return TrainingData::allocate<CompileTrainingData>(mtd, level, compile_id);
+  }
 };
 
 // Record information about a method at the time compilation is requested.
@@ -760,7 +773,9 @@ class MethodTrainingData : public TrainingData {
 
   void verify();
 
-  static MethodTrainingData* allocate(Method* m, KlassTrainingData* ktd);
+  static MethodTrainingData* allocate(Method* m, KlassTrainingData* ktd) {
+    return TrainingData::allocate<MethodTrainingData>(m, ktd);
+  }
 };
 
 // CDS support

@@ -816,30 +816,6 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
   }
 }
 
-KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) KlassTrainingData(holder);
-  }
-  return nullptr;
-}
-
-MethodTrainingData* MethodTrainingData::allocate(Method* m, KlassTrainingData* ktd) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) MethodTrainingData(m, ktd);
-  }
-  return nullptr;
-}
-
-CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int level, int compile_id) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) CompileTrainingData(mtd, level, compile_id);
-  }
-  return nullptr;
-}
-
 void TrainingDataPrinter::do_value(TrainingData* td) {
 #ifdef ASSERT
 #if INCLUDE_CDS
