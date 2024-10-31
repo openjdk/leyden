@@ -25,14 +25,10 @@
 #ifndef SHARE_RUNTIME_RUNTIME_UPCALLS_HPP
 #define SHARE_RUNTIME_RUNTIME_UPCALLS_HPP
 
-#include "code/codeBlob.hpp"
-#include "code/vmreg.hpp"
-#include "interpreter/linkResolver.hpp"
 #include "memory/allStatic.hpp"
 #include "memory/resourceArea.hpp"
 #include "runtime/methodDetails.hpp"
 #include "utilities/macros.hpp"
-
 
 enum RuntimeUpcallType{
   onMethodEntry = 0,

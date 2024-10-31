@@ -385,7 +385,7 @@ const int ObjectAlignmentInBytes = 8;
          "separated by commas")                                             \
          constraint(ControlIntrinsicConstraintFunc,AfterErgo)               \
                                                                             \
-  develop(bool, AddRuntimeUpcallsNOP, false,                                   \
+  develop(bool, AddRuntimeUpcallsNOP, false,                                \
           "Add NOP upcall to all methods for testing")                      \
                                                                             \
   develop(bool, TraceCallFixup, false,                                      \

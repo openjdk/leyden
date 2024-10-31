@@ -240,12 +240,6 @@ address MethodHandles::generate_method_handle_interpreter_entry(MacroAssembler* 
   // r3_first_arg_addr is live!
 
   trace_method_handle_interpreter_entry(_masm, iid);
-
-
-  //MNCMNC call_VM_leaf
-  //__ call_VM(noreg, CDSEndTraining::end_training_check);
- // __ call_VM(noreg,CAST_FROM_FN_PTR(address, InterpreterRuntime::on_method_entry_upcall_redirect));
-
   if (iid == vmIntrinsics::_invokeBasic) {
     generate_method_handle_dispatch(_masm, iid, mh, noreg, not_for_compiler_entry);
 

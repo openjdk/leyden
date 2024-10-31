@@ -69,7 +69,6 @@
 #include "runtime/jfieldIDWorkaround.hpp"
 #include "runtime/osThread.hpp"
 #include "runtime/perfData.inline.hpp"
-#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stackWatermarkSet.hpp"
 #include "runtime/stubRoutines.hpp"
