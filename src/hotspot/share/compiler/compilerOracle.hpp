@@ -58,7 +58,6 @@ class methodHandle;
   option(Break, "break", Bool) \
   option(BreakAtExecute, "BreakAtExecute", Bool) \
   option(BreakAtCompile, "BreakAtCompile", Bool) \
-  option(EndTrainingOnEnter, "EndTrainingOnEnter", Bool) \
   option(MemLimit, "MemLimit", Intx) \
   option(MemStat, "MemStat", Uintx) \
   option(PrintAssembly, "PrintAssembly", Bool) \
@@ -134,9 +133,6 @@ class CompilerOracle : AllStatic {
   static void print_parse_error(char* error_msg, char* original_line);
   static void print_command(CompileCommandEnum option, const char* name, enum OptionType type);
 
-  // Shared for parsing CompileOnly and AOTTrigger
-  static bool parse_for_command(char* line, CompileCommandEnum command, const char* error_prefix, uint* count = nullptr);
-
   // The core parser.
   static bool parse_from_input(inputStream::Input* input,
                                parse_from_line_fn_t* parse_from_line);
@@ -170,9 +166,6 @@ class CompilerOracle : AllStatic {
   // Tells whether to break when compiling method
   static bool should_break_at(const methodHandle& method);
 
-  // Tells whether to 'trigger end of training' when executing method
-  static bool should_trigger_end_of_training_at(const methodHandle& method);
-
   // Tells whether there are any methods to print for print_method_statistics()
   static bool should_print_methods();
 
@@ -201,7 +194,6 @@ class CompilerOracle : AllStatic {
   static bool parse_from_line(char* line);
   static bool parse_from_line_quietly(char* line);
   static bool parse_compile_only(char* line);
-  static bool parse_aot_trigger(char* line);
 
   // Fast check if there is any option set that compile control needs to know about
   static bool has_any_command_set();

@@ -133,6 +133,10 @@ const size_t minimumSymbolTableSize = 1024;
           "Always use HeapBasedNarrowOop mode, so that AOT code can be "    \
           "always work regardless of runtime heap range")                   \
                                                                             \
+  product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \
+          "List of methods (pkg/class.name) to trigger end of AOT "         \
+          "training run.  Optional ',count=N' where N is > 0")              \
+                                                                            \
   product(int, ObjectAlignmentInBytes, 8,                                   \
           "Default object alignment in bytes, 8 is minimum")                \
           range(8, 256)                                                     \

@@ -1936,10 +1936,8 @@ void InterpreterMacroAssembler::generate_runtime_upcalls_on_method_entry()
 {
   address upcall = RuntimeUpcalls::on_method_entry_upcall_address();
   if (RuntimeUpcalls::does_upcall_need_method_parameter(upcall)) {
-    //push(state);
     get_method(c_rarg1);
-    call_VM(noreg,upcall, rthread, c_rarg1);
-    //pop(state);
+    call_VM(noreg,upcall, c_rarg1);
   } else {
     call_VM(noreg,upcall);
   }

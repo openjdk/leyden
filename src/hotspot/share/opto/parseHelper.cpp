@@ -36,7 +36,8 @@
 #include "runtime/sharedRuntime.hpp"
 
 void GraphKit::install_on_method_entry_runtime_upcalls(ciMethod* method) {
-  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, method);
+  MethodDetails methodDetails(method);
+  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, methodDetails);
   while (upcall != nullptr) {
     // Get base of thread-local storage area
     Node* thread = _gvn.transform( new ThreadLocalNode() );
@@ -50,7 +51,7 @@ void GraphKit::install_on_method_entry_runtime_upcalls(ciMethod* method) {
                       upcall->upcall_name(), raw_adr_type,
                       thread);
 
-    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, method, upcall);
+    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, methodDetails, upcall);
   }
 }
 

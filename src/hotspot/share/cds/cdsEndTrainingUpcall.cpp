@@ -26,13 +26,15 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEndTrainingUpcall.hpp"
 #include "cds/metaspaceShared.hpp"
+#include "compiler/methodMatcher.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/runtimeUpcalls.hpp"
 
 uint volatile  CDSEndTrainingUpcall::_count = 0;
 uint           CDSEndTrainingUpcall::_limit = 1;
 int  volatile  CDSEndTrainingUpcall::_triggered = 0;
-MethodPattern* CDSEndTrainingUpcall::_method_pattern = nullptr;
+BasicMatcher*  CDSEndTrainingUpcall::_matcher = nullptr;
 
 bool cdsEndTrainingUpcall_register_upcalls()
 {
@@ -43,15 +45,18 @@ bool cdsEndTrainingUpcall_register_upcalls()
 }
 
 bool CDSEndTrainingUpcall::register_upcalls() {
-  if (CDSEndTrainingUpcall::parse_vm_command()) {
-    return RuntimeUpcalls::register_upcall(
-          RuntimeUpcallType::onMethodEntry,
-          CDSEndTrainingUpcall::_method_pattern,
-          "end_training_check",
-          CDSEndTrainingUpcall::end_training_check
-          );
+  if (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry)) {
+    if (CDSEndTrainingUpcall::parse_vm_command(AOTEndTrainingOnMethodEntry)) {
+      return RuntimeUpcalls::register_upcall(
+            RuntimeUpcallType::onMethodEntry,
+            "end_training_check",
+            CDSEndTrainingUpcall::end_training_check,
+            CDSEndTrainingUpcall::filter_method_callback
+            );
+    }
+    return false;
   }
-  return false;
+  return true;
 }
 
 JRT_ENTRY(void, CDSEndTrainingUpcall::end_training_check(JavaThread* current))
@@ -77,19 +82,24 @@ bool CDSEndTrainingUpcall::end_training(JavaThread* current)
   return false;
 }
 
-bool CDSEndTrainingUpcall::include_method_callback(Symbol* class_name, Symbol* method_name, Symbol* signature)
+bool CDSEndTrainingUpcall::filter_method_callback(MethodDetails& methodDetails)
 {
+  if (_matcher != nullptr) {
+    return _matcher->match(methodDetails);
+  }
   return false;
 }
 
-bool CDSEndTrainingUpcall::parse_vm_command()
+bool CDSEndTrainingUpcall::parse_vm_command(ccstrlist command)
 {
-  CDSEndTrainingUpcall::_method_pattern = MethodPattern::Create(AOTEndTrainingOnMethodEntry);
-
-  /*ResourceMark rm;
-  char error_buf[1024] = {0};
-  LineCopy original(command);
+  assert(command != nullptr, "sanity");
+  ResourceMark rm;
+  const char* error_msg = nullptr;
+  char* copy = os::strdup(command, mtInternal);
+  char* line = copy;
   char* method_pattern;
+  int num_patterns = 0;
+  bool error = false;
   do {
     if (line[0] == '\0') {
       break;
@@ -97,31 +107,37 @@ bool CDSEndTrainingUpcall::parse_vm_command()
     method_pattern = strtok_r(line, ",", &line);
     if (method_pattern != nullptr) {
       // if method pattern starts with count=, then parse the count
-      if (count != nullptr && strncmp(method_pattern, "count=", 6) == 0) {
+      if (strncmp(method_pattern, "count=", 6) == 0) {
         int number = atoi(method_pattern + 6);
         if (number > 0) {
-          CDSEndTraining::set_limit((uint)number);
+          CDSEndTrainingUpcall::set_limit((uint)number);
           continue;
         }
-        strcpy(error_buf, "count must be a valid integer > 0");
+        error_msg = "count must be a valid integer > 0";
       } else {
-        TypedMethodOptionMatcher* matcher = TypedMethodOptionMatcher::parse_method_pattern(method_pattern, error_buf, sizeof(error_buf));
+        BasicMatcher* matcher = BasicMatcher::parse_method_pattern(method_pattern, error_msg, false);
         if (matcher != nullptr) {
-          if (result != nullptr) {
-            result = new MethodPattern(result, matcher);
+          if (_matcher != nullptr) {
+            matcher->set_next(_matcher);
           }
-          register_command(matcher, command, true);
+          _matcher = matcher;
+          num_patterns ++;
           continue;
         }
       }
     }
     ttyLocker ttyl;
-    tty->print_cr("%s: An error occurred during parsing", error_prefix);
-    if (*error_buf != '\0') {
-      tty->print_cr("Error: %s", error_buf);
+    tty->print_cr("An error occurred during parsing AOTEndTrainingOnMethodEntry");
+    if (error_msg != nullptr) {
+      tty->print_cr("Error: %s", error_msg);
     }
-    tty->print_cr("Line: '%s'", original.get());
-    return nullptr;
-  } while (method_pattern != nullptr && line != nullptr);*/
-  return true;
+    tty->print_cr("Line: '%s'", command);
+    error = true;
+  } while (!error && method_pattern != nullptr && line != nullptr);
+  os::free(copy);
+  if (num_patterns == 0) {
+    tty->print_cr("Error: No method patterns found in AOTEndTrainingOnMethodEntry");
+    error = true;
+  }
+  return !error;
 }

@@ -36,8 +36,11 @@
 #include "memory/resourceArea.hpp"
 #include "utilities/macros.hpp"
 
+class MethodDetails;
+
 class RuntimeUpcallNop : AllStatic {
 public:
+  static bool filter_method_callback(MethodDetails& methodDetails);
   static void nop_method(TRAPS);
 };
 

@@ -36,7 +36,6 @@
 #include "code/vtableStubs.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compileBroker.hpp"
-#include "compiler/compilerOracle.hpp"
 #include "compiler/disassembler.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/collectedHeap.hpp"
@@ -68,6 +67,7 @@
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/jniHandles.inline.hpp"
+#include "runtime/methodDetails.hpp"
 #include "runtime/perfData.inline.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stackWatermarkSet.hpp"
@@ -92,19 +92,6 @@
 #if INCLUDE_JFR
 #include "jfr/jfr.hpp"
 #endif
-
-
-MethodDetails* MethodDetails::Create(const methodHandle& method) {
-  return new MethodDetails(method->method_holder()->name(), method->name(), method->signature());
-}
-
-MethodDetails* MethodDetails::Create(const ciMethod* method) {
-  return new MethodDetails(method->holder()->name()->get_symbol(), method->name()->get_symbol(), method->signature()->as_symbol()->get_symbol());
-}
-
-MethodDetails* MethodDetails::Create(const Method* method) {
-  return new MethodDetails(method->method_holder()->name(), method->name(), method->signature());
-}
 
 //--------------------------- initialization -------------------------------------
 GrowableArray<RuntimeUpcallInfo*>* RuntimeUpcalls::_upcalls[RuntimeUpcallType::numTypes];
@@ -135,10 +122,9 @@ void RuntimeUpcalls::close_upcall_registration() {
 //--------------------------- private -------------------------------------
 void RuntimeUpcalls::mark_for_upcalls(RuntimeUpcallType upcallType, const methodHandle& method) {
   if (_upcalls[upcallType] != nullptr) {
-    MethodDetails* methodDetails = MethodDetails::Create(method());
-    // see if method matches the pattern for any of the upcalls
+    MethodDetails md(method);
     for(RuntimeUpcallInfo* info : *(_upcalls[upcallType])) {
-      if(CompilerOracle::should_trigger_end_of_training_at(method)) {
+      if(info->includes(md)) {
         switch(upcallType) {
           case onMethodEntry: method->set_has_upcall_on_method_entry(true); break;
           case onMethodExit:  method->set_has_upcall_on_method_exit(true);  break;
@@ -155,14 +141,17 @@ bool RuntimeUpcalls::register_upcall(RuntimeUpcallType upcallType, RuntimeUpcall
   if (_upcalls[upcallType] == nullptr) {
     _upcalls[upcallType] = new (mtServiceability) GrowableArray<RuntimeUpcallInfo*>(1, mtServiceability);
   }
+  info->set_index(_upcalls[upcallType]->length());
   _upcalls[upcallType]->append(info);
   return true;
 }
 
-void RuntimeUpcalls::upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current, Method* method)
-{
-  // call all upcalls for method that it matches
-  MethodDetails* md = nullptr;
+int RuntimeUpcalls::get_num_upcalls(RuntimeUpcallType upcallType) {
+  return (_upcalls[upcallType] == nullptr) ? 0 : _upcalls[upcallType]->length();
+}
+
+void RuntimeUpcalls::upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current, Method* method) {
+  MethodDetails md(method);
   RuntimeUpcallInfo* upcall = get_first_upcall(upcallType, md);
   while (upcall != nullptr) {
     upcall->upcall()(current);
@@ -182,51 +171,38 @@ JRT_END
 
 //-------------------------------RuntimeUpcalls---------------------------------------
 
-void RuntimeUpcalls::install_upcalls(const methodHandle& method)
-{
+void RuntimeUpcalls::install_upcalls(const methodHandle& method) {
   for (int i = 0; i < RuntimeUpcallType::numTypes; i++) {
       mark_for_upcalls(static_cast<RuntimeUpcallType>(i), method);
   }
 }
 
-bool RuntimeUpcalls::register_upcall(RuntimeUpcallType upcallType, const MethodPattern* methodPattern, const char* upcallName, RuntimeUpcall upcall) {
+bool RuntimeUpcalls::register_upcall(RuntimeUpcallType upcallType, const char* upcallName, RuntimeUpcall upcall, RuntimeUpcallMethodFilterCallback methodFilterCallback)
+{
   assert(upcallType < numTypes, "invalid upcall type");
   assert(_state == Open, "upcalls are not open for registration");
   if (_state != Open) return false;
-  return register_upcall(upcallType, RuntimeUpcallInfo::Create(methodPattern, upcallName, upcall));
+  return register_upcall(upcallType, RuntimeUpcallInfo::Create(upcallName, upcall, methodFilterCallback));
 }
 
-bool RuntimeUpcalls::register_upcall(RuntimeUpcallType upcallType, const char* methodPattern, const char* upcallName, RuntimeUpcall upcall) {
-  assert(upcallType < numTypes, "invalid upcall type");
-  assert(_state == Open, "upcalls are not open for registration");
-  if (_state != Open) return false;
-  return register_upcall(upcallType, RuntimeUpcallInfo::Create(MethodPattern::Create(methodPattern), upcallName, upcall));
-}
-
-RuntimeUpcallInfo* RuntimeUpcalls::get_next_upcall(RuntimeUpcallType upcallType, MethodDetails* method, RuntimeUpcallInfo* prev = nullptr) {
+RuntimeUpcallInfo* RuntimeUpcalls::get_next_upcall(RuntimeUpcallType upcallType, MethodDetails& methodDetails, RuntimeUpcallInfo* prevUpcallInfo) {
   assert(upcallType < numTypes, "invalid upcall type");
   if (_upcalls[upcallType] != nullptr) {
     // simple case where there's only one upcall
     if (_upcalls[upcallType]->length() == 1) {
-      if (prev != nullptr) {
+      if (prevUpcallInfo != nullptr) {
         return nullptr;
       }
       RuntimeUpcallInfo* upcall = _upcalls[upcallType]->at(0);
-      return upcall;// MNCMNC upcall->includes(method) ? upcall : nullptr;
+      return upcall->includes(methodDetails) ? upcall : nullptr;
     }
 
     // resume from where we left off, unless we are the last entry
-    int index = 0;
-    if (prev != nullptr) {
-      index = _upcalls[upcallType]->find(prev);
-      if (index == _upcalls[upcallType]->length() - 1) {
-        return nullptr;
-      }
-      index = index + 1;
-    }
+    assert(prevUpcallInfo == nullptr || (prevUpcallInfo->get_index() >= 0 && prevUpcallInfo->get_index() < _upcalls[upcallType]->length()), "invalid upcall index");
+    int index = (prevUpcallInfo != nullptr) ? prevUpcallInfo->get_index() + 1 : 0;
     for (int i = index; i < _upcalls[upcallType]->length(); i++) {
       RuntimeUpcallInfo* upcall = _upcalls[upcallType]->at(i);
-      if (true) { //upcall->includes(method)) {
+      if (upcall->includes(methodDetails)) {
         return upcall;
       }
     }
@@ -235,24 +211,8 @@ RuntimeUpcallInfo* RuntimeUpcalls::get_next_upcall(RuntimeUpcallType upcallType,
   return nullptr;
 }
 
-RuntimeUpcallInfo* RuntimeUpcalls::get_next_upcall(RuntimeUpcallType upcallType, ciMethod* method, RuntimeUpcallInfo* prev = nullptr) {
-  return get_next_upcall(upcallType, MethodDetails::Create(method), prev);
-}
-
-RuntimeUpcallInfo* RuntimeUpcalls::get_next_upcall(RuntimeUpcallType upcallType, Method* method, RuntimeUpcallInfo* prev = nullptr) {
-  return get_next_upcall(upcallType, MethodDetails::Create(method), prev);
-}
-
-RuntimeUpcallInfo* RuntimeUpcalls::get_first_upcall(RuntimeUpcallType upcallType, MethodDetails* method) {
-  return get_next_upcall(upcallType, method, nullptr);
-}
-
-RuntimeUpcallInfo* RuntimeUpcalls::get_first_upcall(RuntimeUpcallType upcallType, ciMethod* method) {
-  return get_next_upcall(upcallType, MethodDetails::Create(method), nullptr);
-}
-
-RuntimeUpcallInfo* RuntimeUpcalls::get_first_upcall(RuntimeUpcallType upcallType, Method* method) {
-  return get_next_upcall(upcallType, MethodDetails::Create(method), nullptr);
+RuntimeUpcallInfo* RuntimeUpcalls::get_first_upcall(RuntimeUpcallType upcallType, MethodDetails& methodDetails) {
+  return get_next_upcall(upcallType, methodDetails, nullptr);
 }
 
 bool RuntimeUpcalls::does_upcall_need_method_parameter(address upcall_address)

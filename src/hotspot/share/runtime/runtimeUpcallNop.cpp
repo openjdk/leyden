@@ -30,22 +30,22 @@
 bool runtimeUpcallNop_register_upcalls()
 {
   if(!AddRuntimeUpcallsNOP) return true;
-  MethodPattern* methodPattern = MethodPattern::Create(nullptr);
-  if (methodPattern != nullptr) {
-    if (RuntimeUpcalls::register_upcall(
-          RuntimeUpcallType::onMethodEntry,
-          methodPattern,
-          "nop_method",
-          RuntimeUpcallNop::nop_method
-          )) {
-        return true;
-      }
+  if (RuntimeUpcalls::register_upcall(
+        RuntimeUpcallType::onMethodEntry,
+        "nop_method",
+        RuntimeUpcallNop::nop_method,
+        RuntimeUpcallNop::filter_method_callback)) {
+    return true;
   }
+  return false;
+}
+
+bool RuntimeUpcallNop::filter_method_callback(MethodDetails& methodDetails)
+{
   return false;
 }
 
 JRT_ENTRY(void, RuntimeUpcallNop::nop_method(JavaThread* current))
 {
-  return;
 }
 JRT_END

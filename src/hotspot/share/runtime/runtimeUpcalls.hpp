@@ -30,72 +30,55 @@
 #include "interpreter/linkResolver.hpp"
 #include "memory/allStatic.hpp"
 #include "memory/resourceArea.hpp"
+#include "runtime/methodDetails.hpp"
 #include "utilities/macros.hpp"
 
-class ciMethod;
-
-class MethodDetails: public CHeapObj<mtInternal> {
-private:
-  Symbol* _class_name;
-  Symbol* _method_name;
-  Symbol* _signature;
-
-  MethodDetails(Symbol* class_name, Symbol* method_name, Symbol* signature) : _class_name(class_name), _method_name(method_name), _signature(signature) {};
-public:
-  static MethodDetails* Create(const methodHandle& method);
-  static MethodDetails* Create(const ciMethod* method);
-  static MethodDetails* Create(const Method* method);
-
-  Symbol* class_name() const { return _class_name; }
-  Symbol* method_name() const { return _method_name; }
-  Symbol* signature() const { return _signature; }
-};
-
-class MethodPattern: public CHeapObj<mtInternal> {
-private:
-  MethodPattern(const char* methodPattern) {};
-public:
-  static MethodPattern* Create(const char* methodPattern) { return new MethodPattern(methodPattern); }
-
-  bool matches(const MethodDetails* method) const {
-    return false;
-  }
-};
 
 enum RuntimeUpcallType{
   onMethodEntry = 0,
   onMethodExit,
-
-  numTypes,
-  begin = onMethodEntry,
-  end = numTypes
+  numTypes
 };
 
 typedef void (*RuntimeUpcall)(JavaThread* current);
+typedef bool (*RuntimeUpcallMethodFilterCallback)(MethodDetails& method);
 
 class RuntimeUpcallInfo: public CHeapObj<mtInternal>{
-  const MethodPattern* _methodPattern;
   const char* _upcallName;
   const RuntimeUpcall _upcall;
+  const RuntimeUpcallMethodFilterCallback _methodFilter;
   address _address;
+  int _index;
 
-  RuntimeUpcallInfo(const MethodPattern* methodPattern, const char* upcallName, const RuntimeUpcall upcall)
-  : _methodPattern(methodPattern), _upcallName(upcallName), _upcall(upcall) {
+  RuntimeUpcallInfo(const char* upcallName,
+                    const RuntimeUpcall upcall,
+                    const RuntimeUpcallMethodFilterCallback methodFilter)
+  : _upcallName(upcallName),
+    _upcall(upcall),
+    _methodFilter(methodFilter),
+    _index(-1) {
     _address = CAST_FROM_FN_PTR(address, upcall);
   }
 
+private:
+  friend class RuntimeUpcalls;
+  void set_index(const int index) { _index = index; }
+  int get_index() const { assert(_index >= 0, "invalid index"); return _index; }
+
 public:
-  static RuntimeUpcallInfo* Create(const MethodPattern* methodPattern, const char* upcallName, const RuntimeUpcall upcall) {
-    return new RuntimeUpcallInfo(methodPattern, upcallName, upcall);
+  static RuntimeUpcallInfo* Create(const char* upcallName, const RuntimeUpcall upcall, const RuntimeUpcallMethodFilterCallback methodFilter) {
+    assert(upcallName != nullptr, "upcall name must be provided");
+    assert(upcall != nullptr, "upcall must be provided");
+    assert(methodFilter != nullptr, "method filter must be provided");
+    return new RuntimeUpcallInfo(upcallName, upcall, methodFilter);
   }
 
   RuntimeUpcall upcall() const { return _upcall; }
   const char* upcall_name() const { return _upcallName; }
   address upcall_address() const { return _address; }
 
-  bool includes(const MethodDetails* method) const {
-    if (_methodPattern == nullptr) return false;
-    return _methodPattern->matches(method);
+  bool includes(MethodDetails& methodDetails) const {
+    return _methodFilter(methodDetails);
   }
 };
 
@@ -115,8 +98,7 @@ private:
   static bool register_upcall(RuntimeUpcallType upcallType, RuntimeUpcallInfo* info);
   static void upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current, Method* method);
 
-  static RuntimeUpcallInfo* get_first_upcall(RuntimeUpcallType upcallType, MethodDetails* method);
-  static RuntimeUpcallInfo* get_next_upcall(RuntimeUpcallType upcallType, MethodDetails* method, RuntimeUpcallInfo* prev);
+  static int  get_num_upcalls(RuntimeUpcallType upcallType);
 
   static void on_method_entry_upcall_redirect(JavaThread* current, Method* method);
   static void on_method_exit_upcall_redirect(JavaThread* current, Method* method);
@@ -124,15 +106,13 @@ private:
 public:
 
   static bool               open_upcall_registration();
+  static bool               register_upcall(RuntimeUpcallType upcallType, const char* upcallName, RuntimeUpcall upcall, RuntimeUpcallMethodFilterCallback methodFilterCallback = nullptr);
   static void               close_upcall_registration();
-  static void               install_upcalls(const methodHandle& method);
-  static bool               register_upcall(RuntimeUpcallType upcallType, const char* methodPattern, const char* upcallName, RuntimeUpcall upcall);
-  static bool               register_upcall(RuntimeUpcallType upcallType, const MethodPattern* methodPattern, const char* upcallName, RuntimeUpcall upcall);
 
-  static RuntimeUpcallInfo* get_first_upcall(RuntimeUpcallType upcallType, ciMethod* method);
-  static RuntimeUpcallInfo* get_next_upcall(RuntimeUpcallType upcallType, ciMethod* method, RuntimeUpcallInfo* prev);
-  static RuntimeUpcallInfo* get_first_upcall(RuntimeUpcallType upcallType, Method* method);
-  static RuntimeUpcallInfo* get_next_upcall(RuntimeUpcallType upcallType, Method* method, RuntimeUpcallInfo* prev);
+  static void               install_upcalls(const methodHandle& method);
+
+  static RuntimeUpcallInfo* get_first_upcall(RuntimeUpcallType upcallType, MethodDetails& methodDetails);
+  static RuntimeUpcallInfo* get_next_upcall(RuntimeUpcallType upcallType, MethodDetails& methodDetails, RuntimeUpcallInfo* prevUpcallInfo = nullptr);
 
   static address            on_method_entry_upcall_address();
   static address            on_method_exit_upcall_address();

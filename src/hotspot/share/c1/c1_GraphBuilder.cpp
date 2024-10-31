@@ -4072,11 +4072,12 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
     append(new RuntimeCall(voidType, "dtrace_method_entry", CAST_FROM_FN_PTR(address, SharedRuntime::dtrace_method_entry), args));
   }
 
-  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, callee);
+  MethodDetails methodDetails(callee);
+  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, methodDetails);
   while (upcall != nullptr) {
     Values* args = new Values(0);
     append(new RuntimeCall(voidType, upcall->upcall_name(), upcall->upcall_address(), args));
-    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, callee, upcall);
+    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, methodDetails, upcall);
   }
 
   if (profile_inlined_calls()) {

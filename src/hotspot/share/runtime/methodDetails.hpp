@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,12 +22,8 @@
  *
  */
 
-#ifndef SHARE_CDS_CDSENDTRAININGUPCALL_HPP
-#define SHARE_CDS_CDSENDTRAININGUPCALL_HPP
-
-#include "memory/allStatic.hpp"
-#include "utilities/globalDefinitions.hpp"
-
+#ifndef SHARE_RUNTIME_METHOD_DETAILS_HPP
+#define SHARE_RUNTIME_METHOD_DETAILS_HPP
 
 #include "code/codeBlob.hpp"
 #include "code/vmreg.hpp"
@@ -36,26 +32,39 @@
 #include "memory/resourceArea.hpp"
 #include "utilities/macros.hpp"
 
-class BasicMatcher;
-class MethodDetails;
-class Symbol;
+class ciMethod;
 
-class CDSEndTrainingUpcall : AllStatic {
+class MethodDetails: public CHeapObj<mtInternal> {
 private:
-  static uint volatile  _count;
-  static uint           _limit;
-  static int  volatile  _triggered;
-  static BasicMatcher*  _matcher;
+  const methodHandle* _methodHandle;
+  const ciMethod* _ciMethod;
+  const Method* _method;
 
-  static bool parse_vm_command(ccstrlist command);
-  static void set_limit(uint limit) { _limit = limit; }
+  Symbol* _class_name;
+  Symbol* _method_name;
+  Symbol* _signature;
+
+  MethodDetails(const methodHandle* methodHandle, const ciMethod* ciMethod, const Method* method) :
+    _methodHandle(methodHandle), _ciMethod(ciMethod), _method(method),
+    _class_name(nullptr), _method_name(nullptr), _signature(nullptr)
+    {};
 
 public:
-  static bool register_upcalls();
-  static bool filter_method_callback(MethodDetails& methodDetails);
-  static void end_training_check(TRAPS);
-  static bool end_training(TRAPS);
-  static void set_method_entry_limit(uint limit) { _limit = limit; }
+  MethodDetails(const methodHandle& method) :
+    MethodDetails(&method, nullptr, nullptr) {}
+
+  MethodDetails(const methodHandle* method) :
+    MethodDetails(method, nullptr, nullptr) {}
+
+  MethodDetails(const ciMethod* method) :
+    MethodDetails(nullptr, method, nullptr) {}
+
+  MethodDetails(const Method* method) :
+    MethodDetails(nullptr, nullptr, method) {}
+
+  Symbol* class_name();
+  Symbol* method_name();
+  Symbol* signature();
 };
 
-#endif // SHARE_CDS_CDSENDTRAININGUPCALL_HPP
+#endif // SHARE_RUNTIME_METHOD_DETAILS_HPP
