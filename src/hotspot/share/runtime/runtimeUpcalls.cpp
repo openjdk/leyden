@@ -86,6 +86,20 @@ int RuntimeUpcalls::get_num_upcalls(RuntimeUpcallType upcallType) {
 
 void RuntimeUpcalls::upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current, Method* method) {
   MethodDetails md(method);
+
+  // one possible optimization here is to use the method flags bits to indicate which upcalls to call
+  // currently we've used only two bits to support entry/exit, but we could use more bits to support
+  // more upcalls. This would require a change in the MethodFlags class to add more
+  // flags and the corresponding getters/setters. The flags could be set in the mark_for_upcalls
+  // method and checked here to determine which upcalls to call.  Allowing us to skip pattern matching
+  // the method flags curently use 18 out of 32 bits, so there are still 14 bits available for use.
+  // we could set a limit of say 4-8 entry/exit upcalls combined, leaving 10-6 bits for other uses
+  // this still requires a redirect heree, unless we encode bitwise tests in the method prologue/epilogue
+  // when we generate the prologs we already know how many upcalls there are so it would be optimial
+
+  //  status(has_upcall_on_method_entry  , 1 << 17) \
+  // status(has_upcall_on_method_exit   , 1 << 18) \
+
   RuntimeUpcallInfo* upcall = get_first_upcall(upcallType, md);
   while (upcall != nullptr) {
     upcall->upcall()(current);
