@@ -27,7 +27,6 @@
 #include "runtime/methodDetails.hpp"
 #include "runtime/runtimeUpcalls.hpp"
 
-//--------------------------- initialization -------------------------------------
 GrowableArray<RuntimeUpcallInfo*>* RuntimeUpcalls::_upcalls[RuntimeUpcallType::numTypes];
 RuntimeUpcalls::State RuntimeUpcalls::_state = RuntimeUpcalls::Uninitialized;
 
@@ -53,7 +52,6 @@ void RuntimeUpcalls::close_upcall_registration() {
   _state = Closed;
 }
 
-//--------------------------- private -------------------------------------
 void RuntimeUpcalls::mark_for_upcalls(RuntimeUpcallType upcallType, const methodHandle& method) {
   if (_upcalls[upcallType] != nullptr) {
     MethodDetails md(method);
@@ -87,18 +85,14 @@ int RuntimeUpcalls::get_num_upcalls(RuntimeUpcallType upcallType) {
 void RuntimeUpcalls::upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current, Method* method) {
   MethodDetails md(method);
 
-  // one possible optimization here is to use the method flags bits to indicate which upcalls to call
-  // currently we've used only two bits to support entry/exit, but we could use more bits to support
-  // more upcalls. This would require a change in the MethodFlags class to add more
-  // flags and the corresponding getters/setters. The flags could be set in the mark_for_upcalls
-  // method and checked here to determine which upcalls to call.  Allowing us to skip pattern matching
-  // the method flags curently use 18 out of 32 bits, so there are still 14 bits available for use.
-  // we could set a limit of say 4-8 entry/exit upcalls combined, leaving 10-6 bits for other uses
-  // this still requires a redirect heree, unless we encode bitwise tests in the method prologue/epilogue
-  // when we generate the prologs we already know how many upcalls there are so it would be optimial
-
-  //  status(has_upcall_on_method_entry  , 1 << 17) \
-  // status(has_upcall_on_method_exit   , 1 << 18) \
+  // This redirection occurs when there are more than one upcalls setup.  Currently each method is marked
+  // to indicate either none, entry and/or exit upcalls (two bits total); then we have to iterate over
+  // all upcalls and test the method details to determine which upcalls to call.  This is not optimal.
+  // One possible optimization is to use more bits to support more upcalls.  The method flags currently use 18
+  // out of 32 bits, so there are still 14 bits available for use.  We could set a limit of say 4-8 entry/exit
+  // upcalls combined, leaving 10-6 bits for other uses.  This still requires a redirect here to determine
+  // which upcalls to call, but it would be more efficient than the current implementation as we'd avoid the
+  // method matching and simply map bits to indexes.
 
   RuntimeUpcallInfo* upcall = get_first_upcall(upcallType, md);
   while (upcall != nullptr) {
@@ -145,7 +139,7 @@ RuntimeUpcallInfo* RuntimeUpcalls::get_next_upcall(RuntimeUpcallType upcallType,
       return upcall->includes(methodDetails) ? upcall : nullptr;
     }
 
-    // resume from where we left off, unless we are the last entry
+    // Resume from where we left off, unless we are the last entry.
     assert(prevUpcallInfo == nullptr || (prevUpcallInfo->get_index() >= 0 && prevUpcallInfo->get_index() < _upcalls[upcallType]->length()), "invalid upcall index");
     int index = (prevUpcallInfo != nullptr) ? prevUpcallInfo->get_index() + 1 : 0;
     for (int i = index; i < _upcalls[upcallType]->length(); i++) {
@@ -165,7 +159,7 @@ RuntimeUpcallInfo* RuntimeUpcalls::get_first_upcall(RuntimeUpcallType upcallType
 
 bool RuntimeUpcalls::does_upcall_need_method_parameter(address upcall_address)
 {
-  // redirect needs the method parameter for filtering
+  // Redirect needs the method parameter for filtering.
   if((upcall_address == CAST_FROM_FN_PTR(address, RuntimeUpcalls::on_method_entry_upcall_redirect)) ||
      (upcall_address == CAST_FROM_FN_PTR(address, RuntimeUpcalls::on_method_exit_upcall_redirect))) {
     return true;
@@ -176,7 +170,7 @@ bool RuntimeUpcalls::does_upcall_need_method_parameter(address upcall_address)
 
 address RuntimeUpcalls::on_method_entry_upcall_address()
 {
-  // optimised case when there's only one upcall (no need to redirect)
+  // Optimized case when there's only one upcall (no need to redirect).
   if(_upcalls[onMethodEntry] != nullptr && _upcalls[onMethodEntry]->length() == 1) {
     return _upcalls[onMethodEntry]->at(0)->upcall_address();
   }
@@ -186,7 +180,7 @@ address RuntimeUpcalls::on_method_entry_upcall_address()
 
 address RuntimeUpcalls::on_method_exit_upcall_address()
 {
-  // optimised case when there's only one upcall (no need to redirect)
+  // Optimized case when there's only one upcall (no need to redirect).
   if(_upcalls[onMethodExit] != nullptr && _upcalls[onMethodExit]->length() == 1) {
     return _upcalls[onMethodExit]->at(0)->upcall_address();
   }
