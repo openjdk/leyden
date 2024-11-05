@@ -1082,6 +1082,7 @@ void InstanceKlass::rewrite_class(TRAPS) {
 // executed more than once.
 void InstanceKlass::link_methods(TRAPS) {
   PerfTraceElapsedTime timer(ClassLoader::perf_ik_link_methods_time());
+
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {
     methodHandle m(THREAD, methods()->at(i));

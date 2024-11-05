@@ -302,6 +302,7 @@
           range(0, 100)                                                     \
                                                                             \
   /* compiler directives */                                                 \
+                                                                            \
   product(ccstrlist, CompileOnly, "",                                       \
           "List of methods (pkg/class.name) to restrict compilation to")    \
                                                                             \
