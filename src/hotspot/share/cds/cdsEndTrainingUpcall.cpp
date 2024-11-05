@@ -75,7 +75,7 @@ bool CDSEndTrainingUpcall::end_training(JavaThread* current)
   if (_triggered == 0) {
     if (Atomic::cmpxchg(&_triggered, 0, 1) == 0) {
       MetaspaceShared::preload_and_dump(current);
-      assert(!current->has_pending_exception(), "must be");
+      assert(!current->has_pending_exception(), "Unexpected exception");
       return true;
     }
   }
@@ -100,15 +100,18 @@ bool CDSEndTrainingUpcall::parse_vm_command(ccstrlist command)
   char* method_pattern;
   int num_patterns = 0;
   bool error = false;
+  const char* seperatorStr = ",";
+  const char* countStr = "count=";
+  const size_t countStrLen = strlen(countStr);
   do {
     if (line[0] == '\0') {
       break;
     }
-    method_pattern = strtok_r(line, ",", &line);
+    method_pattern = strtok_r(line, seperatorStr, &line);
     if (method_pattern != nullptr) {
       // if method pattern starts with count=, then parse the count
-      if (strncmp(method_pattern, "count=", 6) == 0) {
-        int number = atoi(method_pattern + 6);
+      if (strncmp(method_pattern, countStr, countStrLen) == 0) {
+        int number = atoi(method_pattern + countStrLen);
         if (number > 0) {
           CDSEndTrainingUpcall::set_limit((uint)number);
           continue;
@@ -121,7 +124,7 @@ bool CDSEndTrainingUpcall::parse_vm_command(ccstrlist command)
             matcher->set_next(_matcher);
           }
           _matcher = matcher;
-          num_patterns ++;
+          num_patterns++;
           continue;
         }
       }

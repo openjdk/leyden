@@ -23,7 +23,6 @@
  */
 
 #include "precompiled.hpp"
-#include "cds/cdsEndTrainingUpcall.hpp"
 #include "classfile/symbolTable.hpp"
 #include "compiler/compilerDirectives.hpp"
 #include "compiler/compilerOracle.hpp"
