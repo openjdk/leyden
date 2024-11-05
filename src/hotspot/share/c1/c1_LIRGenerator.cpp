@@ -42,6 +42,7 @@
 #include "gc/shared/c1/barrierSetC1.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/methodCounters.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stubRoutines.hpp"
 #include "runtime/vm_version.hpp"
@@ -2677,12 +2678,15 @@ void LIRGenerator::do_Base(Base* x) {
     call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::dtrace_method_entry), voidType, nullptr);
   }
 
-  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers() && method()->is_end_training_trigger()) {
+  MethodDetails methodDetails(method());
+  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, methodDetails);
+  while (upcall != nullptr) {
     BasicTypeList signature;
     signature.append(LP64_ONLY(T_LONG) NOT_LP64(T_INT));    // thread
     LIR_OprList* args = new LIR_OprList();
     args->append(getThreadPointer());
-    call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::end_training_check_c1), voidType, nullptr);
+    call_runtime(&signature, args, upcall->upcall_address(), voidType, nullptr);
+    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, methodDetails, upcall);
   }
 
   if (method()->is_synchronized()) {

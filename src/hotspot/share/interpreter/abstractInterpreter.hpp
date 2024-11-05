@@ -59,14 +59,14 @@ class AbstractInterpreter: AllStatic {
   enum MethodKind {
     zerolocals,                                                 // method needs locals initialization
     zerolocals_synchronized,                                    // method needs locals initialization & is synchronized
-    zerolocals_end_training_trigger,                            // method needs locals initialization & is end training trigger
-    zerolocals_synchronized_end_training_trigger,               // method needs locals initialization & is synchronized & is end training trigger
+    zerolocals_upcalls,                                         // method needs locals initialization & has runtime upcalls
+    zerolocals_synchronized_upcalls,                            // method needs locals initialization & is synchronized & has runtime upcalls
     native,                                                     // native method
     native_synchronized,                                        // native method & is synchronized
-    native_end_training_trigger,                                // native method & is end training trigger
-    native_synchronized_end_training_trigger,                   // native method & is synchronized & is end training trigger
+    native_upcalls,                                             // native method & has runtime upcalls
+    native_synchronized_upcalls,                                // native method & is synchronized & has runtime upcalls
     empty,                                                      // empty method (code: _return)
-    empty_end_training_trigger,                                 // empty method & is end training trigger (code: _return)
+    empty_upcalls,                                              // empty method & has runtime upcalls (code: _return)
     getter,                                                     // getter method
     setter,                                                     // setter method
     abstract,                                                   // abstract method (throws an AbstractMethodException)

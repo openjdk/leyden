@@ -186,12 +186,10 @@ void TemplateInterpreterGenerator::generate_all() {
   // all non-native method kinds
   method_entry(zerolocals)
   method_entry(zerolocals_synchronized)
+  method_entry(zerolocals_upcalls)
+  method_entry(zerolocals_synchronized_upcalls)
   method_entry(empty)
-  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers()) {
-    method_entry(zerolocals_end_training_trigger)
-    method_entry(zerolocals_synchronized_end_training_trigger)
-    method_entry(empty_end_training_trigger)
-  }
+  method_entry(empty_upcalls)
   method_entry(getter)
   method_entry(setter)
   method_entry(abstract)
@@ -226,10 +224,8 @@ void TemplateInterpreterGenerator::generate_all() {
 
   native_method_entry(native)
   native_method_entry(native_synchronized)
-  if (CDSConfig::is_dumping_preimage_static_archive_with_triggers()) {
-    native_method_entry(native_end_training_trigger)
-    native_method_entry(native_synchronized_end_training_trigger)
-  }
+  native_method_entry(native_upcalls)
+  native_method_entry(native_synchronized_upcalls)
 
   // Entries to intrinsics for native methods should follow
   // entries for `native` methods to use the same address in case
@@ -418,23 +414,23 @@ void TemplateInterpreterGenerator::generate_and_dispatch(Template* t, TosState t
 
 bool TemplateInterpreterGenerator::is_synchronized_method(AbstractInterpreter::MethodKind kind) {
   switch (kind) {
-    case Interpreter::zerolocals_synchronized                     : // fall thru
-    case Interpreter::zerolocals_synchronized_end_training_trigger: // fall thru
-    case Interpreter::native_synchronized                         : // fall thru
-    case Interpreter::native_synchronized_end_training_trigger    :
+    case Interpreter::zerolocals_synchronized        : // fall thru
+    case Interpreter::zerolocals_synchronized_upcalls: // fall thru
+    case Interpreter::native_synchronized            : // fall thru
+    case Interpreter::native_synchronized_upcalls    :
       return true;
     default:
       return false;
   }
 }
 
-bool TemplateInterpreterGenerator::is_end_training_trigger_method(AbstractInterpreter::MethodKind kind) {
+bool TemplateInterpreterGenerator::is_runtime_upcalls_method(AbstractInterpreter::MethodKind kind) {
   switch (kind) {
-    case Interpreter::zerolocals_end_training_trigger             : // fall thru
-    case Interpreter::zerolocals_synchronized_end_training_trigger: // fall thru
-    case Interpreter::native_end_training_trigger                 : // fall thru
-    case Interpreter::native_synchronized_end_training_trigger    : // fall thru
-    case Interpreter::empty_end_training_trigger                  :
+    case Interpreter::zerolocals_upcalls             : // fall thru
+    case Interpreter::zerolocals_synchronized_upcalls: // fall thru
+    case Interpreter::native_upcalls                 : // fall thru
+    case Interpreter::native_synchronized_upcalls    : // fall thru
+    case Interpreter::empty_upcalls                  :
       return true;
     default:
       return false;
@@ -443,19 +439,19 @@ bool TemplateInterpreterGenerator::is_end_training_trigger_method(AbstractInterp
 
 bool TemplateInterpreterGenerator::is_intrinsic_method(AbstractInterpreter::MethodKind kind) {
   switch (kind) {
-    case Interpreter::zerolocals                                  : // fall thru
-    case Interpreter::zerolocals_synchronized                     : // fall thru
-    case Interpreter::zerolocals_end_training_trigger             : // fall thru
-    case Interpreter::zerolocals_synchronized_end_training_trigger: // fall thru
-    case Interpreter::native                                      : // fall thru
-    case Interpreter::native_synchronized                         : // fall thru
-    case Interpreter::native_end_training_trigger                 : // fall thru
-    case Interpreter::native_synchronized_end_training_trigger    : // fall thru
-    case Interpreter::empty                                       : // fall thru
-    case Interpreter::empty_end_training_trigger                  : // fall thru
-    case Interpreter::getter                                      : // fall thru
-    case Interpreter::setter                                      : // fall thru
-    case Interpreter::abstract                                    :
+    case Interpreter::zerolocals                     : // fall thru
+    case Interpreter::zerolocals_synchronized        : // fall thru
+    case Interpreter::zerolocals_upcalls             : // fall thru
+    case Interpreter::zerolocals_synchronized_upcalls: // fall thru
+    case Interpreter::native                         : // fall thru
+    case Interpreter::native_synchronized            : // fall thru
+    case Interpreter::native_upcalls                 : // fall thru
+    case Interpreter::native_synchronized_upcalls    : // fall thru
+    case Interpreter::empty                          : // fall thru
+    case Interpreter::empty_upcalls                  : // fall thru
+    case Interpreter::getter                         : // fall thru
+    case Interpreter::setter                         : // fall thru
+    case Interpreter::abstract                       :
       return false;
     default:
       return true;
@@ -487,26 +483,26 @@ address TemplateInterpreterGenerator::generate_method_entry(
   }
 
   bool synchronized = is_synchronized_method(kind);
-  bool end_training_trigger = is_end_training_trigger_method(kind);
+  bool upcalls = is_runtime_upcalls_method(kind);
 
   // We expect the normal and native entry points to be generated first so we can reuse them.
-  if (!synchronized && !end_training_trigger) {
+  if (!synchronized && !upcalls) {
     entry_point = Interpreter::entry_for_kind(native ? Interpreter::native
                                                      : Interpreter::zerolocals);
-  } else if (synchronized && !end_training_trigger) {
+  } else if (synchronized && !upcalls) {
     entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_synchronized
                                                      : Interpreter::zerolocals_synchronized);
-  } else if (!synchronized && end_training_trigger) {
-    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_end_training_trigger
-                                                     : Interpreter::zerolocals_end_training_trigger);
-  } else if (synchronized && end_training_trigger) {
-    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_synchronized_end_training_trigger
-                                                     : Interpreter::zerolocals_synchronized_end_training_trigger);
+  } else if (!synchronized && upcalls) {
+    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_upcalls
+                                                     : Interpreter::zerolocals_upcalls);
+  } else if (synchronized && upcalls) {
+    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_synchronized_upcalls
+                                                     : Interpreter::zerolocals_synchronized_upcalls);
   }
 
   if (entry_point == nullptr) {
-      entry_point = native ? generate_native_entry(synchronized, end_training_trigger)
-                           : generate_normal_entry(synchronized, end_training_trigger);
+      entry_point = native ? generate_native_entry(synchronized, upcalls)
+                           : generate_normal_entry(synchronized, upcalls);
   }
 
   return entry_point;

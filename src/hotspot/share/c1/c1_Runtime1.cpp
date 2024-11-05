@@ -66,6 +66,7 @@
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/perfData.inline.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stackWatermarkSet.hpp"
 #include "runtime/stubRoutines.hpp"
@@ -328,7 +329,6 @@ const char* Runtime1::name_for_address(address entry) {
   FUNCTION_CASE(entry, SharedRuntime::lmul);
   FUNCTION_CASE(entry, SharedRuntime::lrem);
   FUNCTION_CASE(entry, SharedRuntime::lrem);
-  FUNCTION_CASE(entry, SharedRuntime::end_training_check_c1);
   FUNCTION_CASE(entry, SharedRuntime::dtrace_method_entry);
   FUNCTION_CASE(entry, SharedRuntime::dtrace_method_exit);
   FUNCTION_CASE(entry, is_instance_of);
@@ -348,6 +348,12 @@ const char* Runtime1::name_for_address(address entry) {
   FUNCTION_CASE(entry, StubRoutines::dtan());
 
 #undef FUNCTION_CASE
+
+  // Runtime upcalls also has a map of addresses to names
+  const char* upcall_name = RuntimeUpcalls::get_name_for_upcall_address(entry);
+  if (upcall_name != nullptr) {
+    return upcall_name;
+  }
 
   // Soft float adds more runtime names.
   return pd_name_for_address(entry);

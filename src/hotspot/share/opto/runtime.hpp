@@ -313,8 +313,8 @@ private:
   static const TypeFunc* notify_jvmti_vthread_Type();
 #endif
 
-  // AOT
-  static const TypeFunc* end_training_check_c2_Type();
+  // runtime upcalls support
+  static const TypeFunc* runtime_up_call_Type();
 
   // Dtrace support
   static const TypeFunc* dtrace_method_entry_exit_Type();

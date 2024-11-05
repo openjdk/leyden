@@ -360,6 +360,15 @@ bool MethodMatcher::matches(const methodHandle& method) const {
   return false;
 }
 
+bool MethodMatcher::matches(MethodDetails& methodDetails) const {
+  if (match(methodDetails.class_name(), this->class_name(), _class_mode) &&
+      match(methodDetails.method_name(), this->method_name(), _method_mode) &&
+      ((this->signature() == nullptr) || match(methodDetails.signature(), this->signature(), Prefix))) {
+    return true;
+  }
+  return false;
+}
+
 void MethodMatcher::print_symbol(outputStream* st, Symbol* h, Mode mode) {
   if (mode == Suffix || mode == Substring || mode == Any) {
     st->print("*");
@@ -402,6 +411,15 @@ BasicMatcher* BasicMatcher::parse_method_pattern(char* line, const char*& error_
     }
   }
   return bm;
+}
+
+bool BasicMatcher::match(MethodDetails& methodDetails) {
+  for (BasicMatcher* current = this; current != nullptr; current = current->next()) {
+    if (current->matches(methodDetails)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool BasicMatcher::match(const methodHandle& method) {
