@@ -176,10 +176,10 @@ address ZeroInterpreterGenerator::generate_Reference_get_entry(void) {
   return generate_entry((address) ZeroInterpreter::Reference_get_entry);
 }
 
-address ZeroInterpreterGenerator::generate_native_entry(bool synchronized, bool end_training_trigger) {
+address ZeroInterpreterGenerator::generate_native_entry(bool synchronized, bool runtime_upcalls) {
   return generate_entry((address) ZeroInterpreter::native_entry);
 }
 
-address ZeroInterpreterGenerator::generate_normal_entry(bool synchronized, bool end_training_trigger) {
+address ZeroInterpreterGenerator::generate_normal_entry(bool synchronized, bool runtime_upcalls) {
   return generate_entry((address) ZeroInterpreter::normal_entry);
 }
