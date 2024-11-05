@@ -318,8 +318,9 @@ oop MethodHandles::init_method_MemberName(Handle mname, CallInfo& info) {
   case CallInfo::direct_call:
     vmindex = Method::nonvirtual_vtable_index;
     if (m->is_static()) {
+      assert(!m->is_static_initializer(), "Cannot be static initializer");
       flags |= IS_METHOD      | (JVM_REF_invokeStatic  << REFERENCE_KIND_SHIFT);
-    } else if (m->is_initializer()) {
+    } else if (m->is_object_initializer()) {
       flags |= IS_CONSTRUCTOR | (JVM_REF_invokeSpecial << REFERENCE_KIND_SHIFT);
     } else {
       // "special" reflects that this is a direct call, not that it
@@ -1558,9 +1559,9 @@ void MethodHandles::init_counters() {
 #define PRINT_COUNTER(name) {\
   jlong count = _perf_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-40s = " JLONG_FORMAT_W(4) "ms (elapsed) " JLONG_FORMAT_W(4) "ms (thread) (" JLONG_FORMAT_W(5) " events)", #name, \
-                 _perf_##name##_timer->elapsed_counter_value_ms(), \
-                 _perf_##name##_timer->thread_counter_value_ms(), \
+    st->print_cr("  %-40s = " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) (" JLONG_FORMAT_W(5) " events)", #name, \
+                 _perf_##name##_timer->elapsed_counter_value_us(), \
+                 _perf_##name##_timer->thread_counter_value_us(), \
                  count); \
   }}
 

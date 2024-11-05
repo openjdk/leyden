@@ -2094,6 +2094,12 @@ jlong Management::ticks_to_ms(jlong ticks) {
                  * (double)1000.0);
 }
 
+jlong Management::ticks_to_us(jlong ticks) {
+  assert(os::elapsed_frequency() > 0, "Must be non-zero");
+  return (jlong)(((double)ticks / (double)os::elapsed_frequency())
+                 * (double)1000000.0);
+}
+
 // Gets the amount of memory allocated on the Java heap since JVM launch.
 JVM_ENTRY(jlong, jmm_GetTotalThreadAllocatedMemory(JNIEnv *env))
     // A thread increments exited_allocated_bytes in ThreadService::remove_thread

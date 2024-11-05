@@ -1868,7 +1868,8 @@ void MacroAssembler::clinit_barrier(Register klass, Register scratch, Label* L_f
     L_slow_path = &L_fallthrough;
   }
   // Fast path check: class is fully initialized
-  ldrb(scratch, Address(klass, InstanceKlass::init_state_offset()));
+  lea(scratch, Address(klass, InstanceKlass::init_state_offset()));
+  ldarb(scratch, scratch);
   subs(zr, scratch, InstanceKlass::fully_initialized);
   br(Assembler::EQ, *L_fast_path);
 
@@ -2997,7 +2998,7 @@ void MacroAssembler::verify_heapbase(const char* msg) {
   if (CheckCompressedOops) {
     Label ok;
     push(1 << rscratch1->encoding(), sp); // cmpptr trashes rscratch1
-    cmpptr(rheapbase, ExternalAddress(CompressedOops::ptrs_base_addr()));
+    cmpptr(rheapbase, ExternalAddress(CompressedOops::base_addr()));
     br(Assembler::EQ, ok);
     stop(msg);
     bind(ok);
@@ -3166,9 +3167,9 @@ void MacroAssembler::reinit_heapbase()
 {
   if (UseCompressedOops) {
     if (Universe::is_fully_initialized() && !SCCache::is_on_for_write()) {
-      mov(rheapbase, CompressedOops::ptrs_base());
+      mov(rheapbase, CompressedOops::base());
     } else {
-      lea(rheapbase, ExternalAddress(CompressedOops::ptrs_base_addr()));
+      lea(rheapbase, ExternalAddress(CompressedOops::base_addr()));
       ldr(rheapbase, Address(rheapbase));
     }
   }
@@ -5115,8 +5116,8 @@ MacroAssembler::KlassDecodeMode MacroAssembler::klass_decode_mode() {
 
   if (operand_valid_for_logical_immediate(
         /*is32*/false, (uint64_t)CompressedKlassPointers::base())) {
-    const uint64_t range_mask =
-      (1ULL << log2i(CompressedKlassPointers::range())) - 1;
+    const size_t range = CompressedKlassPointers::klass_range_end() - CompressedKlassPointers::base();
+    const uint64_t range_mask = (1ULL << log2i(range)) - 1;
     if (((uint64_t)CompressedKlassPointers::base() & range_mask) == 0) {
       return (_klass_decode_mode = KlassDecodeXor);
     }
@@ -6469,8 +6470,10 @@ void MacroAssembler::cache_wbsync(bool is_pre) {
 }
 
 void MacroAssembler::verify_sve_vector_length(Register tmp) {
+  if (!UseSVE || VM_Version::get_max_supported_sve_vector_length() == FloatRegister::sve_vl_min) {
+    return;
+  }
   // Make sure that native code does not change SVE vector length.
-  if (!UseSVE) return;
   Label verify_ok;
   movw(tmp, zr);
   sve_inc(tmp, B);

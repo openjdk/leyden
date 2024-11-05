@@ -94,7 +94,10 @@ void AOTClassLinker::add_vm_class(InstanceKlass* ik) {
   bool created;
   _vm_classes->put_if_absent(ik, &created);
   if (created) {
-    add_candidate(ik);
+    if (CDSConfig::is_dumping_aot_linked_classes()) {
+      bool v = try_add_candidate(ik);
+      assert(v, "must succeed for VM class");
+    }
     InstanceKlass* super = ik->java_super();
     if (super != nullptr) {
       add_vm_class(super);
@@ -117,8 +120,9 @@ void AOTClassLinker::add_candidate(InstanceKlass* ik) {
 
 bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
   assert(is_initialized(), "sanity");
+  assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
 
-  if (!CDSConfig::is_dumping_aot_linked_classes() || !SystemDictionaryShared::is_builtin(ik)) {
+  if (!SystemDictionaryShared::is_builtin(ik)) {
     return false;
   }
 

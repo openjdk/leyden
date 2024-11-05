@@ -31,8 +31,7 @@
 class InstanceKlass;
 
 class AOTClassInitializer : AllStatic {
-  static bool has_non_default_static_fields(InstanceKlass* ik);
-  static bool is_forced_preinit_class(InstanceKlass* ik);
+  static bool has_default_static_fields(InstanceKlass* ik);
 
   static bool check_can_be_preinited(InstanceKlass* ik);
   static bool can_be_preinited(InstanceKlass* ik);
@@ -47,7 +46,7 @@ public:
 
   // Called by heapShared.cpp to see if src_ik->java_mirror() can be archived in
   // the initialized state.
-  static bool can_archive_preinitialized_mirror(InstanceKlass* src_ik);
+  static bool can_archive_initialized_mirror(InstanceKlass* src_ik);
 };
 
 #endif // SHARE_CDS_AOTCLASSINITIALIZER_HPP

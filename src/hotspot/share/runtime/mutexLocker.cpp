@@ -48,7 +48,6 @@ Mutex*   SharedDictionary_lock        = nullptr;
 Monitor* ClassInitError_lock          = nullptr;
 Mutex*   Module_lock                  = nullptr;
 Mutex*   CompiledIC_lock              = nullptr;
-Mutex*   InlineCacheBuffer_lock       = nullptr;
 Mutex*   VMStatistic_lock             = nullptr;
 Mutex*   JmethodIdCreation_lock       = nullptr;
 Mutex*   JfieldIdCreation_lock        = nullptr;
@@ -275,7 +274,7 @@ void mutex_init() {
 
   MUTEX_DEFN(JfieldIdCreation_lock           , PaddedMutex  , safepoint);
 
-  MUTEX_DEFN(CompiledIC_lock                 , PaddedMutex  , nosafepoint);  // locks VtableStubs_lock, InlineCacheBuffer_lock
+  MUTEX_DEFN(CompiledIC_lock                 , PaddedMutex  , nosafepoint);  // locks VtableStubs_lock
   MUTEX_DEFN(MethodCompileQueue_lock         , PaddedMonitor, safepoint);
   if (UseGlobalCompileQueueLock) {
     MethodCompileQueueC1_lock  = MethodCompileQueue_lock;
@@ -295,7 +294,7 @@ void mutex_init() {
   MUTEX_DEFN(CompileStatistics_lock          , PaddedMutex  , safepoint);
   MUTEX_DEFN(DirectivesStack_lock            , PaddedMutex  , nosafepoint);
 
-  MUTEX_DEFN(JvmtiThreadState_lock           , PaddedMutex  , safepoint);   // Used by JvmtiThreadState/JvmtiEventController
+  MUTEX_DEFN(JvmtiVTMSTransition_lock        , PaddedMonitor, safepoint);   // used for Virtual Thread Mount State transition management
   MUTEX_DEFN(EscapeBarrier_lock              , PaddedMonitor, nosafepoint); // Used to synchronize object reallocation/relocking triggered by JVMTI
   MUTEX_DEFN(Management_lock                 , PaddedMutex  , safepoint);   // used for JVM management
 
@@ -346,7 +345,6 @@ void mutex_init() {
 #endif
 
   // These locks have relative rankings, and inherit safepoint checking attributes from that rank.
-  MUTEX_DEFL(InlineCacheBuffer_lock         , PaddedMutex  , CompiledIC_lock);
   MUTEX_DEFL(VtableStubs_lock               , PaddedMutex  , CompiledIC_lock);  // Also holds DumpTimeTable_lock
   MUTEX_DEFL(CodeCache_lock                 , PaddedMonitor, VtableStubs_lock);
   MUTEX_DEFL(NMethodState_lock              , PaddedMutex  , CodeCache_lock);
@@ -381,7 +379,7 @@ void mutex_init() {
   // JVMCIRuntime_lock must be acquired before JVMCI_lock to avoid deadlock
   MUTEX_DEFL(JVMCI_lock                     , PaddedMonitor, JVMCIRuntime_lock);
 #endif
-  MUTEX_DEFL(JvmtiVTMSTransition_lock        , PaddedMonitor, JvmtiThreadState_lock); // used for Virtual Thread Mount State transition management
+  MUTEX_DEFL(JvmtiThreadState_lock          , PaddedMutex  , JvmtiVTMSTransition_lock);   // Used by JvmtiThreadState/JvmtiEventController
 
   // Allocate RecursiveMutex
   MultiArray_lock = new RecursiveMutex();
@@ -453,10 +451,10 @@ int MutexLockerImpl::name2id(const char* name) {
 void MutexLockerImpl::print_counter_on(outputStream* st, const char* name, bool is_unique, int idx) {
   jlong count = _perf_lock_count[idx]->get_value();
   if (count > 0) {
-    st->print_cr("  %3d: %s%40s = " JLONG_FORMAT_W(5) "ms (" JLONG_FORMAT_W(5) "ms) / " JLONG_FORMAT_W(9) " events",
+    st->print_cr("  %3d: %s%40s = " JLONG_FORMAT_W(5) "us (" JLONG_FORMAT_W(5) "us) / " JLONG_FORMAT_W(9) " events",
                  idx, (is_unique ? " " : "M"), name,
-                 Management::ticks_to_ms(_perf_lock_hold_time[idx]->get_value()),
-                 Management::ticks_to_ms(_perf_lock_wait_time[idx]->get_value()),
+                 Management::ticks_to_us(_perf_lock_hold_time[idx]->get_value()),
+                 Management::ticks_to_us(_perf_lock_wait_time[idx]->get_value()),
                  count);
   }
 }
@@ -478,10 +476,10 @@ void MutexLockerImpl::print_counters_on(outputStream* st) {
     jlong total_wait_time = accumulate_lock_counters(_perf_lock_wait_time);
     jlong total_hold_time = accumulate_lock_counters(_perf_lock_hold_time);
 
-    st->print_cr("MutexLocker: Total: %d named locks (%d unique names); hold = " JLONG_FORMAT "ms (wait = " JLONG_FORMAT "ms) / " JLONG_FORMAT " events for thread \"main\"",
+    st->print_cr("MutexLocker: Total: %d named locks (%d unique names); hold = " JLONG_FORMAT "us (wait = " JLONG_FORMAT "us) / " JLONG_FORMAT " events for thread \"main\"",
                  _num_mutex, _num_names,
-                 Management::ticks_to_ms(total_hold_time),
-                 Management::ticks_to_ms(total_wait_time),
+                 Management::ticks_to_us(total_hold_time),
+                 Management::ticks_to_us(total_wait_time),
                  total_count);
     for (int i = 0; i < _num_names; i++) {
       print_counter_on(st, _names[i], _is_unique[i], i+1);

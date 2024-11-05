@@ -274,9 +274,9 @@ void MetaspaceShared::initialize_for_static_dump() {
   assert(CDSConfig::is_dumping_static_archive(), "sanity");
 
   if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
-    if (!((UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC) && UseCompressedClassPointers)) {
+    if (!((UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC || UseShenandoahGC) && UseCompressedClassPointers)) {
       vm_exit_during_initialization("Cannot create the CacheDataStore",
-                                    "UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, or Epsilon");
+                                    "UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah");
     }
   }
 
@@ -322,6 +322,7 @@ void MetaspaceShared::post_initialize(TRAPS) {
         }
         ClassLoaderExt::init_paths_start_index(info->app_class_paths_start_index());
         ClassLoaderExt::init_app_module_paths_start_index(info->app_module_paths_start_index());
+        ClassLoaderExt::init_num_module_paths(info->header()->num_module_paths());
       }
     }
   }
@@ -423,7 +424,6 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
 
   // Dump/restore miscellaneous metadata.
   JavaClasses::serialize_offsets(soc);
-  HeapShared::serialize_misc_info(soc);
   Universe::serialize(soc);
   soc->do_tag(--tag);
 
@@ -573,6 +573,27 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   DEBUG_ONLY(SystemDictionaryShared::NoClassLoadingMark nclm);
 
+  _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
+  SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
+  _method_handle_intrinsics->sort([] (Method** a, Method** b) -> int {
+    Symbol* a_holder = (*a)->method_holder()->name();
+    Symbol* b_holder = (*b)->method_holder()->name();
+    if (a_holder != b_holder) {
+      return a_holder->cmp(b_holder);
+    }
+    Symbol* a_name = (*a)->name();
+    Symbol* b_name = (*b)->name();
+    if (a_name != b_name) {
+      return a_name->cmp(b_name);
+    }
+    Symbol* a_signature = (*a)->signature();
+    Symbol* b_signature = (*b)->signature();
+    if (a_signature != b_signature) {
+      return a_signature->cmp(b_signature);
+    }
+    return 0;
+  });
+
   FileMapInfo::check_nonempty_dir_in_shared_path_table();
 
   NOT_PRODUCT(SystemDictionary::verify();)
@@ -580,9 +601,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   // Block concurrent class unloading from changing the _dumptime_table
   MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
 
-  HeapShared::start_finding_archivable_hidden_classes();
-  SystemDictionaryShared::check_excluded_classes();
-  HeapShared::end_finding_archivable_hidden_classes();
+  SystemDictionaryShared::find_all_archivable_classes();
 
   _builder.gather_source_objs();
   _builder.reserve_buffer();
@@ -901,20 +920,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     }
   }
 
-#if INCLUDE_CDS_JAVA_HEAP
-  if (CDSConfig::is_dumping_invokedynamic()) {
-    // This makes sure that the MethodType and MethodTypeForm tables won't be updated
-    // concurrently when we are saving their contents into a side table.
-    assert(CDSConfig::allow_only_single_java_thread(), "Required");
-
-    JavaValue result(T_VOID);
-    JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
-                           vmSymbols::createArchivedObjects(),
-                           vmSymbols::void_method_signature(),
-                           CHECK);
-  }
-#endif
-
   // Rewrite and link classes
   log_info(cds)("Rewriting and linking classes ...");
   // Link any classes which got missed. This would happen if we have loaded classes that
@@ -930,27 +935,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   }
 
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
-
-  _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
-  SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
-  _method_handle_intrinsics->sort([] (Method** a, Method** b) -> int {
-    Symbol* a_holder = (*a)->method_holder()->name();
-    Symbol* b_holder = (*b)->method_holder()->name();
-    if (a_holder != b_holder) {
-      return a_holder->cmp(b_holder);
-    }
-    Symbol* a_name = (*a)->name();
-    Symbol* b_name = (*b)->name();
-    if (a_name != b_name) {
-      return a_name->cmp(b_name);
-    }
-    Symbol* a_signature = (*a)->signature();
-    Symbol* b_signature = (*b)->signature();
-    if (a_signature != b_signature) {
-      return a_signature->cmp(b_signature);
-    }
-    return 0;
-  });
 
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_heap()) {
@@ -968,11 +952,36 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       SystemDictionaryShared::create_loader_positive_lookup_cache(CHECK);
     }
 
+    if (CDSConfig::is_dumping_invokedynamic()) {
+      // This makes sure that the MethodType and MethodTypeForm tables won't be updated
+      // concurrently when we are saving their contents into a side table.
+      assert(CDSConfig::allow_only_single_java_thread(), "Required");
+
+      JavaValue result(T_VOID);
+      JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
+                             vmSymbols::createArchivedObjects(),
+                             vmSymbols::void_method_signature(),
+                             CHECK);
+    }
+
     // Do this at the very end, when no Java code will be executed. Otherwise
     // some new strings may be added to the intern table.
     StringTable::allocate_shared_strings_array(CHECK);
+  } else {
+    log_info(cds)("Not dumping heap, reset CDSConfig::_is_using_optimized_module_handling");
+    CDSConfig::stop_using_optimized_module_handling();
   }
 #endif
+
+  // Dummy call to load classes used at CDS runtime
+  JavaValue result(T_OBJECT);
+  Handle path_string = java_lang_String::create_from_str("dummy.jar", CHECK);
+  JavaCalls::call_static(&result,
+                         vmClasses::jdk_internal_loader_ClassLoaders_klass(),
+                         vmSymbols::toFileURL_name(),
+                         vmSymbols::toFileURL_signature(),
+                         path_string,
+                         CHECK);
 
   VM_PopulateDumpSharedSpace op(builder);
   VMThread::execute(&op);
@@ -1616,7 +1625,7 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
       assert(base_address == nullptr ||
              (address)archive_space_rs.base() == base_address, "Sanity");
       // Register archive space with NMT.
-      MemTracker::record_virtual_memory_type(archive_space_rs.base(), mtClassShared);
+      MemTracker::record_virtual_memory_tag(archive_space_rs.base(), mtClassShared);
       return archive_space_rs.base();
     }
     return nullptr;
@@ -1678,8 +1687,8 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
       return nullptr;
     }
     // NMT: fix up the space tags
-    MemTracker::record_virtual_memory_type(archive_space_rs.base(), mtClassShared);
-    MemTracker::record_virtual_memory_type(class_space_rs.base(), mtClass);
+    MemTracker::record_virtual_memory_tag(archive_space_rs.base(), mtClassShared);
+    MemTracker::record_virtual_memory_tag(class_space_rs.base(), mtClass);
   } else {
     if (use_archive_base_addr && base_address != nullptr) {
       total_space_rs = ReservedSpace(total_range_size, base_address_alignment,

@@ -449,7 +449,7 @@ bool Deoptimization::deoptimize_objects_internal(JavaThread* thread, GrowableArr
   RegisterMap map(chunk->at(0)->register_map());
   bool deoptimized_objects = false;
 
-  bool const jvmci_enabled = JVMCI_ONLY(UseJVMCICompiler) NOT_JVMCI(false);
+  bool const jvmci_enabled = JVMCI_ONLY(EnableJVMCI) NOT_JVMCI(false);
 
   // Reallocate the non-escaping objects and restore their fields.
   if (jvmci_enabled COMPILER2_PRESENT(|| (DoEscapeAnalysis && EliminateAllocations)
@@ -2973,9 +2973,9 @@ void Deoptimization::init_counters() {
 #define PRINT_COUNTER(sub, name) { \
   jlong count = _perf_##sub##_##name##_count->get_value(); \
   if (count > 0) { \
-    st->print_cr("  %-50s = " JLONG_FORMAT_W(4) "ms (elapsed) " JLONG_FORMAT_W(4) "ms (thread) (" JLONG_FORMAT_W(5) " events)", #sub "::" #name, \
-                 _perf_##sub##_##name##_timer->elapsed_counter_value_ms(), \
-                 _perf_##sub##_##name##_timer->thread_counter_value_ms(), \
+    st->print_cr("  %-50s = " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) (" JLONG_FORMAT_W(5) " events)", #sub "::" #name, \
+                 _perf_##sub##_##name##_timer->elapsed_counter_value_us(), \
+                 _perf_##sub##_##name##_timer->thread_counter_value_us(), \
                  count); \
   }}
 

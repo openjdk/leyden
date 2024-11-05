@@ -81,6 +81,9 @@
 #include "utilities/ostream.hpp"
 #include "utilities/utf8.hpp"
 
+#include <stdlib.h>
+#include <ctype.h>
+
 // Entry point in java.dll for path canonicalization
 
 typedef int (*canonicalize_fn_t)(const char *orig, char *out, int len);
@@ -147,31 +150,31 @@ void ClassLoader::print_counters(outputStream *st) {
   // we print to the passed in outputStream as requested.
   if (log_is_enabled(Info, perf, class, link)) {
       st->print_cr("ClassLoader:");
-      st->print_cr(   "  clinit:               " JLONG_FORMAT "ms / " JLONG_FORMAT " events",
+      st->print_cr(   "  clinit:               " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
                    ClassLoader::class_init_time_ms(), ClassLoader::class_init_count());
-      st->print_cr("  link methods:         " JLONG_FORMAT "ms / " JLONG_FORMAT " events",
-                   Management::ticks_to_ms(_perf_ik_link_methods_time->get_value())   , _perf_ik_link_methods_count->get_value());
-      st->print_cr("  method adapters:      " JLONG_FORMAT "ms / " JLONG_FORMAT " events",
-                   Management::ticks_to_ms(_perf_method_adapters_time->get_value())   , _perf_method_adapters_count->get_value());
+      st->print_cr("  link methods:         " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
+                   Management::ticks_to_us(_perf_ik_link_methods_time->get_value())   , _perf_ik_link_methods_count->get_value());
+      st->print_cr("  method adapters:      " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
+                   Management::ticks_to_us(_perf_method_adapters_time->get_value())   , _perf_method_adapters_count->get_value());
       if (CountBytecodes || CountBytecodesPerThread) {
         st->print_cr("; executed " JLONG_FORMAT " bytecodes", ClassLoader::class_init_bytecodes_count());
       }
       st->print_cr("  resolve...");
-      st->print_cr("    invokedynamic:   " JLONG_FORMAT "ms (elapsed) " JLONG_FORMAT "ms (thread) / " JLONG_FORMAT " events",
-                   _perf_resolve_indy_time->elapsed_counter_value_ms(),
-                   _perf_resolve_indy_time->thread_counter_value_ms(),
+      st->print_cr("    invokedynamic:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
+                   _perf_resolve_indy_time->elapsed_counter_value_us(),
+                   _perf_resolve_indy_time->thread_counter_value_us(),
                    _perf_resolve_indy_count->get_value());
-      st->print_cr("    invokehandle:    " JLONG_FORMAT "ms (elapsed) " JLONG_FORMAT "ms (thread) / " JLONG_FORMAT " events",
-                   _perf_resolve_invokehandle_time->elapsed_counter_value_ms(),
-                   _perf_resolve_invokehandle_time->thread_counter_value_ms(),
+      st->print_cr("    invokehandle:    " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
+                   _perf_resolve_invokehandle_time->elapsed_counter_value_us(),
+                   _perf_resolve_invokehandle_time->thread_counter_value_us(),
                    _perf_resolve_invokehandle_count->get_value());
-      st->print_cr("    CP_MethodHandle: " JLONG_FORMAT "ms (elapsed) " JLONG_FORMAT "ms (thread) / " JLONG_FORMAT " events",
-                   _perf_resolve_mh_time->elapsed_counter_value_ms(),
-                   _perf_resolve_mh_time->thread_counter_value_ms(),
+      st->print_cr("    CP_MethodHandle: " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
+                   _perf_resolve_mh_time->elapsed_counter_value_us(),
+                   _perf_resolve_mh_time->thread_counter_value_us(),
                    _perf_resolve_mh_count->get_value());
-      st->print_cr("    CP_MethodType:   " JLONG_FORMAT "ms (elapsed) " JLONG_FORMAT "ms (thread) / " JLONG_FORMAT " events",
-                   _perf_resolve_mt_time->elapsed_counter_value_ms(),
-                   _perf_resolve_mt_time->thread_counter_value_ms(),
+      st->print_cr("    CP_MethodType:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
+                   _perf_resolve_mt_time->elapsed_counter_value_us(),
+                   _perf_resolve_mt_time->thread_counter_value_us(),
                    _perf_resolve_mt_count->get_value());
   }
 }
@@ -647,6 +650,8 @@ void ClassLoader::setup_module_search_path(JavaThread* current, const char* path
   new_entry = create_class_path_entry(current, path, &st,
                                       false /*is_boot_append */, false /* from_class_path_attr */);
   if (new_entry != nullptr) {
+    // ClassLoaderExt::process_module_table() filters out non-jar entries before calling this function.
+    assert(new_entry->is_jar_file(), "module path entry %s is not a jar file", new_entry->name());
     add_to_module_path_entries(path, new_entry);
   }
 }
@@ -902,7 +907,8 @@ bool ClassLoader::add_to_app_classpath_entries(JavaThread* current,
   ClassPathEntry* e = _app_classpath_entries;
   if (check_for_duplicates) {
     while (e != nullptr) {
-      if (strcmp(e->name(), entry->name()) == 0) {
+      if (strcmp(e->name(), entry->name()) == 0 &&
+          e->from_class_path_attr() == entry->from_class_path_attr()) {
         // entry already exists
         return false;
       }
@@ -1276,7 +1282,7 @@ InstanceKlass* ClassLoader::load_class(Symbol* name, PackageEntry* pkg_entry, bo
 }
 
 #if INCLUDE_CDS
-char* ClassLoader::skip_uri_protocol(char* source) {
+static const char* skip_uri_protocol(const char* source) {
   if (strncmp(source, "file:", 5) == 0) {
     // file: protocol path could start with file:/ or file:///
     // locate the char after all the forward slashes
@@ -1293,6 +1299,47 @@ char* ClassLoader::skip_uri_protocol(char* source) {
     source += 5;
   }
   return source;
+}
+
+static char decode_percent_encoded(const char *str, size_t& index) {
+  if (str[index] == '%'
+      && isxdigit(str[index + 1])
+      && isxdigit(str[index + 2])) {
+    char hex[3];
+    hex[0] = str[index + 1];
+    hex[1] = str[index + 2];
+    hex[2] = '\0';
+    index += 2;
+    return (char) strtol(hex, NULL, 16);
+  }
+  return str[index];
+}
+
+char* ClassLoader::uri_to_path(const char* uri) {
+  const size_t len = strlen(uri) + 1;
+  char* path = NEW_RESOURCE_ARRAY(char, len);
+
+  uri = skip_uri_protocol(uri);
+
+  if (strncmp(uri, "//", 2) == 0) {
+    // Skip the empty "authority" part
+    uri += 2;
+  }
+
+#ifdef _WINDOWS
+  if (uri[0] == '/') {
+    // Absolute path name on Windows does not begin with a slash
+    uri += 1;
+  }
+#endif
+
+  size_t path_index = 0;
+  for (size_t i = 0; i < strlen(uri); ++i) {
+    char decoded = decode_percent_encoded(uri, i);
+    path[path_index++] = decoded;
+  }
+  path[path_index] = '\0';
+  return path;
 }
 
 // Record the shared classpath index and loader type for classes loaded
@@ -1328,7 +1375,7 @@ void ClassLoader::record_result(JavaThread* current, InstanceKlass* ik,
     // Save the path from the file: protocol or the module name from the jrt: protocol
     // if no protocol prefix is found, path is the same as stream->source(). This path
     // must be valid since the class has been successfully parsed.
-    char* path = skip_uri_protocol(src);
+    const char* path = ClassLoader::uri_to_path(src);
     assert(path != nullptr, "sanity");
     for (int i = 0; i < FileMapInfo::get_number_of_shared_paths(); i++) {
       SharedClassPathEntry* ent = FileMapInfo::shared_path(i);

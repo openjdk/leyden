@@ -30,6 +30,7 @@
 #include "cds/lambdaFormInvokers.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/unregisteredClasses.hpp"
+#include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -486,7 +487,7 @@ void ClassListParser::check_class_name(const char* class_name) {
     err = "class name too long";
   } else {
     assert(Symbol::max_length() < INT_MAX && len < INT_MAX, "must be");
-    if (!UTF8::is_legal_utf8((const unsigned char*)class_name, (int)len, /*version_leq_47*/false)) {
+    if (!UTF8::is_legal_utf8((const unsigned char*)class_name, len, /*version_leq_47*/false)) {
       err = "class name is not valid UTF8";
     }
   }
@@ -531,7 +532,9 @@ InstanceKlass* ClassListParser::load_class_from_source(Symbol* class_name, TRAPS
     THROW_NULL(vmSymbols::java_lang_ClassNotFoundException());
   }
 
-  InstanceKlass* k = UnregisteredClasses::load_class(class_name, _source, CHECK_NULL);
+  ResourceMark rm;
+  char * source_path = os::strdup_check_oom(ClassLoader::uri_to_path(_source));
+  InstanceKlass* k = UnregisteredClasses::load_class(class_name, source_path, CHECK_NULL);
   if (k->local_interfaces()->length() != _interfaces->length()) {
     print_specified_interfaces();
     print_actual_interfaces(k);
@@ -1084,3 +1087,4 @@ void ClassListParser::parse_loader_negative_cache_tag() {
     }
   }
 }
+

@@ -122,6 +122,7 @@ void CompileTask::initialize(int compile_id,
   _time_created = os::elapsed_counter();
   _time_queued = 0;
   _time_started = 0;
+  _time_finished = 0;
   _compile_reason = compile_reason;
   _nm_content_size = 0;
   _nm_insts_size = 0;
@@ -248,24 +249,37 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
                              bool is_osr_method, int osr_bci, bool is_blocking, bool is_scc, bool is_preload,
                              const char* compiler_name,
                              const char* msg, bool short_form, bool cr,
-                             jlong time_created, jlong time_queued, jlong time_started) {
+                             jlong time_created, jlong time_queued, jlong time_started, jlong time_finished) {
   if (!short_form) {
-    // Print current time
-    stringStream ss;
-    ss.print("%c" UINT64_FORMAT, (time_started != 0 ? 'F' : 'S'), (uint64_t)tty->time_stamp().milliseconds());
-    st->print("%7s ", ss.freeze());
-    if (time_created != 0) {
-      // Print time in queue and time being processed by compiler thread
-      jlong now = os::elapsed_counter();
-      st->print("C%d ", (int) TimeHelper::counter_to_millis((time_queued != 0 ? time_queued : now) - time_created));
-      if (time_queued != 0) {
-        st->print("Q%d ", (int) TimeHelper::counter_to_millis((time_started != 0 ? time_started : now) - time_queued));
-        if (time_started != 0) {
-          st->print("S%d ", (int) TimeHelper::counter_to_millis(now - time_started));
-        }
-      }
+    {
+      stringStream ss;
+      ss.print(UINT64_FORMAT, (uint64_t) tty->time_stamp().milliseconds());
+      st->print("%7s ", ss.freeze());
     }
+    { // Time waiting to be put on queue
+      stringStream ss;
+      if (time_created != 0 && time_queued != 0) {
+        ss.print("W%.1f", TimeHelper::counter_to_millis(time_queued - time_created));
+      }
+      st->print("%7s ", ss.freeze());
+    }
+    { // Time in queue
+      stringStream ss;
+      if (time_queued != 0 && time_started != 0) {
+        ss.print("Q%.1f", TimeHelper::counter_to_millis(time_started - time_queued));
+      }
+      st->print("%7s ", ss.freeze());
+    }
+    { // Time in compilation
+      stringStream ss;
+      if (time_started != 0 && time_finished != 0) {
+        ss.print("C%.1f", TimeHelper::counter_to_millis(time_finished - time_started));
+      }
+      st->print("%7s ", ss.freeze());
+    }
+    st->print("  ");
   }
+
   // print compiler name if requested
   if (CIPrintCompilerName) {
     st->print("%s:", compiler_name);
@@ -339,7 +353,7 @@ void CompileTask::print_inline_indent(int inline_level, outputStream* st) {
 void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool cr) {
   bool is_osr_method = osr_bci() != InvocationEntryBci;
   print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_scc(), preload(),
-             compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started);
+             compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished);
 }
 
 // ------------------------------------------------------------------

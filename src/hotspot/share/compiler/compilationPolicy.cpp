@@ -717,7 +717,7 @@ void CompilationPolicy::initialize() {
       c2_size = C2Compiler::initial_code_buffer_size();
 #endif
       size_t buffer_size = c1_only ? c1_size : (c1_size/3 + 2*c2_size/3);
-      int max_count = (ReservedCodeCacheSize - (CodeCacheMinimumUseSpace DEBUG_ONLY(* 3))) / (int)buffer_size;
+      int max_count = (ReservedCodeCacheSize - (int)CompilerConfig::min_code_cache_size()) / (int)buffer_size;
       if (count > max_count) {
         // Lower the compiler count such that all buffers fit into the code cache
         count = MAX2(max_count, c1_only ? 1 : 2);
@@ -905,6 +905,11 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       compile_queue->remove_and_mark_stale(task);
       task = next_task;
       continue;
+    }
+    if (task->is_scc()) {
+      // SCC tasks are on separate queue, and they should load fast. There is no need to walk
+      // the rest of the queue, just take the task and go.
+      return task;
     }
     Method* method = task->method();
     methodHandle mh(THREAD, method);
@@ -1183,10 +1188,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  if (x->is_scc() && !y->is_scc()) {
-    // x has cached code
-    return true;
-  }
+  assert(!x->is_scc() && !y->is_scc(), "SC tasks are not expected here");
   if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }

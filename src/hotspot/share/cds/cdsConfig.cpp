@@ -266,7 +266,7 @@ static char* bad_module_prop_key   = nullptr;
 static char* bad_module_prop_value = nullptr;
 
 void CDSConfig::check_internal_module_property(const char* key, const char* value) {
-  if (Arguments::is_internal_module_property(key)) {
+  if (Arguments::is_internal_module_property(key) && !Arguments::is_module_path_property(key)) {
     stop_using_optimized_module_handling();
     if (bad_module_prop_key == nullptr) {
       // We don't want to print an unconditional warning here, as we are still processing the command line.

@@ -94,28 +94,11 @@
 // Shared runtime stub routines reside in their own unique blob with a
 // single entry point
 
-RuntimeStub*        SharedRuntime::_wrong_method_blob;
-RuntimeStub*        SharedRuntime::_wrong_method_abstract_blob;
-RuntimeStub*        SharedRuntime::_ic_miss_blob;
-RuntimeStub*        SharedRuntime::_resolve_opt_virtual_call_blob;
-RuntimeStub*        SharedRuntime::_resolve_virtual_call_blob;
-RuntimeStub*        SharedRuntime::_resolve_static_call_blob;
 
-DeoptimizationBlob* SharedRuntime::_deopt_blob;
-SafepointBlob*      SharedRuntime::_polling_page_vectors_safepoint_handler_blob;
-SafepointBlob*      SharedRuntime::_polling_page_safepoint_handler_blob;
-SafepointBlob*      SharedRuntime::_polling_page_return_handler_blob;
-
-RuntimeStub*        SharedRuntime::_throw_AbstractMethodError_blob;
-RuntimeStub*        SharedRuntime::_throw_IncompatibleClassChangeError_blob;
-RuntimeStub*        SharedRuntime::_throw_NullPointerException_at_call_blob;
-RuntimeStub*        SharedRuntime::_throw_StackOverflowError_blob;
-RuntimeStub*        SharedRuntime::_throw_delayed_StackOverflowError_blob;
-
-#if INCLUDE_JFR
-RuntimeStub*        SharedRuntime::_jfr_write_checkpoint_blob = nullptr;
-RuntimeStub*        SharedRuntime::_jfr_return_lease_blob = nullptr;
-#endif
+#define SHARED_STUB_FIELD_DEFINE(name, type) \
+  type        SharedRuntime::BLOB_FIELD_NAME(name);
+  SHARED_STUBS_DO(SHARED_STUB_FIELD_DEFINE)
+#undef SHARED_STUB_FIELD_DEFINE
 
 nmethod*            SharedRuntime::_cont_doYield_stub;
 
@@ -125,36 +108,53 @@ PerfTickCounters* SharedRuntime::_perf_resolve_static_total_time      = nullptr;
 PerfTickCounters* SharedRuntime::_perf_handle_wrong_method_total_time = nullptr;
 PerfTickCounters* SharedRuntime::_perf_ic_miss_total_time             = nullptr;
 
+#define SHARED_STUB_NAME_DECLARE(name, type) "Shared Runtime " # name "_blob",
+const char *SharedRuntime::_stub_names[] = {
+  SHARED_STUBS_DO(SHARED_STUB_NAME_DECLARE)
+};
+
 //----------------------------generate_stubs-----------------------------------
 void SharedRuntime::generate_initial_stubs() {
   // Build this early so it's available for the interpreter.
   _throw_StackOverflowError_blob =
-    generate_throw_exception("StackOverflowError throw_exception",
+    generate_throw_exception(SharedStubId::throw_StackOverflowError_id,
                              CAST_FROM_FN_PTR(address, SharedRuntime::throw_StackOverflowError));
 }
 
 void SharedRuntime::generate_stubs() {
-  _wrong_method_blob                   = generate_resolve_blob(CAST_FROM_FN_PTR(address, SharedRuntime::handle_wrong_method),          "wrong_method_stub");
-  _wrong_method_abstract_blob          = generate_resolve_blob(CAST_FROM_FN_PTR(address, SharedRuntime::handle_wrong_method_abstract), "wrong_method_abstract_stub");
-  _ic_miss_blob                        = generate_resolve_blob(CAST_FROM_FN_PTR(address, SharedRuntime::handle_wrong_method_ic_miss),  "ic_miss_stub");
-  _resolve_opt_virtual_call_blob       = generate_resolve_blob(CAST_FROM_FN_PTR(address, SharedRuntime::resolve_opt_virtual_call_C),   "resolve_opt_virtual_call");
-  _resolve_virtual_call_blob           = generate_resolve_blob(CAST_FROM_FN_PTR(address, SharedRuntime::resolve_virtual_call_C),       "resolve_virtual_call");
-  _resolve_static_call_blob            = generate_resolve_blob(CAST_FROM_FN_PTR(address, SharedRuntime::resolve_static_call_C),        "resolve_static_call");
+  _wrong_method_blob =
+    generate_resolve_blob(SharedStubId::wrong_method_id,
+                          CAST_FROM_FN_PTR(address, SharedRuntime::handle_wrong_method));
+  _wrong_method_abstract_blob =
+    generate_resolve_blob(SharedStubId::wrong_method_abstract_id,
+                          CAST_FROM_FN_PTR(address, SharedRuntime::handle_wrong_method_abstract));
+  _ic_miss_blob =
+    generate_resolve_blob(SharedStubId::ic_miss_id,
+                          CAST_FROM_FN_PTR(address, SharedRuntime::handle_wrong_method_ic_miss));
+  _resolve_opt_virtual_call_blob =
+    generate_resolve_blob(SharedStubId::resolve_opt_virtual_call_id,
+                          CAST_FROM_FN_PTR(address, SharedRuntime::resolve_opt_virtual_call_C));
+  _resolve_virtual_call_blob =
+    generate_resolve_blob(SharedStubId::resolve_virtual_call_id,
+                          CAST_FROM_FN_PTR(address, SharedRuntime::resolve_virtual_call_C));
+  _resolve_static_call_blob =
+    generate_resolve_blob(SharedStubId::resolve_static_call_id,
+                          CAST_FROM_FN_PTR(address, SharedRuntime::resolve_static_call_C));
 
   _throw_delayed_StackOverflowError_blob =
-    generate_throw_exception("delayed StackOverflowError throw_exception",
+    generate_throw_exception(SharedStubId::throw_delayed_StackOverflowError_id,
                              CAST_FROM_FN_PTR(address, SharedRuntime::throw_delayed_StackOverflowError));
 
   _throw_AbstractMethodError_blob =
-    generate_throw_exception("AbstractMethodError throw_exception",
+    generate_throw_exception(SharedStubId::throw_AbstractMethodError_id,
                              CAST_FROM_FN_PTR(address, SharedRuntime::throw_AbstractMethodError));
 
   _throw_IncompatibleClassChangeError_blob =
-    generate_throw_exception("IncompatibleClassChangeError throw_exception",
+    generate_throw_exception(SharedStubId::throw_IncompatibleClassChangeError_id,
                              CAST_FROM_FN_PTR(address, SharedRuntime::throw_IncompatibleClassChangeError));
 
   _throw_NullPointerException_at_call_blob =
-    generate_throw_exception("NullPointerException at call throw_exception",
+    generate_throw_exception(SharedStubId::throw_NullPointerException_at_call_id,
                              CAST_FROM_FN_PTR(address, SharedRuntime::throw_NullPointerException_at_call));
 
   AdapterHandlerLibrary::initialize();
@@ -163,11 +163,17 @@ void SharedRuntime::generate_stubs() {
   // Vectors are generated only by C2 and JVMCI.
   bool support_wide = is_wide_vector(MaxVectorSize);
   if (support_wide) {
-    _polling_page_vectors_safepoint_handler_blob = generate_handler_blob(CAST_FROM_FN_PTR(address, SafepointSynchronize::handle_polling_page_exception), POLL_AT_VECTOR_LOOP);
+    _polling_page_vectors_safepoint_handler_blob =
+      generate_handler_blob(SharedStubId::polling_page_vectors_safepoint_handler_id,
+                            CAST_FROM_FN_PTR(address, SafepointSynchronize::handle_polling_page_exception));
   }
 #endif // COMPILER2_OR_JVMCI
-  _polling_page_safepoint_handler_blob = generate_handler_blob(CAST_FROM_FN_PTR(address, SafepointSynchronize::handle_polling_page_exception), POLL_AT_LOOP);
-  _polling_page_return_handler_blob    = generate_handler_blob(CAST_FROM_FN_PTR(address, SafepointSynchronize::handle_polling_page_exception), POLL_AT_RETURN);
+  _polling_page_safepoint_handler_blob =
+    generate_handler_blob(SharedStubId::polling_page_safepoint_handler_id,
+                          CAST_FROM_FN_PTR(address, SafepointSynchronize::handle_polling_page_exception));
+  _polling_page_return_handler_blob =
+    generate_handler_blob(SharedStubId::polling_page_return_handler_id,
+                          CAST_FROM_FN_PTR(address, SafepointSynchronize::handle_polling_page_exception));
 
   generate_deopt_blob();
 
@@ -187,38 +193,38 @@ void SharedRuntime::generate_stubs() {
 void SharedRuntime::print_counters_on(outputStream* st) {
   st->print_cr("SharedRuntime:");
   if (UsePerfData) {
-    st->print_cr("  resolve_opt_virtual_call: " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
-                 _perf_resolve_opt_virtual_total_time->elapsed_counter_value_ms(),
-                 _perf_resolve_opt_virtual_total_time->thread_counter_value_ms(),
+    st->print_cr("  resolve_opt_virtual_call: " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
+                 _perf_resolve_opt_virtual_total_time->elapsed_counter_value_us(),
+                 _perf_resolve_opt_virtual_total_time->thread_counter_value_us(),
                  _resolve_opt_virtual_ctr);
-    st->print_cr("  resolve_virtual_call:     " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
-                 _perf_resolve_virtual_total_time->elapsed_counter_value_ms(),
-                 _perf_resolve_virtual_total_time->thread_counter_value_ms(),
+    st->print_cr("  resolve_virtual_call:     " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
+                 _perf_resolve_virtual_total_time->elapsed_counter_value_us(),
+                 _perf_resolve_virtual_total_time->thread_counter_value_us(),
                  _resolve_virtual_ctr);
-    st->print_cr("  resolve_static_call:      " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
-                 _perf_resolve_static_total_time->elapsed_counter_value_ms(),
-                 _perf_resolve_static_total_time->thread_counter_value_ms(),
+    st->print_cr("  resolve_static_call:      " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
+                 _perf_resolve_static_total_time->elapsed_counter_value_us(),
+                 _perf_resolve_static_total_time->thread_counter_value_us(),
                  _resolve_static_ctr);
-    st->print_cr("  handle_wrong_method:      " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
-                 _perf_handle_wrong_method_total_time->elapsed_counter_value_ms(),
-                 _perf_handle_wrong_method_total_time->thread_counter_value_ms(),
+    st->print_cr("  handle_wrong_method:      " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
+                 _perf_handle_wrong_method_total_time->elapsed_counter_value_us(),
+                 _perf_handle_wrong_method_total_time->thread_counter_value_us(),
                  _wrong_method_ctr);
-    st->print_cr("  ic_miss:                  " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread) / %5d events",
-                 _perf_ic_miss_total_time->elapsed_counter_value_ms(),
-                 _perf_ic_miss_total_time->thread_counter_value_ms(),
+    st->print_cr("  ic_miss:                  " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
+                 _perf_ic_miss_total_time->elapsed_counter_value_us(),
+                 _perf_ic_miss_total_time->thread_counter_value_us(),
                  _ic_miss_ctr);
 
-    jlong total_elapsed_time_ms = Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->elapsed_counter_value() +
+    jlong total_elapsed_time_us = Management::ticks_to_us(_perf_resolve_opt_virtual_total_time->elapsed_counter_value() +
                                                           _perf_resolve_virtual_total_time->elapsed_counter_value() +
                                                           _perf_resolve_static_total_time->elapsed_counter_value() +
                                                           _perf_handle_wrong_method_total_time->elapsed_counter_value() +
                                                           _perf_ic_miss_total_time->elapsed_counter_value());
-    jlong total_thread_time_ms = Management::ticks_to_ms(_perf_resolve_opt_virtual_total_time->thread_counter_value() +
+    jlong total_thread_time_us = Management::ticks_to_us(_perf_resolve_opt_virtual_total_time->thread_counter_value() +
                                                           _perf_resolve_virtual_total_time->thread_counter_value() +
                                                           _perf_resolve_static_total_time->thread_counter_value() +
                                                           _perf_handle_wrong_method_total_time->thread_counter_value() +
                                                           _perf_ic_miss_total_time->thread_counter_value());
-    st->print_cr("Total:                      " JLONG_FORMAT_W(5) "ms (elapsed) " JLONG_FORMAT_W(5) "ms (thread)", total_elapsed_time_ms, total_thread_time_ms);
+    st->print_cr("Total:                      " JLONG_FORMAT_W(5) "us (elapsed) " JLONG_FORMAT_W(5) "us (thread)", total_elapsed_time_us, total_thread_time_us);
   } else {
     st->print_cr("  no data (UsePerfData is turned off)");
   }
@@ -706,7 +712,7 @@ void SharedRuntime::throw_and_post_jvmti_exception(JavaThread* current, Handle h
   }
 
 #if INCLUDE_JVMCI
-  if (EnableJVMCI && UseJVMCICompiler) {
+  if (EnableJVMCI) {
     vframeStream vfst(current, true);
     methodHandle method = methodHandle(current, vfst.method());
     int bci = vfst.bci();
@@ -2041,6 +2047,26 @@ void SharedRuntime::monitor_exit_helper(oopDesc* obj, BasicLock* lock, JavaThrea
   assert(JavaThread::current() == current, "invariant");
   // Exit must be non-blocking, and therefore no exceptions can be thrown.
   ExceptionMark em(current);
+
+  // Check if C2_MacroAssembler::fast_unlock() or
+  // C2_MacroAssembler::fast_unlock_lightweight() unlocked an inflated
+  // monitor before going slow path.  Since there is no safepoint
+  // polling when calling into the VM, we can be sure that the monitor
+  // hasn't been deallocated.
+  ObjectMonitor* m = current->unlocked_inflated_monitor();
+  if (m != nullptr) {
+    assert(m->owner_raw() != current, "must be");
+    current->clear_unlocked_inflated_monitor();
+
+    // We need to reacquire the lock before we can call ObjectSynchronizer::exit().
+    if (!m->try_enter(current, /*check_for_recursion*/ false)) {
+      // Some other thread acquired the lock (or the monitor was
+      // deflated). Either way we are done.
+      current->dec_held_monitor_count();
+      return;
+    }
+  }
+
   // The object could become unlocked through a JNI call, which we have no other checks for.
   // Give a fatal message if CheckJNICalls. Otherwise we ignore it.
   if (obj->is_unlocked()) {

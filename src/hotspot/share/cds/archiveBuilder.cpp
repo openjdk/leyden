@@ -1291,29 +1291,30 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
 
     LogStreamHandle(Info, cds, map) st;
 
+    HeapRootSegments segments = heap_info->heap_root_segments();
+    assert(segments.base_offset() == 0, "Sanity");
+
+    for (size_t seg_idx = 0; seg_idx < segments.count(); seg_idx++) {
+      address requested_start = ArchiveHeapWriter::buffered_addr_to_requested_addr(start);
+      st.print_cr(PTR_FORMAT ": Heap roots segment [%d]",
+                  p2i(requested_start), segments.size_in_elems(seg_idx));
+      start += segments.size_in_bytes(seg_idx);
+    }
+    log_heap_roots();
+
     while (start < end) {
       size_t byte_size;
       oop source_oop = ArchiveHeapWriter::buffered_addr_to_source_obj(start);
       address requested_start = ArchiveHeapWriter::buffered_addr_to_requested_addr(start);
       st.print(PTR_FORMAT ": @@ Object ", p2i(requested_start));
-      int permobj_segment = -1;
-      int permobj_segment_length = -1;
 
       if (source_oop != nullptr) {
         // This is a regular oop that got archived.
         print_oop_with_requested_addr_cr(&st, source_oop, false);
         byte_size = source_oop->size() * BytesPerWord;
-      } else if (start == ArchiveHeapWriter::buffered_heap_roots_addr()) {
-        // HeapShared::roots() is copied specially, so it doesn't exist in
-        // ArchiveHeapWriter::BufferOffsetToSourceObjectTable.
-        // See ArchiveHeapWriter::copy_roots_to_buffer().
-        st.print_cr("HeapShared::roots[%d]", HeapShared::pending_roots()->length());
-        byte_size = ArchiveHeapWriter::heap_roots_word_size() * BytesPerWord;
       } else if ((byte_size = ArchiveHeapWriter::get_filler_size_at(start)) > 0) {
         // We have a filler oop, which also does not exist in BufferOffsetToSourceObjectTable.
         st.print_cr("filler " SIZE_FORMAT " bytes", byte_size);
-      } else if ((permobj_segment = ArchiveHeapWriter::get_permobj_segment_at(start, &byte_size, &permobj_segment_length)) >= 0) {
-        st.print_cr("permobj_%d[%d] %zu bytes", permobj_segment, permobj_segment_length, byte_size);
       } else {
         ShouldNotReachHere();
       }
@@ -1323,10 +1324,6 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
 
       if (source_oop != nullptr) {
         log_oop_details(heap_info, source_oop, /*buffered_addr=*/start);
-      } else if (start == ArchiveHeapWriter::buffered_heap_roots_addr()) {
-        log_heap_roots();
-      } else if (permobj_segment >= 0) {
-        log_permobj_segment(permobj_segment, permobj_segment_length);
       }
       start = oop_end;
     }
@@ -1432,21 +1429,10 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
     if (st.is_enabled()) {
       for (int i = 0; i < HeapShared::pending_roots()->length(); i++) {
         st.print("roots[%4d]: ", i);
-        print_oop_with_requested_addr_cr(&st, HeapShared::pending_roots()->at(i));
+        print_oop_with_requested_addr_cr(&st, HeapShared::pending_roots()->at(i).resolve());
       }
     }
   }
-
-  static void log_permobj_segment(int permobj_segment, int permobj_segment_length) {
-    LogStreamHandle(Trace, cds, map, oops) st;
-    if (st.is_enabled()) {
-      for (int i = 0; i < permobj_segment_length; i++) {
-        st.print("permobj_%d[%4d]: ", permobj_segment, i);
-        print_oop_with_requested_addr_cr(&st, ArchiveHeapWriter::get_permobj_source_addr(permobj_segment, i));
-      }
-    }
-  }
-
 
   // The output looks like this. The first number is the requested address. The second number is
   // the narrowOop version of the requested address.

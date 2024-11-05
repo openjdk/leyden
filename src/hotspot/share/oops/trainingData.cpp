@@ -56,9 +56,9 @@
 #include "utilities/xmlstream.hpp"
 
 TrainingData::TrainingDataSet TrainingData::_training_data_set(1024, 0x3fffffff);
-TrainingDataDictionary TrainingData::_archived_training_data_dictionary;
-TrainingDataDictionary TrainingData::_archived_training_data_dictionary_for_dumping;
-GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>* TrainingData::_dumptime_training_data_dictionary = nullptr;
+TrainingData::TrainingDataDictionary TrainingData::_archived_training_data_dictionary;
+TrainingData::TrainingDataDictionary TrainingData::_archived_training_data_dictionary_for_dumping;
+TrainingData::DumptimeTrainingDataDictionary* TrainingData::_dumptime_training_data_dictionary = nullptr;
 int TrainingData::TrainingDataLocker::_lock_mode;
 volatile bool TrainingData::TrainingDataLocker::_snapshot = false;
 
@@ -176,10 +176,12 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
 }
 
 void MethodTrainingData::print_on(outputStream* st, bool name_only) const {
-  _klass->print_on(st, true);
-  st->print(".");
-  name()->print_symbol_on(st);
-  signature()->print_symbol_on(st);
+  if (has_holder()) {
+    _klass->print_on(st, true);
+    st->print(".");
+    name()->print_symbol_on(st);
+    signature()->print_symbol_on(st);
+  }
   if (name_only) {
     return;
   }
@@ -409,8 +411,8 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
 }
 
 void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
-  name()->print_symbol_on(st);
   if (has_holder()) {
+    name()->print_symbol_on(st);
     switch (holder()->init_state()) {
       case InstanceKlass::allocated:            st->print("[A]"); break;
       case InstanceKlass::loaded:               st->print("[D]"); break;
@@ -487,7 +489,7 @@ void TrainingData::init_dumptime_table(TRAPS) {
   if (!need_data()) {
     return;
   }
-  _dumptime_training_data_dictionary = new GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared>();
+  _dumptime_training_data_dictionary = new DumptimeTrainingDataDictionary();
   if (CDSConfig::is_dumping_final_static_archive()) {
     _archived_training_data_dictionary.iterate([&](TrainingData* record) {
       _dumptime_training_data_dictionary->append(record);
@@ -812,30 +814,6 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
       _deps->at_put(i, _deps_dyn->at(i)); // copy
     }
   }
-}
-
-KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) KlassTrainingData(holder);
-  }
-  return nullptr;
-}
-
-MethodTrainingData* MethodTrainingData::allocate(Method* m, KlassTrainingData* ktd) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) MethodTrainingData(m, ktd);
-  }
-  return nullptr;
-}
-
-CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int level, int compile_id) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) CompileTrainingData(mtd, level, compile_id);
-  }
-  return nullptr;
 }
 
 void TrainingDataPrinter::do_value(TrainingData* td) {
