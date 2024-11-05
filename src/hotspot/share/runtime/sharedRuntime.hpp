@@ -370,7 +370,7 @@ class SharedRuntime: AllStatic {
   // compiled code.
   static methodHandle resolve_helper(bool is_virtual, bool is_optimized, TRAPS);
 
-private:
+ private:
   // deopt blob
   static void generate_deopt_blob(void);
 
