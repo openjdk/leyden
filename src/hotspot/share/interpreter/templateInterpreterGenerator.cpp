@@ -23,7 +23,6 @@
  */
 
 #include "precompiled.hpp"
-#include "cds/cdsConfig.hpp"
 #include "compiler/disassembler.hpp"
 #include "interpreter/interpreter.hpp"
 #include "interpreter/interpreterRuntime.hpp"

@@ -25,7 +25,6 @@
 
 #include "precompiled.hpp"
 #include "asm/macroAssembler.inline.hpp"
-#include "cds/cdsConfig.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetAssembler.hpp"

@@ -23,7 +23,6 @@
  */
 
 #include "precompiled.hpp"
-#include "cds/cdsConfig.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "interp_masm_x86.hpp"
 #include "interpreter/interpreter.hpp"

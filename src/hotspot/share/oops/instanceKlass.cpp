@@ -44,7 +44,6 @@
 #include "code/dependencyContext.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
-#include "compiler/compilerOracle.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "interpreter/bytecodeHistogram.hpp"
 #include "interpreter/bytecodeStream.hpp"

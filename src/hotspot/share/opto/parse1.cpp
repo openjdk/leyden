@@ -23,7 +23,6 @@
  */
 
 #include "precompiled.hpp"
-#include "cds/cdsConfig.hpp"
 #include "compiler/compileLog.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "memory/resourceArea.hpp"
