@@ -75,7 +75,7 @@ public:
   static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;
   static bool class_preloading_finished();
 
-  static void print_counters() NOT_CDS_RETURN;
+  static void print_counters_on(outputStream* st) NOT_CDS_RETURN;
 };
 
 #endif // SHARE_CDS_AOTLINKEDCLASSBULKLOADER_HPP

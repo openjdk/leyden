@@ -148,7 +148,7 @@ PerfCounter*    ClassLoader::_perf_resolve_mt_count = nullptr;
 void ClassLoader::print_counters(outputStream *st) {
   // The counters are only active if the logging is enabled, but
   // we print to the passed in outputStream as requested.
-  if (log_is_enabled(Info, perf, class, link)) {
+  if (UsePerfData && (log_is_enabled(Info, perf, class, link) || log_is_enabled(Info, init))) {
       st->print_cr("ClassLoader:");
       st->print_cr(   "  clinit:               " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
                    ClassLoader::class_init_time_ms(), ClassLoader::class_init_count());
@@ -1487,7 +1487,7 @@ void ClassLoader::initialize(TRAPS) {
     NEWPERFEVENTCOUNTER(_unsafe_defineClassCallCounter, SUN_CLS, "unsafeDefineClassCalls");
     NEWPERFTICKCOUNTER(_perf_secondary_hash_time, SUN_CLS, "secondarySuperHashTime");
 
-    if (log_is_enabled(Info, perf, class, link)) {
+    if (log_is_enabled(Info, perf, class, link) || log_is_enabled(Info, init)) {
       NEWPERFTICKCOUNTER(_perf_preload_total_time, SUN_CLS, "preloadTotalTime");
       NEWPERFTICKCOUNTER(_perf_preload_time, SUN_CLS, "preloadTime");
       NEWPERFTICKCOUNTER(_perf_prelink_time, SUN_CLS, "prelinkTime");

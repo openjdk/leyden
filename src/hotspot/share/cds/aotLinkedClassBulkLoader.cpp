@@ -381,15 +381,12 @@ void AOTLinkedClassBulkLoader::replay_training_at_init_for_preloaded_classes(TRA
   }
 }
 
-void AOTLinkedClassBulkLoader::print_counters() {
+void AOTLinkedClassBulkLoader::print_counters_on(outputStream* st) {
   if (UsePerfData && _perf_class_preload_counters != nullptr) {
-    LogStreamHandle(Info, init) log;
-    if (log.is_enabled()) {
-      log.print_cr("AOTLinkedClassBulkLoader:");
-      log.print_cr("  preload:           " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) " (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_class_preload_counters->elapsed_counter_value_us(),
-                   _perf_class_preload_counters->thread_counter_value_us(),
-                   _perf_classes_preloaded->get_value());
-    }
+    st->print_cr("AOTLinkedClassBulkLoader:");
+    st->print_cr("  preload:           " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) " (thread) / " JLONG_FORMAT_W(5) " events",
+                 _perf_class_preload_counters->elapsed_counter_value_us(),
+                 _perf_class_preload_counters->thread_counter_value_us(),
+                 _perf_classes_preloaded->get_value());
   }
 }

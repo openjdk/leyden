@@ -189,41 +189,40 @@ void SharedRuntime::generate_stubs() {
   }
 }
 
+static void print_counter_on(outputStream* st, const char* name, PerfTickCounters* counter, uint cnt) {
+  st->print("  %-28s " JLONG_FORMAT_W(6) "us", name, counter->elapsed_counter_value_us());
+  if (TraceThreadTime) {
+    st->print(" (elapsed) " JLONG_FORMAT_W(6) "us (thread)", counter->thread_counter_value_us());
+  }
+  st->print(" / %5d events", cnt);
+  st->cr();
+}
+
 void SharedRuntime::print_counters_on(outputStream* st) {
   st->print_cr("SharedRuntime:");
   if (UsePerfData) {
-    st->print_cr("  resolve_opt_virtual_call: " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
-                 _perf_resolve_opt_virtual_total_time->elapsed_counter_value_us(),
-                 _perf_resolve_opt_virtual_total_time->thread_counter_value_us(),
-                 _resolve_opt_virtual_ctr);
-    st->print_cr("  resolve_virtual_call:     " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
-                 _perf_resolve_virtual_total_time->elapsed_counter_value_us(),
-                 _perf_resolve_virtual_total_time->thread_counter_value_us(),
-                 _resolve_virtual_ctr);
-    st->print_cr("  resolve_static_call:      " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
-                 _perf_resolve_static_total_time->elapsed_counter_value_us(),
-                 _perf_resolve_static_total_time->thread_counter_value_us(),
-                 _resolve_static_ctr);
-    st->print_cr("  handle_wrong_method:      " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
-                 _perf_handle_wrong_method_total_time->elapsed_counter_value_us(),
-                 _perf_handle_wrong_method_total_time->thread_counter_value_us(),
-                 _wrong_method_ctr);
-    st->print_cr("  ic_miss:                  " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / %5d events",
-                 _perf_ic_miss_total_time->elapsed_counter_value_us(),
-                 _perf_ic_miss_total_time->thread_counter_value_us(),
-                 _ic_miss_ctr);
+    print_counter_on(st, "resolve_opt_virtual_call:", _perf_resolve_opt_virtual_total_time, _resolve_opt_virtual_ctr);
+    print_counter_on(st, "resolve_virtual_call:",     _perf_resolve_virtual_total_time,     _resolve_virtual_ctr);
+    print_counter_on(st, "resolve_static_call:",      _perf_resolve_static_total_time,      _resolve_static_ctr);
+    print_counter_on(st, "handle_wrong_method:",      _perf_handle_wrong_method_total_time, _wrong_method_ctr);
+    print_counter_on(st, "ic_miss:",                  _perf_ic_miss_total_time,             _ic_miss_ctr);
 
     jlong total_elapsed_time_us = Management::ticks_to_us(_perf_resolve_opt_virtual_total_time->elapsed_counter_value() +
                                                           _perf_resolve_virtual_total_time->elapsed_counter_value() +
                                                           _perf_resolve_static_total_time->elapsed_counter_value() +
                                                           _perf_handle_wrong_method_total_time->elapsed_counter_value() +
                                                           _perf_ic_miss_total_time->elapsed_counter_value());
-    jlong total_thread_time_us = Management::ticks_to_us(_perf_resolve_opt_virtual_total_time->thread_counter_value() +
-                                                          _perf_resolve_virtual_total_time->thread_counter_value() +
-                                                          _perf_resolve_static_total_time->thread_counter_value() +
-                                                          _perf_handle_wrong_method_total_time->thread_counter_value() +
-                                                          _perf_ic_miss_total_time->thread_counter_value());
-    st->print_cr("Total:                      " JLONG_FORMAT_W(5) "us (elapsed) " JLONG_FORMAT_W(5) "us (thread)", total_elapsed_time_us, total_thread_time_us);
+    st->print("Total:                      " JLONG_FORMAT_W(5) "us", total_elapsed_time_us);
+    if (TraceThreadTime) {
+      jlong total_thread_time_us = Management::ticks_to_us(_perf_resolve_opt_virtual_total_time->thread_counter_value() +
+                                                           _perf_resolve_virtual_total_time->thread_counter_value() +
+                                                           _perf_resolve_static_total_time->thread_counter_value() +
+                                                           _perf_handle_wrong_method_total_time->thread_counter_value() +
+                                                           _perf_ic_miss_total_time->thread_counter_value());
+      st->print(" (elapsed) " JLONG_FORMAT_W(5) "us (thread)", total_thread_time_us);
+
+    }
+    st->cr();
   } else {
     st->print_cr("  no data (UsePerfData is turned off)");
   }

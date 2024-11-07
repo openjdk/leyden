@@ -841,7 +841,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     Precompiler::compile_cached_code(CHECK_JNI_ERR);
     if (PrecompileOnlyAndExit) {
       SCCache::close();
-      log_vm_init_stats(true /* use_tty */);
+      log_vm_init_stats();
       vm_direct_exit(0, "Code precompiation is over");
     }
   }
@@ -911,7 +911,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   }
 
   log_info(init)("At VM initialization completion:");
-  log_vm_init_stats(false /* use_tty */);
+  log_vm_init_stats();
 
   if (UsePerfData) {
     if (ProfileVMLocks) {
