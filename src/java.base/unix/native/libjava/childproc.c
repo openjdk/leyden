@@ -470,7 +470,7 @@ extern int errno;
 #error VERSION_STRING must be defined
 #endif
 
-void error (int fd, int err) {
+static void error (int fd, int err) {
     if (write (fd, &err, sizeof(err)) != sizeof(err)) {
         /* Not sure what to do here. I have no one to speak to. */
         exit(0x80 + err);
