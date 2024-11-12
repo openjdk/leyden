@@ -1132,6 +1132,31 @@ nmethod* nmethod::new_native_nmethod(const methodHandle& method,
   return nm;
 }
 
+void nmethod::record_nmethod_dependency() {
+  // To make dependency checking during class loading fast, record
+  // the nmethod dependencies in the classes it is dependent on.
+  // This allows the dependency checking code to simply walk the
+  // class hierarchy above the loaded class, checking only nmethods
+  // which are dependent on those classes.  The slow way is to
+  // check every nmethod for dependencies which makes it linear in
+  // the number of methods compiled.  For applications with a lot
+  // classes the slow way is too slow.
+  for (Dependencies::DepStream deps(this); deps.next(); ) {
+    if (deps.type() == Dependencies::call_site_target_value) {
+      // CallSite dependencies are managed on per-CallSite instance basis.
+      oop call_site = deps.argument_oop(0);
+      MethodHandles::add_dependent_nmethod(call_site, this);
+    } else {
+      InstanceKlass* ik = deps.context_type();
+      if (ik == nullptr) {
+	continue;  // ignore things like evol_method
+      }
+      // record this nmethod as dependent on this klass
+      ik->add_dependent_nmethod(this);
+    }
+  }
+}
+
 nmethod* nmethod::new_nmethod(const methodHandle& method,
   int compile_id,
   int entry_bci,
@@ -1198,29 +1223,8 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
             );
 
     if (nm != nullptr) {
-      // To make dependency checking during class loading fast, record
-      // the nmethod dependencies in the classes it is dependent on.
-      // This allows the dependency checking code to simply walk the
-      // class hierarchy above the loaded class, checking only nmethods
-      // which are dependent on those classes.  The slow way is to
-      // check every nmethod for dependencies which makes it linear in
-      // the number of methods compiled.  For applications with a lot
-      // classes the slow way is too slow.
-      for (Dependencies::DepStream deps(nm); deps.next(); ) {
-        if (deps.type() == Dependencies::call_site_target_value) {
-          // CallSite dependencies are managed on per-CallSite instance basis.
-          oop call_site = deps.argument_oop(0);
-          MethodHandles::add_dependent_nmethod(call_site, nm);
-        } else {
-          InstanceKlass* ik = deps.context_type();
-          if (ik == nullptr) {
-            continue;  // ignore things like evol_method
-          }
-          // record this nmethod as dependent on this klass
-          ik->add_dependent_nmethod(nm);
-        }
-      }
-      NOT_PRODUCT(if (nm != nullptr)  note_java_nmethod(nm));
+      nm->record_nmethod_dependency();
+      NOT_PRODUCT(note_java_nmethod(nm));
     }
   }
   // Do verification and logging outside CodeCache_lock.
@@ -1242,6 +1246,164 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     nm->log_new_nmethod();
   }
   return nm;
+}
+
+nmethod* nmethod::new_nmethod(const methodHandle& method,
+                              AbstractCompiler* compiler,
+                              int compile_id,
+                              CompLevel comp_level,
+                              int entry_bci,
+                              bool preload,
+                              GrowableArray<oop>& oop_list,
+                              GrowableArray<Metadata*>& metadata_list,
+                              GrowableArray<oop>& reloc_imm_oop_list,
+                              GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                              SCCReader* scc_reader,
+                              SCnmethod* scnm)
+{
+  nmethod* nm = nullptr;
+  int nmethod_size = CodeBlob::allocation_size(scnm, sizeof(nmethod));
+  // create nmethod
+  {
+    MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    nm = new (nmethod_size, comp_level)
+              nmethod(method(),
+              nmethod_size,
+              compiler,
+              compile_id,
+              comp_level,
+              entry_bci,
+              preload,
+              oop_list,
+              metadata_list,
+              reloc_imm_oop_list,
+              reloc_imm_metadata_list,
+              scc_reader,
+              scnm);
+    if (nm != nullptr) {
+      nm->record_nmethod_dependency();
+      NOT_PRODUCT(note_java_nmethod(nm));
+    }
+  }
+  // Do verification and logging outside CodeCache_lock.
+  if (nm != nullptr) {
+#ifdef ASSERT
+    LogTarget(Debug, scc, nmethod) log;
+    if (log.is_enabled()) {
+      LogStream out(log);
+      out.print_cr("== new_nmethod 2");
+      FlagSetting fs(PrintRelocations, true);
+      nm->print(&out);
+      nm->decode(&out);
+    }
+#endif
+    // Safepoints in nmethod::verify aren't allowed because nm hasn't been installed yet.
+    DEBUG_ONLY(nm->verify();)
+    nm->log_new_nmethod();
+  }
+  return nm;
+}
+
+nmethod::nmethod(Method* method,
+                 int nmethod_size,
+                 AbstractCompiler* compiler,
+                 int compile_id,
+                 CompLevel comp_level,
+                 int entry_bci,
+                 bool preload,
+		 GrowableArray<oop>& oop_list,
+		 GrowableArray<Metadata*>& metadata_list,
+		 GrowableArray<oop>& reloc_imm_oop_list,
+		 GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                 SCCReader* scc_reader,
+                 SCnmethod* scnm)
+  : CodeBlob("nmethod", CodeBlobKind::Nmethod, scnm, nmethod_size, sizeof(nmethod)),
+  _deoptimization_generation(0),
+  _gc_epoch(CodeCache::gc_epoch()),
+  _method(method),
+  _osr_link(nullptr)
+{
+  _exception_cache = nullptr;
+  _gc_data = nullptr;
+  _oops_do_mark_link = nullptr;
+  _compiled_ic_data = nullptr; // set in post_init
+  _is_unloading_state         = 0;
+  _state                      = not_installed;
+  _osr_entry_point = nullptr; // OSR methods are not in AOT cache
+  _entry_offset = scnm->entry_offset();
+  _verified_entry_offset = scnm->verified_entry_offset();
+  _entry_bci = entry_bci;
+
+  _immutable_data_size = scnm->immutable_data_size();
+  _skipped_instructions_size = scnm->skipped_instructions_size();
+  _stub_offset = content_offset() + scnm->stub_offset();
+  _exception_offset = content_offset() + scnm->exception_offset();
+  _deopt_handler_offset = content_offset() + scnm->deopt_handler_offset();
+  _deopt_mh_handler_offset = content_offset() + scnm->deopt_mh_handler_offset();
+  _unwind_handler_offset = scnm->unwind_handler_offset();
+
+  _num_stack_arg_slots = entry_bci != InvocationEntryBci ? 0 : _method->constMethod()->num_stack_arg_slots();
+
+  _metadata_offset = scnm->metadata_offset();
+#if INCLUDE_JVMCI
+  _jvmci_data_offset = scnm->jvmci_data_offset();
+#endif
+
+  _nul_chk_table_offset = scnm->nul_chk_table_offset();
+  _handler_table_offset = scnm->handler_table_offset();
+  _scopes_pcs_offset = scnm->scopes_pcs_offset();
+  _scopes_data_offset = scnm->scopes_data_offset();
+#if INCLUDE_JVMCI
+  _speculations_offset = scnm->speculation_offset();
+  DEBUG_ONLY( int immutable_data_end_offset = _speculations_offset  + align_up(scnm->speculations_len(), oopSize); )
+#else
+  DEBUG_ONLY( int immutable_data_end_offset = _scopes_data_offset + align_up(debug_info->data_size(), oopSize); )
+#endif
+  assert(immutable_data_end_offset <= _immutable_data_size, "wrong read-only data size: %d > %d",
+         immutable_data_end_offset, _immutable_data_size);
+
+  _orig_pc_offset = scnm->orig_pc_offset();
+  _compile_id = compile_id;
+  _comp_level = comp_level;
+  _compiler_type = compiler->type();
+
+  set_has_unsafe_access(scnm->has_unsafe_access());
+  set_has_method_handle_invokes(scnm->has_method_handle_invokes());
+  set_has_wide_vectors(scnm->has_wide_vectors());
+  set_has_monitors(scnm->has_monitors());
+  set_has_scoped_access(scnm->has_scoped_access());
+  set_has_clinit_barriers(scnm->has_clinit_barriers());
+
+  set_preloaded(preload);
+
+  SCCEntry* scc_entry = scc_reader->scc_entry();
+  const char* reloc_addr = scc_reader->addr_of_entry_offset(scnm->relocation_data_offset());
+  SCCache::copy_bytes(reloc_addr, (address)relocation_begin(), scnm->relocation_size());
+  const char* content_addr = scc_reader->addr_of_entry_offset(scnm->content_offset());
+  SCCache::copy_bytes(content_addr, content_begin(), scnm->content_size());
+
+  ImmutableOopMapSet* oop_map_set = (ImmutableOopMapSet*)scc_reader->addr_of_entry_offset(scnm->oop_map_offset());
+  set_oop_maps(oop_map_set);
+  address immutable_data = (address)scc_reader->addr_of_entry_offset(scnm->immutable_data_offset());
+  set_immutable_data(immutable_data);
+
+  copy_values(&oop_list);
+  copy_values(&metadata_list);
+
+  scc_reader->apply_relocations(scnm, this, reloc_imm_oop_list, reloc_imm_metadata_list);
+
+  // Create cache after PcDesc data is copied - it will be used to initialize cache
+  _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
+
+  _scc_entry = scc_entry;
+
+  post_init();
+
+  // we use the information of entry points to find out if a method is
+  // static or non static
+  assert(compiler->is_c2() || compiler->is_jvmci() ||
+	 _method->is_static() == (entry_point() == verified_entry_point()),
+	 " entry points must be same for static methods and vice versa");
 }
 
 // Fill in default values for various fields
@@ -1761,6 +1923,14 @@ inline void nmethod::initialize_immediate_oop(oop* dest, jobject handle) {
   }
 }
 
+void nmethod::copy_values(GrowableArray<oop>* array) {
+  int length = array->length();
+  assert((address)(oops_begin() + length) <= (address)oops_end(), "oops big enough");
+  oop* dest = oops_begin();
+  for (int index = 0 ; index < length; index++) {
+    dest[index] = array->at(index);
+  }
+}
 
 // Have to have the same name because it's called by a template
 void nmethod::copy_values(GrowableArray<jobject>* array) {
@@ -1804,6 +1974,25 @@ void nmethod::fix_oop_relocations(address begin, address end, bool initialize_im
     } else if (iter.type() == relocInfo::metadata_type) {
       metadata_Relocation* reloc = iter.metadata_reloc();
       reloc->fix_metadata_relocation();
+    }
+  }
+}
+
+void nmethod::create_reloc_immediates_list(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+  RelocIterator iter(this);
+  while (iter.next()) {
+    if (iter.type() == relocInfo::oop_type) {
+      oop_Relocation* reloc = iter.oop_reloc();
+      if (reloc->oop_is_immediate()) {
+        oop dest = reloc->oop_value();
+        oop_list.append(dest);
+      }
+    } else if (iter.type() == relocInfo::metadata_type) {
+      metadata_Relocation* reloc = iter.metadata_reloc();
+      if (reloc->metadata_is_immediate()) {
+        Metadata* m = reloc->metadata_value();
+        metadata_list.append(m);
+      }
     }
   }
 }
@@ -2180,9 +2369,11 @@ void nmethod::purge(bool unregister_nmethod) {
   if (_pc_desc_container != nullptr) {
     delete _pc_desc_container;
   }
-  delete[] _compiled_ic_data;
+  if (_compiled_ic_data != nullptr) {
+    delete[] _compiled_ic_data;
+  }
 
-  if (_immutable_data != blob_end()) {
+  if (_immutable_data != data_end() && !SCCache::is_address_in_aot_cache((address)_oop_maps)) {
     os::free(_immutable_data);
     _immutable_data = blob_end(); // Valid not null address
   }
@@ -2980,35 +3171,39 @@ void nmethod::verify() {
     fatal("find_nmethod did not find this nmethod (" INTPTR_FORMAT ")", p2i(this));
   }
 
-  for (PcDesc* p = scopes_pcs_begin(); p < scopes_pcs_end(); p++) {
-    if (! p->verify(this)) {
-      tty->print_cr("\t\tin nmethod at " INTPTR_FORMAT " (pcs)", p2i(this));
+  // Verification can triggered during shutdown after SCCache is closed.
+  // If the Scopes data is in the SCCache, then we should avoid verification during shutdown.
+  if (!UseNewCode2 || (!is_scc() || SCCache::is_on())) {
+    for (PcDesc* p = scopes_pcs_begin(); p < scopes_pcs_end(); p++) {
+      if (! p->verify(this)) {
+	tty->print_cr("\t\tin nmethod at " INTPTR_FORMAT " (pcs)", p2i(this));
+      }
     }
-  }
 
 #ifdef ASSERT
 #if INCLUDE_JVMCI
-  {
-    // Verify that implicit exceptions that deoptimize have a PcDesc and OopMap
-    ImmutableOopMapSet* oms = oop_maps();
-    ImplicitExceptionTable implicit_table(this);
-    for (uint i = 0; i < implicit_table.len(); i++) {
-      int exec_offset = (int) implicit_table.get_exec_offset(i);
-      if (implicit_table.get_exec_offset(i) == implicit_table.get_cont_offset(i)) {
-        assert(pc_desc_at(code_begin() + exec_offset) != nullptr, "missing PcDesc");
-        bool found = false;
-        for (int i = 0, imax = oms->count(); i < imax; i++) {
-          if (oms->pair_at(i)->pc_offset() == exec_offset) {
-            found = true;
-            break;
-          }
-        }
-        assert(found, "missing oopmap");
+    {
+      // Verify that implicit exceptions that deoptimize have a PcDesc and OopMap
+      ImmutableOopMapSet* oms = oop_maps();
+      ImplicitExceptionTable implicit_table(this);
+      for (uint i = 0; i < implicit_table.len(); i++) {
+	int exec_offset = (int) implicit_table.get_exec_offset(i);
+	if (implicit_table.get_exec_offset(i) == implicit_table.get_cont_offset(i)) {
+	  assert(pc_desc_at(code_begin() + exec_offset) != nullptr, "missing PcDesc");
+	  bool found = false;
+	  for (int i = 0, imax = oms->count(); i < imax; i++) {
+	    if (oms->pair_at(i)->pc_offset() == exec_offset) {
+	      found = true;
+	      break;
+	    }
+	  }
+	  assert(found, "missing oopmap");
+	}
       }
     }
+#endif
+#endif
   }
-#endif
-#endif
 
   VerifyOopsClosure voc(this);
   oops_do(&voc);
@@ -3017,7 +3212,9 @@ void nmethod::verify() {
 
   assert(_oops_do_mark_link == nullptr, "_oops_do_mark_link for %s should be nullptr but is " PTR_FORMAT,
          nm->method()->external_name(), p2i(_oops_do_mark_link));
-  verify_scopes();
+  if (!is_scc() || SCCache::is_on()) {
+    verify_scopes();
+  }
 
   CompiledICLocker nm_verify(this);
   VerifyMetadataClosure vmc;

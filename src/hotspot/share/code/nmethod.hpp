@@ -45,7 +45,9 @@ class JvmtiThreadState;
 class MetadataClosure;
 class NativeCallWrapper;
 class OopIterateClosure;
+class SCCReader;
 class SCCEntry;
+class SCnmethod;
 class ScopeDesc;
 class xmlStream;
 
@@ -303,6 +305,21 @@ class nmethod : public CodeBlob {
   // Post initialization
   void post_init();
 
+  // For nmethods loaded from AOT code cache
+  nmethod(Method* method,
+          int nmethod_size,
+          AbstractCompiler* compiler,
+          int compile_id,
+          CompLevel comp_level,
+          int entry_bci,
+          bool preload,
+          GrowableArray<oop>& oop_list,
+          GrowableArray<Metadata*>& metadata_list,
+          GrowableArray<oop>& reloc_imm_oop_list,
+          GrowableArray<Metadata*>& reloc_imm_metadata_list,
+          SCCReader* scc_reader,
+          SCnmethod* scnm);
+
   // For native wrappers
   nmethod(Method* method,
           CompilerType type,
@@ -479,7 +496,22 @@ class nmethod : public CodeBlob {
   // transitions).
   void oops_do_set_strong_done(nmethod* old_head);
 
+  void record_nmethod_dependency();
 public:
+  // create nmethod using data from AOT code cache
+  static nmethod* new_nmethod(const methodHandle& method,
+                              AbstractCompiler* compiler,
+                              int compile_id,
+                              CompLevel comp_level,
+                              int entry_bci,
+                              bool preload,
+                              GrowableArray<oop>& oop_list,
+                              GrowableArray<Metadata*>& metadata_list,
+                              GrowableArray<oop>& reloc_imm_oop_list,
+                              GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                              SCCReader* scc_reader,
+                              SCnmethod* scnm);
+
   // create nmethod with entry_bci
   static nmethod* new_nmethod(const methodHandle& method,
                               int compile_id,
@@ -515,6 +547,7 @@ public:
                                      int exception_handler = -1);
 
   Method* method       () const { return _method; }
+  uint16_t entry_bci   () const { return _entry_bci; }
   bool is_native_method() const { return _method != nullptr && _method->is_native(); }
   bool is_java_method  () const { return _method != nullptr && !_method->is_native(); }
   bool is_osr_method   () const { return _entry_bci != InvocationEntryBci; }
@@ -541,7 +574,7 @@ public:
   address stub_end              () const { return           code_end()     ; }
   address exception_begin       () const { return           header_begin() + _exception_offset        ; }
   address deopt_handler_begin   () const { return           header_begin() + _deopt_handler_offset    ; }
-  address deopt_mh_handler_begin() const { return           header_begin() + _deopt_mh_handler_offset ; }
+  address deopt_mh_handler_begin() const { return _deopt_mh_handler_offset != -1 ? (header_begin() + _deopt_mh_handler_offset) : nullptr; }
   address unwind_handler_begin  () const { return _unwind_handler_offset != -1 ? (insts_end() - _unwind_handler_offset) : nullptr; }
   oop*    oops_begin            () const { return (oop*)    data_begin(); }
   oop*    oops_end              () const { return (oop*)    data_end(); }
@@ -557,6 +590,7 @@ public:
 #endif
 
   // immutable data
+  void set_immutable_data(address data) { _immutable_data = data; }
   address immutable_data_begin  () const { return           _immutable_data; }
   address immutable_data_end    () const { return           _immutable_data + _immutable_data_size ; }
   address dependencies_begin    () const { return           _immutable_data; }
@@ -728,6 +762,7 @@ public:
     return &metadata_begin()[index - 1];
   }
 
+  void copy_values(GrowableArray<oop>* array);
   void copy_values(GrowableArray<jobject>* oops);
   void copy_values(GrowableArray<Metadata*>* metadata);
   void copy_values(GrowableArray<address>* metadata) {} // Nothing to do
@@ -743,6 +778,8 @@ protected:
 public:
   void fix_oop_relocations(address begin, address end) { fix_oop_relocations(begin, end, false); }
   void fix_oop_relocations()                           { fix_oop_relocations(nullptr, nullptr, false); }
+
+  void create_reloc_immediates_list(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list);
 
   bool is_at_poll_return(address pc);
   bool is_at_poll_or_poll_return(address pc);

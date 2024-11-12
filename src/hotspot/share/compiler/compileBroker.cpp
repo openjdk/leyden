@@ -2631,7 +2631,9 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
         whitebox_lock_compilation();
       }
       if (StoreCachedCode && task->is_precompiled()) {
-        install_code = false; // not suitable in the current context
+        if (!UseNewCode2) {
+          install_code = false; // not suitable in the current context
+        }
       }
       comp->compile_method(&ci_env, target, osr_bci, install_code, directive);
 
@@ -2647,7 +2649,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
 
     DirectivesStack::release(directive);
 
-    if (!ci_env.failing() && !task->is_success() && install_code) {
+    if (!ci_env.failing() && !task->is_success() && !task->is_precompiled()) {
       assert(ci_env.failure_reason() != nullptr, "expect failure reason");
       assert(false, "compiler should always document failure: %s", ci_env.failure_reason());
       // The compiler elected, without comment, not to register a result.

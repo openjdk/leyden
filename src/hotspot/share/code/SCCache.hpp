@@ -339,6 +339,153 @@ enum class DataKind: int {
   MH_Oop_Shared = 11
 };
 
+// Store necessary nmethod information during dump time
+// Format:
+//  SCnmethod
+//  Relocations
+//  Contents
+//   Constants
+//   Instructions
+//   Stubs
+//  Data
+//   Oops
+//   Metadata
+//  ImmutableOopMapSet
+//  ImmutableData
+//   Dependencies
+//   NullCheck table
+//   ExceptionHandler table
+//  Reloc Immediate Oops
+//  Reloc Immediate Metadata
+//  Extra Relocation Data
+struct SCnmethod {
+ private:
+  int _size; // total size of nmethod in code cache in bytes
+  int _relocation_size; // size of relocation (could be bigger than 64Kb)
+
+  int _content_size;
+  int _consts_offset; // offset in content region where constants region begins
+  int _code_offset; // offset in content region where instructions region begins (this includes insts, stubs)
+  int _stub_offset; // offset in content region where stubs begin
+
+  int _oops_count;
+  int _metadata_offset; // offset in data region where metadata begins
+  int _metadata_count;
+#if INCLUDE_JVMCI
+  int _jvmci_data_offset;
+#endif
+
+  // Misc data from CodeBlob
+  int _frame_complete_offset;
+  int _frame_size;
+
+  // Misc data from nmethod
+  uint _flags;
+  uint16_t _entry_offset;          // entry point with class check; offset in code region
+  uint16_t _verified_entry_offset; // entry point without class check; offset in code region
+  int _skipped_instructions_size;
+  int _exception_offset;
+  int _deopt_handler_offset;
+  int _deopt_mh_handler_offset;
+  int16_t _unwind_handler_offset;
+
+  int _immutable_data_size;
+  int _dependencies_size;
+  int _nul_chk_table_offset; // offset in immutable region where nullcheck table begins
+  int _handler_table_offset; // offset in immutable region where exception handler table begins
+  int _scopes_pcs_offset; // offset in immutable region
+  int _scopes_data_offset; // offset in immutable regio
+#if INCLUDE_JVMCI
+  int _speculation_offset;
+  int _speculations_len;
+#endif
+
+  int _orig_pc_offset;
+
+  address _dumptime_content_start_addr;
+
+  uint _relocation_data_offset;
+  uint _content_offset;
+  uint _oop_metadata_offset;
+  uint _oop_map_offset;
+  uint _immutable_data_offset;
+  uint _reloc_immediates_offset;
+  uint _extra_reloc_offset;
+
+  enum {
+    HAS_UNSAFE_ACCESS=0x1,
+    HAS_MH_INVOKE=0x2,
+    HAS_WIDE_VECTORS=0x4,
+    HAS_MONITORS=0x8,
+    HAS_SCOPED_ACCESS=0x10,
+    HAS_CLINIT_BARRIERS=0x20
+  };
+
+ public:
+  void init_nmethod_data(nmethod* nm);
+  void set_relocation_data_offset(int offset) { _relocation_data_offset = offset; }
+  void set_content_offset(int offset) { _content_offset = offset; }
+  void set_oop_metadata_offset(int offset) { _oop_metadata_offset = offset; }
+  void set_oop_map_offset(int offset) { _oop_map_offset = offset; }
+  void set_immutable_data_offset(int offset) { _immutable_data_offset = offset; }
+  void set_reloc_immediates_offset(int offset) { _reloc_immediates_offset = offset; }
+  void set_extra_reloc_offset(int offset) { _extra_reloc_offset = offset; }
+  void set_dependencies_size(int size) { _dependencies_size = size; }
+
+  int relocation_size() const { return _relocation_size; }
+  int content_size() const { return _content_size; }
+  int code_offset() const { return _code_offset; }
+  int stub_offset() const { return _stub_offset; }
+  int metadata_offset() const { return _metadata_offset; }
+#if INCLUDE_JVMCI
+  int jvmci_data_offset() const { return _jvmci_data_offset; }
+#endif
+  int oops_count() const { return _oops_count; }
+  int metadata_count() const { return _metadata_count; }
+
+  int frame_complete_offset() const { return _frame_complete_offset; }
+  int frame_size() const { return _frame_size; }
+
+  uint compute_flags(nmethod* nm);
+  bool has_unsafe_access() const { return _flags & HAS_UNSAFE_ACCESS; }
+  bool has_method_handle_invokes() const { return _flags & HAS_MH_INVOKE; }
+  bool has_wide_vectors() const { return _flags & HAS_WIDE_VECTORS; }
+  bool has_monitors() const { return _flags & HAS_MONITORS; }
+  bool has_scoped_access() const { return _flags & HAS_SCOPED_ACCESS; }
+  bool has_clinit_barriers() const { return _flags & HAS_CLINIT_BARRIERS; }
+
+  uint16_t entry_offset() const { return _entry_offset; }
+  uint16_t verified_entry_offset() const { return _verified_entry_offset; }
+  int skipped_instructions_size() const { return _skipped_instructions_size; }
+  int exception_offset() const { return _exception_offset; }
+  int deopt_handler_offset() const { return _deopt_handler_offset; }
+  int deopt_mh_handler_offset() const { return _deopt_mh_handler_offset; }
+  int16_t unwind_handler_offset() const { return _unwind_handler_offset; }
+
+  int immutable_data_size() const { return _immutable_data_size; }
+  int dependencies_size() const { return _dependencies_size; }
+  int nul_chk_table_offset() const { return _nul_chk_table_offset; }
+  int handler_table_offset() const { return _handler_table_offset; }
+  int scopes_pcs_offset() const { return _scopes_pcs_offset; }
+  int scopes_data_offset() const { return _scopes_data_offset; }
+#if INCLUDE_JVMCI
+  int speculation_offset() const { return _speculation_offset; }
+  int speculations_len() const { return _speculations_len; }
+#endif
+
+  int orig_pc_offset() const { return _orig_pc_offset; }
+
+  address dumptime_content_start_addr() const { return _dumptime_content_start_addr; }
+
+  uint relocation_data_offset() const { return _relocation_data_offset; }
+  uint content_offset() const { return _content_offset; }
+  uint oop_metadata_offset() const { return _oop_metadata_offset; }
+  uint oop_map_offset() const { return _oop_map_offset; }
+  uint immutable_data_offset() const { return _immutable_data_offset; }
+  uint reloc_immediates_offset() const { return _reloc_immediates_offset; }
+  uint extra_reloc_offset() const { return _extra_reloc_offset; }
+};
+
 class SCCache;
 
 class SCCReader { // Concurent per compilation request
@@ -365,7 +512,12 @@ private:
 public:
   SCCReader(SCCache* cache, SCCEntry* entry, CompileTask* task);
 
+  SCCEntry* scc_entry() { return (SCCEntry*)_entry; }
+
+  // convenience method to convert offset in SCCEntry data to its address
+  const char* addr_of_entry_offset(uint offset_in_entry) const { return addr(_entry->offset() + offset_in_entry); }
   bool compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler);
+  bool compile_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler);
   bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
   bool compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]);
@@ -379,10 +531,13 @@ public:
   OopMapSet* read_oop_maps();
   bool read_dependencies(Dependencies* dependencies);
 
-  jobject read_oop(JavaThread* thread, const methodHandle& comp_method);
+  oop read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
   bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
   bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
+
+  bool read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
+  void apply_relocations(SCnmethod* scnm, nmethod* nm, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list);
 
   void print_on(outputStream* st);
 };
@@ -436,6 +591,8 @@ private:
   void clear_lookup_failed()   { _lookup_failed = false; }
   bool lookup_failed()   const { return _lookup_failed; }
 
+  address reserve_bytes(uint nbytes);
+
   SCCEntry* write_nmethod(const methodHandle& method,
                           int compile_id,
                           int entry_bci,
@@ -456,6 +613,8 @@ private:
                           bool has_wide_vectors,
                           bool has_monitors,
                           bool has_scoped_access);
+
+  SCCEntry* write_nmethod_v1(nmethod* nm, int dependencies_size, bool for_preload);
 
   // States:
   //   S >= 0: allow new readers, S readers are currently active
@@ -485,6 +644,8 @@ public:
   void set_failed()   { _failed = true; }
 
   static uint max_aot_code_size();
+  static void copy_bytes(const char* from, address to, uint size);
+  static bool is_address_in_aot_cache(address p);
 
   uint load_size() const { return _load_size; }
   uint write_position() const { return _write_position; }
@@ -534,15 +695,22 @@ public:
   bool write_debug_info(DebugInformationRecorder* recorder);
   bool write_oop_maps(OopMapSet* oop_maps);
 
+  bool write_oop_map_set(nmethod* nm);
+  bool write_nmethod_reloc_immediates(nmethod* nm, GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list);
+  bool write_nmethod_extra_relocations(SCnmethod* scnm, nmethod* nm, int entry_position);
+
   jobject read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
   bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
   bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
 
   bool write_oop(jobject& jo);
+  bool write_oop(oop obj);
   bool write_oops(OopRecorder* oop_recorder);
   bool write_metadata(Metadata* m);
   bool write_metadata(OopRecorder* oop_recorder);
+  bool write_oops(nmethod* nm);
+  bool write_metadata(nmethod* nm);
 
   static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset) NOT_CDS_RETURN_(false);
   static bool store_exception_blob(CodeBuffer* buffer, int pc_offset) NOT_CDS_RETURN_(false);
@@ -572,6 +740,8 @@ public:
                      bool has_wide_vectors,
                      bool has_monitors,
                      bool has_scoped_access) NOT_CDS_RETURN_(nullptr);
+
+  static SCCEntry* store_nmethod_v1(nmethod* nm, AbstractCompiler* compiler, int dependencies_size, bool for_preload);
 
   static uint store_entries_cnt() {
     if (is_on_for_write()) {

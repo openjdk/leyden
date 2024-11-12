@@ -720,7 +720,19 @@ SCCache* SCCache::open_for_write() {
   return nullptr;
 }
 
-void copy_bytes(const char* from, address to, uint size) {
+bool SCCache::is_address_in_aot_cache(address p) {
+  SCCache* cache = open_for_read();
+  if (cache == nullptr) {
+    return false;
+  }
+  if ((p >= (address)cache->cache_buffer()) &&
+      (p < (address)(cache->cache_buffer() + cache->load_size()))) {
+    return true;
+  }
+  return false;
+}
+
+void SCCache::copy_bytes(const char* from, address to, uint size) {
   assert(size > 0, "sanity");
   bool by_words = true;
   if ((size > 2 * HeapWordSize) && (((intptr_t)from | (intptr_t)to) & (HeapWordSize - 1)) == 0) {
@@ -770,6 +782,25 @@ bool SCCache::align_write() {
   }
   log_trace(scc)("Adjust write alignment in AOT Code Cache");
   return true;
+}
+
+// Check to see if AOT code cache has required space to store "nbytes" of data
+address SCCache::reserve_bytes(uint nbytes) {
+  assert(for_write(), "Code Cache file is not created");
+  uint new_position = _write_position + nbytes;
+  if (new_position >= (uint)((char*)_store_entries - _store_buffer)) {
+    log_warning(scc)("Failed to ensure %d bytes at offset %d to Startup Code Cache file '%s'. Increase CachedCodeMaxSize.",
+                     nbytes, _write_position, _cache_path);
+    set_failed();
+    exit_vm_on_store_failure();
+    return nullptr;
+  }
+  address buffer = (address)(_store_buffer + _write_position);
+  _write_position += nbytes;
+  if (_store_size < _write_position) {
+    _store_size = _write_position;
+  }
+  return buffer;
 }
 
 uint SCCache::write_bytes(const void* buffer, uint nbytes) {
@@ -1784,7 +1815,7 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
       cs->expand_locs(reloc_count);
     }
     relocInfo* reloc_start = cs->locs_start();
-    copy_bytes(addr(code_offset), (address)reloc_start, reloc_size);
+    SCCache::copy_bytes(addr(code_offset), (address)reloc_start, reloc_size);
     code_offset += reloc_size;
     cs->set_locs_end(reloc_start + reloc_count);
     cs->set_locs_point(cs->start() + locs_point_off);
@@ -1810,7 +1841,8 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
           if (r->oop_is_immediate()) {
             assert(reloc_data[j] == (uint)j, "should be");
             methodHandle comp_method(THREAD, target->get_Method());
-            jobject jo = read_oop(THREAD, comp_method);
+            oop obj = read_oop(THREAD, comp_method);
+            jobject jo = JNIHandles::make_local(THREAD, obj);
             if (lookup_failed()) {
               success = false;
               break;
@@ -1947,7 +1979,7 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
 
     // Load code to new buffer.
     address code_start = cs->start();
-    copy_bytes(addr(scc_cs[i]._offset + code_offset), code_start, orig_size_align);
+    SCCache::copy_bytes(addr(scc_cs[i]._offset + code_offset), code_start, orig_size_align);
     cs->set_end(code_start + orig_size);
   }
 
@@ -2462,12 +2494,12 @@ DebugInformationRecorder* SCCReader::read_debug_info(OopRecorder* oop_recorder) 
   assert(sizeof(PcDesc) > DATA_ALIGNMENT, "sanity");
   DebugInformationRecorder* recorder = new DebugInformationRecorder(oop_recorder, data_size_align, pcs_length);
 
-  copy_bytes(addr(code_offset), recorder->stream()->buffer(), data_size_align);
+  SCCache::copy_bytes(addr(code_offset), recorder->stream()->buffer(), data_size_align);
   recorder->stream()->set_position(data_size);
   code_offset += data_size;
 
   uint pcs_size = pcs_length * sizeof(PcDesc);
-  copy_bytes(addr(code_offset), (address)recorder->pcs(), pcs_size);
+  SCCache::copy_bytes(addr(code_offset), (address)recorder->pcs(), pcs_size);
   code_offset += pcs_size;
   set_read_position(code_offset);
   return recorder;
@@ -2517,12 +2549,12 @@ OopMapSet* SCCReader::read_oop_maps() {
     CompressedWriteStream* stream = oop_map->write_stream();
 
     // Read data which overwrites default data
-    copy_bytes(addr(code_offset), (address)oop_map, sizeof(OopMap));
+    SCCache::copy_bytes(addr(code_offset), (address)oop_map, sizeof(OopMap));
     code_offset += sizeof(OopMap);
     stream->set_position(data_size);
     oop_map->set_write_stream(stream);
     if (data_size > 0) {
-      copy_bytes(addr(code_offset), (address)(oop_map->data()), (uint)data_size);
+      SCCache::copy_bytes(addr(code_offset), (address)(oop_map->data()), (uint)data_size);
       code_offset += data_size;
     }
 #ifdef ASSERT
@@ -2560,7 +2592,7 @@ bool SCCache::write_oop_maps(OopMapSet* oop_maps) {
   return true;
 }
 
-jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method) {
+oop SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method) {
   uint code_offset = read_position();
   oop obj = nullptr;
   DataKind kind = *(DataKind*)addr(code_offset);
@@ -2569,7 +2601,7 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
   if (kind == DataKind::Null) {
     return nullptr;
   } else if (kind == DataKind::No_Data) {
-    return (jobject)Universe::non_oop_word();
+    return cast_to_oop(Universe::non_oop_word());
   } else if (kind == DataKind::Klass || kind == DataKind::Klass_Shared) {
     Klass* k = read_klass(comp_method, (kind == DataKind::Klass_Shared));
     if (k == nullptr) {
@@ -2629,7 +2661,7 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
                      compile_id(), comp_level(), (int)kind);
     return nullptr;
   }
-  return JNIHandles::make_local(thread, obj);
+  return obj;
 }
 
 bool SCCReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
@@ -2645,10 +2677,11 @@ bool SCCReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
     VM_ENTRY_MARK;
     methodHandle comp_method(THREAD, target->get_Method());
     for (int i = 1; i < oop_count; i++) {
-      jobject jo = read_oop(THREAD, comp_method);
+      oop obj = read_oop(THREAD, comp_method);
       if (lookup_failed()) {
         return false;
       }
+      jobject jo = JNIHandles::make_local(THREAD, obj);
       if (oop_recorder->is_real(jo)) {
         oop_recorder->find_index(jo);
       } else {
@@ -2753,16 +2786,20 @@ bool SCCReader::read_metadata(OopRecorder* oop_recorder, ciMethod* target) {
 }
 
 bool SCCache::write_oop(jobject& jo) {
+  oop obj = JNIHandles::resolve(jo);
+  return write_oop(obj);
+}
+
+bool SCCache::write_oop(oop obj) {
   DataKind kind;
   uint n = 0;
-  oop obj = JNIHandles::resolve(jo);
-  if (jo == nullptr) {
+  if (obj == nullptr) {
     kind = DataKind::Null;
     n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
       return false;
     }
-  } else if (jo == (jobject)Universe::non_oop_word()) {
+  } else if (cast_from_oop<void *>(obj) == Universe::non_oop_word()) {
     kind = DataKind::No_Data;
     n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
@@ -2977,6 +3014,7 @@ bool SCCReader::read_dependencies(Dependencies* dependencies) {
 bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) {
   TraceTime t1("SC total load time", &_t_totalLoad, enable_timers(), false);
   CompileTask* task = env->task();
+  task->mark_aot_load_start(os::elapsed_counter());
   SCCEntry* entry = task->scc_entry();
   bool preload = task->preload();
   assert(entry != nullptr, "sanity");
@@ -3004,12 +3042,18 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
   }
 
   SCCReader reader(cache, entry, task);
-  bool success = reader.compile(env, target, entry_bci, compiler);
+  bool success = false;
+  if (UseNewCode2) {
+    success = reader.compile_nmethod(env, target, entry_bci, compiler);
+  } else {
+    success = reader.compile(env, target, entry_bci, compiler);
+  }
   if (success) {
     task->set_num_inlined_bytecodes(entry->num_inlined_bytecodes());
   } else {
     entry->set_load_fail();
   }
+  task->mark_aot_load_finish(os::elapsed_counter());
   return success;
 }
 
@@ -3094,7 +3138,7 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
   if (exc_table_length > 0) {
     handler_table.set_length(exc_table_length);
     uint exc_table_size = handler_table.size_in_bytes();
-    copy_bytes(addr(code_offset), (address)handler_table.table(), exc_table_size);
+    SCCache::copy_bytes(addr(code_offset), (address)handler_table.table(), exc_table_size);
     code_offset += exc_table_size;
   }
 
@@ -3106,7 +3150,7 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
     nul_chk_table.set_size(nul_chk_length);
     nul_chk_table.set_len(nul_chk_length);
     uint nul_chk_size = nul_chk_table.size_in_bytes();
-    copy_bytes(addr(code_offset), (address)nul_chk_table.data(), nul_chk_size - sizeof(implicit_null_entry));
+    SCCache::copy_bytes(addr(code_offset), (address)nul_chk_table.data(), nul_chk_size - sizeof(implicit_null_entry));
     code_offset += nul_chk_size;
   }
 
@@ -3166,6 +3210,248 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
     ((SCCEntry *)_entry)->set_loaded();
   }
   return success;
+}
+
+bool SCCReader::read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder) {
+  VM_ENTRY_MARK
+  methodHandle comp_method(JavaThread::current(), target->get_Method());
+  JavaThread* current = JavaThread::current();
+  uint offset = read_position();
+  int count = *(int *)addr(offset);
+  offset += sizeof(int);
+  set_read_position(offset);
+  for (int i = 0; i < count; i++) {
+    oop obj = read_oop(current, comp_method);
+    if (lookup_failed()) {
+      return false;
+    }
+    oop_list.append(obj);
+    if (oop_recorder != nullptr) {
+      jobject jo = JNIHandles::make_local(THREAD, obj);
+      if (oop_recorder->is_real(jo)) {
+        oop_recorder->find_index(jo);
+      } else {
+        oop_recorder->allocate_oop_index(jo);
+      }
+    }
+    LogStreamHandle(Debug, scc, oops) log;
+    if (log.is_enabled()) {
+      log.print("%d: " INTPTR_FORMAT " ", i, p2i(obj));
+      if (obj == Universe::non_oop_word()) {
+	log.print("non-oop word");
+      } else if (obj == nullptr) {
+	log.print("nullptr-oop");
+      } else {
+	obj->print_value_on(&log);
+      }
+      log.cr();
+    }
+  }
+
+  offset = read_position();
+  count = *(int *)addr(offset);
+  offset += sizeof(int);
+  set_read_position(offset);
+  for (int i = 0; i < count; i++) {
+    Metadata* m = read_metadata(comp_method);
+    if (lookup_failed()) {
+      return false;
+    }
+    metadata_list.append(m);
+    if (oop_recorder != nullptr) {
+      if (oop_recorder->is_real(m)) {
+        oop_recorder->find_index(m);
+      } else {
+        oop_recorder->allocate_metadata_index(m);
+      }
+    }
+    LogTarget(Debug, scc, metadata) log;
+    if (log.is_enabled()) {
+      LogStream ls(log);
+      ls.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
+      if (m == (Metadata*)Universe::non_oop_word()) {
+	ls.print("non-metadata word");
+      } else if (m == nullptr) {
+	ls.print("nullptr-oop");
+      } else {
+	Metadata::print_value_on_maybe_null(&ls, m);
+      }
+      ls.cr();
+    }
+  }
+  return true;
+}
+
+bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler) {
+  CompileTask* task = env->task();
+  SCCEntry *scc_entry = (SCCEntry*)_entry;
+  bool preload = task->preload(); // Code is preloaded before Java method execution
+  nmethod* nm = nullptr;
+
+  uint entry_position = scc_entry->offset();
+  uint scnm_offset = entry_position + scc_entry->code_offset();
+  set_read_position(scnm_offset);
+
+  SCnmethod* scnm = (SCnmethod*)addr(scnm_offset);
+
+  //Read oops and metadata
+  GrowableArray<oop> reloc_immediate_oop_list, oop_list;
+  GrowableArray<Metadata*> reloc_immediate_metadata_list, metadata_list;
+
+  OopRecorder* oop_recorder = new OopRecorder(env->arena());
+  env->set_oop_recorder(oop_recorder);
+
+  uint buffer_offset = entry_position + scnm->oop_metadata_offset();
+  set_read_position(buffer_offset);
+  if (!read_oop_metadata_list(target, oop_list, metadata_list, oop_recorder)) {
+   return false;
+  }
+
+  buffer_offset = entry_position + scnm->reloc_immediates_offset();
+  set_read_position(buffer_offset);
+  if (!read_oop_metadata_list(target, reloc_immediate_oop_list, reloc_immediate_metadata_list, nullptr)) {
+   return false;
+  }
+
+  // Read Dependencies (compressed already)
+  Dependencies* dependencies = new Dependencies(env);
+  address dep_content = (address)addr(entry_position + scnm->immutable_data_offset());
+  int dep_size = scnm->dependencies_size();
+  dependencies->set_content(dep_content, dep_size);
+  env->set_dependencies(dependencies);
+
+  if (VerifyCachedCode) {
+    return false;
+  }
+
+  TraceTime t1("SC total nmethod register time", &_t_totalRegister, enable_timers(), false);
+  env->register_aot_method(target,
+                       compiler,
+                       entry_bci,
+                       oop_list,
+                       metadata_list,
+                       reloc_immediate_oop_list,
+                       reloc_immediate_metadata_list,
+                       this,
+                       scnm);
+  bool success = task->is_success();
+  if (success) {
+    scc_entry->set_loaded();
+  }
+  return success;
+}
+
+void SCCReader::apply_relocations(SCnmethod* scnm, nmethod* nm, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list) {
+  LogStreamHandle(Info, scc, reloc) log;
+  uint buffer_offset = _entry->offset() + scnm->extra_reloc_offset();
+  int count = *(int*)addr(buffer_offset);
+  buffer_offset += sizeof(int);
+  if (log.is_enabled()) {
+    log.print_cr("======== extra relocations count=%d", count);
+  }
+  uint* reloc_data = (uint*)addr(buffer_offset);
+  buffer_offset += (count * sizeof(uint));
+  set_read_position(buffer_offset);
+
+  RelocIterator iter(nm);
+  int j = 0;
+
+  while (iter.next()) {
+    switch (iter.type()) {
+      case relocInfo::none:
+	break;
+      case relocInfo::oop_type: {
+        oop_Relocation* r = (oop_Relocation*)iter.reloc();
+	if (r->oop_is_immediate()) {
+	  r->set_value(cast_from_oop<address>(oop_list.at(reloc_data[j])));
+	} else {
+          r->fix_oop_relocation();
+	}
+	break;
+      }
+      case relocInfo::metadata_type: {
+        metadata_Relocation* r = (metadata_Relocation*)iter.reloc();
+        Metadata* m;
+        if (r->metadata_is_immediate()) {
+          m = metadata_list.at(reloc_data[j]);
+        } else {
+	  // Get already updated value from nmethod.
+	  int index = r->metadata_index();
+	  m = nm->metadata_at(index);
+	}
+	r->set_value((address)m);
+        break;
+      }
+      case relocInfo::virtual_call_type:   // Fall through. They all call resolve_*_call blobs.
+      case relocInfo::opt_virtual_call_type:
+      case relocInfo::static_call_type: {
+	address dest = _cache->address_for_id(reloc_data[j]);
+	if (dest != (address)-1) {
+	  ((CallRelocation*)iter.reloc())->set_destination(dest);
+	}
+	break;
+      }
+      case relocInfo::trampoline_stub_type: {
+	address dest = _cache->address_for_id(reloc_data[j]);
+	if (dest != (address)-1) {
+	  ((trampoline_stub_Relocation*)iter.reloc())->set_destination(dest);
+	}
+	break;
+      }
+      case relocInfo::static_stub_type:
+	break;
+      case relocInfo::runtime_call_type: {
+	address dest = _cache->address_for_id(reloc_data[j]);
+	if (dest != (address)-1) {
+	  ((CallRelocation*)iter.reloc())->set_destination(dest);
+	}
+	break;
+      }
+      case relocInfo::runtime_call_w_cp_type:
+	fatal("runtime_call_w_cp_type unimplemented");
+	//address destination = iter.reloc()->value();
+	break;
+      case relocInfo::external_word_type: {
+	address target = _cache->address_for_id(reloc_data[j]);
+	// Add external address to global table
+	int index = ExternalsRecorder::find_index(target);
+	// Update index in relocation
+	Relocation::add_jint(iter.data(), index);
+	external_word_Relocation* reloc = (external_word_Relocation*)iter.reloc();
+	assert(reloc->target() == target, "sanity");
+	reloc->set_value(target); // Patch address in the code
+        //TODO: Is fix_relocation_after_move() required here?
+	//iter.reloc()->fix_relocation_after_move(orig_buffer, buffer);
+	break;
+      }
+      case relocInfo::internal_word_type: {
+        internal_word_Relocation* r = (internal_word_Relocation*)iter.reloc();
+        r->fix_relocation_after_aot_load(scnm->dumptime_content_start_addr(), nm->content_begin());
+	break;
+      }
+      case relocInfo::section_word_type: {
+        section_word_Relocation* r = (section_word_Relocation*)iter.reloc();
+        r->fix_relocation_after_aot_load(scnm->dumptime_content_start_addr(), nm->content_begin());
+	break;
+      }
+      case relocInfo::poll_type:
+	break;
+      case relocInfo::poll_return_type:
+	break;
+      case relocInfo::post_call_nop_type:
+	break;
+      case relocInfo::entry_guard_type:
+	break;
+      default:
+	fatal("relocation %d unimplemented", (int)iter.type());
+	break;
+    }
+    if (log.is_enabled()) {
+      iter.print_current_on(&log);
+    }
+    j++;
+  }
+  assert(j == count, "must be");
 }
 
 // No concurency for writing to cache file because this method is called from
@@ -3471,6 +3757,460 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
     return nullptr;
   }
   return entry;
+}
+
+SCCEntry* SCCache::store_nmethod_v1(nmethod* nm, AbstractCompiler* compiler, int dependencies_size, bool for_preload) {
+  if (!CDSConfig::is_dumping_cached_code()) {
+    return nullptr; // The metadata and heap in the CDS image haven't been finalized yet.
+  }
+  if (nm->is_osr_method()) {
+    return nullptr; // No OSR
+  }
+  if (!compiler->is_c1() && !compiler->is_c2()) {
+    // Only c1 and c2 compilers
+    return nullptr;
+  }
+  int comp_level = nm->comp_level();
+  if (comp_level == CompLevel_full_profile) {
+    // Do not cache C1 compiles with full profile i.e. tier3
+    return nullptr;
+  }
+  assert(comp_level == CompLevel_simple || comp_level == CompLevel_limited_profile || comp_level == CompLevel_full_optimization, "must be");
+
+  TraceTime t1("SC total store time", &_t_totalStore, enable_timers(), false);
+  SCCache* cache = open_for_write();
+  if (cache == nullptr) {
+    return nullptr; // Cache file is closed
+  }
+  SCCEntry* entry = cache->write_nmethod_v1(nm, dependencies_size, for_preload);
+  if (entry == nullptr) {
+    log_info(scc, nmethod)("%d (L%d): nmethod store attempt failed", nm->compile_id(), comp_level);
+  }
+  return entry;
+}
+
+uint SCnmethod::compute_flags(nmethod* nm) {
+  return (nm->has_unsafe_access() ? HAS_UNSAFE_ACCESS : 0) |
+         (nm->has_method_handle_invokes() ? HAS_MH_INVOKE : 0) |
+         (nm->has_wide_vectors() ? HAS_WIDE_VECTORS : 0) |
+         (nm->has_monitors() ? HAS_MONITORS : 0) |
+         (nm->has_scoped_access() ? HAS_SCOPED_ACCESS : 0) |
+         (nm->has_clinit_barriers() ? HAS_CLINIT_BARRIERS: 0);
+}
+
+void SCnmethod::init_nmethod_data(nmethod* nm) {
+  _size = nm->size(); // size covers relocations, content and data regions
+  _relocation_size = nm->relocation_size();
+  _content_size = nm->content_size();
+  // "content" holds consts, insts and stubs
+  _consts_offset = nm->consts_begin() - nm->content_begin();
+  // "code" holds insts and stubs
+  _code_offset = nm->code_begin() - nm->content_begin();
+  _stub_offset = nm->stub_begin() - nm->content_begin();
+  // "data" holds oops and metadata
+  _oops_count = nm->oops_end() - nm->oops_begin();
+  _metadata_offset= (address)nm->metadata_begin() - nm->data_begin();
+  _metadata_count = nm->metadata_end() - nm->metadata_begin();
+#if INCLUDE_JVMCI
+  assert(nm->jvmci_data_size() == 0, "JVMCI compile is not supported");
+  _jvmci_data_offset = nm->jvmci_data_begin() - nm->data_begin();
+#endif
+  // other CodeBlob data
+  _frame_complete_offset = nm->frame_complete_offset();
+  _frame_size = nm->frame_size();
+
+  // other nmethod data
+  _flags = compute_flags(nm);
+  _entry_offset = nm->entry_point() - nm->code_begin();
+  _verified_entry_offset = nm->verified_entry_point() - nm->code_begin();
+  _skipped_instructions_size = nm->skipped_instructions_size();
+
+  // Exception handler and deopt handler are in the stub section
+  _exception_offset = nm->exception_begin() - nm->content_begin();
+  _deopt_handler_offset = nm->deopt_handler_begin() - nm->content_begin();
+  _deopt_mh_handler_offset = (nm->deopt_mh_handler_begin() != nullptr) ? (nm->deopt_mh_handler_begin() - nm->content_begin()) : -1;
+  // unwind_handler is offset from the end of the insts sections
+  _unwind_handler_offset = (nm->unwind_handler_begin() != nullptr) ? nm->insts_end() - nm->unwind_handler_begin() : -1;
+  _orig_pc_offset = nm->orig_pc_offset();
+
+  // immutable data in nmethod
+  _immutable_data_size = nm->immutable_data_size();
+  _nul_chk_table_offset = nm->nul_chk_table_begin() - nm->immutable_data_begin();
+  _handler_table_offset = nm->handler_table_begin() - nm->immutable_data_begin();
+  _scopes_pcs_offset = (address)nm->scopes_pcs_begin() - nm->immutable_data_begin();
+  _scopes_data_offset = nm->scopes_data_begin() - nm->immutable_data_begin();
+#if INCLUDE_JVMCI
+  assert(nm->speculations_size() == 0, "JVMCI compile is not supported");
+  _speculation_offset = nm->speculations_begin() - nm->immutable_data_begin();
+  _speculations_len = 0;
+#endif
+
+  // addtional info required for loading back nmethod
+  _dumptime_content_start_addr = nm->content_begin();
+}
+
+bool SCCache::write_oops(nmethod* nm) {
+  for (oop* p = nm->oops_begin(); p < nm->oops_end(); p++) {
+    if (!write_oop(*p)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SCCache::write_metadata(nmethod* nm) {
+  for (Metadata** p = nm->metadata_begin(); p < nm->metadata_end(); p++) {
+    if (!write_metadata(*p)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SCCache::write_oop_map_set(nmethod* nm) {
+  ImmutableOopMapSet* oopmaps = nm->oop_maps();
+  uint n = write_bytes(oopmaps, oopmaps->nr_of_bytes());
+  if (n != (uint)oopmaps->nr_of_bytes()) {
+    return false;
+  }
+  return true;
+}
+
+SCCEntry* SCCache::write_nmethod_v1(nmethod* nm, int dependencies_size, bool for_preload) {
+  assert(!nm->has_clinit_barriers() || _gen_preload_code, "sanity");
+  uint comp_id = nm->compile_id();
+  uint comp_level = nm->comp_level();
+  Method* method = nm->method();
+  bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)method);
+  InstanceKlass* holder = method->method_holder();
+  bool klass_in_cds = holder->is_shared() && !holder->is_shared_unregistered_class();
+  bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
+  if (!builtin_loader) {
+    ResourceMark rm;
+    log_info(scc, nmethod)("%d (L%d): Skip method '%s' loaded by custom class loader %s", comp_id, (int)comp_level, method->name_and_sig_as_C_string(), holder->class_loader_data()->loader_name());
+    return nullptr;
+  }
+  if (for_preload && !(method_in_cds && klass_in_cds)) {
+    ResourceMark rm;
+    log_info(scc, nmethod)("%d (L%d): Skip method '%s' for preload: not in CDS", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
+    return nullptr;
+  }
+  assert(!for_preload || method_in_cds, "sanity");
+  _for_preload = for_preload;
+  _has_clinit_barriers = nm->has_clinit_barriers();
+
+  if (!align_write()) {
+    return nullptr;
+  }
+
+  uint entry_position = _write_position;
+
+  uint decomp = (method->method_data() == nullptr) ? 0 : method->method_data()->decompile_count();
+
+  // Is this one-step workflow assembly phase?
+  // In this phase compilation is done based on saved profiling data
+  // without application run. Ignore decompilation counters in such case.
+  // Also ignore it for C1 code because it is decompiled unconditionally
+  // when C2 generated code is published.
+  bool ignore_decompile = (comp_level == CompLevel_limited_profile) ||
+                          CDSConfig::is_dumping_final_static_archive();
+
+  // Write name
+  uint name_offset = 0;
+  uint name_size   = 0;
+  uint hash = 0;
+  uint n;
+  {
+    ResourceMark rm;
+    const char* name = method->name_and_sig_as_C_string();
+    log_info(scc, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s%s) to Startup Code Cache '%s'",
+                           comp_id, (int)comp_level, name, comp_level, decomp,
+                           (ignore_decompile ? ", ignore_decomp" : ""),
+                           (nm->has_clinit_barriers() ? ", has clinit barriers" : ""), _cache_path);
+
+    LogStreamHandle(Info, scc, loader) log;
+    if (log.is_enabled()) {
+      oop loader = holder->class_loader();
+      oop domain = holder->protection_domain();
+      log.print("Holder: ");
+      holder->print_value_on(&log);
+      log.print(" loader: ");
+      if (loader == nullptr) {
+        log.print("nullptr");
+      } else {
+        loader->print_value_on(&log);
+      }
+      log.print(" domain: ");
+      if (domain == nullptr) {
+        log.print("nullptr");
+      } else {
+        domain->print_value_on(&log);
+      }
+      log.cr();
+    }
+    name_offset = _write_position  - entry_position;
+    name_size   = (uint)strlen(name) + 1; // Includes '/0'
+    n = write_bytes(name, name_size);
+    if (n != name_size) {
+      return nullptr;
+    }
+    hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
+  }
+
+  if (!align_write()) {
+    return nullptr;
+  }
+
+  uint scnm_offset = _write_position - entry_position;
+  SCnmethod* scnm = (SCnmethod*)reserve_bytes(sizeof(SCnmethod));
+  if (scnm == nullptr) {
+    return nullptr;
+  }
+  scnm->init_nmethod_data(nm);
+  scnm->set_dependencies_size(dependencies_size);
+
+  if (!align_write()) {
+    return nullptr;
+  }
+
+  scnm->set_relocation_data_offset(_write_position - entry_position);
+  n = write_bytes(nm->relocation_begin(), nm->relocation_size());
+  if (n != (uint)nm->relocation_size()) {
+    return nullptr;
+  }
+  scnm->set_content_offset(_write_position - entry_position);
+  n = write_bytes(nm->content_begin(), nm->content_size());
+  if (n != (uint)nm->content_size()) {
+    return nullptr;
+  }
+  if (!align_write()) {
+    return nullptr;
+  }
+
+  scnm->set_oop_metadata_offset(_write_position - entry_position);
+  int count = scnm->oops_count();
+  if (!write_bytes(&count, sizeof(int))) {
+    return nullptr;
+  }
+  // Write oops and metadata in the nmethod's data region
+  if (!write_oops(nm)) {
+    if (lookup_failed() && !failed()) {
+      // Skip this method and reposition file
+      set_write_position(entry_position);
+    }
+    return nullptr;
+  }
+  count = scnm->metadata_count();
+  if (!write_bytes(&count, sizeof(int))) {
+    return nullptr;
+  }
+  if (!write_metadata(nm)) {
+    if (lookup_failed() && !failed()) {
+      // Skip this method and reposition file
+      set_write_position(entry_position);
+    }
+    return nullptr;
+  }
+  if (!align_write()) {
+    return nullptr;
+  }
+  scnm->set_oop_map_offset(_write_position - entry_position);
+  if (!write_oop_map_set(nm)) {
+    return nullptr;
+  }
+  if (!align_write()) {
+    return nullptr;
+  }
+  scnm->set_immutable_data_offset(_write_position - entry_position);
+  n = write_bytes(nm->immutable_data_begin(), nm->immutable_data_size());
+  if (n != (uint)nm->immutable_data_size()) {
+    return nullptr;
+  }
+  if (!align_write()) {
+    return nullptr;
+  }
+
+  if (!write_nmethod_extra_relocations(scnm, nm, entry_position)) {
+    return nullptr;
+  }
+
+  uint entry_size = _write_position - entry_position;
+  SCCEntry* entry = new (this) SCCEntry(entry_position, entry_size, name_offset, name_size,
+                                        scnm_offset, 0, 0, 0,
+                                        SCCEntry::Code, hash, comp_level, comp_id, decomp,
+                                        nm->has_clinit_barriers(), for_preload, ignore_decompile);
+  if (method_in_cds) {
+    entry->set_method(method);
+  }
+#ifdef ASSERT
+  if (nm->has_clinit_barriers() || for_preload) {
+    assert(for_preload, "sanity");
+    assert(entry->method() != nullptr, "sanity");
+  }
+#endif
+  {
+    ResourceMark rm;
+    const char* name = nm->method()->name_and_sig_as_C_string();
+    log_info(scc, nmethod)("%d (L%d): Wrote nmethod '%s'%s to Startup Code Cache '%s'",
+                           comp_id, (int)comp_level, name, (for_preload ? " (for preload)" : ""), _cache_path);
+  }
+  if (VerifyCachedCode) {
+    return nullptr;
+  }
+  return entry;
+}
+
+bool SCCache::write_nmethod_reloc_immediates(nmethod* nm, GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+  int count = oop_list.length();
+  if (!write_bytes(&count, sizeof(int))) {
+    return false;
+  }
+  for (GrowableArrayIterator<oop> iter = oop_list.begin();
+       iter != oop_list.end(); ++iter) {
+    oop obj = *iter;
+    if (!write_oop(obj)) {
+      return false;
+    }
+  }
+
+  count = metadata_list.length();
+  if (!write_bytes(&count, sizeof(int))) {
+    return false;
+  }
+  for (GrowableArrayIterator<Metadata*> iter = metadata_list.begin();
+       iter != metadata_list.end(); ++iter) {
+    Metadata* m = *iter;
+    if (!write_metadata(m)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SCCache::write_nmethod_extra_relocations(SCnmethod* scnm, nmethod* nm, int entry_position) {
+  GrowableArray<oop> oop_list;
+  GrowableArray<Metadata*> metadata_list;
+
+  nm->create_reloc_immediates_list(oop_list, metadata_list);
+  scnm->set_reloc_immediates_offset(_write_position - entry_position);
+  if (!write_nmethod_reloc_immediates(nm, oop_list, metadata_list)) {
+    if (lookup_failed() && !failed()) {
+      // Skip this method and reposition file
+      set_write_position(entry_position);
+    }
+    return false;
+  }
+
+  scnm->set_extra_reloc_offset(_write_position - entry_position);
+  LogStreamHandle(Info, scc, reloc) log;
+  GrowableArray<uint> reloc_data;
+  // Collect additional data
+  RelocIterator iter(nm);
+  bool has_immediate = false;
+  while (iter.next()) {
+    int idx = reloc_data.append(0); // default value
+    switch (iter.type()) {
+      case relocInfo::none:
+	break;
+      case relocInfo::oop_type: {
+	oop_Relocation* r = (oop_Relocation*)iter.reloc();
+	if (r->oop_is_immediate()) {
+          // store index of oop in the reloc immediate oop list
+          int oop_idx = oop_list.find(r->oop_value());
+          assert(oop_idx != -1, "sanity check");
+          reloc_data.at_put(idx, (uint)oop_idx);
+          has_immediate = true;
+	}
+	break;
+      }
+      case relocInfo::metadata_type: {
+	metadata_Relocation* r = (metadata_Relocation*)iter.reloc();
+	if (r->metadata_is_immediate()) {
+          // store index of metadata in the reloc immediate metadata list
+          int metadata_idx = metadata_list.find(r->metadata_value());
+          assert(metadata_idx != -1, "sanity check");
+          reloc_data.at_put(idx, (uint)metadata_idx);
+          has_immediate = true;
+	}
+	break;
+      }
+      case relocInfo::virtual_call_type:  // Fall through. They all call resolve_*_call blobs.
+      case relocInfo::opt_virtual_call_type:
+      case relocInfo::static_call_type: {
+	CallRelocation* r = (CallRelocation*)iter.reloc();
+	address dest = r->destination();
+	if (dest == r->addr()) { // possible call via trampoline on Aarch64
+	  dest = (address)-1;    // do nothing in this case when loading this relocation
+	}
+	reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+	break;
+      }
+      case relocInfo::trampoline_stub_type: {
+	address dest = ((trampoline_stub_Relocation*)iter.reloc())->destination();
+	reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+	break;
+      }
+      case relocInfo::static_stub_type:
+	break;
+      case relocInfo::runtime_call_type: {
+	// Record offset of runtime destination
+	CallRelocation* r = (CallRelocation*)iter.reloc();
+	address dest = r->destination();
+	if (dest == r->addr()) { // possible call via trampoline on Aarch64
+	  dest = (address)-1;    // do nothing in this case when loading this relocation
+	}
+	reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+	break;
+      }
+      case relocInfo::runtime_call_w_cp_type:
+	fatal("runtime_call_w_cp_type unimplemented");
+	break;
+      case relocInfo::external_word_type: {
+	// Record offset of runtime target
+	address target = ((external_word_Relocation*)iter.reloc())->target();
+	reloc_data.at_put(idx, _table->id_for_address(target, iter, nullptr));
+	break;
+      }
+      case relocInfo::internal_word_type:
+	break;
+      case relocInfo::section_word_type:
+	break;
+      case relocInfo::poll_type:
+	break;
+      case relocInfo::poll_return_type:
+	break;
+      case relocInfo::post_call_nop_type:
+	break;
+      case relocInfo::entry_guard_type:
+	break;
+      default:
+	fatal("relocation %d unimplemented", (int)iter.type());
+	break;
+    }
+    if (log.is_enabled()) {
+      iter.print_current_on(&log);
+    }
+  }
+
+  // Write additional relocation data: uint per relocation
+  // Write the count first
+  int count = reloc_data.length();
+  write_bytes(&count, sizeof(int));
+  uint data_size = count * sizeof(uint);
+  for (GrowableArrayIterator<uint> iter = reloc_data.begin();
+       iter != reloc_data.end(); ++iter) {
+    uint value = *iter;
+    int n = write_bytes(&value, sizeof(uint));
+    if (n != sizeof(uint)) {
+      return false;
+      break;
+    }
+  }
+
+  if (!align_write()) {
+    return false;
+  }
+  return true; //success;
 }
 
 static void print_helper1(outputStream* st, const char* name, int count) {
