@@ -421,6 +421,10 @@ private:
   uint write_bytes(const void* buffer, uint nbytes);
   const char* addr(uint offset) const { return _load_buffer + offset; }
 
+  static SCAddressTable* addr_table() {
+    return is_on() && (cache()->_table != nullptr) ? cache()->_table : nullptr;
+  }
+
   bool _lookup_failed;       // Failed to lookup for info (skip only this code load)
   void set_lookup_failed()     { _lookup_failed = true; }
   void clear_lookup_failed()   { _lookup_failed = false; }

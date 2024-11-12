@@ -590,41 +590,41 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
 }
 
 void SCCache::init_extrs_table() {
-  SCCache* cache = SCCache::cache();
-  if (cache != nullptr && cache->_table != nullptr) {
-    cache->_table->init_extrs();
+  SCAddressTable* table = addr_table();
+  if (table != nullptr) {
+    table->init_extrs();
   }
 }
 void SCCache::init_early_stubs_table() {
-  SCCache* cache = SCCache::cache();
-  if (cache != nullptr && cache->_table != nullptr) {
-    cache->_table->init_early_stubs();
+  SCAddressTable* table = addr_table();
+  if (table != nullptr) {
+    table->init_early_stubs();
   }
 }
 void SCCache::init_shared_blobs_table() {
-  SCCache* cache = SCCache::cache();
-  if (cache != nullptr && cache->_table != nullptr) {
-    cache->_table->init_shared_blobs();
+  SCAddressTable* table = addr_table();
+  if (table != nullptr) {
+    table->init_shared_blobs();
   }
 }
 void SCCache::init_stubs_table() {
-  SCCache* cache = SCCache::cache();
-  if (cache != nullptr && cache->_table != nullptr) {
-    cache->_table->init_stubs();
+  SCAddressTable* table = addr_table();
+  if (table != nullptr) {
+    table->init_stubs();
   }
 }
 
 void SCCache::init_opto_table() {
-  SCCache* cache = SCCache::cache();
-  if (cache != nullptr && cache->_table != nullptr) {
-    cache->_table->init_opto();
+  SCAddressTable* table = addr_table();
+  if (table != nullptr) {
+    table->init_opto();
   }
 }
 
 void SCCache::init_c1_table() {
-  SCCache* cache = SCCache::cache();
-  if (cache != nullptr && cache->_table != nullptr) {
-    cache->_table->init_c1();
+  SCAddressTable* table = addr_table();
+  if (table != nullptr) {
+    table->init_c1();
   }
 }
 
@@ -1172,7 +1172,8 @@ bool SCCache::finish_write() {
           total_blobs_count++;
           if (entries_address[i].comp_level() == CompLevel_none) {
             shared_blobs_count++;
-          } else if (entries_address[i].comp_level() == CompLevel_simple) {
+          } else if ((entries_address[i].comp_level() == CompLevel_simple) ||
+                     (entries_address[i].comp_level() == CompLevel_limited_profile)) {
             c1_blobs_count++;
           } else {
             assert(entries_address[i].comp_level() == CompLevel_full_optimization, "must be!");
@@ -2481,11 +2482,6 @@ bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
     buffer->decode();
   }
 #endif
-  // we need to take a lock to stop C1 and C2 compiler threads racing to
-  // write blobs in parallel with each other or with later nmethods
-  // TODO - maybe move this up to selected callers so we only lock
-  // when saving a c1 or opto blob
-  MutexLocker ml(Compile_lock);
   if (!cache->align_write()) {
     return false;
   }
