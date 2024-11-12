@@ -408,6 +408,20 @@ class MethodType
         if (ptypes.length == 0) {
             ptypes = NO_PTYPES; trusted = true;
         }
+
+        // Hack for testing archived WeakReference
+        if (ptypes.length == 1) {
+            if (ptypes[0].getName().equals("Test1")) {
+                AOTHolder.test1();
+            }
+            if (ptypes[0].getName().equals("Test2")) {
+                AOTHolder.test2();
+            }
+            if (ptypes[0].getName().equals("Test3")) {
+                AOTHolder.test3();
+            }
+        }
+
         MethodType primordialMT = new MethodType(rtype, ptypes);
         if (AOTHolder.archivedMethodTypes != null) {
             MethodType mt = AOTHolder.archivedMethodTypes.get(primordialMT);
@@ -438,6 +452,22 @@ class MethodType
     static class AOTHolder {
         private static final @Stable MethodType[] objectOnlyTypes = new MethodType[20];
         private static @Stable HashMap<MethodType,MethodType> archivedMethodTypes;
+
+        private static Object theObject = new String("non-null");
+
+        private static WeakReference<Object> ref = new WeakReference<>(theObject);
+        static void test1() {
+            System.out.println("ref = " + ref.get());
+        }
+        static void test2() {
+            theObject = null;
+            System.gc();
+            System.gc();
+            System.out.println("ref = " + ref.get());
+        }
+        static void test3() {
+            System.out.println("ref = " + ref.get());
+        }
     }
 
     /**

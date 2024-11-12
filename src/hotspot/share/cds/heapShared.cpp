@@ -1755,7 +1755,7 @@ bool HeapShared::archive_reachable_objects_from(int level,
     ResourceMark rm;
     log_error(cds, heap)("Cannot archive object " PTR_FORMAT " of class %s", p2i(orig_obj), orig_obj->klass()->external_name());
     debug_trace();
-    exit_on_error();
+   //exit_on_error();
   }
 
   if (log_is_enabled(Debug, cds, heap) && java_lang_Class::is_instance(orig_obj)) {

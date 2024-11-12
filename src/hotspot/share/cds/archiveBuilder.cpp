@@ -1412,13 +1412,19 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
         InstanceKlass::cast(source_klass)->print_nonstatic_fields(&print_field);
 
         if (java_lang_Class::is_instance(source_oop)) {
+          oop mirror = source_oop;
           st.print(" - signature: ");
-          if (java_lang_Class::is_primitive(source_oop)) {
+          if (java_lang_Class::is_primitive(mirror)) {
             st.print("primitive ??");
           } else {
-            java_lang_Class::print_signature(source_oop, &st);            
+            java_lang_Class::print_signature(mirror, &st);            
           }
           st.cr();
+          Klass* sk = java_lang_Class::as_Klass(mirror); // The source class that this mirror represents.
+          if (sk != nullptr && sk->is_instance_klass()) {
+            st.print_cr(" - ---- static fields (%d):", java_lang_Class::static_oop_field_count(mirror));
+            InstanceKlass::cast(sk)->do_local_static_fields(&print_field);
+          }
         }
       }
     }
