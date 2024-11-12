@@ -425,12 +425,16 @@ void Method::remove_unshareable_info() {
   JFR_ONLY(REMOVE_METHOD_ID(this);)
 }
 
-void Method::restore_unshareable_info(TRAPS) {
-  assert(is_method() && is_valid_method(this), "ensure C++ vtable is restored");
+void Method::restore_adapter(TRAPS) {
   if (_adapter != nullptr) {
     _adapter->restore_unshareable_info(CHECK);
     _from_compiled_entry = _adapter->get_c2i_entry();
   }
+}
+
+void Method::restore_unshareable_info(TRAPS) {
+  assert(is_method() && is_valid_method(this), "ensure C++ vtable is restored");
+  restore_adapter(CHECK);
   if (method_data() != nullptr) {
     method_data()->restore_unshareable_info(CHECK);
   }
@@ -1584,6 +1588,7 @@ methodHandle Method::make_method_handle_intrinsic(vmIntrinsics::ID iid,
 
 #if INCLUDE_CDS
 void Method::restore_archived_method_handle_intrinsic(methodHandle m, TRAPS) {
+  m->restore_adapter(CHECK);
   if (m->adapter() != nullptr) {
     m->adapter()->restore_unshareable_info(CHECK);
     m->set_from_compiled_entry(m->adapter()->get_c2i_entry());
