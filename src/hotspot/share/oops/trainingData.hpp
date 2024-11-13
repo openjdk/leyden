@@ -25,15 +25,13 @@
 #ifndef SHARE_OOPS_TRAININGDATA_HPP
 #define SHARE_OOPS_TRAININGDATA_HPP
 
-#include "cds/archiveUtils.hpp"
+#include "classfile/classLoaderData.hpp"
 #include "classfile/compactHashtable.hpp"
 #include "compiler/compilerDefinitions.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "memory/allocation.hpp"
 #include "memory/metaspaceClosure.hpp"
 #include "oops/instanceKlass.hpp"
-#include "oops/symbolHandle.hpp"
-#include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/handles.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "utilities/count_leading_zeros.hpp"

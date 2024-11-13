@@ -32,6 +32,7 @@
 #include "memory/resourceArea.hpp"
 #include "oops/fieldStreams.inline.hpp"
 #include "oops/instanceKlass.inline.hpp"
+#include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/mutexLocker.hpp"
 
 // check_can_be_preinited() is quite costly, so we cache the results inside

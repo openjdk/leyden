@@ -25,6 +25,7 @@
 #ifndef SHARED_CDS_METHODDATAINFO_HPP
 #define SHARED_CDS_METHODDATAINFO_HPP
 
+#include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/compactHashtable.hpp"

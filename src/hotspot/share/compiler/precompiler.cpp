@@ -34,6 +34,7 @@
 #include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
 #include "oops/trainingData.hpp"
+#include "runtime/handles.inline.hpp"
 
 static int precompiled_total_count = 0;
 
