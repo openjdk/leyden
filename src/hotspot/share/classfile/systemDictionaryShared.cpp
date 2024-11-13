@@ -36,7 +36,6 @@
 #include "cds/dumpTimeClassInfo.inline.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/metaspaceShared.hpp"
-#include "cds/methodDataDictionary.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.hpp"
@@ -85,8 +84,6 @@ SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_dynamic_archive;
 DumpTimeSharedClassTable* SystemDictionaryShared::_dumptime_table = nullptr;
 DumpTimeLambdaProxyClassDictionary* SystemDictionaryShared::_dumptime_lambda_proxy_class_dictionary = nullptr;
 
-DumpTimeMethodInfoDictionary* SystemDictionaryShared::_dumptime_method_info_dictionary = nullptr;
-DumpTimeMethodInfoDictionary* SystemDictionaryShared::_cloned_dumptime_method_info_dictionary = nullptr;
 static Array<InstanceKlass*>* _archived_lambda_form_classes = nullptr;
 static Array<InstanceKlass*>* _archived_lambda_proxy_classes_boot = nullptr;
 static Array<InstanceKlass*>* _archived_lambda_proxy_classes_boot2 = nullptr;
@@ -557,7 +554,6 @@ void SystemDictionaryShared::initialize() {
     _dumptime_table = new (mtClass) DumpTimeSharedClassTable;
     _dumptime_lambda_proxy_class_dictionary =
                       new (mtClass) DumpTimeLambdaProxyClassDictionary;
-    _dumptime_method_info_dictionary = new (mtClass) DumpTimeMethodInfoDictionary;
   }
 }
 
@@ -758,7 +754,7 @@ void SystemDictionaryShared::find_all_archivable_classes() {
 // Iterate over all the classes in _dumptime_table, marking the ones that must be
 // excluded from the archive. Those that are not excluded will be archivable.
 //
-// (a) Non-hidden classes are easy. They are only check by the rules in 
+// (a) Non-hidden classes are easy. They are only check by the rules in
 //     SystemDictionaryShared::check_for_exclusion().
 // (b) For hidden classes, we only archive those that are required (i.e., they are
 //     referenced by Java objects (such as CallSites) that are reachable from
@@ -824,8 +820,6 @@ void SystemDictionaryShared::find_all_archivable_classes_impl() {
 
   cleanup_lambda_proxy_class_dictionary();
 
-  cleanup_method_info_dictionary();
-
   TrainingData::cleanup_training_data();
 }
 
@@ -882,12 +876,6 @@ void SystemDictionaryShared::dumptime_classes_do(class MetaspaceClosure* it) {
     }
   };
   _dumptime_lambda_proxy_class_dictionary->iterate_all(do_lambda);
-
-  auto do_method_info = [&] (MethodDataKey& key, DumpTimeMethodDataInfo& info) {
-    info.metaspace_pointers_do(it);
-    key.metaspace_pointers_do(it);
-  };
-  _dumptime_method_info_dictionary->iterate_all(do_method_info);
 }
 
 bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbol* name,
@@ -1348,11 +1336,6 @@ size_t SystemDictionaryShared::estimate_size_for_archive() {
       (bytesize * _dumptime_lambda_proxy_class_dictionary->_count) +
       CompactHashtableWriter::estimate_size(_dumptime_lambda_proxy_class_dictionary->_count);
 
-  size_t method_info_byte_size = align_up(sizeof(RunTimeMethodDataInfo), SharedSpaceObjectAlignment);
-  total_size +=
-      (method_info_byte_size * _dumptime_method_info_dictionary->_count) +
-      CompactHashtableWriter::estimate_size(_dumptime_method_info_dictionary->_count);
-
   return total_size;
 }
 
@@ -1470,40 +1453,6 @@ void SystemDictionaryShared::write_lambda_proxy_class_dictionary(LambdaProxyClas
   writer.dump(dictionary, "lambda proxy class dictionary");
 }
 
-class CopyMethodDataInfoToArchive : StackObj {
-  CompactHashtableWriter* _writer;
-  ArchiveBuilder* _builder;
-public:
-  CopyMethodDataInfoToArchive(CompactHashtableWriter* writer)
-      : _writer(writer), _builder(ArchiveBuilder::current()) {}
-
-  bool do_entry(MethodDataKey& key, DumpTimeMethodDataInfo& info) {
-    Method* holder = key.method();
-    log_info(cds,dynamic)("Archiving method info for %s", holder->external_name());
-
-    size_t byte_size = sizeof(RunTimeMethodDataInfo);
-    RunTimeMethodDataInfo* record = (RunTimeMethodDataInfo*)ArchiveBuilder::ro_region_alloc(byte_size);
-
-    DumpTimeMethodDataInfo data(info.method_data(), info.method_counters());
-    record->init(key, data);
-
-    uint hash = SystemDictionaryShared::hash_for_shared_dictionary((address)holder);
-    u4 delta = _builder->buffer_to_offset_u4((address)record);
-    _writer->add(hash, delta);
-
-    return true;
-  }
-};
-
-void SystemDictionaryShared::write_method_info_dictionary(MethodDataInfoDictionary* dictionary) {
-  CompactHashtableStats stats;
-  dictionary->reset();
-  CompactHashtableWriter writer(_dumptime_method_info_dictionary->_count, &stats);
-  CopyMethodDataInfoToArchive copy(&writer);
-  _dumptime_method_info_dictionary->iterate(&copy);
-  writer.dump(dictionary, "method info dictionary");
-}
-
 void SystemDictionaryShared::write_dictionary(RunTimeSharedDictionary* dictionary,
                                               bool is_builtin) {
   CompactHashtableStats stats;
@@ -1522,43 +1471,11 @@ void SystemDictionaryShared::write_to_archive(bool is_static_archive) {
   write_dictionary(&archive->_unregistered_dictionary, false);
 
   write_lambda_proxy_class_dictionary(&archive->_lambda_proxy_class_dictionary);
-
-  write_method_info_dictionary(&archive->_method_info_dictionary);
 }
 
 void SystemDictionaryShared::adjust_lambda_proxy_class_dictionary() {
   AdjustLambdaProxyClassInfo adjuster;
   _dumptime_lambda_proxy_class_dictionary->iterate(&adjuster);
-}
-
-class AdjustMethodInfo : StackObj {
-public:
-  AdjustMethodInfo() {}
-  bool do_entry(MethodDataKey& key, DumpTimeMethodDataInfo& info) {
-    // TODO: is it possible for the data to become stale/invalid?
-    MethodData*     md = info.method_data();
-    MethodCounters* mc = info.method_counters();
-    if (md != nullptr) {
-      md = ArchiveBuilder::current()->get_buffered_addr(md);
-    }
-    if (mc != nullptr) {
-      mc = ArchiveBuilder::current()->get_buffered_addr(mc);
-    }
-    assert(ArchiveBuilder::current()->is_in_buffer_space(md) || md == nullptr, "must be");
-    assert(ArchiveBuilder::current()->is_in_buffer_space(mc) || mc == nullptr, "must be");
-    if (md != nullptr) {
-      md->remove_unshareable_info();
-    }
-    if (mc != nullptr) {
-      mc->remove_unshareable_info();
-    }
-    return true;
-  }
-};
-
-void SystemDictionaryShared::adjust_method_info_dictionary() {
-  AdjustMethodInfo adjuster;
-  _dumptime_method_info_dictionary->iterate(&adjuster);
 }
 
 void SystemDictionaryShared::serialize_dictionary_headers(SerializeClosure* soc,
@@ -1568,7 +1485,6 @@ void SystemDictionaryShared::serialize_dictionary_headers(SerializeClosure* soc,
   archive->_builtin_dictionary.serialize_header(soc);
   archive->_unregistered_dictionary.serialize_header(soc);
   archive->_lambda_proxy_class_dictionary.serialize_header(soc);
-  archive->_method_info_dictionary.serialize_header(soc);
 }
 
 void SystemDictionaryShared::serialize_vm_classes(SerializeClosure* soc) {
@@ -1694,48 +1610,6 @@ public:
   }
 };
 
-class SharedMethodInfoDictionaryPrinter : StackObj {
-  outputStream* _st;
-  int _index;
-
-private:
-  static const char* tag(void* p) {
-    if (p == nullptr) {
-      return "   ";
-    } else if (MetaspaceShared::is_shared_dynamic(p)) {
-      return "<D>";
-    } else if (MetaspaceShared::is_in_shared_metaspace(p)) {
-      return "<S>";
-    } else {
-      return "???";
-    }
-  }
-public:
-  SharedMethodInfoDictionaryPrinter(outputStream* st) : _st(st), _index(0) {}
-
-  void do_value(const RunTimeMethodDataInfo* record) {
-    ResourceMark rm;
-    Method*         m  = record->method();
-    MethodCounters* mc = record->method_counters();
-    MethodData*     md = record->method_data();
-
-    _st->print_cr("%4d: %s" PTR_FORMAT " %s" PTR_FORMAT " %s" PTR_FORMAT " %s", _index++,
-                  tag(m), p2i(m),
-                  tag(mc), p2i(mc),
-                  tag(md), p2i(md),
-                  m->external_name());
-    if (Verbose) {
-      if (mc != nullptr) {
-        mc->print_on(_st);
-      }
-      if (md != nullptr) {
-        md->print_on(_st);
-      }
-      _st->cr();
-    }
-  }
-};
-
 void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
                                                    outputStream* st) {
   st->print_cr("%sShared Dictionary", prefix);
@@ -1749,11 +1623,6 @@ void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
     SharedLambdaDictionaryPrinter ldp(st, p.index());
     _lambda_proxy_class_dictionary.iterate(&ldp);
   }
-  if (!_method_info_dictionary.empty()) {
-    st->print_cr("%sShared MethodData Dictionary", prefix);
-    SharedMethodInfoDictionaryPrinter mdp(st);
-    _method_info_dictionary.iterate(&mdp);
-  }
 }
 
 void SystemDictionaryShared::ArchiveInfo::print_table_statistics(const char* prefix,
@@ -1762,7 +1631,6 @@ void SystemDictionaryShared::ArchiveInfo::print_table_statistics(const char* pre
   _builtin_dictionary.print_table_statistics(st, "Builtin Shared Dictionary");
   _unregistered_dictionary.print_table_statistics(st, "Unregistered Shared Dictionary");
   _lambda_proxy_class_dictionary.print_table_statistics(st, "Lambda Shared Dictionary");
-  _method_info_dictionary.print_table_statistics(st, "MethodData Dictionary");
 }
 
 void SystemDictionaryShared::print_shared_archive(outputStream* st, bool is_static) {
@@ -1827,24 +1695,6 @@ void SystemDictionaryShared::cleanup_lambda_proxy_class_dictionary() {
   assert_lock_strong(DumpTimeTable_lock);
   CleanupDumpTimeLambdaProxyClassTable cleanup_proxy_classes;
   _dumptime_lambda_proxy_class_dictionary->unlink(&cleanup_proxy_classes);
-}
-
-class CleanupDumpTimeMethodInfoTable : StackObj {
-public:
-  bool do_entry(MethodDataKey& key, DumpTimeMethodDataInfo& info) {
-    assert_lock_strong(DumpTimeTable_lock);
-    assert(MetaspaceShared::is_in_shared_metaspace(key.method()), "");
-    InstanceKlass* holder = key.method()->method_holder();
-    bool is_excluded = SystemDictionaryShared::check_for_exclusion(holder, nullptr);
-    return is_excluded;
-  }
-};
-
-void SystemDictionaryShared::cleanup_method_info_dictionary() {
-  assert_lock_strong(DumpTimeTable_lock);
-
-  CleanupDumpTimeMethodInfoTable cleanup_method_info;
-  _dumptime_method_info_dictionary->unlink(&cleanup_method_info);
 }
 
 void SystemDictionaryShared::create_loader_positive_lookup_cache(TRAPS) {

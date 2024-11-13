@@ -623,9 +623,6 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   SystemDictionaryShared::adjust_lambda_proxy_class_dictionary();
 
-  log_info(cds)("Adjust method info dictionary");
-  SystemDictionaryShared::adjust_method_info_dictionary();
-
   log_info(cds)("Make training data shareable");
   _builder.make_training_data_shareable();
 
@@ -760,7 +757,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     // Do this after all classes are verified by the above loop.
     // Any classes loaded from here on will be automatically excluded, so
-    // there's no need to force verification or resolve CP entries. 
+    // there's no need to force verification or resolve CP entries.
     RecordTraining = false;
     SystemDictionaryShared::ignore_new_classes();
     LambdaFormInvokers::regenerate_holder_classes(CHECK);

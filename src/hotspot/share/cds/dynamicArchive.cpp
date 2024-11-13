@@ -167,9 +167,6 @@ public:
     log_info(cds)("Adjust lambda proxy class dictionary");
     SystemDictionaryShared::adjust_lambda_proxy_class_dictionary();
 
-    log_info(cds)("Adjust method info dictionary");
-    SystemDictionaryShared::adjust_method_info_dictionary();
-
     log_info(cds)("Make training data shareable");
     make_training_data_shareable();
 

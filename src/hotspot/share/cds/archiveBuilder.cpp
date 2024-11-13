@@ -52,6 +52,8 @@
 #include "memory/resourceArea.hpp"
 #include "oops/compressedKlass.inline.hpp"
 #include "oops/instanceKlass.hpp"
+#include "oops/methodCounters.hpp"
+#include "oops/methodData.hpp"
 #include "oops/objArrayKlass.hpp"
 #include "oops/objArrayOop.inline.hpp"
 #include "oops/oopHandle.inline.hpp"
@@ -1416,7 +1418,7 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
           if (java_lang_Class::is_primitive(source_oop)) {
             st.print("primitive ??");
           } else {
-            java_lang_Class::print_signature(source_oop, &st);            
+            java_lang_Class::print_signature(source_oop, &st);
           }
           st.cr();
         }

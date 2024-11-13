@@ -48,7 +48,6 @@ class TrainingDataDumper;
 class TrainingDataSetLocker;
 class DumpTimeTrainingDataInfo;
 class RunTimeClassInfo;
-class RunTimeMethodDataInfo;
 
 class TrainingData : public Metadata {
   friend KlassTrainingData;

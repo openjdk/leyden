@@ -29,7 +29,6 @@
 #include "cds/filemap.hpp"
 #include "cds/dumpTimeClassInfo.hpp"
 #include "cds/lambdaProxyClassDictionary.hpp"
-#include "cds/methodDataDictionary.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/packageEntry.hpp"
@@ -146,15 +145,9 @@ class SystemDictionaryShared: public SystemDictionary {
     RunTimeSharedDictionary _builtin_dictionary;
     RunTimeSharedDictionary _unregistered_dictionary;
     LambdaProxyClassDictionary _lambda_proxy_class_dictionary;
-    MethodDataInfoDictionary _method_info_dictionary;
 
     const RunTimeLambdaProxyClassInfo* lookup_lambda_proxy_class(LambdaProxyClassKey* key) {
       return _lambda_proxy_class_dictionary.lookup(key, key->hash(), 0);
-    }
-
-    const RunTimeMethodDataInfo* lookup_method_info(Method* m) {
-      MethodDataKey key(m);
-      return _method_info_dictionary.lookup(&key, key.hash(), 0);
     }
 
     void print_on(const char* prefix, outputStream* st);
@@ -172,9 +165,6 @@ private:
 
   static DumpTimeSharedClassTable* _dumptime_table;
   static DumpTimeLambdaProxyClassDictionary* _dumptime_lambda_proxy_class_dictionary;
-
-  static DumpTimeMethodInfoDictionary* _dumptime_method_info_dictionary;
-  static DumpTimeMethodInfoDictionary* _cloned_dumptime_method_info_dictionary;
 
   static ArchiveInfo _static_archive;
   static ArchiveInfo _dynamic_archive;
@@ -198,9 +188,7 @@ private:
   static void write_dictionary(RunTimeSharedDictionary* dictionary,
                                bool is_builtin);
   static void write_lambda_proxy_class_dictionary(LambdaProxyClassDictionary* dictionary);
-  static void write_method_info_dictionary(MethodDataInfoDictionary* dictionary);
   static void cleanup_lambda_proxy_class_dictionary();
-  static void cleanup_method_info_dictionary();
   static void reset_registered_lambda_proxy_class(InstanceKlass* ik);
   static bool is_registered_lambda_proxy_class(InstanceKlass* ik);
   static bool check_for_exclusion_impl(InstanceKlass* k);
@@ -323,8 +311,6 @@ public:
   static void write_to_archive(bool is_static_archive = true);
   static void adjust_lambda_proxy_class_dictionary();
 
-  static void adjust_method_info_dictionary();
-
   static void serialize_dictionary_headers(class SerializeClosure* soc,
                                            bool is_static_archive = true);
   static void serialize_vm_classes(class SerializeClosure* soc);
@@ -335,23 +321,6 @@ public:
   static bool is_dumptime_table_empty() NOT_CDS_RETURN_(true);
   static bool is_supported_invokedynamic(BootstrapInfo* bsi) NOT_CDS_RETURN_(false);
   DEBUG_ONLY(static bool class_loading_may_happen() {return _class_loading_may_happen;})
-
-  static MethodData* lookup_method_data(Method* m) {
-    const RunTimeMethodDataInfo* info = _dynamic_archive.lookup_method_info(m);
-    if (info != nullptr) {
-      return info->method_data();
-    }
-    return nullptr;
-  }
-
-  static MethodCounters* lookup_method_counters(Method* m) {
-    const RunTimeMethodDataInfo* info = _dynamic_archive.lookup_method_info(m);
-    if (info != nullptr) {
-      return info->method_counters();
-    }
-    return nullptr;
-  }
-
   // Do not archive any new InstanceKlasses that are loaded after this method is called.
   // This avoids polluting the archive with classes that are only used by GenerateJLIClassesHelper.
   static void ignore_new_classes();
