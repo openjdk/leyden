@@ -382,8 +382,11 @@ const int ObjectAlignmentInBytes = 8;
          "separated by commas")                                             \
          constraint(ControlIntrinsicConstraintFunc,AfterErgo)               \
                                                                             \
-  develop(bool, AddRuntimeUpcallsNOP, false,                                \
-          "Add NOP upcall to all methods for testing")                      \
+  develop(ccstr, AddRuntimeUpcallsNOP, nullptr,                             \
+          "Register a runtime upcall for testing."                          \
+          "Format is '[upcallType]:[methodFilter]'"                         \
+          "where upcallType is one of 'onMethodEntry', 'onMethodExit'"      \
+          "and methodFilter is one of 'none', 'all'")                       \
                                                                             \
   develop(bool, TraceCallFixup, false,                                      \
           "Trace all call fixups")                                          \

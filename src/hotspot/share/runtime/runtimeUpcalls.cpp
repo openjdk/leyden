@@ -69,6 +69,7 @@ void RuntimeUpcalls::mark_for_upcalls(RuntimeUpcallType upcallType, const method
 }
 
 bool RuntimeUpcalls::register_upcall(RuntimeUpcallType upcallType, RuntimeUpcallInfo* info) {
+  assert(upcallType != onMethodExit, "Upcalls on method exit are not supported yet");
   assert(info != nullptr, "upcall info is null");
   if (_upcalls[upcallType] == nullptr) {
     _upcalls[upcallType] = new (mtServiceability) GrowableArray<RuntimeUpcallInfo*>(1, mtServiceability);
@@ -124,7 +125,7 @@ bool RuntimeUpcalls::register_upcall(RuntimeUpcallType upcallType, const char* u
   assert(upcallType < numTypes, "invalid upcall type");
   assert(_state == Open, "upcalls are not open for registration");
   if (_state != Open) return false;
-  return register_upcall(upcallType, RuntimeUpcallInfo::Create(upcallName, upcall, methodFilterCallback));
+  return register_upcall(upcallType, RuntimeUpcallInfo::create(upcallName, upcall, methodFilterCallback));
 }
 
 RuntimeUpcallInfo* RuntimeUpcalls::get_next_upcall(RuntimeUpcallType upcallType, MethodDetails& methodDetails, RuntimeUpcallInfo* prevUpcallInfo) {

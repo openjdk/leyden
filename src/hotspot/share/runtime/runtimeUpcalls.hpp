@@ -31,8 +31,8 @@
 #include "utilities/macros.hpp"
 
 enum RuntimeUpcallType{
-  onMethodEntry = 0,
-  onMethodExit,
+  onMethodEntry = 0, // Upcalls triggered on method entry AFTER tracing
+  onMethodExit,      // Not implemented yet 
   numTypes
 };
 
@@ -62,7 +62,7 @@ private:
   int get_index() const { assert(_index >= 0, "invalid index"); return _index; }
 
 public:
-  static RuntimeUpcallInfo* Create(const char* upcallName, const RuntimeUpcall upcall, const RuntimeUpcallMethodFilterCallback methodFilter) {
+  static RuntimeUpcallInfo* create(const char* upcallName, const RuntimeUpcall upcall, const RuntimeUpcallMethodFilterCallback methodFilter) {
     assert(upcallName != nullptr, "upcall name must be provided");
     assert(upcall != nullptr, "upcall must be provided");
     assert(methodFilter != nullptr, "method filter must be provided");

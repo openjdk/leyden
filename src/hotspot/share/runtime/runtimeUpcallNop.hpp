@@ -28,9 +28,8 @@
 #include "memory/allStatic.hpp"
 #include "utilities/globalDefinitions.hpp"
 
-
-#include "code/codeBlob.hpp"
-#include "code/vmreg.hpp"
+//#include "code/codeBlob.hpp"
+//#include "code/vmreg.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "memory/allStatic.hpp"
 #include "memory/resourceArea.hpp"
@@ -40,6 +39,7 @@ class MethodDetails;
 
 class RuntimeUpcallNop : AllStatic {
 public:
+  static bool methodFilterResult;
   static bool filter_method_callback(MethodDetails& methodDetails);
   static void nop_method(TRAPS);
 };

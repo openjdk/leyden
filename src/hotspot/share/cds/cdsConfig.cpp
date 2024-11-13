@@ -672,7 +672,7 @@ bool CDSConfig::is_dumping_preimage_static_archive() {
 }
 
 bool CDSConfig::is_dumping_preimage_static_archive_with_triggers() {
-  return _is_dumping_static_archive && CacheDataStore != nullptr && CDSPreimage == nullptr && !FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry);
+  return (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry)) && is_dumping_preimage_static_archive();
 }
 
 bool CDSConfig::is_dumping_final_static_archive() {

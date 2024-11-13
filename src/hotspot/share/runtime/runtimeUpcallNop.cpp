@@ -23,15 +23,57 @@
  */
 
 #include "precompiled.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/runtimeUpcallNop.hpp"
 #include "runtime/runtimeUpcalls.hpp"
 
+bool RuntimeUpcallNop::methodFilterResult = false;
+
 bool runtimeUpcallNop_register_upcalls()
 {
-  if(!AddRuntimeUpcallsNOP) return true;
+  if(FLAG_IS_DEFAULT(AddRuntimeUpcallsNOP)) return true;
+
+  const char* methodEntry = "onMethodEntry:";
+  const size_t methodEntryLen = strlen(methodEntry);
+  const char* methodExit = "onMethodExit:";
+  const size_t methodExitLen = strlen(methodExit);
+
+  const char* filterAll = "all";
+  const size_t filterAllLen = strlen(filterAll);
+  const char* filterNone = "none";
+  const size_t filterNoneLen = strlen(filterNone);
+
+  const char* filterOption = nullptr;
+  RuntimeUpcallType upcallType = RuntimeUpcallType::onMethodEntry;
+
+  if (strncmp(AddRuntimeUpcallsNOP, methodEntry, methodEntryLen) == 0) {
+    filterOption = AddRuntimeUpcallsNOP + methodEntryLen;
+    upcallType = RuntimeUpcallType::onMethodEntry;
+  } else if (strncmp(AddRuntimeUpcallsNOP, methodExit, methodExitLen) == 0) {
+    filterOption = AddRuntimeUpcallsNOP + methodExitLen;
+    upcallType = RuntimeUpcallType::onMethodExit;
+  } else {
+    ttyLocker ttyl;
+    tty->print_cr("An error occurred during parsing AddRuntimeUpcallsNOP");
+    tty->print_cr("Error! Expected 'onMethodEntry:' or 'onMethodExit:'");
+    return false;
+  }
+
+  assert(filterOption != nullptr, "sanity");
+  if (strncmp(filterOption, filterAll, filterAllLen) == 0) {
+    RuntimeUpcallNop::methodFilterResult = true;
+  } else if (strncmp(filterOption, filterNone, filterNoneLen) == 0) {
+    RuntimeUpcallNop::methodFilterResult = false;
+  } else {
+    ttyLocker ttyl;
+    tty->print_cr("An error occurred during parsing AddRuntimeUpcallsNOP");
+    tty->print_cr("Error! Expected 'all' or 'none'");
+    return false;
+  }
+
   if (RuntimeUpcalls::register_upcall(
-        RuntimeUpcallType::onMethodEntry,
+        upcallType,
         "nop_method",
         RuntimeUpcallNop::nop_method,
         RuntimeUpcallNop::filter_method_callback)) {
@@ -42,7 +84,7 @@ bool runtimeUpcallNop_register_upcalls()
 
 bool RuntimeUpcallNop::filter_method_callback(MethodDetails& methodDetails)
 {
-  return false;
+  return methodFilterResult;
 }
 
 JRT_ENTRY(void, RuntimeUpcallNop::nop_method(JavaThread* current))
