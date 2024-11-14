@@ -32,7 +32,7 @@ bool RuntimeUpcallNop::methodFilterResult = false;
 
 bool runtimeUpcallNop_register_upcalls()
 {
-  if(FLAG_IS_DEFAULT(AddRuntimeUpcallsNOP)) return true;
+  if(AddRuntimeUpcallsNOP == nullptr || FLAG_IS_DEFAULT(AddRuntimeUpcallsNOP)) return true;
 
   const char* methodEntry = "onMethodEntry:";
   const size_t methodEntryLen = strlen(methodEntry);
