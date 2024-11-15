@@ -46,12 +46,13 @@ bool runtimeUpcallNop_register_upcalls()
 
   const char* filterOption = nullptr;
   RuntimeUpcallType upcallType = RuntimeUpcallType::onMethodEntry;
+  const char* command = AddRuntimeUpcallsNOP == nullptr ? "" : AddRuntimeUpcallsNOP;
 
-  if (strncmp(AddRuntimeUpcallsNOP, methodEntry, methodEntryLen) == 0) {
-    filterOption = AddRuntimeUpcallsNOP + methodEntryLen;
+  if (strncmp(command, methodEntry, methodEntryLen) == 0) {
+    filterOption = command + methodEntryLen;
     upcallType = RuntimeUpcallType::onMethodEntry;
-  } else if (strncmp(AddRuntimeUpcallsNOP, methodExit, methodExitLen) == 0) {
-    filterOption = AddRuntimeUpcallsNOP + methodExitLen;
+  } else if (strncmp(command, methodExit, methodExitLen) == 0) {
+    filterOption = command + methodExitLen;
     upcallType = RuntimeUpcallType::onMethodExit;
   } else {
     ttyLocker ttyl;

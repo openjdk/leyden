@@ -32,7 +32,7 @@
 
 enum RuntimeUpcallType{
   onMethodEntry = 0, // Upcalls triggered on method entry AFTER tracing
-  onMethodExit,      // Not implemented yet 
+  onMethodExit,      // Not implemented yet
   numTypes
 };
 
