@@ -94,13 +94,20 @@ char* CDSConfig::default_archive_path() {
     os::jvm_path(jvm_path, sizeof(jvm_path));
     char *end = strrchr(jvm_path, *os::file_separator());
     if (end != nullptr) *end = '\0';
-    size_t jvm_path_len = strlen(jvm_path);
-    size_t file_sep_len = strlen(os::file_separator());
-    const size_t len = jvm_path_len + file_sep_len + 20;
-    _default_archive_path = NEW_C_HEAP_ARRAY(char, len, mtArguments);
-    jio_snprintf(_default_archive_path, len,
-                LP64_ONLY(!UseCompressedOops ? "%s%sclasses_nocoops.jsa":) "%s%sclasses.jsa",
-                jvm_path, os::file_separator());
+    stringStream tmp;
+    tmp.print("%s%sclasses", jvm_path, os::file_separator());
+#ifdef _LP64
+    if (!UseCompressedOops) {
+      tmp.print_raw("_nocoops");
+    }
+    if (UseCompactObjectHeaders) {
+      // Note that generation of xxx_coh.jsa variants require
+      // --enable-cds-archive-coh at build time
+      tmp.print_raw("_coh");
+    }
+#endif
+    tmp.print_raw(".jsa");
+    _default_archive_path = os::strdup(tmp.base());
   }
   return _default_archive_path;
 }
@@ -266,7 +273,9 @@ static char* bad_module_prop_key   = nullptr;
 static char* bad_module_prop_value = nullptr;
 
 void CDSConfig::check_internal_module_property(const char* key, const char* value) {
-  if (Arguments::is_internal_module_property(key) && !Arguments::is_module_path_property(key)) {
+  if (Arguments::is_internal_module_property(key) &&
+      !Arguments::is_module_path_property(key) &&
+      !Arguments::is_add_modules_property(key)) {
     stop_using_optimized_module_handling();
     if (bad_module_prop_key == nullptr) {
       // We don't want to print an unconditional warning here, as we are still processing the command line.

@@ -146,37 +146,33 @@ PerfCounter*    ClassLoader::_perf_resolve_mh_count = nullptr;
 PerfCounter*    ClassLoader::_perf_resolve_mt_count = nullptr;
 
 void ClassLoader::print_counters(outputStream *st) {
-  // The counters are only active if the logging is enabled, but
-  // we print to the passed in outputStream as requested.
-  if (UsePerfData && (log_is_enabled(Info, perf, class, link) || log_is_enabled(Info, init))) {
-      st->print_cr("ClassLoader:");
-      st->print_cr(   "  clinit:               " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
-                   ClassLoader::class_init_time_ms(), ClassLoader::class_init_count());
-      st->print_cr("  link methods:         " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
-                   Management::ticks_to_us(_perf_ik_link_methods_time->get_value())   , _perf_ik_link_methods_count->get_value());
-      st->print_cr("  method adapters:      " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
-                   Management::ticks_to_us(_perf_method_adapters_time->get_value())   , _perf_method_adapters_count->get_value());
-      if (CountBytecodes || CountBytecodesPerThread) {
-        st->print_cr("; executed " JLONG_FORMAT " bytecodes", ClassLoader::class_init_bytecodes_count());
-      }
-      st->print_cr("  resolve...");
-      st->print_cr("    invokedynamic:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_resolve_indy_time->elapsed_counter_value_us(),
-                   _perf_resolve_indy_time->thread_counter_value_us(),
-                   _perf_resolve_indy_count->get_value());
-      st->print_cr("    invokehandle:    " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_resolve_invokehandle_time->elapsed_counter_value_us(),
-                   _perf_resolve_invokehandle_time->thread_counter_value_us(),
-                   _perf_resolve_invokehandle_count->get_value());
-      st->print_cr("    CP_MethodHandle: " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_resolve_mh_time->elapsed_counter_value_us(),
-                   _perf_resolve_mh_time->thread_counter_value_us(),
-                   _perf_resolve_mh_count->get_value());
-      st->print_cr("    CP_MethodType:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_resolve_mt_time->elapsed_counter_value_us(),
-                   _perf_resolve_mt_time->thread_counter_value_us(),
-                   _perf_resolve_mt_count->get_value());
+  st->print_cr("ClassLoader:");
+  st->print_cr(   "  clinit:               " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
+               ClassLoader::class_init_time_ms(), ClassLoader::class_init_count());
+  st->print_cr("  link methods:         " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
+               Management::ticks_to_us(_perf_ik_link_methods_time->get_value())   , _perf_ik_link_methods_count->get_value());
+  st->print_cr("  method adapters:      " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
+               Management::ticks_to_us(_perf_method_adapters_time->get_value())   , _perf_method_adapters_count->get_value());
+  if (CountBytecodes || CountBytecodesPerThread) {
+    st->print_cr("; executed " JLONG_FORMAT " bytecodes", ClassLoader::class_init_bytecodes_count());
   }
+  st->print_cr("  resolve...");
+  st->print_cr("    invokedynamic:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
+               _perf_resolve_indy_time->elapsed_counter_value_us(),
+               _perf_resolve_indy_time->thread_counter_value_us(),
+               _perf_resolve_indy_count->get_value());
+  st->print_cr("    invokehandle:    " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
+               _perf_resolve_invokehandle_time->elapsed_counter_value_us(),
+               _perf_resolve_invokehandle_time->thread_counter_value_us(),
+               _perf_resolve_invokehandle_count->get_value());
+  st->print_cr("    CP_MethodHandle: " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
+               _perf_resolve_mh_time->elapsed_counter_value_us(),
+               _perf_resolve_mh_time->thread_counter_value_us(),
+               _perf_resolve_mh_count->get_value());
+  st->print_cr("    CP_MethodType:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
+               _perf_resolve_mt_time->elapsed_counter_value_us(),
+               _perf_resolve_mt_time->thread_counter_value_us(),
+               _perf_resolve_mt_count->get_value());
 }
 
 GrowableArray<ModuleClassPathList*>* ClassLoader::_patch_mod_entries = nullptr;
@@ -320,8 +316,7 @@ ClassFileStream* ClassPathDirEntry::open_stream(JavaThread* current, const char*
         // Resource allocated
         return new ClassFileStream(buffer,
                                    checked_cast<int>(st.st_size),
-                                   _dir,
-                                   ClassFileStream::verify);
+                                   _dir);
       }
     }
   }
@@ -405,8 +400,7 @@ ClassFileStream* ClassPathZipEntry::open_stream(JavaThread* current, const char*
   // Resource allocated
   return new ClassFileStream(buffer,
                              filesize,
-                             _zip_name,
-                             ClassFileStream::verify);
+                             _zip_name);
 }
 
 DEBUG_ONLY(ClassPathImageEntry* ClassPathImageEntry::_singleton = nullptr;)
@@ -488,7 +482,6 @@ ClassFileStream* ClassPathImageEntry::open_stream_for_loader(JavaThread* current
     return new ClassFileStream((u1*)data,
                                checked_cast<int>(size),
                                _name,
-                               ClassFileStream::verify,
                                true); // from_boot_loader_modules_image
   }
 
@@ -1266,8 +1259,6 @@ InstanceKlass* ClassLoader::load_class(Symbol* name, PackageEntry* pkg_entry, bo
     return nullptr;
   }
 
-  stream->set_verify(ClassLoaderExt::should_verify(classpath_index));
-
   ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
   Handle protection_domain;
   ClassLoadInfo cl_info(protection_domain);
@@ -1310,7 +1301,7 @@ static char decode_percent_encoded(const char *str, size_t& index) {
     hex[1] = str[index + 2];
     hex[2] = '\0';
     index += 2;
-    return (char) strtol(hex, NULL, 16);
+    return (char) strtol(hex, nullptr, 16);
   }
   return str[index];
 }

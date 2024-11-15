@@ -33,6 +33,7 @@
 #include "runtime/atomic.hpp"
 #include "runtime/globals.hpp"
 #include "runtime/os.hpp"
+#include "runtime/safepointMechanism.hpp"
 #include "runtime/threadHeapSampler.hpp"
 #include "runtime/threadLocalStorage.hpp"
 #include "runtime/threadStatisticalInfo.hpp"
@@ -111,6 +112,7 @@ class Thread: public ThreadShadow {
   friend class VMErrorCallbackMark;
   friend class VMStructs;
   friend class JVMCIVMStructs;
+  friend class JavaThread;
  private:
 
 #ifndef USE_LIBRARY_BASED_TLS_ONLY
@@ -137,6 +139,11 @@ class Thread: public ThreadShadow {
   }
 
  private:
+  // Poll data is used in generated code for safepoint polls.
+  // It is important for performance to put this at lower offset
+  // in Thread. The accessors are in JavaThread.
+  SafepointMechanism::ThreadData _poll_data;
+
   // Thread local data area available to the GC. The internal
   // structure and contents of this data area is GC-specific.
   // Only GC and GC barrier code should access this data area.
@@ -158,9 +165,6 @@ class Thread: public ThreadShadow {
   // const char* _exception_file;                   // file information for exception (debugging only)
   // int         _exception_line;                   // line information for exception (debugging only)
  protected:
-
-  DEBUG_ONLY(static Thread* _starting_thread;)
-
   // JavaThread lifecycle support:
   friend class SafeThreadsListPtr;  // for _threads_list_ptr, cmpxchg_threads_hazard_ptr(), {dec_,inc_,}nested_threads_hazard_ptr_cnt(), {g,s}et_threads_hazard_ptr(), inc_nested_handle_cnt(), tag_hazard_ptr() access
   friend class ScanHazardPtrGatherProtectedThreadsClosure;  // for cmpxchg_threads_hazard_ptr(), get_threads_hazard_ptr(), is_hazard_ptr_tagged() access
@@ -206,12 +210,15 @@ class Thread: public ThreadShadow {
   static bool is_JavaThread_protected_by_TLH(const JavaThread* target);
 
  private:
+  DEBUG_ONLY(static Thread* _starting_thread;)
   DEBUG_ONLY(bool _suspendible_thread;)
   DEBUG_ONLY(bool _indirectly_suspendible_thread;)
   DEBUG_ONLY(bool _indirectly_safepoint_thread;)
 
  public:
 #ifdef ASSERT
+  static bool is_starting_thread(const Thread* t);
+
   void set_suspendible_thread()   { _suspendible_thread = true; }
   void clear_suspendible_thread() { _suspendible_thread = false; }
   bool is_suspendible_thread()    { return _suspendible_thread; }
@@ -495,9 +502,9 @@ class Thread: public ThreadShadow {
     return is_in_stack_range_incl(adr, os::current_stack_pointer());
   }
 
-  // Sets this thread as starting thread. Returns failure if thread
+  // Sets the argument thread as starting thread. Returns failure if thread
   // creation fails due to lack of memory, too many threads etc.
-  bool set_as_starting_thread();
+  static bool set_as_starting_thread(JavaThread* jt);
 
 protected:
   // OS data associated with the thread

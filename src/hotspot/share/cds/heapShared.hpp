@@ -144,13 +144,18 @@ class HeapShared: AllStatic {
   friend class VerifySharedOopClosure;
 
 public:
-  // Can this VM write a heap region into the CDS archive? Currently only {G1|Parallel|Serial|Epsilon|Shenandoah}+compressed_cp
+  // Can this VM write a heap region into the CDS archive?
   static bool can_write() {
     CDS_JAVA_HEAP_ONLY(
       if (_disable_writing) {
         return false;
       }
-      return (UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC || UseShenandoahGC) && UseCompressedClassPointers;
+      // Need compressed class pointers for heap region dump.
+      if (!UseCompressedClassPointers) {
+        return false;
+      }
+      // Almost all GCs support heap region dump, except ZGC (so far).
+      return !UseZGC;
     )
     NOT_CDS_JAVA_HEAP(return false;)
   }

@@ -133,6 +133,9 @@ const size_t minimumSymbolTableSize = 1024;
           "Always use HeapBasedNarrowOop mode, so that AOT code can be "    \
           "always work regardless of runtime heap range")                   \
                                                                             \
+  product(bool, UseCompactObjectHeaders, false, EXPERIMENTAL,               \
+          "Use compact 64-bit object headers in 64-bit VM")                 \
+                                                                            \
   product(int, ObjectAlignmentInBytes, 8,                                   \
           "Default object alignment in bytes, 8 is minimum")                \
           range(8, 256)                                                     \
@@ -149,6 +152,7 @@ const size_t minimumSymbolTableSize = 1024;
                            constraint)
 const bool UseCompressedOops = false;
 const bool UseCompressedClassPointers = false;
+const bool UseCompactObjectHeaders = false;
 const int ObjectAlignmentInBytes = 8;
 
 #endif // _LP64
@@ -682,9 +686,6 @@ const int ObjectAlignmentInBytes = 8;
   develop(bool, PrintCodeCacheExtension, false,                             \
           "Print extension of code cache")                                  \
                                                                             \
-  develop(bool, UsePrivilegedStack, true,                                   \
-          "Enable the security JVM functions")                              \
-                                                                            \
   product(bool, ClassUnloading, true,                                       \
           "Do unloading of classes")                                        \
                                                                             \
@@ -700,9 +701,6 @@ const int ObjectAlignmentInBytes = 8;
   product(bool, AllowParallelDefineClass, false,                            \
           "Allow parallel defineClass requests for class loaders "          \
           "registering as parallel capable")                                \
-                                                                            \
-  product_pd(bool, DontYieldALot,                                           \
-             "(Deprecated) Throw away obvious excess yield calls")          \
                                                                             \
   product(bool, DisablePrimordialThreadGuardPages, false, EXPERIMENTAL,     \
                "Disable the use of stack guard pages if the JVM is loaded " \
@@ -2021,6 +2019,10 @@ const int ObjectAlignmentInBytes = 8;
                                                                             \
   product(bool, StressSecondarySupers, false, DIAGNOSTIC,                   \
           "Use a terrible hash function in order to generate many collisions.") \
+                                                                            \
+  product(bool, UseThreadsLockThrottleLock, true, DIAGNOSTIC,               \
+          "Use an extra lock during Thread start and exit to alleviate"     \
+          "contention on Threads_lock.")                                    \
 
 
 // end of RUNTIME_FLAGS

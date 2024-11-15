@@ -81,6 +81,7 @@ class MetaspaceShared : AllStatic {
 #endif
 
 private:
+  static void exercise_runtime_cds_code(TRAPS) NOT_CDS_RETURN;
   static void preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) NOT_CDS_RETURN;
   static void preload_classes(TRAPS) NOT_CDS_RETURN;
 
@@ -120,6 +121,7 @@ public:
   static void make_method_handle_intrinsics_shareable() NOT_CDS_RETURN;
   static void write_method_handle_intrinsics() NOT_CDS_RETURN;
   static Array<Method*>* archived_method_handle_intrinsics() { return _archived_method_handle_intrinsics; }
+  static void early_serialize(SerializeClosure* sc) NOT_CDS_RETURN;
   static void serialize(SerializeClosure* sc) NOT_CDS_RETURN;
 
   // JVM/TI RedefineClasses() support:

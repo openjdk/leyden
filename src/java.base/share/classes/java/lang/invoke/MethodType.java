@@ -28,9 +28,6 @@ package java.lang.invoke;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.Constable;
 import java.lang.constant.MethodTypeDesc;
-import java.lang.ref.Reference;
-import java.lang.ref.ReferenceQueue;
-import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.function.Supplier;
@@ -38,13 +35,10 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Stream;
 
 import jdk.internal.misc.CDS;
 import jdk.internal.util.ReferencedKeySet;
@@ -53,7 +47,6 @@ import jdk.internal.vm.annotation.Stable;
 import sun.invoke.util.BytecodeDescriptor;
 import sun.invoke.util.VerifyType;
 import sun.invoke.util.Wrapper;
-import sun.security.util.SecurityConstants;
 
 import static java.lang.invoke.MethodHandleStatics.UNSAFE;
 import static java.lang.invoke.MethodHandleStatics.newIllegalArgumentException;
@@ -242,7 +235,7 @@ class MethodType
     }
 
     static final ReferencedKeySet<MethodType> internTable =
-        ReferencedKeySet.create(false, true, new Supplier<>() {
+        ReferencedKeySet.create(false, new Supplier<>() {
             @Override
             public Map<ReferenceKey<MethodType>, ReferenceKey<MethodType>> get() {
                 return new ConcurrentHashMap<>(512);
@@ -1200,21 +1193,11 @@ class MethodType
      * @throws NullPointerException if the string is {@code null}
      * @throws IllegalArgumentException if the string is not a method descriptor
      * @throws TypeNotPresentException if a named type cannot be found
-     * @throws SecurityException if the security manager is present and
-     *         {@code loader} is {@code null} and the caller does not have the
-     *         {@link RuntimePermission}{@code ("getClassLoader")}
      * @jvms 4.3.3 Method Descriptors
      */
     public static MethodType fromMethodDescriptorString(String descriptor, ClassLoader loader)
         throws IllegalArgumentException, TypeNotPresentException
     {
-        if (loader == null) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
-            }
-        }
         return fromDescriptor(descriptor,
                               (loader == null) ? ClassLoader.getSystemClassLoader() : loader);
     }
