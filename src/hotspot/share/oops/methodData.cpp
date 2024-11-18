@@ -1606,7 +1606,8 @@ void MethodData::print_value_on(outputStream* st) const {
 }
 
 void MethodData::print_data_on(outputStream* st) const {
-  ConditionalMutexLocker ml(extra_data_lock(), !extra_data_lock()->owned_by_self(),
+  Mutex* lock = const_cast<MethodData*>(this)->extra_data_lock();
+  ConditionalMutexLocker ml(lock, !lock->owned_by_self(),
                             Mutex::_no_safepoint_check_flag);
   ResourceMark rm;
   ProfileData* data = first_data();

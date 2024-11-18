@@ -1710,6 +1710,9 @@ void InstanceKlass::call_class_initializer(TRAPS) {
 
   methodHandle h_method(THREAD, class_initializer());
   assert(!is_initialized(), "we cannot initialize twice");
+
+#if 0
+  // FIXME -- revive this code added to leyden/premain for <clinit> profiling
   int init_id = log_class_init(THREAD, this);
   if (h_method() != nullptr) {
     JavaCallArguments args; // No arguments
@@ -1760,12 +1763,25 @@ void InstanceKlass::call_class_initializer(TRAPS) {
                 h_method() == nullptr ? "(no method)" : "", p2i(this),
                 THREAD->name());
   }
+#else
+  static int call_class_initializer_counter = 0;   // for debugging
+  LogTarget(Info, class, init) lt;
+  if (lt.is_enabled()) {
+    ResourceMark rm(THREAD);
+    LogStream ls(lt);
+    ls.print("%d Initializing ", call_class_initializer_counter++);
+    name()->print_value_on(&ls);
+    ls.print_cr("%s (" PTR_FORMAT ") by thread \"%s\"",
+                h_method() == nullptr ? "(no method)" : "", p2i(this),
+                THREAD->name());
+  }
   if (h_method() != nullptr) {
     ThreadInClassInitializer ticl(THREAD, this); // Track class being initialized
     JavaCallArguments args; // No arguments
     JavaValue result(T_VOID);
     JavaCalls::call(&result, h_method, &args, CHECK); // Static call (no args)
   }
+#endif
 }
 
 
@@ -2877,22 +2893,6 @@ bool InstanceKlass::can_be_verified_at_dumptime() const {
   }
   return true;
 }
-<<<<<<< HEAD
-
-bool InstanceKlass::methods_contain_jsr_bytecode() const {
-  Thread* thread = Thread::current();
-  for (int i = 0; i < _methods->length(); i++) {
-    methodHandle m(thread, _methods->at(i));
-    BytecodeStream bcs(m);
-    while (!bcs.is_last_bytecode()) {
-      Bytecodes::Code opcode = bcs.next();
-      if (opcode == Bytecodes::_jsr || opcode == Bytecodes::_jsr_w) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
 int InstanceKlass::shared_class_loader_type() const {
   if (is_shared_boot_class()) {
@@ -2905,8 +2905,7 @@ int InstanceKlass::shared_class_loader_type() const {
     return ClassLoader::OTHER;
   }
 }
-=======
->>>>>>> master
+
 #endif // INCLUDE_CDS
 
 #if INCLUDE_JVMTI

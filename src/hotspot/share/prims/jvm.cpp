@@ -4011,8 +4011,6 @@ JVM_END
   macro(JVM_IsInterface) \
   macro(JVM_IsHiddenClass) \
   macro(JVM_GetProtectionDomain) \
-  macro(JVM_GetInheritedAccessControlContext) \
-  macro(JVM_GetStackAccessControlContext) \
   macro(JVM_FindScopedValueBindings) \
   macro(JVM_IsArrayClass) \
   macro(JVM_IsPrimitiveClass) \
@@ -4149,7 +4147,6 @@ JVM_END
   macro(JVM_VirtualThreadEnd) \
   macro(JVM_VirtualThreadMount) \
   macro(JVM_VirtualThreadUnmount) \
-  macro(JVM_VirtualThreadHideFrames) \
   macro(JVM_GetClassFileVersion) \
   macro(JVM_EnsureMaterializedForStackWalk_func) \
   macro(JVM_PrintWarningAtDynamicAgentLoad)
