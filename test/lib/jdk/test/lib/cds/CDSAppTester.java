@@ -260,7 +260,6 @@ abstract public class CDSAppTester {
         return executeAndCheck(cmdLine, runMode, dynamicArchiveFile, dynamicArchiveFileLog);
     }
 
-
     private OutputAnalyzer dumpCodeCache() throws Exception {
         RunMode runMode = RunMode.DUMP_CODECACHE;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
@@ -378,6 +377,10 @@ abstract public class CDSAppTester {
             cmdLine = StringArrayUtils.concat(cmdLine, "-XX:SharedArchiveFile=" + dynamicArchiveFile);
         } else {
             cmdLine = StringArrayUtils.concat(cmdLine, "-XX:CacheDataStore=" + cdsFile);
+        }
+
+        if (extraVmArgs != null) {
+            cmdLine = StringArrayUtils.concat(cmdLine, extraVmArgs);
         }
 
         if (extraVmArgs != null) {

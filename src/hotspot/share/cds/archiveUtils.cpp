@@ -394,35 +394,6 @@ void ArchiveUtils::log_to_classlist(BootstrapInfo* bootstrap_specifier, TRAPS) {
   }
 }
 
-// Used in logging: "boot", "boot2", "plat", "app" and "unreg";
-const char* ArchiveUtils::class_category(Klass* k) {
-  if (ArchiveBuilder::is_active() && ArchiveBuilder::current()->is_in_buffer_space(k)) {
-    k = ArchiveBuilder::current()->get_source_addr(k);
-  }
-
-  if (k->is_array_klass()) {
-    return "array";
-  } else {
-    oop loader = k->class_loader();
-    if (loader == nullptr) {
-      if (k->module() != nullptr &&
-          k->module()->name() != nullptr &&
-          k->module()->name()->equals("java.base")) {
-        return "boot"; // boot classes in java.base
-      } else {
-        return "boot2"; // boot classes outside of java.base
-      }
-    } else {
-      if (loader == SystemDictionary::java_platform_loader()) {
-        return "plat";
-      } else if (loader == SystemDictionary::java_system_loader()) {
-        return "app";
-      } else {
-        return "unreg";
-      }
-    }
-  }
-}
 
 // "boot", "platform", "app" or nullptr
 const char* ArchiveUtils::builtin_loader_name_or_null(oop loader) {
@@ -471,6 +442,14 @@ oop ArchiveUtils::builtin_loader_from_type(int loader_type) {
     ShouldNotReachHere();
     return nullptr;
   }
+}
+
+bool ArchiveUtils::has_aot_initialized_mirror(InstanceKlass* src_ik) {
+  if (SystemDictionaryShared::is_excluded_class(src_ik)) {
+    assert(!ArchiveBuilder::current()->has_been_buffered(src_ik), "sanity");
+    return false;
+  }
+  return ArchiveBuilder::current()->get_buffered_addr(src_ik)->has_aot_initialized_mirror();
 }
 
 size_t HeapRootSegments::size_in_bytes(size_t seg_idx) {

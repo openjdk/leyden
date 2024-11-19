@@ -262,11 +262,8 @@ class ArchiveUtils {
 public:
   static const uintx MAX_SHARED_DELTA = 0x7FFFFFFF;
   static void log_to_classlist(BootstrapInfo* bootstrap_specifier, TRAPS) NOT_CDS_RETURN;
-
+  static bool has_aot_initialized_mirror(InstanceKlass* src_ik);
   template <typename T> static Array<T>* archive_array(GrowableArray<T>* tmp_array);
-
-  // Used in logging: "boot", "boot2", "plat", "app" and "unreg";
-  static const char* class_category(Klass* k);
 
   static const char* builtin_loader_name_or_null(oop loader); // "boot", "platform", "app", or nullptr
   static const char* builtin_loader_name(oop loader); // "boot", "platform", or "app". Asserts if not a built-in-loader.

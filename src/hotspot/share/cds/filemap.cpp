@@ -2625,6 +2625,11 @@ bool FileMapHeader::validate() {
   // header data
   const char* prop = Arguments::get_property("java.system.class.loader");
   if (prop != nullptr) {
+    if (has_aot_linked_classes()) {
+      log_error(cds)("CDS archive has aot-linked classes. It cannot be used when the "
+                     "java.system.class.loader property is specified.");
+      return false;
+    }
     log_warning(cds)("Archived non-system classes are disabled because the "
             "java.system.class.loader property is specified (value = \"%s\"). "
             "To use archived non-system classes, this property must not be set", prop);

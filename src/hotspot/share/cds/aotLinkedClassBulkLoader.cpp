@@ -34,10 +34,10 @@
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
-#include "classfile/classLoader.hpp"
-#include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
+#include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderExt.hpp"
+#include "classfile/classLoader.hpp"
 #include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -51,8 +51,8 @@
 #include "oops/klass.inline.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
-#include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
+#include "runtime/java.hpp"
 #include "runtime/perfData.inline.hpp"
 #include "runtime/timer.hpp"
 #include "services/management.hpp"
@@ -63,7 +63,6 @@ bool AOTLinkedClassBulkLoader::_app_completed = false;
 bool AOTLinkedClassBulkLoader::_all_completed = false;
 
 Array<InstanceKlass*>* AOTLinkedClassBulkLoader::_unregistered_classes_from_preimage = nullptr;
-volatile bool _class_preloading_finished = false;
 
 static PerfCounter* _perf_classes_preloaded = nullptr;
 static PerfTickCounters* _perf_class_preload_counters = nullptr;
@@ -101,6 +100,17 @@ void AOTLinkedClassBulkLoader::serialize(SerializeClosure* soc, bool is_static_a
   }
 }
 
+bool AOTLinkedClassBulkLoader::class_preloading_finished() {
+  if (!CDSConfig::is_using_aot_linked_classes()) {
+    return true;
+  } else {
+    // The ConstantPools of preloaded classes have references to other preloaded classes. We don't
+    // want any Java code (including JVMCI compiler) to use these classes until all of them
+    // are loaded.
+    return Atomic::load_acquire(&_all_completed);
+  }
+}
+
 void AOTLinkedClassBulkLoader::load_javabase_classes(JavaThread* current) {
   assert(CDSConfig::is_using_aot_linked_classes(), "sanity");
   load_classes_in_loader(current, AOTLinkedClassCategory::BOOT1, nullptr); // only java.base classes
@@ -124,7 +134,7 @@ void AOTLinkedClassBulkLoader::load_non_javabase_classes(JavaThread* current) {
 
   load_classes_in_loader(current, AOTLinkedClassCategory::APP, SystemDictionary::java_system_loader());
   _app_completed = true;
-  _all_completed = true;
+  Atomic::release_store(&_all_completed, true);
 }
 
 void AOTLinkedClassBulkLoader::load_classes_in_loader(JavaThread* current, AOTLinkedClassCategory class_category, oop class_loader_oop) {
@@ -455,7 +465,7 @@ void AOTLinkedClassBulkLoader::replay_training_at_init(Array<InstanceKlass*>* cl
   if (classes != nullptr) {
     for (int i = 0; i < classes->length(); i++) {
       InstanceKlass* ik = classes->at(i);
-      if (ik->has_preinitialized_mirror() && ik->is_initialized() && !ik->has_init_deps_processed()) {
+      if (ik->has_aot_initialized_mirror() && ik->is_initialized() && !ik->has_init_deps_processed()) {
         CompilationPolicy::replay_training_at_init(ik, CHECK);
       }
     }

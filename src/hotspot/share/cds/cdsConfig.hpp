@@ -43,7 +43,6 @@ class CDSConfig : public AllStatic {
   static bool _has_archived_invokedynamic;
   static bool _is_loading_packages;
   static bool _is_loading_protection_domains;
-
   static bool _is_security_manager_allowed;
 
   static char* _default_archive_path;
@@ -83,7 +82,7 @@ public:
   static void check_incompatible_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_unsupported_dumping_module_options() NOT_CDS_RETURN;
   static bool has_unsupported_runtime_module_options() NOT_CDS_RETURN_(false);
-  static bool check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line) NOT_CDS_RETURN_(true);
+  static bool check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) NOT_CDS_RETURN_(true);
 
   // --- Basic CDS features
 

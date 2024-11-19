@@ -88,7 +88,6 @@ public class ResolvedConstants {
             .shouldMatch(ALWAYS("klass.* ResolvedConstantsApp app => java/lang/Runnable boot"))
 
 /** premain allows static method pre-resolution
-
             // Without -XX:+AOTClassLinking:
             //   java/lang/System is in the boot loader but ResolvedConstantsApp is loaded by the app loader.
             //   Even though System is in the vmClasses list, when ResolvedConstantsApp looks up
@@ -126,9 +125,7 @@ public class ResolvedConstants {
             .shouldMatch(ALWAYS("method.*: ResolvedConstantsBar ResolvedConstantsBar.doBar:"))
             .shouldMatch(ALWAYS("method.*: ResolvedConstantsApp ResolvedConstantsApp.privateInstanceCall:"))
             .shouldMatch(ALWAYS("method.*: ResolvedConstantsApp ResolvedConstantsApp.publicInstanceCall:"))
-
 /** premain allows static method pre-resolution
-
             // Should not resolve references to static method
             .shouldNotMatch(ALWAYS("method.*: ResolvedConstantsApp ResolvedConstantsApp.staticCall:"))
 **/

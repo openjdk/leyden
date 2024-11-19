@@ -159,7 +159,7 @@ static ArchivableStaticFieldInfo fmg_archive_subgraph_entry_fields[] = {
 
 KlassSubGraphInfo* HeapShared::_dump_time_special_subgraph;
 ArchivedKlassSubGraphInfoRecord* HeapShared::_run_time_special_subgraph;
-GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_pending_roots = nullptr;
+GrowableArrayCHeap<OopHandle, mtClassShared>* HeapShared::_pending_roots = nullptr;
 GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_trace = nullptr;
 GrowableArrayCHeap<const char*, mtClassShared>* HeapShared::_context = nullptr;
 GrowableArrayCHeap<OopHandle, mtClassShared>* HeapShared::_root_segments;
@@ -1366,18 +1366,18 @@ void KlassSubGraphInfo::check_allowed_klass(InstanceKlass* ik) {
   }
 
 #ifndef PRODUCT
-  if (!ik->module()->is_named() && ik->package() == nullptr) {
+  if (!ik->module()->is_named() && ik->package() == nullptr && ArchiveHeapTestClass != nullptr) {
     // This class is loaded by ArchiveHeapTestClass
     return;
   }
-  const char* extra_msg = ", or in an unnamed package of an unnamed module";
+  const char* testcls_msg = ", or a test class in an unnamed package of an unnamed module";
 #else
-  const char* extra_msg = "";
+  const char* testcls_msg = "";
 #endif
 
   ResourceMark rm;
-  log_error(cds, heap)("Class %s not allowed in archive heap. Must be in java.base%s",
-                       ik->external_name(), extra_msg);
+  log_error(cds, heap)("Class %s not allowed in archive heap. Must be in java.base%s%s",
+                       ik->external_name(), lambda_msg, testcls_msg);
   MetaspaceShared::unrecoverable_writing_error();
 }
 
@@ -1588,8 +1588,8 @@ void HeapShared::resolve_classes(JavaThread* current) {
   }
 
   if (!CDSConfig::is_using_aot_linked_classes()) {
-    assert( _runtime_default_subgraph_info != nullptr, "must be");
-    Array<Klass*>* klasses = _runtime_default_subgraph_info->subgraph_object_klasses();
+    assert( _run_time_special_subgraph != nullptr, "must be");
+    Array<Klass*>* klasses = _run_time_special_subgraph->subgraph_object_klasses();
     if (klasses != nullptr) {
       for (int i = 0; i < klasses->length(); i++) {
         Klass* k = klasses->at(i);
@@ -1953,22 +1953,6 @@ HeapShared::CachedOopInfo HeapShared::make_cached_oop_info(oop obj) {
   return CachedOopInfo(referrer, points_to_oops_checker.result());
 }
 
-// We currently allow only the box classes, as well as j.l.Object, which are
-// initialized very early by HeapShared::init_box_classes().
-bool HeapShared::can_mirror_be_used_in_subgraph(oop orig_java_mirror) {
-  return java_lang_Class::is_primitive(orig_java_mirror)
-    || orig_java_mirror == vmClasses::Boolean_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Character_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Float_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Double_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Byte_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Short_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Integer_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Long_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Void_klass()->java_mirror()
-    || orig_java_mirror == vmClasses::Object_klass()->java_mirror();
-}
-
 void HeapShared::init_box_classes(TRAPS) {
   if (ArchiveHeapLoader::is_in_use()) {
     vmClasses::Boolean_klass()->initialize(CHECK);
@@ -2005,14 +1989,6 @@ void HeapShared::exit_on_error() {
     }
   }
   MetaspaceShared::unrecoverable_writing_error();
-}
-
-void HeapShared::debug_trace() {
-  WalkOopAndArchiveClosure* walker = WalkOopAndArchiveClosure::current();
-  if (walker != nullptr) {
-    LogStream ls(Log(cds, heap)::error());
-    CDSHeapVerifier::trace_to_root(&ls, walker->referencing_obj());
-  }
 }
 
 // (1) If orig_obj has not been archived yet, archive it.
@@ -2602,6 +2578,15 @@ void HeapShared::add_to_dumped_interned_strings(oop string) {
   _dumped_interned_strings->put_if_absent(string, true, &created);
   if (created) {
     _dumped_interned_strings->maybe_grow();
+  }
+}
+
+void HeapShared::debug_trace() {
+  ResourceMark rm;
+  WalkOopAndArchiveClosure* walker = WalkOopAndArchiveClosure::current();
+  if (walker != nullptr) {
+    LogStream ls(Log(cds, heap)::error());
+    CDSHeapVerifier::trace_to_root(&ls, walker->referencing_obj());
   }
 }
 

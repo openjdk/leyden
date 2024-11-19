@@ -33,6 +33,7 @@
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/javaThreadStatus.hpp"
+#include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
@@ -442,6 +443,7 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   initialize_class(vmSymbols::java_lang_StackOverflowError(), CHECK);
   initialize_class(vmSymbols::java_lang_IllegalMonitorStateException(), CHECK);
   initialize_class(vmSymbols::java_lang_IllegalArgumentException(), CHECK);
+  initialize_class(vmSymbols::java_lang_InternalError(), CHECK);
 }
 
 bool Threads::initialize_compilation(TRAPS) {
@@ -799,6 +801,11 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 #endif
 
   bool force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
+
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
+    SystemDictionary::restore_archived_method_handle_intrinsics();
+  }
 
   if (CDSConfig::is_using_aot_linked_classes()) {
     AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);

@@ -26,11 +26,17 @@
 #include "cds/aotClassInitializer.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
+#include "dumpTimeClassInfo.inline.hpp"
 #include "cds/heapShared.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "memory/resourceArea.hpp"
+#include "oops/fieldStreams.inline.hpp"
 #include "oops/instanceKlass.inline.hpp"
 #include "oops/symbol.hpp"
+#include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/javaCalls.hpp"
+#include "runtime/mutexLocker.hpp"
 
 // Detector for class names we wish to handle specially.
 // It is either an exact string match or a string prefix match.
@@ -357,3 +363,125 @@ void AOTClassInitializer::call_runtime_setup(JavaThread* current, InstanceKlass*
   }
 }
 
+// check_can_be_preinited() is quite costly, so we cache the results inside
+// DumpTimeClassInfo::_can_be_preinited. See also AOTClassInitializer::reset_preinit_check().
+bool AOTClassInitializer::check_can_be_preinited(InstanceKlass* ik) {
+  ResourceMark rm;
+
+  if (!SystemDictionaryShared::is_builtin(ik)) {
+    log_info(cds, init)("cannot initialize %s (not built-in loader)", ik->external_name());
+    return false;
+  }
+
+  InstanceKlass* super = ik->java_super();
+  if (super != nullptr && !can_be_preinited_locked(super)) {
+    log_info(cds, init)("cannot initialize %s (super %s not initable)", ik->external_name(), super->external_name());
+    return false;
+  }
+
+  Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+  for (int i = 0; i < interfaces->length(); i++) {
+    if (!can_be_preinited_locked(interfaces->at(i))) {
+      log_info(cds, init)("cannot initialize %s (interface %s not initable)",
+                          ik->external_name(), interfaces->at(i)->external_name());
+      return false;
+    }
+  }
+
+  if (HeapShared::is_lambda_form_klass(ik)) {
+    // We allow only these to have <clinit> or non-default static fields
+    return true;
+  }
+
+  if (ik->class_initializer() != nullptr) {
+    log_info(cds, init)("cannot initialize %s (has <clinit>)", ik->external_name());
+    return false;
+  }
+  if (ik->is_initialized() && !has_default_static_fields(ik)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool AOTClassInitializer::has_default_static_fields(InstanceKlass* ik) {
+  oop mirror = ik->java_mirror();
+
+  for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
+    if (fs.access_flags().is_static()) {
+      fieldDescriptor& fd = fs.field_descriptor();
+      int offset = fd.offset();
+      bool is_default = true;
+      bool has_initval = fd.has_initial_value();
+      switch (fd.field_type()) {
+      case T_OBJECT:
+      case T_ARRAY:
+        is_default = mirror->obj_field(offset) == nullptr;
+        break;
+      case T_BOOLEAN:
+        is_default = mirror->bool_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_BYTE:
+        is_default = mirror->byte_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_SHORT:
+        is_default = mirror->short_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_CHAR:
+        is_default = mirror->char_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_INT:
+        is_default = mirror->int_field(offset) == (has_initval ? fd.int_initial_value() : 0);
+        break;
+      case T_LONG:
+        is_default = mirror->long_field(offset) == (has_initval ? fd.long_initial_value() : 0);
+        break;
+      case T_FLOAT:
+        is_default = mirror->float_field(offset) == (has_initval ? fd.float_initial_value() : 0);
+        break;
+      case T_DOUBLE:
+        is_default = mirror->double_field(offset) == (has_initval ? fd.double_initial_value() : 0);
+        break;
+      default:
+        ShouldNotReachHere();
+      }
+
+      if (!is_default) {
+        log_info(cds, init)("cannot initialize %s (static field %s has non-default value)",
+                            ik->external_name(), fd.name()->as_C_string());
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool AOTClassInitializer::can_be_preinited(InstanceKlass* ik) {
+  MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+  return can_be_preinited_locked(ik);
+}
+
+bool AOTClassInitializer::can_be_preinited_locked(InstanceKlass* ik) {
+  if (!CDSConfig::is_initing_classes_at_dump_time()) {
+    return false;
+  }
+
+  assert_lock_strong(DumpTimeTable_lock);
+  DumpTimeClassInfo* info = SystemDictionaryShared::get_info_locked(ik);
+  if (!info->has_done_preinit_check()) {
+    info->set_can_be_preinited(AOTClassInitializer::check_can_be_preinited(ik));
+  }
+  return info->can_be_preinited();
+}
+
+// Initialize a class at dump time, if possible.
+void AOTClassInitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
+  if (!ik->is_initialized() && AOTClassInitializer::can_be_preinited(ik)) {
+    if (log_is_enabled(Info, cds, init)) {
+      ResourceMark rm;
+      log_info(cds, init)("preinitializing %s", ik->external_name());
+    }
+    ik->initialize(CHECK);
+  }
+}

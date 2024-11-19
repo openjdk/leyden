@@ -287,7 +287,7 @@ void CompilationPolicy::replay_training_at_init(bool is_on_shutdown, TRAPS) {
         if (log.is_enabled()) {
           ResourceMark rm;
           log.print("pending training replay request: %s%s",
-                    pending->external_name(), (pending->has_preinitialized_mirror() ? " (preinitialized)" : ""));
+                    pending->external_name(), (pending->has_aot_initialized_mirror() ? " (preinitialized)" : ""));
         }
       }
       replay_training_at_init_impl(pending, THREAD);
@@ -302,7 +302,7 @@ void CompilationPolicy::replay_training_at_init(bool is_on_shutdown, TRAPS) {
 void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
   assert(klass->is_initialized(), "");
   if (TrainingData::have_data() && klass->is_shared() &&
-      (CompileBroker::replay_initialized() || !klass->has_preinitialized_mirror())) { // ignore preloaded classes during early startup
+      (CompileBroker::replay_initialized() || !klass->has_aot_initialized_mirror())) { // ignore preloaded classes during early startup
     if (UseConcurrentTrainingReplay || !CompileBroker::replay_initialized()) {
       _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
     } else {

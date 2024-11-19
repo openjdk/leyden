@@ -184,6 +184,7 @@ private:
                                  const ClassFileStream* cfs,
                                  TRAPS);
 
+
   static void find_all_archivable_classes_impl();
   static void write_dictionary(RunTimeSharedDictionary* dictionary,
                                bool is_builtin);
@@ -208,6 +209,7 @@ public:
   static void mark_required_hidden_class(InstanceKlass* k);
   static bool has_been_redefined(InstanceKlass* k);
   static bool is_jfr_event_class(InstanceKlass *k);
+
   static bool is_hidden_lambda_proxy(InstanceKlass* ik);
   static bool is_early_klass(InstanceKlass* k);   // Was k loaded while JvmtiExport::is_early_phase()==true
   static bool has_archived_enum_objs(InstanceKlass* ik);

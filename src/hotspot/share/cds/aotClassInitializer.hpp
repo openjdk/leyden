@@ -34,7 +34,18 @@ class AOTClassInitializer : AllStatic {
   class AllowedSpec;
   static bool is_allowed(AllowedSpec* specs, InstanceKlass* ik);
 
+  static bool has_default_static_fields(InstanceKlass* ik);
+  static bool check_can_be_preinited(InstanceKlass* ik);
+  static bool can_be_preinited(InstanceKlass* ik);
+  static bool can_be_preinited_locked(InstanceKlass* ik);
+
 public:
+  // Called by metaspaceShared.cpp to speculatively initialize a class (if the results
+  // of initialization can be safely archived.
+  static void maybe_preinit_class(InstanceKlass* ik, TRAPS);
+
+  static void reset_preinit_check();
+
   // Called by heapShared.cpp to see if src_ik->java_mirror() can be archived in
   // the initialized state.
   static bool can_archive_initialized_mirror(InstanceKlass* src_ik);

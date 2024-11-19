@@ -34,7 +34,6 @@
 #include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
-#include "cds/cds_globals.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/cppVtables.hpp"
@@ -735,6 +734,7 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
   }
   return true;
 }
+
 
 void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   AOTClassLinker::initialize();
@@ -1855,6 +1855,11 @@ MapArchiveResult MetaspaceShared::map_archive(FileMapInfo* mapinfo, char* mapped
     early_serialize(&rc);
   }
 
+  if (!mapinfo->validate_aot_class_linking()) {
+    unmap_archive(mapinfo);
+    return MAP_ARCHIVE_OTHER_FAILURE;
+  }
+
   mapinfo->set_is_mapped(true);
   return MAP_ARCHIVE_SUCCESS;
 }
@@ -1916,11 +1921,17 @@ void MetaspaceShared::initialize_shared_spaces() {
     dynamic_mapinfo->unmap_region(MetaspaceShared::bm);
   }
 
-  log_info(cds)("Using AOT-linked classes: %s (%s%s)",
-                CDSConfig::is_using_aot_linked_classes() ? "true" : "false",
-                static_mapinfo->header()->has_aot_linked_classes() ? "static archive: true" : "static archive: false",
-                (dynamic_mapinfo == nullptr) ? "" :
-                   (dynamic_mapinfo->header()->has_aot_linked_classes() ? ", dynamic archive: true" : ", dynamic archive: false"));
+  LogStreamHandle(Info, cds) lsh;
+  if (lsh.is_enabled()) {
+    lsh.print("Using AOT-linked classes: %s (static archive: %s aot-linked classes",
+              BOOL_TO_STR(CDSConfig::is_using_aot_linked_classes()),
+              static_mapinfo->header()->has_aot_linked_classes() ? "has" : "no");
+    if (dynamic_mapinfo != nullptr) {
+      lsh.print(", dynamic archive: %s aot-linked classes",
+                dynamic_mapinfo->header()->has_aot_linked_classes() ? "has" : "no");
+    }
+    lsh.print_cr(")");
+  }
 
   // Set up LambdaFormInvokers::_lambdaform_lines for dynamic dump
   if (CDSConfig::is_dumping_dynamic_archive()) {

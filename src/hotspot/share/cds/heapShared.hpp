@@ -378,6 +378,7 @@ private:
   static void archive_java_mirrors();
   static void archive_strings();
   static void copy_special_subgraph();
+  static int get_archived_object_permanent_index_locked(oop obj);
 
   class AOTInitializedClassScanner;
   static void find_all_aot_initialized_classes();
@@ -385,6 +386,7 @@ private:
   static bool scan_for_aot_initialized_classes(oop obj);
 
  public:
+  static void exit_on_error();
   static void reset_archived_object_states(TRAPS);
   static void create_archived_object_cache() {
     _archived_object_cache =
@@ -407,6 +409,8 @@ private:
                                              oop orig_obj);
 
   static void add_to_dumped_interned_strings(oop string);
+
+  static void track_scratch_object(oop orig_obj, oop scratch_obj);
 
   // Scratch objects for archiving Klass::java_mirror()
   static void set_scratch_java_mirror(Klass* k, oop mirror);

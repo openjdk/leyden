@@ -37,8 +37,8 @@
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
-#include "classfile/classLoaderExt.hpp"
 #include "classfile/classLoaderDataShared.hpp"
+#include "classfile/classLoaderExt.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -236,8 +236,9 @@ bool ArchiveBuilder::gather_klass_and_symbol(MetaspaceClosure::Ref* ref, bool re
     assert(klass->is_klass(), "must be");
     if (!is_excluded(klass)) {
       _klasses->append(klass);
-      if (klass->is_hidden() && klass->is_instance_klass()) {
-        update_hidden_class_loader_type(InstanceKlass::cast(klass));
+      if (klass->is_hidden()) {
+        assert(klass->is_instance_klass(), "must be");
+        assert(SystemDictionaryShared::should_hidden_class_be_archived(InstanceKlass::cast(klass)), "must be");
       }
     }
     // See RunTimeClassInfo::get_for(): make sure we have enough space for both maximum
@@ -301,45 +302,6 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
   AOTClassLinker::add_candidates();
 }
 
-#if INCLUDE_CDS_JAVA_HEAP
-
-void ArchiveBuilder::update_hidden_class_loader_type(InstanceKlass* ik) {
-  s2 classloader_type;
-  if (HeapShared::is_lambda_form_klass(ik)) {
-    assert(CDSConfig::is_dumping_invokedynamic(), "lambda form classes are archived only if CDSConfig::is_dumping_invokedynamic() is true");
-    classloader_type = ClassLoader::BOOT_LOADER;
-  } else if (SystemDictionaryShared::should_hidden_class_be_archived(ik)) {
-    oop loader = ik->class_loader();
-
-    if (loader == nullptr) {
-      classloader_type = ClassLoader::BOOT_LOADER;
-    } else if (SystemDictionary::is_platform_class_loader(loader)) {
-      classloader_type = ClassLoader::PLATFORM_LOADER;
-    } else if (SystemDictionary::is_system_class_loader(loader)) {
-      classloader_type = ClassLoader::APP_LOADER;
-    } else {
-      ShouldNotReachHere();
-    }
-  } else {
-    ShouldNotReachHere();
-  }
-
-  ik->set_shared_class_loader_type(classloader_type);
-  if (HeapShared::is_lambda_proxy_klass(ik)) {
-    InstanceKlass* nest_host = ik->nest_host_not_null();
-    ik->set_shared_classpath_index(nest_host->shared_classpath_index());
-  } else if (!HeapShared::is_lambda_form_klass(ik)) {
-    // Injected invoker classes: fake this for now. Probably not needed!
-    if (classloader_type == ClassLoader::APP_LOADER) {
-      ik->set_shared_classpath_index(ClassLoaderExt::app_class_paths_start_index()); // HACK
-    } else {
-      ik->set_shared_classpath_index(0);
-    }
-  }
-}
-
-#endif //INCLUDE_CDS_JAVA_HEAP
-
 int ArchiveBuilder::compare_symbols_by_address(Symbol** a, Symbol** b) {
   if (a[0] < b[0]) {
     return -1;
@@ -365,10 +327,6 @@ size_t ArchiveBuilder::estimate_archive_size() {
   size_t training_data_est = TrainingData::estimate_size_for_archive();
   _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est;
 
-  if (CDSConfig::is_dumping_aot_linked_classes()) {
-    _estimated_hashtable_bytes += _klasses->length() * 16 * sizeof(Klass*);
-  }
-
   if (CDSConfig::is_dumping_final_static_archive()) {
     _estimated_hashtable_bytes += 200 * 1024 * 1024; // FIXME -- need to iterate archived symbols??
   }
@@ -377,6 +335,16 @@ size_t ArchiveBuilder::estimate_archive_size() {
     // Some extra space for traning data. Be generous. Unused areas will be trimmed from the archive file.
     _estimated_hashtable_bytes += 200 * 1024 * 1024;
   }
+
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
+    // This is difficult to estimate when dumping the dynamic archive, as the
+    // AOTLinkedClassTable may need to contain classes in the static archive as well.
+    //
+    // Just give a generous estimate for now. We will remove estimate_archive_size()
+    // in JDK-8340416
+    _estimated_hashtable_bytes += 20 * 1024 * 1024;
+  }
+
   size_t total = 0;
 
   total += _estimated_metaspaceobj_bytes;
@@ -811,6 +779,16 @@ void ArchiveBuilder::mark_and_relocate_to_buffered_addr(address* ptr_location) {
   ArchivePtrMarker::mark_pointer(ptr_location);
 }
 
+bool ArchiveBuilder::has_been_buffered(address src_addr) const {
+  if (RegeneratedClasses::has_been_regenerated(src_addr) ||
+      _src_obj_table.get(src_addr) == nullptr ||
+      get_buffered_addr(src_addr) == nullptr) {
+    return false;
+  } else {
+    return true;
+  }
+}
+
 address ArchiveBuilder::get_buffered_addr(address src_addr) const {
   SourceObjInfo* p = _src_obj_table.get(src_addr);
   assert(p != nullptr, "src_addr " INTPTR_FORMAT " is used but has not been archived",
@@ -845,8 +823,8 @@ void ArchiveBuilder::relocate_metaspaceobj_embedded_pointers() {
 
 #define ADD_COUNT(x) \
   x += 1; \
-  x ## _a += aotlinked; \
-  x ## _i += inited;
+  x ## _a += aotlinked ? 1 : 0; \
+  x ## _i += inited ? 1 : 0;
 
 #define DECLARE_INSTANCE_KLASS_COUNTER(x) \
   int x = 0; \
@@ -859,9 +837,11 @@ void ArchiveBuilder::make_klasses_shareable() {
   DECLARE_INSTANCE_KLASS_COUNTER(num_vm_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_platform_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_app_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_old_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_hidden_klasses);
-  DECLARE_INSTANCE_KLASS_COUNTER(num_unlinked_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_enum_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_unregistered_klasses);
+  int num_unlinked_klasses = 0;
   int num_obj_array_klasses = 0;
   int num_type_array_klasses = 0;
 
@@ -885,6 +865,7 @@ void ArchiveBuilder::make_klasses_shareable() {
     const char* unlinked = "";
     const char* kind = "";
     const char* hidden = "";
+    const char* old = "";
     const char* generated = "";
     const char* aotlinked_msg = "";
     const char* inited_msg = "";
@@ -912,14 +893,16 @@ void ArchiveBuilder::make_klasses_shareable() {
       assert(k->is_instance_klass(), " must be");
       InstanceKlass* ik = InstanceKlass::cast(k);
       InstanceKlass* src_ik = get_source_addr(ik);
-      int aotlinked = AOTClassLinker::is_candidate(src_ik);
-      int inited = ik->has_preinitialized_mirror();
+      bool aotlinked = AOTClassLinker::is_candidate(src_ik);
+      bool inited = ik->has_aot_initialized_mirror();
       ADD_COUNT(num_instance_klasses);
       if (CDSConfig::is_dumping_dynamic_archive()) {
         // For static dump, class loader type are already set.
         ik->assign_class_loader_type();
       }
       if (ik->is_hidden()) {
+        ADD_COUNT(num_hidden_klasses);
+        hidden = " hidden";
         oop loader = k->class_loader();
         if (loader == nullptr) {
           type = "boot";
@@ -933,6 +916,12 @@ void ArchiveBuilder::make_klasses_shareable() {
         } else {
           type = "bad";
           assert(0, "shouldn't happen");
+        }
+        if (CDSConfig::is_dumping_invokedynamic()) {
+          assert(HeapShared::is_archivable_hidden_klass(ik), "sanity");
+        } else {
+          // Legacy CDS support for lambda proxies
+          assert(HeapShared::is_lambda_proxy_klass(ik), "sanity");
         }
       } else if (ik->is_shared_boot_class()) {
         type = "boot";
@@ -954,7 +943,7 @@ void ArchiveBuilder::make_klasses_shareable() {
       }
 
       if (!ik->is_linked()) {
-        ADD_COUNT(num_unlinked_klasses);
+        num_unlinked_klasses ++;
         unlinked = " unlinked";
         if (ik->is_shared_boot_class()) {
           boot_unlinked ++;
@@ -969,13 +958,14 @@ void ArchiveBuilder::make_klasses_shareable() {
 
       if (ik->is_interface()) {
         kind = " interface";
-      } else if (src_ik->java_super() == vmClasses::Enum_klass()) {
+      } else if (src_ik->is_enum_subclass()) {
         kind = " enum";
+        ADD_COUNT(num_enum_klasses);
       }
 
-      if (ik->is_hidden()) {
-        ADD_COUNT(num_hidden_klasses);
-        hidden = " hidden";
+      if (!ik->can_be_verified_at_dumptime()) {
+        ADD_COUNT(num_old_klasses);
+        old = " old";
       }
 
       if (ik->is_generated_shared_class()) {
@@ -994,9 +984,9 @@ void ArchiveBuilder::make_klasses_shareable() {
 
     if (log_is_enabled(Debug, cds, class)) {
       ResourceMark rm;
-      log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s%s", i,
+      log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s%s%s", i,
                             p2i(to_requested(k)), type, k->external_name(),
-                            kind, hidden, unlinked, generated, aotlinked_msg, inited_msg);
+                            kind, hidden, old, unlinked, generated, aotlinked_msg, inited_msg);
     }
   }
 
@@ -1006,15 +996,15 @@ void ArchiveBuilder::make_klasses_shareable() {
   log_info(cds)("Number of classes %d", num_instance_klasses + num_obj_array_klasses + num_type_array_klasses);
   log_info(cds)("    instance classes   " STATS_FORMAT, STATS_PARAMS(instance_klasses));
   log_info(cds)("      boot             " STATS_FORMAT, STATS_PARAMS(boot_klasses));
-  log_info(cds)("       vm              " STATS_FORMAT, STATS_PARAMS(vm_klasses));
+  log_info(cds)("        vm             " STATS_FORMAT, STATS_PARAMS(vm_klasses));
   log_info(cds)("      platform         " STATS_FORMAT, STATS_PARAMS(platform_klasses));
   log_info(cds)("      app              " STATS_FORMAT, STATS_PARAMS(app_klasses));
   log_info(cds)("      unregistered     " STATS_FORMAT, STATS_PARAMS(unregistered_klasses));
+  log_info(cds)("      (enum)           " STATS_FORMAT, STATS_PARAMS(enum_klasses));
   log_info(cds)("      (hidden)         " STATS_FORMAT, STATS_PARAMS(hidden_klasses));
-  log_info(cds)("      (unlinked)       " STATS_FORMAT ", boot = %d, plat = %d, app = %d, unreg = %d",
-                                                              STATS_PARAMS(unlinked_klasses),
-                                                              boot_unlinked, platform_unlinked,
-                                                              app_unlinked, unreg_unlinked);
+  log_info(cds)("      (old)            " STATS_FORMAT, STATS_PARAMS(old_klasses));
+  log_info(cds)("      (unlinked)       = %5d, boot = %d, plat = %d, app = %d, unreg = %d",
+                num_unlinked_klasses, boot_unlinked, platform_unlinked, app_unlinked, unreg_unlinked);
   log_info(cds)("    obj array classes  = %5d", num_obj_array_klasses);
   log_info(cds)("    type array classes = %5d", num_type_array_klasses);
   log_info(cds)("               symbols = %5d", _symbols->length());

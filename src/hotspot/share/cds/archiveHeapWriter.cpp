@@ -35,8 +35,8 @@
 #include "memory/oopFactory.hpp"
 #include "memory/universe.hpp"
 #include "oops/compressedOops.hpp"
-#include "oops/oop.inline.hpp"
 #include "oops/objArrayOop.inline.hpp"
+#include "oops/oop.inline.hpp"
 #include "oops/oopHandle.inline.hpp"
 #include "oops/typeArrayKlass.hpp"
 #include "oops/typeArrayOop.hpp"
@@ -565,6 +565,9 @@ template <typename T> void ArchiveHeapWriter::relocate_field_in_buffer(T* field_
   oop source_referent = load_source_oop_from_buffer<T>(field_addr_in_buffer);
   if (source_referent != nullptr) {
     if (java_lang_Class::is_instance(source_referent)) {
+      // When the source object points to a "real" mirror, the buffered object should point
+      // to the "scratch" mirror, which has all unarchivable fields scrubbed (to be reinstated
+      // at run time).
       source_referent = HeapShared::scratch_java_mirror(source_referent);
       assert(source_referent != nullptr, "must be");
     }
@@ -776,7 +779,9 @@ void ArchiveHeapWriter::compute_ptrmap(ArchiveHeapInfo* heap_info) {
 
     Metadata** buffered_field_addr = requested_addr_to_buffered_addr(requested_field_addr);
     Metadata* native_ptr = *buffered_field_addr;
-    assert(native_ptr != nullptr, "sanity");
+    guarantee(native_ptr != nullptr, "sanity");
+    guarantee(ArchiveBuilder::current()->has_been_buffered((address)native_ptr),
+              "Metadata %p should have been archived", native_ptr);
 
     if (RegeneratedClasses::has_been_regenerated((address)native_ptr)) {
       native_ptr = (Metadata*)RegeneratedClasses::get_regenerated_object((address)native_ptr);

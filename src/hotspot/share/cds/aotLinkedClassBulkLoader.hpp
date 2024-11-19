@@ -47,6 +47,9 @@ class AOTLinkedClassBulkLoader :  AllStatic {
   static bool _platform_completed;
   static bool _app_completed;
   static bool _all_completed;
+  static bool _preloading_non_javavase_classes;
+  static Array<InstanceKlass*>* _unregistered_classes_from_preimage;
+
   static void load_classes_in_loader(JavaThread* current, AOTLinkedClassCategory class_category, oop class_loader_oop);
   static void load_classes_in_loader_impl(AOTLinkedClassCategory class_category, oop class_loader_oop, TRAPS);
   static void load_table(AOTLinkedClassTable* table, AOTLinkedClassCategory class_category, Handle loader, TRAPS);
@@ -56,17 +59,16 @@ class AOTLinkedClassBulkLoader :  AllStatic {
   static void load_hidden_class(ClassLoaderData* loader_data, InstanceKlass* ik, TRAPS);
   static void init_required_classes_for_loader(Handle class_loader, Array<InstanceKlass*>* classes, TRAPS);
   static void replay_training_at_init(Array<InstanceKlass*>* classes, TRAPS) NOT_CDS_RETURN;
-
 public:
   static void serialize(SerializeClosure* soc, bool is_static_archive) NOT_CDS_RETURN;
-
+  static void record_unregistered_classes() NOT_CDS_RETURN;
   static void load_javabase_classes(JavaThread* current) NOT_CDS_RETURN;
   static void load_non_javabase_classes(JavaThread* current) NOT_CDS_RETURN;
   static void finish_loading_javabase_classes(TRAPS) NOT_CDS_RETURN;
   static void exit_on_exception(JavaThread* current);
   static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;
+  static bool class_preloading_finished();
   static void print_counters_on(outputStream* st) NOT_CDS_RETURN;
-
   static bool is_pending_aot_linked_class(Klass* k) NOT_CDS_RETURN_(false);
 };
 
