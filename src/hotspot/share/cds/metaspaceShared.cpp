@@ -1332,7 +1332,7 @@ void MetaspaceShared::open_static_archive() {
     delete(mapinfo);
   } else {
     FileMapRegion* r = mapinfo->region_at(MetaspaceShared::cc);
-    CDSAccess::set_cached_code_size(r->used());
+    CDSAccess::set_cached_code_size(r->used_aligned());
   }
 }
 

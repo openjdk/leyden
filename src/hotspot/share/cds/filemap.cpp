@@ -1981,12 +1981,24 @@ char* FileMapInfo::map_bitmap_region() {
 
 bool FileMapInfo::map_cached_code_region(ReservedSpace rs) {
   FileMapRegion* r = region_at(MetaspaceShared::cc);
-  assert(r->used() > 0 && rs.size(), "must be");
+  assert(r->used() > 0 && r->used_aligned() == rs.size(), "must be");
 
-  bool read_only = false, allow_exec = true;
   char* requested_base = rs.base();
-  char* mapped_base = map_memory(_fd, _full_path, r->file_offset(),
-                                 requested_base, r->used_aligned(), read_only, allow_exec, mtClassShared);
+  assert(requested_base != nullptr, "should be inside code cache");
+
+  char* mapped_base;
+  if (MetaspaceShared::use_windows_memory_mapping()) {
+    if (!read_region(MetaspaceShared::cc, requested_base, r->used_aligned(), /* do_commit = */ true)) {
+      log_info(cds)("Failed to read cc shared space into reserved space at " INTPTR_FORMAT,
+                    p2i(requested_base));
+      return false;
+    }
+    mapped_base = requested_base;
+  } else {
+    bool read_only = false, allow_exec = false;
+    mapped_base = map_memory(_fd, _full_path, r->file_offset(),
+                             requested_base, r->used_aligned(), read_only, allow_exec, mtClassShared);
+  }
   if (mapped_base == nullptr) {
     log_info(cds)("failed to map cached code region");
     return false;
@@ -1995,8 +2007,8 @@ bool FileMapInfo::map_cached_code_region(ReservedSpace rs) {
     r->set_mapped_from_file(true);
     r->set_mapped_base(mapped_base);
     relocate_pointers_in_cached_code_region();
-    log_info(cds)("Mapped static region #%d at base " INTPTR_FORMAT " top " INTPTR_FORMAT " (%s)",
-                  MetaspaceShared::bm, p2i(r->mapped_base()), p2i(r->mapped_end()),
+    log_info(cds)("Mapped static  region #%d at base " INTPTR_FORMAT " top " INTPTR_FORMAT " (%s)",
+                  MetaspaceShared::cc, p2i(r->mapped_base()), p2i(r->mapped_end()),
                   shared_region_name[MetaspaceShared::cc]);
     return true;
   }

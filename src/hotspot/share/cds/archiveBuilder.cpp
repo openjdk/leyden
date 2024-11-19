@@ -1534,7 +1534,7 @@ void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, ArchiveHeapInfo* heap_i
 
   write_region(mapinfo, MetaspaceShared::rw, &_rw_region, /*read_only=*/false,/*allow_exec=*/false);
   write_region(mapinfo, MetaspaceShared::ro, &_ro_region, /*read_only=*/true, /*allow_exec=*/false);
-  write_region(mapinfo, MetaspaceShared::cc, &_cc_region, /*read_only=*/false,/*allow_exec=*/true);
+  write_region(mapinfo, MetaspaceShared::cc, &_cc_region, /*read_only=*/false,/*allow_exec=*/false);
 
   // Split pointer map into read-write and read-only bitmaps
   ArchivePtrMarker::initialize_rw_ro_cc_maps(&_rw_ptrmap, &_ro_ptrmap, &_cc_ptrmap);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -153,6 +153,7 @@ public:
   static void assert_in_loaded_heap(uintptr_t o) {
     assert(is_in_loaded_heap(o), "must be");
   }
+  static oop oop_from_offset(int offset);
 #endif // INCLUDE_CDS_JAVA_HEAP
 
 };

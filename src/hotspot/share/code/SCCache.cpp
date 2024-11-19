@@ -26,6 +26,7 @@
 #include "asm/macroAssembler.hpp"
 #include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "ci/ciConstant.hpp"
 #include "ci/ciEnv.hpp"
@@ -418,7 +419,7 @@ bool SCCache::open_cache(const char* cache_path) {
   return true;
 }
 
-class CachedCodeDirectory {
+class CachedCodeDirectory : public CachedCodeDirectoryInternal {
 public:
   int _some_number;
   InstanceKlass* _some_klass;
@@ -479,19 +480,25 @@ void SCCache::new_workflow_start_writing_cache() {
 }
 
 void SCCache::new_workflow_end_writing_cache() {
-
+  _cached_code_directory->dumptime_init_internal();
 }
 
 void SCCache::new_workflow_load_cache() {
   void* ptr = CodeCache::map_cached_code();
   if (ptr != nullptr) {
+    ResourceMark rm;
+    _cached_code_directory = (CachedCodeDirectory*)ptr;
+
+    // CDS uses this to implement CDSAccess::get_archived_object(k)
+    _cached_code_directory->runtime_init_internal();
+
     // At this point:
     // - CodeCache::initialize_heaps() has finished.
     // - CDS archive is fully mapped ("metadata", "heap" and "cached_code" regions are mapped)
     // - All pointers in the mapped CDS regions are relocated.
     // - CDSAccess::get_archived_object() works.
-    ResourceMark rm;
-    _cached_code_directory = (CachedCodeDirectory*)ptr;
+
+    // Data used by AOT compiler
     InstanceKlass* k = _cached_code_directory->_some_klass;
     log_info(scc)("new workflow: cached code mapped at %p", ptr);
     log_info(scc)("_cached_code_directory->_some_klass     = %p (%s)", k, k->external_name());
@@ -2481,7 +2488,6 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     code_offset += sizeof(int);
     set_read_position(code_offset);
     obj = CDSAccess::get_archived_object(k);
-    assert(k == CDSAccess::get_archived_object_permanent_index(obj), "sanity");
   } else if (kind == DataKind::String) {
     code_offset = read_position();
     int length = *(int*)addr(code_offset);
@@ -2510,7 +2516,6 @@ jobject SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     code_offset += sizeof(int);
     set_read_position(code_offset);
     obj = CDSAccess::get_archived_object(k);
-    assert(k == CDSAccess::get_archived_object_permanent_index(obj), "sanity");
   } else {
     set_lookup_failed();
     log_info(scc)("%d (L%d): Unknown oop's kind: %d",
@@ -2676,8 +2681,8 @@ bool SCCache::write_oop(jobject& jo) {
       }
     }
   } else if (java_lang_String::is_instance(obj)) { // herere
-    int k = CDSAccess::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
-    if (k > 0) {
+    int k = CDSAccess::get_archived_object_permanent_index(obj);  // k >= 0 means obj is a "permanent heap object"
+    if (k >= 0) {
       kind = DataKind::String_Shared;
       n = write_bytes(&kind, sizeof(int));
       if (n != sizeof(int)) {
@@ -2726,8 +2731,8 @@ bool SCCache::write_oop(jobject& jo) {
       return false;
     }
   } else { // herere
-    int k = CDSAccess::get_archived_object_permanent_index(obj);  // k >= 1 means obj is a "permanent heap object"
-    if (k > 0) {
+    int k = CDSAccess::get_archived_object_permanent_index(obj);  // k >= 0 means obj is a "permanent heap object"
+    if (k >= 0) {
       kind = DataKind::MH_Oop_Shared;
       n = write_bytes(&kind, sizeof(int));
       if (n != sizeof(int)) {
