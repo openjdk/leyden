@@ -59,8 +59,8 @@ class MetaspaceShared : AllStatic {
   static void* _shared_metaspace_static_top;
   static intx _relocation_delta;
   static char* _requested_base_address;
-  static Array<Method*>* _archived_method_handle_intrinsics;
   static bool _use_optimized_module_handling;
+  static Array<Method*>* _archived_method_handle_intrinsics;
 
  public:
   enum {

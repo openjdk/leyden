@@ -225,6 +225,11 @@ public final class Class<T> implements java.io.Serializable,
 
     private static native void registerNatives();
     static {
+        runtimeSetup();
+    }
+
+    // Called from JVM when loading an AOT cache
+    private static void runtimeSetup() {
         registerNatives();
     }
 

@@ -328,9 +328,12 @@ void MetaspaceShared::post_initialize(TRAPS) {
   }
 }
 
+// Extra java.lang.Strings to be added to the archive
 static GrowableArrayCHeap<OopHandle, mtClassShared>* _extra_interned_strings = nullptr;
+// Extra Symbols to be added to the archive
 static GrowableArrayCHeap<Symbol*, mtClassShared>* _extra_symbols = nullptr;
-static GrowableArray<Method*>* _method_handle_intrinsics = nullptr;
+// Methods managed by SystemDictionary::find_method_handle_intrinsic() to be added to the archive
+static GrowableArray<Method*>* _pending_method_handle_intrinsics = NULL;
 
 void MetaspaceShared::read_extra_data(JavaThread* current, const char* filename) {
   _extra_interned_strings = new GrowableArrayCHeap<OopHandle, mtClassShared>(10000);
@@ -382,8 +385,8 @@ void MetaspaceShared::read_extra_data(JavaThread* current, const char* filename)
 }
 
 void MetaspaceShared::make_method_handle_intrinsics_shareable() {
-  for (int i = 0; i < _method_handle_intrinsics->length(); i++) {
-    Method* m = ArchiveBuilder::current()->get_buffered_addr(_method_handle_intrinsics->at(i));
+  for (int i = 0; i < _pending_method_handle_intrinsics->length(); i++) {
+    Method* m = ArchiveBuilder::current()->get_buffered_addr(_pending_method_handle_intrinsics->at(i));
     m->remove_unshareable_info();
     // Each method has its own constant pool (which is distinct from m->method_holder()->constants());
     m->constants()->remove_unshareable_info();
@@ -391,13 +394,18 @@ void MetaspaceShared::make_method_handle_intrinsics_shareable() {
 }
 
 void MetaspaceShared::write_method_handle_intrinsics() {
-  int len = _method_handle_intrinsics->length();
+  int len = _pending_method_handle_intrinsics->length();
   _archived_method_handle_intrinsics = ArchiveBuilder::new_ro_array<Method*>(len);
+  int word_size = _archived_method_handle_intrinsics->size();
   for (int i = 0; i < len; i++) {
-    ArchiveBuilder::current()->write_pointer_in_buffer(_archived_method_handle_intrinsics->adr_at(i),
-                                                       _method_handle_intrinsics->at(i));
+    Method* m = _pending_method_handle_intrinsics->at(i);
+    ArchiveBuilder::current()->write_pointer_in_buffer(_archived_method_handle_intrinsics->adr_at(i), m);
+    word_size += m->size() + m->constMethod()->size() + m->constants()->size();
+    if (m->constants()->cache() != nullptr) {
+      word_size += m->constants()->cache()->size();
+    }
   }
-  log_info(cds)("Archived %d method handle intrinsics", len);
+  log_info(cds)("Archived %d method handle intrinsics (%d bytes)", len, word_size * BytesPerWord);
 }
 
 // About "serialize" --
@@ -482,7 +490,6 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
 
   CDS_JAVA_HEAP_ONLY(ClassLoaderDataShared::serialize(soc);)
   soc->do_ptr((void**)&_archived_method_handle_intrinsics);
-
 
   LambdaFormInvokers::serialize(soc);
   soc->do_tag(666);
@@ -572,8 +579,8 @@ public:
       }
     }
 
-    for (int i = 0; i < _method_handle_intrinsics->length(); i++) {
-      it->push(_method_handle_intrinsics->adr_at(i));
+    for (int i = 0; i < _pending_method_handle_intrinsics->length(); i++) {
+      it->push(_pending_method_handle_intrinsics->adr_at(i));
     }
   }
 };
@@ -622,26 +629,12 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   DEBUG_ONLY(SystemDictionaryShared::NoClassLoadingMark nclm);
 
-  _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
-  SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
-  _method_handle_intrinsics->sort([] (Method** a, Method** b) -> int {
-    Symbol* a_holder = (*a)->method_holder()->name();
-    Symbol* b_holder = (*b)->method_holder()->name();
-    if (a_holder != b_holder) {
-      return a_holder->cmp(b_holder);
-    }
-    Symbol* a_name = (*a)->name();
-    Symbol* b_name = (*b)->name();
-    if (a_name != b_name) {
-      return a_name->cmp(b_name);
-    }
-    Symbol* a_signature = (*a)->signature();
-    Symbol* b_signature = (*b)->signature();
-    if (a_signature != b_signature) {
-      return a_signature->cmp(b_signature);
-    }
-    return 0;
-  });
+  _pending_method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
+    // When dumping AOT-linked classes, some classes may have direct references to a method handle
+    // intrinsic. The easiest thing is to save all of them into the AOT cache.
+    SystemDictionary::get_all_method_handle_intrinsics(_pending_method_handle_intrinsics);
+  }
 
   FileMapInfo::check_nonempty_dir_in_shared_path_table();
 
@@ -649,7 +642,6 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   // Block concurrent class unloading from changing the _dumptime_table
   MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
-
   SystemDictionaryShared::find_all_archivable_classes();
 
   _builder.gather_source_objs();
@@ -830,6 +822,7 @@ void MetaspaceShared::prepare_for_dumping() {
 // Preload classes from a list, populate the shared spaces and dump to a
 // file.
 void MetaspaceShared::preload_and_dump(TRAPS) {
+  CDSConfig::DumperThreadMark dumper_thread_mark(THREAD);
   ResourceMark rm(THREAD);
   HandleMark hm(THREAD);
 
@@ -850,6 +843,15 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
                      java_lang_String::as_utf8_string(java_lang_Throwable::message(PENDING_EXCEPTION)));
       MetaspaceShared::writing_error("Unexpected exception, use -Xlog:cds,exceptions=trace for detail");
     }
+  }
+
+  if (!CDSConfig::old_cds_flags_used()) {
+    // The JLI launcher only recognizes the "old" -Xshare:dump flag.
+    // When the new -XX:AOTMode=create flag is used, we can't return
+    // to the JLI launcher, as the launcher will fail when trying to
+    // run the main class, which is not what we want.
+    tty->print_cr("AOTCache creation is complete: %s", AOTCache);
+    vm_exit(0);
   }
 }
 
@@ -973,6 +975,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   // Rewrite and link classes
   log_info(cds)("Rewriting and linking classes ...");
+
   // Link any classes which got missed. This would happen if we have loaded classes that
   // were not explicitly specified in the classlist. E.g., if an interface implemented by class K
   // fails verification, all other interfaces that were not specified in the classlist but
@@ -1004,8 +1007,8 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     }
 
     if (CDSConfig::is_dumping_invokedynamic()) {
-      // This makes sure that the MethodType and MethodTypeForm tables won't be updated
-      // concurrently when we are saving their contents into a side table.
+      // This assert means that the MethodType and MethodTypeForm tables won't be
+      // updated concurrently when we are saving their contents into a side table.
       assert(CDSConfig::allow_only_single_java_thread(), "Required");
 
       JavaValue result(T_VOID);
@@ -1013,6 +1016,17 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
                              vmSymbols::createArchivedObjects(),
                              vmSymbols::void_method_signature(),
                              CHECK);
+
+      // java.lang.Class::reflectionFactory cannot be archived yet. We set this field
+      // to null, and it will be initialized again at runtime.
+      log_debug(cds)("Resetting Class::reflectionFactory");
+      TempNewSymbol method_name = SymbolTable::new_symbol("resetArchivedStates");
+      Symbol* method_sig = vmSymbols::void_method_signature();
+      JavaCalls::call_static(&result, vmClasses::Class_klass(),
+                             method_name, method_sig, CHECK);
+
+      // Perhaps there is a way to avoid hard-coding these names here.
+      // See discussion in JDK-8342481.
     }
 
     // Do this at the very end, when no Java code will be executed. Otherwise

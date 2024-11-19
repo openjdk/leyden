@@ -40,9 +40,9 @@ import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
 
-import jdk.internal.misc.CDS;
 import jdk.internal.util.ReferencedKeySet;
 import jdk.internal.util.ReferenceKey;
+import jdk.internal.misc.CDS;
 import jdk.internal.vm.annotation.Stable;
 import sun.invoke.util.BytecodeDescriptor;
 import sun.invoke.util.VerifyType;
@@ -150,19 +150,11 @@ class MethodType
     private @Stable Invokers invokers;   // cache of handy higher-order adapters
     private @Stable String methodDescriptor;  // cache for toMethodDescriptorString
 
-    private final boolean checkArchivable = CDS.isDumpingArchive();
     /**
      * Constructor that performs no copying or validation.
      * Should only be called from the factory method makeImpl
      */
     private MethodType(Class<?> rtype, Class<?>[] ptypes) {
-        if (checkArchivable) {
-            MethodHandleNatives.checkArchivable(rtype);
-            for (var p : ptypes) {
-                MethodHandleNatives.checkArchivable(p);
-            }
-        }
-
         this.rtype = rtype;
         this.ptypes = ptypes;
     }
@@ -402,8 +394,12 @@ class MethodType
             ptypes = NO_PTYPES; trusted = true;
         }
         MethodType primordialMT = new MethodType(rtype, ptypes);
-        if (AOTHolder.archivedMethodTypes != null) {
-            MethodType mt = AOTHolder.archivedMethodTypes.get(primordialMT);
+        if (archivedMethodTypes != null) {
+            // If this JVM process reads from archivedMethodTypes, it never
+            // modifies the table. So there's no need for synchronization.
+            // See copyInternTable() below.
+            assert CDS.isUsingArchive();
+            MethodType mt = archivedMethodTypes.get(primordialMT);
             if (mt != null) {
                 return mt;
             }
@@ -428,10 +424,8 @@ class MethodType
         return internTable.intern(mt);
     }
 
-    static class AOTHolder {
-        private static final @Stable MethodType[] objectOnlyTypes = new MethodType[20];
-        private static @Stable HashMap<MethodType,MethodType> archivedMethodTypes;
-    }
+    private static final @Stable MethodType[] objectOnlyTypes = new MethodType[20];
+    private static @Stable HashMap<MethodType,MethodType> archivedMethodTypes;
 
     /**
      * Finds or creates a method type whose components are {@code Object} with an optional trailing {@code Object[]} array.
@@ -449,16 +443,16 @@ class MethodType
         checkSlotCount(objectArgCount);
         int ivarargs = (!finalArray ? 0 : 1);
         int ootIndex = objectArgCount*2 + ivarargs;
-        if (ootIndex < AOTHolder.objectOnlyTypes.length) {
-            mt = AOTHolder.objectOnlyTypes[ootIndex];
+        if (ootIndex < objectOnlyTypes.length) {
+            mt = objectOnlyTypes[ootIndex];
             if (mt != null)  return mt;
         }
         Class<?>[] ptypes = new Class<?>[objectArgCount + ivarargs];
         Arrays.fill(ptypes, Object.class);
         if (ivarargs != 0)  ptypes[objectArgCount] = Object[].class;
         mt = makeImpl(Object.class, ptypes, true);
-        if (ootIndex < AOTHolder.objectOnlyTypes.length) {
-            AOTHolder.objectOnlyTypes[ootIndex] = mt;     // cache it here also!
+        if (ootIndex < objectOnlyTypes.length) {
+            objectOnlyTypes[ootIndex] = mt;     // cache it here also!
         }
         return mt;
     }
@@ -1408,31 +1402,24 @@ s.writeObject(this.parameterArray());
 
         for (Iterator<MethodType> i = internTable.iterator(); i.hasNext(); ) {
             MethodType t = i.next();
-            if (canBeArchived(t)) {
-                copy.put(t, t);
-            }
+            copy.put(t, t);
         }
 
         return copy;
     }
 
-    static boolean canBeArchived(MethodType t) {
-        if (t.form == null) { // FIXME why?
-            return false;
-        } else {
-            return true;
-        }
-    }
-
-    // This is called from C code.
+    // This is called from C code, at the very end of Java code execution
+    // during the AOT cache assembly phase.
     static void createArchivedObjects() {
-        for (int i = 0; i < AOTHolder.objectOnlyTypes.length; i++) {
-            MethodType t = AOTHolder.objectOnlyTypes[i];
-            if (t != null && !canBeArchived(t)) {
-                AOTHolder.objectOnlyTypes[i] = null; // FIXME why?
-            }
-        }
-
-        AOTHolder.archivedMethodTypes = copyInternTable();
+        // After the archivedMethodTypes field is assigned, this table
+        // is never modified. So we don't need synchronization when reading from
+        // it (which happens only in a future JVM process, never in the current process).
+        //
+        // @implNote CDS.isDumpingStaticArchive() is mutually exclusive with
+        // CDS.isUsingArchive(); at most one of them can return true for any given JVM
+        // process.
+        assert CDS.isDumpingStaticArchive();
+        archivedMethodTypes = copyInternTable();
+        internTable.clear();
     }
 }

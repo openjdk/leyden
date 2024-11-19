@@ -336,6 +336,7 @@ static void call_initPhase2(TRAPS) {
 
   universe_post_module_init();
 
+#if 0
   if (CDSConfig::is_using_aot_linked_classes()) {
     AOTLinkedClassBulkLoader::load_non_javabase_boot_classes(THREAD); 
     if (CDSConfig::is_using_full_module_graph()) {
@@ -356,6 +357,7 @@ static void call_initPhase2(TRAPS) {
 
 #ifndef PRODUCT
   HeapShared::initialize_test_class_from_archive(THREAD);
+#endif
 #endif
 }
 
@@ -384,6 +386,7 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   initialize_class(vmSymbols::java_lang_System(), CHECK);
   // The VM creates & returns objects of this class. Make sure it's initialized.
   initialize_class(vmSymbols::java_lang_Class(), CHECK);
+
   initialize_class(vmSymbols::java_lang_ThreadGroup(), CHECK);
   Handle thread_group = create_initial_thread_group(CHECK);
   Universe::set_main_thread_group(thread_group());
@@ -797,7 +800,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   bool force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
 
-  AOTLinkedClassBulkLoader::init_javabase_preloaded_classes(CHECK_JNI_ERR);
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
+    SystemDictionary::restore_archived_method_handle_intrinsics();
+  }
 
   // Start string deduplication thread if requested.
   if (StringDedup::is_enabled()) {
@@ -813,6 +819,13 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // This will initialize the module system.  Only java.base classes can be
   // loaded until phase 2 completes
   call_initPhase2(CHECK_JNI_ERR);
+
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    AOTLinkedClassBulkLoader::load_non_javabase_classes(THREAD);
+  }
+#ifndef PRODUCT
+  HeapShared::initialize_test_class_from_archive(THREAD);
+#endif
 
   JFR_ONLY(Jfr::on_create_vm_2();)
 

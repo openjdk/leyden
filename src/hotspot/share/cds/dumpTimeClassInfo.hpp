@@ -44,7 +44,7 @@ class DumpTimeClassInfo: public CHeapObj<mtClass> {
   bool                         _has_checked_exclusion;
   bool                         _can_be_preinited;
   bool                         _has_done_preinit_check;
-  bool                         _is_required;
+  bool                         _is_required_hidden_class;
   bool                         _has_scanned_constant_pool;
   class DTLoaderConstraint {
     Symbol* _name;
@@ -142,7 +142,7 @@ public:
     _has_checked_exclusion = false;
     _can_be_preinited = false;
     _has_done_preinit_check = false;
-    _is_required = false;
+    _is_required_hidden_class = false;
     _has_scanned_constant_pool = false;
     _id = -1;
     _clsfile_size = -1;
@@ -221,8 +221,8 @@ public:
 
   bool can_be_preinited() const                     { return _can_be_preinited; }
   bool has_done_preinit_check() const               { return _has_done_preinit_check; }
-  bool is_required() const                          { return _is_required; }
-  void set_is_required()                            { _is_required = true; }
+  bool is_required_hidden_class() const             { return _is_required_hidden_class; }
+  void set_is_required_hidden_class()               { _is_required_hidden_class = true; }
   bool has_scanned_constant_pool() const            { return _has_scanned_constant_pool; }
   void set_has_scanned_constant_pool()              { _has_scanned_constant_pool = true; }
 

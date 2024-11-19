@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "cds/aotClassInitializer.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEnumKlass.hpp"
@@ -596,12 +597,6 @@ void InstanceKlass::deallocate_record_components(ClassLoaderData* loader_data,
 // This function deallocates the metadata and C heap pointers that the
 // InstanceKlass points to.
 void InstanceKlass::deallocate_contents(ClassLoaderData* loader_data) {
-#if INCLUDE_CDS_JAVA_HEAP
-    if (CDSConfig::is_dumping_heap()) {
-      HeapShared::remove_scratch_objects(this);
-    }
-#endif
-
   // Orphan the mirror first, CMS thinks it's still live.
   if (java_mirror() != nullptr) {
     java_lang_Class::set_klass(java_mirror(), nullptr);
@@ -723,6 +718,12 @@ void InstanceKlass::deallocate_contents(ClassLoaderData* loader_data) {
   set_annotations(nullptr);
 
   SystemDictionaryShared::handle_class_unloading(this);
+
+#if INCLUDE_CDS_JAVA_HEAP
+  if (CDSConfig::is_dumping_heap()) {
+    HeapShared::remove_scratch_objects(this);
+  }
+#endif
 }
 
 bool InstanceKlass::is_record() const {
@@ -734,6 +735,18 @@ bool InstanceKlass::is_record() const {
 bool InstanceKlass::is_sealed() const {
   return _permitted_subclasses != nullptr &&
          _permitted_subclasses != Universe::the_empty_short_array();
+}
+
+// JLS 8.9: An enum class is either implicitly final and derives
+// from java.lang.Enum, or else is implicitly sealed to its
+// anonymous subclasses. This query detects both kinds.
+// It does not validate the finality or
+// sealing conditions: it merely checks for a super of Enum.
+// This is sufficient for recognizing well-formed enums.
+bool InstanceKlass::is_enum_subclass() const {
+  InstanceKlass* s = java_super();
+  return (s == vmClasses::Enum_klass() ||
+          (s != nullptr && s->java_super() == vmClasses::Enum_klass()));
 }
 
 bool InstanceKlass::should_be_initialized() const {
@@ -793,107 +806,68 @@ void InstanceKlass::initialize(TRAPS) {
   }
 }
 
-static bool are_super_types_initialized(InstanceKlass* ik) {
-  InstanceKlass* s = ik->java_super();
-  if (s != nullptr && !s->is_initialized()) {
-    if (log_is_enabled(Info, cds, init)) {
+#ifdef ASSERT
+void InstanceKlass::assert_no_clinit_will_run_for_aot_initialized_class() const {
+  assert(has_aot_initialized_mirror(), "must be");
+
+  InstanceKlass* s = java_super();
+  if (s != nullptr) {
+    DEBUG_ONLY(ResourceMark rm);
+    assert(s->is_initialized(), "super class %s of aot-inited class %s must have been initialized",
+           s->external_name(), external_name());
+    s->assert_no_clinit_will_run_for_aot_initialized_class();
+  }
+
+  Array<InstanceKlass*>* interfaces = local_interfaces();
+  int len = interfaces->length();
+  for (int i = 0; i < len; i++) {
+    InstanceKlass* intf = interfaces->at(i);
+    if (!intf->is_initialized()) {
       ResourceMark rm;
-      log_info(cds, init)("%s takes slow path because super class %s is not initialized",
-                          ik->external_name(), s->external_name());
-    }
-    return false;
-  }
-
-  if (ik->has_nonstatic_concrete_methods()) {
-    // Only need to recurse if has_nonstatic_concrete_methods which includes declaring and
-    // having a superinterface that declares, non-static, concrete methods
-    Array<InstanceKlass*>* interfaces = ik->local_interfaces();
-    int len = interfaces->length();
-    for (int i = 0; i < len; i++) {
-      InstanceKlass* intf = interfaces->at(i);
-      if (!intf->is_initialized()) {
-        if (log_is_enabled(Info, cds, init)) {
-          ResourceMark rm;
-          log_info(cds, init)("%s takes slow path because interface %s is not initialized",
-                              ik->external_name(), intf->external_name());
-        }
-        return false;
-      }
+      // Note: an interface needs to be marked as is_initialized() only if
+      // - it has a <clinit>
+      // - it has declared a default method.
+      assert(!intf->interface_needs_clinit_execution_as_super(/*also_check_supers*/false),
+             "uninitialized super interface %s of aot-inited class %s must not have <clinit>",
+             intf->external_name(), external_name());
     }
   }
-
-  return true;
 }
-
-static void log_class_init_start(outputStream* st, JavaThread* current, InstanceKlass* ik, int init_id) {
-  ResourceMark rm;
-  const char* info = "";
-  if (ik->has_preinitialized_mirror() && CDSConfig::is_loading_heap()) {
-    info = " (preinitialized)";
-  } else if (ik->class_initializer() == nullptr) {
-    info = " (no method)";
-  }
-  st->print("%d Initializing ", init_id);
-  ik->name()->print_value_on(st);
-  st->print_cr("%s (" PTR_FORMAT ") by thread " PTR_FORMAT " \"%s\"", info, p2i(ik), p2i(current), current->name());
-}
-
-static int log_class_init(JavaThread* current, InstanceKlass* ik) {
-  int init_id = -1;
-  LogStreamHandle(Info,  init, class) lsh1;
-  LogStreamHandle(Debug, init)        lsh2;
-  if (lsh1.is_enabled() || lsh2.is_enabled()) {
-    static int call_class_initializer_counter = 0;  // for debugging
-    init_id = Atomic::fetch_then_add(&call_class_initializer_counter, 1);
-    if (lsh1.is_enabled()) {
-      log_class_init_start(&lsh1, current, ik, init_id);
-    }
-    if (lsh2.is_enabled() && ik->class_initializer() != nullptr && !ik->has_preinitialized_mirror()) {
-      log_class_init_start(&lsh2, current, ik, init_id);
-    }
-  }
-  return init_id;
-}
-
-void InstanceKlass::initialize_from_cds(TRAPS) {
-  if (is_initialized()) {
-    return;
-  }
-
-  if (has_preinitialized_mirror() && CDSConfig::is_loading_heap() &&
-      !ForceProfiling &&
-      !RecordTraining &&
-      are_super_types_initialized(this)) {
-    // FIXME: also check for events listeners such as JVMTI, JFR, etc
-    if (log_is_enabled(Info, cds, init)) {
-      ResourceMark rm;
-      log_info(cds, init)("%s (quickest)", external_name());
-    }
-
-    link_class(CHECK);
-
-#ifdef AZZERT
-    {
-      MonitorLocker ml(THREAD, _init_monitor);
-      assert(!initialized(), "sanity");
-      assert(!is_being_initialized(), "sanity");
-      assert(!is_in_error_state(), "sanity");
-    }
 #endif
 
-    log_class_init(THREAD, this);
-    set_init_thread(THREAD);
-    set_initialization_state_and_notify(fully_initialized, CHECK);
+#if INCLUDE_CDS
+void InstanceKlass::initialize_with_aot_initialized_mirror(TRAPS) {
+  assert(has_aot_initialized_mirror(), "must be");
+  assert(CDSConfig::is_loading_heap(), "must be");
+  assert(CDSConfig::is_using_aot_linked_classes(), "must be");
+  assert_no_clinit_will_run_for_aot_initialized_class();
+
+  if (is_initialized()) {
     return;
   }
 
   if (log_is_enabled(Info, cds, init)) {
     ResourceMark rm;
-    log_info(cds, init)("%s%s", external_name(),
-                        (has_preinitialized_mirror() && CDSConfig::is_loading_heap()) ? " (quicker)" : "");
+    log_info(cds, init)("%s (aot-inited)", external_name());
   }
-  initialize(THREAD);
+
+  link_class(CHECK);
+
+#ifdef ASSERT
+  {
+    Handle h_init_lock(THREAD, init_lock());
+    ObjectLocker ol(h_init_lock, THREAD);
+    assert(!is_initialized(), "sanity");
+    assert(!is_being_initialized(), "sanity");
+    assert(!is_in_error_state(), "sanity");
+  }
+#endif
+
+  set_init_thread(THREAD);
+  AOTClassInitializer::call_runtime_setup(THREAD, this);
+  set_initialization_state_and_notify(fully_initialized, CHECK);
 }
+#endif
 
 bool InstanceKlass::verify_code(TRAPS) {
   // 1) Verify the bytecodes
@@ -1696,15 +1670,15 @@ void InstanceKlass::call_class_initializer(TRAPS) {
 
 #if INCLUDE_CDS
   // This is needed to ensure the consistency of the archived heap objects.
-  if (has_archived_enum_objs()) {
+  if (has_aot_initialized_mirror() && CDSConfig::is_loading_heap()) {
+    AOTClassInitializer::call_runtime_setup(THREAD, this);
+    return;
+  } else if (has_archived_enum_objs()) {
     assert(is_shared(), "must be");
     bool initialized = CDSEnumKlass::initialize_enum_klass(this, CHECK);
     if (initialized) {
       return;
     }
-  } else if (has_preinitialized_mirror() && CDSConfig::is_loading_heap()) {
-    log_class_init(THREAD, this);
-    return;
   }
 #endif
 
@@ -1784,6 +1758,47 @@ void InstanceKlass::call_class_initializer(TRAPS) {
 #endif
 }
 
+// If a class that implements this interface is initialized, is the JVM required
+// to first execute a <clinit> method declared in this interface,
+// or (if also_check_supers==true) any of the super types of this interface?
+//
+// JVMS 5.5. Initialization, step 7: Next, if C is a class rather than
+// an interface, then let SC be its superclass and let SI1, ..., SIn
+// be all superinterfaces of C (whether direct or indirect) that
+// declare at least one non-abstract, non-static method.
+//
+// So when an interface is initialized, it does not look at its
+// supers. But a proper class will ensure that all of its supers have
+// run their <clinit> methods, except that it disregards interfaces
+// that lack a non-static concrete method (i.e., a default method).
+// Therefore, you should probably call this method only when the
+// current class is a super of some proper class, not an interface.
+bool InstanceKlass::interface_needs_clinit_execution_as_super(bool also_check_supers) const {
+  assert(is_interface(), "must be");
+
+  if (!has_nonstatic_concrete_methods()) {
+    // quick check: no nonstatic concrete methods are declared by this or any super interfaces
+    return false;
+  }
+
+  // JVMS 5.5. Initialization
+  // ...If C is an interface that declares a non-abstract,
+  // non-static method, the initialization of a class that
+  // implements C directly or indirectly.
+  if (declares_nonstatic_concrete_methods() && class_initializer() != nullptr) {
+    return true;
+  }
+  if (also_check_supers) {
+    Array<InstanceKlass*>* all_ifs = transitive_interfaces();
+    for (int i = 0; i < all_ifs->length(); ++i) {
+      InstanceKlass* super_intf = all_ifs->at(i);
+      if (super_intf->declares_nonstatic_concrete_methods() && super_intf->class_initializer() != nullptr) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 void InstanceKlass::mask_for(const methodHandle& method, int bci,
   InterpreterOopMap* entry_for) {
@@ -2868,11 +2883,6 @@ bool InstanceKlass::can_be_verified_at_dumptime() const {
     return true;
   }
 
-  if (CDSConfig::is_dumping_invokedynamic()) {
-    // FIXME: this works around JDK-8315719
-    return true;
-  }
-
   // Check if a class or any of its supertypes has a version older than 50.
   // CDS will not perform verification of old classes during dump time because
   // without changing the old verifier, the verification constraint cannot be
@@ -3111,6 +3121,10 @@ ModuleEntry* InstanceKlass::module() const {
 
   // Class is in an unnamed package, return its loader's unnamed module
   return class_loader_data()->unnamed_module();
+}
+
+bool InstanceKlass::in_javabase_module() const {
+  return module()->name() == vmSymbols::java_base();
 }
 
 void InstanceKlass::set_package(ClassLoaderData* loader_data, PackageEntry* pkg_entry, TRAPS) {

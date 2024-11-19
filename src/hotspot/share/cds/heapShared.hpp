@@ -172,9 +172,10 @@ public:
   static oop scratch_java_mirror(oop java_mirror) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   static bool is_archived_boot_layer_available(JavaThread* current) NOT_CDS_JAVA_HEAP_RETURN_(false);
 
-  static void start_finding_archivable_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
-  static void find_archivable_hidden_classes_in_object(oop o) NOT_CDS_JAVA_HEAP_RETURN;
-  static void end_finding_archivable_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
+  // Look for all hidden classes that are referenced by archived objects.
+  static void start_finding_required_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
+  static void find_required_hidden_classes_in_object(oop o) NOT_CDS_JAVA_HEAP_RETURN;
+  static void end_finding_required_hidden_classes() NOT_CDS_JAVA_HEAP_RETURN;
 
 private:
 #if INCLUDE_CDS_JAVA_HEAP
@@ -260,8 +261,8 @@ private:
   static DumpTimeKlassSubGraphInfoTable* _dump_time_subgraph_info_table;
   static RunTimeKlassSubGraphInfoTable _run_time_subgraph_info_table;
 
-  class FindHiddenClassesOopClosure;
-  static void find_archivable_hidden_classes_helper(ArchivableStaticFieldInfo fields[]);
+  class FindRequiredHiddenClassesOopClosure;
+  static void find_required_hidden_classes_helper(ArchivableStaticFieldInfo fields[]);
 
   static CachedOopInfo make_cached_oop_info(oop obj);
   static ArchivedKlassSubGraphInfoRecord* archive_subgraph_info(KlassSubGraphInfo* info);
@@ -278,7 +279,7 @@ private:
     InstanceKlass* k, int field_offset) PRODUCT_RETURN;
   static void verify_reachable_objects_from(oop obj) PRODUCT_RETURN;
   static void verify_subgraph_from(oop orig_obj) PRODUCT_RETURN;
-  static void check_default_subgraph_classes();
+  static void check_special_subgraph_classes();
 
   static KlassSubGraphInfo* init_subgraph_info(Klass *k, bool is_full_module_graph);
   static KlassSubGraphInfo* get_subgraph_info(Klass *k);
@@ -300,18 +301,19 @@ private:
 
   static SeenObjectsTable *_seen_objects_table;
 
-  // The "default subgraph" is the root of all archived objects that do not belong to any
-  // of the classes defined in the <xxx>_archive_subgraph_entry_fields[] arrays:
+  // The "special subgraph" contains all the archived objects that are reachable
+  // from the following roots:
   //    - interned strings
-  //    - Klass::java_mirror()
+  //    - Klass::java_mirror() -- including aot-initialized mirrors such as those of Enum klasses.
   //    - ConstantPool::resolved_references()
-  static KlassSubGraphInfo* _default_subgraph_info;
-  static ArchivedKlassSubGraphInfoRecord* _runtime_default_subgraph_info;
+  //    - Universe::<xxx>_exception_instance()
+  static KlassSubGraphInfo* _dump_time_special_subgraph;              // for collecting info during dump time
+  static ArchivedKlassSubGraphInfoRecord* _run_time_special_subgraph; // for initializing classes during run time.
 
   static GrowableArrayCHeap<OopHandle, mtClassShared>* _pending_roots;
+  static GrowableArrayCHeap<OopHandle, mtClassShared>* _root_segments;
   static GrowableArrayCHeap<oop, mtClassShared>* _trace; // for debugging unarchivable objects
   static GrowableArrayCHeap<const char*, mtClassShared>* _context; // for debugging unarchivable objects
-  static GrowableArrayCHeap<OopHandle, mtClassShared>* _root_segments;
   static int _root_segment_max_size_elems;
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
   static MetaspaceObjToOopHandleTable* _scratch_java_mirror_table;
@@ -372,13 +374,17 @@ private:
   static void fill_failed_loaded_region();
   static void mark_native_pointers(oop orig_obj);
   static bool has_been_archived(oop orig_obj);
-  static bool can_mirror_be_used_in_subgraph(oop orig_java_mirror);
+  static void prepare_resolved_references();
   static void archive_java_mirrors();
   static void archive_strings();
-  static int get_archived_object_permanent_index_locked(oop obj);
+  static void copy_special_subgraph();
+
+  class AOTInitializedClassScanner;
+  static void find_all_aot_initialized_classes();
+  static void find_all_aot_initialized_classes_helper();
+  static bool scan_for_aot_initialized_classes(oop obj);
 
  public:
-  static void exit_on_error();
   static void reset_archived_object_states(TRAPS);
   static void create_archived_object_cache() {
     _archived_object_cache =
@@ -395,15 +401,12 @@ private:
   static int archive_exception_instance(oop exception);
   static void archive_objects(ArchiveHeapInfo* heap_info);
   static void copy_objects();
-  static void copy_special_objects();
 
   static bool archive_reachable_objects_from(int level,
                                              KlassSubGraphInfo* subgraph_info,
                                              oop orig_obj);
 
   static void add_to_dumped_interned_strings(oop string);
-
-  static void track_scratch_object(oop orig_obj, oop scratch_obj);
 
   // Scratch objects for archiving Klass::java_mirror()
   static void set_scratch_java_mirror(Klass* k, oop mirror);
@@ -475,10 +478,11 @@ private:
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 
   static void initialize_java_lang_invoke(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
-  static void initialize_default_subgraph_classes(Handle loader, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
+  static void init_classes_for_special_subgraph(Handle loader, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 
   static bool is_lambda_form_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_lambda_proxy_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_string_concat_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_archivable_hidden_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
 };
 

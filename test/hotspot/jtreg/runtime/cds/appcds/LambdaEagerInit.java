@@ -130,9 +130,8 @@ public class LambdaEagerInit {
             .addSuffix("-showversion", mainClass);
         OutputAnalyzer output = CDSTestUtils.runWithArchive(runOpts);
         if (output.getStderr().contains("sharing")) {
-          // FIXME:leyden-premain : we disabled archived Lambda proxy classes due to JDK-8307468
-          // output.shouldMatch(lambdaLoadedFromArchive)
-          //        .shouldMatch(cdsLoadedLambdaProxy);
+            output.shouldMatch(lambdaLoadedFromArchive)
+                  .shouldMatch(cdsLoadedLambdaProxy);
         }
         output.shouldHaveExitValue(0);
     }

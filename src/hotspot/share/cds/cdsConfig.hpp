@@ -30,6 +30,7 @@
 #include "utilities/macros.hpp"
 
 class InstanceKlass;
+class JavaThread;
 
 class CDSConfig : public AllStatic {
 #if INCLUDE_CDS
@@ -50,6 +51,8 @@ class CDSConfig : public AllStatic {
   static char* _dynamic_archive_path;
 
   static bool  _old_cds_flags_used;
+
+  static JavaThread* _dumper_thread;
 #endif
 
   static void extract_shared_archive_paths(const char* archive_path,
@@ -74,12 +77,13 @@ public:
 
   // Initialization and command-line checking
   static void initialize() NOT_CDS_RETURN;
-  static void set_old_cds_flags_used() { CDS_ONLY(_old_cds_flags_used = true); }
+  static void set_old_cds_flags_used()                       { CDS_ONLY(_old_cds_flags_used = true); }
+  static bool old_cds_flags_used()                           { return CDS_ONLY(_old_cds_flags_used) NOT_CDS(false); }
   static void check_internal_module_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_incompatible_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_unsupported_dumping_module_options() NOT_CDS_RETURN;
   static bool has_unsupported_runtime_module_options() NOT_CDS_RETURN_(false);
-  static bool check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) NOT_CDS_RETURN_(true);
+  static bool check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line) NOT_CDS_RETURN_(true);
 
   // --- Basic CDS features
 
@@ -115,7 +119,7 @@ public:
 
   static bool is_dumping_aot_linked_classes()                NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_using_aot_linked_classes()                  NOT_CDS_JAVA_HEAP_RETURN_(false);
-  static void set_has_aot_linked_classes(bool is_static_archive, bool has_aot_linked_classes) NOT_CDS_JAVA_HEAP_RETURN;
+  static void set_has_aot_linked_classes(bool has_aot_linked_classes) NOT_CDS_JAVA_HEAP_RETURN;
 
   // archive_path
 
@@ -161,6 +165,19 @@ public:
   static void disable_dumping_cached_code()                  NOT_CDS_RETURN;
   static void enable_dumping_cached_code()                   NOT_CDS_RETURN;
 
+  // Some CDS functions assume that they are called only within a single-threaded context. I.e.,
+  // they are called from:
+  //    - The VM thread (e.g., inside VM_PopulateDumpSharedSpace)
+  //    - The thread that performs prepatory steps before switching to the VM thread
+  // Since these two threads never execute concurrently, we can avoid using locks in these CDS
+  // function. For safety, these functions should assert with CDSConfig::current_thread_is_vm_or_dumper().
+  class DumperThreadMark {
+  public:
+    DumperThreadMark(JavaThread* current);
+    ~DumperThreadMark();
+  };
+
+  static bool current_thread_is_vm_or_dumper() NOT_CDS_RETURN_(false);
 };
 
 #endif // SHARE_CDS_CDSCONFIG_HPP

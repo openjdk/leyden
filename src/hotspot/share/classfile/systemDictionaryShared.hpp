@@ -205,7 +205,7 @@ public:
   static DumpTimeSharedClassTable* dumptime_table() { return _dumptime_table; }
 
   static bool should_hidden_class_be_archived(InstanceKlass* k);
-  static void mark_required_class(InstanceKlass* k);
+  static void mark_required_hidden_class(InstanceKlass* k);
   static bool has_been_redefined(InstanceKlass* k);
   static bool is_jfr_event_class(InstanceKlass *k);
   static bool is_hidden_lambda_proxy(InstanceKlass* ik);
@@ -226,7 +226,6 @@ public:
                                                Handle class_loader,
                                                TRAPS);
 
-  static void preload_archived_classes(TRAPS);
 
   static void allocate_shared_data_arrays(int size, TRAPS);
 
@@ -299,7 +298,7 @@ public:
   static bool add_unregistered_class(Thread* current, InstanceKlass* k);
 
   static void find_all_archivable_classes();
-  static bool check_for_exclusion(Klass* k);
+  static bool should_be_excluded(Klass* k);
   static bool check_for_exclusion(InstanceKlass* k, DumpTimeClassInfo* info);
   static void validate_before_archiving(InstanceKlass* k);
   static bool is_excluded_class(InstanceKlass* k);

@@ -23,7 +23,6 @@
  */
 
 #include "precompiled.hpp"
-#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classFileParser.hpp"
@@ -140,9 +139,6 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
   if (_java_platform_loader.is_empty()) {
     oop platform_loader = get_platform_class_loader_impl(CHECK);
     _java_platform_loader = OopHandle(Universe::vm_global(), platform_loader);
-    if (CDSConfig::is_dumping_final_static_archive()) {
-      AOTLinkedClassBulkLoader::load_platform_classes(THREAD);
-    }
   } else {
     // It must have been restored from the archived module graph
     assert(CDSConfig::is_using_archive(), "must be");
@@ -156,9 +152,6 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
   if (_java_system_loader.is_empty()) {
     oop system_loader = get_system_class_loader_impl(CHECK);
     _java_system_loader = OopHandle(Universe::vm_global(), system_loader);
-    if (CDSConfig::is_dumping_final_static_archive()) {
-      AOTLinkedClassBulkLoader::load_app_classes(THREAD);
-    }
   } else {
     // It must have been restored from the archived module graph
     assert(CDSConfig::is_using_archive(), "must be");
@@ -2082,6 +2075,7 @@ Method* SystemDictionary::find_method_handle_intrinsic(vmIntrinsicID iid,
 
 #if INCLUDE_CDS
 void SystemDictionary::get_all_method_handle_intrinsics(GrowableArray<Method*>* methods) {
+  assert(SafepointSynchronize::is_at_safepoint(), "must be");
   auto do_method = [&] (InvokeMethodKey& key, Method*& m) {
     methods->append(m);
   };
@@ -2093,7 +2087,9 @@ void SystemDictionary::restore_archived_method_handle_intrinsics() {
     EXCEPTION_MARK;
     restore_archived_method_handle_intrinsics_impl(THREAD);
     if (HAS_PENDING_EXCEPTION) {
-      vm_exit_during_initialization(err_msg("Failed to restore archived method handle intrinsics"));
+      // This is probably caused by OOM -- other parts of the CDS archive have direct pointers to
+      // the archived method handle intrinsics, so we can't really recover from this failure.
+      vm_exit_during_initialization(err_msg("Failed to restore archived method handle intrinsics. Try to increase heap size."));
     }
   }
 }
@@ -2112,13 +2108,16 @@ void SystemDictionary::restore_archived_method_handle_intrinsics_impl(TRAPS) {
       }
     }
 
+    // There's no need to grab the InvokeMethodIntrinsicTable_lock, as we are still very early in
+    // VM start-up -- in init_globals2() -- so we are still running a single Java thread. It's not
+    // possible to have a contention.
     const int iid_as_int = vmIntrinsics::as_int(m->intrinsic_id());
     InvokeMethodKey key(m->signature(), iid_as_int);
     bool created = _invoke_method_intrinsic_table->put(key, m());
-    assert(created, "must be");
+    assert(created, "unexpected contention");
   }
 }
-#endif
+#endif // INCLUDE_CDS
 
 // Helper for unpacking the return value from linkMethod and linkCallSite.
 static Method* unpack_method_and_appendix(Handle mname,

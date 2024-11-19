@@ -113,16 +113,27 @@ bool AOTClassLinker::is_candidate(InstanceKlass* ik) {
   return (_candidates->get(ik) != nullptr);
 }
 
-void AOTClassLinker::add_candidate(InstanceKlass* ik) {
+void AOTClassLinker::add_new_candidate(InstanceKlass* ik) {
+  assert(!is_candidate(ik), "caller need to check");
   _candidates->put_when_absent(ik, true);
   _sorted_candidates->append(ik);
+
+  if (log_is_enabled(Info, cds, aot, link)) {
+    ResourceMark rm;
+    log_info(cds, aot, link)("%s %s %p", class_category_name(ik), ik->external_name(), ik);
+  }
 }
 
+// ik is a candidate for aot-linking; see if it can really work
+// that way, and return success or failure. Not only must ik itself
+// look like a class that can be aot-linked but its supers must also be
+// aot-linkable.
 bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
   assert(is_initialized(), "sanity");
   assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
 
   if (!SystemDictionaryShared::is_builtin(ik)) {
+    // not loaded by a class loader which we know about
     return false;
   }
 
@@ -137,6 +148,14 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
     }
     if (!SystemDictionaryShared::should_hidden_class_be_archived(ik)) {
       return false;
+    }
+    if (HeapShared::is_lambda_proxy_klass(ik)) {
+      InstanceKlass* nest_host = ik->nest_host_not_null();
+      if (!try_add_candidate(nest_host)) {
+        ResourceMark rm;
+        log_warning(cds, aot, link)("%s cannot be aot-linked because it nest host is not aot-linked", ik->external_name());
+        return false;
+      }
     }
   }
 
@@ -154,12 +173,10 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
     }
   }
 
-  add_candidate(ik);
-
-  if (log_is_enabled(Info, cds, aot, load)) {
-    ResourceMark rm;
-    log_info(cds, aot, load)("%s %s", ArchiveUtils::class_category(ik), ik->external_name());
-  }
+  // There are no loops in the class hierarchy, and this function is always called single-threaded, so
+  // we know ik has not been added yet.
+  assert(CDSConfig::current_thread_is_vm_or_dumper(), "that's why we don't need locks");
+  add_new_candidate(ik);
 
   return true;
 }
@@ -205,7 +222,7 @@ Array<InstanceKlass*>* AOTClassLinker::write_classes(oop class_loader, bool is_j
 
     if (ik->is_shared() && CDSConfig::is_dumping_dynamic_archive()) {
       if (CDSConfig::is_using_aot_linked_classes()) {
-        // This class was recorded as a AOT-linked for the base archive,
+        // This class was recorded as AOT-linked for the base archive,
         // so there's no need to do so again for the dynamic archive.
       } else {
         list.append(ik);
@@ -218,31 +235,85 @@ Array<InstanceKlass*>* AOTClassLinker::write_classes(oop class_loader, bool is_j
   if (list.length() == 0) {
     return nullptr;
   } else {
-    const char* category = ArchiveUtils::class_category(list.at(0));
-    log_info(cds, aot, load)("written %d class(es) for category %s", list.length(), category);
+    const char* category = class_category_name(list.at(0));
+    log_info(cds, aot, link)("wrote %d class(es) for category %s", list.length(), category);
     return ArchiveUtils::archive_array(&list);
   }
 }
 
 int AOTClassLinker::num_platform_initiated_classes() {
-  // AOTLinkedClassBulkLoader will initiate loading of all public boot classes in the platform loader.
-  return num_initiated_classes(nullptr, nullptr);
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
+    // AOTLinkedClassBulkLoader will initiate loading of all public boot classes in the platform loader.
+    return count_public_classes(nullptr);
+  } else {
+    return 0;
+  }
 }
 
 int AOTClassLinker::num_app_initiated_classes() {
-  // AOTLinkedClassBulkLoader will initiate loading of all public boot/platform classes in the app loader.
-  return num_initiated_classes(nullptr, SystemDictionary::java_platform_loader());
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
+    // AOTLinkedClassBulkLoader will initiate loading of all public boot/platform classes in the app loader.
+    return count_public_classes(nullptr) + count_public_classes(SystemDictionary::java_platform_loader());
+  } else {
+    return 0;
+  }
 }
 
-int AOTClassLinker::num_initiated_classes(oop loader1, oop loader2) {
+int AOTClassLinker::count_public_classes(oop loader) {
   int n = 0;
   for (int i = 0; i < _sorted_candidates->length(); i++) {
     InstanceKlass* ik = _sorted_candidates->at(i);
-    if (ik->is_public() && !ik->is_hidden() &&
-        (ik->class_loader() == loader1 || ik->class_loader() == loader2)) {
+    if (ik->is_public() && !ik->is_hidden() && ik->class_loader() == loader) {
       n++;
     }
   }
 
   return n;
 }
+
+// Used in logging: "boot1", "boot2", "plat", "app" and "unreg", or "array"
+const char* AOTClassLinker::class_category_name(Klass* k) {
+  if (ArchiveBuilder::is_active() && ArchiveBuilder::current()->is_in_buffer_space(k)) {
+    k = ArchiveBuilder::current()->get_source_addr(k);
+  }
+
+  if (k->is_array_klass()) {
+    return "array";
+  } else {
+    oop loader = k->class_loader();
+    if (loader == nullptr) {
+      if (k->module() != nullptr &&
+          k->module()->name() != nullptr &&
+          k->module()->name()->equals("java.base")) {
+        return "boot1"; // boot classes in java.base are loaded in the 1st phase
+      } else {
+        return "boot2"; // boot classes outside of java.base are loaded in the 2nd phase phase
+      }
+    } else {
+      if (loader == SystemDictionary::java_platform_loader()) {
+        return "plat";
+      } else if (loader == SystemDictionary::java_system_loader()) {
+        return "app";
+      } else {
+        return "unreg";
+      }
+    }
+  }
+}
+
+const char* AOTClassLinker::class_category_name(AOTLinkedClassCategory category) {
+  switch (category) {
+  case AOTLinkedClassCategory::BOOT1:
+    return "boot1";
+  case AOTLinkedClassCategory::BOOT2:
+    return "boot2";
+  case AOTLinkedClassCategory::PLATFORM:
+    return "plat";
+  case AOTLinkedClassCategory::APP:
+    return "app";
+  case AOTLinkedClassCategory::UNREGISTERED:
+  default:
+      return "unreg";
+  }
+}
+

@@ -2179,8 +2179,8 @@ void FileMapInfo::map_or_load_heap_region() {
   }
 
   if (!success) {
-    if (CDSConfig::is_using_aot_linked_classes() && !CDSConfig::is_dumping_final_static_archive()) {
-      // It's too later to recover -- we have already committed to use the archived metaspace objects, but
+    if (CDSConfig::is_using_aot_linked_classes()) {
+      // It's too late to recover -- we have already committed to use the archived metaspace objects, but
       // the archived heap objects cannot be loaded, so we don't have the archived FMG to guarantee that
       // all AOT-linked classes are visible.
       //
@@ -2547,7 +2547,7 @@ bool FileMapInfo::validate_aot_class_linking() {
   // These checks need to be done after FileMapInfo::initialize(), which gets called before Universe::heap()
   // is available.
   if (header()->has_aot_linked_classes()) {
-    CDSConfig::set_has_aot_linked_classes(is_static(), true);
+    CDSConfig::set_has_aot_linked_classes(true);
     if (JvmtiExport::should_post_class_file_load_hook()) {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
       return false;
@@ -2556,8 +2556,14 @@ bool FileMapInfo::validate_aot_class_linking() {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used when JVMTI early vm start is in use.");
       return false;
     }
-    if (!CDSConfig::is_using_full_module_graph() && !CDSConfig::is_dumping_final_static_archive()) {
+    if (!CDSConfig::is_using_full_module_graph()) {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used when archived full module graph is not used.");
+      return false;
+    }
+
+    const char* prop = Arguments::get_property("java.security.manager");
+    if (prop != nullptr && strcmp(prop, "disallow") != 0) {
+      log_error(cds)("CDS archive has aot-linked classes. It cannot be used with -Djava.security.manager=%s.", prop);
       return false;
     }
     if (header()->gc_kind() != (int)Universe::heap()->kind()) {
