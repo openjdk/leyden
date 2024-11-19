@@ -96,7 +96,9 @@ void dependencies_init();
 // initialize upcalls before class loading
 bool runtimeUpcalls_open_registration();
 bool runtimeUpcallNop_register_upcalls();
+#if INCLUDE_CDS
 bool cdsEndTrainingUpcall_register_upcalls();
+#endif // INCLUDE_CDS
 bool runtimeUpcalls_close_registration();
 
 // Initialization after compiler initialization
@@ -183,9 +185,11 @@ jint init_globals2() {
   if (!runtimeUpcallNop_register_upcalls()) {
     return JNI_EINVAL;
   }
+#if INCLUDE_CDS
   if (!cdsEndTrainingUpcall_register_upcalls()) {
     return JNI_EINVAL;
   }
+#endif // INCLUDE_CDS
   runtimeUpcalls_close_registration();
 
   javaClasses_init();        // must happen after vtable initialization, before referenceProcessor_init

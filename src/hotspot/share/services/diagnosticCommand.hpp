@@ -395,6 +395,7 @@ public:
   virtual void execute(DCmdSource source, TRAPS);
 };
 
+#if INCLUDE_CDS
 class AOTEndTrainingDCmd : public DCmd {
 public:
   AOTEndTrainingDCmd(outputStream* output, bool heap) : DCmd(output, heap) { }
@@ -412,6 +413,7 @@ public:
     }
     virtual void execute(DCmdSource source, TRAPS);
 };
+#endif // INCLUDE_CDS
 
 #if INCLUDE_CDS
 class DumpSharedArchiveDCmd: public DCmdWithParser {
