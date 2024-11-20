@@ -440,7 +440,6 @@ hotspot_appcds_dynamic = \
  -runtime/cds/appcds/jigsaw/modulepath/OptimizeModuleHandlingTest.java \
  -runtime/cds/appcds/loaderConstraints/DynamicLoaderConstraintsTest.java \
  -runtime/cds/appcds/indy/IndyAndJavac.java \
- -runtime/cds/appcds/indy/IndyMiscTests.java \
  -runtime/cds/appcds/indy/IndyStringConcat.java \
  -runtime/cds/appcds/indy/StringConcatStress2.java \
  -runtime/cds/appcds/indy/StringConcatStress.java \

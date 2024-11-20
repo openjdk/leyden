@@ -458,7 +458,7 @@ void ConstantPoolCache::remove_resolved_method_entries_if_non_deterministic() {
     bool archived = false;
     bool resolved = rme->is_resolved(Bytecodes::_invokevirtual)   ||
                     rme->is_resolved(Bytecodes::_invokespecial)   ||
-                    rme->is_resolved(Bytecodes::_invokestatic)    ||
+                  //rme->is_resolved(Bytecodes::_invokestatic)    || // FIXME -- leyden+JEP483 merge
                     rme->is_resolved(Bytecodes::_invokeinterface) ||
                     rme->is_resolved(Bytecodes::_invokehandle);
     if (resolved && can_archive_resolved_method(src_cp, rme)) {

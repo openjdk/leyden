@@ -310,7 +310,7 @@ class SerializeClosure;
   template(jdk_internal_vm_annotation_JvmtiHideEvents_signature,       "Ljdk/internal/vm/annotation/JvmtiHideEvents;")  \
   template(jdk_internal_vm_annotation_JvmtiMountTransition_signature,  "Ljdk/internal/vm/annotation/JvmtiMountTransition;")  \
                                                                                                   \
-  template(java_lang_ref_SoftReference_signature,         "Ljava/lang/ref/SoftReference;")        \
+  template(class_ReflectionData_signature,         "Ljava/lang/Class$ReflectionData;")            \
   template(encodeReflectionData_name,              "encodeReflectionData")                        \
   template(generateReflectionData_name,            "generateReflectionData")                      \
                                                                                                   \

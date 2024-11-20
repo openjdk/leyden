@@ -2179,7 +2179,7 @@ void FileMapInfo::map_or_load_heap_region() {
   }
 
   if (!success) {
-    if (CDSConfig::is_using_aot_linked_classes()) {
+    if (CDSConfig::is_using_aot_linked_classes() && !CDSConfig::is_dumping_final_static_archive()) {
       // It's too late to recover -- we have already committed to use the archived metaspace objects, but
       // the archived heap objects cannot be loaded, so we don't have the archived FMG to guarantee that
       // all AOT-linked classes are visible.
@@ -2556,7 +2556,7 @@ bool FileMapInfo::validate_aot_class_linking() {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used when JVMTI early vm start is in use.");
       return false;
     }
-    if (!CDSConfig::is_using_full_module_graph()) {
+    if (!CDSConfig::is_using_full_module_graph() && !CDSConfig::is_dumping_final_static_archive()) {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used when archived full module graph is not used.");
       return false;
     }

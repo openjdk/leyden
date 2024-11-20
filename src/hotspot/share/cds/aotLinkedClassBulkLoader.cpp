@@ -122,7 +122,9 @@ void AOTLinkedClassBulkLoader::load_non_javabase_classes(JavaThread* current) {
   // is_using_aot_linked_classes() requires is_using_full_module_graph(). As a result,
   // the platform/system class loader should already have been initialized as part
   // of the FMG support.
-  assert(CDSConfig::is_using_full_module_graph(), "must be");
+  if (!CDSConfig::is_dumping_final_static_archive()) {
+    assert(CDSConfig::is_using_full_module_graph(), "must be");
+  }
   assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
   assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
 
@@ -133,6 +135,25 @@ void AOTLinkedClassBulkLoader::load_non_javabase_classes(JavaThread* current) {
   _platform_completed = true;
 
   load_classes_in_loader(current, AOTLinkedClassCategory::APP, SystemDictionary::java_system_loader());
+
+  if (PrintTrainingInfo) {
+    tty->print_cr("==================== archived_training_data ** after all classes preloaded ====================");
+    TrainingData::print_archived_training_data_on(tty);
+  }
+
+  if (log_is_enabled(Info, cds, jit)) {
+    CDSAccess::test_heap_access_api();
+  }
+
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    assert(_unregistered_classes_from_preimage != nullptr, "must be");
+    for (int i = 0; i < _unregistered_classes_from_preimage->length(); i++) {
+      InstanceKlass* ik = _unregistered_classes_from_preimage->at(i);
+      SystemDictionaryShared::init_dumptime_info(ik);
+      SystemDictionaryShared::add_unregistered_class(current, ik);
+    }
+  }
+
   _app_completed = true;
   Atomic::release_store(&_all_completed, true);
 }

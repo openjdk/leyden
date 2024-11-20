@@ -546,6 +546,9 @@ public:
 };
 
 void HeapShared::add_scratch_resolved_references(ConstantPool* src, objArrayOop dest) {
+  if (_scratch_references_table == nullptr) {
+    _scratch_references_table = new (mtClass)MetaspaceObjToOopHandleTable();
+  }
   _scratch_references_table->set_oop(src, dest);
 }
 
@@ -563,7 +566,9 @@ void HeapShared::init_scratch_objects(TRAPS) {
     }
   }
   _scratch_java_mirror_table = new (mtClass)MetaspaceObjToOopHandleTable();
-  _scratch_references_table = new (mtClass)MetaspaceObjToOopHandleTable();
+  if (_scratch_references_table == nullptr) {
+    _scratch_references_table = new (mtClass)MetaspaceObjToOopHandleTable();
+  }
 }
 
 // Given java_mirror that represents a (primitive or reference) type T,
@@ -961,6 +966,8 @@ void HeapShared::archive_objects(ArchiveHeapInfo *heap_info) {
     // The special subgraph doesn't belong to any class. We use Object_klass() here just
     // for convenience.
     _dump_time_special_subgraph = init_subgraph_info(vmClasses::Object_klass(), false);
+    _trace = new GrowableArrayCHeap<oop, mtClassShared>(250);
+    _context = new GrowableArrayCHeap<const char*, mtClassShared>(250);
 
     // Cache for recording where the archived objects are copied to
     create_archived_object_cache();
@@ -1120,6 +1127,11 @@ static bool mark_for_aot_initialization(InstanceKlass* buffered_ik) {
       }
     }
 
+#if 0
+    if (buffered_ik->name()->equals("jdk/internal/loader/NativeLibraries")) {  // FIXME -- leyden+JEP483 merge
+      return false;
+    }
+#endif
     buffered_ik->set_has_aot_initialized_mirror();
     if (AOTClassInitializer::is_runtime_setup_required(src_ik)) {
       buffered_ik->set_is_runtime_setup_required();

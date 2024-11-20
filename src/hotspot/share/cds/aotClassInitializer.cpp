@@ -477,6 +477,7 @@ bool AOTClassInitializer::can_be_preinited_locked(InstanceKlass* ik) {
 
 // Initialize a class at dump time, if possible.
 void AOTClassInitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
+#if 0 // FIXME -- leyden+JEP483 merge
   if (!ik->is_initialized() && AOTClassInitializer::can_be_preinited(ik)) {
     if (log_is_enabled(Info, cds, init)) {
       ResourceMark rm;
@@ -484,4 +485,5 @@ void AOTClassInitializer::maybe_preinit_class(InstanceKlass* ik, TRAPS) {
     }
     ik->initialize(CHECK);
   }
+#endif
 }

@@ -4046,9 +4046,11 @@ void SCAddressTable::add_C_string(const char* str) {
       _C_strings_id[_C_strings_count] = -1; // Init
       _C_strings[_C_strings_count++] = str;
     } else {
-      CompileTask* task = ciEnv::current()->task();
-      log_info(scc)("%d (L%d): Number of C strings > max %d %s",
-                       task->compile_id(), task->comp_level(), MAX_STR_COUNT, str);
+      if (Thread::current()->is_Compiler_thread()) {
+        CompileTask* task = ciEnv::current()->task();
+        log_info(scc)("%d (L%d): Number of C strings > max %d %s",
+                      task->compile_id(), task->comp_level(), MAX_STR_COUNT, str);
+      }
     }
   }
 }

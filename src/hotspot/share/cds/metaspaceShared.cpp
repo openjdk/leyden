@@ -845,7 +845,7 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
     }
   }
 
-  if (!CDSConfig::old_cds_flags_used()) {
+  if (!CDSConfig::old_cds_flags_used() && !CDSConfig::is_dumping_preimage_static_archive() && !CDSConfig::is_dumping_final_static_archive()) {
     // The JLI launcher only recognizes the "old" -Xshare:dump flag.
     // When the new -XX:AOTMode=create flag is used, we can't return
     // to the JLI launcher, as the launcher will fail when trying to

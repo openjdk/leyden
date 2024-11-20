@@ -141,6 +141,17 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
     return true;
   }
 
+  if (!ik->is_linked() && SystemDictionaryShared::has_class_failed_verification(ik)) {
+    return false;
+  }
+
+/* should we allow old classes to be aot-linked ??? Probably ...
+  if (!k->can_be_verified_at_dumptime()) {
+    // linking old classes 
+    return false;
+  }
+*/
+
   if (ik->is_hidden()) {
     assert(ik->shared_class_loader_type() != ClassLoader::OTHER, "must have been set");
     if (!CDSConfig::is_dumping_invokedynamic()) {

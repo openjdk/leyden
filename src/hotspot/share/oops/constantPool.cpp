@@ -461,6 +461,11 @@ void ConstantPool::restore_unshareable_info(TRAPS) {
       }
     }
   }
+
+  if (CDSConfig::is_dumping_final_static_archive() && resolved_references() != nullptr) {
+    objArrayOop scratch_references = oopFactory::new_objArray(vmClasses::Object_klass(), resolved_references()->length(), CHECK);
+    HeapShared::add_scratch_resolved_references(this, scratch_references);
+  }
 }
 
 void ConstantPool::remove_unshareable_info() {
@@ -506,6 +511,9 @@ static const char* get_type(Klass* k) {
     type = "prim";
   } else {
     InstanceKlass* src_ik = InstanceKlass::cast(src_k);
+    if (CDSConfig::is_dumping_final_static_archive() && src_ik->class_loader_data() == nullptr) {
+      return "unreg";
+    }
     oop loader = src_ik->class_loader();
     if (loader == nullptr) {
       type = "boot";

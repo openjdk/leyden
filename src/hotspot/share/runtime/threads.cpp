@@ -807,11 +807,6 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     SystemDictionary::restore_archived_method_handle_intrinsics();
   }
 
-  if (CDSConfig::is_using_aot_linked_classes()) {
-    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
-    SystemDictionary::restore_archived_method_handle_intrinsics();
-  }
-
   // Start string deduplication thread if requested.
   if (StringDedup::is_enabled()) {
     StringDedup::start();
@@ -827,7 +822,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // loaded until phase 2 completes
   call_initPhase2(CHECK_JNI_ERR);
 
-  if (CDSConfig::is_using_aot_linked_classes()) {
+  if (CDSConfig::is_using_aot_linked_classes() && !CDSConfig::is_dumping_final_static_archive()) {
     AOTLinkedClassBulkLoader::load_non_javabase_classes(THREAD);
   }
 #ifndef PRODUCT
