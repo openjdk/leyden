@@ -29,6 +29,7 @@
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/systemDictionaryShared.hpp"
+#include "classfile/vmClasses.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "logging/log.hpp"
 #include "memory/iterator.inline.hpp"
@@ -437,6 +438,21 @@ void ArchiveHeapLoader::fill_failed_loaded_heap() {
     HeapWord* bottom = (HeapWord*)_loaded_heap_bottom;
     HeapWord* top = (HeapWord*)_loaded_heap_top;
     Universe::heap()->fill_with_objects(bottom, top - bottom);
+  }
+}
+
+oop ArchiveHeapLoader::oop_from_offset(int offset) {
+  // Once GC starts, the offsets saved in CachedCodeDirectoryInternal::_permanent_oop_offsets
+  // will become invalid. I don't know what function can check if GCs are allowed, but surely
+  // GCs can't happen before the Object class is loaded.
+  assert(CDSConfig::is_using_archive(), "sanity");
+  assert(vmClasses::Object_klass()->class_loader_data() == nullptr,
+         "can be called only very early during VM start-up");
+  if (is_loaded()) {
+    return cast_to_oop(_loaded_heap_bottom + offset);
+  } else {
+    assert(is_mapped(), "must be");
+    return cast_to_oop(_mapped_heap_bottom + offset);
   }
 }
 

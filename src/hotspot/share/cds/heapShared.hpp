@@ -378,7 +378,6 @@ private:
   static void archive_java_mirrors();
   static void archive_strings();
   static void copy_special_subgraph();
-  static int get_archived_object_permanent_index_locked(oop obj);
 
   class AOTInitializedClassScanner;
   static void find_all_aot_initialized_classes();
@@ -472,7 +471,7 @@ private:
   static void initialize_test_class_from_archive(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 #endif
 
-  static void add_to_permanent_index_table(oop obj);
+  static void add_to_permanent_oop_table(oop obj, int offset);
 
   // AOT-compile time only: get a stable index for an archived object.
   // Returns 0 if obj is not archived.
@@ -488,6 +487,14 @@ private:
   static bool is_lambda_proxy_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_string_concat_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_archivable_hidden_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
+};
+
+class CachedCodeDirectoryInternal {
+  int _permanent_oop_count;
+  int* _permanent_oop_offsets; // offset of each permanent object from the bottom of the archived heap
+public:
+  void dumptime_init_internal();
+  void runtime_init_internal();
 };
 
 #if INCLUDE_CDS_JAVA_HEAP

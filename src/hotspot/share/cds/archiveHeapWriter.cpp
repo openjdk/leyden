@@ -326,6 +326,8 @@ void ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtCla
     assert(info != nullptr, "must be");
     size_t buffer_offset = copy_one_source_obj_to_buffer(src_obj);
     info->set_buffer_offset(buffer_offset);
+    assert(buffer_offset <= 0x7fffffff, "sanity");
+    HeapShared::add_to_permanent_oop_table(src_obj, (int)buffer_offset);
 
     _buffer_offset_to_source_obj_table->put_when_absent(buffer_offset, src_obj);
     _buffer_offset_to_source_obj_table->maybe_grow();

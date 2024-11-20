@@ -154,6 +154,7 @@ public:
   static void assert_in_loaded_heap(uintptr_t o) {
     assert(is_in_loaded_heap(o), "must be");
   }
+  static oop oop_from_offset(int offset);
 #endif // INCLUDE_CDS_JAVA_HEAP
 
 };

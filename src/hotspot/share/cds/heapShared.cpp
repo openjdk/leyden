@@ -28,6 +28,7 @@
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveUtils.hpp"
+#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEnumKlass.hpp"
 #include "cds/cdsHeapVerifier.hpp"
@@ -248,12 +249,6 @@ int HeapShared::append_root(oop obj) {
   // No GC should happen since we aren't scanning _pending_roots.
   assert(Thread::current() == (Thread*)VMThread::vm_thread(), "should be in vm thread");
 
-  if (UsePermanentHeapObjects && obj != nullptr) {
-    int n = get_archived_object_permanent_index_locked(obj);
-    assert(n >= 0, "must have been added");
-    return n;
-  }
-
   if (_pending_roots == nullptr) {
     _pending_roots = new GrowableArrayCHeap<OopHandle, mtClassShared>(500);
   }
@@ -322,75 +317,51 @@ oop HeapShared::orig_to_scratch_object(oop orig_obj) {
   return nullptr;
 }
 
-class ArchivedObjectPermanentIndexTable: public ResourceHashtable<OopHandle, int,
+// Permanent oops are used to support AOT-compiled methods, which may have in-line references
+// to Strings and MH oops.
+//
+// At runtime, these oops are stored in _runtime_permanent_oops (which keeps them alive forever)
+// and are accssed vis CDSAccess::get_archived_object(int).
+struct PermanentOopInfo {
+  int _index;       // Gets assigned only if HeapShared::get_archived_object_permanent_index() has been called on the object
+  int _heap_offset; // Offset of the object from the bottom of the archived heap.
+  PermanentOopInfo(int index, int heap_offset) : _index(index), _heap_offset(heap_offset) {}
+};
+
+class PermanentOopTable: public ResourceHashtable<OopHandle, PermanentOopInfo,
     36137, // prime number
     AnyObj::C_HEAP,
     mtClassShared,
     oop_handle_hash,
     oop_handle_equals> {};
 
-static ArchivedObjectPermanentIndexTable* _permanent_index_table = nullptr;
+static int _dumptime_permanent_oop_count = 0;
+static PermanentOopTable* _dumptime_permanent_oop_table = nullptr;
+static GrowableArrayCHeap<OopHandle, mtClassShared>* _runtime_permanent_oops = nullptr;
 
-void HeapShared::add_to_permanent_index_table(oop obj) {
-  assert_locked_or_safepoint(ArchivedObjectTables_lock);
-
-  assert(CDSConfig::is_dumping_heap(), "must be");
-  if (UsePermanentHeapObjects) {
-    if (_permanent_index_table == nullptr) {
-      _permanent_index_table = new (mtClass)ArchivedObjectPermanentIndexTable();
-    }
-    if (_pending_roots == nullptr) {
-      _pending_roots = new GrowableArrayCHeap<OopHandle, mtClassShared>(500);
-    }
-
-    if (_orig_to_scratch_object_table != nullptr) {
-      OopHandle orig(&obj);
-      OopHandle* v = _orig_to_scratch_object_table->get(orig);
-      if (v != nullptr) {
-        obj = v->resolve();
-      }
-    }
-
-    OopHandle oh(Universe::vm_global(), obj);
-    int index = _pending_roots->append(oh);
-    _permanent_index_table->put_when_absent(oh, index);
+// ArchiveHeapWriter adds each archived heap object to _dumptime_permanent_oop_table,
+// so we can remember their offset (from the bottom of the archived heap).
+void HeapShared::add_to_permanent_oop_table(oop obj, int offset) {
+  assert_at_safepoint();
+  if (_dumptime_permanent_oop_table == nullptr) {
+    _dumptime_permanent_oop_table = new (mtClass)PermanentOopTable();
   }
+
+  PermanentOopInfo info(-1, offset);
+  OopHandle oh(Universe::vm_global(), obj);
+  _dumptime_permanent_oop_table->put_when_absent(oh, info);
 }
 
+// A permanent index is assigned to an archived object ONLY when
+// the AOT compiler calls this function.
 int HeapShared::get_archived_object_permanent_index(oop obj) {
   MutexLocker ml(ArchivedObjectTables_lock, Mutex::_no_safepoint_check_flag);
-  return get_archived_object_permanent_index_locked(obj);
-}
 
-// Can be called in the "old" workflow.
-int HeapShared::get_archived_object_permanent_index_locked(oop obj) {
-  assert_locked_or_safepoint(ArchivedObjectTables_lock);
-  if (!UsePermanentHeapObjects) {
-    return -1;
+  if (!CDSConfig::is_dumping_heap()) {
+    return -1; // Called by the Leyden old workflow
   }
-  if (!CDSConfig::is_dumping_heap() && !ArchiveHeapLoader::is_in_use()) {
+  if (_dumptime_permanent_oop_table == nullptr) {
     return -1;
-  }
-
-  if (_permanent_index_table == nullptr) {
-    if (!ArchiveHeapLoader::is_in_use()) {
-      // Called in the old workflow
-      return -1;
-    } else {
-      _permanent_index_table = new (mtClass)ArchivedObjectPermanentIndexTable();
-      int count = 0;
-      for (int segment_idx = 0; segment_idx < _root_segments->length(); segment_idx++) {
-        objArrayOop segment = (objArrayOop)_root_segments->at(segment_idx).resolve();
-        for (int i = 0; i < segment->length(); i++, count++) {
-          oop root = segment->obj_at(i);
-          if (root != nullptr) {
-            OopHandle tmp(Universe::vm_global(), root);
-            int index = count;
-            _permanent_index_table->put_when_absent(tmp, index);
-          }
-        }
-      }
-    }
   }
 
   if (_orig_to_scratch_object_table != nullptr) {
@@ -402,27 +373,77 @@ int HeapShared::get_archived_object_permanent_index_locked(oop obj) {
   }
 
   OopHandle tmp(&obj);
-  int* v = _permanent_index_table->get(tmp);
-  if (v != nullptr) {
-    int n = *v;
-    return n;
+  PermanentOopInfo* info = _dumptime_permanent_oop_table->get(tmp);
+  if (info == nullptr) {
+    return -1;
+  } else {
+    if (info->_index < 0) {
+      info->_index = _dumptime_permanent_oop_count++;
+    }
+    return info->_index;
   }
-
-  return -1;
 }
 
 oop HeapShared::get_archived_object(int permanent_index) {
-  if (ArchiveHeapLoader::is_in_use()) {
-    return get_root(permanent_index);
-  } else {
-    assert(CDSConfig::is_dumping_heap(), "must be");
-    if (_pending_roots != nullptr) {
-      return _pending_roots->at(permanent_index).resolve();
-    } else {
-      return nullptr;
+  assert(permanent_index >= 0, "sanity");
+  assert(ArchiveHeapLoader::is_in_use(), "sanity");
+  assert(_runtime_permanent_oops != nullptr, "sanity");
+
+  oop obj = _runtime_permanent_oops->at(permanent_index).resolve();
+  log_info(cds)("GET perm obj %d = %p", permanent_index, cast_from_oop<void*>(obj));
+  if (obj != nullptr) {
+    log_info(cds)("GET perm obj %d class = %p", permanent_index, obj->klass());
+    log_info(cds)("GET perm obj %d class = %s", permanent_index, obj->klass()->external_name());
+  }
+  return obj;
+}
+
+// Remember all archived heap objects that have a permanent index.
+//   table[i] = offset of oop whose permanent index is i.
+void CachedCodeDirectoryInternal::dumptime_init_internal() {
+  const int count = _dumptime_permanent_oop_count;
+  int* table = (int*)CDSAccess::allocate_from_code_cache(count * sizeof(int));
+  for (int i = 0; i < count; i++) {
+    table[count] = -1;
+  }
+  _dumptime_permanent_oop_table->iterate([&](OopHandle o, PermanentOopInfo& info) {
+    int index = info._index;
+    if (index >= 0) {
+      assert(index < count, "sanity");
+      table[index] = info._heap_offset;
+    }
+    return true; // continue
+  });
+
+  for (int i = 0; i < count; i++) {
+    assert(table[i] >= 0, "must be");
+  }
+
+  log_info(cds)("Dumped %d permanent oops", count);
+
+  _permanent_oop_count = count;
+  CDSAccess::set_pointer(&_permanent_oop_offsets, table);
+}
+
+// This is called during the bootstrap of the production run, before any GC can happen.
+// Record each permanent oop in a OopHandle for GC safety.
+void CachedCodeDirectoryInternal::runtime_init_internal() {
+  int count = _permanent_oop_count;
+  int* table = _permanent_oop_offsets;
+  _runtime_permanent_oops = new GrowableArrayCHeap<OopHandle, mtClassShared>();
+  for (int i = 0; i < count; i++) {
+    oop obj = ArchiveHeapLoader::oop_from_offset(table[i]);
+    OopHandle oh(Universe::vm_global(), obj);
+    _runtime_permanent_oops->append(oh);
+
+    ResourceMark rm;
+    log_info(cds)("perm obj %d = %p", i, cast_from_oop<void*>(obj));
+    if (obj != nullptr) {
+      log_info(cds)("perm obj %d class = %p", i, obj->klass());
+      log_info(cds)("perm obj %d class = %s", i, obj->klass()->external_name());
     }
   }
-}
+};
 
 void HeapShared::get_segment_indexes(int idx, int& seg_idx, int& int_idx) {
   assert(_root_segment_max_size_elems > 0, "sanity");
@@ -482,7 +503,6 @@ bool HeapShared::archive_object(oop obj) {
     debug_trace();
     return false;
   } else {
-    add_to_permanent_index_table(obj);
     count_allocation(obj->size());
     ArchiveHeapWriter::add_source_obj(obj);
     CachedOopInfo info = make_cached_oop_info(obj);
