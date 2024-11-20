@@ -389,13 +389,7 @@ oop HeapShared::get_archived_object(int permanent_index) {
   assert(ArchiveHeapLoader::is_in_use(), "sanity");
   assert(_runtime_permanent_oops != nullptr, "sanity");
 
-  oop obj = _runtime_permanent_oops->at(permanent_index).resolve();
-  log_info(cds)("GET perm obj %d = %p", permanent_index, cast_from_oop<void*>(obj));
-  if (obj != nullptr) {
-    log_info(cds)("GET perm obj %d class = %p", permanent_index, obj->klass());
-    log_info(cds)("GET perm obj %d class = %s", permanent_index, obj->klass()->external_name());
-  }
-  return obj;
+  return _runtime_permanent_oops->at(permanent_index).resolve();
 }
 
 // Remember all archived heap objects that have a permanent index.
@@ -435,13 +429,6 @@ void CachedCodeDirectoryInternal::runtime_init_internal() {
     oop obj = ArchiveHeapLoader::oop_from_offset(table[i]);
     OopHandle oh(Universe::vm_global(), obj);
     _runtime_permanent_oops->append(oh);
-
-    ResourceMark rm;
-    log_info(cds)("perm obj %d = %p", i, cast_from_oop<void*>(obj));
-    if (obj != nullptr) {
-      log_info(cds)("perm obj %d class = %p", i, obj->klass());
-      log_info(cds)("perm obj %d class = %s", i, obj->klass()->external_name());
-    }
   }
 };
 
