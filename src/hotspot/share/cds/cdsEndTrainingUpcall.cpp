@@ -23,13 +23,20 @@
  */
 
 #include "precompiled.hpp"
+
+
+
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEndTrainingUpcall.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "compiler/methodMatcher.hpp"
+#include "interpreter/linkResolver.hpp"
+#include "memory/resourceArea.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/runtimeUpcalls.hpp"
+#include "utilities/globalDefinitions.hpp"
+#include "utilities/macros.hpp"
 
 uint volatile  CDSEndTrainingUpcall::_count = 0;
 uint           CDSEndTrainingUpcall::_limit = 1;
@@ -44,7 +51,8 @@ bool cdsEndTrainingUpcall_register_upcalls()
   return CDSEndTrainingUpcall::register_upcalls();
 }
 
-bool CDSEndTrainingUpcall::register_upcalls() {
+bool CDSEndTrainingUpcall::register_upcalls()
+{
   if (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry)) {
     if (CDSEndTrainingUpcall::parse_vm_command(AOTEndTrainingOnMethodEntry)) {
       return RuntimeUpcalls::register_upcall(
@@ -82,10 +90,10 @@ bool CDSEndTrainingUpcall::end_training(JavaThread* current)
   return false;
 }
 
-bool CDSEndTrainingUpcall::filter_method_callback(MethodDetails& methodDetails)
+bool CDSEndTrainingUpcall::filter_method_callback(MethodDetails& method_details)
 {
   if (_matcher != nullptr) {
-    return _matcher->match(methodDetails);
+    return _matcher->match(method_details);
   }
   return false;
 }
@@ -100,18 +108,18 @@ bool CDSEndTrainingUpcall::parse_vm_command(ccstrlist command)
   char* method_pattern;
   int num_patterns = 0;
   bool error = false;
-  const char* seperatorStr = ",";
-  const char* countStr = "count=";
-  const size_t countStrLen = strlen(countStr);
+  const char* seperator_str = ",";
+  const char* count_str = "count=";
+  const size_t count_str_len = strlen(count_str);
   do {
     if (line[0] == '\0') {
       break;
     }
-    method_pattern = strtok_r(line, seperatorStr, &line);
+    method_pattern = strtok_r(line, seperator_str, &line);
     if (method_pattern != nullptr) {
       // if method pattern starts with count=, then parse the count
-      if (strncmp(method_pattern, countStr, countStrLen) == 0) {
-        int number = atoi(method_pattern + countStrLen);
+      if (strncmp(method_pattern, count_str, count_str_len) == 0) {
+        int number = atoi(method_pattern + count_str_len);
         if (number > 0) {
           CDSEndTrainingUpcall::set_limit((uint)number);
           continue;

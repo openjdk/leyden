@@ -36,16 +36,16 @@ class ciMethod;
 
 class MethodDetails: public CHeapObj<mtInternal> {
 private:
-  const methodHandle* _methodHandle;
-  const ciMethod* _ciMethod;
+  const methodHandle* _method_handle;
+  const ciMethod* _ci_method;
   const Method* _method;
 
   Symbol* _class_name;
   Symbol* _method_name;
   Symbol* _signature;
 
-  MethodDetails(const methodHandle* methodHandle, const ciMethod* ciMethod, const Method* method) :
-    _methodHandle(methodHandle), _ciMethod(ciMethod), _method(method),
+  MethodDetails(const methodHandle* method_handle, const ciMethod* ci_method, const Method* method) :
+    _method_handle(method_handle), _ci_method(ci_method), _method(method),
     _class_name(nullptr), _method_name(nullptr), _signature(nullptr)
     {};
 

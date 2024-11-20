@@ -26,14 +26,7 @@
 #define SHARE_CDS_CDSENDTRAININGUPCALL_HPP
 
 #include "memory/allStatic.hpp"
-#include "utilities/globalDefinitions.hpp"
 
-//#include "code/codeBlob.hpp"
-//#include "code/vmreg.hpp"
-#include "interpreter/linkResolver.hpp"
-#include "memory/allStatic.hpp"
-#include "memory/resourceArea.hpp"
-#include "utilities/macros.hpp"
 
 class BasicMatcher;
 class MethodDetails;
@@ -51,7 +44,7 @@ private:
 
 public:
   static bool register_upcalls();
-  static bool filter_method_callback(MethodDetails& methodDetails);
+  static bool filter_method_callback(MethodDetails& method_details);
   static void end_training_check(TRAPS);
   static bool end_training(TRAPS);
   static void set_method_entry_limit(uint limit) { _limit = limit; }

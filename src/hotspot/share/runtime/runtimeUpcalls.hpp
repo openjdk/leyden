@@ -40,18 +40,18 @@ typedef void (*RuntimeUpcall)(JavaThread* current);
 typedef bool (*RuntimeUpcallMethodFilterCallback)(MethodDetails& method);
 
 class RuntimeUpcallInfo: public CHeapObj<mtInternal>{
-  const char* _upcallName;
+  const char* _upcall_name;
   const RuntimeUpcall _upcall;
-  const RuntimeUpcallMethodFilterCallback _methodFilter;
+  const RuntimeUpcallMethodFilterCallback _method_filter;
   address _address;
   int _index;
 
-  RuntimeUpcallInfo(const char* upcallName,
+  RuntimeUpcallInfo(const char* upcall_name,
                     const RuntimeUpcall upcall,
-                    const RuntimeUpcallMethodFilterCallback methodFilter)
-  : _upcallName(upcallName),
+                    const RuntimeUpcallMethodFilterCallback method_filter)
+  : _upcall_name(upcall_name),
     _upcall(upcall),
-    _methodFilter(methodFilter),
+    _method_filter(method_filter),
     _index(-1) {
     _address = CAST_FROM_FN_PTR(address, upcall);
   }
@@ -62,19 +62,19 @@ private:
   int get_index() const { assert(_index >= 0, "invalid index"); return _index; }
 
 public:
-  static RuntimeUpcallInfo* create(const char* upcallName, const RuntimeUpcall upcall, const RuntimeUpcallMethodFilterCallback methodFilter) {
-    assert(upcallName != nullptr, "upcall name must be provided");
+  static RuntimeUpcallInfo* create(const char* upcall_name, const RuntimeUpcall upcall, const RuntimeUpcallMethodFilterCallback method_filter) {
+    assert(upcall_name != nullptr, "upcall name must be provided");
     assert(upcall != nullptr, "upcall must be provided");
-    assert(methodFilter != nullptr, "method filter must be provided");
-    return new RuntimeUpcallInfo(upcallName, upcall, methodFilter);
+    assert(method_filter != nullptr, "method filter must be provided");
+    return new RuntimeUpcallInfo(upcall_name, upcall, method_filter);
   }
 
   RuntimeUpcall upcall() const { return _upcall; }
-  const char* upcall_name() const { return _upcallName; }
+  const char* upcall_name() const { return _upcall_name; }
   address upcall_address() const { return _address; }
 
-  bool includes(MethodDetails& methodDetails) const {
-    return _methodFilter(methodDetails);
+  bool includes(MethodDetails& method_details) const {
+    return _method_filter(method_details);
   }
 };
 
@@ -90,11 +90,11 @@ private:
   static GrowableArray<RuntimeUpcallInfo*>* _upcalls[RuntimeUpcallType::numTypes];
   static State _state;
 
-  static void mark_for_upcalls(RuntimeUpcallType upcallType, const methodHandle& method);
-  static bool register_upcall(RuntimeUpcallType upcallType, RuntimeUpcallInfo* info);
-  static void upcall_redirect(RuntimeUpcallType upcallType, JavaThread* current, Method* method);
+  static void mark_for_upcalls(RuntimeUpcallType upcall_type, const methodHandle& method);
+  static bool register_upcall(RuntimeUpcallType upcall_type, RuntimeUpcallInfo* info);
+  static void upcall_redirect(RuntimeUpcallType upcall_type, JavaThread* current, Method* method);
 
-  static int  get_num_upcalls(RuntimeUpcallType upcallType);
+  static int  get_num_upcalls(RuntimeUpcallType upcall_type);
 
   static void on_method_entry_upcall_redirect(JavaThread* current, Method* method);
   static void on_method_exit_upcall_redirect(JavaThread* current, Method* method);
@@ -102,13 +102,13 @@ private:
 public:
 
   static bool               open_upcall_registration();
-  static bool               register_upcall(RuntimeUpcallType upcallType, const char* upcallName, RuntimeUpcall upcall, RuntimeUpcallMethodFilterCallback methodFilterCallback = nullptr);
+  static bool               register_upcall(RuntimeUpcallType upcall_type, const char* upcall_name, RuntimeUpcall upcall, RuntimeUpcallMethodFilterCallback method_filter_callback = nullptr);
   static void               close_upcall_registration();
 
   static void               install_upcalls(const methodHandle& method);
 
-  static RuntimeUpcallInfo* get_first_upcall(RuntimeUpcallType upcallType, MethodDetails& methodDetails);
-  static RuntimeUpcallInfo* get_next_upcall(RuntimeUpcallType upcallType, MethodDetails& methodDetails, RuntimeUpcallInfo* prevUpcallInfo = nullptr);
+  static RuntimeUpcallInfo* get_first_upcall(RuntimeUpcallType upcall_type, MethodDetails& method_details);
+  static RuntimeUpcallInfo* get_next_upcall(RuntimeUpcallType upcall_type, MethodDetails& method_details, RuntimeUpcallInfo* prev_upcall_info = nullptr);
 
   static address            on_method_entry_upcall_address();
   static address            on_method_exit_upcall_address();

@@ -23,37 +23,43 @@
  */
 
 #include "precompiled.hpp"
+
 #include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/runtimeUpcallNop.hpp"
 #include "runtime/runtimeUpcalls.hpp"
 
-bool RuntimeUpcallNop::methodFilterResult = false;
+bool RuntimeUpcallNop::_method_filter_result = false;
 
 bool runtimeUpcallNop_register_upcalls()
 {
+  return RuntimeUpcallNop::register_upcalls();
+}
+
+bool RuntimeUpcallNop::register_upcalls()
+{
   if(AddRuntimeUpcallsNOP == nullptr || FLAG_IS_DEFAULT(AddRuntimeUpcallsNOP)) return true;
 
-  const char* methodEntry = "onMethodEntry:";
-  const size_t methodEntryLen = strlen(methodEntry);
-  const char* methodExit = "onMethodExit:";
-  const size_t methodExitLen = strlen(methodExit);
+  const char* method_entry = "onMethodEntry:";
+  const size_t method_entry_len = strlen(method_entry);
+  const char* method_exit = "onMethodExit:";
+  const size_t method_exit_len = strlen(method_exit);
 
-  const char* filterAll = "all";
-  const size_t filterAllLen = strlen(filterAll);
-  const char* filterNone = "none";
-  const size_t filterNoneLen = strlen(filterNone);
+  const char* filter_all = "all";
+  const size_t filter_all_len = strlen(filter_all);
+  const char* filter_none = "none";
+  const size_t filter_none_len = strlen(filter_none);
 
-  const char* filterOption = nullptr;
-  RuntimeUpcallType upcallType = RuntimeUpcallType::onMethodEntry;
+  const char* filter_option = nullptr;
+  RuntimeUpcallType upcall_type = RuntimeUpcallType::onMethodEntry;
   const char* command = AddRuntimeUpcallsNOP == nullptr ? "" : AddRuntimeUpcallsNOP;
 
-  if (strncmp(command, methodEntry, methodEntryLen) == 0) {
-    filterOption = command + methodEntryLen;
-    upcallType = RuntimeUpcallType::onMethodEntry;
-  } else if (strncmp(command, methodExit, methodExitLen) == 0) {
-    filterOption = command + methodExitLen;
-    upcallType = RuntimeUpcallType::onMethodExit;
+  if (strncmp(command, method_entry, method_entry_len) == 0) {
+    filter_option = command + method_entry_len;
+    upcall_type = RuntimeUpcallType::onMethodEntry;
+  } else if (strncmp(command, method_exit, method_exit_len) == 0) {
+    filter_option = command + method_exit_len;
+    upcall_type = RuntimeUpcallType::onMethodExit;
   } else {
     ttyLocker ttyl;
     tty->print_cr("An error occurred during parsing AddRuntimeUpcallsNOP");
@@ -61,11 +67,11 @@ bool runtimeUpcallNop_register_upcalls()
     return false;
   }
 
-  assert(filterOption != nullptr, "sanity");
-  if (strncmp(filterOption, filterAll, filterAllLen) == 0) {
-    RuntimeUpcallNop::methodFilterResult = true;
-  } else if (strncmp(filterOption, filterNone, filterNoneLen) == 0) {
-    RuntimeUpcallNop::methodFilterResult = false;
+  assert(filter_option != nullptr, "sanity");
+  if (strncmp(filter_option, filter_all, filter_all_len) == 0) {
+    _method_filter_result = true;
+  } else if (strncmp(filter_option, filter_none, filter_none_len) == 0) {
+    _method_filter_result = false;
   } else {
     ttyLocker ttyl;
     tty->print_cr("An error occurred during parsing AddRuntimeUpcallsNOP");
@@ -74,7 +80,7 @@ bool runtimeUpcallNop_register_upcalls()
   }
 
   if (RuntimeUpcalls::register_upcall(
-        upcallType,
+        upcall_type,
         "nop_method",
         RuntimeUpcallNop::nop_method,
         RuntimeUpcallNop::filter_method_callback)) {
@@ -83,9 +89,9 @@ bool runtimeUpcallNop_register_upcalls()
   return false;
 }
 
-bool RuntimeUpcallNop::filter_method_callback(MethodDetails& methodDetails)
+bool RuntimeUpcallNop::filter_method_callback(MethodDetails& method_details)
 {
-  return methodFilterResult;
+  return _method_filter_result;
 }
 
 JRT_ENTRY(void, RuntimeUpcallNop::nop_method(JavaThread* current))

@@ -360,10 +360,10 @@ bool MethodMatcher::matches(const methodHandle& method) const {
   return false;
 }
 
-bool MethodMatcher::matches(MethodDetails& methodDetails) const {
-  if (match(methodDetails.class_name(), this->class_name(), _class_mode) &&
-      match(methodDetails.method_name(), this->method_name(), _method_mode) &&
-      ((this->signature() == nullptr) || match(methodDetails.signature(), this->signature(), Prefix))) {
+bool MethodMatcher::matches(MethodDetails& method_details) const {
+  if (match(method_details.class_name(), this->class_name(), _class_mode) &&
+      match(method_details.method_name(), this->method_name(), _method_mode) &&
+      ((this->signature() == nullptr) || match(method_details.signature(), this->signature(), Prefix))) {
     return true;
   }
   return false;
@@ -413,9 +413,9 @@ BasicMatcher* BasicMatcher::parse_method_pattern(char* line, const char*& error_
   return bm;
 }
 
-bool BasicMatcher::match(MethodDetails& methodDetails) {
+bool BasicMatcher::match(MethodDetails& method_details) {
   for (BasicMatcher* current = this; current != nullptr; current = current->next()) {
-    if (current->matches(methodDetails)) {
+    if (current->matches(method_details)) {
       return true;
     }
   }

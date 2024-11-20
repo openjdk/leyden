@@ -2677,15 +2677,15 @@ void LIRGenerator::do_Base(Base* x) {
     call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::dtrace_method_entry), voidType, nullptr);
   }
 
-  MethodDetails methodDetails(method());
-  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, methodDetails);
+  MethodDetails method_details(method());
+  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, method_details);
   while (upcall != nullptr) {
     BasicTypeList signature;
     signature.append(LP64_ONLY(T_LONG) NOT_LP64(T_INT));    // thread
     LIR_OprList* args = new LIR_OprList();
     args->append(getThreadPointer());
     call_runtime(&signature, args, upcall->upcall_address(), voidType, nullptr);
-    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, methodDetails, upcall);
+    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, method_details, upcall);
   }
 
   if (method()->is_synchronized()) {

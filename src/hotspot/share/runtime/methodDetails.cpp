@@ -33,10 +33,10 @@
 
 Symbol* MethodDetails::class_name() {
   if (_class_name == nullptr) {
-    if (_methodHandle != nullptr) {
-      _class_name = (*_methodHandle)->method_holder()->name();
-    } else if (_ciMethod != nullptr) {
-      _class_name = _ciMethod->holder()->name()->get_symbol();
+    if (_method_handle != nullptr) {
+      _class_name = (*_method_handle)->method_holder()->name();
+    } else if (_ci_method != nullptr) {
+      _class_name = _ci_method->holder()->name()->get_symbol();
     } else if (_method != nullptr) {
       _class_name = _method->method_holder()->name();
     }
@@ -46,10 +46,10 @@ Symbol* MethodDetails::class_name() {
 
 Symbol* MethodDetails::method_name() {
   if (_method_name == nullptr) {
-    if (_methodHandle != nullptr) {
-      _method_name = (*_methodHandle)->name();
-    } else if (_ciMethod != nullptr) {
-      _method_name = _ciMethod->name()->get_symbol();
+    if (_method_handle != nullptr) {
+      _method_name = (*_method_handle)->name();
+    } else if (_ci_method != nullptr) {
+      _method_name = _ci_method->name()->get_symbol();
     } else if (_method != nullptr) {
       _method_name = _method->name();
     }
@@ -59,10 +59,10 @@ Symbol* MethodDetails::method_name() {
 
 Symbol* MethodDetails::signature() {
   if (_signature == nullptr) {
-    if (_methodHandle != nullptr) {
-      _signature = (*_methodHandle)->signature();
-    } else if (_ciMethod != nullptr) {
-      _signature = _ciMethod->signature()->as_symbol()->get_symbol();
+    if (_method_handle != nullptr) {
+      _signature = (*_method_handle)->signature();
+    } else if (_ci_method != nullptr) {
+      _signature = _ci_method->signature()->as_symbol()->get_symbol();
     } else if (_method != nullptr) {
       _signature = _method->signature();
     }
