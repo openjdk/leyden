@@ -30,13 +30,9 @@
 #include "cds/cdsEndTrainingUpcall.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "compiler/methodMatcher.hpp"
-#include "interpreter/linkResolver.hpp"
-#include "memory/resourceArea.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/runtimeUpcalls.hpp"
-#include "utilities/globalDefinitions.hpp"
-#include "utilities/macros.hpp"
 
 uint volatile  CDSEndTrainingUpcall::_count = 0;
 uint           CDSEndTrainingUpcall::_limit = 1;
