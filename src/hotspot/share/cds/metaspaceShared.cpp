@@ -761,7 +761,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     // Do this after all classes are verified by the above loop.
     // Any classes loaded from here on will be automatically excluded, so
-    // there's no need to force verification or resolve CP entries. 
+    // there's no need to force verification or resolve CP entries.
     RecordTraining = false;
     SystemDictionaryShared::ignore_new_classes();
     LambdaFormInvokers::regenerate_holder_classes(CHECK);
@@ -889,6 +889,13 @@ void MetaspaceShared::preload_classes(TRAPS) {
   CDSProtectionDomain::create_jar_manifest(dummy, strlen(dummy), CHECK);
 
   log_info(cds)("Loading classes to share: done.");
+}
+
+bool MetaspaceShared::is_recording_preimage_static_archive() {
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+      return _preimage_static_archive_dumped == 0;
+  }
+  return false;
 }
 
 void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) {
