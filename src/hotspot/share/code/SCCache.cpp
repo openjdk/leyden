@@ -3822,6 +3822,12 @@ void SCAddressTable::init() {
   SET_ADDRESS(_stubs, StubRoutines::aarch64::string_indexof_linear_uu());
   SET_ADDRESS(_stubs, StubRoutines::aarch64::large_byte_array_inflate());
   SET_ADDRESS(_stubs, StubRoutines::aarch64::spin_wait());
+
+  SET_ADDRESS(_stubs, StubRoutines::aarch64::large_arrays_hashcode(T_BOOLEAN));
+  SET_ADDRESS(_stubs, StubRoutines::aarch64::large_arrays_hashcode(T_BYTE));
+  SET_ADDRESS(_stubs, StubRoutines::aarch64::large_arrays_hashcode(T_SHORT));
+  SET_ADDRESS(_stubs, StubRoutines::aarch64::large_arrays_hashcode(T_CHAR));
+  SET_ADDRESS(_stubs, StubRoutines::aarch64::large_arrays_hashcode(T_INT));
 #endif
 
   // Blobs
