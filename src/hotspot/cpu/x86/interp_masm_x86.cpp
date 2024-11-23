@@ -40,6 +40,7 @@
 #include "runtime/basicLock.hpp"
 #include "runtime/frame.inline.hpp"
 #include "runtime/javaThread.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/safepointMechanism.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/powerOfTwo.hpp"
@@ -1926,6 +1927,17 @@ void InterpreterMacroAssembler::increment_mask_and_jump(Address counter_addr, Ad
   andl(scratch, mask);
   if (where != nullptr) {
     jcc(Assembler::zero, *where);
+  }
+}
+
+void InterpreterMacroAssembler::generate_runtime_upcalls_on_method_entry()
+{
+  address upcall = RuntimeUpcalls::on_method_entry_upcall_address();
+  if (RuntimeUpcalls::does_upcall_need_method_parameter(upcall)) {
+    get_method(c_rarg1);
+    call_VM(noreg,upcall, c_rarg1);
+  } else {
+    call_VM(noreg,upcall);
   }
 }
 

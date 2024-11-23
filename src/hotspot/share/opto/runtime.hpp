@@ -336,6 +336,9 @@ private:
   static const TypeFunc* notify_jvmti_vthread_Type();
 #endif
 
+  // runtime upcalls support
+  static const TypeFunc* runtime_up_call_Type();
+
   // Dtrace support
   static const TypeFunc* dtrace_method_entry_exit_Type();
   static const TypeFunc* dtrace_object_alloc_Type();
