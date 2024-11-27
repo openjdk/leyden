@@ -111,11 +111,12 @@ void MethodHandles::verify_ref_kind(MacroAssembler* _masm, int ref_kind, Registe
   __ andl(temp, java_lang_invoke_MemberName::MN_REFERENCE_KIND_MASK);
   __ cmpl(temp, ref_kind);
   __ jcc(Assembler::equal, L);
-  { char* buf = NEW_C_HEAP_ARRAY(char, 100, mtInternal);
-    jio_snprintf(buf, 100, "verify_ref_kind expected %x", ref_kind);
+  { //char* buf = NEW_C_HEAP_ARRAY(char, 100, mtInternal);
+    //jio_snprintf(buf, 100, "verify_ref_kind expected %x", ref_kind);
     if (ref_kind == JVM_REF_invokeVirtual ||
         ref_kind == JVM_REF_invokeSpecial)
       // could do this for all ref_kinds, but would explode assembly code size
+      const char* buf = "verify_ref_kind"; // avoid allocating new strings
       trace_method_handle(_masm, buf);
     __ STOP(buf);
   }
