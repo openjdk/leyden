@@ -39,6 +39,7 @@
 #include "opto/runtime.hpp"
 #include "opto/type.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/safepointMechanism.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/bitMap.inline.hpp"
@@ -1210,6 +1211,8 @@ void Parse::do_method_entry() {
   if (C->env()->dtrace_method_probes()) {
     make_dtrace_method_entry(method());
   }
+
+  install_on_method_entry_runtime_upcalls(method());
 
 #ifdef ASSERT
   // Narrow receiver type when it is too broad for the method being parsed.

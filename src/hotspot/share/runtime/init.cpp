@@ -93,6 +93,14 @@ bool compileBroker_init();
 void dependencyContext_init();
 void dependencies_init();
 
+// initialize upcalls before class loading
+bool runtimeUpcalls_open_registration();
+bool runtimeUpcallNop_register_upcalls();
+#if INCLUDE_CDS
+bool cdsEndTrainingUpcall_register_upcalls();
+#endif // INCLUDE_CDS
+bool runtimeUpcalls_close_registration();
+
 // Initialization after compiler initialization
 bool universe_post_init();  // must happen after compiler_init
 void javaClasses_init();    // must happen after vtable initialization
@@ -171,6 +179,19 @@ jint init_globals() {
 
 jint init_globals2() {
   universe2_init();          // dependent on codeCache_init and initial_stubs_init
+
+  // initialize upcalls before class loading / initialization
+  runtimeUpcalls_open_registration();
+  if (!runtimeUpcallNop_register_upcalls()) {
+    return JNI_EINVAL;
+  }
+#if INCLUDE_CDS
+  if (!cdsEndTrainingUpcall_register_upcalls()) {
+    return JNI_EINVAL;
+  }
+#endif // INCLUDE_CDS
+  runtimeUpcalls_close_registration();
+
   javaClasses_init();        // must happen after vtable initialization, before referenceProcessor_init
   interpreter_init_code();   // after javaClasses_init and before any method gets linked
   referenceProcessor_init();

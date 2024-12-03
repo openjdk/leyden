@@ -91,6 +91,7 @@
 #include "runtime/orderAccess.hpp"
 #include "runtime/os.inline.hpp"
 #include "runtime/reflection.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/synchronizer.hpp"
 #include "runtime/threads.hpp"
 #include "services/classLoadingService.hpp"
@@ -1064,6 +1065,7 @@ void InstanceKlass::link_methods(TRAPS) {
   int len = methods()->length();
   for (int i = len-1; i >= 0; i--) {
     methodHandle m(THREAD, methods()->at(i));
+    RuntimeUpcalls::install_upcalls(m);
 
     // Set up method entry points for compiler and interpreter    .
     m->link_method(m, CHECK);

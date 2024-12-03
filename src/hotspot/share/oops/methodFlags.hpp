@@ -59,6 +59,8 @@ class MethodFlags {
    status(has_loops_flag_init         , 1 << 14) /* The loop flag has been initialized */ \
    status(on_stack_flag               , 1 << 15) /* RedefineClasses support to keep Metadata from being cleaned */ \
    status(pending_queue_processed     , 1 << 16) \
+   status(has_upcall_on_method_entry  , 1 << 17) \
+   status(has_upcall_on_method_exit   , 1 << 18) \
    /* end of list */
 
 #define M_STATUS_ENUM_NAME(name, value)    _misc_##name = value,

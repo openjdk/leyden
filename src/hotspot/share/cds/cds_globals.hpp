@@ -119,6 +119,10 @@
           "Load/link all archived classes for the boot/platform/app "       \
           "loaders before application main")                                \
                                                                             \
+  product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \
+          "List of methods (pkg/class.name) to trigger end of AOT "         \
+          "training run.  Optional ',count=N' where N is > 0")              \
+                                                                            \
   /*========== New options added by Leyden =============================*/  \
                                                                             \
   product(ccstr, CacheOnlyClassesIn, nullptr,                               \

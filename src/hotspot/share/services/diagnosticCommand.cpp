@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/cdsEndTrainingUpcall.hpp"
 #include "cds/cds_globals.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/classLoaderHierarchyDCmd.hpp"
@@ -133,6 +134,9 @@ void DCmd::register_dcmds(){
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CompileQueueDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CodeListDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CodeCacheDCmd>(full_export, true, false));
+#if INCLUDE_CDS
+  DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<AOTEndTrainingDCmd>(full_export, true, false));
+#endif // INCLUDE_CDS
 #ifdef LINUX
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<PerfMapDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<TrimCLibcHeapDCmd>(full_export, true, false));
@@ -985,6 +989,18 @@ void ClassesDCmd::execute(DCmdSource source, TRAPS) {
   VM_PrintClasses vmop(output(), _verbose.value());
   VMThread::execute(&vmop);
 }
+
+#if INCLUDE_CDS
+void AOTEndTrainingDCmd::execute(DCmdSource source, TRAPS) {
+  if (!CDSConfig::is_dumping_preimage_static_archive()) {
+    output()->print_cr("Error! Not a training run");
+  } else if (CDSEndTrainingUpcall::end_training(THREAD)) {
+    output()->print_cr("Training ended successfully");
+  } else {
+    output()->print_cr("Error! Failed to end training");
+  }
+}
+#endif // INCLUDE_CDS
 
 #if INCLUDE_CDS
 #define DEFAULT_CDS_ARCHIVE_FILENAME "java_pid%p_<subcmd>.jsa"

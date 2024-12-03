@@ -244,6 +244,22 @@ void trace_class_resolution(Klass* to_class) {
 // java.lang.System //////////////////////////////////////////////////////////////////////
 
 
+JVM_LEAF_PROF(jboolean, JVM_AOTIsTraining, JVM_AOTIsTraining(JNIEnv *env))
+#if INCLUDE_CDS
+  return MetaspaceShared::is_recording_preimage_static_archive();
+#else
+  return JNI_FALSE;
+#endif // INCLUDE_CDS
+JVM_END
+
+JVM_ENTRY_PROF(void, JVM_AOTEndTraining, JVM_AOTEndTraining(JNIEnv *env))
+#if INCLUDE_CDS
+  if (MetaspaceShared::is_recording_preimage_static_archive()) {
+    MetaspaceShared::preload_and_dump(THREAD);
+  }
+#endif // INCLUDE_CDS
+JVM_END
+
 JVM_LEAF_PROF(jlong, JVM_CurrentTimeMillis, JVM_CurrentTimeMillis(JNIEnv *env, jclass ignored))
   return os::javaTimeMillis();
 JVM_END
