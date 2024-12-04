@@ -32,55 +32,6 @@
 #include "utilities/globalDefinitions.hpp"
 
 namespace CompilationPolicyUtils {
-template<int SAMPLE_COUNT = 256>
-class WeightedMovingAverage {
-  int _current;
-  int _samples[SAMPLE_COUNT];
-  int64_t _timestamps[SAMPLE_COUNT];
-
-  void sample(int s, int64_t t) {
-    assert(s >= 0, "Negative sample values are not supported");
-    _samples[_current] = s;
-    _timestamps[_current] = t;
-    if (++_current >= SAMPLE_COUNT) {
-      _current = 0;
-    }
-  }
-
-  // Since sampling happens at irregular invervals the solution is to
-  // discount the older samples proportionally to the time between
-  // the now and the time of the sample.
-  double value(int64_t t) const {
-    double decay_speed = 1;
-    double weighted_sum = 0;
-    int count = 0;
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
-      if (_samples[i] >= 0) {
-        count++;
-        double delta_t = (t - _timestamps[i]) / 1000.0; // in seconds
-        if (delta_t < 1) delta_t = 1;
-        weighted_sum += (double) _samples[i] / (delta_t * decay_speed);
-      }
-    }
-    if (count > 0) {
-      return weighted_sum / count;
-    } else {
-      return 0;
-    }
-  }
-  static int64_t time() {
-    return nanos_to_millis(os::javaTimeNanos());
-  }
-public:
-  WeightedMovingAverage() : _current(0) {
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
-      _samples[i] = -1;
-    }
-  }
-  void sample(int s) { sample(s, time()); }
-  double value() const { return value(time()); }
-};
-
 template<typename T>
 class Queue {
   class QueueNode : public CHeapObj<mtCompiler> {
@@ -296,15 +247,13 @@ class CompileQueue;
 class CompilationPolicy : AllStatic {
   friend class CallPredicate;
   friend class LoopPredicate;
+  friend class RecompilationPolicy;
 
-  typedef CompilationPolicyUtils::WeightedMovingAverage<> LoadAverage;
   typedef CompilationPolicyUtils::Queue<InstanceKlass> TrainingReplayQueue;
 
   static int64_t _start_time;
   static int _c1_count, _c2_count, _c3_count, _sc_count;
   static double _increase_threshold_at_ratio;
-  static LoadAverage _load_average;
-  static volatile bool _recompilation_done;
   static TrainingReplayQueue _training_replay_queue;
 
   // Set carry flags in the counters (in Method* and MDO).

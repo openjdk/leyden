@@ -42,6 +42,7 @@
 #include "compiler/compilerEvent.hpp"
 #include "compiler/compilerOracle.hpp"
 #include "compiler/directivesParser.hpp"
+#include "compiler/recompilationPolicy.hpp"
 #include "gc/shared/memAllocator.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "jvm.h"
@@ -288,7 +289,7 @@ bool CompileBroker::can_remove(CompilerThread *ct, bool do_it) {
   assert(UseDynamicNumberOfCompilerThreads, "or shouldn't be here");
   if (!ReduceNumberOfCompilerThreads) return false;
 
-  if (CompilationPolicy::have_recompilation_work()) return false;
+  if (RecompilationPolicy::have_recompilation_work()) return false;
 
   AbstractCompiler *compiler = ct->compiler();
   int compiler_count = compiler->num_compiler_threads();
@@ -473,7 +474,7 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
   MonitorLocker locker(_lock);
   transfer_pending();
 
-  CompilationPolicy::sample_load_average();
+  RecompilationPolicy::sample_load_average();
 
   // If _first is null we have no more compile jobs. There are two reasons for
   // having no compile jobs: First, we compiled everything we wanted. Second,
@@ -505,7 +506,7 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
 
     transfer_pending(); // reacquired lock
 
-    if (CompilationPolicy::have_recompilation_work()) return nullptr;
+    if (RecompilationPolicy::have_recompilation_work()) return nullptr;
 
     if (UseDynamicNumberOfCompilerThreads && _first == nullptr) {
       // Still nothing to compile. Give caller a chance to stop this thread.
@@ -2233,7 +2234,7 @@ void CompileBroker::compiler_thread_loop() {
     // We need this HandleMark to avoid leaking VM handles.
     HandleMark hm(thread);
 
-    CompilationPolicy::recompilation_step(RecompilationWorkUnitSize, thread);
+    RecompilationPolicy::recompilation_step(RecompilationWorkUnitSize, thread);
 
     CompileTask* task = queue->get(thread);
 
