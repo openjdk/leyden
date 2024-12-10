@@ -59,16 +59,6 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @run driver/timeout=120 HelidonQuickStartSE LEYDEN
  */
 
-/*
- * @test id=leyden_old
- * @key external-dep
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary un HelidonQuickStartSE with the "OLD" Leyden workflow
- * @library /test/lib
- * @run driver/timeout=120 HelidonQuickStartSE LEYDEN_OLD
- */
-
 // Test CDS with the example program in https://helidon.io/docs/v4/se/guides/quickstart
 //
 // NOTE: if you have not set up an artifactory, you can create helidon-quickstart-se-4.0.7.zip by:

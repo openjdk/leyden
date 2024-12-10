@@ -59,16 +59,6 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @run driver/timeout=120 QuarkusGettingStarted LEYDEN
  */
 
-/*
- * @test id=leyden_old
- * @key external-dep
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary un QuarkusGettingStarted with the "OLD" Leyden workflow
- * @library /test/lib
- * @run driver/timeout=120 QuarkusGettingStarted LEYDEN_OLD
- */
-
 // Test CDS with the example program in https://quarkus.io/guides/getting-started
 //
 // NOTE: if you have not set up an artifactory, you can create quarkus-getting-started-1.0.0b.zip by:
