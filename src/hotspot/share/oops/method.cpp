@@ -1270,15 +1270,11 @@ void Method::link_method(const methodHandle& h_method, TRAPS) {
     ClassLoader::perf_ik_link_methods_count()->inc();
   }
 
-  // TODO: how to identify code cache full situation now that the adapter() can be
-  // non-null if AOT cache is in use
-#if 0
   // If the code cache is full, we may reenter this function for the
   // leftover methods that weren't linked.
-  if (adapter() != nullptr) {
+  if (adapter() != nullptr && !adapter()->is_shared()) {
     return;
   }
-#endif
   assert( _code == nullptr, "nothing compiled yet" );
 
   // Setup interpreter entrypoint
