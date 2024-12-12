@@ -39,20 +39,26 @@ import java.lang.annotation.*;
  * them as constant values.  This behavior is a useful building block
  * for lazy evaluation or memoization of results.  In rare and subtle
  * use cases, stable variables may also assume multiple values over
- * time, with effects to be described below.
+ * time, with effects as described below.
  * <p>
- * (Warning: the {@code @Stable} annotation is intended for use in the
+ * <em>(Warning: the {@code @Stable} annotation is intended for use in the
  * JDK implemention, and with the HotSpot VM, to support optimization
  * of classes and algorithms defined by the JDK.  It is unavailable
- * outside the JDK.)
- * <p>
- * For example, declaring two stable fields of type {@code int} and
- * {@code String} creates a pair of stable variables, initialized to
- * zero and the null reference (respectively).  Storing a non-zero
- * integer to the first field, or a non-null string to the second,
- * will enable the VM to expect that the stored value is now the
- * permanent value of the field, going forward.  This condition may be
- * used by the VM compiler to improve code quality more aggressively.
+ * outside the JDK.)</em>
+ *
+ * <h2><a id="lifecycle"></a>Stable Variable Life Cycle</h2>
+ *
+ * For example, suppose a class has two non-final fields of type
+ * {@code int} and {@code String}.  Annotating the field declarations
+ * with {@code @Stable} creates a pair of stable variables.  The
+ * fields are initialized to zero and the null reference,
+ * respectively, in the usual way, but storing a non-zero integer in
+ * the first field or a non-null reference in the second field will
+ * enable the VM to expect that the stored value is now the permanent
+ * value of the field, going forward.  This condition may be used by
+ * the VM compiler to improve code quality more aggressively,
+ * if the VM compiler runs after the stable variable has been
+ * given a permanent value, and chooses to observe that value.
  * <p>
  * Since all heap variables begin with a default null value for
  * references (resp., zero for primitives), there is an ambiguity when
@@ -67,14 +73,17 @@ import java.lang.annotation.*;
  * programmer should store non-default values into stable variables,
  * if the consequent optimization is desired.
  * <p>
- * A stable variable may be assigned its final value inside a class or
+ * A stable variable may be assigned its permanent value inside a class or
  * object initializer, but in general (with lazy data structures)
  * stable variables are assigned much later.  Depending on the value
  * stored and what races are possible, safe publication may require
  * special handling with a {@code VarHandle} atomic method.
  * (See below.)
- * <p>
- * As an extended behavior, if a stable field is declared as an array
+ *
+ * <h2><a id="arrays"></a>Stable Arrays</h2>
+ *
+ * So far, stable variables are fields, but they can be array
+ * components as well.  If a stable field is declared as an array
  * type with one dimension, both that array as a whole, and its
  * eventual components, are treated as independent stable variables.
  * When a reference to an array of length <i>N</i> is stored to the
@@ -116,25 +125,51 @@ import java.lang.annotation.*;
  * not make that array's components into stable variables, unless the
  * variable into which it is stored is statically typed as an array,
  * in the declaration of the stable field which refers to that array,
- * directly or indirectly.  Thus, in the following example, the only
- * constant-foldable string is {@code "S"}.  All subarrays are
+ * directly or indirectly.
+ *
+ * <h2><a id="examples"></a>Examples of Stable Variables</h2>
+ *
+ * In the following example, the only constant-foldable string stored
+ * in a stable value is the string {@code "S"}.  All subarrays are
  * constant.
  *
  * <pre>{@code
+ * @Stable String FIELD = null;  // no foldable value yet
+ * @Stable int IDNUM = 0;  // no foldable value yet
+ * @Stable boolean INITIALIZED = false;  // no foldable value yet
  * @Stable Object[] ARRAY = {
- *   "S",   // string "S" is stable
- *   new String[] { "X", "Y" },  // array is stable, not elements
- *   null  // null is default reference, not yet stable
+ *   "S",   // string "S" is foldable
+ *   new String[] { "X", "Y" },  // array is foldable, not elements
+ *   null  // null is not foldable
  * };
  * @Stable Object[][] MATRIX = {
  *   { "S", "S" },   // constant value
- *   { new String[] { "X", "Y" } },  // both arrays stable, not elements
- *   { null, "S" },  // array is stable, but not null
- *   null       // not yet stable (could be stable array later)
+ *   { new String[] { "X", "Y" } },  // array is foldable, not elements
+ *   { null, "S" },  // array is foldable, but not the null
+ *   null       // could be a foldable subarray later
  * };
  * }</pre>
+ *
+ * When the following method is called, some of the above stable
+ * variables will gain their permanent value, a constant-foldable
+ * string "S", or a non-default primitive value.
+ *
+ * <pre>{@code
+ * void publishSomeStables() {
+ *   // store some more foldable "S" values:
+ *   FIELD = "S";
+ *   ARRAY[2] = "S";
+ *   MATRIX[2][0] = "S";
+ *   MATRIX[3] = new Object[] { "S", "S", null };
+ *   // and store some foldable primitives:
+ *   IDNUM = 42;
+ *   INITIALIZED = true;
+ *   VarHandle.releaseFence();  //optional, see below
+ * }
+ * }</pre>
+ *
  * <p>
- * As very simple example, a stable boolean variable (i.e., stable
+ * As a very simple example, a stable boolean variable (i.e., stable
  * field or stable boolean array element) might be constant-folded,
  * but only after it is set to {@code true}.  Even this simple
  * optimization is sometimes useful for responding to a permanent
@@ -154,7 +189,9 @@ import java.lang.annotation.*;
  * {@code ()->null}.  Such a refactoring should always be possible,
  * since stable variables should (obviously) never be part of public
  * APIs.
- * <p>
+ *
+ * <h2><a id="final"></a>Final Variables, Stable Variables, and Memory Effects</h2>
+ *
  * Fields which are declared {@code final} may also be annotated as stable.
  * Since final fields already behave as stable variables, such an annotation
  * conveys no additional information regarding change of the field's value, but
@@ -175,6 +212,12 @@ import java.lang.annotation.*;
  * (either field or array component) will appear without races to any
  * user of the class or object that has been initialized.
  * <p>
+ * (Note: The barrier action of a class initializer is implicit in the
+ * unlocking operation specified in JVMS 5.5, Step 10.  The barrier
+ * action of an instance initializer is specified as a "freeze action"
+ * in JLS 17.5.1.  These disparate barrier actions have parallel
+ * effects on static and non-static final and stable variables.)
+ * <p>
  * There is no such JMM freeze operation applied to stable field stores in
  * any other context.  This implies that a constructor may choose to
  * initialize a stable variable, rather than "leaving it for later".
@@ -189,7 +232,11 @@ import java.lang.annotation.*;
  * later than the enclosing data structure is created.  This means
  * that racing reads and writes might observe nulls (or primitive
  * zeroes) as well as non-default values.
- * <p>
+ *
+ * <h2><a id="usage"></a>Proper Handling of Stable Variables</h2>
+ *
+ * A stable variable can appear to be in either of two states,
+ * either uninitialized, or else set to a permanent, foldable value.
  * Therefore, most code which reads stable variables should not assume
  * that the value has been set, and should dynamically test for a null
  * (or zero) value.  Code which cannot prove a previous initialization
