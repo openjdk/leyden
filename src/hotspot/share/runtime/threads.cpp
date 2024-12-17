@@ -33,6 +33,7 @@
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/javaThreadStatus.hpp"
+#include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
@@ -73,6 +74,7 @@
 #include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/flags/jvmFlagLimit.hpp"
 #include "runtime/globals.hpp"
+#include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/java.hpp"
@@ -176,6 +178,11 @@ static void create_initial_thread(Handle thread_group, JavaThread* thread,
                           thread_group,
                           string,
                           CHECK);
+
+  DEBUG_ONLY(int64_t main_thread_tid = java_lang_Thread::thread_id(thread_oop());)
+  assert(main_thread_tid == ThreadIdentifier::initial(), "");
+  assert(main_thread_tid == thread->lock_id(), "");
+  JFR_ONLY(assert(JFR_JVM_THREAD_ID(thread) == static_cast<traceid>(main_thread_tid), "initial tid mismatch");)
 
   // Set thread status to running since main thread has
   // been started and running.
@@ -330,6 +337,7 @@ static void call_initPhase2(TRAPS) {
 
   universe_post_module_init();
 
+#if 0
   if (CDSConfig::is_using_aot_linked_classes()) {
     AOTLinkedClassBulkLoader::load_non_javabase_boot_classes(THREAD); 
     if (CDSConfig::is_using_full_module_graph()) {
@@ -350,6 +358,7 @@ static void call_initPhase2(TRAPS) {
 
 #ifndef PRODUCT
   HeapShared::initialize_test_class_from_archive(THREAD);
+#endif
 #endif
 }
 
@@ -378,6 +387,7 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   initialize_class(vmSymbols::java_lang_System(), CHECK);
   // The VM creates & returns objects of this class. Make sure it's initialized.
   initialize_class(vmSymbols::java_lang_Class(), CHECK);
+
   initialize_class(vmSymbols::java_lang_ThreadGroup(), CHECK);
   Handle thread_group = create_initial_thread_group(CHECK);
   Universe::set_main_thread_group(thread_group());
@@ -433,6 +443,7 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   initialize_class(vmSymbols::java_lang_StackOverflowError(), CHECK);
   initialize_class(vmSymbols::java_lang_IllegalMonitorStateException(), CHECK);
   initialize_class(vmSymbols::java_lang_IllegalArgumentException(), CHECK);
+  initialize_class(vmSymbols::java_lang_InternalError(), CHECK);
 }
 
 bool Threads::initialize_compilation(TRAPS) {
@@ -605,13 +616,19 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   MutexLockerImpl::init_counters(); // depends on mutex_init(), perfMemory_init(), and Thread::initialize_thread_current().
 
-  if (!main_thread->set_as_starting_thread()) {
+  // Set the lock_id now since we will run Java code before the Thread instance
+  // is even created. The same value will be assigned to the Thread instance on init.
+  main_thread->set_lock_id(ThreadIdentifier::next());
+
+  if (!Thread::set_as_starting_thread(main_thread)) {
     vm_shutdown_during_initialization(
                                       "Failed necessary internal allocation. Out of swap space");
     main_thread->smr_delete();
     *canTryAgain = false; // don't let caller call JNI_CreateJavaVM again
     return JNI_ENOMEM;
   }
+
+  JFR_ONLY(Jfr::initialize_main_thread(main_thread);)
 
   // Enable guard page *after* os::create_main_thread(), otherwise it would
   // crash Linux VM, see notes in os_linux.cpp.
@@ -659,6 +676,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     *canTryAgain = false; // don't let caller call JNI_CreateJavaVM again
     return status;
   }
+
+  ObjectMonitor::Initialize2();
 
   JFR_ONLY(Jfr::on_create_vm_1();)
 
@@ -745,6 +764,11 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   log_info(os)("Initialized VM with process ID %d", os::current_process_id());
 
+  if (!FLAG_IS_DEFAULT(CreateCoredumpOnCrash) && CreateCoredumpOnCrash) {
+    char buffer[2*JVM_MAXPATHLEN];
+    os::check_core_dump_prerequisites(buffer, sizeof(buffer), true);
+  }
+
   // Signal Dispatcher needs to be started before VMInit event is posted
   os::initialize_jdk_signal_support(CHECK_JNI_ERR);
 
@@ -778,7 +802,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   bool force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
 
-  AOTLinkedClassBulkLoader::init_javabase_preloaded_classes(CHECK_JNI_ERR);
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
+    SystemDictionary::restore_archived_method_handle_intrinsics();
+  }
 
   // Start string deduplication thread if requested.
   if (StringDedup::is_enabled()) {
@@ -794,6 +821,13 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // This will initialize the module system.  Only java.base classes can be
   // loaded until phase 2 completes
   call_initPhase2(CHECK_JNI_ERR);
+
+  if (CDSConfig::is_using_aot_linked_classes() && !CDSConfig::is_dumping_final_static_archive()) {
+    AOTLinkedClassBulkLoader::load_non_javabase_classes(THREAD);
+  }
+#ifndef PRODUCT
+  HeapShared::initialize_test_class_from_archive(THREAD);
+#endif
 
   JFR_ONLY(Jfr::on_create_vm_2();)
 
@@ -841,7 +875,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     Precompiler::compile_cached_code(CHECK_JNI_ERR);
     if (PrecompileOnlyAndExit) {
       SCCache::close();
-      log_vm_init_stats(true /* use_tty */);
+      log_vm_init_stats();
       vm_direct_exit(0, "Code precompiation is over");
     }
   }
@@ -911,7 +945,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   }
 
   log_info(init)("At VM initialization completion:");
-  log_vm_init_stats(false /* use_tty */);
+  log_vm_init_stats();
 
   if (UsePerfData) {
     if (ProfileVMLocks) {
@@ -1128,7 +1162,9 @@ void Threads::add(JavaThread* p, bool force_daemon) {
 void Threads::remove(JavaThread* p, bool is_daemon) {
   // Extra scope needed for Thread_lock, so we can check
   // that we do not remove thread without safepoint code notice
-  { MonitorLocker ml(Threads_lock);
+  {
+    ConditionalMutexLocker throttle_ml(ThreadsLockThrottle_lock, UseThreadsLockThrottleLock);
+    MonitorLocker ml(Threads_lock);
 
     if (ThreadIdTable::is_initialized()) {
       // This cleanup must be done before the current thread's GC barrier
@@ -1176,7 +1212,7 @@ void Threads::remove(JavaThread* p, bool is_daemon) {
 
     // Notify threads waiting in EscapeBarriers
     EscapeBarrier::thread_removed(p);
-  } // unlock Threads_lock
+  } // unlock Threads_lock and ThreadsLockThrottle_lock
 
   // Reduce the ObjectMonitor ceiling for the exiting thread.
   ObjectSynchronizer::dec_in_use_list_ceiling();
@@ -1318,35 +1354,16 @@ GrowableArray<JavaThread*>* Threads::get_pending_threads(ThreadsList * t_list,
 }
 #endif // INCLUDE_JVMTI
 
-JavaThread *Threads::owning_thread_from_monitor_owner(ThreadsList * t_list,
-                                                      address owner) {
-  assert(LockingMode != LM_LIGHTWEIGHT, "Not with new lightweight locking");
-  // null owner means not locked so we can skip the search
-  if (owner == nullptr) return nullptr;
+JavaThread *Threads::owning_thread_from_stacklock(ThreadsList * t_list, address basicLock) {
+  assert(LockingMode == LM_LEGACY, "Not with new lightweight locking");
 
-  for (JavaThread* p : *t_list) {
-    // first, see if owner is the address of a Java thread
-    if (owner == (address)p) return p;
-  }
-
-  // Cannot assert on lack of success here since this function may be
-  // used by code that is trying to report useful problem information
-  // like deadlock detection.
-  if (LockingMode == LM_MONITOR) return nullptr;
-
-  // If we didn't find a matching Java thread and we didn't force use of
-  // heavyweight monitors, then the owner is the stack address of the
-  // Lock Word in the owning Java thread's stack.
-  //
   JavaThread* the_owner = nullptr;
   for (JavaThread* q : *t_list) {
-    if (q->is_lock_owned(owner)) {
+    if (q->is_lock_owned(basicLock)) {
       the_owner = q;
       break;
     }
   }
-
-  // cannot assert on lack of success here; see above comment
   return the_owner;
 }
 
@@ -1367,17 +1384,22 @@ JavaThread* Threads::owning_thread_from_object(ThreadsList * t_list, oop obj) {
 }
 
 JavaThread* Threads::owning_thread_from_monitor(ThreadsList* t_list, ObjectMonitor* monitor) {
-  if (LockingMode == LM_LIGHTWEIGHT) {
-    if (monitor->is_owner_anonymous()) {
+  if (monitor->has_anonymous_owner()) {
+    if (LockingMode == LM_LIGHTWEIGHT) {
       return owning_thread_from_object(t_list, monitor->object());
     } else {
-      Thread* owner = reinterpret_cast<Thread*>(monitor->owner());
-      assert(owner == nullptr || owner->is_Java_thread(), "only JavaThreads own monitors");
-      return reinterpret_cast<JavaThread*>(owner);
+      assert(LockingMode == LM_LEGACY, "invariant");
+      return owning_thread_from_stacklock(t_list, (address)monitor->stack_locker());
     }
   } else {
-    address owner = (address)monitor->owner();
-    return owning_thread_from_monitor_owner(t_list, owner);
+    JavaThread* the_owner = nullptr;
+    for (JavaThread* q : *t_list) {
+      if (monitor->has_owner(q)) {
+        the_owner = q;
+        break;
+      }
+    }
+    return the_owner;
   }
 }
 
@@ -1429,17 +1451,10 @@ void Threads::print_on(outputStream* st, bool print_stacks,
         p->trace_stack();
       } else {
         p->print_stack_on(st);
-        const oop thread_oop = p->threadObj();
-        if (thread_oop != nullptr) {
-          if (p->is_vthread_mounted()) {
-            const oop vt = p->vthread();
-            assert(vt != nullptr, "vthread should not be null when vthread is mounted");
-            // JavaThread._vthread can refer to the carrier thread. Print only if _vthread refers to a virtual thread.
-            if (vt != thread_oop) {
-              st->print_cr("   Mounted virtual thread #" INT64_FORMAT, (int64_t)java_lang_Thread::thread_id(vt));
-              p->print_vthread_stack_on(st);
-            }
-          }
+        if (p->is_vthread_mounted()) {
+          // _lock_id is the thread ID of the mounted virtual thread
+          st->print_cr("   Mounted virtual thread #" INT64_FORMAT, p->lock_id());
+          p->print_vthread_stack_on(st);
         }
       }
     }

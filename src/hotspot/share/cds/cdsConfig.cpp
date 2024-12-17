@@ -40,6 +40,7 @@
 #include "runtime/arguments.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/java.hpp"
+#include "runtime/vmThread.hpp"
 #include "utilities/defaultStream.hpp"
 #include "utilities/formatBuffer.hpp"
 
@@ -58,6 +59,8 @@ bool CDSConfig::_old_cds_flags_used = false;
 char* CDSConfig::_default_archive_path = nullptr;
 char* CDSConfig::_static_archive_path = nullptr;
 char* CDSConfig::_dynamic_archive_path = nullptr;
+
+JavaThread* CDSConfig::_dumper_thread = nullptr;
 
 int CDSConfig::get_status() {
   assert(Universe::is_fully_initialized(), "status is finalized only after Universe is initialized");
@@ -95,13 +98,20 @@ char* CDSConfig::default_archive_path() {
     os::jvm_path(jvm_path, sizeof(jvm_path));
     char *end = strrchr(jvm_path, *os::file_separator());
     if (end != nullptr) *end = '\0';
-    size_t jvm_path_len = strlen(jvm_path);
-    size_t file_sep_len = strlen(os::file_separator());
-    const size_t len = jvm_path_len + file_sep_len + 20;
-    _default_archive_path = NEW_C_HEAP_ARRAY(char, len, mtArguments);
-    jio_snprintf(_default_archive_path, len,
-                LP64_ONLY(!UseCompressedOops ? "%s%sclasses_nocoops.jsa":) "%s%sclasses.jsa",
-                jvm_path, os::file_separator());
+    stringStream tmp;
+    tmp.print("%s%sclasses", jvm_path, os::file_separator());
+#ifdef _LP64
+    if (!UseCompressedOops) {
+      tmp.print_raw("_nocoops");
+    }
+    if (UseCompactObjectHeaders) {
+      // Note that generation of xxx_coh.jsa variants require
+      // --enable-cds-archive-coh at build time
+      tmp.print_raw("_coh");
+    }
+#endif
+    tmp.print_raw(".jsa");
+    _default_archive_path = os::strdup(tmp.base());
   }
   return _default_archive_path;
 }
@@ -267,7 +277,9 @@ static char* bad_module_prop_key   = nullptr;
 static char* bad_module_prop_value = nullptr;
 
 void CDSConfig::check_internal_module_property(const char* key, const char* value) {
-  if (Arguments::is_internal_module_property(key) && !Arguments::is_module_path_property(key)) {
+  if (Arguments::is_internal_module_property(key) &&
+      !Arguments::is_module_path_property(key) &&
+      !Arguments::is_add_modules_property(key)) {
     stop_using_optimized_module_handling();
     if (bad_module_prop_key == nullptr) {
       // We don't want to print an unconditional warning here, as we are still processing the command line.
@@ -574,6 +586,14 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO_IF_DEFAULT(ArchivePackages, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveProtectionDomains, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
+
+    // FIXME -- leyden+JEP483 merge {
+    FLAG_SET_ERGO(ArchiveDynamicProxies, false);
+    FLAG_SET_ERGO(ArchiveLoaderLookupCache, false);
+    FLAG_SET_ERGO(ArchivePackages, false);
+    FLAG_SET_ERGO(ArchiveProtectionDomains, false);
+    FLAG_SET_ERGO(ArchiveReflectionData, false);
+    // }
   } else {
     // All of these *might* depend on AOTClassLinking. Better be safe than sorry.
     // TODO: more fine-grained handling.
@@ -611,8 +631,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     // Disable UseStringDeduplication while dumping CDS archive.
     UseStringDeduplication = false;
 
-    // Don't use SoftReferences so that some java.lang.invoke tables can be archived.
-    Arguments::PropertyList_add(new SystemProperty("java.lang.invoke.MethodHandle.NO_SOFT_CACHE", "true", false));
+    // Don't use SoftReferences so that objects used by java.lang.invoke tables can be archived.
+    Arguments::PropertyList_add(new SystemProperty("java.lang.invoke.MethodHandleNatives.USE_SOFT_CACHE", "false", false));
   }
 
   // RecordDynamicDumpInfo is not compatible with ArchiveClassesAtExit
@@ -676,6 +696,10 @@ bool CDSConfig::is_dumping_preimage_static_archive() {
   return _is_dumping_static_archive && CacheDataStore != nullptr && CDSPreimage == nullptr;
 }
 
+bool CDSConfig::is_dumping_preimage_static_archive_with_triggers() {
+  return (!FLAG_IS_DEFAULT(AOTEndTrainingOnMethodEntry)) && is_dumping_preimage_static_archive();
+}
+
 bool CDSConfig::is_dumping_final_static_archive() {
   if (CDSPreimage != nullptr) {
     assert(CacheDataStore != nullptr, "must be"); // should have been properly initialized by arguments.cpp
@@ -727,6 +751,22 @@ void CDSConfig::stop_using_optimized_module_handling() {
   _is_using_optimized_module_handling = false;
   _is_dumping_full_module_graph = false; // This requires is_using_optimized_module_handling()
   _is_using_full_module_graph = false; // This requires is_using_optimized_module_handling()
+}
+
+
+CDSConfig::DumperThreadMark::DumperThreadMark(JavaThread* current) {
+  assert(_dumper_thread == nullptr, "sanity");
+  _dumper_thread = current;
+}
+
+CDSConfig::DumperThreadMark::~DumperThreadMark() {
+  assert(_dumper_thread != nullptr, "sanity");
+  _dumper_thread = nullptr;
+}
+
+bool CDSConfig::current_thread_is_vm_or_dumper() {
+  Thread* t = Thread::current();
+  return t != nullptr && (t->is_VM_thread() || t == _dumper_thread);
 }
 
 #if INCLUDE_CDS_JAVA_HEAP
@@ -801,19 +841,14 @@ bool CDSConfig::is_using_aot_linked_classes() {
   return is_using_full_module_graph() && _has_aot_linked_classes;
 }
 
-void CDSConfig::set_has_aot_linked_classes(bool is_static_archive, bool has_aot_linked_classes) {
-  _has_aot_linked_classes |= has_aot_linked_classes;
-}
-
-bool CDSConfig::is_loading_invokedynamic() {
-  return UseSharedSpaces && is_using_full_module_graph() && _has_archived_invokedynamic;
-}
-
 bool CDSConfig::is_dumping_dynamic_proxies() {
   return is_dumping_full_module_graph() && is_dumping_invokedynamic() && ArchiveDynamicProxies;
 }
 
-// NOTE: do not upstream this to mainline yet.
+void CDSConfig::set_has_aot_linked_classes(bool has_aot_linked_classes) {
+  _has_aot_linked_classes |= has_aot_linked_classes;
+}
+
 bool CDSConfig::is_initing_classes_at_dump_time() {
   return is_dumping_heap() && is_dumping_aot_linked_classes();
 }
@@ -853,6 +888,10 @@ bool CDSConfig::is_loading_protection_domains() {
 bool CDSConfig::is_dumping_reflection_data() {
   // reflection data use LambdaForm classes
   return ArchiveReflectionData && is_dumping_invokedynamic();
+}
+
+bool CDSConfig::is_loading_invokedynamic() {
+  return UseSharedSpaces && is_using_full_module_graph() && _has_archived_invokedynamic;
 }
 
 #endif // INCLUDE_CDS_JAVA_HEAP

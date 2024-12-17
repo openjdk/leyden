@@ -301,12 +301,6 @@ public:
 
   static void add_to_initiating_loader(JavaThread* current, InstanceKlass* k,
                                        ClassLoaderData* loader_data) NOT_CDS_RETURN;
-protected:
-  static InstanceKlass* _well_known_klasses[];
-
-private:
-  // table of box klasses (int_klass, etc.)
-  static InstanceKlass* _box_klasses[T_VOID+1];
 
   static OopHandle  _java_system_loader;
   static OopHandle  _java_platform_loader;
@@ -344,13 +338,12 @@ private:
                                             bool is_superclass, TRAPS);
   static bool check_shared_class_super_types(InstanceKlass* ik, Handle class_loader,
                                                Handle protection_domain, TRAPS);
-  static void restore_archived_method_handle_intrinsics_impl(TRAPS);
+  // Second part of load_shared_class
+  static void load_shared_class_misc(InstanceKlass* ik, ClassLoaderData* loader_data) NOT_CDS_RETURN;
+  static void restore_archived_method_handle_intrinsics_impl(TRAPS) NOT_CDS_RETURN;
 
 protected:
   // Used by SystemDictionaryShared
-
-  // Second part of load_shared_class
-  static void load_shared_class_misc(InstanceKlass* ik, ClassLoaderData* loader_data) NOT_CDS_RETURN;
 
   static bool add_loader_constraint(Symbol* name, Klass* klass_being_linked,  Handle loader1,
                                     Handle loader2);

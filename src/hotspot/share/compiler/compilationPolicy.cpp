@@ -30,11 +30,11 @@
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/compilerOracle.hpp"
+#include "compiler/recompilationPolicy.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/methodData.hpp"
 #include "oops/method.inline.hpp"
 #include "oops/oop.inline.hpp"
-#include "oops/recompilationSchedule.hpp"
 #include "oops/trainingData.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/arguments.hpp"
@@ -62,9 +62,7 @@ int CompilationPolicy::_c3_count = 0;
 int CompilationPolicy::_sc_count = 0;
 double CompilationPolicy::_increase_threshold_at_ratio = 0;
 
-CompilationPolicy::LoadAverage CompilationPolicy::_load_average;
 CompilationPolicy::TrainingReplayQueue CompilationPolicy::_training_replay_queue;
-volatile bool CompilationPolicy::_recompilation_done = false;
 
 void compilationPolicy_init() {
   CompilationPolicy::initialize();
@@ -77,85 +75,6 @@ int CompilationPolicy::compiler_count(CompLevel comp_level) {
     return c2_count();
   }
   return 0;
-}
-
-void CompilationPolicy::sample_load_average() {
-  const int c2_queue_size = CompileBroker::queue_size(CompLevel_full_optimization);
-  _load_average.sample(c2_queue_size);
-}
-
-bool CompilationPolicy::have_recompilation_work() {
-  if (UseRecompilation && TrainingData::have_data() && RecompilationSchedule::have_schedule() &&
-                          RecompilationSchedule::length() > 0 && !_recompilation_done) {
-    if (_load_average.value() <= RecompilationLoadAverageThreshold) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool CompilationPolicy::recompilation_step(int step, TRAPS) {
-  if (!have_recompilation_work() || os::elapsedTime() < DelayRecompilation) {
-    return false;
-  }
-
-  const int size = RecompilationSchedule::length();
-  int i = 0;
-  int count = 0;
-  bool repeat = false;
-  for (; i < size && count < step; i++) {
-    if (!RecompilationSchedule::status_at(i)) {
-      MethodTrainingData* mtd = RecompilationSchedule::at(i);
-      if (!mtd->has_holder()) {
-        RecompilationSchedule::set_status_at(i, true);
-        continue;
-      }
-      const Method* method = mtd->holder();
-      InstanceKlass* klass = method->method_holder();
-      if (klass->is_not_initialized()) {
-        repeat = true;
-        continue;
-      }
-      nmethod *nm = method->code();
-      if (nm == nullptr) {
-        repeat = true;
-        continue;
-      }
-
-      if (!ForceRecompilation && !(nm->is_scc() && nm->comp_level() == CompLevel_full_optimization)) {
-        // If it's already online-compiled at level 4, mark it as done.
-        if (nm->comp_level() == CompLevel_full_optimization) {
-          RecompilationSchedule::set_status_at(i, true);
-        } else {
-          repeat = true;
-        }
-        continue;
-      }
-      if (RecompilationSchedule::claim_at(i)) {
-        const methodHandle m(THREAD, const_cast<Method*>(method));
-        CompLevel next_level = CompLevel_full_optimization;
-
-        if (method->method_data() == nullptr) {
-          create_mdo(m, THREAD);
-        }
-
-        if (PrintTieredEvents) {
-          print_event(FORCE_RECOMPILE, m(), m(), InvocationEntryBci, next_level);
-        }
-        CompileBroker::compile_method(m, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0,
-                                      true /*requires_online_compilation*/, CompileTask::Reason_MustBeCompiled, THREAD);
-        if (HAS_PENDING_EXCEPTION) {
-          CLEAR_PENDING_EXCEPTION;
-        }
-        count++;
-      }
-    }
-  }
-
-  if (i == size && !repeat) {
-    Atomic::release_store(&_recompilation_done, true);
-  }
-  return count > 0;
 }
 
 // Returns true if m must be compiled before executing it
@@ -287,7 +206,7 @@ void CompilationPolicy::replay_training_at_init(bool is_on_shutdown, TRAPS) {
         if (log.is_enabled()) {
           ResourceMark rm;
           log.print("pending training replay request: %s%s",
-                    pending->external_name(), (pending->has_preinitialized_mirror() ? " (preinitialized)" : ""));
+                    pending->external_name(), (pending->has_aot_initialized_mirror() ? " (preinitialized)" : ""));
         }
       }
       replay_training_at_init_impl(pending, THREAD);
@@ -302,7 +221,7 @@ void CompilationPolicy::replay_training_at_init(bool is_on_shutdown, TRAPS) {
 void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
   assert(klass->is_initialized(), "");
   if (TrainingData::have_data() && klass->is_shared() &&
-      (CompileBroker::replay_initialized() || !klass->has_preinitialized_mirror())) { // ignore preloaded classes during early startup
+      (CompileBroker::replay_initialized() || !klass->has_aot_initialized_mirror())) { // ignore preloaded classes during early startup
     if (UseConcurrentTrainingReplay || !CompileBroker::replay_initialized()) {
       _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
     } else {
@@ -649,7 +568,8 @@ void CompilationPolicy::print_event(EventType type, Method* m, Method* im, int b
   tty->print(" rate=");
   if (m->prev_time() == 0) tty->print("n/a");
   else tty->print("%f", m->rate());
-  tty->print(" load=%lf", _load_average.value());
+
+  RecompilationPolicy::print_load_average();
 
   tty->print(" k=%.2lf,%.2lf", threshold_scale(CompLevel_full_profile, Tier3LoadFeedback),
                                threshold_scale(CompLevel_full_optimization, Tier4LoadFeedback));

@@ -125,3 +125,15 @@ void DumpAllocStats::print_stats(int ro_all, int rw_all) {
   msg.info("Dynamic proxy classes             = %5d%s", _num_dynamic_proxy_classes,
            CDSConfig::is_dumping_full_module_graph() ? "" : " (not archiving FMG)");
 }
+
+#ifdef ASSERT
+void DumpAllocStats::verify(int expected_byte_size, bool read_only) const {
+  int bytes = 0;
+  const int what = (int)(read_only ? RO : RW);
+  for (int type = 0; type < int(_number_of_types); type ++) {
+    bytes += _bytes[what][type];
+  }
+  assert(bytes == expected_byte_size, "counter mismatch (%s: %d vs %d)",
+         (read_only ? "RO" : "RW"), bytes, expected_byte_size);
+}
+#endif // ASSERT

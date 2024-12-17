@@ -59,9 +59,14 @@ class AbstractInterpreter: AllStatic {
   enum MethodKind {
     zerolocals,                                                 // method needs locals initialization
     zerolocals_synchronized,                                    // method needs locals initialization & is synchronized
+    zerolocals_upcalls,                                         // method needs locals initialization & has runtime upcalls
+    zerolocals_synchronized_upcalls,                            // method needs locals initialization & is synchronized & has runtime upcalls
     native,                                                     // native method
     native_synchronized,                                        // native method & is synchronized
+    native_upcalls,                                             // native method & has runtime upcalls
+    native_synchronized_upcalls,                                // native method & is synchronized & has runtime upcalls
     empty,                                                      // empty method (code: _return)
+    empty_upcalls,                                              // empty method & has runtime upcalls (code: _return)
     getter,                                                     // getter method
     setter,                                                     // setter method
     abstract,                                                   // abstract method (throws an AbstractMethodException)

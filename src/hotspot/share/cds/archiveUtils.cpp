@@ -263,9 +263,10 @@ void DumpRegion::commit_to(char* newtop) {
                  which, commit, _vs->actual_committed_size(), _vs->high());
 }
 
-
-char* DumpRegion::allocate(size_t num_bytes) {
-  char* p = (char*)align_up(_top, (size_t)SharedSpaceObjectAlignment);
+char* DumpRegion::allocate(size_t num_bytes, size_t alignment) {
+  // Always align to at least minimum alignment
+  alignment = MAX2(SharedSpaceObjectAlignment, alignment);
+  char* p = (char*)align_up(_top, alignment);
   char* newtop = p + align_up(num_bytes, (size_t)SharedSpaceObjectAlignment);
   expand_top_to(newtop);
   memset(p, 0, newtop - p);
@@ -344,9 +345,8 @@ void WriteClosure::do_ptr(void** p) {
 void ReadClosure::do_ptr(void** p) {
   assert(*p == nullptr, "initializing previous initialized pointer.");
   intptr_t obj = nextPtr();
-  assert((intptr_t)obj >= 0 || (intptr_t)obj < -100,
-         "hit tag while initializing ptrs.");
-  *p = (void*)obj != nullptr ? (void*)(SharedBaseAddress + obj) : (void*)obj;
+  assert(obj >= 0, "sanity.");
+  *p = (obj != 0) ? (void*)(_base_address + obj) : (void*)obj;
 }
 
 void ReadClosure::do_u4(u4* p) {
@@ -368,7 +368,7 @@ void ReadClosure::do_tag(int tag) {
   int old_tag;
   old_tag = (int)(intptr_t)nextPtr();
   // do_int(&old_tag);
-  assert(tag == old_tag, "old tag doesn't match");
+  assert(tag == old_tag, "tag doesn't match (%d, expected %d)", old_tag, tag);
   FileMapInfo::assert_mark(tag == old_tag);
 }
 
@@ -394,35 +394,6 @@ void ArchiveUtils::log_to_classlist(BootstrapInfo* bootstrap_specifier, TRAPS) {
   }
 }
 
-// Used in logging: "boot", "boot2", "plat", "app" and "unreg";
-const char* ArchiveUtils::class_category(Klass* k) {
-  if (ArchiveBuilder::is_active() && ArchiveBuilder::current()->is_in_buffer_space(k)) {
-    k = ArchiveBuilder::current()->get_source_addr(k);
-  }
-
-  if (k->is_array_klass()) {
-    return "array";
-  } else {
-    oop loader = k->class_loader();
-    if (loader == nullptr) {
-      if (k->module() != nullptr &&
-          k->module()->name() != nullptr &&
-          k->module()->name()->equals("java.base")) {
-        return "boot"; // boot classes in java.base
-      } else {
-        return "boot2"; // boot classes outside of java.base
-      }
-    } else {
-      if (loader == SystemDictionary::java_platform_loader()) {
-        return "plat";
-      } else if (loader == SystemDictionary::java_system_loader()) {
-        return "app";
-      } else {
-        return "unreg";
-      }
-    }
-  }
-}
 
 // "boot", "platform", "app" or nullptr
 const char* ArchiveUtils::builtin_loader_name_or_null(oop loader) {
@@ -471,6 +442,14 @@ oop ArchiveUtils::builtin_loader_from_type(int loader_type) {
     ShouldNotReachHere();
     return nullptr;
   }
+}
+
+bool ArchiveUtils::has_aot_initialized_mirror(InstanceKlass* src_ik) {
+  if (SystemDictionaryShared::is_excluded_class(src_ik)) {
+    assert(!ArchiveBuilder::current()->has_been_buffered(src_ik), "sanity");
+    return false;
+  }
+  return ArchiveBuilder::current()->get_buffered_addr(src_ik)->has_aot_initialized_mirror();
 }
 
 size_t HeapRootSegments::size_in_bytes(size_t seg_idx) {

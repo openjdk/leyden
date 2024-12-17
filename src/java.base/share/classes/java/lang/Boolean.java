@@ -61,32 +61,24 @@ import static java.lang.constant.ConstantDescs.CD_Boolean;
 public final class Boolean implements java.io.Serializable,
                                       Comparable<Boolean>, Constable
 {
-    // AOT cache support - there are references to these fields by other cached Java objects. We need
-    // to preserve their identity across AOT cache assembly phase and production runs.
-    static class AOTHolder {
-        private static final Boolean TRUE  = new Boolean(true);
-        private static final Boolean FALSE = new Boolean(false);
-    }
-
     /**
      * The {@code Boolean} object corresponding to the primitive
      * value {@code true}.
      */
-    public static final Boolean TRUE = AOTHolder.TRUE;
+    public static final Boolean TRUE = new Boolean(true);
 
     /**
      * The {@code Boolean} object corresponding to the primitive
      * value {@code false}.
      */
-    public static final Boolean FALSE = AOTHolder.FALSE;
+    public static final Boolean FALSE = new Boolean(false);
 
     /**
      * The Class object representing the primitive type boolean.
      *
      * @since   1.1
      */
-    @SuppressWarnings("unchecked")
-    public static final Class<Boolean> TYPE = (Class<Boolean>) Class.getPrimitiveClass("boolean");
+    public static final Class<Boolean> TYPE = Class.getPrimitiveClass("boolean");
 
     /**
      * The value of the Boolean.
@@ -262,8 +254,8 @@ public final class Boolean implements java.io.Serializable,
      *          same value; {@code false} otherwise.
      */
     public boolean equals(Object obj) {
-        if (obj instanceof Boolean) {
-            return value == ((Boolean)obj).booleanValue();
+        if (obj instanceof Boolean b) {
+            return value == b.booleanValue();
         }
         return false;
     }
@@ -279,8 +271,6 @@ public final class Boolean implements java.io.Serializable,
      *
      * @param   name   the system property name.
      * @return  the {@code boolean} value of the system property.
-     * @throws  SecurityException for the same reasons as
-     *          {@link System#getProperty(String) System.getProperty}
      * @see     java.lang.System#getProperty(java.lang.String)
      * @see     java.lang.System#getProperty(java.lang.String, java.lang.String)
      */

@@ -301,12 +301,8 @@ class LambdaForm {
         PUT_DOUBLE_VOLATILE("putDoubleVolatile"),
         TRY_FINALLY("tryFinally"),
         TABLE_SWITCH("tableSwitch"),
-        COLLECT("collect"),
         COLLECTOR("collector"),
-        CONVERT("convert"),
-        SPREAD("spread"),
         LOOP("loop"),
-        FIELD("field"),
         GUARD("guard"),
         GUARD_WITH_CATCH("guardWithCatch"),
         VARHANDLE_EXACT_INVOKER("VH.exactInvoker"),
@@ -1152,10 +1148,8 @@ class LambdaForm {
             return super.hashCode();
         }
 
-        static class AOTHolder {
-            static final MethodType INVOKER_METHOD_TYPE =
-                MethodType.methodType(Object.class, MethodHandle.class, Object[].class);
-        }
+        static final MethodType INVOKER_METHOD_TYPE =
+            MethodType.methodType(Object.class, MethodHandle.class, Object[].class);
 
         private static MethodHandle computeInvoker(MethodTypeForm typeForm) {
             typeForm = typeForm.basicType().form();  // normalize to basic type
@@ -1165,7 +1159,7 @@ class LambdaForm {
             mh = DirectMethodHandle.make(invoker);
             MethodHandle mh2 = typeForm.cachedMethodHandle(MethodTypeForm.MH_NF_INV);
             if (mh2 != null)  return mh2;  // benign race
-            if (!mh.type().equals(AOTHolder.INVOKER_METHOD_TYPE))
+            if (!mh.type().equals(INVOKER_METHOD_TYPE))
                 throw newInternalError(mh.debugString());
             return typeForm.setCachedMethodHandle(MethodTypeForm.MH_NF_INV, mh);
         }

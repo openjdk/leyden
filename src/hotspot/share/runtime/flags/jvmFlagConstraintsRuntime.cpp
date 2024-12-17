@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -33,11 +33,11 @@
 #include "utilities/powerOfTwo.hpp"
 
 JVMFlag::Error AOTModeConstraintFunc(ccstr value, bool verbose) {
-  if (strcmp(value, "off") != 0 && 
-      strcmp(value, "record") != 0 && 
-      strcmp(value, "create") != 0 && 
-      strcmp(value, "auto") != 0 && 
-      strcmp(value, "on")) {
+  if (strcmp(value, "off") != 0 &&
+      strcmp(value, "record") != 0 &&
+      strcmp(value, "create") != 0 &&
+      strcmp(value, "auto") != 0 &&
+      strcmp(value, "on") != 0) {
     JVMFlag::printError(verbose,
                         "Unrecognized value %s for AOTMode. Must be one of the following: "
                         "off, record, create, auto, on\n",

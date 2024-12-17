@@ -34,7 +34,6 @@
 #include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
-#include "cds/cds_globals.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/cppVtables.hpp"
@@ -98,6 +97,7 @@
 #include "utilities/align.hpp"
 #include "utilities/bitMap.inline.hpp"
 #include "utilities/defaultStream.hpp"
+#include "utilities/macros.hpp"
 #include "utilities/ostream.hpp"
 #include "utilities/resourceHash.hpp"
 
@@ -110,6 +110,7 @@ intx MetaspaceShared::_relocation_delta;
 char* MetaspaceShared::_requested_base_address;
 Array<Method*>* MetaspaceShared::_archived_method_handle_intrinsics = nullptr;
 bool MetaspaceShared::_use_optimized_module_handling = true;
+int volatile MetaspaceShared::_preimage_static_archive_dumped = 0;
 
 // The CDS archive is divided into the following regions:
 //     rw  - read-write metadata
@@ -327,9 +328,12 @@ void MetaspaceShared::post_initialize(TRAPS) {
   }
 }
 
+// Extra java.lang.Strings to be added to the archive
 static GrowableArrayCHeap<OopHandle, mtClassShared>* _extra_interned_strings = nullptr;
+// Extra Symbols to be added to the archive
 static GrowableArrayCHeap<Symbol*, mtClassShared>* _extra_symbols = nullptr;
-static GrowableArray<Method*>* _method_handle_intrinsics = nullptr;
+// Methods managed by SystemDictionary::find_method_handle_intrinsic() to be added to the archive
+static GrowableArray<Method*>* _pending_method_handle_intrinsics = NULL;
 
 void MetaspaceShared::read_extra_data(JavaThread* current, const char* filename) {
   _extra_interned_strings = new GrowableArrayCHeap<OopHandle, mtClassShared>(10000);
@@ -381,8 +385,8 @@ void MetaspaceShared::read_extra_data(JavaThread* current, const char* filename)
 }
 
 void MetaspaceShared::make_method_handle_intrinsics_shareable() {
-  for (int i = 0; i < _method_handle_intrinsics->length(); i++) {
-    Method* m = ArchiveBuilder::current()->get_buffered_addr(_method_handle_intrinsics->at(i));
+  for (int i = 0; i < _pending_method_handle_intrinsics->length(); i++) {
+    Method* m = ArchiveBuilder::current()->get_buffered_addr(_pending_method_handle_intrinsics->at(i));
     m->remove_unshareable_info();
     // Each method has its own constant pool (which is distinct from m->method_holder()->constants());
     m->constants()->remove_unshareable_info();
@@ -390,17 +394,57 @@ void MetaspaceShared::make_method_handle_intrinsics_shareable() {
 }
 
 void MetaspaceShared::write_method_handle_intrinsics() {
-  int len = _method_handle_intrinsics->length();
+  int len = _pending_method_handle_intrinsics->length();
   _archived_method_handle_intrinsics = ArchiveBuilder::new_ro_array<Method*>(len);
+  int word_size = _archived_method_handle_intrinsics->size();
   for (int i = 0; i < len; i++) {
-    ArchiveBuilder::current()->write_pointer_in_buffer(_archived_method_handle_intrinsics->adr_at(i),
-                                                       _method_handle_intrinsics->at(i));
+    Method* m = _pending_method_handle_intrinsics->at(i);
+    ArchiveBuilder::current()->write_pointer_in_buffer(_archived_method_handle_intrinsics->adr_at(i), m);
+    word_size += m->size() + m->constMethod()->size() + m->constants()->size();
+    if (m->constants()->cache() != nullptr) {
+      word_size += m->constants()->cache()->size();
+    }
   }
-  log_info(cds)("Archived %d method handle intrinsics", len);
+  log_info(cds)("Archived %d method handle intrinsics (%d bytes)", len, word_size * BytesPerWord);
 }
 
-// Read/write a data stream for restoring/preserving metadata pointers and
-// miscellaneous data from/to the shared archive file.
+// About "serialize" --
+//
+// This is (probably a badly named) way to read/write a data stream of pointers and
+// miscellaneous data from/to the shared archive file. The usual code looks like this:
+//
+//     // These two global C++ variables are initialized during dump time.
+//     static int _archived_int;
+//     static MetaspaceObj* archived_ptr;
+//
+//     void MyClass::serialize(SerializeClosure* soc) {
+//         soc->do_int(&_archived_int);
+//         soc->do_int(&_archived_ptr);
+//     }
+//
+//     At dumptime, these two variables are stored into the CDS archive.
+//     At runtime, these two variables are loaded from the CDS archive.
+//     In addition, the pointer is relocated as necessary.
+//
+// Some of the xxx::serialize() functions may have side effects and assume that
+// the archive is already mapped. For example, SymbolTable::serialize_shared_table_header()
+// unconditionally makes the set of archived symbols available. Therefore, we put most
+// of these xxx::serialize() functions inside MetaspaceShared::serialize(), which
+// is called AFTER we made the decision to map the archive.
+//
+// However, some of the "serialized" data are used to decide whether an archive should
+// be mapped or not (e.g., for checking if the -Djdk.module.main property is compatible
+// with the archive). The xxx::serialize() functions for these data must be put inside
+// MetaspaceShared::early_serialize(). Such functions must not produce side effects that
+// assume we will always decides to map the archive.
+
+void MetaspaceShared::early_serialize(SerializeClosure* soc) {
+  int tag = 0;
+  soc->do_tag(--tag);
+  CDS_JAVA_HEAP_ONLY(Modules::serialize(soc);)
+  CDS_JAVA_HEAP_ONLY(Modules::serialize_addmods_names(soc);)
+  soc->do_tag(666);
+}
 
 void MetaspaceShared::serialize(SerializeClosure* soc) {
   int tag = 0;
@@ -444,7 +488,6 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
   SystemDictionaryShared::serialize_vm_classes(soc);
   soc->do_tag(--tag);
 
-  CDS_JAVA_HEAP_ONLY(Modules::serialize(soc);)
   CDS_JAVA_HEAP_ONLY(ClassLoaderDataShared::serialize(soc);)
   soc->do_ptr((void**)&_archived_method_handle_intrinsics);
 
@@ -499,6 +542,7 @@ private:
     log_info(cds)("Dumping symbol table ...");
     SymbolTable::write_to_archive(symbols);
   }
+  char* dump_early_read_only_tables();
   char* dump_read_only_tables();
 
 public:
@@ -537,11 +581,26 @@ public:
       }
     }
 
-    for (int i = 0; i < _method_handle_intrinsics->length(); i++) {
-      it->push(_method_handle_intrinsics->adr_at(i));
+    for (int i = 0; i < _pending_method_handle_intrinsics->length(); i++) {
+      it->push(_pending_method_handle_intrinsics->adr_at(i));
     }
   }
 };
+
+char* VM_PopulateDumpSharedSpace::dump_early_read_only_tables() {
+  ArchiveBuilder::OtherROAllocMark mark;
+
+  // Write module name into archive
+  CDS_JAVA_HEAP_ONLY(Modules::dump_main_module_name();)
+  // Write module names from --add-modules into archive
+  CDS_JAVA_HEAP_ONLY(Modules::dump_addmods_names();)
+
+  DumpRegion* ro_region = ArchiveBuilder::current()->ro_region();
+  char* start = ro_region->top();
+  WriteClosure wc(ro_region);
+  MetaspaceShared::early_serialize(&wc);
+  return start;
+}
 
 char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
   ArchiveBuilder::OtherROAllocMark mark;
@@ -557,11 +616,11 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables() {
 
   // Write lambform lines into archive
   LambdaFormInvokers::dump_static_archive_invokers();
+
   if (CDSConfig::is_dumping_adapters()) {
     AdapterHandlerLibrary::archive_adapter_table();
   }
-  // Write module name into archive
-  CDS_JAVA_HEAP_ONLY(Modules::dump_main_module_name();)
+
   // Write the other data to the output array.
   DumpRegion* ro_region = ArchiveBuilder::current()->ro_region();
   char* start = ro_region->top();
@@ -576,26 +635,12 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   DEBUG_ONLY(SystemDictionaryShared::NoClassLoadingMark nclm);
 
-  _method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
-  SystemDictionary::get_all_method_handle_intrinsics(_method_handle_intrinsics);
-  _method_handle_intrinsics->sort([] (Method** a, Method** b) -> int {
-    Symbol* a_holder = (*a)->method_holder()->name();
-    Symbol* b_holder = (*b)->method_holder()->name();
-    if (a_holder != b_holder) {
-      return a_holder->cmp(b_holder);
-    }
-    Symbol* a_name = (*a)->name();
-    Symbol* b_name = (*b)->name();
-    if (a_name != b_name) {
-      return a_name->cmp(b_name);
-    }
-    Symbol* a_signature = (*a)->signature();
-    Symbol* b_signature = (*b)->signature();
-    if (a_signature != b_signature) {
-      return a_signature->cmp(b_signature);
-    }
-    return 0;
-  });
+  _pending_method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
+    // When dumping AOT-linked classes, some classes may have direct references to a method handle
+    // intrinsic. The easiest thing is to save all of them into the AOT cache.
+    SystemDictionary::get_all_method_handle_intrinsics(_pending_method_handle_intrinsics);
+  }
 
   FileMapInfo::check_nonempty_dir_in_shared_path_table();
 
@@ -603,7 +648,6 @@ void VM_PopulateDumpSharedSpace::doit() {
 
   // Block concurrent class unloading from changing the _dumptime_table
   MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
-
   SystemDictionaryShared::find_all_archivable_classes();
 
   _builder.gather_source_objs();
@@ -623,12 +667,10 @@ void VM_PopulateDumpSharedSpace::doit() {
   _builder.make_klasses_shareable();
   MetaspaceShared::make_method_handle_intrinsics_shareable();
 
+  char* early_serialized_data = dump_early_read_only_tables();
   char* serialized_data = dump_read_only_tables();
 
   SystemDictionaryShared::adjust_lambda_proxy_class_dictionary();
-
-  log_info(cds)("Adjust method info dictionary");
-  SystemDictionaryShared::adjust_method_info_dictionary();
 
   log_info(cds)("Make training data shareable");
   _builder.make_training_data_shareable();
@@ -649,6 +691,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   assert(static_archive != nullptr, "SharedArchiveFile not set?");
   _map_info = new FileMapInfo(static_archive, true);
   _map_info->populate_header(MetaspaceShared::core_region_alignment());
+  _map_info->set_early_serialized_data(early_serialized_data);
   _map_info->set_serialized_data(serialized_data);
   _map_info->set_cloned_vtables(CppVtables::vtables_serialized_base());
 }
@@ -698,6 +741,7 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
   }
   return true;
 }
+
 
 void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   AOTClassLinker::initialize();
@@ -764,7 +808,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     // Do this after all classes are verified by the above loop.
     // Any classes loaded from here on will be automatically excluded, so
-    // there's no need to force verification or resolve CP entries. 
+    // there's no need to force verification or resolve CP entries.
     RecordTraining = false;
     SystemDictionaryShared::ignore_new_classes();
     LambdaFormInvokers::regenerate_holder_classes(CHECK);
@@ -785,6 +829,7 @@ void MetaspaceShared::prepare_for_dumping() {
 // Preload classes from a list, populate the shared spaces and dump to a
 // file.
 void MetaspaceShared::preload_and_dump(TRAPS) {
+  CDSConfig::DumperThreadMark dumper_thread_mark(THREAD);
   ResourceMark rm(THREAD);
   HandleMark hm(THREAD);
 
@@ -805,6 +850,15 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
                      java_lang_String::as_utf8_string(java_lang_Throwable::message(PENDING_EXCEPTION)));
       MetaspaceShared::writing_error("Unexpected exception, use -Xlog:cds,exceptions=trace for detail");
     }
+  }
+
+  if (!CDSConfig::old_cds_flags_used() && !CDSConfig::is_dumping_preimage_static_archive() && !CDSConfig::is_dumping_final_static_archive()) {
+    // The JLI launcher only recognizes the "old" -Xshare:dump flag.
+    // When the new -XX:AOTMode=create flag is used, we can't return
+    // to the JLI launcher, as the launcher will fail when trying to
+    // run the main class, which is not what we want.
+    tty->print_cr("AOTCache creation is complete: %s", AOTCache);
+    vm_exit(0);
   }
 }
 
@@ -886,15 +940,37 @@ void MetaspaceShared::preload_classes(TRAPS) {
     }
   }
 
-  // Exercise the manifest processing code to ensure classes used by CDS at runtime
-  // are always archived
-  const char* dummy = "Manifest-Version: 1.0\n";
-  CDSProtectionDomain::create_jar_manifest(dummy, strlen(dummy), CHECK);
+  // Some classes are used at CDS runtime but are not loaded, and therefore archived, at
+  // dumptime. We can perform dummmy calls to these classes at dumptime to ensure they
+  // are archived.
+  exercise_runtime_cds_code(CHECK);
 
   log_info(cds)("Loading classes to share: done.");
 }
 
+void MetaspaceShared::exercise_runtime_cds_code(TRAPS) {
+  // Exercise the manifest processing code
+  const char* dummy = "Manifest-Version: 1.0\n";
+  CDSProtectionDomain::create_jar_manifest(dummy, strlen(dummy), CHECK);
+
+  // Exercise FileSystem and URL code
+  CDSProtectionDomain::to_file_URL("dummy.jar", Handle(), CHECK);
+}
+
+bool MetaspaceShared::is_recording_preimage_static_archive() {
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+      return _preimage_static_archive_dumped == 0;
+  }
+  return false;
+}
+
 void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) {
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    if (Atomic::cmpxchg(&_preimage_static_archive_dumped, 0, 1) != 0) {
+      return;
+    }
+  }
+
   if (CDSConfig::is_dumping_classic_static_archive()) {
     // We are running with -Xshare:dump
     preload_classes(CHECK);
@@ -919,6 +995,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   // Rewrite and link classes
   log_info(cds)("Rewriting and linking classes ...");
+
   // Link any classes which got missed. This would happen if we have loaded classes that
   // were not explicitly specified in the classlist. E.g., if an interface implemented by class K
   // fails verification, all other interfaces that were not specified in the classlist but
@@ -950,8 +1027,8 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     }
 
     if (CDSConfig::is_dumping_invokedynamic()) {
-      // This makes sure that the MethodType and MethodTypeForm tables won't be updated
-      // concurrently when we are saving their contents into a side table.
+      // This assert means that the MethodType and MethodTypeForm tables won't be
+      // updated concurrently when we are saving their contents into a side table.
       assert(CDSConfig::allow_only_single_java_thread(), "Required");
 
       JavaValue result(T_VOID);
@@ -959,6 +1036,17 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
                              vmSymbols::createArchivedObjects(),
                              vmSymbols::void_method_signature(),
                              CHECK);
+
+      // java.lang.Class::reflectionFactory cannot be archived yet. We set this field
+      // to null, and it will be initialized again at runtime.
+      log_debug(cds)("Resetting Class::reflectionFactory");
+      TempNewSymbol method_name = SymbolTable::new_symbol("resetArchivedStates");
+      Symbol* method_sig = vmSymbols::void_method_signature();
+      JavaCalls::call_static(&result, vmClasses::Class_klass(),
+                             method_name, method_sig, CHECK);
+
+      // Perhaps there is a way to avoid hard-coding these names here.
+      // See discussion in JDK-8342481.
     }
 
     // Do this at the very end, when no Java code will be executed. Otherwise
@@ -969,16 +1057,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     CDSConfig::stop_using_optimized_module_handling();
   }
 #endif
-
-  // Dummy call to load classes used at CDS runtime
-  JavaValue result(T_OBJECT);
-  Handle path_string = java_lang_String::create_from_str("dummy.jar", CHECK);
-  JavaCalls::call_static(&result,
-                         vmClasses::jdk_internal_loader_ClassLoaders_klass(),
-                         vmSymbols::toFileURL_name(),
-                         vmSymbols::toFileURL_signature(),
-                         path_string,
-                         CHECK);
 
   VM_PopulateDumpSharedSpace op(builder);
   VMThread::execute(&op);
@@ -1339,7 +1417,7 @@ void MetaspaceShared::open_static_archive() {
     delete(mapinfo);
   } else {
     FileMapRegion* r = mapinfo->region_at(MetaspaceShared::cc);
-    CDSAccess::set_cached_code_size(r->used());
+    CDSAccess::set_cached_code_size(r->used_aligned());
   }
 }
 
@@ -1505,19 +1583,25 @@ MapArchiveResult MetaspaceShared::map_archives(FileMapInfo* static_mapinfo, File
           address cds_base = (address)static_mapinfo->mapped_base();
           address ccs_end = (address)class_space_rs.end();
           assert(ccs_end > cds_base, "Sanity check");
-#if INCLUDE_CDS_JAVA_HEAP
-          // We archived objects with pre-computed narrow Klass id. Set up encoding such that these Ids stay valid.
-          address precomputed_narrow_klass_base = cds_base;
-          const int precomputed_narrow_klass_shift = ArchiveHeapWriter::precomputed_narrow_klass_shift;
-          CompressedKlassPointers::initialize_for_given_encoding(
-            cds_base, ccs_end - cds_base, // Klass range
-            precomputed_narrow_klass_base, precomputed_narrow_klass_shift // precomputed encoding, see ArchiveHeapWriter
+          if (INCLUDE_CDS_JAVA_HEAP || UseCompactObjectHeaders) {
+            // The CDS archive may contain narrow Klass IDs that were precomputed at archive generation time:
+            // - every archived java object header (only if INCLUDE_CDS_JAVA_HEAP)
+            // - every archived Klass' prototype   (only if +UseCompactObjectHeaders)
+            //
+            // In order for those IDs to still be valid, we need to dictate base and shift: base should be the
+            // mapping start, shift the shift used at archive generation time.
+            address precomputed_narrow_klass_base = cds_base;
+            const int precomputed_narrow_klass_shift = ArchiveBuilder::precomputed_narrow_klass_shift();
+            CompressedKlassPointers::initialize_for_given_encoding(
+              cds_base, ccs_end - cds_base, // Klass range
+              precomputed_narrow_klass_base, precomputed_narrow_klass_shift // precomputed encoding, see ArchiveBuilder
             );
-#else
-          CompressedKlassPointers::initialize (
-            cds_base, ccs_end - cds_base // Klass range
-            );
-#endif // INCLUDE_CDS_JAVA_HEAP
+          } else {
+            // Let JVM freely chose encoding base and shift
+            CompressedKlassPointers::initialize (
+              cds_base, ccs_end - cds_base // Klass range
+              );
+          }
           // map_or_load_heap_region() compares the current narrow oop and klass encodings
           // with the archived ones, so it must be done after all encodings are determined.
           static_mapinfo->map_or_load_heap_region();
@@ -1572,7 +1656,7 @@ MapArchiveResult MetaspaceShared::map_archives(FileMapInfo* static_mapinfo, File
 //
 // If UseCompressedClassPointers=1, the range encompassing both spaces will be
 //  suitable to en/decode narrow Klass pointers: the base will be valid for
-//  encoding, the range [Base, End) not surpass KlassEncodingMetaspaceMax.
+//  encoding, the range [Base, End) and not surpass the max. range for that encoding.
 //
 // Return:
 //
@@ -1693,7 +1777,7 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
     } else {
       // We did not manage to reserve at the preferred address, or were instructed to relocate. In that
       // case we reserve wherever possible, but the start address needs to be encodable as narrow Klass
-      // encoding base since the archived heap objects contain nKlass IDs pre-calculated toward the start
+      // encoding base since the archived heap objects contain narrow Klass IDs pre-calculated toward the start
       // of the shared Metaspace. That prevents us from using zero-based encoding and therefore we won't
       // try allocating in low-address regions.
       total_space_rs = Metaspace::reserve_address_space_for_compressed_classes(total_range_size, false /* optimize_for_zero_base */);
@@ -1783,6 +1867,19 @@ MapArchiveResult MetaspaceShared::map_archive(FileMapInfo* mapinfo, char* mapped
     return MAP_ARCHIVE_OTHER_FAILURE;
   }
 
+  if (mapinfo->is_static()) {
+    // Currently, only static archive uses early serialized data.
+    char* buffer = mapinfo->early_serialized_data();
+    intptr_t* array = (intptr_t*)buffer;
+    ReadClosure rc(&array, (intptr_t)mapped_base_address);
+    early_serialize(&rc);
+  }
+
+  if (!mapinfo->validate_aot_class_linking()) {
+    unmap_archive(mapinfo);
+    return MAP_ARCHIVE_OTHER_FAILURE;
+  }
+
   mapinfo->set_is_mapped(true);
   return MAP_ARCHIVE_SUCCESS;
 }
@@ -1819,7 +1916,7 @@ void MetaspaceShared::initialize_shared_spaces() {
   // shared string/symbol tables.
   char* buffer = static_mapinfo->serialized_data();
   intptr_t* array = (intptr_t*)buffer;
-  ReadClosure rc(&array);
+  ReadClosure rc(&array, (intptr_t)SharedBaseAddress);
   serialize(&rc);
 
   // Finish up archived heap initialization. These must be
@@ -1837,18 +1934,24 @@ void MetaspaceShared::initialize_shared_spaces() {
   FileMapInfo *dynamic_mapinfo = FileMapInfo::dynamic_info();
   if (dynamic_mapinfo != nullptr) {
     intptr_t* buffer = (intptr_t*)dynamic_mapinfo->serialized_data();
-    ReadClosure rc(&buffer);
+    ReadClosure rc(&buffer, (intptr_t)SharedBaseAddress);
     ArchiveBuilder::serialize_dynamic_archivable_items(&rc);
     DynamicArchive::setup_array_klasses();
     dynamic_mapinfo->close();
     dynamic_mapinfo->unmap_region(MetaspaceShared::bm);
   }
 
-  log_info(cds)("Using AOT-linked classes: %s (%s%s)",
-                CDSConfig::is_using_aot_linked_classes() ? "true" : "false",
-                static_mapinfo->header()->has_aot_linked_classes() ? "static archive: true" : "static archive: false",
-                (dynamic_mapinfo == nullptr) ? "" :
-                   (dynamic_mapinfo->header()->has_aot_linked_classes() ? ", dynamic archive: true" : ", dynamic archive: false"));
+  LogStreamHandle(Info, cds) lsh;
+  if (lsh.is_enabled()) {
+    lsh.print("Using AOT-linked classes: %s (static archive: %s aot-linked classes",
+              BOOL_TO_STR(CDSConfig::is_using_aot_linked_classes()),
+              static_mapinfo->header()->has_aot_linked_classes() ? "has" : "no");
+    if (dynamic_mapinfo != nullptr) {
+      lsh.print(", dynamic archive: %s aot-linked classes",
+                dynamic_mapinfo->header()->has_aot_linked_classes() ? "has" : "no");
+    }
+    lsh.print_cr(")");
+  }
 
   // Set up LambdaFormInvokers::_lambdaform_lines for dynamic dump
   if (CDSConfig::is_dumping_dynamic_archive()) {

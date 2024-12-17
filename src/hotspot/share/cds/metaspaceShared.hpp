@@ -59,8 +59,9 @@ class MetaspaceShared : AllStatic {
   static void* _shared_metaspace_static_top;
   static intx _relocation_delta;
   static char* _requested_base_address;
-  static Array<Method*>* _archived_method_handle_intrinsics;
   static bool _use_optimized_module_handling;
+  static Array<Method*>* _archived_method_handle_intrinsics;
+  static int volatile _preimage_static_archive_dumped;
 
  public:
   enum {
@@ -81,6 +82,7 @@ class MetaspaceShared : AllStatic {
 #endif
 
 private:
+  static void exercise_runtime_cds_code(TRAPS) NOT_CDS_RETURN;
   static void preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) NOT_CDS_RETURN;
   static void preload_classes(TRAPS) NOT_CDS_RETURN;
 
@@ -113,6 +115,8 @@ public:
   static bool is_shared_dynamic(void* p) NOT_CDS_RETURN_(false);
   static bool is_shared_static(void* p) NOT_CDS_RETURN_(false);
 
+  static bool is_recording_preimage_static_archive() NOT_CDS_RETURN_(false);
+
   static void unrecoverable_loading_error(const char* message = nullptr);
   static void unrecoverable_writing_error(const char* message = nullptr);
   static void writing_error(const char* message = nullptr);
@@ -120,6 +124,7 @@ public:
   static void make_method_handle_intrinsics_shareable() NOT_CDS_RETURN;
   static void write_method_handle_intrinsics() NOT_CDS_RETURN;
   static Array<Method*>* archived_method_handle_intrinsics() { return _archived_method_handle_intrinsics; }
+  static void early_serialize(SerializeClosure* sc) NOT_CDS_RETURN;
   static void serialize(SerializeClosure* sc) NOT_CDS_RETURN;
 
   // JVM/TI RedefineClasses() support:

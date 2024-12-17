@@ -55,6 +55,7 @@
 #include "nmt/memTracker.hpp"
 #include "oops/compressedOops.hpp"
 #include "oops/compressedOops.inline.hpp"
+#include "oops/compressedKlass.hpp"
 #include "oops/objArrayOop.hpp"
 #include "oops/oop.inline.hpp"
 #include "prims/jvmtiExport.hpp"
@@ -204,6 +205,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _core_region_alignment = core_region_alignment;
   _obj_alignment = ObjectAlignmentInBytes;
   _compact_strings = CompactStrings;
+  _compact_headers = UseCompactObjectHeaders;
   if (CDSConfig::is_dumping_heap()) {
     _narrow_oop_mode = CompressedOops::mode();
     _narrow_oop_base = CompressedOops::base();
@@ -211,7 +213,14 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   }
   _compressed_oops = UseCompressedOops;
   _compressed_class_ptrs = UseCompressedClassPointers;
-  _use_secondary_supers_table = UseSecondarySupersTable;
+  if (UseCompressedClassPointers) {
+#ifdef _LP64
+    _narrow_klass_pointer_bits = CompressedKlassPointers::narrow_klass_pointer_bits();
+    _narrow_klass_shift = ArchiveBuilder::precomputed_narrow_klass_shift();
+#endif
+  } else {
+    _narrow_klass_pointer_bits = _narrow_klass_shift = -1;
+  }
   _max_heap_size = MaxHeapSize;
   _use_optimized_module_handling = CDSConfig::is_using_optimized_module_handling();
   _has_aot_linked_classes = CDSConfig::is_dumping_aot_linked_classes();
@@ -276,12 +285,15 @@ void FileMapHeader::print(outputStream* st) {
   st->print_cr("- narrow_oop_base:                " INTPTR_FORMAT, p2i(_narrow_oop_base));
   st->print_cr("- narrow_oop_shift                %d", _narrow_oop_shift);
   st->print_cr("- compact_strings:                %d", _compact_strings);
+  st->print_cr("- compact_headers:                %d", _compact_headers);
   st->print_cr("- max_heap_size:                  " UINTX_FORMAT, _max_heap_size);
   st->print_cr("- narrow_oop_mode:                %d", _narrow_oop_mode);
   st->print_cr("- compressed_oops:                %d", _compressed_oops);
   st->print_cr("- compressed_class_ptrs:          %d", _compressed_class_ptrs);
-  st->print_cr("- use_secondary_supers_table:     %d", _use_secondary_supers_table);
+  st->print_cr("- narrow_klass_pointer_bits:      %d", _narrow_klass_pointer_bits);
+  st->print_cr("- narrow_klass_shift:             %d", _narrow_klass_shift);
   st->print_cr("- cloned_vtables_offset:          " SIZE_FORMAT_X, _cloned_vtables_offset);
+  st->print_cr("- early_serialized_data_offset:   " SIZE_FORMAT_X, _early_serialized_data_offset);
   st->print_cr("- serialized_data_offset:         " SIZE_FORMAT_X, _serialized_data_offset);
   st->print_cr("- jvm_ident:                      %s", _jvm_ident);
   st->print_cr("- shared_path_table_offset:       " SIZE_FORMAT_X, _shared_path_table_offset);
@@ -948,7 +960,7 @@ void FileMapInfo::extract_module_paths(const char* runtime_path, GrowableArray<c
     ClassLoaderExt::extract_jar_files_from_path(name, module_paths);
   }
   // module paths are stored in sorted order in the CDS archive.
-  module_paths->sort(ClassLoaderExt::compare_module_path_by_name);
+  module_paths->sort(ClassLoaderExt::compare_module_names);
 }
 
 bool FileMapInfo::check_module_paths() {
@@ -1981,12 +1993,24 @@ char* FileMapInfo::map_bitmap_region() {
 
 bool FileMapInfo::map_cached_code_region(ReservedSpace rs) {
   FileMapRegion* r = region_at(MetaspaceShared::cc);
-  assert(r->used() > 0 && rs.size(), "must be");
+  assert(r->used() > 0 && r->used_aligned() == rs.size(), "must be");
 
-  bool read_only = false, allow_exec = true;
   char* requested_base = rs.base();
-  char* mapped_base = map_memory(_fd, _full_path, r->file_offset(),
-                                 requested_base, r->used_aligned(), read_only, allow_exec, mtClassShared);
+  assert(requested_base != nullptr, "should be inside code cache");
+
+  char* mapped_base;
+  if (MetaspaceShared::use_windows_memory_mapping()) {
+    if (!read_region(MetaspaceShared::cc, requested_base, r->used_aligned(), /* do_commit = */ true)) {
+      log_info(cds)("Failed to read cc shared space into reserved space at " INTPTR_FORMAT,
+                    p2i(requested_base));
+      return false;
+    }
+    mapped_base = requested_base;
+  } else {
+    bool read_only = false, allow_exec = false;
+    mapped_base = map_memory(_fd, _full_path, r->file_offset(),
+                             requested_base, r->used_aligned(), read_only, allow_exec, mtClassShared);
+  }
   if (mapped_base == nullptr) {
     log_info(cds)("failed to map cached code region");
     return false;
@@ -1995,8 +2019,8 @@ bool FileMapInfo::map_cached_code_region(ReservedSpace rs) {
     r->set_mapped_from_file(true);
     r->set_mapped_base(mapped_base);
     relocate_pointers_in_cached_code_region();
-    log_info(cds)("Mapped static region #%d at base " INTPTR_FORMAT " top " INTPTR_FORMAT " (%s)",
-                  MetaspaceShared::bm, p2i(r->mapped_base()), p2i(r->mapped_end()),
+    log_info(cds)("Mapped static  region #%d at base " INTPTR_FORMAT " top " INTPTR_FORMAT " (%s)",
+                  MetaspaceShared::cc, p2i(r->mapped_base()), p2i(r->mapped_end()),
                   shared_region_name[MetaspaceShared::cc]);
     return true;
   }
@@ -2159,8 +2183,7 @@ void FileMapInfo::map_or_load_heap_region() {
       success = ArchiveHeapLoader::load_heap_region(this);
     } else {
       if (!UseCompressedOops && !ArchiveHeapLoader::can_map()) {
-        // TODO - remove implicit knowledge of G1
-        log_info(cds)("Cannot use CDS heap data. UseG1GC is required for -XX:-UseCompressedOops");
+        log_info(cds)("Cannot use CDS heap data. Selected GC not compatible -XX:-UseCompressedOops");
       } else {
         log_info(cds)("Cannot use CDS heap data. UseEpsilonGC, UseG1GC, UseSerialGC, UseParallelGC, or UseShenandoahGC are required.");
       }
@@ -2169,7 +2192,7 @@ void FileMapInfo::map_or_load_heap_region() {
 
   if (!success) {
     if (CDSConfig::is_using_aot_linked_classes() && !CDSConfig::is_dumping_final_static_archive()) {
-      // It's too later to recover -- we have already committed to use the archived metaspace objects, but
+      // It's too late to recover -- we have already committed to use the archived metaspace objects, but
       // the archived heap objects cannot be loaded, so we don't have the archived FMG to guarantee that
       // all AOT-linked classes are visible.
       //
@@ -2199,22 +2222,23 @@ bool FileMapInfo::can_use_heap_region() {
   }
 
   // We pre-compute narrow Klass IDs with the runtime mapping start intended to be the base, and a shift of
-  // ArchiveHeapWriter::precomputed_narrow_klass_shift. We enforce this encoding at runtime (see
+  // ArchiveBuilder::precomputed_narrow_klass_shift. We enforce this encoding at runtime (see
   // CompressedKlassPointers::initialize_for_given_encoding()). Therefore, the following assertions must
   // hold:
   address archive_narrow_klass_base = (address)header()->mapped_base_address();
-  const int archive_narrow_klass_shift = ArchiveHeapWriter::precomputed_narrow_klass_shift;
+  const int archive_narrow_klass_pointer_bits = header()->narrow_klass_pointer_bits();
+  const int archive_narrow_klass_shift = header()->narrow_klass_shift();
 
   log_info(cds)("CDS archive was created with max heap size = " SIZE_FORMAT "M, and the following configuration:",
                 max_heap_size()/M);
-  log_info(cds)("    narrow_klass_base at mapping start address, narrow_klass_shift = %d",
-                archive_narrow_klass_shift);
+  log_info(cds)("    narrow_klass_base at mapping start address, narrow_klass_pointer_bits = %d, narrow_klass_shift = %d",
+                archive_narrow_klass_pointer_bits, archive_narrow_klass_shift);
   log_info(cds)("    narrow_oop_mode = %d, narrow_oop_base = " PTR_FORMAT ", narrow_oop_shift = %d",
                 narrow_oop_mode(), p2i(narrow_oop_base()), narrow_oop_shift());
   log_info(cds)("The current max heap size = " SIZE_FORMAT "M, G1HeapRegion::GrainBytes = " SIZE_FORMAT,
                 MaxHeapSize/M, G1HeapRegion::GrainBytes);
-  log_info(cds)("    narrow_klass_base = " PTR_FORMAT ", narrow_klass_shift = %d",
-                p2i(CompressedKlassPointers::base()), CompressedKlassPointers::shift());
+  log_info(cds)("    narrow_klass_base = " PTR_FORMAT ", arrow_klass_pointer_bits = %d, narrow_klass_shift = %d",
+                p2i(CompressedKlassPointers::base()), CompressedKlassPointers::narrow_klass_pointer_bits(), CompressedKlassPointers::shift());
   log_info(cds)("    narrow_oop_mode = %d, narrow_oop_base = " PTR_FORMAT ", narrow_oop_shift = %d",
                 CompressedOops::mode(), p2i(CompressedOops::base()), CompressedOops::shift());
   log_info(cds)("    heap range = [" PTR_FORMAT " - "  PTR_FORMAT "]",
@@ -2223,10 +2247,35 @@ bool FileMapInfo::can_use_heap_region() {
                 UseCompressedOops ? p2i(CompressedOops::end()) :
                                     UseG1GC ? p2i((address)G1CollectedHeap::heap()->reserved().end()) : 0L);
 
-  assert(archive_narrow_klass_base == CompressedKlassPointers::base(), "Unexpected encoding base encountered "
-         "(" PTR_FORMAT ", expected " PTR_FORMAT ")", p2i(CompressedKlassPointers::base()), p2i(archive_narrow_klass_base));
-  assert(archive_narrow_klass_shift == CompressedKlassPointers::shift(), "Unexpected encoding shift encountered "
-         "(%d, expected %d)", CompressedKlassPointers::shift(), archive_narrow_klass_shift);
+  int err = 0;
+  if ( archive_narrow_klass_base != CompressedKlassPointers::base() ||
+       (err = 1, archive_narrow_klass_pointer_bits != CompressedKlassPointers::narrow_klass_pointer_bits()) ||
+       (err = 2, archive_narrow_klass_shift != CompressedKlassPointers::shift()) ) {
+    stringStream ss;
+    switch (err) {
+    case 0:
+      ss.print("Unexpected encoding base encountered (" PTR_FORMAT ", expected " PTR_FORMAT ")",
+               p2i(CompressedKlassPointers::base()), p2i(archive_narrow_klass_base));
+      break;
+    case 1:
+      ss.print("Unexpected narrow Klass bit length encountered (%d, expected %d)",
+               CompressedKlassPointers::narrow_klass_pointer_bits(), archive_narrow_klass_pointer_bits);
+      break;
+    case 2:
+      ss.print("Unexpected narrow Klass shift encountered (%d, expected %d)",
+               CompressedKlassPointers::shift(), archive_narrow_klass_shift);
+      break;
+    default:
+      ShouldNotReachHere();
+    };
+    LogTarget(Info, cds) lt;
+    if (lt.is_enabled()) {
+      LogStream ls(lt);
+      ls.print_raw(ss.base());
+      header()->print(&ls);
+    }
+    assert(false, "%s", ss.base());
+  }
 
   return true;
 }
@@ -2249,7 +2298,7 @@ address FileMapInfo::heap_region_requested_address() {
   assert(CDSConfig::is_using_archive(), "runtime only");
   FileMapRegion* r = region_at(MetaspaceShared::hp);
   assert(is_aligned(r->mapping_offset(), sizeof(HeapWord)), "must be");
-  assert(ArchiveHeapLoader::can_map(), "cannot be used by ArchiveHeapLoader::can_load() mode");
+  assert(ArchiveHeapLoader::can_use(), "GC must support mapping or loading");
   if (UseCompressedOops) {
     // We can avoid relocation if each region's offset from the runtime CompressedOops::base()
     // is the same as its offset from the CompressedOops::base() during dumptime.
@@ -2510,7 +2559,7 @@ bool FileMapInfo::validate_aot_class_linking() {
   // These checks need to be done after FileMapInfo::initialize(), which gets called before Universe::heap()
   // is available.
   if (header()->has_aot_linked_classes()) {
-    CDSConfig::set_has_aot_linked_classes(is_static(), true);
+    CDSConfig::set_has_aot_linked_classes(true);
     if (JvmtiExport::should_post_class_file_load_hook()) {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used when JVMTI ClassFileLoadHook is in use.");
       return false;
@@ -2521,6 +2570,12 @@ bool FileMapInfo::validate_aot_class_linking() {
     }
     if (!CDSConfig::is_using_full_module_graph() && !CDSConfig::is_dumping_final_static_archive()) {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used when archived full module graph is not used.");
+      return false;
+    }
+
+    const char* prop = Arguments::get_property("java.security.manager");
+    if (prop != nullptr && strcmp(prop, "disallow") != 0) {
+      log_error(cds)("CDS archive has aot-linked classes. It cannot be used with -Djava.security.manager=%s.", prop);
       return false;
     }
     if (header()->gc_kind() != (int)Universe::heap()->kind()) {
@@ -2582,6 +2637,11 @@ bool FileMapHeader::validate() {
   // header data
   const char* prop = Arguments::get_property("java.system.class.loader");
   if (prop != nullptr) {
+    if (has_aot_linked_classes()) {
+      log_error(cds)("CDS archive has aot-linked classes. It cannot be used when the "
+                     "java.system.class.loader property is specified.");
+      return false;
+    }
     log_warning(cds)("Archived non-system classes are disabled because the "
             "java.system.class.loader property is specified (value = \"%s\"). "
             "To use archived non-system classes, this property must not be set", prop);
@@ -2625,16 +2685,19 @@ bool FileMapHeader::validate() {
             "for testing purposes only and should not be used in a production environment");
   }
 
-  log_info(cds)("Archive was created with UseCompressedOops = %d, UseCompressedClassPointers = %d",
-                          compressed_oops(), compressed_class_pointers());
+  log_info(cds)("Archive was created with UseCompressedOops = %d, UseCompressedClassPointers = %d, UseCompactObjectHeaders = %d",
+                          compressed_oops(), compressed_class_pointers(), compact_headers());
   if (compressed_oops() != UseCompressedOops || compressed_class_pointers() != UseCompressedClassPointers) {
-    log_info(cds)("Unable to use shared archive.\nThe saved state of UseCompressedOops and UseCompressedClassPointers is "
+    log_warning(cds)("Unable to use shared archive.\nThe saved state of UseCompressedOops and UseCompressedClassPointers is "
                                "different from runtime, CDS will be disabled.");
     return false;
   }
 
-  if (! _use_secondary_supers_table && UseSecondarySupersTable) {
-    log_warning(cds)("The shared archive was created without UseSecondarySupersTable.");
+  if (compact_headers() != UseCompactObjectHeaders) {
+    log_warning(cds)("Unable to use shared archive.\nThe shared archive file's UseCompactObjectHeaders setting (%s)"
+                     " does not equal the current UseCompactObjectHeaders setting (%s).",
+                     _compact_headers          ? "enabled" : "disabled",
+                     UseCompactObjectHeaders   ? "enabled" : "disabled");
     return false;
   }
 

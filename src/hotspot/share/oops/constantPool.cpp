@@ -24,9 +24,9 @@
 
 #include "precompiled.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
-#include "cds/archiveHeapWriter.hpp"
-#include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/archiveHeapLoader.hpp"
+#include "cds/archiveHeapWriter.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classLoader.hpp"
@@ -294,7 +294,15 @@ void ConstantPool::iterate_archivable_resolved_references(Function function) {
         ResolvedIndyEntry *rie = indy_entries->adr_at(i);
         if (rie->is_resolved() && AOTConstantPoolResolver::is_resolution_deterministic(this, rie->constant_pool_index())) {
           int rr_index = rie->resolved_references_index();
+          assert(resolved_reference_at(rr_index) != nullptr, "must exist");
           function(rr_index);
+
+          // Save the BSM as well (sometimes the JIT looks up the BSM it for replay)
+          int indy_cp_index = rie->constant_pool_index();
+          int bsm_mh_cp_index = bootstrap_method_ref_index_at(indy_cp_index);
+          int bsm_rr_index = cp_to_object_index(bsm_mh_cp_index);
+          assert(resolved_reference_at(bsm_rr_index) != nullptr, "must exist");
+          function(bsm_rr_index);
         }
       }
     }
@@ -306,6 +314,7 @@ void ConstantPool::iterate_archivable_resolved_references(Function function) {
         if (rme->is_resolved(Bytecodes::_invokehandle) && rme->has_appendix() &&
             cache()->can_archive_resolved_method(this, rme)) {
           int rr_index = rme->resolved_references_index();
+          assert(resolved_reference_at(rr_index) != nullptr, "must exist");
           function(rr_index);
         }
       }
@@ -337,7 +346,7 @@ objArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
     ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
     src_cp->iterate_archivable_resolved_references([&](int rr_index) {
       keep_resolved_refs.at_put(rr_index, true);
-      });
+    });
 
     objArrayOop scratch_rr = HeapShared::scratch_resolved_references(src_cp);
     Array<u2>* ref_map = reference_map();
@@ -353,8 +362,11 @@ objArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
             if (!ArchiveHeapWriter::is_string_too_large_to_archive(obj)) {
               scratch_rr->obj_at_put(i, obj);
             }
+            continue;
           }
-        } else if (keep_resolved_refs.at(i)) {
+        }
+
+        if (keep_resolved_refs.at(i)) {
           scratch_rr->obj_at_put(i, obj);
         }
       }
@@ -364,7 +376,7 @@ objArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
   return rr;
 }
 
-void ConstantPool::find_archivable_hidden_classes() {
+void ConstantPool::find_required_hidden_classes() {
   if (_cache == nullptr) {
     return;
   }
@@ -385,7 +397,7 @@ void ConstantPool::find_archivable_hidden_classes() {
   if (rr != nullptr) {
     iterate_archivable_resolved_references([&](int rr_index) {
       oop obj = rr->obj_at(rr_index);
-      HeapShared::find_archivable_hidden_classes_in_object(obj);
+      HeapShared::find_required_hidden_classes_in_object(obj);
     });
   }
 }
@@ -415,6 +427,8 @@ void ConstantPool::restore_unshareable_info(TRAPS) {
   assert(on_stack(), "should always be set for shared constant pools");
   assert(is_shared(), "should always be set for shared constant pools");
   if (is_for_method_handle_intrinsic()) {
+    // See the same check in remove_unshareable_info() below.
+    assert(cache() == NULL, "must not have cpCache");
     return;
   }
   assert(_cache != nullptr, "constant pool _cache should not be null");
@@ -461,10 +475,6 @@ void ConstantPool::remove_unshareable_info() {
   // we always set _on_stack to true to avoid having to change _flags during runtime.
   _flags |= (_on_stack | _is_shared);
 
-  if (!ArchiveBuilder::current()->get_source_addr(_pool_holder)->is_linked()) {
-    return;
-  }
-
   if (is_for_method_handle_intrinsic()) {
     // This CP was created by Method::make_method_handle_intrinsic() and has nothing
     // that need to be removed/restored. It has no cpCache since the intrinsic methods
@@ -501,6 +511,9 @@ static const char* get_type(Klass* k) {
     type = "prim";
   } else {
     InstanceKlass* src_ik = InstanceKlass::cast(src_k);
+    if (CDSConfig::is_dumping_final_static_archive() && src_ik->class_loader_data() == nullptr) {
+      return "unreg";
+    }
     oop loader = src_ik->class_loader();
     if (loader == nullptr) {
       type = "boot";
@@ -562,7 +575,7 @@ void ConstantPool::remove_resolved_klass_if_non_deterministic(int cp_index) {
   if (k == nullptr) {
     // We'd come here if the referenced class has been excluded via
     // SystemDictionaryShared::is_excluded_class(). As a result, ArchiveBuilder
-    // has cleared the resolved_klasses()->at(...) pointer to NULL. Thus, we
+    // has cleared the resolved_klasses()->at(...) pointer to null. Thus, we
     // need to revert the tag to JVM_CONSTANT_UnresolvedClass.
     can_archive = false;
   } else {

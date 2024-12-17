@@ -37,8 +37,8 @@
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
-#include "classfile/classLoaderExt.hpp"
 #include "classfile/classLoaderDataShared.hpp"
+#include "classfile/classLoaderExt.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -52,6 +52,8 @@
 #include "memory/resourceArea.hpp"
 #include "oops/compressedKlass.inline.hpp"
 #include "oops/instanceKlass.hpp"
+#include "oops/methodCounters.hpp"
+#include "oops/methodData.hpp"
 #include "oops/objArrayKlass.hpp"
 #include "oops/objArrayOop.inline.hpp"
 #include "oops/oopHandle.inline.hpp"
@@ -234,12 +236,15 @@ bool ArchiveBuilder::gather_klass_and_symbol(MetaspaceClosure::Ref* ref, bool re
     assert(klass->is_klass(), "must be");
     if (!is_excluded(klass)) {
       _klasses->append(klass);
-      if (klass->is_hidden() && klass->is_instance_klass()) {
-        update_hidden_class_loader_type(InstanceKlass::cast(klass));
+      if (klass->is_hidden()) {
+        assert(klass->is_instance_klass(), "must be");
+        assert(SystemDictionaryShared::should_hidden_class_be_archived(InstanceKlass::cast(klass)), "must be");
       }
     }
-    // See RunTimeClassInfo::get_for()
-    _estimated_metaspaceobj_bytes += align_up(BytesPerWord, SharedSpaceObjectAlignment);
+    // See RunTimeClassInfo::get_for(): make sure we have enough space for both maximum
+    // Klass alignment as well as the RuntimeInfo* pointer we will embed in front of a Klass.
+    _estimated_metaspaceobj_bytes += align_up(BytesPerWord, CompressedKlassPointers::klass_alignment_in_bytes()) +
+        align_up(sizeof(void*), SharedSpaceObjectAlignment);
   } else if (ref->msotype() == MetaspaceObj::SymbolType) {
     // Make sure the symbol won't be GC'ed while we are dumping the archive.
     Symbol* sym = (Symbol*)ref->obj();
@@ -297,45 +302,6 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
   AOTClassLinker::add_candidates();
 }
 
-#if INCLUDE_CDS_JAVA_HEAP
-
-void ArchiveBuilder::update_hidden_class_loader_type(InstanceKlass* ik) {
-  s2 classloader_type;
-  if (HeapShared::is_lambda_form_klass(ik)) {
-    assert(CDSConfig::is_dumping_invokedynamic(), "lambda form classes are archived only if CDSConfig::is_dumping_invokedynamic() is true");
-    classloader_type = ClassLoader::BOOT_LOADER;
-  } else if (SystemDictionaryShared::should_hidden_class_be_archived(ik)) {
-    oop loader = ik->class_loader();
-
-    if (loader == nullptr) {
-      classloader_type = ClassLoader::BOOT_LOADER;
-    } else if (SystemDictionary::is_platform_class_loader(loader)) {
-      classloader_type = ClassLoader::PLATFORM_LOADER;
-    } else if (SystemDictionary::is_system_class_loader(loader)) {
-      classloader_type = ClassLoader::APP_LOADER;
-    } else {
-      ShouldNotReachHere();
-    }
-  } else {
-    ShouldNotReachHere();
-  }
-
-  ik->set_shared_class_loader_type(classloader_type);
-  if (HeapShared::is_lambda_proxy_klass(ik)) {
-    InstanceKlass* nest_host = ik->nest_host_not_null();
-    ik->set_shared_classpath_index(nest_host->shared_classpath_index());
-  } else if (!HeapShared::is_lambda_form_klass(ik)) {
-    // Injected invoker classes: fake this for now. Probably not needed!
-    if (classloader_type == ClassLoader::APP_LOADER) {
-      ik->set_shared_classpath_index(ClassLoaderExt::app_class_paths_start_index()); // HACK
-    } else {
-      ik->set_shared_classpath_index(0);
-    }
-  }
-}
-
-#endif //INCLUDE_CDS_JAVA_HEAP
-
 int ArchiveBuilder::compare_symbols_by_address(Symbol** a, Symbol** b) {
   if (a[0] < b[0]) {
     return -1;
@@ -362,10 +328,6 @@ size_t ArchiveBuilder::estimate_archive_size() {
   size_t adapter_data_est = AdapterHandlerLibrary::estimate_size_for_archive();
   _estimated_hashtable_bytes = symbol_table_est + dictionary_est + training_data_est + adapter_data_est;
 
-  if (CDSConfig::is_dumping_aot_linked_classes()) {
-    _estimated_hashtable_bytes += _klasses->length() * 16 * sizeof(Klass*);
-  }
-
   if (CDSConfig::is_dumping_final_static_archive()) {
     _estimated_hashtable_bytes += 200 * 1024 * 1024; // FIXME -- need to iterate archived symbols??
   }
@@ -374,6 +336,16 @@ size_t ArchiveBuilder::estimate_archive_size() {
     // Some extra space for traning data. Be generous. Unused areas will be trimmed from the archive file.
     _estimated_hashtable_bytes += 200 * 1024 * 1024;
   }
+
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
+    // This is difficult to estimate when dumping the dynamic archive, as the
+    // AOTLinkedClassTable may need to contain classes in the static archive as well.
+    //
+    // Just give a generous estimate for now. We will remove estimate_archive_size()
+    // in JDK-8340416
+    _estimated_hashtable_bytes += 20 * 1024 * 1024;
+  }
+
   size_t total = 0;
 
   total += _estimated_metaspaceobj_bytes;
@@ -738,7 +710,7 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
 
   oldtop = dump_region->top();
   if (src_info->msotype() == MetaspaceObj::ClassType) {
-    // Save a pointer immediate in front of an InstanceKlass, so
+    // Allocate space for a pointer directly in front of the future InstanceKlass, so
     // we can do a quick lookup from InstanceKlass* -> RunTimeClassInfo*
     // without building another hashtable. See RunTimeClassInfo::get_for()
     // in systemDictionaryShared.cpp.
@@ -747,8 +719,19 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
       SystemDictionaryShared::validate_before_archiving(InstanceKlass::cast(klass));
       dump_region->allocate(sizeof(address));
     }
+    // Allocate space for the future InstanceKlass with proper alignment
+    const size_t alignment =
+#ifdef _LP64
+      UseCompressedClassPointers ?
+        nth_bit(ArchiveBuilder::precomputed_narrow_klass_shift()) :
+        SharedSpaceObjectAlignment;
+#else
+      SharedSpaceObjectAlignment;
+#endif
+    dest = dump_region->allocate(bytes, alignment);
+  } else {
+    dest = dump_region->allocate(bytes);
   }
-  dest = dump_region->allocate(bytes);
   newtop = dump_region->top();
 
   memcpy(dest, src, bytes);
@@ -779,6 +762,8 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
   src_info->set_buffered_addr((address)dest);
 
   _alloc_stats.record(src_info->msotype(), int(newtop - oldtop), src_info->read_only());
+
+  DEBUG_ONLY(_alloc_stats.verify((int)dump_region->used(), src_info->read_only()));
 }
 
 // This is used by code that hand-assembles data structures, such as the LambdaProxyClassKey, that are
@@ -800,6 +785,16 @@ void ArchiveBuilder::mark_and_relocate_to_buffered_addr(address* ptr_location) {
     *ptr_location = get_buffered_addr(*ptr_location);
   }
   ArchivePtrMarker::mark_pointer(ptr_location);
+}
+
+bool ArchiveBuilder::has_been_buffered(address src_addr) const {
+  if (RegeneratedClasses::has_been_regenerated(src_addr) ||
+      _src_obj_table.get(src_addr) == nullptr ||
+      get_buffered_addr(src_addr) == nullptr) {
+    return false;
+  } else {
+    return true;
+  }
 }
 
 address ArchiveBuilder::get_buffered_addr(address src_addr) const {
@@ -836,8 +831,8 @@ void ArchiveBuilder::relocate_metaspaceobj_embedded_pointers() {
 
 #define ADD_COUNT(x) \
   x += 1; \
-  x ## _a += aotlinked; \
-  x ## _i += inited;
+  x ## _a += aotlinked ? 1 : 0; \
+  x ## _i += inited ? 1 : 0;
 
 #define DECLARE_INSTANCE_KLASS_COUNTER(x) \
   int x = 0; \
@@ -850,9 +845,11 @@ void ArchiveBuilder::make_klasses_shareable() {
   DECLARE_INSTANCE_KLASS_COUNTER(num_vm_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_platform_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_app_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_old_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_hidden_klasses);
-  DECLARE_INSTANCE_KLASS_COUNTER(num_unlinked_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_enum_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_unregistered_klasses);
+  int num_unlinked_klasses = 0;
   int num_obj_array_klasses = 0;
   int num_type_array_klasses = 0;
 
@@ -876,11 +873,21 @@ void ArchiveBuilder::make_klasses_shareable() {
     const char* unlinked = "";
     const char* kind = "";
     const char* hidden = "";
+    const char* old = "";
     const char* generated = "";
     const char* aotlinked_msg = "";
     const char* inited_msg = "";
     Klass* k = get_buffered_addr(klasses()->at(i));
     k->remove_java_mirror();
+#ifdef _LP64
+    if (UseCompactObjectHeaders) {
+      Klass* requested_k = to_requested(k);
+      address narrow_klass_base = _requested_static_archive_bottom; // runtime encoding base == runtime mapping start
+      const int narrow_klass_shift = precomputed_narrow_klass_shift();
+      narrowKlass nk = CompressedKlassPointers::encode_not_null_without_asserts(requested_k, narrow_klass_base, narrow_klass_shift);
+      k->set_prototype_header(markWord::prototype().set_narrow_klass(nk));
+    }
+#endif //_LP64
     if (k->is_objArray_klass()) {
       // InstanceKlass and TypeArrayKlass will in turn call remove_unshareable_info
       // on their array classes.
@@ -894,14 +901,16 @@ void ArchiveBuilder::make_klasses_shareable() {
       assert(k->is_instance_klass(), " must be");
       InstanceKlass* ik = InstanceKlass::cast(k);
       InstanceKlass* src_ik = get_source_addr(ik);
-      int aotlinked = AOTClassLinker::is_candidate(src_ik);
-      int inited = ik->has_preinitialized_mirror();
+      bool aotlinked = AOTClassLinker::is_candidate(src_ik);
+      bool inited = ik->has_aot_initialized_mirror();
       ADD_COUNT(num_instance_klasses);
       if (CDSConfig::is_dumping_dynamic_archive()) {
         // For static dump, class loader type are already set.
         ik->assign_class_loader_type();
       }
       if (ik->is_hidden()) {
+        ADD_COUNT(num_hidden_klasses);
+        hidden = " hidden";
         oop loader = k->class_loader();
         if (loader == nullptr) {
           type = "boot";
@@ -915,6 +924,12 @@ void ArchiveBuilder::make_klasses_shareable() {
         } else {
           type = "bad";
           assert(0, "shouldn't happen");
+        }
+        if (CDSConfig::is_dumping_invokedynamic()) {
+          assert(HeapShared::is_archivable_hidden_klass(ik), "sanity");
+        } else {
+          // Legacy CDS support for lambda proxies
+          assert(HeapShared::is_lambda_proxy_klass(ik), "sanity");
         }
       } else if (ik->is_shared_boot_class()) {
         type = "boot";
@@ -936,7 +951,7 @@ void ArchiveBuilder::make_klasses_shareable() {
       }
 
       if (!ik->is_linked()) {
-        ADD_COUNT(num_unlinked_klasses);
+        num_unlinked_klasses ++;
         unlinked = " unlinked";
         if (ik->is_shared_boot_class()) {
           boot_unlinked ++;
@@ -951,13 +966,14 @@ void ArchiveBuilder::make_klasses_shareable() {
 
       if (ik->is_interface()) {
         kind = " interface";
-      } else if (src_ik->java_super() == vmClasses::Enum_klass()) {
+      } else if (src_ik->is_enum_subclass()) {
         kind = " enum";
+        ADD_COUNT(num_enum_klasses);
       }
 
-      if (ik->is_hidden()) {
-        ADD_COUNT(num_hidden_klasses);
-        hidden = " hidden";
+      if (!ik->can_be_verified_at_dumptime()) {
+        ADD_COUNT(num_old_klasses);
+        old = " old";
       }
 
       if (ik->is_generated_shared_class()) {
@@ -976,9 +992,9 @@ void ArchiveBuilder::make_klasses_shareable() {
 
     if (log_is_enabled(Debug, cds, class)) {
       ResourceMark rm;
-      log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s%s", i,
+      log_debug(cds, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s%s%s", i,
                             p2i(to_requested(k)), type, k->external_name(),
-                            kind, hidden, unlinked, generated, aotlinked_msg, inited_msg);
+                            kind, hidden, old, unlinked, generated, aotlinked_msg, inited_msg);
     }
   }
 
@@ -988,15 +1004,15 @@ void ArchiveBuilder::make_klasses_shareable() {
   log_info(cds)("Number of classes %d", num_instance_klasses + num_obj_array_klasses + num_type_array_klasses);
   log_info(cds)("    instance classes   " STATS_FORMAT, STATS_PARAMS(instance_klasses));
   log_info(cds)("      boot             " STATS_FORMAT, STATS_PARAMS(boot_klasses));
-  log_info(cds)("       vm              " STATS_FORMAT, STATS_PARAMS(vm_klasses));
+  log_info(cds)("        vm             " STATS_FORMAT, STATS_PARAMS(vm_klasses));
   log_info(cds)("      platform         " STATS_FORMAT, STATS_PARAMS(platform_klasses));
   log_info(cds)("      app              " STATS_FORMAT, STATS_PARAMS(app_klasses));
   log_info(cds)("      unregistered     " STATS_FORMAT, STATS_PARAMS(unregistered_klasses));
+  log_info(cds)("      (enum)           " STATS_FORMAT, STATS_PARAMS(enum_klasses));
   log_info(cds)("      (hidden)         " STATS_FORMAT, STATS_PARAMS(hidden_klasses));
-  log_info(cds)("      (unlinked)       " STATS_FORMAT ", boot = %d, plat = %d, app = %d, unreg = %d",
-                                                              STATS_PARAMS(unlinked_klasses),
-                                                              boot_unlinked, platform_unlinked,
-                                                              app_unlinked, unreg_unlinked);
+  log_info(cds)("      (old)            " STATS_FORMAT, STATS_PARAMS(old_klasses));
+  log_info(cds)("      (unlinked)       = %5d, boot = %d, plat = %d, app = %d, unreg = %d",
+                num_unlinked_klasses, boot_unlinked, platform_unlinked, app_unlinked, unreg_unlinked);
   log_info(cds)("    obj array classes  = %5d", num_obj_array_klasses);
   log_info(cds)("    type array classes = %5d", num_type_array_klasses);
   log_info(cds)("               symbols = %5d", _symbols->length());
@@ -1065,14 +1081,27 @@ void ArchiveBuilder::end_cc_region() {
   _cc_region.pack();
 }
 
+address ArchiveBuilder::offset_to_buffered_address(u4 offset) const {
+  address requested_addr = _requested_static_archive_bottom + offset;
+  address buffered_addr = requested_addr - _buffer_to_requested_delta;
+  assert(is_in_buffer_space(buffered_addr), "bad offset");
+  return buffered_addr;
+}
+
 #if INCLUDE_CDS_JAVA_HEAP
 narrowKlass ArchiveBuilder::get_requested_narrow_klass(Klass* k) {
   assert(CDSConfig::is_dumping_heap(), "sanity");
   k = get_buffered_klass(k);
   Klass* requested_k = to_requested(k);
+  const int narrow_klass_shift = ArchiveBuilder::precomputed_narrow_klass_shift();
+#ifdef ASSERT
+  const size_t klass_alignment = MAX2(SharedSpaceObjectAlignment, (size_t)nth_bit(narrow_klass_shift));
+  assert(is_aligned(k, klass_alignment), "Klass " PTR_FORMAT " misaligned.", p2i(k));
+#endif
   address narrow_klass_base = _requested_static_archive_bottom; // runtime encoding base == runtime mapping start
-  const int narrow_klass_shift = ArchiveHeapWriter::precomputed_narrow_klass_shift;
-  return CompressedKlassPointers::encode_not_null(requested_k, narrow_klass_base, narrow_klass_shift);
+  // Note: use the "raw" version of encode that takes explicit narrow klass base and shift. Don't use any
+  // of the variants that do sanity checks, nor any of those that use the current - dump - JVM's encoding setting.
+  return CompressedKlassPointers::encode_not_null_without_asserts(requested_k, narrow_klass_base, narrow_klass_shift);
 }
 #endif // INCLUDE_CDS_JAVA_HEAP
 
@@ -1152,6 +1181,20 @@ class RelocateBufferToRequested : public BitMapClosure {
   }
 };
 
+#ifdef _LP64
+int ArchiveBuilder::precomputed_narrow_klass_shift() {
+  // Legacy Mode:
+  //    We use 32 bits for narrowKlass, which should cover the full 4G Klass range. Shift can be 0.
+  // CompactObjectHeader Mode:
+  //    narrowKlass is much smaller, and we use the highest possible shift value to later get the maximum
+  //    Klass encoding range.
+  //
+  // Note that all of this may change in the future, if we decide to correct the pre-calculated
+  // narrow Klass IDs at archive load time.
+  assert(UseCompressedClassPointers, "Only needed for compressed class pointers");
+  return UseCompactObjectHeaders ?  CompressedKlassPointers::max_shift() : 0;
+}
+#endif // _LP64
 
 void ArchiveBuilder::relocate_to_requested() {
   if (!ro_region()->is_packed()) {
@@ -1424,7 +1467,7 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
           if (java_lang_Class::is_primitive(source_oop)) {
             st.print("primitive ??");
           } else {
-            java_lang_Class::print_signature(source_oop, &st);            
+            java_lang_Class::print_signature(source_oop, &st);
           }
           st.cr();
         }
@@ -1540,7 +1583,7 @@ void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, ArchiveHeapInfo* heap_i
 
   write_region(mapinfo, MetaspaceShared::rw, &_rw_region, /*read_only=*/false,/*allow_exec=*/false);
   write_region(mapinfo, MetaspaceShared::ro, &_ro_region, /*read_only=*/true, /*allow_exec=*/false);
-  write_region(mapinfo, MetaspaceShared::cc, &_cc_region, /*read_only=*/false,/*allow_exec=*/true);
+  write_region(mapinfo, MetaspaceShared::cc, &_cc_region, /*read_only=*/false,/*allow_exec=*/false);
 
   // Split pointer map into read-write and read-only bitmaps
   ArchivePtrMarker::initialize_rw_ro_cc_maps(&_rw_ptrmap, &_ro_ptrmap, &_cc_ptrmap);

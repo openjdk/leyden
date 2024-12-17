@@ -30,6 +30,7 @@
 #include "utilities/macros.hpp"
 
 class InstanceKlass;
+class JavaThread;
 
 class CDSConfig : public AllStatic {
 #if INCLUDE_CDS
@@ -42,7 +43,6 @@ class CDSConfig : public AllStatic {
   static bool _has_archived_invokedynamic;
   static bool _is_loading_packages;
   static bool _is_loading_protection_domains;
-
   static bool _is_security_manager_allowed;
 
   static char* _default_archive_path;
@@ -50,6 +50,8 @@ class CDSConfig : public AllStatic {
   static char* _dynamic_archive_path;
 
   static bool  _old_cds_flags_used;
+
+  static JavaThread* _dumper_thread;
 #endif
 
   static void extract_shared_archive_paths(const char* archive_path,
@@ -74,7 +76,8 @@ public:
 
   // Initialization and command-line checking
   static void initialize() NOT_CDS_RETURN;
-  static void set_old_cds_flags_used() { CDS_ONLY(_old_cds_flags_used = true); }
+  static void set_old_cds_flags_used()                       { CDS_ONLY(_old_cds_flags_used = true); }
+  static bool old_cds_flags_used()                           { return CDS_ONLY(_old_cds_flags_used) NOT_CDS(false); }
   static void check_internal_module_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_incompatible_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_unsupported_dumping_module_options() NOT_CDS_RETURN;
@@ -93,9 +96,10 @@ public:
                                                                     || is_dumping_final_static_archive(); }
   static void enable_dumping_static_archive()                { CDS_ONLY(_is_dumping_static_archive = true); }
 
-  static bool is_dumping_classic_static_archive()            NOT_CDS_RETURN_(false); // -Xshare:dump
-  static bool is_dumping_preimage_static_archive()           NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping
-  static bool is_dumping_final_static_archive()              NOT_CDS_RETURN_(false); // 2nd phase of -XX:CacheDataStore dumping
+  static bool is_dumping_classic_static_archive()                NOT_CDS_RETURN_(false); // -Xshare:dump
+  static bool is_dumping_preimage_static_archive()               NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping
+  static bool is_dumping_preimage_static_archive_with_triggers() NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping with triggers
+  static bool is_dumping_final_static_archive()                  NOT_CDS_RETURN_(false); // 2nd phase of -XX:CacheDataStore dumping
 
   // dynamic_archive
   static bool is_dumping_dynamic_archive()                   { return CDS_ONLY(_is_dumping_dynamic_archive) NOT_CDS(false); }
@@ -115,7 +119,7 @@ public:
 
   static bool is_dumping_aot_linked_classes()                NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_using_aot_linked_classes()                  NOT_CDS_JAVA_HEAP_RETURN_(false);
-  static void set_has_aot_linked_classes(bool is_static_archive, bool has_aot_linked_classes) NOT_CDS_JAVA_HEAP_RETURN;
+  static void set_has_aot_linked_classes(bool has_aot_linked_classes) NOT_CDS_JAVA_HEAP_RETURN;
 
   // archive_path
 
@@ -162,6 +166,20 @@ public:
   static void enable_dumping_cached_code()                   NOT_CDS_RETURN;
 
   static bool is_dumping_adapters()                          NOT_CDS_RETURN_(false);
+
+  // Some CDS functions assume that they are called only within a single-threaded context. I.e.,
+  // they are called from:
+  //    - The VM thread (e.g., inside VM_PopulateDumpSharedSpace)
+  //    - The thread that performs prepatory steps before switching to the VM thread
+  // Since these two threads never execute concurrently, we can avoid using locks in these CDS
+  // function. For safety, these functions should assert with CDSConfig::current_thread_is_vm_or_dumper().
+  class DumperThreadMark {
+  public:
+    DumperThreadMark(JavaThread* current);
+    ~DumperThreadMark();
+  };
+
+  static bool current_thread_is_vm_or_dumper() NOT_CDS_RETURN_(false);
 };
 
 #endif // SHARE_CDS_CDSCONFIG_HPP

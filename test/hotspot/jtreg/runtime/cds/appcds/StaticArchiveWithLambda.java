@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -53,7 +53,7 @@ public class StaticArchiveWithLambda {
                        "-Xlog:class+load,cds")
             .setArchiveName(archiveName);
         CDSTestUtils.createArchiveAndCheck(opts)
-                    .shouldContain("Skipping java/lang/invoke/BoundMethodHandle$Species_LLLL because it is dynamically generated");
+                .shouldHaveExitValue(0);
 
         // run with archive
         CDSOptions runOpts = (new CDSOptions())
@@ -63,8 +63,7 @@ public class StaticArchiveWithLambda {
             .addSuffix(appClass);
        OutputAnalyzer output = CDSTestUtils.runWithArchive(runOpts);
        output.shouldContain("LambHello source: shared objects file")
-           // FIXME:leyden-premain : we disabled archived Lambda proxy classes due to JDK-8307468
-           // .shouldMatch("class.load.*LambHello[$][$]Lambda.*0x.*source:.shared.objects.file")
+             .shouldMatch("class.load.*LambHello[$][$]Lambda.*0x.*source:.shared.objects.file")
              .shouldHaveExitValue(0);
     }
 }

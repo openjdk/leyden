@@ -927,10 +927,6 @@ bool Method::is_constant_getter() const {
           Bytecodes::is_return(java_code_at(last_index)));
 }
 
-bool Method::is_initializer() const {
-  return is_object_initializer() || is_static_initializer();
-}
-
 bool Method::has_valid_initializer_flags() const {
   return (is_static() ||
           method_holder()->major_version() < 51);
@@ -955,6 +951,11 @@ bool Method::needs_clinit_barrier() const {
 bool Method::code_has_clinit_barriers() const {
   nmethod* nm = code();
   return (nm != nullptr) && nm->has_clinit_barriers();
+}
+
+bool Method::is_object_wait0() const {
+  return klass_name() == vmSymbols::java_lang_Object()
+         && name() == vmSymbols::wait_name();
 }
 
 objArrayHandle Method::resolved_checked_exceptions_impl(Method* method, TRAPS) {
@@ -1260,6 +1261,8 @@ void Method::remove_unshareable_flags() {
   set_is_not_c1_compilable(false);
   set_is_not_c2_osr_compilable(false);
   set_on_stack_flag(false);
+  set_has_upcall_on_method_entry(false);
+  set_has_upcall_on_method_exit(false);
 }
 #endif
 

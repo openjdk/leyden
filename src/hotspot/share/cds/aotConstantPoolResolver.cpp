@@ -120,6 +120,8 @@ bool AOTConstantPoolResolver::is_class_resolution_deterministic(InstanceKlass* c
     }
 
     if (CDSConfig::is_dumping_aot_linked_classes()) {
+      // Need to call try_add_candidate instead of is_candidate, as this may be called
+      // before AOTClassLinker::add_candidates().
       if (AOTClassLinker::try_add_candidate(ik)) {
         return true;
       } else {
@@ -285,8 +287,8 @@ void AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(JavaThread*
       bcs.next();
       Bytecodes::Code raw_bc = bcs.raw_code();
       switch (raw_bc) {
-      case Bytecodes::_getstatic:
-      case Bytecodes::_putstatic:
+      case Bytecodes::_getstatic: // FIXME -- leyden+JEP483 merge
+      case Bytecodes::_putstatic: // FIXME -- leyden+JEP483 merge
       case Bytecodes::_getfield:
       case Bytecodes::_putfield:
         maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
@@ -298,7 +300,7 @@ void AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(JavaThread*
       case Bytecodes::_invokespecial:
       case Bytecodes::_invokevirtual:
       case Bytecodes::_invokeinterface:
-      case Bytecodes::_invokestatic:
+      case Bytecodes::_invokestatic: // FIXME -- leyden+JEP483 merge
         maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION; // just ignore
@@ -338,6 +340,7 @@ void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m
   const char* is_static = "";
 
   switch (bc) {
+#if 1 // FIXME -- leyden+JEP483 merge
   case Bytecodes::_getstatic:
   case Bytecodes::_putstatic:
     if (!VM_Version::supports_fast_class_init_checks()) {
@@ -346,11 +349,13 @@ void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m
     InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
     is_static = " *** static";
     break;
+#endif
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
     InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
     break;
 
+#if 1 // FIXME -- leyden+JEP483 merge
   case Bytecodes::_invokestatic:
     if (!VM_Version::supports_fast_class_init_checks()) {
       return; // Do not resolve since interpreter lacks fast clinit barriers support
@@ -358,6 +363,7 @@ void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, cp, CHECK);
     is_static = " *** static";
     break;
+#endif
 
   case Bytecodes::_invokevirtual:
   case Bytecodes::_invokespecial:
@@ -400,39 +406,27 @@ void AOTConstantPoolResolver::preresolve_indy_cp_entries(JavaThread* current, In
   for (int i = 0; i < indy_entries->length(); i++) {
     ResolvedIndyEntry* rie = indy_entries->adr_at(i);
     int cp_index = rie->constant_pool_index();
-    if (preresolve_list->at(cp_index) == true && !rie->is_resolved() && is_indy_resolution_deterministic(cp(), cp_index)) {
-      InterpreterRuntime::cds_resolve_invokedynamic(i, cp, THREAD);
-      if (HAS_PENDING_EXCEPTION) {
-        CLEAR_PENDING_EXCEPTION; // just ignore
+    if (preresolve_list->at(cp_index) == true) {
+      if (!rie->is_resolved() && is_indy_resolution_deterministic(cp(), cp_index)) {
+        InterpreterRuntime::cds_resolve_invokedynamic(i, cp, THREAD);
+        if (HAS_PENDING_EXCEPTION) {
+          CLEAR_PENDING_EXCEPTION; // just ignore
+        }
+      }
+      if (log_is_enabled(Trace, cds, resolve)) {
+        ResourceMark rm(THREAD);
+        log_trace(cds, resolve)("%s indy   [%3d] %s",
+                                rie->is_resolved() ? "Resolved" : "Failed to resolve",
+                                cp_index, ik->external_name());
       }
     }
   }
 }
 
-// Does <clinit> exist for ik or any of its supertypes?
-static bool has_clinit(InstanceKlass* ik) {
-  if (ik->class_initializer() != nullptr) {
-    return true;
-  }
-  InstanceKlass* super = ik->java_super();
-  if (super != nullptr && has_clinit(super)) {
-    return true;
-  }
-  Array<InstanceKlass*>* interfaces = ik->local_interfaces();
-  int num_interfaces = interfaces->length();
-  for (int index = 0; index < num_interfaces; index++) {
-    InstanceKlass* intf = interfaces->at(index);
-    if (has_clinit(intf)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// Check the method signatures used by parameters to LambdaMetafactory::metafactory. Make sure we don't
+// Check the MethodType signatures used by parameters to the indy BSMs. Make sure we don't
 // use types that have been excluded, or else we might end up creating MethodTypes that cannot be stored
 // in the AOT cache.
-bool AOTConstantPoolResolver::check_lambda_metafactory_signature(ConstantPool* cp, Symbol* sig, bool check_return_type) {
+bool AOTConstantPoolResolver::check_methodtype_signature(ConstantPool* cp, Symbol* sig, Klass** return_type_ret) {
   ResourceMark rm;
   for (SignatureStream ss(sig); !ss.is_done(); ss.next()) {
     if (ss.is_reference()) {
@@ -442,7 +436,7 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_signature(ConstantPool* c
         return false;
       }
 
-      if (SystemDictionaryShared::check_for_exclusion(k)) {
+      if (SystemDictionaryShared::should_be_excluded(k)) {
         if (log_is_enabled(Warning, cds, resolve)) {
           ResourceMark rm;
           log_warning(cds, resolve)("Cannot aot-resolve Lambda proxy because %s is excluded", k->external_name());
@@ -450,27 +444,38 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_signature(ConstantPool* c
         return false;
       }
 
-      if (check_return_type && ss.at_return_type()) {
-        // This is the interface type implemented by the lambda proxy
-        if (!k->is_interface()) {
-          // pool_holder doesn't look like a valid class generated by javac
-          return false;
-        }
-
-        if (has_clinit(InstanceKlass::cast(k))) {
-          // We initialize the class of the archived lambda proxy at VM start-up, which will also initialize
-          // the interface that it implements. If that interface has a clinit method, we can potentially
-          // change program execution order.
-          if (log_is_enabled(Debug, cds, resolve)) {
-            ResourceMark rm;
-            log_debug(cds, resolve)("Cannot aot-resolve Lambda proxy of interface type %s (has <cilint>)", k->external_name());
-          }
-          return false;
-        }
+      if (ss.at_return_type() && return_type_ret != nullptr) {
+        *return_type_ret = k;
       }
     }
   }
   return true;
+}
+
+bool AOTConstantPoolResolver::check_lambda_metafactory_signature(ConstantPool* cp, Symbol* sig) {
+  Klass* k;
+  if (!check_methodtype_signature(cp, sig, &k)) {
+    return false;
+  }
+
+  // <k> is the interface type implemented by the lambda proxy
+  if (!k->is_interface()) {
+    // cp->pool_holder() doesn't look like a valid class generated by javac
+    return false;
+  }
+
+
+  // The linked lambda callsite has an instance of the interface implemented by this lambda. If this
+  // interface requires its <clinit> to be executed, then we must delay the execution to the production run
+  // as <clinit> can have side effects ==> exclude such cases.
+  InstanceKlass* intf = InstanceKlass::cast(k);
+  bool exclude = intf->interface_needs_clinit_execution_as_super();
+  if (log_is_enabled(Debug, cds, resolve)) {
+    ResourceMark rm;
+    log_debug(cds, resolve)("%s aot-resolve Lambda proxy of interface type %s",
+                            exclude ? "Cannot" : "Can", k->external_name());
+  }
+  return !exclude;
 }
 
 bool AOTConstantPoolResolver::check_lambda_metafactory_methodtype_arg(ConstantPool* cp, int bsms_attribute_index, int arg_i) {
@@ -486,7 +491,7 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_methodtype_arg(ConstantPo
     log_debug(cds, resolve)("Checking MethodType for LambdaMetafactory BSM arg %d: %s", arg_i, sig->as_C_string());
   }
 
-  return check_lambda_metafactory_signature(cp, sig, false);
+  return check_methodtype_signature(cp, sig);
 }
 
 bool AOTConstantPoolResolver::check_lambda_metafactory_methodhandle_arg(ConstantPool* cp, int bsms_attribute_index, int arg_i) {
@@ -496,21 +501,12 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_methodhandle_arg(Constant
     return false;
   }
 
- Symbol* sig = cp->method_handle_signature_ref_at(mh_index);
+  Symbol* sig = cp->method_handle_signature_ref_at(mh_index);
   if (log_is_enabled(Debug, cds, resolve)) {
     ResourceMark rm;
-    log_debug(cds, resolve)("Checking MethodType of MethodHandle for  LambdaMetafactory BSM arg %d: %s", arg_i, sig->as_C_string());
+    log_debug(cds, resolve)("Checking MethodType of MethodHandle for LambdaMetafactory BSM arg %d: %s", arg_i, sig->as_C_string());
   }
-  if (!check_lambda_metafactory_signature(cp, sig, false)) {
-    return false;
-  }
-
-  Symbol* mh_sig = cp->method_handle_signature_ref_at(mh_index);
-  if (!check_lambda_metafactory_signature(cp, mh_sig, false)) {
-    return false;
-  }
-
-  return true;
+  return check_methodtype_signature(cp, sig);
 }
 
 bool AOTConstantPoolResolver::is_indy_resolution_deterministic(ConstantPool* cp, int cp_index) {
@@ -531,9 +527,32 @@ bool AOTConstantPoolResolver::is_indy_resolution_deterministic(ConstantPool* cp,
   Symbol* bsm_klass = cp->klass_name_at(cp->uncached_klass_ref_index_at(bsm_ref));
 
   // We currently support only StringConcatFactory::makeConcatWithConstants() and LambdaMetafactory::metafactory()
+  // We should mark the allowed BSMs in the JDK code using a private annotation.
+  // See notes on RFE JDK-8342481.
 
   if (bsm_klass->equals("java/lang/invoke/StringConcatFactory") &&
-      bsm_name->equals("makeConcatWithConstants")) {
+      bsm_name->equals("makeConcatWithConstants") &&
+      bsm_signature->equals("(Ljava/lang/invoke/MethodHandles$Lookup;"
+                             "Ljava/lang/String;"
+                             "Ljava/lang/invoke/MethodType;"
+                             "Ljava/lang/String;"
+                             "[Ljava/lang/Object;"
+                            ")Ljava/lang/invoke/CallSite;")) {
+    Symbol* factory_type_sig = cp->uncached_signature_ref_at(cp_index);
+    if (log_is_enabled(Debug, cds, resolve)) {
+      ResourceMark rm;
+      log_debug(cds, resolve)("Checking StringConcatFactory callsite signature [%d]: %s", cp_index, factory_type_sig->as_C_string());
+    }
+
+    Klass* k;
+    if (!check_methodtype_signature(cp, factory_type_sig, &k)) {
+      return false;
+    }
+    if (k != vmClasses::String_klass()) {
+      // bad class file?
+      return false;
+    }
+
     return true;
   }
 
@@ -546,16 +565,38 @@ bool AOTConstantPoolResolver::is_indy_resolution_deterministic(ConstantPool* cp,
                              "Ljava/lang/invoke/MethodHandle;"
                              "Ljava/lang/invoke/MethodType;"
                             ")Ljava/lang/invoke/CallSite;")) {
-    // The signature of the resolved call site. I.e., after this indy is resolved, every
-    // time the indy bytecode is executed, we will dispatch to a (usually generated) method
-    // of this sigture.
-    Symbol* resolved_callsite_sig = cp->uncached_signature_ref_at(cp_index);
+    /*
+     * An indy callsite is associated with the following MethodType and MethodHandles:
+     *
+     * https://github.com/openjdk/jdk/blob/580eb62dc097efeb51c76b095c1404106859b673/src/java.base/share/classes/java/lang/invoke/LambdaMetafactory.java#L293-L309
+     *
+     * MethodType factoryType         The expected signature of the {@code CallSite}.  The
+     *                                parameter types represent the types of capture variables;
+     *                                the return type is the interface to implement.   When
+     *                                used with {@code invokedynamic}, this is provided by
+     *                                the {@code NameAndType} of the {@code InvokeDynamic}
+     *
+     * MethodType interfaceMethodType Signature and return type of method to be
+     *                                implemented by the function object.
+     *
+     * MethodHandle implementation    A direct method handle describing the implementation
+     *                                method which should be called (with suitable adaptation
+     *                                of argument types and return types, and with captured
+     *                                arguments prepended to the invocation arguments) at
+     *                                invocation time.
+     *
+     * MethodType dynamicMethodType   The signature and return type that should
+     *                                be enforced dynamically at invocation time.
+     *                                In simple use cases this is the same as
+     *                                {@code interfaceMethodType}.
+     */
+    Symbol* factory_type_sig = cp->uncached_signature_ref_at(cp_index);
     if (log_is_enabled(Debug, cds, resolve)) {
       ResourceMark rm;
-      log_debug(cds, resolve)("Checking resolved callsite signature: %s", resolved_callsite_sig->as_C_string());
+      log_debug(cds, resolve)("Checking indy callsite signature [%d]: %s", cp_index, factory_type_sig->as_C_string());
     }
 
-    if (!check_lambda_metafactory_signature(cp, resolved_callsite_sig, true)) {
+    if (!check_lambda_metafactory_signature(cp, factory_type_sig)) {
       return false;
     }
 
@@ -566,12 +607,17 @@ bool AOTConstantPoolResolver::is_indy_resolution_deterministic(ConstantPool* cp,
       return false;
     }
 
+    // interfaceMethodType
     if (!check_lambda_metafactory_methodtype_arg(cp, bsms_attribute_index, 0)) {
       return false;
     }
+
+    // implementation
     if (!check_lambda_metafactory_methodhandle_arg(cp, bsms_attribute_index, 1)) {
       return false;
     }
+
+    // dynamicMethodType
     if (!check_lambda_metafactory_methodtype_arg(cp, bsms_attribute_index, 2)) {
       return false;
     }

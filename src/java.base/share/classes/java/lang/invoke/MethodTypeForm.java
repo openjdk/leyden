@@ -30,7 +30,7 @@ import sun.invoke.util.Wrapper;
 import java.lang.ref.SoftReference;
 
 import static java.lang.invoke.MethodHandleStatics.newIllegalArgumentException;
-import static java.lang.invoke.MethodHandleStatics.NO_SOFT_CACHE;
+import static java.lang.invoke.MethodHandleNatives.USE_SOFT_CACHE;
 
 /**
  * Shared information for a group of method types, which differ
@@ -115,8 +115,8 @@ final class MethodTypeForm {
         Object entry = methodHandles[which];
         if (entry == null) {
             return null;
-        } else if (entry instanceof MethodHandle) {
-            return (MethodHandle) entry;
+        } else if (entry instanceof MethodHandle mh) {
+            return mh;
         } else {
             return ((SoftReference<MethodHandle>)entry).get();
         }
@@ -128,10 +128,10 @@ final class MethodTypeForm {
         if (prev != null) {
             return prev;
         }
-        if (NO_SOFT_CACHE) {
-            methodHandles[which] = mh;
-        } else {
+        if (USE_SOFT_CACHE) {
             methodHandles[which] = new SoftReference<>(mh);
+        } else {
+            methodHandles[which] = mh;
         }
         return mh;
     }
@@ -141,8 +141,8 @@ final class MethodTypeForm {
         Object entry = lambdaForms[which];
         if (entry == null) {
             return null;
-        } else if (entry instanceof LambdaForm) {
-            return (LambdaForm) entry;
+        } else if (entry instanceof LambdaForm lf) {
+            return lf;
         } else {
             return ((SoftReference<LambdaForm>)entry).get();
         }
@@ -154,10 +154,10 @@ final class MethodTypeForm {
         if (prev != null) {
             return prev;
         }
-        if (NO_SOFT_CACHE) {
-            lambdaForms[which] = form;
-        } else {
+        if (USE_SOFT_CACHE) {
             lambdaForms[which] = new SoftReference<>(form);
+        } else {
+            lambdaForms[which] = form;
         }
         return form;
     }

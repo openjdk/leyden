@@ -618,6 +618,18 @@ void ClassListParser::resolve_indy(JavaThread* current, Symbol* class_name_symbo
 }
 
 void ClassListParser::resolve_indy_impl(Symbol* class_name_symbol, TRAPS) {
+  if (CDSConfig::is_dumping_invokedynamic()) {
+    // The CP entry for the invokedynamic instruction will be resolved.
+    // No need to do the following.
+    return;
+  }
+
+  // This is an older CDS optimization:
+  // We store a pre-generated version of the lambda proxy class in the AOT cache,
+  // which will be loaded via JVM_LookupLambdaProxyClassFromArchive().
+  // This eliminate dynamic class generation of the proxy class, but we still need to
+  // resolve the CP entry for the invokedynamic instruction, which may result in
+  // generation of LambdaForm classes.
   Handle class_loader(THREAD, SystemDictionary::java_system_loader());
   Handle protection_domain;
   Klass* klass = SystemDictionary::resolve_or_fail(class_name_symbol, class_loader, protection_domain, true, CHECK);

@@ -27,6 +27,7 @@
 
 #include "memory/iterator.hpp"
 
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "code/nmethod.hpp"
 #include "oops/access.inline.hpp"
@@ -46,16 +47,16 @@ inline MetadataVisitingOopIterateClosure::MetadataVisitingOopIterateClosure(Refe
     ClaimMetadataVisitingOopIterateClosure(ClassLoaderData::_claim_strong, rd) {}
 
 inline void ClaimMetadataVisitingOopIterateClosure::do_cld(ClassLoaderData* cld) {
-  if (cld != nullptr) {
-    // Could be null during early VM bootstrap for archived heap objects whose
-    // class has not yet been loaded by CDS.
-    cld->oops_do(this, _claim);
-  }
+  cld->oops_do(this, _claim);
 }
 
 inline void ClaimMetadataVisitingOopIterateClosure::do_klass(Klass* k) {
   ClassLoaderData* cld = k->class_loader_data();
-  ClaimMetadataVisitingOopIterateClosure::do_cld(cld);
+  if (cld != nullptr) {
+    ClaimMetadataVisitingOopIterateClosure::do_cld(cld);
+  } else {
+    assert(AOTLinkedClassBulkLoader::is_pending_aot_linked_class(k), "sanity");
+  }
 }
 
 inline void ClaimMetadataVisitingOopIterateClosure::do_nmethod(nmethod* nm) {

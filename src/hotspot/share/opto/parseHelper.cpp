@@ -32,7 +32,28 @@
 #include "opto/parse.hpp"
 #include "opto/rootnode.hpp"
 #include "opto/runtime.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
+
+void GraphKit::install_on_method_entry_runtime_upcalls(ciMethod* method) {
+  MethodDetails method_details(method);
+  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, method_details);
+  while (upcall != nullptr) {
+    // Get base of thread-local storage area
+    Node* thread = _gvn.transform( new ThreadLocalNode() );
+    kill_dead_locals();
+
+    // For some reason, this call reads only raw memory.
+    const TypeFunc *call_type   = OptoRuntime::runtime_up_call_Type();
+    const TypePtr* raw_adr_type = TypeRawPtr::BOTTOM;
+    make_runtime_call(RC_LEAF | RC_NARROW_MEM,
+                      call_type, upcall->upcall_address(),
+                      upcall->upcall_name(), raw_adr_type,
+                      thread);
+
+    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, method_details, upcall);
+  }
+}
 
 //------------------------------make_dtrace_method_entry_exit ----------------
 // Dtrace -- record entry or exit of a method if compiled with dtrace support

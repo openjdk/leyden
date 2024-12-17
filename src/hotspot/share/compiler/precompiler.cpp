@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,6 +34,7 @@
 #include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
 #include "oops/trainingData.hpp"
+#include "runtime/handles.inline.hpp"
 
 static int precompiled_total_count = 0;
 
@@ -103,7 +104,7 @@ public:
   }
 
   void do_value(const RunTimeClassInfo* record) {
-    Array<Method*>* methods = record->_klass->methods();
+    Array<Method*>* methods = record->klass()->methods();
     for (int i = 0; i < methods->length(); i++) {
       Method* m = methods->at(i);
       if (include(m)) {

@@ -41,6 +41,7 @@
 #include "gc/shared/c1/barrierSetC1.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/methodCounters.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stubRoutines.hpp"
 #include "runtime/vm_version.hpp"
@@ -2674,6 +2675,17 @@ void LIRGenerator::do_Base(Base* x) {
     __ metadata2reg(method()->constant_encoding(), meth);
     args->append(meth);
     call_runtime(&signature, args, CAST_FROM_FN_PTR(address, SharedRuntime::dtrace_method_entry), voidType, nullptr);
+  }
+
+  MethodDetails method_details(method());
+  RuntimeUpcallInfo* upcall = RuntimeUpcalls::get_first_upcall(RuntimeUpcallType::onMethodEntry, method_details);
+  while (upcall != nullptr) {
+    BasicTypeList signature;
+    signature.append(LP64_ONLY(T_LONG) NOT_LP64(T_INT));    // thread
+    LIR_OprList* args = new LIR_OprList();
+    args->append(getThreadPointer());
+    call_runtime(&signature, args, upcall->upcall_address(), voidType, nullptr);
+    upcall = RuntimeUpcalls::get_next_upcall(RuntimeUpcallType::onMethodEntry, method_details, upcall);
   }
 
   if (method()->is_synchronized()) {

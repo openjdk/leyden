@@ -22,17 +22,11 @@
  *
  */
 
-#include <cds/archiveBuilder.hpp>
-#include <classfile/systemDictionaryShared.hpp>
-#include <compiler/compileBroker.hpp>
 #include "precompiled.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciMetadata.hpp"
-#include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/metaspaceShared.hpp"
-#include "cds/methodDataDictionary.hpp"
-#include "cds/runTimeClassInfo.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/compactHashtable.hpp"
 #include "classfile/javaClasses.hpp"
@@ -42,18 +36,14 @@
 #include "memory/metadataFactory.hpp"
 #include "memory/metaspaceClosure.hpp"
 #include "memory/resourceArea.hpp"
-#include "oops/fieldStreams.inline.hpp"
 #include "oops/method.hpp"
 #include "oops/methodCounters.hpp"
 #include "oops/recompilationSchedule.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/arguments.hpp"
-#include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/javaThread.inline.hpp"
 #include "runtime/jniHandles.inline.hpp"
-#include "runtime/os.hpp"
 #include "utilities/growableArray.hpp"
-#include "utilities/xmlstream.hpp"
 
 TrainingData::TrainingDataSet TrainingData::_training_data_set(1024, 0x3fffffff);
 TrainingData::TrainingDataDictionary TrainingData::_archived_training_data_dictionary;
@@ -816,30 +806,6 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
       _deps->at_put(i, _deps_dyn->at(i)); // copy
     }
   }
-}
-
-KlassTrainingData* KlassTrainingData::allocate(InstanceKlass* holder) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) KlassTrainingData(holder);
-  }
-  return nullptr;
-}
-
-MethodTrainingData* MethodTrainingData::allocate(Method* m, KlassTrainingData* ktd) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) MethodTrainingData(m, ktd);
-  }
-  return nullptr;
-}
-
-CompileTrainingData* CompileTrainingData::allocate(MethodTrainingData* mtd, int level, int compile_id) {
-  assert(need_data() || have_data(), "");
-  if (TrainingDataLocker::can_add()) {
-    return new (mtClassShared) CompileTrainingData(mtd, level, compile_id);
-  }
-  return nullptr;
 }
 
 void TrainingDataPrinter::do_value(TrainingData* td) {

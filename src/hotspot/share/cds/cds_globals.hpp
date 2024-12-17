@@ -97,7 +97,7 @@
            range(0, 2)                                                      \
                                                                             \
   /*========== New "AOT" flags =========================================*/  \
-  /* The following 3 flags are aliases of -Xshare:dump, */                  \
+  /* The following 3 flags are aliases of -Xshare:dump,                 */  \
   /* -XX:SharedArchiveFile=..., etc. See CDSConfig::check_flag_aliases()*/  \
                                                                             \
   product(ccstr, AOTMode, nullptr,                                          \
@@ -112,12 +112,16 @@
           "Cache for improving start up and warm up")                       \
                                                                             \
   product(bool, AOTInvokeDynamicLinking, false, DIAGNOSTIC,                 \
-          "AOT-link JVM_CONSTANT_InvokeDynamic entries in archived "        \
-          "ConstantPools according to profile")                             \
+          "AOT-link JVM_CONSTANT_InvokeDynamic entries in cached "          \
+          "ConstantPools")                                                  \
                                                                             \
   product(bool, AOTClassLinking, false,                                     \
           "Load/link all archived classes for the boot/platform/app "       \
           "loaders before application main")                                \
+                                                                            \
+  product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \
+          "List of methods (pkg/class.name) to trigger end of AOT "         \
+          "training run.  Optional ',count=N' where N is > 0")              \
                                                                             \
   /*========== New options added by Leyden =============================*/  \
                                                                             \

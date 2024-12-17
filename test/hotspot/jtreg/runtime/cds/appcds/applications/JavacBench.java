@@ -47,15 +47,6 @@
  * @run driver JavacBench LEYDEN
  */
 
-/*
- * @test id=leyden_old
- * @summary Run JavacBenchApp with the "OLD" Leyden workflow
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @library /test/lib
- * @run driver JavacBench LEYDEN_OLD
- */
-
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;

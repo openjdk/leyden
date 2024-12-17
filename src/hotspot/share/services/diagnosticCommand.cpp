@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/cdsEndTrainingUpcall.hpp"
 #include "cds/cds_globals.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/classLoaderHierarchyDCmd.hpp"
@@ -52,7 +53,6 @@
 #include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/flags/jvmFlag.hpp"
 #include "runtime/handles.inline.hpp"
-#include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/jniHandles.hpp"
 #include "runtime/os.hpp"
@@ -134,6 +134,9 @@ void DCmd::register_dcmds(){
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CompileQueueDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CodeListDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<CodeCacheDCmd>(full_export, true, false));
+#if INCLUDE_CDS
+  DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<AOTEndTrainingDCmd>(full_export, true, false));
+#endif // INCLUDE_CDS
 #ifdef LINUX
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<PerfMapDCmd>(full_export, true, false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<TrimCLibcHeapDCmd>(full_export, true, false));
@@ -159,11 +162,6 @@ void DCmd::register_dcmds(){
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<JMXStartLocalDCmd>(jmx_agent_export_flags, true,false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<JMXStopRemoteDCmd>(jmx_agent_export_flags, true,false));
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<JMXStatusDCmd>(jmx_agent_export_flags, true,false));
-
-  // Debug on cmd (only makes sense with JVMTI since the agentlib needs it).
-#if INCLUDE_JVMTI
-  DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<DebugOnCmdStartDCmd>(full_export, true, true));
-#endif // INCLUDE_JVMTI
 
 #if INCLUDE_CDS
   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<DumpSharedArchiveDCmd>(full_export, true, false));
@@ -993,6 +991,18 @@ void ClassesDCmd::execute(DCmdSource source, TRAPS) {
 }
 
 #if INCLUDE_CDS
+void AOTEndTrainingDCmd::execute(DCmdSource source, TRAPS) {
+  if (!CDSConfig::is_dumping_preimage_static_archive()) {
+    output()->print_cr("Error! Not a training run");
+  } else if (CDSEndTrainingUpcall::end_training(THREAD)) {
+    output()->print_cr("Training ended successfully");
+  } else {
+    output()->print_cr("Error! Failed to end training");
+  }
+}
+#endif // INCLUDE_CDS
+
+#if INCLUDE_CDS
 #define DEFAULT_CDS_ARCHIVE_FILENAME "java_pid%p_<subcmd>.jsa"
 
 DumpSharedArchiveDCmd::DumpSharedArchiveDCmd(outputStream* output, bool heap) :
@@ -1057,45 +1067,6 @@ void DumpSharedArchiveDCmd::execute(DCmdSource source, TRAPS) {
   }
 }
 #endif // INCLUDE_CDS
-
-#if INCLUDE_JVMTI
-extern "C" typedef char const* (JNICALL *debugInit_startDebuggingViaCommandPtr)(JNIEnv* env, jthread thread, char const** transport_name,
-                                                                                char const** address, jboolean* first_start);
-static debugInit_startDebuggingViaCommandPtr dvc_start_ptr = nullptr;
-
-void DebugOnCmdStartDCmd::execute(DCmdSource source, TRAPS) {
-  char const* transport = nullptr;
-  char const* addr = nullptr;
-  jboolean is_first_start = JNI_FALSE;
-  JavaThread* thread = THREAD;
-  jthread jt = JNIHandles::make_local(thread->threadObj());
-  ThreadToNativeFromVM ttn(thread);
-  const char *error = "Could not find jdwp agent.";
-
-  if (!dvc_start_ptr) {
-    JvmtiAgentList::Iterator it = JvmtiAgentList::agents();
-    while (it.has_next()) {
-      JvmtiAgent* agent = it.next();
-      if ((strcmp("jdwp", agent->name()) == 0) && (dvc_start_ptr == nullptr)) {
-        char const* func = "debugInit_startDebuggingViaCommand";
-        dvc_start_ptr = (debugInit_startDebuggingViaCommandPtr) os::find_agent_function(agent, false, &func, 1);
-      }
-    }
-  }
-
-  if (dvc_start_ptr) {
-    error = dvc_start_ptr(thread->jni_environment(), jt, &transport, &addr, &is_first_start);
-  }
-
-  if (error != nullptr) {
-    output()->print_cr("Debugging has not been started: %s", error);
-  } else {
-    output()->print_cr(is_first_start ? "Debugging has been started." : "Debugging is already active.");
-    output()->print_cr("Transport : %s", transport ? transport : "#unknown");
-    output()->print_cr("Address : %s", addr ? addr : "#unknown");
-  }
-}
-#endif // INCLUDE_JVMTI
 
 ThreadDumpToFileDCmd::ThreadDumpToFileDCmd(outputStream* output, bool heap) :
                                            DCmdWithParser(output, heap),
@@ -1202,12 +1173,10 @@ void SystemDumpMapDCmd::execute(DCmdSource source, TRAPS) {
       output()->print_cr("(NMT is disabled, will not annotate mappings).");
     }
     MemMapPrinter::print_all_mappings(&fs);
-#ifndef _WIN64
     // For the readers convenience, resolve path name.
     char tmp[JVM_MAXPATHLEN];
-    const char* absname = os::Posix::realpath(name, tmp, sizeof(tmp));
+    const char* absname = os::realpath(name, tmp, sizeof(tmp));
     name = absname != nullptr ? absname : name;
-#endif
     output()->print_cr("Memory map dumped to \"%s\".", name);
   } else {
     output()->print_cr("Failed to open \"%s\" for writing (%s).", name, os::strerror(errno));

@@ -1432,7 +1432,6 @@ static JNINativeMethod MHN_methods[] = {
   {CC "init",                      CC "(" MEM "" OBJ ")V",                   FN_PTR(MHN_init_Mem)},
   {CC "expand",                    CC "(" MEM ")V",                          FN_PTR(MHN_expand_Mem)},
   {CC "resolve",                   CC "(" MEM "" CLS "IZ)" MEM,              FN_PTR(MHN_resolve_Mem)},
-  {CC "checkArchivable",           CC "(" CLS ")V",                          FN_PTR(MHN_checkArchivable)},
   //  static native int getNamedCon(int which, Object[] name)
   {CC "getNamedCon",               CC "(I[" OBJ ")I",                        FN_PTR(MHN_getNamedCon)},
   {CC "objectFieldOffset",         CC "(" MEM ")J",                          FN_PTR(MHN_objectFieldOffset)},
@@ -1502,15 +1501,15 @@ JVM_ENTRY_PROF(void, JVM_RegisterMethodHandleMethods, JVM_RegisterMethodHandleMe
     ThreadToNativeFromVM ttnfv(thread);
 
     int status = env->RegisterNatives(MHN_class, MHN_methods, sizeof(MHN_methods)/sizeof(JNINativeMethod));
-    guarantee(status == JNI_OK && !env->ExceptionOccurred(),
+    guarantee(status == JNI_OK && !env->ExceptionCheck(),
               "register java.lang.invoke.MethodHandleNative natives");
 
     status = env->RegisterNatives(MH_class, MH_methods, sizeof(MH_methods)/sizeof(JNINativeMethod));
-    guarantee(status == JNI_OK && !env->ExceptionOccurred(),
+    guarantee(status == JNI_OK && !env->ExceptionCheck(),
               "register java.lang.invoke.MethodHandle natives");
 
     status = env->RegisterNatives(VH_class, VH_methods, sizeof(VH_methods)/sizeof(JNINativeMethod));
-    guarantee(status == JNI_OK && !env->ExceptionOccurred(),
+    guarantee(status == JNI_OK && !env->ExceptionCheck(),
               "register java.lang.invoke.VarHandle natives");
   }
 
