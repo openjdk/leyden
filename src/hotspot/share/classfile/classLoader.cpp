@@ -147,38 +147,6 @@ PerfCounter*    ClassLoader::_perf_resolve_mh_count = nullptr;
 PerfCounter*    ClassLoader::_perf_resolve_mt_count = nullptr;
 
 void ClassLoader::print_counters(outputStream *st) {
-<<<<<<< HEAD
-  // The counters are only active if the logging is enabled, but
-  // we print to the passed in outputStream as requested.
-  if (log_is_enabled(Info, perf, class, link)) {
-      st->print_cr("ClassLoader:");
-      st->print_cr("  clinit:                          " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
-                   ClassLoader::class_init_time_ms(), ClassLoader::class_init_count());
-      st->print_cr("  link methods:                    " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
-                   Management::ticks_to_us(_perf_ik_link_methods_time->get_value())   , _perf_ik_link_methods_count->get_value());
-      st->print_cr("  method adapters:                 " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
-                   Management::ticks_to_us(_perf_method_adapters_time->get_value())   , _perf_method_adapters_count->get_value());
-      if (CountBytecodes || CountBytecodesPerThread) {
-        st->print_cr("; executed " JLONG_FORMAT " bytecodes", ClassLoader::class_init_bytecodes_count());
-      }
-      st->print_cr("  resolve...");
-      st->print_cr("    invokedynamic:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_resolve_indy_time->elapsed_counter_value_us(),
-                   _perf_resolve_indy_time->thread_counter_value_us(),
-                   _perf_resolve_indy_count->get_value());
-      st->print_cr("    invokehandle:    " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_resolve_invokehandle_time->elapsed_counter_value_us(),
-                   _perf_resolve_invokehandle_time->thread_counter_value_us(),
-                   _perf_resolve_invokehandle_count->get_value());
-      st->print_cr("    CP_MethodHandle: " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_resolve_mh_time->elapsed_counter_value_us(),
-                   _perf_resolve_mh_time->thread_counter_value_us(),
-                   _perf_resolve_mh_count->get_value());
-      st->print_cr("    CP_MethodType:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
-                   _perf_resolve_mt_time->elapsed_counter_value_us(),
-                   _perf_resolve_mt_time->thread_counter_value_us(),
-                   _perf_resolve_mt_count->get_value());
-=======
   st->print_cr("ClassLoader:");
   st->print_cr(   "  clinit:               " JLONG_FORMAT_W(6) "us / " JLONG_FORMAT " events",
                ClassLoader::class_init_time_ms(), ClassLoader::class_init_count());
@@ -188,7 +156,6 @@ void ClassLoader::print_counters(outputStream *st) {
                Management::ticks_to_us(_perf_method_adapters_time->get_value())   , _perf_method_adapters_count->get_value());
   if (CountBytecodes || CountBytecodesPerThread) {
     st->print_cr("; executed " JLONG_FORMAT " bytecodes", ClassLoader::class_init_bytecodes_count());
->>>>>>> premain
   }
   st->print_cr("  resolve...");
   st->print_cr("    invokedynamic:   " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) / " JLONG_FORMAT_W(5) " events",
