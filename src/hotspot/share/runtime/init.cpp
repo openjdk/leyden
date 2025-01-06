@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -99,7 +99,7 @@ bool runtimeUpcallNop_register_upcalls();
 #if INCLUDE_CDS
 bool cdsEndTrainingUpcall_register_upcalls();
 #endif // INCLUDE_CDS
-bool runtimeUpcalls_close_registration();
+void runtimeUpcalls_close_registration();
 
 // Initialization after compiler initialization
 bool universe_post_init();  // must happen after compiler_init
