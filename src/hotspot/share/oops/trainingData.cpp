@@ -258,11 +258,6 @@ void CompileTrainingData::print_on(outputStream* st, bool name_only) const {
   if (name_only) {
     return;
   }
-  #define MAYBE_TIME(Q, _qtime) \
-    if (_qtime != 0) st->print(" " #Q "%.3f", _qtime)
-  MAYBE_TIME(Q, _qtime);
-  MAYBE_TIME(S, _stime);
-  MAYBE_TIME(E, _etime);
   if (_init_deps.length() > 0) {
     if (_init_deps_left > 0) {
       st->print(" udeps=%d", _init_deps_left);
@@ -274,18 +269,6 @@ void CompileTrainingData::print_on(outputStream* st, bool name_only) const {
   }
 }
 
-void CompileTrainingData::record_compilation_queued(CompileTask* task) {
-  _qtime = tty->time_stamp().seconds();
-}
-void CompileTrainingData::record_compilation_start(CompileTask* task) {
-  _stime = tty->time_stamp().seconds();
-}
-void CompileTrainingData::record_compilation_end(CompileTask* task) {
-  _etime = tty->time_stamp().seconds();
-  if (task->is_success()) {   // record something about the nmethod output
-    _nm_total_size = task->nm_total_size();
-  }
-}
 void CompileTrainingData::notice_inlined_method(CompileTask* task,
                                                 const methodHandle& method) {
   MethodTrainingData* mtd = MethodTrainingData::make(method);

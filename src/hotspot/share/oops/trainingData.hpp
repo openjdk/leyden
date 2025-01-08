@@ -455,8 +455,6 @@ class CompileTrainingData : public TrainingData {
   MethodTrainingData* _method;
   const short _level;
   const int _compile_id;
-  int _nm_total_size;
-  float _qtime, _stime, _etime;   // time queued, started, ended
 
   // classes that should be initialized before this JIT task runs
   DepList<KlassTrainingData*> _init_deps;
@@ -565,13 +563,7 @@ private:
                       int level,
                       int compile_id)
       : TrainingData(),  // empty key
-        _method(mtd), _level(level), _compile_id(compile_id)
-  {
-    _qtime = _stime = _etime = 0;
-    _nm_total_size = 0;
-    _init_deps_left = 0;
-  }
-
+        _method(mtd), _level(level), _compile_id(compile_id), _init_deps_left(0) { }
 public:
   ciRecords& ci_records() { return _ci_records; }
   static CompileTrainingData* make(CompileTask* task);
@@ -610,9 +602,6 @@ public:
   }
   uint compute_init_deps_left(bool count_initialized = false);
 
-  void record_compilation_queued(CompileTask* task);
-  void record_compilation_start(CompileTask* task);
-  void record_compilation_end(CompileTask* task);
   void notice_inlined_method(CompileTask* task, const methodHandle& method);
 
   // The JIT looks at classes and objects too and can depend on their state.
