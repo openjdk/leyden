@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -96,7 +96,7 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
   // you might need to fix the core library code, or fix the ADD_EXCL entries below.
   //
   //       class                                         field                     type
-  ADD_EXCL("java/lang/ClassLoader",                      "scl");                   // A
+  ADD_EXCL("java/lang/ClassLoader$Holder",               "scl");                   // A
   ADD_EXCL("java/lang/Module",                           "ALL_UNNAMED_MODULE",     // A
                                                          "ALL_UNNAMED_MODULE_SET", // A
                                                          "EVERYONE_MODULE",        // A
