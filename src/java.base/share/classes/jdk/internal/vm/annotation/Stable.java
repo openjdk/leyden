@@ -30,11 +30,13 @@ import java.lang.annotation.*;
 /**
  * A field may be annotated as "stable" to indicate that it is a
  * <em>stable variable</em>, expected to change its value just once.
- * While the field contains its initial default (null or zero) value,
- * the VM treats it as an ordinary mutable variable.  When the
- * first value is stored into the field (assuming it is not a
- * duplicate of the the field's default initial value), the VM may
- * assume that no more significant changes will occur.  This in
+ * All Java fields are initialized by the VM with a default value
+ * (null or zero).  A properly used stable field will be set
+ * just once to a non-default value, and keep that value forever.
+ * While the field contains its default (null or zero) value,
+ * the VM treats it as an ordinary mutable variable.  When a
+ * non-default value is stored into the field, the VM is permitted
+ * to assume that no more significant changes will occur.  This in
  * turn enables the VM to optimize uses of the stable variable, treating
  * them as constant values.  This behavior is a useful building block
  * for lazy evaluation or memoization of results.  In rare and subtle
@@ -65,11 +67,11 @@ import java.lang.annotation.*;
  * the VM discovers a stable variable holding a null or primitive zero
  * value.  Does the user intend the VM to constant fold that
  * (uninteresting) value?  Or is the user waiting until later to
- * assign another value to the variable?  The VM does not
- * systematically record stores of a default null (or primitive zero),
- * so there is no way for the VM to decide if a default field value is
- * an undisturbed initial default value, or has been overwritten with
- * an intentionally stored null (or primitive zero).  This is why the
+ * assign a permanent value to the variable?  The VM does not
+ * systematically record stores of a null (resp., zero) to a stable variable,
+ * so there is no way for the VM to decide if a field's current value is
+ * its undisturbed initial value, or has been overwritten with
+ * an intentionally stored null (resp., zero).  This is why the
  * programmer should store non-default values into stable variables,
  * if the consequent optimization is desired.
  * <p>
@@ -79,6 +81,15 @@ import java.lang.annotation.*;
  * stored and what races are possible, safe publication may require
  * special handling with a {@code VarHandle} atomic method.
  * (See below.)
+ * <p>
+ * If an application requires constant folding of a stable variable
+ * whose permanent value may be the default value (null or zero),
+ * the variable can be refactored to add an extra indirection.
+ * This would represent the default value in a non-null "box",
+ * such as {@code Integer.valueOf(0)} or a lambda like
+ * {@code ()->null}.  Such a refactoring should always be possible,
+ * since stable variables should (obviously) never be part of public
+ * APIs.
  *
  * <h2><a id="arrays"></a>Stable Arrays</h2>
  *
@@ -130,7 +141,7 @@ import java.lang.annotation.*;
  * <h2><a id="examples"></a>Examples of Stable Variables</h2>
  *
  * In the following example, the only constant-foldable string stored
- * in a stable value is the string {@code "S"}.  All subarrays are
+ * in any stable variable is the string {@code "S"}.  All subarrays are
  * constant.
  *
  * <pre>{@code
@@ -169,8 +180,9 @@ import java.lang.annotation.*;
  * }</pre>
  *
  * <p>
- * As a very simple example, a stable boolean variable (i.e., stable
- * field or stable boolean array element) might be constant-folded,
+ * Note that a stable boolean variable (i.e., a stable
+ * field like {@code INITIALIZED}, or a stable boolean
+ * array element above) can be constant-folded,
  * but only after it is set to {@code true}.  Even this simple
  * optimization is sometimes useful for responding to a permanent
  * one-shot state change, in such a way that the compiler can remove
@@ -179,16 +191,6 @@ import java.lang.annotation.*;
  * its default (i.e., {@code false}), since compiled code might have
  * captured the {@code true} value as a constant, and as long as that
  * compiled code is in use, the reset value will go undetected.
- * <p>
- * Stability of a variable and the constant folding of its default
- * value (null or zero) are mutually exclusive, as explained above.
- * So {@code final} field might be both null and also a constant, but
- * not a stable field.  If an application requires constant folding of
- * the default value, it can add an extra indirection to "box" the
- * default value, such as {@code Integer.valueOf(0)} or a lambda like
- * {@code ()->null}.  Such a refactoring should always be possible,
- * since stable variables should (obviously) never be part of public
- * APIs.
  *
  * <h2><a id="final"></a>Final Variables, Stable Variables, and Memory Effects</h2>
  *
