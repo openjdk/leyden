@@ -182,7 +182,7 @@ import java.lang.annotation.*;
  * <p>
  * Note that a stable boolean variable (i.e., a stable
  * field like {@code INITIALIZED}, or a stable boolean
- * array element above) can be constant-folded,
+ * array element) can be constant-folded,
  * but only after it is set to {@code true}.  Even this simple
  * optimization is sometimes useful for responding to a permanent
  * one-shot state change, in such a way that the compiler can remove
