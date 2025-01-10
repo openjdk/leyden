@@ -724,6 +724,11 @@ class AdapterHandlerEntry : public MetaspaceObj {
   {
     return new (mtCode) AdapterHandlerEntry(fingerprint, i2c_entry, c2i_entry, c2i_unverified_entry, c2i_no_clinit_check_entry);
   }
+
+  static void deallocate(AdapterHandlerEntry *handler) {
+    handler->~AdapterHandlerEntry();
+  }
+
   void set_entry_points(address i2c_entry, address c2i_entry, address c2i_unverified_entry, address c2i_no_clinit_check_entry, bool linked = true) {
     _i2c_entry = i2c_entry;
     _c2i_entry = c2i_entry;
@@ -788,7 +793,7 @@ class AdapterHandlerLibrary: public AllStatic {
                                              AdapterFingerPrint* fingerprint,
                                              int total_args_passed,
                                              BasicType* sig_bt,
-                                             bool allocate_code_blob);
+                                             bool is_transient);
 #ifndef PRODUCT
   static void print_adapter_handler_info(AdapterHandlerEntry* handler, AdapterBlob* adapter_blob);
 #endif // PRODUCT
@@ -806,7 +811,7 @@ class AdapterHandlerLibrary: public AllStatic {
                                     AdapterHandlerEntry* handler,
                                     int total_args_passed,
                                     BasicType* sig_bt,
-                                    bool allocate_code_blob);
+                                    bool is_transient);
 
   static void print_handler(const CodeBlob* b) { print_handler_on(tty, b); }
   static void print_handler_on(outputStream* st, const CodeBlob* b);

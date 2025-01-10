@@ -2542,11 +2542,15 @@ AdapterHandlerEntry* AdapterHandlerLibrary::lookup(AdapterFingerPrint* fp) {
   assert_lock_strong(AdapterHandlerLibrary_lock);
   AdapterHandlerEntry** entry_p = _adapter_handler_table->get(fp);
   if (entry_p != nullptr) {
+    entry = *entry_p;
+    assert(entry->fingerprint()->equals(fp), "fingerprint mismatch key fp %s %s (hash=%d) != found fp %s %s (hash=%d)",
+           entry->fingerprint()->as_basic_args_string(), entry->fingerprint()->as_string(), entry->fingerprint()->compute_hash(),
+           fp->as_basic_args_string(), fp->as_string(), fp->compute_hash());
 #ifndef PRODUCT
     if (fp->is_compact()) _compact++;
     _runtime_hits++;
 #endif
-    return *entry_p;
+    return entry;
   }
   return nullptr;
 }
@@ -2663,14 +2667,14 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_simple_adapter(AdapterBlob*& 
   if (entry != nullptr) {
     assert(entry->is_shared() && !entry->is_linked(), "Non null AdapterHandlerEntry should be in the AOT cache in unlinked state");
     if (!link_adapter_handler(entry, adapter_blob)) {
-      if (generate_adapter_code(adapter_blob, entry, total_args_passed, sig_bt, true)) {
+      if (generate_adapter_code(adapter_blob, entry, total_args_passed, sig_bt, /* is_transient */ true)) {
         return nullptr;
       }
     }
     // AdapterFingerPrint is already in the cache, no need to keep this one
     AdapterFingerPrint::deallocate(fp);
   } else {
-    entry = create_adapter(adapter_blob, fp, total_args_passed, sig_bt, true);
+    entry = create_adapter(adapter_blob, fp, total_args_passed, sig_bt, /* is_transient */ false);
   }
   return entry;
 }
@@ -2800,19 +2804,19 @@ AdapterHandlerEntry* AdapterHandlerLibrary::get_adapter(const methodHandle& meth
       if (VerifyAdapterSharing) {
         AdapterBlob* comparison_blob = nullptr;
         AdapterFingerPrint* comparison_fp = AdapterFingerPrint::allocate(total_args_passed, sig_bt);
-        AdapterHandlerEntry* comparison_entry = create_adapter(comparison_blob, comparison_fp, total_args_passed, sig_bt, false);
+        AdapterHandlerEntry* comparison_entry = create_adapter(comparison_blob, comparison_fp, total_args_passed, sig_bt, true);
         assert(comparison_blob == nullptr, "no blob should be created when creating an adapter for comparison");
         assert(comparison_entry->compare_code(entry), "code must match");
         AdapterFingerPrint::deallocate(comparison_fp);
         // Release the one just created and return the original
-        delete comparison_entry;
+        AdapterHandlerEntry::deallocate(comparison_entry);
       }
 #endif
       AdapterFingerPrint::deallocate(fp);
       return entry;
     }
 
-    entry = create_adapter(new_adapter, fp, total_args_passed, sig_bt, /* allocate_code_blob */ true);
+    entry = create_adapter(new_adapter, fp, total_args_passed, sig_bt, /* is_transient */ false);
   }
 
   // Outside of the lock
@@ -2860,7 +2864,7 @@ bool AdapterHandlerLibrary::generate_adapter_code(AdapterBlob*& adapter_blob,
                                                   AdapterHandlerEntry* handler,
                                                   int total_args_passed,
                                                   BasicType* sig_bt,
-                                                  bool allocate_code_blob) {
+                                                  bool is_transient) {
   if (log_is_enabled(Info, perf, class, link)) {
     ClassLoader::perf_method_adapters_count()->inc();
   }
@@ -2896,7 +2900,7 @@ bool AdapterHandlerLibrary::generate_adapter_code(AdapterBlob*& adapter_blob,
 #ifdef ASSERT
   if (VerifyAdapterSharing) {
     handler->save_code(buf->code_begin(), buffer.insts_size());
-    if (!allocate_code_blob) {
+    if (is_transient) {
       return true;
     }
   }
@@ -2923,13 +2927,15 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_adapter(AdapterBlob*& adapter
                                                            AdapterFingerPrint* fingerprint,
                                                            int total_args_passed,
                                                            BasicType* sig_bt,
-                                                           bool allocate_code_blob) {
+                                                           bool is_transient) {
   AdapterHandlerEntry* handler = AdapterHandlerLibrary::new_entry(fingerprint);
-  if (!generate_adapter_code(adapter_blob, handler, total_args_passed, sig_bt, allocate_code_blob)) {
+  if (!generate_adapter_code(adapter_blob, handler, total_args_passed, sig_bt, is_transient)) {
     return nullptr;
   }
-  assert_lock_strong(AdapterHandlerLibrary_lock);
-  _adapter_handler_table->put(fingerprint, handler);
+  if (!is_transient) {
+    assert_lock_strong(AdapterHandlerLibrary_lock);
+    _adapter_handler_table->put(fingerprint, handler);
+  }
   return handler;
 }
 
@@ -3077,7 +3083,7 @@ void AdapterHandlerEntry::restore_unshareable_info(TRAPS) {
       log_warning(cds)("Failed to link AdapterHandlerEntry to its code in the AOT code cache");
       int nargs;
       BasicType* bt = _fingerprint->as_basic_type(nargs);
-      if (!AdapterHandlerLibrary::generate_adapter_code(adapter_blob, this, nargs, bt, true)) {
+      if (!AdapterHandlerLibrary::generate_adapter_code(adapter_blob, this, nargs, bt, /* is_transient */ false)) {
         if (!is_init_completed()) {
           // Don't throw exceptions during VM initialization because java.lang.* classes
           // might not have been initialized, causing problems when constructing the
@@ -3101,6 +3107,7 @@ AdapterHandlerEntry::~AdapterHandlerEntry() {
 #ifdef ASSERT
   FREE_C_HEAP_ARRAY(unsigned char, _saved_code);
 #endif
+  FreeHeap(this);
 }
 
 
