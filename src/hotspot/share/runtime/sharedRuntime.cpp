@@ -2537,9 +2537,10 @@ static GrowableArray<AdapterHandlerEntry*>* _adapter_handler_list = nullptr;
 // Find a entry with the same fingerprint if it exists
 AdapterHandlerEntry* AdapterHandlerLibrary::lookup(AdapterFingerPrint* fp) {
   NOT_PRODUCT(_lookups++);
+  AdapterHandlerEntry* entry = nullptr;
 #if INCLUDE_CDS
   // Search archived table first. It is read-only table so can be searched without lock
-  AdapterHandlerEntry* entry = _archived_adapter_handler_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
+  entry = _archived_adapter_handler_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
   if (entry != nullptr) {
 #ifndef PRODUCT
     if (fp->is_compact()) {
