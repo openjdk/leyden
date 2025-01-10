@@ -2667,7 +2667,7 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_simple_adapter(AdapterBlob*& 
   if (entry != nullptr) {
     assert(entry->is_shared() && !entry->is_linked(), "Non null AdapterHandlerEntry should be in the AOT cache in unlinked state");
     if (!link_adapter_handler(entry, adapter_blob)) {
-      if (generate_adapter_code(adapter_blob, entry, total_args_passed, sig_bt, /* is_transient */ true)) {
+      if (!generate_adapter_code(adapter_blob, entry, total_args_passed, sig_bt, /* is_transient */ true)) {
         return nullptr;
       }
     }
