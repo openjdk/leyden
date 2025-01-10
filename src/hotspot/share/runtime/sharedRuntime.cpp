@@ -2515,6 +2515,17 @@ class AdapterFingerPrint : public MetaspaceObj {
   }
 };
 
+#if INCLUDE_CDS
+static inline bool adapter_fp_equals_compact_hashtable_entry(AdapterHandlerEntry* entry, AdapterFingerPrint* fp, int len_unused) {
+  return AdapterFingerPrint::equals(entry->fingerprint(), fp);
+}
+
+class ArchivedAdapterTable : public OffsetCompactHashtable<
+  AdapterFingerPrint*,
+  AdapterHandlerEntry*,
+  adapter_fp_equals_compact_hashtable_entry> {};
+#endif // INCLUDE_CDS
+
 // A hashtable mapping from AdapterFingerPrints to AdapterHandlerEntries
 using AdapterHandlerTable = ResourceHashtable<AdapterFingerPrint*, AdapterHandlerEntry*, 293,
                   AnyObj::C_HEAP, mtCode,
@@ -2667,7 +2678,7 @@ AdapterHandlerEntry* AdapterHandlerLibrary::create_simple_adapter(AdapterBlob*& 
   if (entry != nullptr) {
     assert(entry->is_shared() && !entry->is_linked(), "Non null AdapterHandlerEntry should be in the AOT cache in unlinked state");
     if (!link_adapter_handler(entry, adapter_blob)) {
-      if (!generate_adapter_code(adapter_blob, entry, total_args_passed, sig_bt, /* is_transient */ true)) {
+      if (!generate_adapter_code(adapter_blob, entry, total_args_passed, sig_bt, /* is_transient */ false)) {
         return nullptr;
       }
     }
@@ -2996,11 +3007,11 @@ public:
       if (lsh.is_enabled()) {
         address fp_runtime_addr = (address)buffered_fp + ArchiveBuilder::current()->buffer_to_requested_delta();
         address entry_runtime_addr = (address)buffered_entry + ArchiveBuilder::current()->buffer_to_requested_delta();
-        log_trace(cds)("Added fp=%p, entry=%p to the archived adater table", buffered_fp, buffered_entry);
+        log_trace(cds)("Added fp=%p (%s), entry=%p to the archived adater table", buffered_fp, buffered_fp->as_basic_args_string(), buffered_entry);
       }
     } else {
       if (lsh.is_enabled()) {
-        log_trace(cds)("Skipping adapter handler %p as it is not archived", entry);
+        log_trace(cds)("Skipping adapter handler %p (fp=%s) as it is not archived", entry, fp->as_basic_args_string());
       }
     }
     return true;

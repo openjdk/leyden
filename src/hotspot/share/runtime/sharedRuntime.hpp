@@ -828,16 +828,6 @@ class AdapterHandlerLibrary: public AllStatic {
   static size_t estimate_size_for_archive() NOT_CDS_RETURN_(0);
   static void archive_adapter_table() NOT_CDS_RETURN;
   static void serialize_shared_table_header(SerializeClosure* soc) NOT_CDS_RETURN;
-  static bool EQUALS(AdapterHandlerEntry* entry, AdapterFingerPrint* fp, int len_unused) {
-    return entry->fingerprint() == fp;
-  }
 };
-
-#if INCLUDE_CDS
-class ArchivedAdapterTable : public OffsetCompactHashtable<
-  AdapterFingerPrint*,
-  AdapterHandlerEntry*,
-  AdapterHandlerLibrary::EQUALS> {};
-#endif // INCLUDE_CDS
 
 #endif // SHARE_RUNTIME_SHAREDRUNTIME_HPP
