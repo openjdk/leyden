@@ -3464,12 +3464,12 @@ void AdapterHandlerLibrary::print_handler_on(outputStream* st, const CodeBlob* b
   if (!found) {
     auto findblob_runtime_table = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
       if (b == CodeCache::find_blob(a->get_i2c_entry())) {
-	found = true;
-	st->print("Adapter for signature: ");
-	a->print_adapter_on(st);
-	return true;
+        found = true;
+        st->print("Adapter for signature: ");
+        a->print_adapter_on(st);
+        return true;
       } else {
-	return false; // keep looking
+        return false; // keep looking
       }
     };
     assert_locked_or_safepoint(AdapterHandlerLibrary_lock);
