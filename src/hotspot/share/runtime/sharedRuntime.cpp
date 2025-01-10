@@ -3423,11 +3423,17 @@ JRT_END
 
 bool AdapterHandlerLibrary::contains(const CodeBlob* b) {
   bool found = false;
-  auto findblob = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
-    return (found = (b == CodeCache::find_blob(a->get_i2c_entry())));
+  auto findblob_archived_table = [&] (AdapterHandlerEntry* handler) {
+    return (found = (b == CodeCache::find_blob(handler->get_i2c_entry())));
   };
-  assert_locked_or_safepoint(AdapterHandlerLibrary_lock);
-  _adapter_handler_table->iterate(findblob);
+  _archived_adapter_handler_table.iterate(findblob_archived_table);
+  if (!found) {
+    auto findblob_runtime_table = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
+      return (found = (b == CodeCache::find_blob(a->get_i2c_entry())));
+    };
+    assert_locked_or_safepoint(AdapterHandlerLibrary_lock);
+    _adapter_handler_table->iterate(findblob_runtime_table);
+  }
   return found;
 }
 
@@ -3442,18 +3448,32 @@ uint32_t AdapterHandlerLibrary::id(AdapterFingerPrint* fingerprint) {
 
 void AdapterHandlerLibrary::print_handler_on(outputStream* st, const CodeBlob* b) {
   bool found = false;
-  auto findblob = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
-    if (b == CodeCache::find_blob(a->get_i2c_entry())) {
+  auto findblob_archived_table = [&] (AdapterHandlerEntry* handler) {
+    if (b == CodeCache::find_blob(handler->get_i2c_entry())) {
       found = true;
       st->print("Adapter for signature: ");
-      a->print_adapter_on(st);
+      handler->print_adapter_on(st);
       return true;
     } else {
       return false; // keep looking
+
     }
   };
-  assert_locked_or_safepoint(AdapterHandlerLibrary_lock);
-  _adapter_handler_table->iterate(findblob);
+  _archived_adapter_handler_table.iterate(findblob_archived_table);
+  if (!found) {
+    auto findblob_runtime_table = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
+      if (b == CodeCache::find_blob(a->get_i2c_entry())) {
+	found = true;
+	st->print("Adapter for signature: ");
+	a->print_adapter_on(st);
+	return true;
+      } else {
+	return false; // keep looking
+      }
+    };
+    assert_locked_or_safepoint(AdapterHandlerLibrary_lock);
+    _adapter_handler_table->iterate(findblob_runtime_table);
+  }
   assert(found, "Should have found handler");
 }
 
