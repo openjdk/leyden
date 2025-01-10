@@ -2489,6 +2489,8 @@ bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
     buffer->decode();
   }
 #endif
+  // we need to take a lock to prevent race between compiler thread generating blob and the main thread generating adapter
+  MutexLocker ml(Compile_lock);
   if (!cache->align_write()) {
     return false;
   }
