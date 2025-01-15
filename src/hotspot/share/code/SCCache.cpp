@@ -1435,12 +1435,11 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
   // Use class loader of compiled method.
   Thread* thread = Thread::current();
   Handle loader(thread, comp_method->method_holder()->class_loader());
-  Handle protection_domain(thread, comp_method->method_holder()->protection_domain());
-  Klass* k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, loader, protection_domain);
+  Klass* k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, loader);
   assert(!thread->has_pending_exception(), "should not throw");
   if (k == nullptr && !loader.is_null()) {
     // Try default loader and domain
-    k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, Handle(), Handle());
+    k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, Handle());
     assert(!thread->has_pending_exception(), "should not throw");
   }
   if (k != nullptr) {
@@ -1515,12 +1514,11 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
   // Use class loader of compiled method.
   Thread* thread = Thread::current();
   Handle loader(thread, comp_method->method_holder()->class_loader());
-  Handle protection_domain(thread, comp_method->method_holder()->protection_domain());
-  Klass* k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, loader, protection_domain);
+  Klass* k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, loader);
   assert(!thread->has_pending_exception(), "should not throw");
   if (k == nullptr && !loader.is_null()) {
     // Try default loader and domain
-    k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, Handle(), Handle());
+    k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, Handle());
     assert(!thread->has_pending_exception(), "should not throw");
   }
   if (k != nullptr) {

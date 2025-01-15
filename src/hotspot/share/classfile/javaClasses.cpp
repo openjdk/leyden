@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1113,12 +1113,6 @@ void java_lang_Class::create_mirror(Klass* k, Handle class_loader,
   assert(k != nullptr, "Use create_basic_type_mirror for primitive types");
   assert(k->java_mirror() == nullptr, "should only assign mirror once");
 
-  // Use this moment of initialization to cache modifier_flags also,
-  // to support Class.getModifiers().  Instance classes recalculate
-  // the cached flags after the class file is parsed, but before the
-  // class is put into the system dictionary.
-  int computed_modifiers = k->compute_modifier_flags();
-  k->set_modifier_flags(computed_modifiers);
   // Class_klass has to be loaded because it is used to allocate
   // the mirror.
   if (vmClasses::Class_klass_loaded()) {
@@ -1659,7 +1653,7 @@ JFR_ONLY(int java_lang_Thread::_jfr_epoch_offset;)
 #define THREAD_FIELDS_DO(macro) \
   macro(_holder_offset,        k, "holder", thread_fieldholder_signature, false); \
   macro(_name_offset,          k, vmSymbols::name_name(), string_signature, false); \
-  macro(_contextClassLoader_offset, k, vmSymbols::contextClassLoader_name(), classloader_signature, false); \
+  macro(_contextClassLoader_offset, k, "contextClassLoader", classloader_signature, false); \
   macro(_eetop_offset,         k, "eetop", long_signature, false); \
   macro(_interrupted_offset,   k, "interrupted", bool_signature, false); \
   macro(_interruptLock_offset, k, "interruptLock", object_signature, false); \
@@ -2065,6 +2059,7 @@ int java_lang_VirtualThread::_next_offset;
 int java_lang_VirtualThread::_onWaitingList_offset;
 int java_lang_VirtualThread::_notified_offset;
 int java_lang_VirtualThread::_timeout_offset;
+int java_lang_VirtualThread::_objectWaiter_offset;
 
 #define VTHREAD_FIELDS_DO(macro) \
   macro(static_vthread_scope_offset,       k, "VTHREAD_SCOPE",      continuationscope_signature, true);  \
@@ -2080,6 +2075,7 @@ int java_lang_VirtualThread::_timeout_offset;
 void java_lang_VirtualThread::compute_offsets() {
   InstanceKlass* k = vmClasses::VirtualThread_klass();
   VTHREAD_FIELDS_DO(FIELD_COMPUTE_OFFSET);
+  VTHREAD_INJECTED_FIELDS(INJECTED_FIELD_COMPUTE_OFFSET);
 }
 
 bool java_lang_VirtualThread::is_instance(oop obj) {
@@ -2195,6 +2191,22 @@ JavaThreadStatus java_lang_VirtualThread::map_state_to_thread_status(int state) 
   return status;
 }
 
+ObjectMonitor* java_lang_VirtualThread::current_pending_monitor(oop vthread) {
+  ObjectWaiter* waiter = objectWaiter(vthread);
+  if (waiter != nullptr && waiter->at_monitorenter()) {
+    return waiter->monitor();
+  }
+  return nullptr;
+}
+
+ObjectMonitor* java_lang_VirtualThread::current_waiting_monitor(oop vthread) {
+  ObjectWaiter* waiter = objectWaiter(vthread);
+  if (waiter != nullptr && waiter->is_wait()) {
+    return waiter->monitor();
+  }
+  return nullptr;
+}
+
 bool java_lang_VirtualThread::is_preempted(oop vthread) {
   oop continuation = java_lang_VirtualThread::continuation(vthread);
   assert(continuation != nullptr, "vthread with no continuation");
@@ -2205,6 +2217,7 @@ bool java_lang_VirtualThread::is_preempted(oop vthread) {
 #if INCLUDE_CDS
 void java_lang_VirtualThread::serialize_offsets(SerializeClosure* f) {
    VTHREAD_FIELDS_DO(FIELD_SERIALIZE_OFFSET);
+   VTHREAD_INJECTED_FIELDS(INJECTED_FIELD_SERIALIZE_OFFSET);
 }
 #endif
 
@@ -3173,7 +3186,7 @@ void java_lang_ClassFrameInfo::serialize_offsets(SerializeClosure* f) {
 #endif
 
 static int get_flags(const methodHandle& m) {
-  int flags = (jushort)( m->access_flags().as_short() & JVM_RECOGNIZED_METHOD_MODIFIERS );
+  int flags = m->access_flags().as_method_flags();
   if (m->is_object_initializer()) {
     flags |= java_lang_invoke_MemberName::MN_IS_CONSTRUCTOR;
   } else {
@@ -4738,47 +4751,6 @@ DependencyContext java_lang_invoke_MethodHandleNatives_CallSiteContext::vmdepend
   return dep_ctx;
 }
 
-// Support for java_security_AccessControlContext
-
-int java_security_AccessControlContext::_context_offset;
-int java_security_AccessControlContext::_privilegedContext_offset;
-int java_security_AccessControlContext::_isPrivileged_offset;
-int java_security_AccessControlContext::_isAuthorized_offset;
-
-#define ACCESSCONTROLCONTEXT_FIELDS_DO(macro) \
-  macro(_context_offset,           k, "context",      protectiondomain_signature, false); \
-  macro(_privilegedContext_offset, k, "privilegedContext", accesscontrolcontext_signature, false); \
-  macro(_isPrivileged_offset,      k, "isPrivileged", bool_signature, false); \
-  macro(_isAuthorized_offset,      k, "isAuthorized", bool_signature, false)
-
-void java_security_AccessControlContext::compute_offsets() {
-  assert(_isPrivileged_offset == 0, "offsets should be initialized only once");
-  InstanceKlass* k = vmClasses::AccessControlContext_klass();
-  ACCESSCONTROLCONTEXT_FIELDS_DO(FIELD_COMPUTE_OFFSET);
-}
-
-#if INCLUDE_CDS
-void java_security_AccessControlContext::serialize_offsets(SerializeClosure* f) {
-  ACCESSCONTROLCONTEXT_FIELDS_DO(FIELD_SERIALIZE_OFFSET);
-}
-#endif
-
-oop java_security_AccessControlContext::create(objArrayHandle context, bool isPrivileged, Handle privileged_context, TRAPS) {
-  assert(_isPrivileged_offset != 0, "offsets should have been initialized");
-  assert(_isAuthorized_offset != 0, "offsets should have been initialized");
-  // Ensure klass is initialized
-  vmClasses::AccessControlContext_klass()->initialize(CHECK_NULL);
-  // Allocate result
-  oop result = vmClasses::AccessControlContext_klass()->allocate_instance(CHECK_NULL);
-  // Fill in values
-  result->obj_field_put(_context_offset, context());
-  result->obj_field_put(_privilegedContext_offset, privileged_context());
-  result->bool_field_put(_isPrivileged_offset, isPrivileged);
-  result->bool_field_put(_isAuthorized_offset, true);
-  return result;
-}
-
-
 // Support for java_lang_ClassLoader
 
 int  java_lang_ClassLoader::_loader_data_offset;
@@ -4913,17 +4885,6 @@ int java_lang_System::_static_err_offset;
 void java_lang_System::compute_offsets() {
   InstanceKlass* k = vmClasses::System_klass();
   SYSTEM_FIELDS_DO(FIELD_COMPUTE_OFFSET);
-}
-
-// This field tells us that a security manager can never be installed so we
-// can completely skip populating the ProtectionDomainCacheTable.
-bool java_lang_System::allow_security_manager() {
-  return false;
-}
-
-// This field tells us that a security manager is installed.
-bool java_lang_System::has_security_manager() {
-  return false;
 }
 
 #if INCLUDE_CDS
@@ -5440,7 +5401,6 @@ void java_lang_InternalError::serialize_offsets(SerializeClosure* f) {
   f(java_lang_invoke_CallSite) \
   f(java_lang_invoke_ConstantCallSite) \
   f(java_lang_invoke_MethodHandleNatives_CallSiteContext) \
-  f(java_security_AccessControlContext) \
   f(java_lang_reflect_AccessibleObject) \
   f(java_lang_reflect_Method) \
   f(java_lang_reflect_Constructor) \
@@ -5594,7 +5554,7 @@ int InjectedField::compute_offset() {
   ik->print();
   tty->print_cr("all fields:");
   for (AllFieldStream fs(ik); !fs.done(); fs.next()) {
-    tty->print_cr("  name: %s, sig: %s, flags: %08x", fs.name()->as_C_string(), fs.signature()->as_C_string(), fs.access_flags().as_int());
+    tty->print_cr("  name: %s, sig: %s, flags: %08x", fs.name()->as_C_string(), fs.signature()->as_C_string(), fs.access_flags().as_field_flags());
   }
 #endif //PRODUCT
   vm_exit_during_initialization("Invalid layout of well-known class: use -Xlog:class+load=info to see the origin of the problem class");

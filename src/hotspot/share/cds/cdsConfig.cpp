@@ -276,9 +276,7 @@ static char* bad_module_prop_key   = nullptr;
 static char* bad_module_prop_value = nullptr;
 
 void CDSConfig::check_internal_module_property(const char* key, const char* value) {
-  if (Arguments::is_internal_module_property(key) &&
-      !Arguments::is_module_path_property(key) &&
-      !Arguments::is_add_modules_property(key)) {
+  if (Arguments::is_incompatible_cds_internal_module_property(key)) {
     stop_using_optimized_module_handling();
     if (bad_module_prop_key == nullptr) {
       // We don't want to print an unconditional warning here, as we are still processing the command line.
@@ -477,7 +475,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     // However, this is risky and there's a chance that the production run will be slower
     // because it is unable to load the AOT code cache.
 #ifdef _LP64
-    FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true);
+    // FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true); // FIXME @adinn - merge with mainline - UseCompatibleCompressedOops
 #endif
 
     // Leyden temp: make sure the user knows if CDS archive somehow fails to load.

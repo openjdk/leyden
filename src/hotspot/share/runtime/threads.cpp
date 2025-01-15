@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2021, Azul Systems, Inc. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -181,7 +181,7 @@ static void create_initial_thread(Handle thread_group, JavaThread* thread,
 
   DEBUG_ONLY(int64_t main_thread_tid = java_lang_Thread::thread_id(thread_oop());)
   assert(main_thread_tid == ThreadIdentifier::initial(), "");
-  assert(main_thread_tid == thread->lock_id(), "");
+  assert(main_thread_tid == thread->monitor_owner_id(), "");
   JFR_ONLY(assert(JFR_JVM_THREAD_ID(thread) == static_cast<traceid>(main_thread_tid), "initial tid mismatch");)
 
   // Set thread status to running since main thread has
@@ -419,7 +419,7 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   // Some values are actually configure-time constants but some can be set via the jlink tool and
   // so must be read dynamically. We treat them all the same.
   InstanceKlass* ik = SystemDictionary::find_instance_klass(THREAD, vmSymbols::java_lang_VersionProps(),
-                                                            Handle(), Handle());
+                                                            Handle());
   {
     ResourceMark rm(main_thread);
     JDK_Version::set_java_version(get_java_version_info(ik, vmSymbols::java_version_name()));
@@ -616,9 +616,9 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   MutexLockerImpl::init_counters(); // depends on mutex_init(), perfMemory_init(), and Thread::initialize_thread_current().
 
-  // Set the lock_id now since we will run Java code before the Thread instance
+  // Set the _monitor_owner_id now since we will run Java code before the Thread instance
   // is even created. The same value will be assigned to the Thread instance on init.
-  main_thread->set_lock_id(ThreadIdentifier::next());
+  main_thread->set_monitor_owner_id(ThreadIdentifier::next());
 
   if (!Thread::set_as_starting_thread(main_thread)) {
     vm_shutdown_during_initialization(
@@ -649,7 +649,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     return status;
   }
   if (xtty != nullptr)
-    xtty->elem("vm_main_thread thread='" UINTX_FORMAT "'",
+    xtty->elem("vm_main_thread thread='%zu'",
                (uintx) main_thread->osthread()->thread_id());
 
   // Create WatcherThread as soon as we can since we need it in case
@@ -1259,8 +1259,8 @@ void Threads::change_thread_claim_token() {
 static void assert_thread_claimed(const char* kind, Thread* t, uintx expected) {
   const uintx token = t->threads_do_token();
   assert(token == expected,
-         "%s " PTR_FORMAT " has incorrect value " UINTX_FORMAT " != "
-         UINTX_FORMAT, kind, p2i(t), token, expected);
+         "%s " PTR_FORMAT " has incorrect value %zu != %zu",
+         kind, p2i(t), token, expected);
 }
 
 void Threads::assert_all_threads_claimed() {
@@ -1452,8 +1452,7 @@ void Threads::print_on(outputStream* st, bool print_stacks,
       } else {
         p->print_stack_on(st);
         if (p->is_vthread_mounted()) {
-          // _lock_id is the thread ID of the mounted virtual thread
-          st->print_cr("   Mounted virtual thread #" INT64_FORMAT, p->lock_id());
+          st->print_cr("   Mounted virtual thread #" INT64_FORMAT, java_lang_Thread::thread_id(p->vthread()));
           p->print_vthread_stack_on(st);
         }
       }

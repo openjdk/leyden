@@ -203,9 +203,7 @@ void AOTConstantPoolResolver::dumptime_resolve_constants(InstanceKlass* ik, TRAP
 Klass* AOTConstantPoolResolver::find_loaded_class(Thread* current, oop class_loader, Symbol* name) {
   HandleMark hm(current);
   Handle h_loader(current, class_loader);
-  Klass* k = SystemDictionary::find_instance_or_array_klass(current, name,
-                                                            h_loader,
-                                                            Handle());
+  Klass* k = SystemDictionary::find_instance_or_array_klass(current, name, h_loader);
   if (k != nullptr) {
     return k;
   }
@@ -678,9 +676,8 @@ void AOTConstantPoolResolver::generate_reflection_data(JavaThread* current, Inst
 
 Klass* AOTConstantPoolResolver::resolve_boot_class_or_fail(const char* class_name, TRAPS) {
   Handle class_loader;
-  Handle protection_domain;
   TempNewSymbol class_name_sym = SymbolTable::new_symbol(class_name);
-  return SystemDictionary::resolve_or_fail(class_name_sym, class_loader, protection_domain, true, THREAD);
+  return SystemDictionary::resolve_or_fail(class_name_sym, class_loader, true, THREAD);
 }
 
 void AOTConstantPoolResolver::trace_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags) {

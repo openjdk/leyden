@@ -46,7 +46,9 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @requires vm.cds
  * @summary run QuarkusGettingStarted with the classic dynamic archive workflow
  * @library /test/lib
- * @run driver/timeout=120 QuarkusGettingStarted DYNAMIC
+ * @build jdk.test.whitebox.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
+ * @run main/othervm/timeout=120 -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. QuarkusGettingStarted DYNAMIC
  */
 
 /*

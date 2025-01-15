@@ -68,9 +68,7 @@ class MethodCounters : public Metadata {
 
  public:
   virtual bool is_methodCounters() const { return true; }
-
   Method* method() const { return _method; }
-
   static MethodCounters* allocate_no_exception(const methodHandle& mh);
   static MethodCounters* allocate_with_exception(const methodHandle& mh, TRAPS);
 
@@ -82,8 +80,9 @@ class MethodCounters : public Metadata {
   virtual int size() const {
     return method_counters_size();
   }
+
   MetaspaceObj::Type type() const { return MethodCountersType; }
-  virtual void metaspace_pointers_do(MetaspaceClosure* iter);
+  void metaspace_pointers_do(MetaspaceClosure* iter);
 
   void clear_counters();
 

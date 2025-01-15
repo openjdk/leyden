@@ -54,7 +54,6 @@ import jdk.internal.misc.VM;
 import jdk.internal.misc.CDS;
 import jdk.internal.loader.ClassLoaderValue;
 import jdk.internal.vm.annotation.Stable;
-import sun.reflect.misc.ReflectUtil;
 
 import static java.lang.invoke.MethodType.methodType;
 import static java.lang.module.ModuleDescriptor.Modifier.SYNTHETIC;
@@ -1185,7 +1184,7 @@ public class Proxy implements java.io.Serializable {
         return ih;
     }
 
-    private static final String PROXY_PACKAGE_PREFIX = ReflectUtil.PROXY_PACKAGE;
+    private static final String PROXY_PACKAGE_PREFIX = "com.sun.proxy";
 
     /**
      * A cache of Method -> MethodHandle for default methods.

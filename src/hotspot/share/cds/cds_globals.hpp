@@ -119,11 +119,14 @@
           "Load/link all archived classes for the boot/platform/app "       \
           "loaders before application main")                                \
                                                                             \
+  product(bool, AOTCacheParallelRelocation, true, DIAGNOSTIC,               \
+          "Use parallel relocation code to speed up startup.")              \
+                                                                            \
+  /*========== New options added by Leyden =============================*/  \
+                                                                            \
   product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \
           "List of methods (pkg/class.name) to trigger end of AOT "         \
           "training run.  Optional ',count=N' where N is > 0")              \
-                                                                            \
-  /*========== New options added by Leyden =============================*/  \
                                                                             \
   product(ccstr, CacheOnlyClassesIn, nullptr,                               \
           "If set, only classes loaded from these JAR files will be "       \
@@ -172,7 +175,7 @@
                                                                             \
   product(bool, SkipArchiveHeapVerification, false,                         \
           "Skip verification of CDS archive heap")                          \
-
+                                                                            \
 // end of CDS_FLAGS
 
 DECLARE_FLAGS(CDS_FLAGS)
