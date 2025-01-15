@@ -475,7 +475,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     // However, this is risky and there's a chance that the production run will be slower
     // because it is unable to load the AOT code cache.
 #ifdef _LP64
-    // FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true); // FIXME @adinn - merge with mainline - UseCompatibleCompressedOops
+    // FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true); // FIXME @iklam - merge with mainline - UseCompatibleCompressedOops
 #endif
 
     // Leyden temp: make sure the user knows if CDS archive somehow fails to load.
