@@ -151,9 +151,6 @@ AWT_OnLoad(JavaVM *vm, void *reserved)
                                    jbuf);
 
         awtHandle = dlopen(buf, RTLD_LAZY | RTLD_GLOBAL);
-    } else {
-        // FIXME: This should be integrated into mainline.
-        awtHandle = dlopen(NULL, RTLD_LAZY);
     }
 
     return JNI_VERSION_1_2;

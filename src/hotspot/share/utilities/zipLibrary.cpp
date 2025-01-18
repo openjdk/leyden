@@ -74,27 +74,18 @@ static void* dll_lookup(const char* name, const char* path, bool vm_exit_on_fail
   return func;
 }
 
-static void store_function_pointers(bool is_static, const char* path, bool vm_exit_on_failure) {
+static void store_function_pointers(const char* path, bool vm_exit_on_failure) {
   assert(_zip_handle != nullptr, "invariant");
-  if (!is_static) {
-    ZIP_Open = CAST_TO_FN_PTR(ZIP_Open_t, dll_lookup("ZIP_Open", path, vm_exit_on_failure));
-    ZIP_Close = CAST_TO_FN_PTR(ZIP_Close_t, dll_lookup("ZIP_Close", path, vm_exit_on_failure));
-    ZIP_FindEntry = CAST_TO_FN_PTR(ZIP_FindEntry_t, dll_lookup("ZIP_FindEntry", path, vm_exit_on_failure));
-    ZIP_ReadEntry = CAST_TO_FN_PTR(ZIP_ReadEntry_t, dll_lookup("ZIP_ReadEntry", path, vm_exit_on_failure));
-    ZIP_CRC32 = CAST_TO_FN_PTR(ZIP_CRC32_t, dll_lookup("ZIP_CRC32", path, vm_exit_on_failure));
-    // The following entry points are most likely optional from a zip library implementation perspective.
-    // Hence no vm_exit on a resolution failure. Further refactorings should investigate this,
-    // and if possible, streamline setting all entry points consistently.
-    ZIP_GZip_InitParams = CAST_TO_FN_PTR(ZIP_GZip_InitParams_t, dll_lookup("ZIP_GZip_InitParams", path, false));
-    ZIP_GZip_Fully = CAST_TO_FN_PTR(ZIP_GZip_Fully_t, dll_lookup("ZIP_GZip_Fully", path, false));
-  } else {
-    ZIP_Open = CAST_TO_FN_PTR(ZIP_Open_t, os::lookup_function("ZIP_Open"));
-    ZIP_Close = CAST_TO_FN_PTR(ZIP_Close_t, os::lookup_function("ZIP_Close"));
-    ZIP_FindEntry = CAST_TO_FN_PTR(ZIP_FindEntry_t, os::lookup_function("ZIP_FindEntry"));
-    ZIP_ReadEntry = CAST_TO_FN_PTR(ZIP_ReadEntry_t, os::lookup_function("ZIP_ReadEntry"));
-    ZIP_CRC32 = CAST_TO_FN_PTR(ZIP_CRC32_t, os::lookup_function("ZIP_CRC32"));
-    ZIP_GZip_InitParams = CAST_TO_FN_PTR(ZIP_GZip_InitParams_t, os::lookup_function("ZIP_GZip_InitParams"));    ZIP_GZip_Fully = CAST_TO_FN_PTR(ZIP_GZip_Fully_t, os::lookup_function("ZIP_GZip_Fully"));
-  }
+  ZIP_Open = CAST_TO_FN_PTR(ZIP_Open_t, dll_lookup("ZIP_Open", path, vm_exit_on_failure));
+  ZIP_Close = CAST_TO_FN_PTR(ZIP_Close_t, dll_lookup("ZIP_Close", path, vm_exit_on_failure));
+  ZIP_FindEntry = CAST_TO_FN_PTR(ZIP_FindEntry_t, dll_lookup("ZIP_FindEntry", path, vm_exit_on_failure));
+  ZIP_ReadEntry = CAST_TO_FN_PTR(ZIP_ReadEntry_t, dll_lookup("ZIP_ReadEntry", path, vm_exit_on_failure));
+  ZIP_CRC32 = CAST_TO_FN_PTR(ZIP_CRC32_t, dll_lookup("ZIP_CRC32", path, vm_exit_on_failure));
+  // The following entry points are most likely optional from a zip library implementation perspective.
+  // Hence no vm_exit on a resolution failure. Further refactorings should investigate this,
+  // and if possible, streamline setting all entry points consistently.
+  ZIP_GZip_InitParams = CAST_TO_FN_PTR(ZIP_GZip_InitParams_t, dll_lookup("ZIP_GZip_InitParams", path, false));
+  ZIP_GZip_Fully = CAST_TO_FN_PTR(ZIP_GZip_Fully_t, dll_lookup("ZIP_GZip_Fully", path, false));
 }
 
 static void load_zip_library(bool vm_exit_on_failure) {

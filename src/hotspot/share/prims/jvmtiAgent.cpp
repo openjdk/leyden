@@ -320,7 +320,7 @@ extern "C" {
 }
 
 // Find the OnLoad entry point for -agentlib:  -agentpath:   -Xrun agents.
-static OnLoadEntry_t lookup_On_Load_entry_point(JvmtiAgent* agent, const char* on_load_symbol, bool ignore_errors) {) {
+static OnLoadEntry_t lookup_On_Load_entry_point(JvmtiAgent* agent, const char* on_load_symbol, bool ignore_errors) {
   assert(agent != nullptr, "invariant");
   if (!agent->is_loaded()) {
     if (!load_agent_from_executable(agent, on_load_symbol)) {

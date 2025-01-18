@@ -42,6 +42,7 @@
  */
 extern "C" {
 DEF_STATIC_JNI_OnLoad
+}
 
 /*
  * JImageOpen - Given the supplied full path file name, open an image file. This

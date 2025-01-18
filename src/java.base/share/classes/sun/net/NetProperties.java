@@ -56,7 +56,7 @@ public class NetProperties {
             } catch (IOException e) {
                 // Do nothing. Same as below.
             }
-            return;
+            return props;
         }
 
         String fname = StaticProperty.javaHome();

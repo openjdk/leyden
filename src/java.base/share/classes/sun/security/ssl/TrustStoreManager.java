@@ -121,7 +121,7 @@ final class TrustStoreManager {
         static TrustStoreDescriptor createInstance() {
             // Get the system properties for trust store.
             String storePropName = System.getProperty(
-                    "javax.net.ssl.trustStore", jsseDefaultStore);
+                    "javax.net.ssl.trustStore", jsseDefaultStoreName);
             String storePropType = System.getProperty(
                     "javax.net.ssl.trustStoreType",
                     KeyStore.getDefaultType());
@@ -177,7 +177,7 @@ final class TrustStoreManager {
                         if (FilePaths.class.getResource(fileName) != null) {
                             // Keep temporaryFile as null in hermetic case.
                             temporaryName = fileName;
-                            temporaryTime = JavaHome.hermeticImageFile().lastModified();
+                            temporaryTime = JavaHome.hermeticExecutableFile().lastModified();
                             break;
                         }
                     }

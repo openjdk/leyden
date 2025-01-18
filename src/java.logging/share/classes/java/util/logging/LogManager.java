@@ -1264,13 +1264,7 @@ public class LogManager {
         if (fname == null) {
             String config = "logging.properties";
             if (JavaHome.isHermetic()) {
-                PrivilegedAction<InputStream> getResourceAsStreamAction =
-                    () -> LogManager.class.getResourceAsStream(config);
-                RuntimePermission perm =
-                    new RuntimePermission("accessSystemModules");
-                try (@SuppressWarnings("removal") InputStream is =
-                    AccessController.doPrivileged(
-                        getResourceAsStreamAction, null, perm)) {
+                try (InputStream is = LogManager.class.getResourceAsStream(config)) {
                     if (is != null) {
                         return is;
                     } else {

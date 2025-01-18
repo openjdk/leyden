@@ -314,33 +314,34 @@ public abstract class SunFontManager implements FontSupport, FontManagerForSGE {
                         String name = br.readLine();
                         if (name == null) {
                             break;
-                    } else {
-                        if (FontUtilities.debugFonts()) {
-                            FontUtilities.logWarning("read bad font: " + name);
+                        } else {
+                            if (FontUtilities.debugFonts()) {
+                                FontUtilities.logWarning("read bad font: " + name);
+                            }
+                            badFonts.add(name);
                         }
-                        badFonts.add(name);
                     }
+                } catch (IOException e) {
                 }
-            } catch (IOException e) {
             }
-        }
 
-        /* Here we get the fonts in jre/lib/fonts and register
-         * them so they are always available and preferred over
-         * other fonts. This needs to be registered before the
-         * composite fonts as otherwise some native font that
-         * corresponds may be found as we don't have a way to
-         * handle two fonts of the same name, so the JRE one
-         * must be the first one registered. Pass "true" to
-         * registerFonts method as on-screen these JRE fonts
-         * always go through the JDK rasteriser.
-         */
-        if (FontUtilities.isLinux) {
-            /* Linux font configuration uses these fonts */
-            registerFontDir(jreFontDirName);
-        }
-        registerFontsInDir(jreFontDirName, true, Font2D.JRE_RANK,
+            /* Here we get the fonts in jre/lib/fonts and register
+             * them so they are always available and preferred over
+             * other fonts. This needs to be registered before the
+             * composite fonts as otherwise some native font that
+             * corresponds may be found as we don't have a way to
+             * handle two fonts of the same name, so the JRE one
+             * must be the first one registered. Pass "true" to
+             * registerFonts method as on-screen these JRE fonts
+             * always go through the JDK rasteriser.
+             */
+            if (FontUtilities.isLinux) {
+                /* Linux font configuration uses these fonts */
+                registerFontDir(jreFontDirPath.toString());
+            } 
+            registerFontsInDir(jreFontDirPath.toString(), true, Font2D.JRE_RANK,
                            true, false);
+        }
 
         /* Create the font configuration and get any font path
          * that might be specified.
@@ -399,7 +400,7 @@ public abstract class SunFontManager implements FontSupport, FontManagerForSGE {
         }
 
         if (FontUtilities.debugFonts()) {
-            FontUtilities.logInfo("JRE font directory: " + jreFontDirName);
+            FontUtilities.logInfo("JRE font directory: " + jreFontDirPath);
             FontUtilities.logInfo("Extra font path: " + extraFontPath);
             FontUtilities.logInfo("Debug font path: " + dbgFontPath);
         }
