@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,12 +27,11 @@ package sun.security.ssl;
 
 import java.io.*;
 import java.lang.ref.WeakReference;
-import java.security.*;
+import java.security.KeyStore;
 import java.security.cert.*;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 import jdk.internal.misc.JavaHome;
-import sun.security.action.*;
 import sun.security.util.FilePaths;
 import sun.security.validator.TrustStoreUtil;
 
@@ -118,93 +117,86 @@ final class TrustStoreManager {
          * Create an instance of TrustStoreDescriptor for the default
          * trusted KeyStore.
          */
-        @SuppressWarnings({"removal","Convert2Lambda"})
+        @SuppressWarnings("Convert2Lambda")
         static TrustStoreDescriptor createInstance() {
-             return AccessController.doPrivileged(
-                    new PrivilegedAction<TrustStoreDescriptor>() {
+            // Get the system properties for trust store.
+            String storePropName = System.getProperty(
+                    "javax.net.ssl.trustStore", jsseDefaultStore);
+            String storePropType = System.getProperty(
+                    "javax.net.ssl.trustStoreType",
+                    KeyStore.getDefaultType());
+            String storePropProvider = System.getProperty(
+                    "javax.net.ssl.trustStoreProvider", "");
+            String storePropPassword = System.getProperty(
+                    "javax.net.ssl.trustStorePassword", "");
 
-                @Override
-                public TrustStoreDescriptor run() {
-                    // Get the system properties for trust store.
-                    String storePropName = System.getProperty(
-                            "javax.net.ssl.trustStore", jsseDefaultStoreName);
-                    String storePropType = System.getProperty(
-                            "javax.net.ssl.trustStoreType",
-                            KeyStore.getDefaultType());
-                    String storePropProvider = System.getProperty(
-                            "javax.net.ssl.trustStoreProvider", "");
-                    String storePropPassword = System.getProperty(
-                            "javax.net.ssl.trustStorePassword", "");
-
-                    String temporaryName = "";
-                    File temporaryFile = null;
-                    long temporaryTime = 0L;
-                    if (!"NONE".equals(storePropName)) {
-                        String[] fileNames =
-                                new String[] {storePropName, defaultStoreName};
-                        for (String fileName : fileNames) {
-                            if (!JavaHome.isHermetic() || (fileName.equals(storePropName) &&
-                                                           !fileName.equals(jsseDefaultStoreName))) {
-                                // If we get here, it must be one of the following
-                                // cases:
-                                //   - In non-hermetic mode, in which case, the current file is
-                                //       - either the JDK default cacerts or jssecacerts
-                                //       - or, javax.net.ssl.trustStore specified;
-                                //   - In hermetic mode and the current file is
-                                //     javax.net.ssl.trustStore specified;
-                                //
-                                // If the current 'fileName' is the
-                                // storePropName and is not the default one
-                                // specified by jsseDefaultStoreName, it must
-                                // be specified by the javax.net.ssl.trustStore property.
-                                // Handle it as a regular file path.
-                                //
-                                // If we are not running in hermetic mode,
-                                // the JDK default stores are regular files.
-                                if (fileName.equals(jsseDefaultStoreName) ||
-                                    fileName.equals(defaultStoreName) ) {
-                                    fileName = FilePaths.defaultStore(fileName);
-                                }
-                                File f = new File(fileName);
-                                if (f.isFile() && f.canRead()) {
-                                    temporaryName = fileName;
-                                    temporaryFile = f;
-                                    temporaryTime = f.lastModified();
-                                    break;
-                                }
-                            } else {
-                                // If we get here, we are executing in hermetic
-                                // mode and this must be one of the JDK default store
-                                // files that is specified by defaultStoreName or
-                                // jsseDefaultStoreName. Find the store file
-                                // using the FilePaths class from the hermetic
-                                // modules image.
-
-                                if (FilePaths.class.getResource(fileName) != null) {
-                                    // Keep temporaryFile as null in hermetic case.
-                                    temporaryName = fileName;
-                                    temporaryTime = JavaHome.hermeticExecutableFile().lastModified();
-                                    break;
-                                }
-                            }
-
-                            // Not break, the file is inaccessible.
-                            if (SSLLogger.isOn &&
-                                    SSLLogger.isOn("trustmanager")) {
-                                SSLLogger.fine(
-                                        "Inaccessible trust store: " +
-                                        fileName);
-                            }
+            String temporaryName = "";
+            File temporaryFile = null;
+            long temporaryTime = 0L;
+            if (!"NONE".equals(storePropName)) {
+                String[] fileNames =
+                        new String[] {storePropName, defaultStoreName};
+                for (String fileName : fileNames) {
+                    if (!JavaHome.isHermetic() || (fileName.equals(storePropName) &&
+                                                   !fileName.equals(jsseDefaultStoreName))) {
+                        // If we get here, it must be one of the following
+                        // cases:
+                        //   - In non-hermetic mode, in which case, the current file is
+                        //       - either the JDK default cacerts or jssecacerts
+                        //       - or, javax.net.ssl.trustStore specified;
+                        //   - In hermetic mode and the current file is
+                        //     javax.net.ssl.trustStore specified;
+                        //
+                        // If the current 'fileName' is the
+                        // storePropName and is not the default one
+                        // specified by jsseDefaultStoreName, it must
+                        // be specified by the javax.net.ssl.trustStore property.
+                        // Handle it as a regular file path.
+                        //
+                        // If we are not running in hermetic mode,
+                        // the JDK default stores are regular files.
+                        if (fileName.equals(jsseDefaultStoreName) ||
+                            fileName.equals(defaultStoreName) ) {
+                            fileName = FilePaths.defaultStore(fileName);
+                        }
+                        File f = new File(fileName);
+                        if (f.isFile() && f.canRead()) {
+                            temporaryName = fileName;
+                            temporaryFile = f;
+                            temporaryTime = f.lastModified();
+                            break;
                         }
                     } else {
-                        temporaryName = storePropName;
+                        // If we get here, we are executing in hermetic
+                        // mode and this must be one of the JDK default store
+                        // files that is specified by defaultStoreName or
+                        // jsseDefaultStoreName. Find the store file
+                        // using the FilePaths class from the hermetic
+                        // modules image.
+
+                        if (FilePaths.class.getResource(fileName) != null) {
+                            // Keep temporaryFile as null in hermetic case.
+                            temporaryName = fileName;
+                            temporaryTime = JavaHome.hermeticImageFile().lastModified();
+                            break;
+                        }
                     }
 
-                    return new TrustStoreDescriptor(
-                            temporaryName, storePropType, storePropProvider,
-                            storePropPassword, temporaryFile, temporaryTime);
+                    // Not break, the file is inaccessible.
+                    if (SSLLogger.isOn &&
+                            SSLLogger.isOn("trustmanager")) {
+                        SSLLogger.fine(
+                                "Inaccessible trust store: " +
+                                fileName);
+                    }
                 }
-            });
+            } else {
+                temporaryName = storePropName;
+            }
+
+            return new TrustStoreDescriptor(
+                    temporaryName, storePropType, storePropProvider,
+                    storePropPassword, temporaryFile, temporaryTime);
         }
 
         @Override
@@ -425,13 +417,9 @@ final class TrustStoreManager {
                 // The descriptor.storeFile is null if the JDK default cacerts
                 // or jssecacerts is used when running in hermetic mode. In that
                 // case, load the default store from the hermetic modules image.
-                try (@SuppressWarnings("removal") InputStream is =
-                    (descriptor.storeFile != null ? AccessController.doPrivileged(
-                            new OpenFileInputStreamAction(descriptor.storeFile)) :
-                        AccessController.doPrivileged(
-                            (PrivilegedAction<InputStream>) () -> {
-                                return FilePaths.class.getResourceAsStream(descriptor.storeName);
-                            }))) {
+                try (InputStream is = (descriptor.storeFile != null ?
+                            new FileInputStream(descriptor.storeFile) :
+                            FilePaths.class.getResourceAsStream(descriptor.storeName))) {
                     ks.load(is, password);
                 } catch (IOException ioe) {
                     // No file available, no KeyStore available.

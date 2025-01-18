@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -108,13 +108,9 @@ static void releaseLibName(char *libName) {
 static void *findJniFunction(JNIEnv *env, void *handle,
                              const char *cname, jboolean isLoad,
                              jboolean findDefaultName) {
-    const char *onLoadSymbols[] = JNI_ONLOAD_SYMBOLS;
-    const char *onUnloadSymbols[] = JNI_ONUNLOAD_SYMBOLS;
-    const char **syms;
-    int symsLen;
+    const char *sym;
     void *entryName = NULL;
     char *jniFunctionName;
-    int i;
     size_t len;
 
     char *libName = NULL;
@@ -128,36 +124,30 @@ static void *findJniFunction(JNIEnv *env, void *handle,
     }
 
     // Check for JNI_On(Un)Load<_libname> function
-    if (isLoad) {
-        syms = onLoadSymbols;
-        symsLen = sizeof(onLoadSymbols) / sizeof(char *);
-    } else {
-        syms = onUnloadSymbols;
-        symsLen = sizeof(onUnloadSymbols) / sizeof(char *);
+    sym = isLoad ? "JNI_OnLoad" : "JNI_OnUnload";
+
+    // sym + '_' + cname + '\0'
+    if ((len = strlen(sym) + (cname != NULL ? (strlen(cname) + 1) : 0) + 1) >
+        FILENAME_MAX) {
+        goto done;
     }
-    for (i = 0; i < symsLen; i++) {
-        // cname + sym + '_' + '\0'
-        if ((len = (cname != NULL ? strlen(cname) : 0) + strlen(syms[i]) + 2) >
-            FILENAME_MAX) {
-            goto done;
-        }
-        jniFunctionName = malloc(len);
-        if (jniFunctionName == NULL) {
-            JNU_ThrowOutOfMemoryError(env, NULL);
-            goto done;
-        }
-        buildJniFunctionName(syms[i], cname, jniFunctionName);
-        entryName = JVM_FindLibraryEntry(handle, jniFunctionName);
-        if (findDefaultName && entryName == NULL) {
-            // Check for JNI_On(Un)Load function if JNI_On(Un)Load<_libname> is
-            // not found. An application JNI library can use JNI_On(Un)Load.
-            entryName = JVM_FindLibraryEntry(handle, syms[i]);
-        }
-        free(jniFunctionName);
-        if(entryName) {
-            break;
-        }
+    jniFunctionName = malloc(len);
+    if (jniFunctionName == NULL) {
+        JNU_ThrowOutOfMemoryError(env, NULL);
+        goto done;
     }
+    strcpy(jniFunctionName, sym);
+    if (cname != NULL) {
+        strcat(jniFunctionName, "_");
+        strcat(jniFunctionName, cname);
+    }
+    entryName = JVM_FindLibraryEntry(handle, jniFunctionName);
+    if (findDefaultName && entryName == NULL) {
+        // Check for JNI_On(Un)Load function if JNI_On(Un)Load<_libname> is
+        // not found. An application JNI library can use JNI_On(Un)Load.
+        entryName = JVM_FindLibraryEntry(handle, sym);
+    }
+    free(jniFunctionName);
 
  done:
     if (libName != NULL) {

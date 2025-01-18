@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -48,7 +48,7 @@ import java.util.zip.ZipInputStream;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import jdk.internal.misc.JavaHome;
-
+import jdk.internal.util.StaticProperty;
 import sun.security.ssl.SSLLogger;
 
 /**
@@ -206,26 +206,16 @@ class DomainName {
         }
 
         private static InputStream getPubSuffixStream() {
-            @SuppressWarnings("removal")
-            InputStream is = AccessController.doPrivileged(
-                new PrivilegedAction<>() {
-                    @Override
-                    public InputStream run() {
-                        try {
-                            if (JavaHome.isHermetic()) {
-                                return DomainName.class.getResourceAsStream(
-                                        "public_suffix_list.dat");
-                            } else {
-                                return new FileInputStream(
-                                    new File(System.getProperty("java.home"),
-                                        "lib/security/public_suffix_list.dat"));
-                            }
-                        } catch (IOException e) {
-                            return null;
-                        }
-                    }
-                }
-            );
+            InputStream is = null;
+            if (JavaHome.isHermetic()) {
+                is = DomainName.class.getResourceAsStream("public_suffix_list.dat");
+            } else {
+                File f = new File(System.getProperty("java.home"),
+                    "lib/security/public_suffix_list.dat");
+                try {
+                    is = new FileInputStream(f);
+                } catch (FileNotFoundException e) { }
+            }
             if (is == null) {
                 if (SSLLogger.isOn && SSLLogger.isOn("ssl") &&
                         SSLLogger.isOn("trustmanager")) {
