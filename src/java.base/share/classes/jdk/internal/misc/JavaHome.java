@@ -38,7 +38,6 @@ import java.util.Collections;
 import java.util.Properties;
 import java.util.ServiceLoader;
 import jdk.internal.jimage.HermeticImageHelper;
-import sun.security.action.GetPropertyAction;
 
 /**
  * This class provides support for accessing the JDK resource files reside in
@@ -70,7 +69,7 @@ public class JavaHome {
     private static final File HERMETIC_IMAGE_FILE;
 
     static {
-        Properties props = GetPropertyAction.privilegedGetProperties();
+        Properties props = System.getProperties();
         DEBUG = Boolean.parseBoolean(
             props.getProperty("jdk.internal.misc.JavaHome.debug"));
 

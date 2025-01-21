@@ -34,12 +34,10 @@ import jdk.internal.util.StaticProperty;
 
 import java.io.File;
 
-import sun.security.action.GetPropertyAction;
-
 public class FilePaths {
     private static final String fileSep = File.separator;
     private static final String defaultStorePath =
-        GetPropertyAction.privilegedGetProperty("java.home") +
+        System.getProperty("java.home") +
         fileSep + "lib" + fileSep + "security";
 
     private static final String cacertsName = "cacerts";
