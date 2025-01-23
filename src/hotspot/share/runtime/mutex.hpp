@@ -214,6 +214,8 @@ class Mutex : public CHeapObj<mtSynchronizer> {
   // by fatal error handler.
   static void print_owned_locks_on_error(outputStream* st);
   static void print_lock_ranks(outputStream* st);
+
+  static int num_mutex() { return _num_mutex; }
 };
 
 class Monitor : public Mutex {

@@ -189,17 +189,6 @@ void assert_lock_strong(const Mutex* lock) {
 }
 #endif
 
-static int _num_mutex = 0; // FIXME @vlivanov - merge with mainline - -Xlog:init
-
-#if 0
-static void add_mutex(Mutex* var) {
-  assert(_num_mutex < MAX_NUM_MUTEX, "increase MAX_NUM_MUTEX");
-  int id = _num_mutex++;
-  _mutex_array[id] = var;
-//  var->set_id(id);
-}
-#endif
-
 #define MUTEX_STORAGE_NAME(name) name##_storage
 #define MUTEX_STORAGE(name, type) alignas(type) static uint8_t MUTEX_STORAGE_NAME(name)[sizeof(type)]
 #define MUTEX_DEF(name, type, pri, ...) {                                                       \
@@ -478,7 +467,7 @@ void MutexLockerImpl::print_counters_on(outputStream* st) {
     jlong total_hold_time = accumulate_lock_counters(_perf_lock_hold_time);
 
     st->print_cr("MutexLocker: Total: %d named locks (%d unique names); hold = " JLONG_FORMAT "us (wait = " JLONG_FORMAT "us) / " JLONG_FORMAT " events for thread \"main\"",
-                 _num_mutex, _num_names,
+                 Mutex::num_mutex(), _num_names,
                  Management::ticks_to_us(total_hold_time),
                  Management::ticks_to_us(total_wait_time),
                  total_count);
