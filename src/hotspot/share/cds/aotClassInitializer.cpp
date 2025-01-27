@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -341,7 +341,9 @@ bool AOTClassInitializer::can_archive_initialized_mirror(InstanceKlass* ik) {
 bool AOTClassInitializer::is_runtime_setup_required(InstanceKlass* ik) {
   return ik == vmClasses::Class_klass() ||
          ik == vmClasses::internal_Unsafe_klass() ||
-         ik == vmClasses::ConcurrentHashMap_klass();
+         ik == vmClasses::ConcurrentHashMap_klass() ||
+         ik->name()->equals("java/net/URI") ||
+         ik->name()->equals("java/lang/module/ModuleDescriptor");
 }
 
 void AOTClassInitializer::call_runtime_setup(JavaThread* current, InstanceKlass* ik) {

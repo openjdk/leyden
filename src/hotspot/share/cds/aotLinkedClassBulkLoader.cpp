@@ -392,7 +392,7 @@ void AOTLinkedClassBulkLoader::load_hidden_class(ClassLoaderData* loader_data, I
       // use any special ClassLoaderData.
       Handle loader(THREAD, loader_data->class_loader());
       ResourceMark rm(THREAD);
-      assert(SystemDictionary::resolve_or_null(ik->name(), loader, pd, THREAD) == nullptr,
+      assert(SystemDictionary::resolve_or_null(ik->name(), loader, THREAD) == nullptr,
              "hidden classes cannot be accessible by name: %s", ik->external_name());
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION;
@@ -424,7 +424,11 @@ void AOTLinkedClassBulkLoader::init_required_classes_for_loader(Handle class_loa
         // Some cached heap objects may hold references to methods in aot-linked
         // classes (via MemberName). We need to make sure all classes are
         // linked to allow such MemberNames to be invoked.
-        ik->link_class(CHECK);
+        if (ik->is_rewritten()) {
+          // (ik->is_rewritten() == false) means the class failed verification
+          // during the assembly phase, so there's no need to link it here.
+          ik->link_class(CHECK);
+        }
       }
     }
   }

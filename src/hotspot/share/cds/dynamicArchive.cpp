@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -518,14 +518,14 @@ void DynamicArchive::dump_at_exit(JavaThread* current, const char* archive_name)
   {
     // FIXME-HACK - make sure we have at least one class in the dynamic archive
     TempNewSymbol class_name = SymbolTable::new_symbol("sun/nio/cs/IBM850"); // unusual class; shouldn't be used by our tests cases.
-    SystemDictionary::resolve_or_null(class_name, Handle(), Handle(), THREAD);
+    SystemDictionary::resolve_or_null(class_name, Handle(), THREAD);
     guarantee(!HAS_PENDING_EXCEPTION, "must have this class");
   }
 
   MetaspaceShared::link_shared_classes(false/*not from jcmd*/, THREAD);
   if (!HAS_PENDING_EXCEPTION) {
     // copy shared path table to saved.
-    TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
+    TrainingData::init_dumptime_table(THREAD); // captures TrainingDataSetLocker
     if (!HAS_PENDING_EXCEPTION) {
       VM_PopulateDynamicDumpSharedSpace op(archive_name);
       VMThread::execute(&op);

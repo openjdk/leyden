@@ -579,7 +579,7 @@ void xmlStream::thread(Thread* t, const char* pfx) {
   assert(inside_attrs_or_error(), "printing attributes");
   intx tid = t == nullptr ? os::current_thread_id() : t->osthread()->thread_id();
   guarantee(tid == (t == nullptr ? Thread::current() : t)->osthread()->thread_id(), "");
-  print(" %sthread='" INTX_FORMAT "'", pfx, tid);
+  print(" %sthread=%zd", pfx, tid);
 }
 
 void xmlStream::object(const char* attr, Handle x) {

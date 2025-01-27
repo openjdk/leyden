@@ -1304,7 +1304,6 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
 
   BasicType* out_sig_bt = NEW_RESOURCE_ARRAY(BasicType, total_c_args);
   VMRegPair* out_regs   = NEW_RESOURCE_ARRAY(VMRegPair, total_c_args);
-  BasicType* in_elem_bt = nullptr;
 
   int argc = 0;
   out_sig_bt[argc++] = T_ADDRESS;
@@ -1698,8 +1697,6 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
   default       : ShouldNotReachHere();
   }
 
-  Label after_transition;
-
   // Switch thread to "native transition" state before reading the synchronization state.
   // This additional state is necessary because reading and testing the synchronization
   // state is not atomic w.r.t. GC, as this scenario demonstrates:
@@ -1750,7 +1747,6 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
 
   // change thread state
   __ movl(Address(thread, JavaThread::thread_state_offset()), _thread_in_Java);
-  __ bind(after_transition);
 
   Label reguard;
   Label reguard_done;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -3701,7 +3701,13 @@ public final class URI
         }
 
     }
+
     static {
+        runtimeSetup();
+    }
+
+    // Called from JVM when loading an AOT cache
+    private static void runtimeSetup() {
         SharedSecrets.setJavaNetUriAccess(
             new JavaNetUriAccess() {
                 public URI create(String scheme, String path) {

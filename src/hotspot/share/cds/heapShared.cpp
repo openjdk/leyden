@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1134,11 +1134,6 @@ static bool mark_for_aot_initialization(InstanceKlass* buffered_ik) {
       }
     }
 
-#if 0
-    if (buffered_ik->name()->equals("jdk/internal/loader/NativeLibraries")) {  // FIXME -- leyden+JEP483 merge
-      return false;
-    }
-#endif
     buffered_ik->set_has_aot_initialized_mirror();
     if (AOTClassInitializer::is_runtime_setup_required(src_ik)) {
       buffered_ik->set_is_runtime_setup_required();
@@ -2695,7 +2690,7 @@ void HeapShared::print_stats() {
 
 bool HeapShared::is_archived_boot_layer_available(JavaThread* current) {
   TempNewSymbol klass_name = SymbolTable::new_symbol(ARCHIVED_BOOT_LAYER_CLASS);
-  InstanceKlass* k = SystemDictionary::find_instance_klass(current, klass_name, Handle(), Handle());
+  InstanceKlass* k = SystemDictionary::find_instance_klass(current, klass_name, Handle());
   if (k == nullptr) {
     return false;
   } else {
