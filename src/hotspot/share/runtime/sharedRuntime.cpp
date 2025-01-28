@@ -2539,16 +2539,20 @@ AdapterHandlerEntry* AdapterHandlerLibrary::lookup(AdapterFingerPrint* fp) {
   NOT_PRODUCT(_lookups++);
   AdapterHandlerEntry* entry = nullptr;
 #if INCLUDE_CDS
-  // Search archived table first. It is read-only table so can be searched without lock
-  entry = _archived_adapter_handler_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
-  if (entry != nullptr) {
+  // if we are building the archive then the archived adapter table is
+  // not valid and we need to use the ones added to the runtime table
+  if (!CDSConfig::is_dumping_adapters()) {
+    // Search archived table first. It is read-only table so can be searched without lock
+    entry = _archived_adapter_handler_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
+    if (entry != nullptr) {
 #ifndef PRODUCT
-    if (fp->is_compact()) {
-      _compact++;
-    }
-    _archived_hits++;
+      if (fp->is_compact()) {
+        _compact++;
+      }
+      _archived_hits++;
 #endif
-    return entry;
+      return entry;
+    }
   }
 #endif // INCLUDE_CDS
   assert_lock_strong(AdapterHandlerLibrary_lock);
