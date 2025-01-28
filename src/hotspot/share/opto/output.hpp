@@ -182,8 +182,13 @@ public:
 
   BufferSizingData* buffer_sizing_data()        { return &_buf_sizes; }
 
+  // SCCache::write_nmethod bails when nmethod buffer is expanded.
+  // Large methods would routinely expand the buffer, making themselves
+  // ineligible for SCCache stores. In order to minimize this effect,
+  // we default to larger default sizes.
+  // TODO: Revert this back to mainline once SCCache is fixed.
   enum ScratchBufferBlob {
-    MAX_inst_size       = 2048,
+    MAX_inst_size       = 8192,
     MAX_locs_size       = 128, // number of relocInfo elements
     MAX_const_size      = 128,
     MAX_stubs_size      = 128

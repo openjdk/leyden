@@ -3133,7 +3133,7 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
 //  }
   if (buffer->before_expand() != nullptr) {
     ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip nmethod with expanded buffer '%s'", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
+    log_warning(scc, nmethod)("%d (L%d): Skip nmethod with expanded buffer '%s'", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
     return nullptr;
   }
 #ifdef ASSERT
