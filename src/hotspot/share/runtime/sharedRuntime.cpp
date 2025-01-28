@@ -3428,10 +3428,12 @@ JRT_END
 
 bool AdapterHandlerLibrary::contains(const CodeBlob* b) {
   bool found = false;
+#if INCLUDE_CDS
   auto findblob_archived_table = [&] (AdapterHandlerEntry* handler) {
     return (found = (b == CodeCache::find_blob(handler->get_i2c_entry())));
   };
   _archived_adapter_handler_table.iterate(findblob_archived_table);
+#endif // INCLUDE_CDS
   if (!found) {
     auto findblob_runtime_table = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
       return (found = (b == CodeCache::find_blob(a->get_i2c_entry())));
@@ -3453,6 +3455,7 @@ uint32_t AdapterHandlerLibrary::id(AdapterFingerPrint* fingerprint) {
 
 void AdapterHandlerLibrary::print_handler_on(outputStream* st, const CodeBlob* b) {
   bool found = false;
+#if INCLUDE_CDS
   auto findblob_archived_table = [&] (AdapterHandlerEntry* handler) {
     if (b == CodeCache::find_blob(handler->get_i2c_entry())) {
       found = true;
@@ -3465,6 +3468,7 @@ void AdapterHandlerLibrary::print_handler_on(outputStream* st, const CodeBlob* b
     }
   };
   _archived_adapter_handler_table.iterate(findblob_archived_table);
+#endif // INCLUDE_CDS
   if (!found) {
     auto findblob_runtime_table = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
       if (b == CodeCache::find_blob(a->get_i2c_entry())) {
