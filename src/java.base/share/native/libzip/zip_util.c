@@ -72,8 +72,7 @@ static void freeCEN(jzfile *);
 static jint INITIAL_META_COUNT = 2;   /* initial number of entries in meta name array */
 
 /*
- * Declare library specific JNI_Onload entry that's needed for static builds
- * with builtin native library.
+ * Declare library specific JNI_Onload entry
  */
 DEF_STATIC_JNI_OnLoad
 
