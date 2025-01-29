@@ -2463,10 +2463,6 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   elapsedTimer time;
 
   DirectiveSet* directive = task->directive();
-  if (directive->PrintCompilationOption) {
-    ResourceMark rm;
-    task->print_tty();
-  }
 
   CompilerThread* thread = CompilerThread::current();
   ResourceMark rm(thread);
@@ -2481,6 +2477,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   bool is_osr = (osr_bci != standard_entry_bci);
   bool should_log = (thread->log() != nullptr);
   bool should_break = false;
+  bool should_print_compilation = PrintCompilation || directive->PrintCompilationOption;
   const int task_level = task->comp_level();
   AbstractCompiler* comp = task->compiler();
   {
@@ -2722,7 +2719,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   method->clear_queued_for_compilation();
   method->set_pending_queue_processed(false);
 
-  if (PrintCompilation) {
+  if (should_print_compilation) {
     ResourceMark rm;
     task->print_tty();
   }
