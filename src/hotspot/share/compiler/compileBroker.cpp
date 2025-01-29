@@ -439,7 +439,7 @@ void CompileQueue::transfer_pending() {
     // We have added stale tasks. There might be waiters that want
     // the notification these tasks have failed. Normally, this would
     // be done by a compiler thread that would perform the purge at
-    // the end of some compilation. Butt if we never added any tasks,
+    // the end of some compilation. But, if we never added any tasks,
     // there is no guarantee compilers would run and do the purge.
     // Do the purge here and now to unblock the waiters.
     // NOTE: The call below recurses back to this method, but it should
