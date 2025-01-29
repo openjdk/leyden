@@ -417,16 +417,34 @@ static bool process_pending(CompileTask* task) {
 
 void CompileQueue::transfer_pending() {
   assert(_lock->owned_by_self(), "must own lock");
-  while (!_queue.empty()) {
-    CompileTask* task = _queue.pop();
+
+  bool added_stale_tasks = false;
+  bool added_new_tasks = false;
+
+  CompileTask* task;
+  while ((task = _queue.pop()) != nullptr) {
     bool is_stale = process_pending(task);
     if (is_stale) {
       task->set_next(_first_stale);
       task->set_prev(nullptr);
       _first_stale = task;
+      added_stale_tasks = true;
     } else {
       add(task);
+      added_new_tasks = true;
     }
+  }
+
+  if (added_stale_tasks && !added_new_tasks) {
+    // We have added stale tasks. There might be waiters that want
+    // the notification these tasks have failed. Normally, this would
+    // be done by a compiler thread that would perform the purge at
+    // the end of some compilation. Butt if we never added any tasks,
+    // there is no guarantee compilers would run and do the purge.
+    // Do the purge here and now to unblock the waiters.
+    // NOTE: The call below recurses back to this method, but it should
+    // converge to having no stale tasks at all.
+    purge_stale_tasks();
   }
 }
 
