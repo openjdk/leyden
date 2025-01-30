@@ -442,9 +442,9 @@ void CompileQueue::transfer_pending() {
     // the end of some compilation. But, if we never added any tasks,
     // there is no guarantee compilers would run and do the purge.
     // Do the purge here and now to unblock the waiters.
-    // NOTE: The call below recurses back to this method, but it should
-    // converge to having no stale tasks at all.
-    purge_stale_tasks();
+    // NOTE: The call below recurses back to this method, unless
+    // we explicitly ask it not to.
+    purge_stale_tasks(/* do_transfer_pending = */ false);
   }
 }
 
@@ -559,7 +559,7 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
 
 // Clean & deallocate stale compile tasks.
 // Temporarily releases MethodCompileQueue lock.
-void CompileQueue::purge_stale_tasks() {
+void CompileQueue::purge_stale_tasks(bool do_transfer_pending) {
   assert(_lock->owned_by_self(), "must own lock");
   if (_first_stale != nullptr) {
     // Stale tasks are purged when MCQ lock is released,
@@ -577,7 +577,9 @@ void CompileQueue::purge_stale_tasks() {
         task = next_task;
       }
     }
-    transfer_pending(); // transfer pending after reacquiring MCQ lock
+    if (do_transfer_pending) {
+      transfer_pending(); // transfer pending after reacquiring MCQ lock
+    }
   }
 }
 
