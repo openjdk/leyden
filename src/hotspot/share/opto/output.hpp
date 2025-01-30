@@ -201,6 +201,8 @@ public:
     MAX_stubs_size      = 128
   };
 
+  static_assert(MAX_inst_gcstub_size <= MAX_inst_size, "sanity");
+
   int               frame_slots() const         { return _frame_slots; }
   int               frame_size_in_words() const; // frame_slots in units of the polymorphic 'words'
   int               frame_size_in_bytes() const { return _frame_slots << LogBytesPerInt; }
