@@ -315,7 +315,7 @@ void ZBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
 
   for (int i = 0; i < stubs->length(); i++) {
     // Make sure there is enough space in the code buffer
-    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::MAX_inst_size) && cb.blob() == nullptr) {
+    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::MAX_inst_gcstub_size) && cb.blob() == nullptr) {
       ciEnv::current()->record_failure("CodeCache is full");
       return;
     }
