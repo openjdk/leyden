@@ -318,7 +318,9 @@ class MetaspaceObj {
   f(KlassTrainingData) \
   f(MethodTrainingData) \
   f(CompileTrainingData) \
-  f(SharedClassPathEntry)
+  f(SharedClassPathEntry) \
+  f(AdapterHandlerEntry) \
+  f(AdapterFingerPrint)
 
 #define METASPACE_OBJ_TYPE_DECLARE(name) name ## Type,
 #define METASPACE_OBJ_TYPE_NAME_CASE(name) case name ## Type: return #name;
