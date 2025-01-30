@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -260,7 +260,7 @@ void SCCache::close() {
 
               LogStreamHandle(Debug, scc, codecache) debug_scc;
               if (debug_scc.is_enabled()) {
-                MethodTrainingData* mtd = MethodTrainingData::lookup_for(nm->method());
+                MethodTrainingData* mtd = MethodTrainingData::find(methodHandle(Thread::current(), nm->method()));
                 if (mtd != nullptr) {
                   mtd->iterate_all_compiles([&](CompileTrainingData* ctd) {
                     debug_scc.print("     CTD: "); ctd->print_on(&debug_scc); debug_scc.cr();
@@ -3476,7 +3476,7 @@ void SCCache::print_unused_entries_on(outputStream* st) {
   if (info.is_enabled()) {
     SCCache::iterate([&](SCCEntry* entry) {
       if (!entry->is_loaded()) {
-        MethodTrainingData* mtd = MethodTrainingData::lookup_for(entry->method());
+        MethodTrainingData* mtd = MethodTrainingData::find(methodHandle(Thread::current(), entry->method()));
         if (mtd != nullptr) {
           if (mtd->has_holder()) {
             if (mtd->holder()->method_holder()->is_initialized()) {

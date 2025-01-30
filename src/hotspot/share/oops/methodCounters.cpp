@@ -39,7 +39,8 @@ MethodCounters::MethodCounters(const methodHandle& mh) :
   _prev_time(0),
   _rate(0),
   _highest_comp_level(0),
-  _highest_osr_comp_level(0)
+  _highest_osr_comp_level(0),
+  _training_data_lookup_failed(false)
 {
   set_interpreter_throwout_count(0);
   JVMTI_ONLY(clear_number_of_breakpoints());
@@ -88,6 +89,7 @@ void MethodCounters::metaspace_pointers_do(MetaspaceClosure* it) {
 #if INCLUDE_CDS
 void MethodCounters::remove_unshareable_info() {
   _method_training_data = nullptr;
+  _training_data_lookup_failed = false;
 }
 
 void MethodCounters::restore_unshareable_info(TRAPS) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -94,6 +94,7 @@ class TrainingData : public Metadata {
   class TrainingDataLocker {
     static volatile bool _snapshot;
     static int _lock_mode;
+    const bool _recursive;
     static void lock() {
       assert(_lock_mode != 0, "Forgot to call TrainingDataLocker::initialize()");
       if (_lock_mode > 0) {
@@ -108,10 +109,13 @@ class TrainingData : public Metadata {
     static bool safely_locked() {
       assert(_lock_mode != 0, "Forgot to call TrainingDataLocker::initialize()");
       if (_lock_mode > 0) {
-        return TrainingData_lock->owned_by_self();
+        return is_self_locked();
       } else {
         return true;
       }
+    }
+    static bool is_self_locked() {
+      return TrainingData_lock->owned_by_self();
     }
   public:
     static void snapshot() {
@@ -131,11 +135,15 @@ class TrainingData : public Metadata {
     static void assert_can_add() {
       assert(can_add(), "Cannot add TrainingData objects");
     }
-    TrainingDataLocker() {
-      lock();
+    TrainingDataLocker() : _recursive(is_self_locked()) {
+      if (!_recursive) {
+        lock();
+      }
     }
     ~TrainingDataLocker() {
-      unlock();
+      if (!_recursive) {
+        unlock();
+      }
     }
   };
   class TrainingDataSet {
@@ -175,17 +183,19 @@ class TrainingData : public Metadata {
       assert(false, "no pre-existing elements allowed");
       return *prior;
     }
-    template<typename FN>
-    void iterate_all(FN fn) const { // lambda enabled API
-      return _table.iterate_all(fn);
+    template<typename Function>
+    void iterate(const Function& fn) const { // lambda enabled API
+      iterate(const_cast<Function&>(fn));
+    }
+    template<typename Function>
+    void iterate(Function& fn) const { // lambda enabled API
+      return _table.iterate_all([&](const TrainingData::Key* k, TrainingData* td) { fn(td); });
     }
     int size() const { return _table.number_of_entries(); }
 
     void verify() const {
       TrainingDataLocker::assert_locked();
-      iterate_all([&](const TrainingData::Key* k, TrainingData* td) {
-        td->verify();
-      });
+      iterate([&](TrainingData* td) { td->verify(); });
     }
   };
 
@@ -216,7 +226,11 @@ private:
   static TrainingDataDictionary _archived_training_data_dictionary_for_dumping;
   typedef GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared> DumptimeTrainingDataDictionary;
   static DumptimeTrainingDataDictionary* _dumptime_training_data_dictionary;
-public:
+
+  static TrainingDataSet* training_data_set() { return &_training_data_set; }
+  static TrainingDataDictionary* archived_training_data_dictionary() { return &_archived_training_data_dictionary; }
+
+ public:
   // Returns the key under which this TD is installed, or else
   // Key::EMPTY if it is not installed.
   const Key* key() const { return &_key; }
@@ -224,8 +238,19 @@ public:
   static bool have_data() { return ReplayTraining;  } // Going to read
   static bool need_data() { return RecordTraining;  } // Going to write
 
-  static TrainingDataSet* training_data_set() { return &_training_data_set; }
-  static TrainingDataDictionary* archived_training_data_dictionary() { return &_archived_training_data_dictionary; }
+  template<typename Function>
+  static void iterate(const Function& fn) { iterate(const_cast<Function&>(fn)); }
+
+  template<typename Function>
+  static void iterate(Function& fn) { // lambda enabled API
+    TrainingDataLocker l;
+    if (have_data()) {
+      archived_training_data_dictionary()->iterate(fn);
+    }
+    if (need_data()) {
+      training_data_set()->iterate(fn);
+    }
+  }
 
   virtual MethodTrainingData*   as_MethodTrainingData()  const { return nullptr; }
   virtual KlassTrainingData*    as_KlassTrainingData()   const { return nullptr; }
@@ -247,7 +272,6 @@ public:
   class DepList : public StackObj {
     GrowableArrayCHeap<E, mtCompiler>* _deps_dyn;
     Array<E>*                          _deps;
-    // (hmm, could we have state-selected union of these two?)
   public:
     DepList() {
       _deps_dyn = nullptr;
@@ -328,9 +352,6 @@ public:
 
   static TrainingData* lookup_archived_training_data(const Key* k);
 #endif
-
-  static KlassTrainingData*  lookup_for(InstanceKlass* ik);
-  static MethodTrainingData* lookup_for(Method* m);
 
   template<typename TrainingDataType, typename... ArgTypes>
   static TrainingDataType* allocate(ArgTypes... args) {
@@ -433,8 +454,8 @@ class KlassTrainingData : public TrainingData {
     return TrainingData::allocate<KlassTrainingData>(holder);
   }
 
-  template<typename FN>
-  void iterate_all_comp_deps(FN fn) const { // lambda enabled API
+  template<typename Function>
+  void iterate_all_comp_deps(Function fn) const { // lambda enabled API
     TrainingDataLocker l;
     for (int i = 0; i < comp_dep_count(); i++) {
       fn(comp_dep(i));
@@ -716,10 +737,10 @@ class MethodTrainingData : public TrainingData {
   }
 
   static MethodTrainingData* make(const methodHandle& method,
-                                  bool null_if_not_found = false);
-  static MethodTrainingData* find(const methodHandle& method) {
-    return make(method, true);
-  }
+                                  bool null_if_not_found = false,
+                                  bool use_cache = true);
+  static MethodTrainingData* find_fast(const methodHandle& method) { return make(method, true, true); }
+  static MethodTrainingData* find(const methodHandle& method) { return make(method, true, false); }
 
   virtual MethodTrainingData* as_MethodTrainingData() const {
     return const_cast<MethodTrainingData*>(this);
@@ -732,8 +753,8 @@ class MethodTrainingData : public TrainingData {
   virtual void prepare(Visitor& visitor);
   virtual void cleanup(Visitor& visitor) NOT_CDS_RETURN;
 
-  template<typename FN>
-  void iterate_all_compiles(FN fn) const { // lambda enabled API
+  template<typename Function>
+  void iterate_all_compiles(Function fn) const { // lambda enabled API
     for (int i = 0; i < CompLevel_count; i++) {
       CompileTrainingData* ctd = _last_toplevel_compiles[i];
       if (ctd != nullptr) {

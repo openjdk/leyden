@@ -99,7 +99,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
     return;
   }
   if (!m->is_native() && MethodTrainingData::have_data()) {
-    MethodTrainingData* mtd = MethodTrainingData::find(m);
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
     if (mtd == nullptr) {
       return;              // there is no training data recorded for m
     }
@@ -488,7 +488,7 @@ void CompilationPolicy::print_counters(const char* prefix, Method* m) {
 void CompilationPolicy::print_training_data(const char* prefix, Method* method) {
   methodHandle m(Thread::current(), method);
   tty->print(" %smtd: ", prefix);
-  MethodTrainingData* mtd = MethodTrainingData::find(m);
+  MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
   if (mtd == nullptr) {
     tty->print("null");
   } else {
@@ -1016,7 +1016,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
     update_rate(nanos_to_millis(os::javaTimeNanos()), mh);
     bool requires_online_compilation = false;
     if (TrainingData::have_data()) {
-      MethodTrainingData* mtd = MethodTrainingData::find(mh);
+      MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
       if (mtd != nullptr) {
         CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
         if (ctd != nullptr) {
@@ -1152,7 +1152,7 @@ bool CompilationPolicy::should_create_mdo(const methodHandle& method, CompLevel 
   }
 
   if (TrainingData::have_data()) {
-    MethodTrainingData* mtd = MethodTrainingData::find(method);
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(method);
     if (mtd != nullptr && mtd->saw_level(CompLevel_full_optimization)) {
       return true;
     }
@@ -1389,7 +1389,7 @@ CompLevel CompilationPolicy::common(const methodHandle& method, CompLevel cur_le
     next_level = CompLevel_simple;
   } else {
     if (MethodTrainingData::have_data()) {
-      MethodTrainingData* mtd = MethodTrainingData::find(method);
+      MethodTrainingData* mtd = MethodTrainingData::find_fast(method);
       if (mtd == nullptr) {
         // We haven't see compilations of this method in training. It's either very cold or the behavior changed.
         // Feed it to the standard TF with no profiling delay.

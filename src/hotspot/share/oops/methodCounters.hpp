@@ -62,6 +62,7 @@ class MethodCounters : public Metadata {
 #endif
   u1                  _highest_comp_level;          // Highest compile level this method has ever seen.
   u1                  _highest_osr_comp_level;      // Same for OSR level
+  bool                _training_data_lookup_failed;
 
   MethodCounters(const methodHandle& mh);
   MethodCounters();
@@ -125,6 +126,9 @@ class MethodCounters : public Metadata {
   void set_highest_comp_level(int level)         { _highest_comp_level = (u1)level; }
   int highest_osr_comp_level() const             { return _highest_osr_comp_level;  }
   void set_highest_osr_comp_level(int level)     { _highest_osr_comp_level = (u1)level; }
+  bool has_training_data_lookup_failed() const   { return _training_data_lookup_failed; }
+  void set_training_data_lookup_failed()         { _training_data_lookup_failed = true; }
+
 
   // invocation counter
   InvocationCounter* invocation_counter() { return &_invocation_counter; }
