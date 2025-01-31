@@ -887,5 +887,5 @@ int C2Compiler::initial_code_buffer_size(int const_size) {
   // See Compile::init_scratch_buffer_blob
   int locs_size = sizeof(relocInfo) * PhaseOutput::MAX_locs_size;
   int slop = 2 * CodeSection::end_slop(); // space between sections
-  return PhaseOutput::MAX_inst_size + PhaseOutput::MAX_stubs_size + const_size + slop + locs_size;
+  return PhaseOutput::max_inst_size() + PhaseOutput::MAX_stubs_size + const_size + slop + locs_size;
 }
