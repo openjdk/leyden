@@ -98,7 +98,7 @@ class CompileQueue : public CHeapObj<mtCompiler> {
   uint _total_added;
   uint _total_removed;
 
-  void purge_stale_tasks(bool do_transfer_pending = true);
+  void purge_stale_tasks();
  public:
   CompileQueue(const char* name, Monitor* lock) {
     _name = name;

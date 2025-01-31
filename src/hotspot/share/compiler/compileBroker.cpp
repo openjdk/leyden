@@ -418,9 +418,6 @@ static bool process_pending(CompileTask* task) {
 void CompileQueue::transfer_pending() {
   assert(_lock->owned_by_self(), "must own lock");
 
-  bool added_stale_tasks = false;
-  bool added_new_tasks = false;
-
   CompileTask* task;
   while ((task = _queue.pop()) != nullptr) {
     bool is_stale = process_pending(task);
@@ -428,23 +425,9 @@ void CompileQueue::transfer_pending() {
       task->set_next(_first_stale);
       task->set_prev(nullptr);
       _first_stale = task;
-      added_stale_tasks = true;
     } else {
       add(task);
-      added_new_tasks = true;
     }
-  }
-
-  if (added_stale_tasks && !added_new_tasks) {
-    // We have added stale tasks. There might be waiters that want
-    // the notification these tasks have failed. Normally, this would
-    // be done by a compiler thread that would perform the purge at
-    // the end of some compilation. But, if we never added any tasks,
-    // there is no guarantee compilers would run and do the purge.
-    // Do the purge here and now to unblock the waiters.
-    // NOTE: The call below recurses back to this method, unless
-    // we explicitly ask it not to.
-    purge_stale_tasks(/* do_transfer_pending = */ false);
   }
 }
 
@@ -513,6 +496,22 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
       break;
     }
 
+    // If we have added stale tasks, there might be waiters that want
+    // the notification these tasks have failed. Normally, this would
+    // be done by a compiler thread that would perform the purge at
+    // the end of some compilation. But, if compile queue is empty,
+    // there is no guarantee compilers would run and do the purge.
+    // Do the purge here and now to unblock the waiters.
+    // Perform this until we run out of stale tasks.
+    while (_first_stale != nullptr) {
+      purge_stale_tasks();
+    }
+    if (_first != nullptr) {
+      // Purge stale tasks may have transferred some new tasks,
+      // so check again.
+      break;
+    }
+
     // If there are no compilation tasks and we can compile new jobs
     // (i.e., there is enough free space in the code cache) there is
     // no need to invoke the GC.
@@ -559,7 +558,7 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
 
 // Clean & deallocate stale compile tasks.
 // Temporarily releases MethodCompileQueue lock.
-void CompileQueue::purge_stale_tasks(bool do_transfer_pending) {
+void CompileQueue::purge_stale_tasks() {
   assert(_lock->owned_by_self(), "must own lock");
   if (_first_stale != nullptr) {
     // Stale tasks are purged when MCQ lock is released,
@@ -577,9 +576,7 @@ void CompileQueue::purge_stale_tasks(bool do_transfer_pending) {
         task = next_task;
       }
     }
-    if (do_transfer_pending) {
-      transfer_pending(); // transfer pending after reacquiring MCQ lock
-    }
+    transfer_pending(); // transfer pending after reacquiring MCQ lock
   }
 }
 
