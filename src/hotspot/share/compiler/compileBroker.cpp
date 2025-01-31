@@ -417,8 +417,9 @@ static bool process_pending(CompileTask* task) {
 
 void CompileQueue::transfer_pending() {
   assert(_lock->owned_by_self(), "must own lock");
-  while (!_queue.empty()) {
-    CompileTask* task = _queue.pop();
+
+  CompileTask* task;
+  while ((task = _queue.pop()) != nullptr) {
     bool is_stale = process_pending(task);
     if (is_stale) {
       task->set_next(_first_stale);
@@ -492,6 +493,22 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
     if (_first != nullptr) {
       // The call to on_empty_queue may have temporarily unlocked the MCQ lock
       // so check again whether any tasks were added to the queue.
+      break;
+    }
+
+    // If we have added stale tasks, there might be waiters that want
+    // the notification these tasks have failed. Normally, this would
+    // be done by a compiler thread that would perform the purge at
+    // the end of some compilation. But, if compile queue is empty,
+    // there is no guarantee compilers would run and do the purge.
+    // Do the purge here and now to unblock the waiters.
+    // Perform this until we run out of stale tasks.
+    while (_first_stale != nullptr) {
+      purge_stale_tasks();
+    }
+    if (_first != nullptr) {
+      // Purge stale tasks may have transferred some new tasks,
+      // so check again.
       break;
     }
 
