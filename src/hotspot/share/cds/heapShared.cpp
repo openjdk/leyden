@@ -396,6 +396,14 @@ oop HeapShared::get_archived_object(int permanent_index) {
 //   table[i] = offset of oop whose permanent index is i.
 void CachedCodeDirectoryInternal::dumptime_init_internal() {
   const int count = _dumptime_permanent_oop_count;
+  if (count == 0) {
+    // Avoid confusing CDS code with zero-sized tables, just return.
+    log_info(cds)("No permanent oops");
+    _permanent_oop_count = count;
+    _permanent_oop_offsets = nullptr;
+    return;
+  }
+
   int* table = (int*)CDSAccess::allocate_from_code_cache(count * sizeof(int));
   for (int i = 0; i < count; i++) {
     table[count] = -1;
