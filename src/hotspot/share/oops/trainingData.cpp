@@ -117,9 +117,9 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method, bool nu
   // Try grabbing the cached value first.
   // Cache value is stored in MethodCounters and the following are the
   // possible states:
-  // 1. Cached value is null, training_data_lookup_failed = false
-  //    This is the brand new state, need a full lookup.
-  // 2. Cached value is null, training_data_lookup_failed = true
+  // 1. Cached value is method_training_data_sentinel().
+  //    This is an initial state and needs a full lookup.
+  // 2. Cached value is null.
   //    Lookup failed the last time, if we don't plan to create a new TD object,
   //    i.e. null_if_no_found == true, then just return a null.
   // 3. Cache value is not null.
@@ -127,10 +127,10 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method, bool nu
   MethodCounters* mcs = method->method_counters();
   if (mcs != nullptr) {
     mtd = mcs->method_training_data();
-    if (mtd != nullptr) {
+    if (mtd != nullptr && mtd != mcs->method_training_data_sentinel()) {
       return mtd;
     }
-    if (null_if_not_found && mcs->has_training_data_lookup_failed()) {
+    if (null_if_not_found && mtd == nullptr) {
       assert(mtd == nullptr, "No training data found");
       return nullptr;
     }
@@ -147,36 +147,38 @@ MethodTrainingData* MethodTrainingData::make(const methodHandle& method, bool nu
 #endif
     if (td != nullptr) {
       mtd = td->as_MethodTrainingData();
-    } else if (mcs != nullptr) {
-      assert(td == nullptr, "No training data found");
-      mcs->set_training_data_lookup_failed();
+    } else {
+      mtd = nullptr;
     }
+    // Cache the pointer to MTD in MethodCounters for faster lookup (could be null if not found)
+    method->init_training_data(mtd);
   }
 
   if (need_data()) {
     TrainingDataLocker l;
     td = training_data_set()->find(&key);
     if (td == nullptr) {
-      if (null_if_not_found) {
-        return nullptr;
+      if (!null_if_not_found) {
+        KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder());
+        if (ktd == nullptr) {
+          return nullptr; // allocation failure
+        }
+        mtd = MethodTrainingData::allocate(method(), ktd);
+        if (mtd == nullptr) {
+          return nullptr; // allocation failure
+        }
+        td = training_data_set()->install(mtd);
+        assert(td == mtd, "");
+      } else {
+        mtd = nullptr;
       }
-      KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder(), null_if_not_found);
-      if (ktd == nullptr) {
-        return nullptr;
-      }
-      mtd = MethodTrainingData::allocate(method(), ktd);
-      if (mtd == nullptr) {
-        return nullptr; // allocation failure
-      }
-      td = training_data_set()->install(mtd);
-      assert(td == mtd, "");
     } else {
       mtd = td->as_MethodTrainingData();
     }
+    // Cache the pointer to MTD in MethodCounters for faster lookup (could be null if not found)
+    method->init_training_data(mtd);
   }
 
-  // Cache the pointer to MTD in MethodCounters for faster lookup
-  method->init_training_data(mtd);
   return mtd;
 }
 

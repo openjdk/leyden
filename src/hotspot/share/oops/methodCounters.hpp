@@ -48,7 +48,7 @@ class MethodCounters : public Metadata {
   // Back pointer to the Method*
   Method* _method;
 
-  MethodTrainingData* _method_training_data;
+  Metadata*           _method_training_data;
   jlong               _prev_time;                   // Previous time the rate was acquired
   float               _rate;                        // Events (invocation and backedge counter increments) per millisecond
   int                 _invoke_mask;                 // per-method Tier0InvokeNotifyFreqLog
@@ -126,8 +126,6 @@ class MethodCounters : public Metadata {
   void set_highest_comp_level(int level)         { _highest_comp_level = (u1)level; }
   int highest_osr_comp_level() const             { return _highest_osr_comp_level;  }
   void set_highest_osr_comp_level(int level)     { _highest_osr_comp_level = (u1)level; }
-  bool has_training_data_lookup_failed() const   { return _training_data_lookup_failed; }
-  void set_training_data_lookup_failed()         { _training_data_lookup_failed = true; }
 
 
   // invocation counter
@@ -152,10 +150,21 @@ class MethodCounters : public Metadata {
 
   virtual const char* internal_name() const { return "{method counters}"; }
 
-  MethodTrainingData* method_training_data() const { return _method_training_data; }
-  bool init_method_training_data(MethodTrainingData* tdata) {
-    return (_method_training_data == tdata ||
-            Atomic::replace_if_null(&_method_training_data, tdata));
+  Metadata* method_training_data_sentinel() {
+    return this;
+  }
+  MethodTrainingData* method_training_data() const {
+    return reinterpret_cast<MethodTrainingData*>(_method_training_data);
+  }
+  bool init_method_training_data(MethodTrainingData* td) {
+    MethodTrainingData* cur = method_training_data();
+    if (cur == td) {
+      return true;
+    }
+    if (cur == nullptr || cur == reinterpret_cast<MethodTrainingData*>(method_training_data_sentinel())) {
+      return Atomic::cmpxchg(reinterpret_cast<MethodTrainingData**>(&_method_training_data), cur, td) == cur;
+    }
+    return false;
   }
 
 #if INCLUDE_CDS
