@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -67,6 +67,9 @@ CompileTrainingData::CompileTrainingData() : _level(-1), _compile_id(-1) {
 void TrainingData::initialize() {
   // this is a nop if training modes are not enabled
   if (have_data() || need_data()) {
+    // Data structures that we have do not currently support iterative training. So you cannot replay
+    // and train at the same time. Going forward we may want to adjust iteration/search to enable that.
+    guarantee(have_data() != need_data(), "Iterative training is not supported");
     TrainingDataLocker::initialize();
   }
   RecompilationSchedule::initialize();
@@ -106,62 +109,76 @@ void TrainingData::verify() {
 #endif
 }
 
-MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
-                                             bool null_if_not_found) {
+MethodTrainingData* MethodTrainingData::make(const methodHandle& method, bool null_if_not_found, bool use_cache) {
   MethodTrainingData* mtd = nullptr;
   if (!have_data() && !need_data()) {
     return mtd;
   }
   // Try grabbing the cached value first.
+  // Cache value is stored in MethodCounters and the following are the
+  // possible states:
+  // 1. Cached value is method_training_data_sentinel().
+  //    This is an initial state and needs a full lookup.
+  // 2. Cached value is null.
+  //    Lookup failed the last time, if we don't plan to create a new TD object,
+  //    i.e. null_if_no_found == true, then just return a null.
+  // 3. Cache value is not null.
+  //    Return it, the value of training_data_lookup_failed doesn't matter.
   MethodCounters* mcs = method->method_counters();
   if (mcs != nullptr) {
     mtd = mcs->method_training_data();
-    if (mtd != nullptr) {
+    if (mtd != nullptr && mtd != mcs->method_training_data_sentinel()) {
       return mtd;
     }
-  } else {
+    if (null_if_not_found && mtd == nullptr) {
+      assert(mtd == nullptr, "No training data found");
+      return nullptr;
+    }
+  } else if (use_cache) {
     mcs = Method::build_method_counters(Thread::current(), method());
   }
 
-  KlassTrainingData* holder = KlassTrainingData::make(method->method_holder(), null_if_not_found);
-  if (holder == nullptr) {
-    return nullptr; // allocation failure
-  }
+  TrainingData* td = nullptr;
+
   Key key(method());
-  TrainingData* td = CDS_ONLY(have_data() ? lookup_archived_training_data(&key) :) nullptr;
-  if (td != nullptr) {
-    mtd = td->as_MethodTrainingData();
-    method->init_training_data(mtd);  // Cache the pointer for next time.
-    return mtd;
-  } else {
-    TrainingDataLocker l;
-    td = training_data_set()->find(&key);
-    if (td == nullptr && null_if_not_found) {
-      return nullptr;
-    }
+  if (have_data()) {
+#if INCLUDE_CDS
+    td = lookup_archived_training_data(&key);
+#endif
     if (td != nullptr) {
       mtd = td->as_MethodTrainingData();
-      method->init_training_data(mtd); // Cache the pointer for next time.
-      return mtd;
+    } else {
+      mtd = nullptr;
     }
+    // Cache the pointer to MTD in MethodCounters for faster lookup (could be null if not found)
+    method->init_training_data(mtd);
   }
-  assert(td == nullptr && mtd == nullptr && !null_if_not_found, "Should return if have result");
-  KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder());
-  if (ktd != nullptr) {
+
+  if (need_data()) {
     TrainingDataLocker l;
     td = training_data_set()->find(&key);
     if (td == nullptr) {
-      mtd = MethodTrainingData::allocate(method(), ktd);
-      if (mtd == nullptr) {
-        return nullptr; // allocation failure
+      if (!null_if_not_found) {
+        KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder());
+        if (ktd == nullptr) {
+          return nullptr; // allocation failure
+        }
+        mtd = MethodTrainingData::allocate(method(), ktd);
+        if (mtd == nullptr) {
+          return nullptr; // allocation failure
+        }
+        td = training_data_set()->install(mtd);
+        assert(td == mtd, "");
+      } else {
+        mtd = nullptr;
       }
-      td = training_data_set()->install(mtd);
-      assert(td == mtd, "");
     } else {
       mtd = td->as_MethodTrainingData();
     }
+    // Cache the pointer to MTD in MethodCounters for faster lookup (could be null if not found)
     method->init_training_data(mtd);
   }
+
   return mtd;
 }
 
@@ -360,26 +377,30 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
     guarantee(!ktd->has_holder() || ktd->holder() == holder, "");
     if (ktd->has_holder()) {
       return ktd;
+    } else {
+      ktd = nullptr;
     }
   }
-  TrainingDataLocker l;
-  td = training_data_set()->find(&key);
-  if (td == nullptr) {
-    if (null_if_not_found) {
-      return nullptr;
+  if (need_data()) {
+    TrainingDataLocker l;
+    td = training_data_set()->find(&key);
+    if (td == nullptr) {
+      if (null_if_not_found) {
+        return nullptr;
+      }
+      ktd = KlassTrainingData::allocate(holder);
+      if (ktd == nullptr) {
+        return nullptr; // allocation failure
+      }
+      td = training_data_set()->install(ktd);
+      assert(ktd == td, "");
+    } else {
+      ktd = td->as_KlassTrainingData();
+      guarantee(ktd->holder() != nullptr, "null holder");
     }
-    ktd = KlassTrainingData::allocate(holder);
-    if (ktd == nullptr) {
-      return nullptr; // allocation failure
-    }
-    td = training_data_set()->install(ktd);
-    assert(ktd == td, "");
-  } else {
-    ktd = td->as_KlassTrainingData();
-    guarantee(ktd->holder() != nullptr, "null holder");
+    assert(ktd != nullptr, "");
+    guarantee(ktd->holder() == holder, "");
   }
-  assert(ktd != nullptr, "");
-  guarantee(ktd->holder() == holder, "");
   return ktd;
 }
 
@@ -473,7 +494,7 @@ void TrainingData::init_dumptime_table(TRAPS) {
 
     ResourceMark rm;
     Visitor visitor(training_data_set()->size());
-    training_data_set()->iterate_all([&](const TrainingData::Key* k, TrainingData* td) {
+    training_data_set()->iterate([&](TrainingData* td) {
       td->prepare(visitor);
       if (!td->is_CompileTrainingData()) {
         _dumptime_training_data_dictionary->append(td);
@@ -713,35 +734,6 @@ TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {
 }
 #endif
 
-KlassTrainingData* TrainingData::lookup_for(InstanceKlass* ik) {
-#if INCLUDE_CDS
-  if (TrainingData::have_data() && ik != nullptr && ik->is_loaded()) {
-    TrainingData::Key key(ik);
-    TrainingData* td = TrainingData::lookup_archived_training_data(&key);
-    if (td != nullptr && td->is_KlassTrainingData()) {
-      return td->as_KlassTrainingData();
-    }
-  }
-#endif
-  return nullptr;
-}
-
-MethodTrainingData* TrainingData::lookup_for(Method* m) {
-#if INCLUDE_CDS
-  if (TrainingData::have_data() && m != nullptr) {
-    KlassTrainingData* holder_ktd = TrainingData::lookup_for(m->method_holder());
-    if (holder_ktd != nullptr) {
-      TrainingData::Key key(m);
-      TrainingData* td = TrainingData::lookup_archived_training_data(&key);
-      if (td != nullptr && td->is_MethodTrainingData()) {
-        return td->as_MethodTrainingData();
-      }
-    }
-  }
-#endif
-  return nullptr;
-}
-
 template <typename T>
 void TrainingData::DepList<T>::metaspace_pointers_do(MetaspaceClosure* iter) {
   iter->push(&_deps);
@@ -792,14 +784,6 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
 }
 
 void TrainingDataPrinter::do_value(TrainingData* td) {
-#ifdef ASSERT
-#if INCLUDE_CDS
-  TrainingData::Key key(td->key()->meta());
-  assert(td == TrainingData::archived_training_data_dictionary()->lookup(td->key(), TrainingData::Key::cds_hash(td->key()), -1), "");
-  assert(td == TrainingData::archived_training_data_dictionary()->lookup(&key, TrainingData::Key::cds_hash(&key), -1), "");
-#endif
-#endif // ASSERT
-
   const char* type = (td->is_KlassTrainingData()   ? "K" :
                       td->is_MethodTrainingData()  ? "M" :
                       td->is_CompileTrainingData() ? "C" : "?");

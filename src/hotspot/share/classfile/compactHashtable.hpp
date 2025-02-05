@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -285,27 +285,15 @@ public:
   }
 
   template <class ITER>
-  inline void iterate(ITER* iter) const {
-    for (u4 i = 0; i < _bucket_count; i++) {
-      u4 bucket_info = _buckets[i];
-      u4 bucket_offset = BUCKET_OFFSET(bucket_info);
-      int bucket_type = BUCKET_TYPE(bucket_info);
-      u4* entry = _entries + bucket_offset;
+  inline void iterate(ITER* iter) const { iterate([&](V v) { iter->do_value(v); }); }
 
-      if (bucket_type == VALUE_ONLY_BUCKET_TYPE) {
-        iter->do_value(decode(entry[0]));
-      } else {
-        u4*entry_max = _entries + BUCKET_OFFSET(_buckets[i + 1]);
-        while (entry < entry_max) {
-          iter->do_value(decode(entry[1]));
-          entry += 2;
-        }
-      }
-    }
+  template<typename Function>
+  inline void iterate(const Function& function) const { // lambda enabled API
+    iterate(const_cast<Function&>(function));
   }
 
   template<typename Function>
-  inline void iterate(Function function) const { // lambda enabled API
+  inline void iterate(Function& function) const { // lambda enabled API
     for (u4 i = 0; i < _bucket_count; i++) {
       u4 bucket_info = _buckets[i];
       u4 bucket_offset = BUCKET_OFFSET(bucket_info);

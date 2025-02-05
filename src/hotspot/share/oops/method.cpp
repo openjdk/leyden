@@ -615,7 +615,11 @@ MethodTrainingData* Method::training_data_or_null() const {
   if (mcs == nullptr) {
     return nullptr;
   } else {
-    return mcs->method_training_data();
+    MethodTrainingData* mtd = mcs->method_training_data();
+    if (mtd == mcs->method_training_data_sentinel()) {
+      return nullptr;
+    }
+    return mtd;
   }
 }
 

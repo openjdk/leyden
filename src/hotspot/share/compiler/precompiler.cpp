@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -112,7 +112,7 @@ public:
       }
     }
   }
-  void do_value(TrainingData* td) {
+  void operator()(TrainingData* td) {
     if (td->is_MethodTrainingData()) {
       MethodTrainingData* mtd = td->as_MethodTrainingData();
       if (mtd->has_holder() && include((Method*)mtd->holder())) {
@@ -122,7 +122,7 @@ public:
   }
 
   static int compile_id(Method* m, int level) {
-    MethodTrainingData* mtd = TrainingData::lookup_for(m);
+    MethodTrainingData* mtd = m->method_holder()->is_loaded() ? MethodTrainingData::find(methodHandle(Thread::current(), m)) : nullptr;
     if (mtd != nullptr && mtd->highest_level() == level) {
       CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
       if (ctd != nullptr) {
@@ -182,14 +182,14 @@ public:
 void Precompiler::compile_cached_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS) {
   ResourceMark rm;
   PrecompileIterator pi(comp_level, for_preload, search_level, THREAD);
-  TrainingData::archived_training_data_dictionary()->iterate(&pi);
+  TrainingData::iterate(pi);
   pi.precompile((ArchiveBuilder*)nullptr, THREAD);
 }
 
 void Precompiler::compile_cached_code(TRAPS) {
   log_info(precompile)("Precompilation started");
   if (TrainingData::have_data()) {
-    TrainingData::archived_training_data_dictionary()->iterate([&](TrainingData* td) {
+    TrainingData::iterate([&](TrainingData* td) {
       if (td->is_KlassTrainingData()) {
         KlassTrainingData *ktd = td->as_KlassTrainingData();
         if (ktd->has_holder()) {
@@ -228,7 +228,7 @@ void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
 
     {
       PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, CompLevel_full_optimization, THREAD);
-      TrainingData::archived_training_data_dictionary()->iterate(&pi);
+      TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);
     }
 
@@ -238,7 +238,7 @@ void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
         comp_level = CompLevel_limited_profile;
       }
       PrecompileIterator pi(comp_level, false /*for_preload*/, (CompLevel)level, THREAD);
-      TrainingData::archived_training_data_dictionary()->iterate(&pi);
+      TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);
     }
 
