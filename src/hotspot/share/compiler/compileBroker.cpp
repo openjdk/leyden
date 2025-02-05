@@ -2076,11 +2076,6 @@ bool CompileBroker::init_compiler_runtime() {
     // Switch back to VM state to do compiler initialization
     ThreadInVMfromNative tv(thread);
 
-    // Perform per-thread and global initializations
-    {
-      MutexLocker only_one (thread, CompileThread_lock);
-      SCCache::init_table();
-    }
     comp->initialize();
   }
 

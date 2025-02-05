@@ -2188,7 +2188,7 @@ void MacroAssembler::call_VM_leaf_base(address entry_point,
 
   stp(rscratch1, rmethod, Address(pre(sp, -2 * wordSize)));
 
-  mov(rscratch1, entry_point);
+  mov(rscratch1, RuntimeAddress(entry_point));
   blr(rscratch1);
   if (retaddr)
     bind(*retaddr);

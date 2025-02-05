@@ -583,6 +583,8 @@ void MethodTrainingData::cleanup(Visitor& visitor) {
       if (_final_profile != nullptr && _final_profile->method() != _holder) {
         log_warning(cds)("Stale MDO for  %s::%s", name()->as_klass_external_name(), signature()->as_utf8());
       }
+      _final_profile = nullptr;
+      _final_counters = nullptr;
       _holder = nullptr;
       key()->make_empty();
     }

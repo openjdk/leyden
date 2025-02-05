@@ -165,6 +165,8 @@ public:
   static void disable_dumping_cached_code()                  NOT_CDS_RETURN;
   static void enable_dumping_cached_code()                   NOT_CDS_RETURN;
 
+  static bool is_dumping_adapters()                          NOT_CDS_RETURN_(false);
+
   // Some CDS functions assume that they are called only within a single-threaded context. I.e.,
   // they are called from:
   //    - The VM thread (e.g., inside VM_PopulateDumpSharedSpace)
