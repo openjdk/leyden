@@ -1569,7 +1569,8 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
 }
 
 bool SCCache::write_klass(Klass* klass) {
-  if (klass->is_hidden()) { // Skip such nmethod
+  if (klass->is_hidden() && !HeapShared::is_archivable_hidden_klass(InstanceKlass::cast(klass))) {
+    // Skip such nmethod
     set_lookup_failed();
     return false;
   }
@@ -3101,7 +3102,8 @@ SCCEntry* SCCache::store_nmethod(const methodHandle& method,
                                   frame_size, oop_maps, handler_table, nul_chk_table, compiler, comp_level,
                                   has_clinit_barriers, for_preload, has_unsafe_access, has_wide_vectors, has_monitors, has_scoped_access);
   if (entry == nullptr) {
-    log_info(scc, nmethod)("%d (L%d): nmethod store attempt failed", comp_id, (int)comp_level);
+    ResourceMark rm;
+    log_warning(scc, nmethod)("%d (L%d): Cannot store nmethod '%s'", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
   }
   return entry;
 }
