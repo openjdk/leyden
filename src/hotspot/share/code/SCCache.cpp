@@ -1569,11 +1569,6 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
 }
 
 bool SCCache::write_klass(Klass* klass) {
-  if (klass->is_hidden() && !HeapShared::is_archivable_hidden_klass(InstanceKlass::cast(klass))) {
-    // Skip such nmethod
-    set_lookup_failed();
-    return false;
-  }
   bool can_use_meta_ptrs = _use_meta_ptrs;
   uint array_dim = 0;
   if (klass->is_objArray_klass()) {
@@ -1632,6 +1627,10 @@ bool SCCache::write_klass(Klass* klass) {
   }
   _for_preload = false;
   log_info(scc,cds)("%d (L%d): Not shared klass: %s", compile_id(), comp_level(), klass->external_name());
+  if (klass->is_hidden()) { // Skip such nmethod
+    set_lookup_failed();
+    return false;
+  }
   DataKind kind = DataKind::Klass;
   uint n = write_bytes(&kind, sizeof(int));
   if (n != sizeof(int)) {
