@@ -354,7 +354,7 @@ void ClassLoaderExt::record_result(const s2 classpath_index, InstanceKlass* resu
     ResourceMark rm;
     log_warning(cds)("CDS heap objects cannot be written because class %s maybe modified by ClassFileLoadHook.",
                      result->external_name());
-    HeapShared::disable_writing();
+    CDSConfig::disable_heap_dumping();
   }
 #endif // INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_dynamic_archive()) {

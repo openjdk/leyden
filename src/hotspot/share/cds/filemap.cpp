@@ -1611,7 +1611,7 @@ void FileMapInfo::write_region(int region, char* base, size_t size,
     // This is an unused region (e.g., a heap region when !INCLUDE_CDS_JAVA_HEAP)
     requested_base = nullptr;
   } else if (HeapShared::is_heap_region(region)) {
-    assert(HeapShared::can_write(), "sanity");
+    assert(CDSConfig::is_dumping_heap(), "sanity");
 #if INCLUDE_CDS_JAVA_HEAP
     assert(!CDSConfig::is_dumping_dynamic_archive(), "must be");
     requested_base = (char*)ArchiveHeapWriter::requested_address();
@@ -2627,11 +2627,19 @@ bool FileMapInfo::validate_aot_class_linking() {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used with -Djava.security.manager=%s.", prop);
       return false;
     }
+
     if (header()->gc_kind() != (int)Universe::heap()->kind()) {
       log_error(cds)("CDS archive has aot-linked classes. It cannot be used because GC used during dump time (%s) is not the same as runtime (%s)",
                      header()->gc_name(), Universe::heap()->name());
       return false;
     }
+
+#if INCLUDE_JVMTI
+    if (Arguments::has_jdwp_agent()) {
+      log_error(cds)("CDS archive has aot-linked classes. It cannot be used with JDWP agent");
+      return false;
+    }
+#endif
   }
 
   return true;

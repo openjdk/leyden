@@ -1012,7 +1012,7 @@ void StringTable::verify_secondary_array_index_bits() {
 // [1] Store it into _shared_strings_array. Encode its position as a 32-bit index.
 // [2] Store the index and hashcode into _shared_table.
 oop StringTable::init_shared_strings_array(const DumpedInternedStrings* dumped_interned_strings) {
-  assert(HeapShared::can_write(), "must be");
+  assert(CDSConfig::is_dumping_heap(), "must be");
   objArrayOop array = (objArrayOop)(_shared_strings_array.resolve());
 
   verify_secondary_array_index_bits();
@@ -1061,7 +1061,7 @@ void StringTable::set_shared_strings_array_index(int root_index) {
 }
 
 void StringTable::serialize_shared_table_header(SerializeClosure* soc) {
-  if (soc->writing() && !HeapShared::can_write()) {
+  if (soc->writing() && !CDSConfig::is_dumping_heap()) {
     _shared_table.reset();
     _is_two_dimensional_shared_strings_array = false;
     _shared_strings_array_root_index = -1;

@@ -338,23 +338,30 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     }
   }
 
-  if (!CDSConfig::preserve_all_dumptime_verification_states(k)) {
-    if (!k->is_linked()) {
-      if (has_class_failed_verification(k)) {
-        return warn_excluded(k, "Failed verification");
-      }
-    } else {
-      if (!k->can_be_verified_at_dumptime()) {
-        // We have an old class that has been linked (e.g., it's been executed during
-        // dump time). This class has been verified using the old verifier, which
-        // doesn't save the verification constraints, so check_verification_constraints()
-        // won't work at runtime.
-        // As a result, we cannot store this class. It must be loaded and fully verified
-        // at runtime.
-        return warn_excluded(k, "Old class has been linked");
-      }
+ if (!CDSConfig::preserve_all_dumptime_verification_states(k)) {
+  if (!k->is_linked()) {
+    if (has_class_failed_verification(k)) {
+      return warn_excluded(k, "Failed verification");
+    } else if (CDSConfig::is_dumping_aot_linked_classes()) {
+      // Most loaded classes should have been speculatively linked by MetaspaceShared::link_class_for_cds().
+      // However, we do not speculatively link old classes, as they are not recorded by
+      // SystemDictionaryShared::record_linking_constraint(). As a result, such an unlinked
+      // class may fail to verify in AOTLinkedClassBulkLoader::init_required_classes_for_loader(),
+      // causing the JVM to fail at bootstrap.
+      return warn_excluded(k, "Unlinked class not supported by AOTClassLinking");
+    }
+  } else {
+    if (!k->can_be_verified_at_dumptime()) {
+      // We have an old class that has been linked (e.g., it's been executed during
+      // dump time). This class has been verified using the old verifier, which
+      // doesn't save the verification constraints, so check_verification_constraints()
+      // won't work at runtime.
+      // As a result, we cannot store this class. It must be loaded and fully verified
+      // at runtime.
+      return warn_excluded(k, "Old class has been linked");
     }
   }
+ }
 
   InstanceKlass* super = k->java_super();
   if (super != nullptr && check_for_exclusion(super, nullptr)) {
