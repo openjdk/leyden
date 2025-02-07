@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "code/scopeDesc.hpp"
 #include "code/SCCache.hpp"

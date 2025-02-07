@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cds_globals.hpp"
@@ -461,6 +460,11 @@ void CDSConfig::check_flag_aliases() {
 
 bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) {
   check_flag_aliases();
+
+  if (!FLAG_IS_DEFAULT(AOTMode)) {
+    // Using any form of the new AOTMode switch enables enhanced optimizations.
+    FLAG_SET_ERGO_IF_DEFAULT(AOTClassLinking, true);
+  }
 
   if (CacheDataStore != nullptr) {
     // Leyden temp work-around:

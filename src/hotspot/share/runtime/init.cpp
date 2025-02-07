@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"

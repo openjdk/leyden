@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/cds_globals.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/stringTable.hpp"
@@ -937,19 +936,12 @@ void MethodHandles::expand_MemberName(Handle mname, int suppress, TRAPS) {
 void MethodHandles::add_dependent_nmethod(oop call_site, nmethod* nm) {
   assert_locked_or_safepoint(CodeCache_lock);
 
-  oop context = java_lang_invoke_CallSite::context_no_keepalive(call_site);
-  DependencyContext deps = java_lang_invoke_MethodHandleNatives_CallSiteContext::vmdependencies(context);
-  // Try to purge stale entries on updates.
-  // Since GC doesn't clean dependency contexts rooted at CallSiteContext objects,
-  // in order to avoid memory leak, stale entries are purged whenever a dependency list
-  // is changed (both on addition and removal). Though memory reclamation is delayed,
-  // it avoids indefinite memory usage growth.
+  DependencyContext deps = java_lang_invoke_CallSite::vmdependencies(call_site);
   deps.add_dependent_nmethod(nm);
 }
 
 void MethodHandles::clean_dependency_context(oop call_site) {
-  oop context = java_lang_invoke_CallSite::context_no_keepalive(call_site);
-  DependencyContext deps = java_lang_invoke_MethodHandleNatives_CallSiteContext::vmdependencies(context);
+  DependencyContext deps = java_lang_invoke_CallSite::vmdependencies(call_site);
   deps.clean_unloading_dependents();
 }
 
@@ -961,8 +953,7 @@ void MethodHandles::mark_dependent_nmethods(DeoptimizationScope* deopt_scope, Ha
     NoSafepointVerifier nsv;
     MutexLocker ml(CodeCache_lock, Mutex::_no_safepoint_check_flag);
 
-    oop context = java_lang_invoke_CallSite::context_no_keepalive(call_site());
-    DependencyContext deps = java_lang_invoke_MethodHandleNatives_CallSiteContext::vmdependencies(context);
+    DependencyContext deps = java_lang_invoke_CallSite::vmdependencies(call_site());
     deps.mark_dependent_nmethods(deopt_scope, changes);
   }
 }
@@ -1359,23 +1350,6 @@ JVM_ENTRY_PROF(void, MHN_copyOutBootstrapArguments, MHN_copyOutBootstrapArgument
 }
 JVM_END
 
-// It is called by a Cleaner object which ensures that dropped CallSites properly
-// deallocate their dependency information.
-JVM_ENTRY_PROF(void, MHN_clearCallSiteContext, MHN_clearCallSiteContext(JNIEnv* env, jobject igcls, jobject context_jh)) {
-  Handle context(THREAD, JNIHandles::resolve_non_null(context_jh));
-  DeoptimizationScope deopt_scope;
-  {
-    NoSafepointVerifier nsv;
-    MutexLocker ml(THREAD, CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    DependencyContext deps = java_lang_invoke_MethodHandleNatives_CallSiteContext::vmdependencies(context());
-    deps.remove_and_mark_for_deoptimization_all_dependents(&deopt_scope);
-    // This is assumed to be an 'atomic' operation by verification.
-    // So keep it under lock for now.
-    deopt_scope.deoptimize_marked();
-  }
-}
-JVM_END
-
 /**
  * Throws a java/lang/UnsupportedOperationException unconditionally.
  * This is required by the specification of MethodHandle.invoke if
@@ -1422,7 +1396,6 @@ JVM_END
 #define MT    JLINV "MethodType;"
 #define MH    JLINV "MethodHandle;"
 #define MEM   JLINV "MemberName;"
-#define CTX   JLINV "MethodHandleNatives$CallSiteContext;"
 
 #define CC (char*)  /*cast a literal from (const char*)*/
 #define FN_PTR(f) CAST_FROM_FN_PTR(void*, &f)
@@ -1438,7 +1411,6 @@ static JNINativeMethod MHN_methods[] = {
   {CC "setCallSiteTargetNormal",   CC "(" CS "" MH ")V",                     FN_PTR(MHN_setCallSiteTargetNormal)},
   {CC "setCallSiteTargetVolatile", CC "(" CS "" MH ")V",                     FN_PTR(MHN_setCallSiteTargetVolatile)},
   {CC "copyOutBootstrapArguments", CC "(" CLS "[III[" OBJ "IZ" OBJ ")V",     FN_PTR(MHN_copyOutBootstrapArguments)},
-  {CC "clearCallSiteContext",      CC "(" CTX ")V",                          FN_PTR(MHN_clearCallSiteContext)},
   {CC "staticFieldOffset",         CC "(" MEM ")J",                          FN_PTR(MHN_staticFieldOffset)},
   {CC "staticFieldBase",           CC "(" MEM ")" OBJ,                        FN_PTR(MHN_staticFieldBase)},
   {CC "getMemberVMInfo",           CC "(" MEM ")" OBJ,                       FN_PTR(MHN_getMemberVMInfo)}
@@ -1529,7 +1501,6 @@ JVM_END
   macro(MHN_setCallSiteTargetNormal)   \
   macro(MHN_setCallSiteTargetVolatile) \
   macro(MHN_copyOutBootstrapArguments) \
-  macro(MHN_clearCallSiteContext)      \
   macro(MHN_staticFieldOffset)         \
   macro(MHN_staticFieldBase)           \
   macro(MHN_getMemberVMInfo)           \

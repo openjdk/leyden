@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciMetadata.hpp"
 #include "cds/cdsConfig.hpp"

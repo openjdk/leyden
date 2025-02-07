@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/aotClassLinker.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/aotLinkedClassTable.hpp"
@@ -324,4 +323,3 @@ const char* AOTClassLinker::class_category_name(AOTLinkedClassCategory category)
       return "unreg";
   }
 }
-

@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/filemap.hpp"
 #include "ci/ciField.hpp"
 #include "ci/ciInstance.hpp"
@@ -1263,6 +1262,8 @@
         declare_type(TrainingReplayThread, JavaThread)                    \
         declare_type(StringDedupThread, JavaThread)                       \
         declare_type(AttachListenerThread, JavaThread)                    \
+        DEBUG_ONLY(COMPILER2_OR_JVMCI_PRESENT(                            \
+          declare_type(DeoptimizeObjectsALotThread, JavaThread)))         \
   declare_toplevel_type(OSThread)                                         \
   declare_toplevel_type(JavaFrameAnchor)                                  \
                                                                           \
