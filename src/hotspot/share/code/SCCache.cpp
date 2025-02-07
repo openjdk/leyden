@@ -4078,14 +4078,6 @@ void SCAddressTable::init_stubs() {
   }
 #endif
 #if defined(AARCH64) && !defined(ZERO)
-  SET_ADDRESS(_stubs, StubRoutines::aarch64::d2i_fixup());
-  SET_ADDRESS(_stubs, StubRoutines::aarch64::f2i_fixup());
-  SET_ADDRESS(_stubs, StubRoutines::aarch64::d2l_fixup());
-  SET_ADDRESS(_stubs, StubRoutines::aarch64::f2l_fixup());
-  SET_ADDRESS(_stubs, StubRoutines::aarch64::float_sign_mask());
-  SET_ADDRESS(_stubs, StubRoutines::aarch64::float_sign_flip());
-  SET_ADDRESS(_stubs, StubRoutines::aarch64::double_sign_mask());
-  SET_ADDRESS(_stubs, StubRoutines::aarch64::double_sign_flip());
   SET_ADDRESS(_stubs, StubRoutines::aarch64::zero_blocks());
   SET_ADDRESS(_stubs, StubRoutines::aarch64::count_positives());
   SET_ADDRESS(_stubs, StubRoutines::aarch64::count_positives_long());
