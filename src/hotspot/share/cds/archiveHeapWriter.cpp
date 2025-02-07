@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -29,6 +29,7 @@
 #include "cds/heapShared.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/javaClasses.hpp"
+#include "classfile/modules.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "memory/iterator.inline.hpp"
@@ -331,6 +332,10 @@ void ArchiveHeapWriter::copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtCla
 
     _buffer_offset_to_source_obj_table->put_when_absent(buffer_offset, src_obj);
     _buffer_offset_to_source_obj_table->maybe_grow();
+
+    if (java_lang_Module::is_instance(src_obj)) {
+      Modules::check_archived_module_oop(src_obj);
+    }
   }
 
   log_info(cds)("Size of heap region = " SIZE_FORMAT " bytes, %d objects, %d roots, %d native ptrs",
@@ -714,19 +719,6 @@ void ArchiveHeapWriter::mark_native_pointer(oop src_obj, int field_offset) {
     info._src_obj = src_obj;
     info._field_offset = field_offset;
     _native_pointers->append(info);
-    if (!ArchiveBuilder::current()->has_been_archived((address)ptr)) {
-      // Currently we supporting marking of only Method and Klass, both of which are
-      // subtypes of MetaData.
-      ResourceMark rm;
-      log_error(cds, heap)("Native pointer %p is not archived", ptr);
-      if (((Metadata*)ptr)->is_method()) {
-        log_error(cds, heap)("Method: %s", ((Method*)ptr)->external_name());
-      } else {
-        assert(((Metadata*)ptr)->is_klass(), "must be");
-        log_error(cds, heap)("Klass: %s", ((Klass*)ptr)->external_name());
-      }
-      HeapShared::exit_on_error();
-    }
     HeapShared::set_has_native_pointers(src_obj);
     _num_native_ptrs ++;
   }
