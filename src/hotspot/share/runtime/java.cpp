@@ -770,12 +770,3 @@ void JDK_Version::to_string(char* buffer, size_t buflen) const {
     }
   }
 }
-
-static bool is_static = false;
-bool JVM_IsStaticJDK() {
-  return is_static;
-}
-
-void JVM_SetStaticJDK() {
-  is_static = true;
-}

@@ -456,8 +456,6 @@ static jboolean
 GetJVMPath(const char *jdkroot, const char *jvmtype,
            char *jvmpath, jint jvmpathsize)
 {
-    assert(!JLI_IsStaticJDK());
-
     struct stat s;
 
     if (JLI_StrChr(jvmtype, '/')) {
@@ -739,11 +737,4 @@ jboolean
 ProcessPlatformOption(const char *arg)
 {
     return JNI_FALSE;
-}
-
-/*
- * Static JDK related.
- */
-void* JLI_Lookup_Set_Static_JDK() {
-    return dlsym(RTLD_DEFAULT, "set_static_jdk");
 }

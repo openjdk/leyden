@@ -26,8 +26,6 @@
 #ifndef JDWP_SYS_H
 #define JDWP_SYS_H
 
-#include "jni.h"
-
 #define SYS_OK         0
 #define SYS_ERR        -1
 #define SYS_INTRPT     -2
@@ -43,7 +41,6 @@ void    dbgsysBuildLibName(char *, int, const char *, const char *);
 void *  dbgsysLoadLibrary(const char *, char *err_buf, int err_buflen);
 void    dbgsysUnloadLibrary(void *);
 void *  dbgsysFindLibraryEntry(void *, const char *);
-jboolean dbgsysIsStaticJDK();
 
 /* Implemented in exec_md.c */
 int     dbgsysExec(char *cmdLine);

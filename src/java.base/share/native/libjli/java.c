@@ -251,8 +251,6 @@ JLI_Launch(int argc, char ** argv,              /* main argc, argv */
     _is_java_args = javaargs;
     _wc_enabled = cpwildcard;
 
-    JLI_SetStaticJDK();
-
     InitLauncher(javaw);
     DumpState();
     if (JLI_IsTraceLauncher()) {
@@ -2384,46 +2382,3 @@ JLI_ShowMessage(const char* fmt, ...)
     va_end(vl);
 }
 
-/*
- * Following are static JDK related.
- */
-
-enum {
-  JLI_StaticBuild,
-  JLI_DynamicBuild,
-  JLI_UnknownBuild,
-};
-
-static int exectype = JLI_UnknownBuild;
-
-typedef void (*SetStaticJDK_t)();
-static SetStaticJDK_t SetStaticJDK = NULL;
-
-// This is called by launcher code before explicitly loading and creating the
-// VM. We determine if the current execution uses a static JDK binary by
-// checking if JVM_SetStaticJDK symbol exists. JVM_SetStaticJDK is defined in
-// hotspot libjvm. The look up returns the symbol address if the VM code is
-// statically linked with JDK natives. Otherwise, symbol lookup for
-// 'JVM_SetStaticJDK' should return NULL if JDK and hotspot dynamic libraries are
-// used.
-//
-// Using weak symbol would be easier to determine static JDK. However, weak
-// symbol may not be a portable solution.
-void JLI_SetStaticJDK() {
-    assert(SetStaticJDK == NULL);
-    assert(exectype == JLI_UnknownBuild);
-
-    SetStaticJDK = (SetStaticJDK_t)dlsym(RTLD_DEFAULT, "JVM_SetStaticJDK");
-    if (SetStaticJDK != NULL) {
-        exectype = JLI_StaticBuild;
-        (SetStaticJDK)();
-    } else {
-        exectype = JLI_DynamicBuild;
-    }
-}
-
-// JVM_SetStaticJDK is defined in libjvm.
-jboolean JLI_IsStaticJDK() {
-    assert(exectype != JLI_UnknownBuild);
-    return exectype == JLI_StaticBuild;
-}

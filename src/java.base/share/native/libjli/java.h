@@ -67,11 +67,6 @@
 #define SPLASH_JAR_ENV_ENTRY "_JAVA_SPLASH_JAR"
 #define JDK_JAVA_OPTIONS "JDK_JAVA_OPTIONS"
 
-JNIEXPORT jboolean JLI_IsStaticJDK();
-void JLI_SetStaticJDK();
-// FIXME: Add non-unix implementation.
-void* JLI_Lookup_Set_Static_JDK();
-
 /*
  * Pointers to the needed JNI invocation API, initialized by LoadJavaVM.
  */

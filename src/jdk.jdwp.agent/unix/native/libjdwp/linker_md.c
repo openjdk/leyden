@@ -128,12 +128,3 @@ void * dbgsysFindLibraryEntry(void *handle, const char *name)
 {
     return dlsym(handle, name);
 }
-
-typedef jboolean (*JVM_IsStaticJDK_t)();
-
-jboolean dbgsysIsStaticJDK()
-{
-    // JLI_IsStaticJDK is defined by libjli. Check if it is statically linked.
-    JVM_IsStaticJDK_t IsStaticJDK = (JVM_IsStaticJDK_t)dlsym(RTLD_DEFAULT, "JVM_IsStaticJDK");
-    return (IsStaticJDK != NULL) && (IsStaticJDK)();
-}
