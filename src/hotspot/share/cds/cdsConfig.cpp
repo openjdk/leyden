@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cds_globals.hpp"
@@ -32,6 +31,7 @@
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/moduleEntry.hpp"
 #include "classfile/systemDictionaryShared.hpp"
+#include "code/SCCache.hpp"
 #include "include/jvm_io.h"
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"
@@ -54,6 +54,7 @@ bool CDSConfig::_is_loading_packages = false;
 bool CDSConfig::_is_loading_protection_domains = false;
 bool CDSConfig::_is_security_manager_allowed = false;
 bool CDSConfig::_old_cds_flags_used = false;
+bool CDSConfig::_disable_heap_dumping = false;
 
 char* CDSConfig::_default_archive_path = nullptr;
 char* CDSConfig::_static_archive_path = nullptr;
@@ -461,6 +462,11 @@ void CDSConfig::check_flag_aliases() {
 bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) {
   check_flag_aliases();
 
+  if (!FLAG_IS_DEFAULT(AOTMode)) {
+    // Using any form of the new AOTMode switch enables enhanced optimizations.
+    FLAG_SET_ERGO_IF_DEFAULT(AOTClassLinking, true);
+  }
+
   if (CacheDataStore != nullptr) {
     // Leyden temp work-around:
     //
@@ -526,7 +532,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         // At VM exit, the module graph may be contaminated with program states. We should rebuild the
         // module graph when dumping the CDS final image.
         log_info(cds)("full module graph: disabled when writing CDS preimage");
-        HeapShared::disable_writing();
+        disable_heap_dumping();
         stop_dumping_full_module_graph();
         FLAG_SET_ERGO(ArchivePackages, false);
         FLAG_SET_ERGO(ArchiveProtectionDomains, false);
@@ -551,6 +557,10 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         set_new_workflow_default_CachedCodeFile();
         // Cannot dump cached code until metadata and heap are dumped.
         disable_dumping_cached_code();
+      }
+      if (StoreCachedCode) {
+        log_info(cds)("ArchiveAdapters is enabled");
+        FLAG_SET_ERGO_IF_DEFAULT(ArchiveAdapters, true);
       }
     }
   } else {
@@ -756,10 +766,53 @@ bool CDSConfig::current_thread_is_vm_or_dumper() {
   return t != nullptr && (t->is_VM_thread() || t == _dumper_thread);
 }
 
+// If an incompatible VM options is found, return a text message that explains why
+static const char* check_options_incompatible_with_dumping_heap() {
 #if INCLUDE_CDS_JAVA_HEAP
+  if (!UseCompressedClassPointers) {
+    return "UseCompressedClassPointers must be true";
+  }
+
+  // Almost all GCs support heap region dump, except ZGC (so far).
+  if (UseZGC) {
+    return "ZGC is not supported";
+  }
+
+  return nullptr;
+#else
+  return "JVM not configured for writing Java heap objects";
+#endif
+}
+
+void CDSConfig::log_reasons_for_not_dumping_heap() {
+  const char* reason;
+
+  assert(!is_dumping_heap(), "sanity");
+
+  if (_disable_heap_dumping) {
+    reason = "Programmatically disabled";
+  } else {
+    reason = check_options_incompatible_with_dumping_heap();
+  }
+
+  assert(reason != nullptr, "sanity");
+  log_info(cds)("Archived java heap is not supported: %s", reason);
+}
+
+#if INCLUDE_CDS_JAVA_HEAP
+bool CDSConfig::are_vm_options_incompatible_with_dumping_heap() {
+  return check_options_incompatible_with_dumping_heap() != nullptr;
+}
+
+
 bool CDSConfig::is_dumping_heap() {
-  return is_dumping_static_archive() && !is_dumping_preimage_static_archive()
-    && HeapShared::can_write();
+  if (!(is_dumping_classic_static_archive() || is_dumping_final_static_archive())
+      || are_vm_options_incompatible_with_dumping_heap()
+      || _disable_heap_dumping) {
+    return false;
+  }
+
+  return true;
 }
 
 bool CDSConfig::is_loading_heap() {
@@ -897,4 +950,8 @@ void CDSConfig::disable_dumping_cached_code() {
 
 void CDSConfig::enable_dumping_cached_code() {
   _is_dumping_cached_code = true;
+}
+
+bool CDSConfig::is_dumping_adapters() {
+  return (ArchiveAdapters && is_dumping_final_static_archive());
 }

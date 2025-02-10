@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/aotClassLinker.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/archiveBuilder.hpp"
@@ -236,14 +235,6 @@ void AOTConstantPoolResolver::resolve_string(constantPoolHandle cp, int cp_index
 #endif
 
 void AOTConstantPoolResolver::preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
-  if (!CDSConfig::is_dumping_aot_linked_classes()) {
-    // TODO: Why is this check needed in Leyden?
-    // The following 3 tests fails when this "if" check is removed (when -XX:-AOTClassLinking is NOT enabled)
-    // - runtime/cds/appcds/methodHandles/MethodHandlesAsCollectorTest.java
-    // - runtime/cds/appcds/methodHandles/MethodHandlesGeneralTest.java
-    // - runtime/cds/appcds/methodHandles/MethodHandlesSpreadArgumentsTest.java
-    return;
-  }
   if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data())) {
     return;
   }
@@ -285,8 +276,8 @@ void AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(JavaThread*
       bcs.next();
       Bytecodes::Code raw_bc = bcs.raw_code();
       switch (raw_bc) {
-      case Bytecodes::_getstatic: // FIXME -- leyden+JEP483 merge
-      case Bytecodes::_putstatic: // FIXME -- leyden+JEP483 merge
+      case Bytecodes::_getstatic:
+      case Bytecodes::_putstatic:
       case Bytecodes::_getfield:
       case Bytecodes::_putfield:
         maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
@@ -298,7 +289,7 @@ void AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(JavaThread*
       case Bytecodes::_invokespecial:
       case Bytecodes::_invokevirtual:
       case Bytecodes::_invokeinterface:
-      case Bytecodes::_invokestatic: // FIXME -- leyden+JEP483 merge
+      case Bytecodes::_invokestatic:
         maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION; // just ignore
@@ -338,7 +329,6 @@ void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m
   const char* is_static = "";
 
   switch (bc) {
-#if 1 // FIXME -- leyden+JEP483 merge
   case Bytecodes::_getstatic:
   case Bytecodes::_putstatic:
     if (!VM_Version::supports_fast_class_init_checks()) {
@@ -347,13 +337,11 @@ void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m
     InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
     is_static = " *** static";
     break;
-#endif
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
     InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
     break;
 
-#if 1 // FIXME -- leyden+JEP483 merge
   case Bytecodes::_invokestatic:
     if (!VM_Version::supports_fast_class_init_checks()) {
       return; // Do not resolve since interpreter lacks fast clinit barriers support
@@ -361,7 +349,6 @@ void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m
     InterpreterRuntime::cds_resolve_invoke(bc, raw_index, cp, CHECK);
     is_static = " *** static";
     break;
-#endif
 
   case Bytecodes::_invokevirtual:
   case Bytecodes::_invokespecial:
