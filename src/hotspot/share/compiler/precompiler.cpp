@@ -210,11 +210,9 @@ void Precompiler::compile_cached_code(TRAPS) {
     compile_cached_code(CompLevel_full_optimization, true, CompLevel_full_optimization, CHECK);
 
     compile_cached_code(CompLevel_full_optimization, false, CompLevel_full_optimization, CHECK);
-    if (TieredCompilation) {
-      compile_cached_code(CompLevel_full_profile,      false, CompLevel_limited_profile,   CHECK);
-      compile_cached_code(CompLevel_limited_profile,   false, CompLevel_limited_profile,   CHECK);
-      compile_cached_code(CompLevel_simple,            false, CompLevel_simple,            CHECK);
-    }
+    compile_cached_code(CompLevel_full_profile,      false, CompLevel_limited_profile,   CHECK);
+    compile_cached_code(CompLevel_limited_profile,   false, CompLevel_limited_profile,   CHECK);
+    compile_cached_code(CompLevel_simple,            false, CompLevel_simple,            CHECK);
   }
   log_info(precompile)("Precompilation finished (total: %d)", precompiled_total_count);
 }
@@ -233,22 +231,14 @@ void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
       pi.precompile(builder, THREAD);
     }
 
-    {
-      PrecompileIterator pi(CompLevel_full_optimization, false /*for_preload*/, CompLevel_full_optimization, THREAD);
+    for (int level = CompLevel_simple; level <= CompLevel_full_optimization; level++) {
+      CompLevel comp_level = (CompLevel)level;
+      if (comp_level == CompLevel_full_profile) {
+        comp_level = CompLevel_limited_profile;
+      }
+      PrecompileIterator pi(comp_level, false /*for_preload*/, (CompLevel)level, THREAD);
       TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);
-    }
-
-    if (TieredCompilation) {
-      for (int level = CompLevel_simple; level < CompLevel_full_optimization; level++) {
-        CompLevel comp_level = (CompLevel) level;
-        if (comp_level == CompLevel_full_profile) {
-          comp_level = CompLevel_limited_profile;
-        }
-        PrecompileIterator pi(comp_level, false /*for_preload*/, (CompLevel) level, THREAD);
-        TrainingData::iterate(pi);
-        pi.precompile(builder, THREAD);
-      }
     }
 
     SCCache::new_workflow_end_writing_cache();
