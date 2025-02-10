@@ -81,7 +81,7 @@ class SCConfig {
 
 public:
   void record(bool use_meta_ptrs);
-  bool verify(const char* cache_path) const;
+  bool verify() const;
 
   bool has_meta_ptrs()  const { return (_flags & metadataPointers) != 0; }
 };
@@ -94,7 +94,6 @@ private:
     SCC_VERSION = 1
   };
   uint _version;           // SCC version (should match when reading code cache)
-  uint _jvm_version_offset;// JVM version string
   uint _cache_size;        // cache size in bytes
   uint _strings_count;
   uint _strings_offset;    // offset to recorded C strings
@@ -105,13 +104,12 @@ private:
   SCConfig _config;
 
 public:
-  void init(uint jvm_version_offset, uint cache_size,
+  void init(uint cache_size,
             uint strings_count, uint strings_offset,
             uint entries_count, uint entries_offset,
             uint preload_entries_count, uint preload_entries_offset,
             bool use_meta_ptrs) {
     _version        = SCC_VERSION;
-     _jvm_version_offset = jvm_version_offset;
     _cache_size     = cache_size;
     _strings_count  = strings_count;
     _strings_offset = strings_offset;
@@ -123,8 +121,6 @@ public:
     _config.record(use_meta_ptrs);
   }
 
-  uint jvm_version_offset() const { return _jvm_version_offset; }
-
   uint cache_size()     const { return _cache_size; }
   uint strings_count()  const { return _strings_count; }
   uint strings_offset() const { return _strings_offset; }
@@ -134,9 +130,9 @@ public:
   uint preload_entries_offset() const { return _preload_entries_offset; }
   bool has_meta_ptrs()  const { return _config.has_meta_ptrs(); }
 
-  bool verify_config(const char* cache_path, uint load_size)  const;
-  bool verify_vm_config(const char* cache_path) const { // Called after Universe initialized
-    return _config.verify(cache_path);
+  bool verify_config(uint load_size)  const;
+  bool verify_vm_config() const { // Called after Universe initialized
+    return _config.verify();
   }
 };
 
@@ -382,10 +378,8 @@ public:
 class SCCache : public CHeapObj<mtCode> {
 private:
   SCCHeader*  _load_header;
-  const char* _cache_path;
   char*       _load_buffer;    // Aligned buffer for loading cached code
   char*       _store_buffer;   // Aligned buffer for storing cached code
-  char*       _C_load_buffer;  // Original unaligned buffer
   char*       _C_store_buffer; // Original unaligned buffer
 
   uint        _write_position; // Position in _store_buffer
@@ -471,11 +465,10 @@ private:
   };
 
 public:
-  SCCache(const char* cache_path, int fd, uint load_size);
+  SCCache();
   ~SCCache();
 
   const char* cache_buffer() const { return _load_buffer; }
-  const char* cache_path()   const { return _cache_path; }
   bool failed() const { return _failed; }
   void set_failed()   { _failed = true; }
 
@@ -576,10 +569,10 @@ public:
 private:
   static SCCache*  _cache;
 
-  static bool open_cache(const char* cache_path);
+  static bool open_cache();
   static bool verify_vm_config() {
     if (is_on_for_read()) {
-      return _cache->_load_header->verify_vm_config(_cache->_cache_path);
+      return _cache->_load_header->verify_vm_config();
     }
     return true;
   }
@@ -628,10 +621,6 @@ public:
   static void print_statistics_on(outputStream* st);
   static void print_timers_on(outputStream* st);
   static void print_unused_entries_on(outputStream* st);
-
-  static void new_workflow_start_writing_cache() NOT_CDS_JAVA_HEAP_RETURN;
-  static void new_workflow_end_writing_cache() NOT_CDS_JAVA_HEAP_RETURN;
-  static void new_workflow_load_cache() NOT_CDS_JAVA_HEAP_RETURN;
 };
 
 // code cache internal runtime constants area used by AOT code

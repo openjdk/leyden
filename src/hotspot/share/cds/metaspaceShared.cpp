@@ -1128,11 +1128,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       {
         builder.start_cc_region();
         Precompiler::compile_cached_code(&builder, CHECK);
+        // Write the contents to cached code region and close SCCache before packing the region
+        SCCache::close();
         builder.end_cc_region();
       }
       CDSConfig::disable_dumping_cached_code();
-
-      SCCache::close(); // Write final data and close archive
     }
     status = write_static_archive(&builder, mapinfo, heap_info);
   } else {
@@ -1422,8 +1422,7 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
   }
 }
 
-// This is called very early at VM start up to get the size of the cached_code region, which
-// is used in CodeCache::initialize_heaps()
+// This is called very early at VM start up to get the size of the cached_code region
 void MetaspaceShared::open_static_archive() {
   if (!UseSharedSpaces) {
     return;
@@ -1963,7 +1962,7 @@ void MetaspaceShared::initialize_shared_spaces() {
   static_mapinfo->patch_heap_embedded_pointers();
   ArchiveHeapLoader::finish_initialization();
   Universe::load_archived_object_instances();
-  SCCache::new_workflow_load_cache();
+  SCCache::initialize();
 
   // Close the mapinfo file
   static_mapinfo->close();

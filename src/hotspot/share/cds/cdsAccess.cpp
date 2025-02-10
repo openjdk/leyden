@@ -175,6 +175,11 @@ void CDSAccess::set_pointer(address* ptr, address value) {
   ArchivePtrMarker::mark_pointer(ptr);
 }
 
+bool CDSAccess::is_cached_code_region_empty() {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+  return ArchiveBuilder::current()->cc_region()->is_empty();
+}
+
 bool CDSAccess::map_cached_code(ReservedSpace rs) {
   FileMapInfo* static_mapinfo = FileMapInfo::current_info();
   assert(UseSharedSpaces && static_mapinfo != nullptr, "must be");

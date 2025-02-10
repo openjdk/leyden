@@ -187,6 +187,8 @@ public:
     return !is_packed() && _base != nullptr;
   }
 
+  bool is_empty()   const { return _base == _top; }
+
   void print(size_t total_bytes) const;
   void print_out_of_space_msg(const char* failing_region, size_t needed_bytes);
 

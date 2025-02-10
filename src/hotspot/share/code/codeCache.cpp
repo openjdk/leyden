@@ -322,21 +322,12 @@ void CodeCache::initialize_heaps() {
   FLAG_SET_ERGO(NonProfiledCodeHeapSize, non_profiled.size);
   FLAG_SET_ERGO(ReservedCodeCacheSize, cache_size);
 
-  const size_t cds_code_size = align_up(CDSAccess::get_cached_code_size(), min_size);
-  cache_size += cds_code_size;
-
   ReservedSpace rs = reserve_heap_memory(cache_size, ps);
 
   // Register CodeHeaps with LSan as we sometimes embed pointers to malloc memory.
   LSAN_REGISTER_ROOT_REGION(rs.base(), rs.size());
 
   size_t offset = 0;
-  if (cds_code_size > 0) {
-    // FIXME: use CodeHeapInfo for this hack ...
-    _cds_code_space = rs.partition(offset, cds_code_size);
-    offset += cds_code_size;
-  }
-
   if (profiled.enabled) {
     ReservedSpace profiled_space = rs.partition(offset, profiled.size);
     offset += profiled.size;
@@ -353,14 +344,6 @@ void CodeCache::initialize_heaps() {
     ReservedSpace non_profiled_space  = rs.partition(offset, non_profiled.size);
     // Tier 1 and tier 4 (non-profiled) methods and native methods
     add_heap(non_profiled_space, "CodeHeap 'non-profiled nmethods'", CodeBlobType::MethodNonProfiled);
-  }
-}
-
-void* CodeCache::map_cached_code() {
-  if (_cds_code_space.size() > 0 && CDSAccess::map_cached_code(_cds_code_space)) {
-    return _cds_code_space.base();
-  } else {
-    return nullptr;
   }
 }
 
