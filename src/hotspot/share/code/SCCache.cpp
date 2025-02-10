@@ -549,19 +549,28 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
 
   _use_meta_ptrs = UseSharedSpaces ? UseMetadataPointers : false;
 
-  // Read header at the begining of cache
-  uint header_size = sizeof(SCCHeader);
   if (_for_read) {
     // Read cache
-    _C_load_buffer = NEW_C_HEAP_ARRAY(char, load_size + DATA_ALIGNMENT, mtCode);
-    _load_buffer = align_up(_C_load_buffer, DATA_ALIGNMENT);
-    uint n = (uint)::read(fd, _load_buffer, load_size);
-    if (n != load_size) {
-      log_warning(scc, init)("Failed to read %d bytes at address " INTPTR_FORMAT " from Startup Code Cache file '%s'", load_size, p2i(_load_buffer), _cache_path);
+    if (MmapCachedCode) {
+      // Implementation note: the mapping is not read-only, because entries are updated in-place.
+      // However, this mapping is MAP_PRIVATE, which means the changes to mapping do not reflect
+      // in the backing file. TODO: Avoid in-place modifications, so we do not have to rely on this?
+      _load_buffer = os::map_memory(fd, _cache_path, 0, nullptr, load_size,
+                                   false,false, mtCode);
+    } else {
+      _C_load_buffer = NEW_C_HEAP_ARRAY(char, load_size + DATA_ALIGNMENT, mtCode);
+      _load_buffer = align_up(_C_load_buffer, DATA_ALIGNMENT);
+      uint n = (uint)::read(fd, _load_buffer, load_size);
+      if (n != load_size) {
+        _load_buffer = nullptr;
+      }
+    }
+    if (_load_buffer == nullptr) {
+      log_warning(scc, init)("Failed to read/mmap %d bytes at address " INTPTR_FORMAT " from Startup Code Cache file '%s'", load_size, p2i(_load_buffer), _cache_path);
       set_failed();
       return;
     }
-    log_info(scc, init)("Read %d bytes at address " INTPTR_FORMAT " from Startup Code Cache '%s'", load_size, p2i(_load_buffer), _cache_path);
+    log_info(scc, init)("Read/mmaped %d bytes at address " INTPTR_FORMAT " from Startup Code Cache '%s'", load_size, p2i(_load_buffer), _cache_path);
 
     _load_header = (SCCHeader*)addr(0);
     const char* scc_jvm_version = addr(_load_header->jvm_version_offset());
@@ -770,10 +779,17 @@ SCCache::~SCCache() {
     finish_write();
   }
   FREE_C_HEAP_ARRAY(char, _cache_path);
-  if (_C_load_buffer != nullptr) {
-    FREE_C_HEAP_ARRAY(char, _C_load_buffer);
-    _C_load_buffer = nullptr;
-    _load_buffer = nullptr;
+  if (MmapCachedCode) {
+    if (_load_buffer != nullptr) {
+      os::unmap_memory(_load_buffer, _load_size);
+      _load_buffer = nullptr;
+    }
+  } else {
+    if (_C_load_buffer != nullptr) {
+      FREE_C_HEAP_ARRAY(char, _C_load_buffer);
+      _C_load_buffer = nullptr;
+      _load_buffer = nullptr;
+    }
   }
   if (_C_store_buffer != nullptr) {
     FREE_C_HEAP_ARRAY(char, _C_store_buffer);
