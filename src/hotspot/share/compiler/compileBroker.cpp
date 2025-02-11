@@ -1760,9 +1760,10 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     }
     bool is_blocking = ReplayCompiles                                             ||
                        !directive->BackgroundCompilationOption                    ||
+                       (PreloadBlocking && (compile_reason == CompileTask::Reason_Preload)) ||
                        (compile_reason == CompileTask::Reason_Precompile)         ||
                        (compile_reason == CompileTask::Reason_PrecompileForPreload);
-	  compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
+    compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
   }
 
   // return requested nmethod
