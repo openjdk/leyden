@@ -464,16 +464,7 @@ SCCache::SCCache() {
   uint header_size = sizeof(SCCHeader);
   if (_for_read) {
     // Read cache
-    ReservedSpace rs = MemoryReserver::reserve(CDSAccess::get_cached_code_size(), mtCode);
-    if (!rs.is_reserved()) {
-      set_failed();
-      return;
-    }
-    if (!CDSAccess::map_cached_code(rs)) {
-      set_failed();
-      return;
-    }
-    _cached_code_directory = (CachedCodeDirectory*)rs.base();
+    _cached_code_directory = (CachedCodeDirectory*)CodeCache::map_cached_code();
     _cached_code_directory->runtime_init_internal();
 
     _load_size = _cached_code_directory->_aot_code_size;
