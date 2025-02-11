@@ -150,16 +150,6 @@ AC_DEFUN([FLAGS_SETUP_LDFLAGS_HELPER],
   LDFLAGS_CXX_JDK="$DEBUGLEVEL_LDFLAGS_JDK_ONLY"
   AC_SUBST(LDFLAGS_CXX_JDK)
   AC_SUBST(LDFLAGS_CXX_PARTIAL_LINKING)
-
-  # Setup static linking flags.
-  if test "x$OPENJDK_TARGET_OS" = xlinux; then
-    if test "x$TOOLCHAIN_TYPE" = xgcc; then
-      LDFLAGS_CXX_STATIC_JDK="-l:libstdc++.a"
-    elif test "x$TOOLCHAIN_TYPE" = xclang; then
-      LDFLAGS_CXX_STATIC_JDK="-l:libc++.a"
-    fi
-  fi
-  AC_SUBST(LDFLAGS_CXX_STATIC_JDK)
 ])
 
 ################################################################################
