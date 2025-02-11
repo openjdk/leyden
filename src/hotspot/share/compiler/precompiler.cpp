@@ -212,7 +212,7 @@ void Precompiler::compile_cached_code(TRAPS) {
       IntxFlagSetting fs1(PerMethodTrapLimit, 0);
       IntxFlagSetting fs2(PerMethodSpecTrapLimit, 0);
 
-      compile_cached_code(CompLevel_full_optimization, true, CompLevel_full_optimization, CHECK);
+      compile_cached_code(CompLevel_full_optimization, true /*for_preload*/, CompLevel_full_optimization, CHECK);
     }
 
     compile_cached_code(CompLevel_full_optimization, false, CompLevel_full_optimization, CHECK);
