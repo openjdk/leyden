@@ -207,7 +207,13 @@ void Precompiler::compile_cached_code(TRAPS) {
       }
     });
 
-    compile_cached_code(CompLevel_full_optimization, true, CompLevel_full_optimization, CHECK);
+    {
+      // For preload code, avoid any uncommon traps.
+      IntxFlagSetting fs1(PerMethodTrapLimit, 0);
+      IntxFlagSetting fs2(PerMethodSpecTrapLimit, 0);
+
+      compile_cached_code(CompLevel_full_optimization, true, CompLevel_full_optimization, CHECK);
+    }
 
     compile_cached_code(CompLevel_full_optimization, false, CompLevel_full_optimization, CHECK);
     compile_cached_code(CompLevel_full_profile,      false, CompLevel_limited_profile,   CHECK);
@@ -224,6 +230,10 @@ void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
     ResourceMark rm;
 
     {
+      // For preload code, avoid any uncommon traps.
+      IntxFlagSetting fs1(PerMethodTrapLimit, 0);
+      IntxFlagSetting fs2(PerMethodSpecTrapLimit, 0);
+
       PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, CompLevel_full_optimization, THREAD);
       TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);
