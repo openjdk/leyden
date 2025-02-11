@@ -1020,7 +1020,7 @@ void ciEnv::register_method(ciMethod* target,
     CodeCache::gc_on_allocation();
 
     // To prevent compile queue updates.
-    MutexLocker locker(THREAD, MethodCompileQueue_lock);
+    MutexLocker locker(THREAD, task()->compile_queue()->lock());
 
     // Prevent InstanceKlass::add_to_hierarchy from running
     // and invalidating our dependencies until we install this method.
