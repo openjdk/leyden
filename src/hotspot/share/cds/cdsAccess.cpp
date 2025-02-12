@@ -166,15 +166,6 @@ void CDSAccess::set_cached_code_size(size_t sz) {
   _cached_code_size = sz;
 }
 
-void CDSAccess::set_pointer(address* ptr, address value) {
-  ArchiveBuilder* builder = ArchiveBuilder::current();
-  if (value != nullptr && !builder->is_in_buffer_space(value)) {
-    value = builder->get_buffered_addr(value);
-  }
-  *ptr = value;
-  ArchivePtrMarker::mark_pointer(ptr);
-}
-
 bool CDSAccess::is_cached_code_region_empty() {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
   return ArchiveBuilder::current()->cc_region()->is_empty();
@@ -187,3 +178,12 @@ bool CDSAccess::map_cached_code(ReservedSpace rs) {
 }
 
 #endif // INCLUDE_CDS_JAVA_HEAP
+
+void CDSAccess::set_pointer(address* ptr, address value) {
+  ArchiveBuilder* builder = ArchiveBuilder::current();
+  if (value != nullptr && !builder->is_in_buffer_space(value)) {
+    value = builder->get_buffered_addr(value);
+  }
+  *ptr = value;
+  ArchivePtrMarker::mark_pointer(ptr);
+}

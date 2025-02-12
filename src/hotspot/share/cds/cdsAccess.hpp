@@ -56,7 +56,7 @@ public:
 
   static void test_heap_access_api() NOT_CDS_JAVA_HEAP_RETURN;
 
-  static void* allocate_from_code_cache(size_t size) NOT_CDS_RETURN_(nullptr);
+  static void* allocate_from_code_cache(size_t size) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 
   static size_t get_cached_code_size() NOT_CDS_JAVA_HEAP_RETURN_(0);
   static void set_cached_code_size(size_t sz) NOT_CDS_JAVA_HEAP_RETURN;
