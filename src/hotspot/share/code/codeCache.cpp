@@ -356,7 +356,6 @@ void CodeCache::initialize_heaps() {
   }
 }
 
-
 void* CodeCache::map_cached_code() {
   if (_cds_code_space.size() > 0 && CDSAccess::map_cached_code(_cds_code_space)) {
     return _cds_code_space.base();
