@@ -342,6 +342,7 @@ bool AOTClassInitializer::is_runtime_setup_required(InstanceKlass* ik) {
   return ik == vmClasses::Class_klass() ||
          ik == vmClasses::internal_Unsafe_klass() ||
          ik == vmClasses::ConcurrentHashMap_klass() ||
+         ik == vmClasses::Reference_klass() ||
          ik->name()->equals("java/net/URI") ||
          ik->name()->equals("java/lang/module/ModuleDescriptor");
 }

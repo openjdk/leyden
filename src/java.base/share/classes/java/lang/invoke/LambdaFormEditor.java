@@ -38,7 +38,6 @@ import static java.lang.invoke.LambdaForm.BasicType.*;
 import static java.lang.invoke.MethodHandleImpl.Intrinsic;
 import static java.lang.invoke.MethodHandleImpl.NF_loop;
 import static java.lang.invoke.MethodHandleImpl.makeIntrinsic;
-import static java.lang.invoke.MethodHandleNatives.USE_SOFT_CACHE;
 
 /** Transforms on LFs.
  *  A lambda-form editor can derive new LFs from its base LF.
@@ -91,16 +90,12 @@ class LambdaFormEditor {
      * Transforms.
      */
     private static final class Transform {
-        final Object cache;
+        final SoftReference<LambdaForm> cache;
         final long packedBytes;
         final byte[] fullBytes;
 
         private Transform(long packedBytes, byte[] fullBytes, LambdaForm result) {
-            if (USE_SOFT_CACHE) {
-                cache = new SoftReference<LambdaForm>(result);
-            } else {
-                cache = result;
-            }
+            cache = new SoftReference<LambdaForm>(result);
             this.packedBytes = packedBytes;
             this.fullBytes = fullBytes;
         }
@@ -144,11 +139,7 @@ class LambdaFormEditor {
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         public LambdaForm get() {
-            if (cache instanceof LambdaForm lf) {
-                return lf;
-            } else {
-                return ((SoftReference<LambdaForm>)cache).get();
-            }
+            return cache.get();
         }
     }
 

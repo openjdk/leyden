@@ -1021,19 +1021,16 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     if (CDSConfig::is_dumping_invokedynamic()) {
       // This assert means that the MethodType and MethodTypeForm tables won't be
       // updated concurrently when we are saving their contents into a side table.
+      // Now that we don't make a side table, is this needed for the remaining call
+      // to resetArchivedStates
       assert(CDSConfig::allow_only_single_java_thread(), "Required");
-
-      JavaValue result(T_VOID);
-      JavaCalls::call_static(&result, vmClasses::MethodType_klass(),
-                             vmSymbols::createArchivedObjects(),
-                             vmSymbols::void_method_signature(),
-                             CHECK);
 
       // java.lang.Class::reflectionFactory cannot be archived yet. We set this field
       // to null, and it will be initialized again at runtime.
       log_debug(cds)("Resetting Class::reflectionFactory");
       TempNewSymbol method_name = SymbolTable::new_symbol("resetArchivedStates");
       Symbol* method_sig = vmSymbols::void_method_signature();
+      JavaValue result(T_VOID);
       JavaCalls::call_static(&result, vmClasses::Class_klass(),
                              method_name, method_sig, CHECK);
 
