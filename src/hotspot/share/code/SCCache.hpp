@@ -472,6 +472,8 @@ public:
   bool failed() const { return _failed; }
   void set_failed()   { _failed = true; }
 
+  static uint max_aot_code_size();
+
   uint load_size() const { return _load_size; }
   uint write_position() const { return _write_position; }
 

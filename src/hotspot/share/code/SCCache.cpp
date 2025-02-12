@@ -124,6 +124,11 @@ static void exit_vm_on_store_failure() {
     vm_abort(false);
   }
 }
+
+uint SCCache::max_aot_code_size() {
+  return (uint)CachedCodeMaxSize;
+}
+
 void SCCache::initialize() {
   if (LoadCachedCode && !UseSharedSpaces) {
     return;
@@ -498,11 +503,11 @@ SCCache::SCCache() {
   if (_for_write) {
     _gen_preload_code = _use_meta_ptrs && (ClassInitBarrierMode > 0);
 
-    _C_store_buffer = NEW_C_HEAP_ARRAY(char, CachedCodeMaxSize + DATA_ALIGNMENT, mtCode);
+    _C_store_buffer = NEW_C_HEAP_ARRAY(char, max_aot_code_size() + DATA_ALIGNMENT, mtCode);
     _store_buffer = align_up(_C_store_buffer, DATA_ALIGNMENT);
     // Entries allocated at the end of buffer in reverse (as on stack).
-    _store_entries = (SCCEntry*)align_up(_C_store_buffer + CachedCodeMaxSize, DATA_ALIGNMENT);
-    log_info(scc, init)("Allocated store buffer at address " INTPTR_FORMAT " of size %d", p2i(_store_buffer), CachedCodeMaxSize);
+    _store_entries = (SCCEntry*)align_up(_C_store_buffer + max_aot_code_size(), DATA_ALIGNMENT);
+    log_info(scc, init)("Allocated store buffer at address " INTPTR_FORMAT " of size " UINT32_FORMAT " bytes", p2i(_store_buffer), max_aot_code_size());
   }
   _table = new SCAddressTable();
 }
@@ -1038,8 +1043,8 @@ bool SCCache::finish_write() {
     uint total_size = _write_position + _load_size + header_size +
                      code_alignment + search_size + preload_entries_size + entries_size;
 
-    assert(total_size < ReservedCodeCacheSize, "Cached code region size (" UINT32_FORMAT " bytes) in AOT Cache is less than the required size (" UINT32_FORMAT " bytes).",
-           total_size, (uint)ReservedCodeCacheSize);
+    assert(total_size < max_aot_code_size(), "Cached code region size (" UINT32_FORMAT " bytes) in AOT Cache is less than the required size (" UINT32_FORMAT " bytes).",
+           total_size, max_aot_code_size());
 
     // Create ordered search table for entries [id, index];
     uint* search = NEW_C_HEAP_ARRAY(uint, search_count, mtCode);
