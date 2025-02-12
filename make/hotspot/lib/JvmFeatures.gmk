@@ -123,6 +123,8 @@ ifneq ($(call check-jvm-feature, cds), true)
   JVM_EXCLUDE_FILES += \
       classLoaderDataShared.cpp \
       classLoaderExt.cpp \
+      precompiler.cpp \
+      SCCache.cpp \
       systemDictionaryShared.cpp
   JVM_EXCLUDE_PATTERNS += cds/
 endif
