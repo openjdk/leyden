@@ -478,12 +478,12 @@ public:
   void load_strings();
   int store_strings();
 
-  static void init_extrs_table();
-  static void init_early_stubs_table();
-  static void init_shared_blobs_table();
-  static void init_stubs_table();
-  static void init_opto_table();
-  static void init_c1_table();
+  static void init_extrs_table() NOT_CDS_RETURN;
+  static void init_early_stubs_table() NOT_CDS_RETURN;
+  static void init_shared_blobs_table() NOT_CDS_RETURN;
+  static void init_stubs_table() NOT_CDS_RETURN;
+  static void init_opto_table() NOT_CDS_RETURN;
+  static void init_c1_table() NOT_CDS_RETURN;
   address address_for_id(int id) const { return _table->address_for_id(id); }
 
   bool for_read()  const { return _for_read  && !_failed; }
@@ -507,8 +507,8 @@ public:
 
   bool finish_write();
 
-  static bool load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start);
-  static bool store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start);
+  static bool load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) NOT_CDS_RETURN_(false);
+  static bool store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) NOT_CDS_RETURN_(false);
 
   bool write_klass(Klass* klass);
   bool write_method(Method* method);
@@ -528,13 +528,13 @@ public:
   bool write_metadata(Metadata* m);
   bool write_metadata(OopRecorder* oop_recorder);
 
-  static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset);
-  static bool store_exception_blob(CodeBuffer* buffer, int pc_offset);
+  static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset) NOT_CDS_RETURN_(false);
+  static bool store_exception_blob(CodeBuffer* buffer, int pc_offset) NOT_CDS_RETURN_(false);
 
-  static bool load_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]);
-  static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]);
+  static bool load_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
+  static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
 
-  static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level);
+  static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
 
   static SCCEntry* store_nmethod(const methodHandle& method,
                      int compile_id,
@@ -555,7 +555,7 @@ public:
                      bool has_unsafe_access,
                      bool has_wide_vectors,
                      bool has_monitors,
-                     bool has_scoped_access);
+                     bool has_scoped_access) NOT_CDS_RETURN_(nullptr);
 
   static uint store_entries_cnt() {
     if (is_on_for_write()) {
@@ -578,17 +578,17 @@ private:
   }
 public:
   static SCCache* cache() { return _cache; }
-  static void initialize();
-  static void init2();
-  static void close();
-  static bool is_on() { return _cache != nullptr && !_cache->closing(); }
-  static bool is_C3_on();
-  static bool is_code_load_thread_on();
+  static void initialize() NOT_CDS_RETURN;
+  static void init2() NOT_CDS_RETURN;
+  static void close() NOT_CDS_RETURN;
+  static bool is_on() CDS_ONLY({ return _cache != nullptr && !_cache->closing(); }) NOT_CDS_RETURN_(false);
+  static bool is_C3_on() NOT_CDS_RETURN_(false);
+  static bool is_code_load_thread_on() NOT_CDS_RETURN_(false);
   static bool is_on_for_read()  { return is_on() && _cache->for_read(); }
   static bool is_on_for_write() { return is_on() && _cache->for_write(); }
   static bool gen_preload_code(ciMethod* m, int entry_bci);
-  static bool allow_const_field(ciConstant& value);
-  static void invalidate(SCCEntry* entry);
+  static bool allow_const_field(ciConstant& value) NOT_CDS_RETURN_(false);
+  static void invalidate(SCCEntry* entry) NOT_CDS_RETURN;
   static bool is_loaded(SCCEntry* entry);
   static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level);
   static void preload_code(JavaThread* thread);
@@ -615,12 +615,12 @@ public:
     }
   }
 
-  static void add_C_string(const char* str);
+  static void add_C_string(const char* str) NOT_CDS_RETURN;
 
-  static void print_on(outputStream* st);
-  static void print_statistics_on(outputStream* st);
-  static void print_timers_on(outputStream* st);
-  static void print_unused_entries_on(outputStream* st);
+  static void print_on(outputStream* st) NOT_CDS_RETURN;
+  static void print_statistics_on(outputStream* st) NOT_CDS_RETURN;
+  static void print_timers_on(outputStream* st) NOT_CDS_RETURN;
+  static void print_unused_entries_on(outputStream* st) NOT_CDS_RETURN;
 };
 
 // code cache internal runtime constants area used by AOT code

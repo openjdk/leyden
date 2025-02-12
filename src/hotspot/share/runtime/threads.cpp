@@ -865,7 +865,6 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     java_lang_Throwable::print(PENDING_EXCEPTION, tty);
     vm_exit_during_initialization("ClassLoader::initialize_module_path() failed unexpectedly");
   }
-#endif
 
   if (PrecompileCode) {
     Precompiler::compile_cached_code(CHECK_JNI_ERR);
@@ -875,6 +874,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
       vm_direct_exit(0, "Code precompiation is over");
     }
   }
+#endif
 
 #if defined(COMPILER2)
   // Pre-load cached compiled methods
