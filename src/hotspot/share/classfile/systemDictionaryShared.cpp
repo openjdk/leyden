@@ -338,7 +338,6 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     }
   }
 
- if (!CDSConfig::preserve_all_dumptime_verification_states(k)) {
   if (!k->is_linked()) {
     if (has_class_failed_verification(k)) {
       return warn_excluded(k, "Failed verification");
@@ -351,7 +350,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
       return warn_excluded(k, "Unlinked class not supported by AOTClassLinking");
     }
   } else {
-    if (!k->can_be_verified_at_dumptime()) {
+    if (!k->can_be_verified_at_dumptime() && !CDSConfig::preserve_all_dumptime_verification_states(k)) {
       // We have an old class that has been linked (e.g., it's been executed during
       // dump time). This class has been verified using the old verifier, which
       // doesn't save the verification constraints, so check_verification_constraints()
@@ -361,7 +360,6 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
       return warn_excluded(k, "Old class has been linked");
     }
   }
- }
 
   InstanceKlass* super = k->java_super();
   if (super != nullptr && check_for_exclusion(super, nullptr)) {

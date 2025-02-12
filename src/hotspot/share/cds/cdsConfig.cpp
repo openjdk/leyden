@@ -589,8 +589,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO_IF_DEFAULT(ArchivePackages, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveProtectionDomains, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
-
-    FLAG_SET_ERGO(ArchiveLoaderLookupCache, false);  // FIXME -- leyden+JEP483 merge
   } else {
     // All of these *might* depend on AOTClassLinking. Better be safe than sorry.
     // TODO: more fine-grained handling.
