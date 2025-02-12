@@ -464,7 +464,7 @@ SCCache::SCCache() {
     // Read cache
     ReservedSpace rs = MemoryReserver::reserve(CDSAccess::get_cached_code_size(), mtCode);
     if (!rs.is_reserved()) {
-      log_warning(scc, init)("Failed to reserved %d bytes of memory for mapping cached code region in AOT Cache", CDSAccess::get_cached_code_size()
+      log_warning(scc, init)("Failed to reserved %u bytes of memory for mapping cached code region in AOT Cache", (uint)CDSAccess::get_cached_code_size());
       set_failed();
       return;
     }
