@@ -385,6 +385,7 @@ private:
   const char* _cache_path;
   char*       _load_buffer;    // Aligned buffer for loading cached code
   char*       _store_buffer;   // Aligned buffer for storing cached code
+  char*       _C_load_buffer;  // Original unaligned buffer
   char*       _C_store_buffer; // Original unaligned buffer
 
   uint        _write_position; // Position in _store_buffer
