@@ -456,9 +456,6 @@
   product(uint, CachedCodeMaxSize, 10*M,                                    \
           "Buffer size in bytes for code caching")                          \
                                                                             \
-  product(bool, MmapCachedCode, NOT_WINDOWS(true) WINDOWS_ONLY(false),      \
-          "Mmap cached code file instead of reading it fully at startup.")  \
-                                                                            \
   product(bool, VerifyCachedCode, false, DIAGNOSTIC,                        \
           "Load compiled code but not publish")                             \
                                                                             \
