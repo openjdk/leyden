@@ -126,7 +126,6 @@ final class MethodTypeForm {
             return prev;
         }
         methodHandles[which] = new SoftReference<>(mh);
-
         return mh;
     }
 
@@ -155,7 +154,6 @@ final class MethodTypeForm {
      * This MTF will stand for that type and all un-erased variations.
      * Eagerly compute some basic properties of the type, common to all variations.
      */
-    @SuppressWarnings({"rawtypes", "unchecked"})
     protected MethodTypeForm(MethodType erasedType) {
         this.erasedType = erasedType;
 

@@ -137,7 +137,6 @@ class LambdaFormEditor {
             return buf.toString();
         }
 
-        @SuppressWarnings({"rawtypes", "unchecked"})
         public LambdaForm get() {
             return cache.get();
         }
