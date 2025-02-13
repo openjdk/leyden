@@ -999,12 +999,15 @@ void SCCache::invalidate_entry(SCCEntry* entry) {
   }
 }
 
-extern "C" {
-  static int uint_cmp(const void *i, const void *j) {
-    uint a = *(uint *)i;
-    uint b = *(uint *)j;
-    return a > b ? 1 : a < b ? -1 : 0;
-  }
+static int uint_cmp(const void *i, const void *j) {
+  uint a = *(uint *)i;
+  uint b = *(uint *)j;
+  return a > b ? 1 : a < b ? -1 : 0;
+}
+
+static void log_counts_on_exit(const char* kind, uint counts[2]) {
+  int total = counts[0]+counts[1];
+  log_info(scc, exit)("  %s: total=%u(old=%u+new=%u)", kind, total, counts[0], counts[1]);
 }
 
 bool SCCache::finish_write() {
@@ -1054,14 +1057,15 @@ bool SCCache::finish_write() {
     char* current = start + header_size; // Skip header
 
     SCCEntry* entries_address = _store_entries; // Pointer to latest entry
-    uint not_entrant_nb = 0;
-    uint stubs_count = 0;
-    uint adapters_count = 0;
-    uint shared_blobs_count = 0;
-    uint c1_blobs_count = 0;
-    uint opto_blobs_count = 0;
-    uint total_blobs_count = 0;
+
+    // Arrays to store counts of each kind.
+    uint not_entrant_nb[2] = {0};
+    uint stubs_count[2] = {0};
+    uint adapters_count[2] = {0};
+    uint blobs_count[2] = {0};
+    uint nmethods_count[2] = {0};
     uint max_size = 0;
+
     // Add old entries first
     if (_for_read && (_load_header != nullptr)) {
       for(uint i = 0; i < load_count; i++) {
@@ -1070,7 +1074,7 @@ bool SCCache::finish_write() {
         }
         if (_load_entries[i].not_entrant()) {
           log_info(scc, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
-          not_entrant_nb++;
+          not_entrant_nb[0]++;
           if (_load_entries[i].for_preload()) {
             // Skip not entrant preload code:
             // we can't pre-load code which may have failing dependencies.
@@ -1080,21 +1084,15 @@ bool SCCache::finish_write() {
         } else if (_load_entries[i].for_preload() && _load_entries[i].method() != nullptr) {
           // record entrant first version code for pre-loading
           preload_entries[preload_entries_cnt++] = entries_count;
-        } else if (entries_address[i].kind() == SCCEntry::Adapter) {
-          adapters_count++;
-        } else if (entries_address[i].kind() == SCCEntry::Stub) {
-          stubs_count++;
-        } else if (entries_address[i].kind() == SCCEntry::Blob) {
-          total_blobs_count++;
-          if (entries_address[i].comp_level() == CompLevel_none) {
-            shared_blobs_count++;
-          } else if ((entries_address[i].comp_level() == CompLevel_simple) ||
-                     (entries_address[i].comp_level() == CompLevel_limited_profile)) {
-            c1_blobs_count++;
-          } else {
-            assert(entries_address[i].comp_level() == CompLevel_full_optimization, "must be!");
-            opto_blobs_count++;
-          }
+        }
+        if (_load_entries[i].kind() == SCCEntry::Adapter) {
+          adapters_count[0]++;
+        } else if (_load_entries[i].kind() == SCCEntry::Stub) {
+          stubs_count[0]++;
+        } else if (_load_entries[i].kind() == SCCEntry::Blob) {
+          blobs_count[0]++;
+        } else if (_load_entries[i].kind() == SCCEntry::Code) {
+          nmethods_count[0]++;
         }
         {
           uint size = align_up(_load_entries[i].size(), DATA_ALIGNMENT);
@@ -1124,7 +1122,7 @@ bool SCCache::finish_write() {
       }
       if (entries_address[i].not_entrant()) {
         log_info(scc, exit)("Not entrant new entry comp_id: %d, comp_level: %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s", entries_address[i].comp_id(), entries_address[i].comp_level(), entries_address[i].decompile(), entries_address[i].id(), (entries_address[i].has_clinit_barriers() ? ", has clinit barriers" : ""));
-        not_entrant_nb++;
+        not_entrant_nb[1]++;
         if (entries_address[i].for_preload()) {
           // Skip not entrant preload code:
           // we can't pre-load code which may have failing dependencies.
@@ -1134,6 +1132,15 @@ bool SCCache::finish_write() {
       } else if (entries_address[i].for_preload() && entries_address[i].method() != nullptr) {
         // record entrant first version code for pre-loading
         preload_entries[preload_entries_cnt++] = entries_count;
+      }
+      if (entries_address[i].kind() == SCCEntry::Adapter) {
+	adapters_count[1]++;
+      } else if (entries_address[i].kind() == SCCEntry::Stub) {
+	stubs_count[1]++;
+      } else if (entries_address[i].kind() == SCCEntry::Blob) {
+	blobs_count[1]++;
+      } else if (entries_address[i].kind() == SCCEntry::Code) {
+        nmethods_count[1]++;
       }
       {
         entries_address[i].set_next(nullptr); // clear pointers before storing data
@@ -1192,13 +1199,13 @@ bool SCCache::finish_write() {
     entries_size = entries_count * sizeof(SCCEntry); // New size
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
     current += entries_size;
-    log_info(scc, exit)("Wrote %d SCCEntry entries (%d were not entrant, %d max size) to AOT Code Cache", entries_count, not_entrant_nb, max_size);
-    log_info(scc, exit)("  Stubs: total=%d", stubs_count);
-    log_info(scc, exit)("  Adapters: total=%d", adapters_count);
-    log_info(scc, exit)("  Shared Blobs: total=%d",shared_blobs_count);
-    log_info(scc, exit)("  C1 Blobs: total=%d", c1_blobs_count);
-    log_info(scc, exit)("  Opto Blobs: total=%d", opto_blobs_count);
-    log_info(scc, exit)("  All Blobs: total=%d", total_blobs_count);
+    log_info(scc, exit)("Wrote %d SCCEntry entries (%u were not entrant(old=%u+new=%u), %u max size) to AOT Code Cache",
+                        entries_count, not_entrant_nb[0]+not_entrant_nb[1], not_entrant_nb[0], not_entrant_nb[1], max_size);
+    log_counts_on_exit("Adapters", adapters_count);
+    log_counts_on_exit("Stubs", stubs_count);
+    log_counts_on_exit("Blobs", blobs_count);
+    log_counts_on_exit("Nmethods", nmethods_count);
+
     uint size = (current - start);
     assert(size <= total_size, "%d > %d", size , total_size);
 
