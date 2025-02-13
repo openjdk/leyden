@@ -164,7 +164,7 @@ void SCCache::init2() {
     address byte_map_base = ci_card_table_address_as<address>();
     if (is_on_for_write() && !external_word_Relocation::can_be_relocated(byte_map_base)) {
       // Bail out since we can't encode card table base address with relocation
-      log_warning(scc, init)("Can't create Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
+      log_warning(scc, init)("Can't create AOT Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
       close();
       exit_vm_on_load_failure();
     }
