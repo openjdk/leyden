@@ -406,7 +406,7 @@ public:
   static CachedCodeDirectory* create();
 };
 
-// Skeleton code for including cached code in CDS:
+// Storing AOT code in the cached code region of AOT Cache:
 //
 // [1] Use CachedCodeDirectory to keep track of all of data related to cached code.
 //     E.g., you can build a hashtable to record what methods have been archived.
