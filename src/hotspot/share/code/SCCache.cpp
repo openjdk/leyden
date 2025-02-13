@@ -1043,7 +1043,7 @@ bool SCCache::finish_write() {
     uint total_size = _write_position + _load_size + header_size +
                      code_alignment + search_size + preload_entries_size + entries_size;
 
-    assert(total_size < max_aot_code_size(), "Cached code region size (" UINT32_FORMAT " bytes) in AOT Cache is less than the required size (" UINT32_FORMAT " bytes).",
+    assert(total_size < max_aot_code_size(), "Cached code region size (" UINT32_FORMAT " bytes) in AOT Code Cache is less than the required size (" UINT32_FORMAT " bytes).",
            total_size, max_aot_code_size());
 
     // Create ordered search table for entries [id, index];
