@@ -152,6 +152,8 @@ void CDSAccess::test_heap_access_api() {
   test_cds_heap_access_api_for_object(Universe::null_ptr_exception_instance());
 }
 
+#endif // INCLUDE_CDS_JAVA_HEAP
+
 // new workflow only
 void* CDSAccess::allocate_from_code_cache(size_t size) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
@@ -176,8 +178,6 @@ bool CDSAccess::map_cached_code(ReservedSpace rs) {
   assert(UseSharedSpaces && static_mapinfo != nullptr, "must be");
   return static_mapinfo->map_cached_code_region(rs);
 }
-
-#endif // INCLUDE_CDS_JAVA_HEAP
 
 void CDSAccess::set_pointer(address* ptr, address value) {
   ArchiveBuilder* builder = ArchiveBuilder::current();
