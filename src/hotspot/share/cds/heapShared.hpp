@@ -463,8 +463,8 @@ class CachedCodeDirectoryInternal {
   int _permanent_oop_count;
   int* _permanent_oop_offsets; // offset of each permanent object from the bottom of the archived heap
 public:
-  void dumptime_init_internal();
-  void runtime_init_internal();
+  void dumptime_init_internal() NOT_CDS_JAVA_HEAP_RETURN;
+  void runtime_init_internal() NOT_CDS_JAVA_HEAP_RETURN;
 };
 
 #if INCLUDE_CDS_JAVA_HEAP

@@ -223,8 +223,6 @@ void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
   if (TrainingData::have_data()) {
     ResourceMark rm;
 
-    SCCache::new_workflow_start_writing_cache();
-
     {
       PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, CompLevel_full_optimization, THREAD);
       TrainingData::iterate(pi);
@@ -240,7 +238,5 @@ void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
       TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);
     }
-
-    SCCache::new_workflow_end_writing_cache();
   }
 }

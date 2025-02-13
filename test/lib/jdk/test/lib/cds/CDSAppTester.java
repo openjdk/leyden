@@ -52,7 +52,6 @@ abstract public class CDSAppTester {
     private final String cdsFileLog;
     private final String cdsFilePreImage;        // new workflow: -XX:CacheDataStore=<foo>.cds
     private final String cdsFilePreImageLog;
-    private final String aotFile;        // new workflow = cdsFile + ".code"
     private final String tempBaseArchiveFile;
     private int numProductionRuns = 0;
 
@@ -72,7 +71,6 @@ abstract public class CDSAppTester {
         cdsFileLog = cdsFile + ".log";
         cdsFilePreImage = cdsFile + ".preimage";
         cdsFilePreImageLog = cdsFilePreImage + ".log";
-        aotFile = cdsFile + ".code";
         tempBaseArchiveFile = name() + ".temp-base.jsa";
     }
 
@@ -324,7 +322,7 @@ abstract public class CDSAppTester {
                                                    "-cp", classpath(runMode),
                                                    trainingLog(cdsFileLog));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
-        return executeAndCheck(cmdLine, runMode, cdsFile, aotFile, cdsFileLog);
+        return executeAndCheck(cmdLine, runMode, cdsFile, cdsFileLog);
     }
 
     private OutputAnalyzer productionRun() throws Exception {

@@ -51,6 +51,7 @@
 #include "gc/g1/g1BarrierSetRuntime.hpp"
 #include "gc/shared/gcConfig.hpp"
 #include "logging/log.hpp"
+#include "memory/memoryReserver.hpp"
 #include "memory/universe.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/method.inline.hpp"
@@ -111,7 +112,7 @@ static bool enable_timers() {
 static void exit_vm_on_load_failure() {
   // Treat SCC warnings as error when RequireSharedSpaces is on.
   if (RequireSharedSpaces) {
-    vm_exit_during_initialization("Unable to used startup cached code.", nullptr);
+    vm_exit_during_initialization("Unable to use AOT Code Cache.", nullptr);
   }
 }
 
@@ -123,6 +124,11 @@ static void exit_vm_on_store_failure() {
     vm_abort(false);
   }
 }
+
+uint SCCache::max_aot_code_size() {
+  return (uint)CachedCodeMaxSize;
+}
+
 void SCCache::initialize() {
   if (LoadCachedCode && !UseSharedSpaces) {
     return;
@@ -136,12 +142,7 @@ void SCCache::initialize() {
     FLAG_SET_DEFAULT(ClassInitBarrierMode, 0);
   }
   if ((LoadCachedCode || StoreCachedCode) && CachedCodeFile != nullptr) {
-    const int len = (int)strlen(CachedCodeFile);
-    // cache file path
-    char* path  = NEW_C_HEAP_ARRAY(char, len+1, mtCode);
-    memcpy(path, CachedCodeFile, len);
-    path[len] = '\0';
-    if (!open_cache(path)) {
+    if (!open_cache()) {
       exit_vm_on_load_failure();
       return;
     }
@@ -163,7 +164,7 @@ void SCCache::init2() {
     address byte_map_base = ci_card_table_address_as<address>();
     if (is_on_for_write() && !external_word_Relocation::can_be_relocated(byte_map_base)) {
       // Bail out since we can't encode card table base address with relocation
-      log_warning(scc, init)("Can't create Startup Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
+      log_warning(scc, init)("Can't create AOT Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
       close();
       exit_vm_on_load_failure();
     }
@@ -239,7 +240,7 @@ void SCCache::close() {
     if (SCCache::is_on_for_read()) {
       LogStreamHandle(Info, init) log;
       if (log.is_enabled()) {
-        log.print_cr("Startup Code Cache statistics (when closed): ");
+        log.print_cr("AOT Code Cache statistics (when closed): ");
         SCCache::print_statistics_on(&log);
         log.cr();
         SCCache::print_timers_on(&log);
@@ -380,62 +381,32 @@ bool SCCache::allow_const_field(ciConstant& value) {
         ;
 }
 
-bool SCCache::open_cache(const char* cache_path) {
-  if (LoadCachedCode) {
-    log_info(scc)("Trying to load Startup Code Cache '%s'", cache_path);
-    struct stat st;
-    if (os::stat(cache_path, &st) != 0) {
-      log_warning(scc, init)("Specified Startup Code Cache file not found '%s'", cache_path);
-      return false;
-    } else if ((st.st_mode & S_IFMT) != S_IFREG) {
-      log_warning(scc, init)("Specified Startup Code Cache is not file '%s'", cache_path);
-      return false;
-    }
-    int fd = os::open(cache_path, O_RDONLY | O_BINARY, 0);
-    if (fd < 0) {
-      if (errno == ENOENT) {
-        log_warning(scc, init)("Specified Startup Code Cache file not found '%s'", cache_path);
-      } else {
-        log_warning(scc, init)("Failed to open Startup Code Cache file '%s': (%s)", cache_path, os::strerror(errno));
-      }
-      return false;
-    } else {
-      log_info(scc, init)("Opened for read Startup Code Cache '%s'", cache_path);
-    }
-    SCCache* cache = new SCCache(cache_path, fd, (uint)st.st_size);
-    bool failed = cache->failed();
-    if (::close(fd) < 0) {
-      log_warning(scc)("Failed to close for read Startup Code Cache file '%s'", cache_path);
-      failed = true;
-    }
-    if (failed) {
-      delete cache;
-      _cache = nullptr;
-      return false;
-    }
-    _cache = cache;
+
+bool SCCache::open_cache() {
+  SCCache* cache = new SCCache();
+  if (cache->failed()) {
+    delete cache;
+    _cache = nullptr;
+    return false;
   }
-  if (_cache == nullptr && StoreCachedCode) {
-    SCCache* cache = new SCCache(cache_path, -1 /* fd */, 0 /* size */);
-    if (cache->failed()) {
-      delete cache;
-      _cache = nullptr;
-      return false;
-    }
-    _cache = cache;
-  }
+  _cache = cache;
   return true;
 }
 
 class CachedCodeDirectory : public CachedCodeDirectoryInternal {
 public:
-  int _some_number;
-  InstanceKlass* _some_klass;
-  size_t _my_data_length;
-  void* _my_data;
+  uint _aot_code_size;
+  char* _aot_code_data;
+
+  void set_aot_code_data(uint size, char* aot_data) {
+    _aot_code_size = size;
+    CDSAccess::set_pointer(&_aot_code_data, aot_data);
+  }
+
+  static CachedCodeDirectory* create();
 };
 
-// Skeleton code for including cached code in CDS:
+// Storing AOT code in the cached code region of AOT Cache:
 //
 // [1] Use CachedCodeDirectory to keep track of all of data related to cached code.
 //     E.g., you can build a hashtable to record what methods have been archived.
@@ -452,80 +423,26 @@ public:
 //     Such pointers must be stored using CDSAccess::set_pointer()
 //
 // The buffers allocated by CDSAccess::allocate_from_code_cache() are in a contiguous region. At runtime, this
-// region is mapped to the beginning of the CodeCache (see _cds_code_space in codeCache.cpp). All the pointers
-// in this buffer are relocated as necessary (e.g., to account for the runtime location of the CodeCache).
+// region is mapped to the process address space. All the pointers in this buffer are relocated as necessary
+// (e.g., to account for the runtime location of the CodeCache).
 //
-// Example:
-//
-// # make sure hw.cds doesn't exist, so that it's regenerated (1.5 step training)
-// $ rm -f hw.cds; java -Xlog:cds,scc::uptime,tags,pid -XX:CacheDataStore=hw.cds -cp ~/tmp/HelloWorld.jar HelloWorld
-//
-// # After training is finish, hw.cds should contain a CachedCodeDirectory. You can see the effect of relocation
-// # from the [scc] log.
-// $ java -Xlog:cds,scc -XX:CacheDataStore=hw.cds -cp ~/tmp/HelloWorld.jar HelloWorld
-// [0.016s][info][scc] new workflow: cached code mapped at 0x7fef97ebc000
-// [0.016s][info][scc] _cached_code_directory->_some_klass     = 0x800009ca8 (java.lang.String)
-// [0.016s][info][scc] _cached_code_directory->_some_number    = 0
-// [0.016s][info][scc] _cached_code_directory->_my_data_length = 0
-// [0.016s][info][scc] _cached_code_directory->_my_data        = 0x7fef97ebc020 (32 bytes offset from base)
-//
-// The 1.5 step training may be hard to debug. If you want to run in a debugger, run the above training step
-// with an additional "-XX:+CDSManualFinalImage" command-line argument.
-
 // This is always at the very beginning of the mmaped CDS "cc" (cached code) region
 static CachedCodeDirectory* _cached_code_directory = nullptr;
 
-#if INCLUDE_CDS_JAVA_HEAP
-void SCCache::new_workflow_start_writing_cache() {
+CachedCodeDirectory* CachedCodeDirectory::create() {
+  assert(CDSAccess::is_cached_code_region_empty(), "must be");
   CachedCodeDirectory* dir = (CachedCodeDirectory*)CDSAccess::allocate_from_code_cache(sizeof(CachedCodeDirectory));
-  _cached_code_directory = dir;
-
-  CDSAccess::set_pointer(&dir->_some_klass, vmClasses::String_klass());
-
-  size_t n = 120;
-  void* d = (void*)CDSAccess::allocate_from_code_cache(n);
-  CDSAccess::set_pointer(&dir->_my_data, d);
+  dir->dumptime_init_internal();
+  return dir;
 }
-
-void SCCache::new_workflow_end_writing_cache() {
-  _cached_code_directory->dumptime_init_internal();
-}
-
-void SCCache::new_workflow_load_cache() {
-  void* ptr = CodeCache::map_cached_code();
-  if (ptr != nullptr) {
-    ResourceMark rm;
-    _cached_code_directory = (CachedCodeDirectory*)ptr;
-
-    // CDS uses this to implement CDSAccess::get_archived_object(k)
-    _cached_code_directory->runtime_init_internal();
-
-    // At this point:
-    // - CodeCache::initialize_heaps() has finished.
-    // - CDS archive is fully mapped ("metadata", "heap" and "cached_code" regions are mapped)
-    // - All pointers in the mapped CDS regions are relocated.
-    // - CDSAccess::get_archived_object() works.
-
-    // Data used by AOT compiler
-    InstanceKlass* k = _cached_code_directory->_some_klass;
-    log_info(scc)("new workflow: cached code mapped at %p", ptr);
-    log_info(scc)("_cached_code_directory->_some_klass     = %p (%s)", k, k->external_name());
-    log_info(scc)("_cached_code_directory->_some_number    = %d", _cached_code_directory->_some_number);
-    log_info(scc)("_cached_code_directory->_my_data_length = %zu", _cached_code_directory->_my_data_length);
-    log_info(scc)("_cached_code_directory->_my_data        = %p (%zu bytes offset from base)", _cached_code_directory->_my_data,
-                  pointer_delta((address)_cached_code_directory->_my_data, (address)_cached_code_directory, 1));
-  }
-}
-#endif // INCLUDE_CDS_JAVA_HEAP
 
 #define DATA_ALIGNMENT HeapWordSize
 
-SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
+SCCache::SCCache() {
   _load_header = nullptr;
-  _cache_path = cache_path;
   _for_read  = LoadCachedCode;
   _for_write = StoreCachedCode;
-  _load_size = load_size;
+  _load_size = 0;
   _store_size = 0;
   _write_position = 0;
   _closing  = false;
@@ -537,7 +454,6 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
   _C_strings_buf  = nullptr;
   _load_buffer = nullptr;
   _store_buffer = nullptr;
-  _C_load_buffer = nullptr;
   _C_store_buffer = nullptr;
   _store_entries_cnt = 0;
   _gen_preload_code = false;
@@ -551,39 +467,31 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
 
   if (_for_read) {
     // Read cache
-    if (MmapCachedCode) {
-      // Implementation note: the mapping is not read-only, because entries are updated in-place.
-      // However, this mapping is MAP_PRIVATE, which means the changes to mapping do not reflect
-      // in the backing file. TODO: Avoid in-place modifications, so we do not have to rely on this?
-      _load_buffer = os::map_memory(fd, _cache_path, 0, nullptr, load_size,
-                                   false,false, mtCode);
-    } else {
-      _C_load_buffer = NEW_C_HEAP_ARRAY(char, load_size + DATA_ALIGNMENT, mtCode);
-      _load_buffer = align_up(_C_load_buffer, DATA_ALIGNMENT);
-      uint n = (uint)::read(fd, _load_buffer, load_size);
-      if (n != load_size) {
-        _load_buffer = nullptr;
-      }
-    }
-    if (_load_buffer == nullptr) {
-      log_warning(scc, init)("Failed to read/mmap %d bytes at address " INTPTR_FORMAT " from Startup Code Cache file '%s'", load_size, p2i(_load_buffer), _cache_path);
+    ReservedSpace rs = MemoryReserver::reserve(CDSAccess::get_cached_code_size(), mtCode);
+    if (!rs.is_reserved()) {
+      log_warning(scc, init)("Failed to reserved %u bytes of memory for mapping cached code region in AOT Cache", (uint)CDSAccess::get_cached_code_size());
       set_failed();
       return;
     }
-    log_info(scc, init)("Read/mmaped %d bytes at address " INTPTR_FORMAT " from Startup Code Cache '%s'", load_size, p2i(_load_buffer), _cache_path);
+    if (!CDSAccess::map_cached_code(rs)) {
+      log_warning(scc, init)("Failed to read/mmap cached code region in AOT Cache");
+      set_failed();
+      return;
+    }
+    _cached_code_directory = (CachedCodeDirectory*)rs.base();
+    _cached_code_directory->runtime_init_internal();
+
+    _load_size = _cached_code_directory->_aot_code_size;
+    _load_buffer = _cached_code_directory->_aot_code_data;
+    assert(is_aligned(_load_buffer, DATA_ALIGNMENT), "load_buffer is not aligned");
+    log_info(scc, init)("Mapped %u bytes at address " INTPTR_FORMAT " from AOT Code Cache", _load_size, p2i(_load_buffer));
 
     _load_header = (SCCHeader*)addr(0);
-    const char* scc_jvm_version = addr(_load_header->jvm_version_offset());
-    if (strncmp(scc_jvm_version, VM_Version::internal_vm_info_string(), strlen(scc_jvm_version)) != 0) {
-      log_warning(scc, init)("Disable Startup Code Cache: JVM version '%s' recorded in '%s' does not match current version '%s'", scc_jvm_version, _cache_path, VM_Version::internal_vm_info_string());
+    if (!_load_header->verify_config(_load_size)) {
       set_failed();
       return;
     }
-    if (!_load_header->verify_config(_cache_path, load_size)) {
-      set_failed();
-      return;
-    }
-    log_info(scc, init)("Read header from Startup Code Cache '%s'", cache_path);
+    log_info(scc, init)("Read header from AOT Code Cache");
     if (_load_header->has_meta_ptrs()) {
       assert(UseSharedSpaces, "should be verified already");
       _use_meta_ptrs = true; // Regardless UseMetadataPointers
@@ -595,11 +503,11 @@ SCCache::SCCache(const char* cache_path, int fd, uint load_size) {
   if (_for_write) {
     _gen_preload_code = _use_meta_ptrs && (ClassInitBarrierMode > 0);
 
-    _C_store_buffer = NEW_C_HEAP_ARRAY(char, CachedCodeMaxSize + DATA_ALIGNMENT, mtCode);
+    _C_store_buffer = NEW_C_HEAP_ARRAY(char, max_aot_code_size() + DATA_ALIGNMENT, mtCode);
     _store_buffer = align_up(_C_store_buffer, DATA_ALIGNMENT);
     // Entries allocated at the end of buffer in reverse (as on stack).
-    _store_entries = (SCCEntry*)align_up(_C_store_buffer + CachedCodeMaxSize, DATA_ALIGNMENT);
-    log_info(scc, init)("Allocated store buffer at address " INTPTR_FORMAT " of size %d", p2i(_store_buffer), CachedCodeMaxSize);
+    _store_entries = (SCCEntry*)align_up(_C_store_buffer + max_aot_code_size(), DATA_ALIGNMENT);
+    log_info(scc, init)("Allocated store buffer at address " INTPTR_FORMAT " of size " UINT32_FORMAT " bytes", p2i(_store_buffer), max_aot_code_size());
   }
   _table = new SCAddressTable();
 }
@@ -679,81 +587,77 @@ void SCConfig::record(bool use_meta_ptrs) {
   _gc                    = (uint)Universe::heap()->kind();
 }
 
-bool SCConfig::verify(const char* cache_path) const {
+bool SCConfig::verify() const {
 #ifdef ASSERT
   if ((_flags & debugVM) == 0) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created by product VM, it can't be used by debug VM", cache_path);
+    log_warning(scc, init)("Disable AOT Code: it was created by product VM, it can't be used by debug VM");
     return false;
   }
 #else
   if ((_flags & debugVM) != 0) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created by debug VM, it can't be used by product VM", cache_path);
+    log_warning(scc, init)("Disable AOT Code: it was created by debug VM, it can't be used by product VM");
     return false;
   }
 #endif
 
   CollectedHeap::Name scc_gc = (CollectedHeap::Name)_gc;
   if (scc_gc != Universe::heap()->kind()) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with different GC: %s vs current %s", cache_path, GCConfig::hs_err_name(scc_gc), GCConfig::hs_err_name());
+    log_warning(scc, init)("Disable AOT Code: it was created with different GC: %s vs current %s", GCConfig::hs_err_name(scc_gc), GCConfig::hs_err_name());
     return false;
   }
 
   if (((_flags & compressedOops) != 0) != UseCompressedOops) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with UseCompressedOops = %s", cache_path, UseCompressedOops ? "false" : "true");
+    log_warning(scc, init)("Disable AOT Code: it was created with UseCompressedOops = %s", UseCompressedOops ? "false" : "true");
     return false;
   }
   if (((_flags & compressedClassPointers) != 0) != UseCompressedClassPointers) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with UseCompressedClassPointers = %s", cache_path, UseCompressedClassPointers ? "false" : "true");
+    log_warning(scc, init)("Disable AOT Code: it was created with UseCompressedClassPointers = %s", UseCompressedClassPointers ? "false" : "true");
     return false;
   }
 
   if (((_flags & systemClassAssertions) != 0) != JavaAssertions::systemClassDefault()) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with JavaAssertions::systemClassDefault() = %s", cache_path, JavaAssertions::systemClassDefault() ? "disabled" : "enabled");
+    log_warning(scc, init)("Disable AOT Code: it was created with JavaAssertions::systemClassDefault() = %s", JavaAssertions::systemClassDefault() ? "disabled" : "enabled");
     return false;
   }
   if (((_flags & userClassAssertions) != 0) != JavaAssertions::userClassDefault()) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with JavaAssertions::userClassDefault() = %s", cache_path, JavaAssertions::userClassDefault() ? "disabled" : "enabled");
+    log_warning(scc, init)("Disable AOT Code: it was created with JavaAssertions::userClassDefault() = %s", JavaAssertions::userClassDefault() ? "disabled" : "enabled");
     return false;
   }
 
   if (((_flags & enableContendedPadding) != 0) != EnableContended) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with EnableContended = %s", cache_path, EnableContended ? "false" : "true");
+    log_warning(scc, init)("Disable AOT Code: it was created with EnableContended = %s", EnableContended ? "false" : "true");
     return false;
   }
   if (((_flags & restrictContendedPadding) != 0) != RestrictContended) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with RestrictContended = %s", cache_path, RestrictContended ? "false" : "true");
+    log_warning(scc, init)("Disable AOT Code: it was created with RestrictContended = %s", RestrictContended ? "false" : "true");
     return false;
   }
   if (_compressedOopShift != (uint)CompressedOops::shift()) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedOops::shift() = %d vs current %d", cache_path, _compressedOopShift, CompressedOops::shift());
+    log_warning(scc, init)("Disable AOT Code: it was created with CompressedOops::shift() = %d vs current %d", _compressedOopShift, CompressedOops::shift());
     return false;
   }
   if (_compressedKlassShift != (uint)CompressedKlassPointers::shift()) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with CompressedKlassPointers::shift() = %d vs current %d", cache_path, _compressedKlassShift, CompressedKlassPointers::shift());
+    log_warning(scc, init)("Disable AOT Code: it was created with CompressedKlassPointers::shift() = %d vs current %d", _compressedKlassShift, CompressedKlassPointers::shift());
     return false;
   }
   if (_contendedPaddingWidth != (uint)ContendedPaddingWidth) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with ContendedPaddingWidth = %d vs current %d", cache_path, _contendedPaddingWidth, ContendedPaddingWidth);
+    log_warning(scc, init)("Disable AOT Code: it was created with ContendedPaddingWidth = %d vs current %d", _contendedPaddingWidth, ContendedPaddingWidth);
     return false;
   }
   if (_objectAlignment != (uint)ObjectAlignmentInBytes) {
-    log_warning(scc, init)("Disable Startup Code Cache: '%s' was created with ObjectAlignmentInBytes = %d vs current %d", cache_path, _objectAlignment, ObjectAlignmentInBytes);
+    log_warning(scc, init)("Disable AOT Code: it was created with ObjectAlignmentInBytes = %d vs current %d", _objectAlignment, ObjectAlignmentInBytes);
     return false;
   }
   return true;
 }
 
-bool SCCHeader::verify_config(const char* cache_path, uint load_size) const {
+bool SCCHeader::verify_config(uint load_size) const {
   if (_version != SCC_VERSION) {
-    log_warning(scc, init)("Disable Startup Code Cache: different SCC version %d vs %d recorded in '%s'", SCC_VERSION, _version, cache_path);
+    log_warning(scc, init)("Disable AOT Code: different SCC version %d vs %d recorded in AOT Cache", SCC_VERSION, _version);
     return false;
   }
   if (_cache_size != load_size) {
-    log_warning(scc, init)("Disable Startup Code Cache: different cached code size %d vs %d recorded in '%s'", load_size, _cache_size, cache_path);
-    return false;
-  }
-  if (has_meta_ptrs() && !UseSharedSpaces) {
-    log_warning(scc, init)("Disable Startup Cached Code: '%s' contains metadata pointers but CDS is off", cache_path);
+    log_warning(scc, init)("Disable AOT Code: different cached code size %d vs %d recorded in AOT Cache", load_size, _cache_size);
     return false;
   }
   return true;
@@ -778,19 +682,7 @@ SCCache::~SCCache() {
   if (for_write()) { // Finalize cache
     finish_write();
   }
-  FREE_C_HEAP_ARRAY(char, _cache_path);
-  if (MmapCachedCode) {
-    if (_load_buffer != nullptr) {
-      os::unmap_memory(_load_buffer, _load_size);
-      _load_buffer = nullptr;
-    }
-  } else {
-    if (_C_load_buffer != nullptr) {
-      FREE_C_HEAP_ARRAY(char, _C_load_buffer);
-      _C_load_buffer = nullptr;
-      _load_buffer = nullptr;
-    }
-  }
+  _load_buffer = nullptr;
   if (_C_store_buffer != nullptr) {
     FREE_C_HEAP_ARRAY(char, _C_store_buffer);
     _C_store_buffer = nullptr;
@@ -866,7 +758,7 @@ bool SCCache::align_write() {
   if (n != padding) {
     return false;
   }
-  log_trace(scc)("Adjust write alignment in Startup Code Cache '%s'", _cache_path);
+  log_trace(scc)("Adjust write alignment in AOT Code Cache");
   return true;
 }
 
@@ -877,14 +769,14 @@ uint SCCache::write_bytes(const void* buffer, uint nbytes) {
   }
   uint new_position = _write_position + nbytes;
   if (new_position >= (uint)((char*)_store_entries - _store_buffer)) {
-    log_warning(scc)("Failed to write %d bytes at offset %d to Startup Code Cache file '%s'. Increase CachedCodeMaxSize.",
-                     nbytes, _write_position, _cache_path);
+    log_warning(scc)("Failed to write %d bytes at offset %d to AOT Code Cache. Increase CachedCodeMaxSize.",
+                     nbytes, _write_position);
     set_failed();
     exit_vm_on_store_failure();
     return 0;
   }
   copy_bytes((const char* )buffer, (address)(_store_buffer + _write_position), nbytes);
-  log_trace(scc)("Wrote %d bytes at offset %d to Startup Code Cache '%s'", nbytes, _write_position, _cache_path);
+  log_trace(scc)("Wrote %d bytes at offset %d to AOT Code Cache", nbytes, _write_position);
   _write_position += nbytes;
   if (_store_size < _write_position) {
     _store_size = _write_position;
@@ -940,12 +832,12 @@ void SCCache::preload_startup_code(TRAPS) {
     // Read it
     _search_entries = (uint*)addr(_load_header->entries_offset()); // [id, index]
     _load_entries = (SCCEntry*)(_search_entries + 2 * count);
-    log_info(scc, init)("Read %d entries table at offset %d from Startup Code Cache '%s'", count, _load_header->entries_offset(), _cache_path);
+    log_info(scc, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
   }
   uint preload_entries_count = _load_header->preload_entries_count();
   if (preload_entries_count > 0) {
     uint* entries_index = (uint*)addr(_load_header->preload_entries_offset());
-    log_info(scc, init)("Load %d preload entries from Startup Code Cache '%s'", preload_entries_count, _cache_path);
+    log_info(scc, init)("Load %d preload entries from AOT Code Cache", preload_entries_count);
     uint count = MIN2(preload_entries_count, SCLoadStop);
     for (uint i = SCLoadStart; i < count; i++) {
       uint index = entries_index[i];
@@ -1005,7 +897,7 @@ SCCEntry* SCCache::find_entry(SCCEntry::Kind kind, uint id, uint comp_level, uin
     // Read it
     _search_entries = (uint*)addr(_load_header->entries_offset()); // [id, index]
     _load_entries = (SCCEntry*)(_search_entries + 2 * count);
-    log_info(scc, init)("Read %d entries table at offset %d from Startup Code Cache '%s'", count, _load_header->entries_offset(), _cache_path);
+    log_info(scc, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
   }
   // Binary search
   int l = 0;
@@ -1134,9 +1026,10 @@ bool SCCache::finish_write() {
 
   uint store_count = _store_entries_cnt;
   if (store_count > 0) {
+    _cached_code_directory = CachedCodeDirectory::create();
+    assert(_cached_code_directory != nullptr, "Sanity check");
+
     uint header_size = (uint)align_up(sizeof(SCCHeader),  DATA_ALIGNMENT);
-    const char* vm_version = VM_Version::internal_vm_info_string();
-    uint vm_version_size = (uint)align_up(strlen(vm_version) + 1, DATA_ALIGNMENT);
     uint load_count = (_load_header != nullptr) ? _load_header->entries_count() : 0;
     uint code_count = store_count + load_count;
     uint search_count = code_count * 2;
@@ -1147,17 +1040,18 @@ bool SCCache::finish_write() {
     uint preload_entries_size = code_count * sizeof(uint);
     // _write_position should include code and strings
     uint code_alignment = code_count * DATA_ALIGNMENT; // We align_up code size when storing it.
-    uint total_size = _write_position + _load_size + header_size + vm_version_size +
+    uint total_size = _write_position + _load_size + header_size +
                      code_alignment + search_size + preload_entries_size + entries_size;
+
+    assert(total_size < max_aot_code_size(), "Cached code region size (" UINT32_FORMAT " bytes) in AOT Code Cache is less than the required size (" UINT32_FORMAT " bytes).",
+           total_size, max_aot_code_size());
 
     // Create ordered search table for entries [id, index];
     uint* search = NEW_C_HEAP_ARRAY(uint, search_count, mtCode);
-    char* buffer = NEW_C_HEAP_ARRAY(char, total_size + DATA_ALIGNMENT, mtCode);
+
+    char* buffer = (char *)CDSAccess::allocate_from_code_cache(total_size + DATA_ALIGNMENT); // NEW_C_HEAP_ARRAY(char, total_size + DATA_ALIGNMENT, mtCode);
     char* start = align_up(buffer, DATA_ALIGNMENT);
     char* current = start + header_size; // Skip header
-    uint jvm_version_offset = current - start;
-    copy_bytes(vm_version, (address)current, (uint)strlen(vm_version) + 1);
-    current += vm_version_size;
 
     SCCEntry* entries_address = _store_entries; // Pointer to latest entry
     uint not_entrant_nb = 0;
@@ -1263,7 +1157,7 @@ bool SCCache::finish_write() {
       }
     }
     if (entries_count == 0) {
-      log_info(scc, exit)("No new entires, cache files %s was not %s", _cache_path, (_for_read ? "updated" : "created"));
+      log_info(scc, exit)("No entires written to AOT Code Cache");
       FREE_C_HEAP_ARRAY(char, buffer);
       FREE_C_HEAP_ARRAY(uint, search);
       return true; // Nothing to write
@@ -1280,7 +1174,7 @@ bool SCCache::finish_write() {
     if (preload_entries_size > 0) {
       copy_bytes((const char*)preload_entries, (address)current, preload_entries_size);
       current += preload_entries_size;
-      log_info(scc, exit)("Wrote %d preload entries to Startup Code Cache '%s'", preload_entries_cnt, _cache_path);
+      log_info(scc, exit)("Wrote %d preload entries to AOT Code Cache", preload_entries_cnt);
     }
     if (preload_entries != nullptr) {
       FREE_C_HEAP_ARRAY(uint, preload_entries);
@@ -1298,7 +1192,7 @@ bool SCCache::finish_write() {
     entries_size = entries_count * sizeof(SCCEntry); // New size
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
     current += entries_size;
-    log_info(scc, exit)("Wrote %d SCCEntry entries (%d were not entrant, %d max size) to Startup Code Cache '%s'", entries_count, not_entrant_nb, max_size, _cache_path);
+    log_info(scc, exit)("Wrote %d SCCEntry entries (%d were not entrant, %d max size) to AOT Code Cache", entries_count, not_entrant_nb, max_size);
     log_info(scc, exit)("  Stubs: total=%d", stubs_count);
     log_info(scc, exit)("  Adapters: total=%d", adapters_count);
     log_info(scc, exit)("  Shared Blobs: total=%d",shared_blobs_count);
@@ -1310,44 +1204,15 @@ bool SCCache::finish_write() {
 
     // Finalize header
     SCCHeader* header = (SCCHeader*)start;
-    header->init(jvm_version_offset, size,
+    header->init(size,
                  (uint)strings_count, strings_offset,
                  entries_count, new_entries_offset,
                  preload_entries_cnt, preload_entries_offset,
                  _use_meta_ptrs);
-    log_info(scc, init)("Wrote header to Startup Code Cache '%s'", _cache_path);
+    log_info(scc, init)("Wrote SCCache header to AOT Code Cache");
+    log_info(scc, exit)("Wrote %d bytes of data to AOT Code Cache", size);
 
-    // Now store to file
-#ifdef _WINDOWS  // On Windows, need WRITE permission to remove the file.
-    chmod(_cache_path, _S_IREAD | _S_IWRITE);
-#endif
-    // Use remove() to delete the existing file because, on Unix, this will
-    // allow processes that have it open continued access to the file.
-    remove(_cache_path);
-    int fd = os::open(_cache_path, O_RDWR | O_CREAT | O_TRUNC | O_BINARY, 0444);
-    if (fd < 0) {
-      log_warning(scc, exit)("Unable to create Startup Code Cache file '%s': (%s)", _cache_path, os::strerror(errno));
-      FREE_C_HEAP_ARRAY(char, buffer);
-      exit_vm_on_store_failure();
-      return false;
-    } else {
-      log_info(scc, exit)("Opened for write Startup Code Cache '%s'", _cache_path);
-    }
-    bool success = os::write(fd, start, (size_t)size);
-    if (!success) {
-      log_warning(scc, exit)("Failed to write %d bytes to Startup Code Cache file '%s': (%s)", size, _cache_path, os::strerror(errno));
-      FREE_C_HEAP_ARRAY(char, buffer);
-      exit_vm_on_store_failure();
-      return false;
-    }
-    log_info(scc, exit)("Wrote %d bytes to Startup Code Cache '%s'", size, _cache_path);
-    if (::close(fd) < 0) {
-      log_warning(scc, exit)("Failed to close for write Startup Code Cache file '%s'", _cache_path);
-      exit_vm_on_store_failure();
-    } else {
-      log_info(scc, exit)("Closed for write Startup Code Cache '%s'", _cache_path);
-    }
-    FREE_C_HEAP_ARRAY(char, buffer);
+    _cached_code_directory->set_aot_code_data(size, start);
   }
   return true;
 }
@@ -1373,13 +1238,13 @@ bool SCCache::load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* n
     exit_vm_on_load_failure();
     return false;
   }
-  log_info(scc,stubs)("Reading stub '%s' id:%d from Startup Code Cache '%s'", name, (int)id, cache->_cache_path);
+  log_info(scc,stubs)("Reading stub '%s' id:%d from AOT Code Cache", name, (int)id);
   // Read code
   uint code_offset = entry->code_offset() + entry_position;
   uint code_size   = entry->code_size();
   copy_bytes(cache->addr(code_offset), start, code_size);
   cgen->assembler()->code_section()->set_end(start + code_size);
-  log_info(scc,stubs)("Read stub '%s' id:%d from Startup Code Cache '%s'", name, (int)id, cache->_cache_path);
+  log_info(scc,stubs)("Read stub '%s' id:%d from AOT Code Cache", name, (int)id);
   return true;
 }
 
@@ -1388,7 +1253,7 @@ bool SCCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* 
   if (cache == nullptr) {
     return false;
   }
-  log_info(scc, stubs)("Writing stub '%s' id:%d to Startup Code Cache '%s'", name, (int)id, cache->_cache_path);
+  log_info(scc, stubs)("Writing stub '%s' id:%d to AOT Code Cache", name, (int)id);
   if (!cache->align_write()) {
     return false;
   }
@@ -1432,7 +1297,7 @@ bool SCCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* 
   SCCEntry* entry = new(cache) SCCEntry(entry_position, entry_size, name_offset, name_size,
                                           code_offset, code_size, 0, 0,
                                           SCCEntry::Stub, (uint32_t)id);
-  log_info(scc, stubs)("Wrote stub '%s' id:%d to Startup Code Cache '%s'", name, (int)id, cache->_cache_path);
+  log_info(scc, stubs)("Wrote stub '%s' id:%d to AOT Code Cache", name, (int)id);
   return true;
 }
 
@@ -2066,8 +1931,7 @@ bool SCCache::load_adapter(CodeBuffer* buffer, uint32_t id, const char* name, ui
   if (cache == nullptr) {
     return false;
   }
-  log_info(scc, stubs)("Looking up adapter %s (0x%x) in Startup Code Cache '%s'",
-                       name, id, _cache->cache_path());
+  log_info(scc, stubs)("Looking up adapter %s (0x%x) in AOT Code Cache", name, id);
   SCCEntry* entry = cache->find_entry(SCCEntry::Adapter, id);
   if (entry == nullptr) {
     return false;
@@ -2081,8 +1945,8 @@ bool SCCReader::compile_adapter(CodeBuffer* buffer, const char* name, uint32_t o
   uint name_offset = entry_position + _entry->name_offset();
   uint name_size = _entry->name_size(); // Includes '/0'
   const char* stored_name = addr(name_offset);
-  log_info(scc, stubs)("%d (L%d): Reading adapter '%s' from Startup Code Cache '%s'",
-                       compile_id(), comp_level(), name, _cache->cache_path());
+  log_info(scc, stubs)("%d (L%d): Reading adapter '%s' from AOT Code Cache",
+                       compile_id(), comp_level(), name);
   if (strncmp(stored_name, name, (name_size - 1)) != 0) {
     log_warning(scc)("%d (L%d): Saved adapter's name '%s' is different from '%s'",
                      compile_id(), comp_level(), stored_name, name);
@@ -2111,12 +1975,12 @@ bool SCCReader::compile_adapter(CodeBuffer* buffer, const char* name, uint32_t o
   for (int i = 0; i < offsets_count; i++) {
     uint32_t arg = *(uint32_t*)addr(offset);
     offset += sizeof(uint32_t);
-    log_debug(scc, stubs)("%d (L%d): Reading adapter '%s'  offsets[%d] == 0x%x from Startup Code Cache '%s'",
-                         compile_id(), comp_level(), stored_name, i, arg, _cache->cache_path());
+    log_debug(scc, stubs)("%d (L%d): Reading adapter '%s'  offsets[%d] == 0x%x from AOT Code Cache",
+                         compile_id(), comp_level(), stored_name, i, arg);
     offsets[i] = arg;
   }
-  log_debug(scc, stubs)("%d (L%d): Read adapter '%s' with '%d' args from Startup Code Cache '%s'",
-                       compile_id(), comp_level(), stored_name, offsets_count, _cache->cache_path());
+  log_debug(scc, stubs)("%d (L%d): Read adapter '%s' with '%d' args from AOT Code Cache",
+                       compile_id(), comp_level(), stored_name, offsets_count);
 #ifdef ASSERT
   LogStreamHandle(Debug, scc, stubs) log;
   if (log.is_enabled()) {
@@ -2161,8 +2025,8 @@ bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
   uint name_size = _entry->name_size(); // Includes '/0'
   const char* name = addr(name_offset);
 
-  log_info(scc, stubs)("%d (L%d): Reading blob '%s' with pc_offset %d from Startup Code Cache '%s'",
-                       compile_id(), comp_level(), name, *pc_offset, _cache->cache_path());
+  log_info(scc, stubs)("%d (L%d): Reading blob '%s' with pc_offset %d from AOT Code Cache",
+                       compile_id(), comp_level(), name, *pc_offset);
 
   if (strncmp(buffer->name(), name, (name_size - 1)) != 0) {
     log_warning(scc)("%d (L%d): Saved blob's name '%s' is different from '%s'",
@@ -2188,8 +2052,8 @@ bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
     return false;
   }
 
-  log_info(scc, stubs)("%d (L%d): Read blob '%s' from Startup Code Cache '%s'",
-                       compile_id(), comp_level(), name, _cache->cache_path());
+  log_info(scc, stubs)("%d (L%d): Read blob '%s' from AOT Code Cache",
+                       compile_id(), comp_level(), name);
 #ifdef ASSERT
   LogStreamHandle(Debug, scc, nmethod) log;
   if (log.is_enabled()) {
@@ -2379,7 +2243,7 @@ bool SCCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, u
   if (cache == nullptr) {
     return false;
   }
-  log_info(scc, stubs)("Writing adapter '%s' (0x%x) to Startup Code Cache '%s'", name, id, cache->_cache_path);
+  log_info(scc, stubs)("Writing adapter '%s' (0x%x) to AOT Code Cache", name, id);
 #ifdef ASSERT
   LogStreamHandle(Debug, scc, stubs) log;
   if (log.is_enabled()) {
@@ -2424,7 +2288,7 @@ bool SCCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, u
   }
   for (int i = 0; i < 4; i++) {
     uint32_t arg = offsets[i];
-    log_debug(scc, stubs)("Writing adapter '%s' (0x%x) offsets[%d] == 0x%x to Startup Code Cache '%s'", name, id, i, arg, cache->_cache_path);
+    log_debug(scc, stubs)("Writing adapter '%s' (0x%x) offsets[%d] == 0x%x to AOT Code Cache", name, id, i, arg);
     n = cache->write_bytes(&arg, sizeof(uint32_t));
     if (n != sizeof(uint32_t)) {
       return false;
@@ -2434,7 +2298,7 @@ bool SCCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, u
   SCCEntry* entry = new (cache) SCCEntry(entry_position, entry_size, name_offset, name_size,
                                           code_offset, code_size, reloc_offset, reloc_size,
                                         SCCEntry::Adapter, id, 0);
-  log_info(scc, stubs)("Wrote adapter '%s' (0x%x) to Startup Code Cache '%s'", name, id, cache->_cache_path);
+  log_info(scc, stubs)("Wrote adapter '%s' (0x%x) to AOT Code Cache", name, id);
   return true;
 }
 
@@ -2492,7 +2356,7 @@ bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
   if (cache == nullptr) {
     return false;
   }
-  log_info(scc, stubs)("Writing blob '%s' to Startup Code Cache '%s'", buffer->name(), cache->_cache_path);
+  log_info(scc, stubs)("Writing blob '%s' to AOT Code Cache", buffer->name());
 
 #ifdef ASSERT
   LogStreamHandle(Debug, scc, nmethod) log;
@@ -2544,7 +2408,7 @@ bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
   SCCEntry* entry = new(cache) SCCEntry(entry_position, entry_size, name_offset, name_size,
                                           code_offset, code_size, reloc_offset, reloc_size,
                                           SCCEntry::Blob, (uint32_t)999);
-  log_info(scc, stubs)("Wrote stub '%s' to Startup Code Cache '%s'", name, cache->_cache_path);
+  log_info(scc, stubs)("Wrote stub '%s' to AOT Code Cache", name);
   return true;
 }
 
@@ -3232,7 +3096,7 @@ bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCom
     return false;
   }
 
-  log_info(scc, nmethod)("%d (L%d): Read nmethod '%s' from Startup Code Cache '%s'", compile_id(), comp_level(), name, _cache->cache_path());
+  log_info(scc, nmethod)("%d (L%d): Read nmethod '%s' from AOT Code Cache", compile_id(), comp_level(), name);
 #ifdef ASSERT
   LogStreamHandle(Debug, scc, nmethod) log;
   if (log.is_enabled()) {
@@ -3402,10 +3266,10 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
   {
     ResourceMark rm;
     const char* name   = method->name_and_sig_as_C_string();
-    log_info(scc, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s%s) to Startup Code Cache '%s'",
+    log_info(scc, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s%s) to AOT Code Cache",
                            comp_id, (int)comp_level, name, comp_level, decomp,
                            (ignore_decompile ? ", ignore_decomp" : ""),
-                           (has_clinit_barriers ? ", has clinit barriers" : ""), _cache_path);
+                           (has_clinit_barriers ? ", has clinit barriers" : ""));
 
     LogStreamHandle(Info, scc, loader) log;
     if (log.is_enabled()) {
@@ -3566,8 +3430,8 @@ SCCEntry* SCCache::write_nmethod(const methodHandle& method,
   {
     ResourceMark rm;
     const char* name   = method->name_and_sig_as_C_string();
-    log_info(scc, nmethod)("%d (L%d): Wrote nmethod '%s'%s to Startup Code Cache '%s'",
-                           comp_id, (int)comp_level, name, (_for_preload ? " (for preload)" : ""), _cache_path);
+    log_info(scc, nmethod)("%d (L%d): Wrote nmethod '%s'%s to AOT Code Cache",
+                           comp_id, (int)comp_level, name, (_for_preload ? " (for preload)" : ""));
   }
   if (VerifyCachedCode) {
     return nullptr;
@@ -4262,7 +4126,7 @@ void SCCache::load_strings() {
   assert((uint)(p - _C_strings_buf) <= strings_size, "(" INTPTR_FORMAT " - " INTPTR_FORMAT ") = %d > %d ", p2i(p), p2i(_C_strings_buf), (uint)(p - _C_strings_buf), strings_size);
   _C_strings_count = strings_count;
   _C_strings_used  = strings_count;
-  log_info(scc, init)("Load %d C strings at offset %d from Startup Code Cache '%s'", _C_strings_count, strings_offset, _cache_path);
+  log_info(scc, init)("Load %d C strings at offset %d from AOT Code Cache", _C_strings_count, strings_offset);
 }
 
 int SCCache::store_strings() {
@@ -4293,8 +4157,8 @@ int SCCache::store_strings() {
         return -1;
       }
     }
-    log_info(scc, exit)("Wrote %d C strings of total length %d at offset %d to Startup Code Cache '%s'",
-                        _C_strings_used, length, offset, _cache_path);
+    log_info(scc, exit)("Wrote %d C strings of total length %d at offset %d to AOT Code Cache",
+                        _C_strings_used, length, offset);
   }
   return _C_strings_used;
 }
