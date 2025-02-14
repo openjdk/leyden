@@ -232,3 +232,10 @@ compiler/jvmci/TestEnableJVMCIProduct.java 8318142 generic-all
 gtest/GTestWrapper.java 8318142 generic-all
 runtime/ErrorHandling/TestDwarf.java#dontCheckDecoder 8318142 generic-all
 serviceability/dcmd/compiler/CodelistTest.java 8318142 generic-all
+
+# Need to update to CDSAppTester framework
+runtime/cds/appcds/indy/IndyAndJavac.java 8350059 generic-all
+runtime/cds/appcds/indy/IndyStringConcat.java 8350059 generic-all
+runtime/cds/appcds/indy/StringConcatStress.java 8350059 generic-all
+
+
