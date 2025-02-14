@@ -1134,11 +1134,11 @@ bool SCCache::finish_write() {
         preload_entries[preload_entries_cnt++] = entries_count;
       }
       if (entries_address[i].kind() == SCCEntry::Adapter) {
-	adapters_count[1]++;
+        adapters_count[1]++;
       } else if (entries_address[i].kind() == SCCEntry::Stub) {
-	stubs_count[1]++;
+        stubs_count[1]++;
       } else if (entries_address[i].kind() == SCCEntry::Blob) {
-	blobs_count[1]++;
+        blobs_count[1]++;
       } else if (entries_address[i].kind() == SCCEntry::Code) {
         nmethods_count[1]++;
       }
