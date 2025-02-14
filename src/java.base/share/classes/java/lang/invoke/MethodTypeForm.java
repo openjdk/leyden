@@ -30,7 +30,6 @@ import sun.invoke.util.Wrapper;
 import java.lang.ref.SoftReference;
 
 import static java.lang.invoke.MethodHandleStatics.newIllegalArgumentException;
-import static java.lang.invoke.MethodHandleNatives.USE_SOFT_CACHE;
 
 /**
  * Shared information for a group of method types, which differ
@@ -115,8 +114,6 @@ final class MethodTypeForm {
         Object entry = methodHandles[which];
         if (entry == null) {
             return null;
-        } else if (entry instanceof MethodHandle mh) {
-            return mh;
         } else {
             return ((SoftReference<MethodHandle>)entry).get();
         }
@@ -128,11 +125,7 @@ final class MethodTypeForm {
         if (prev != null) {
             return prev;
         }
-        if (USE_SOFT_CACHE) {
-            methodHandles[which] = new SoftReference<>(mh);
-        } else {
-            methodHandles[which] = mh;
-        }
+        methodHandles[which] = new SoftReference<>(mh);
         return mh;
     }
 
@@ -141,8 +134,6 @@ final class MethodTypeForm {
         Object entry = lambdaForms[which];
         if (entry == null) {
             return null;
-        } else if (entry instanceof LambdaForm lf) {
-            return lf;
         } else {
             return ((SoftReference<LambdaForm>)entry).get();
         }
@@ -154,11 +145,7 @@ final class MethodTypeForm {
         if (prev != null) {
             return prev;
         }
-        if (USE_SOFT_CACHE) {
-            lambdaForms[which] = new SoftReference<>(form);
-        } else {
-            lambdaForms[which] = form;
-        }
+        lambdaForms[which] = new SoftReference<>(form);
         return form;
     }
 
@@ -167,7 +154,6 @@ final class MethodTypeForm {
      * This MTF will stand for that type and all un-erased variations.
      * Eagerly compute some basic properties of the type, common to all variations.
      */
-    @SuppressWarnings({"rawtypes", "unchecked"})
     protected MethodTypeForm(MethodType erasedType) {
         this.erasedType = erasedType;
 
