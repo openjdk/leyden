@@ -416,6 +416,8 @@ hotspot_cds_only = \
 
 hotspot_appcds_dynamic = \
   runtime/cds/appcds/ \
+ -runtime/cds/appcds/aotClassLinking/BulkLoaderTest.java \
+ -runtime/cds/appcds/aotClassLinking/StringConcatStress.java \
  -runtime/cds/appcds/applications \
  -runtime/cds/appcds/cacheObject \
  -runtime/cds/appcds/complexURI \
@@ -424,10 +426,6 @@ hotspot_appcds_dynamic = \
  -runtime/cds/appcds/jigsaw/modulepath/ModulePathAndFMG.java \
  -runtime/cds/appcds/jigsaw/modulepath/OptimizeModuleHandlingTest.java \
  -runtime/cds/appcds/loaderConstraints/DynamicLoaderConstraintsTest.java \
- -runtime/cds/appcds/indy/IndyAndJavac.java \
- -runtime/cds/appcds/indy/IndyStringConcat.java \
- -runtime/cds/appcds/indy/StringConcatStress2.java \
- -runtime/cds/appcds/indy/StringConcatStress.java \
  -runtime/cds/appcds/javaldr/ArrayTest.java \
  -runtime/cds/appcds/javaldr/ExceptionDuringDumpAtObjectsInitPhase.java \
  -runtime/cds/appcds/javaldr/GCSharedStringsDuringDump.java \
@@ -444,7 +442,6 @@ hotspot_appcds_dynamic = \
  -runtime/cds/appcds/leyden/LeydenHello.java \
  -runtime/cds/appcds/leyden/LeydenReflection.java \
  -runtime/cds/appcds/methodHandles \
- -runtime/cds/appcds/aotClassLinking/BulkLoaderTest.java \
  -runtime/cds/appcds/sharedStrings \
  -runtime/cds/appcds/resolvedConstants \
  -runtime/cds/appcds/ArchiveRelocationTest.java \
