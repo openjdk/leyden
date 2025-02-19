@@ -395,9 +395,7 @@ class MethodType
         MethodType primordialMT = new MethodType(rtype, ptypes);
         MethodType mt = internTable.get(primordialMT);
         if (mt != null)
-        {
             return mt;
-        }
 
         // promote the object to the Real Thing, and reprobe
         Objects.requireNonNull(rtype);
