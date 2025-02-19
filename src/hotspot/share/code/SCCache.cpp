@@ -271,7 +271,7 @@ void SCCache::close() {
               if (debug_scc.is_enabled()) {
                 MethodTrainingData* mtd = MethodTrainingData::find(methodHandle(Thread::current(), nm->method()));
                 if (mtd != nullptr) {
-                  mtd->iterate_all_compiles([&](CompileTrainingData* ctd) {
+                  mtd->iterate_compiles([&](CompileTrainingData* ctd) {
                     debug_scc.print("     CTD: "); ctd->print_on(&debug_scc); debug_scc.cr();
                   });
                 }
@@ -3560,7 +3560,7 @@ void SCCache::print_unused_entries_on(outputStream* st) {
           if (mtd->has_holder()) {
             if (mtd->holder()->method_holder()->is_initialized()) {
               ResourceMark rm;
-              mtd->iterate_all_compiles([&](CompileTrainingData* ctd) {
+              mtd->iterate_compiles([&](CompileTrainingData* ctd) {
                 if ((uint)ctd->level() == entry->comp_level()) {
                   if (ctd->init_deps_left() == 0) {
                     nmethod* nm = mtd->holder()->code();

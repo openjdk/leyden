@@ -40,20 +40,21 @@
 class ciEnv;
 class ciBaseObject;
 class CompileTask;
-class xmlStream;
 class CompileTrainingData;
 class KlassTrainingData;
 class MethodTrainingData;
-class TrainingDataDumper;
-class TrainingDataSetLocker;
-class DumpTimeTrainingDataInfo;
-class RunTimeClassInfo;
 
+// Base class for all the training data varieties
 class TrainingData : public Metadata {
   friend KlassTrainingData;
   friend MethodTrainingData;
   friend CompileTrainingData;
- public:
+public:
+  // Key is used to insert any TrainingData (TD) object into a hash tables. The key is currently a
+  // pointer to a metaspace object the TD is associated with. For example,
+  // for KlassTrainingData it's an InstanceKlass, for MethodTrainingData it's a Method.
+  // The utility of the these hash tables is to be able to find a TD object for a given metaspace
+  // metaspace object.
   class Key {
     mutable Metadata* _meta;
     // These guys can get to my constructors:
@@ -91,8 +92,11 @@ class TrainingData : public Metadata {
     void make_empty() const { _meta = nullptr; }
   };
 
+  // TrainingDataLocker is used to guard read/write operations on non-MT-safe data structures.
+  // It supports recursive locking and a read-only mode (in which case no locks are taken).
+  // It is also a part of the TD collection termination protocol (see the "spanshot" field).
   class TrainingDataLocker {
-    static volatile bool _snapshot;
+    static volatile bool _snapshot; // If true we're not allocating new training data
     static int _lock_mode;
     const bool _recursive;
     static void lock() {
@@ -146,6 +150,8 @@ class TrainingData : public Metadata {
       }
     }
   };
+
+  // A set of TD objects that we collect during the training run.
   class TrainingDataSet {
     friend TrainingData;
     ResizeableResourceHashtable<const Key*, TrainingData*,
@@ -199,6 +205,8 @@ class TrainingData : public Metadata {
     }
   };
 
+  // A widget to ensure that we visit TD object only once (TD objects can have pointer to
+  // other TD object that are sometimes circular).
   class Visitor {
     ResizeableResourceHashtable<TrainingData*, bool> _visited;
   public:
@@ -221,10 +229,26 @@ private:
   TrainingData(Arg... arg)
     : _key(arg...) { }
 
+  // Container for recording TD during training run
   static TrainingDataSet _training_data_set;
+  // Containter for replaying the training data (read-only, populated from the AOT image)
   static TrainingDataDictionary _archived_training_data_dictionary;
+  // Container used for writing the AOT image
   static TrainingDataDictionary _archived_training_data_dictionary_for_dumping;
+  class DumpTimeTrainingDataInfo {
+    TrainingData* _training_data;
+  public:
+    DumpTimeTrainingDataInfo() : DumpTimeTrainingDataInfo(nullptr) {}
+    DumpTimeTrainingDataInfo(TrainingData* training_data) : _training_data(training_data) {}
+    void metaspace_pointers_do(MetaspaceClosure* it) {
+      it->push(&_training_data);
+    }
+    TrainingData* training_data() {
+      return _training_data;
+    }
+  };
   typedef GrowableArrayCHeap<DumpTimeTrainingDataInfo, mtClassShared> DumptimeTrainingDataDictionary;
+  // A temporary container that is used to accumulate and filter TD during dumping
   static DumptimeTrainingDataDictionary* _dumptime_training_data_dictionary;
 
   static TrainingDataSet* training_data_set() { return &_training_data_set; }
@@ -363,6 +387,7 @@ private:
   }
 };
 
+// Training data that is associated with an InstanceKlass
 class KlassTrainingData : public TrainingData {
   friend TrainingData;
   friend CompileTrainingData;
@@ -455,7 +480,7 @@ class KlassTrainingData : public TrainingData {
   }
 
   template<typename Function>
-  void iterate_all_comp_deps(Function fn) const { // lambda enabled API
+  void iterate_comp_deps(Function fn) const { // lambda enabled API
     TrainingDataLocker l;
     for (int i = 0; i < comp_dep_count(); i++) {
       fn(comp_dep(i));
@@ -479,9 +504,12 @@ class CompileTrainingData : public TrainingData {
 
   // classes that should be initialized before this JIT task runs
   DepList<KlassTrainingData*> _init_deps;
+  // Number of uninitialized classes left, when it's 0, all deps are satisfied
   volatile int _init_deps_left;
 
 public:
+  // ciRecords is a generic meachanism to memoize CI responses to arbitary queries. For each function we're interested in we record
+  // (return_value, argument_values) tuples in a list. Arguments are allowed to have Metaspace pointers in them.
   class ciRecords {
     template <typename... Ts> class Arguments {
     public:
@@ -561,6 +589,8 @@ public:
 
 
 public:
+    // Record CI answers for the InlineSmallCode heuristic. It is importance since the heuristic is non-commutative and we may want to
+    // compile methods in a different order than in the training run.
     typedef ciMemoizedFunction<int, MethodTrainingData*> ciMethod__inline_instructions_size_type;
     ciMethod__inline_instructions_size_type ciMethod__inline_instructions_size;
 #if INCLUDE_CDS
@@ -669,7 +699,7 @@ class MethodTrainingData : public TrainingData {
   template <class T> friend class CppVtableCloner;
 
   KlassTrainingData* _klass;
-  Method* _holder;  // can be null
+  Method* _holder;
   CompileTrainingData* _last_toplevel_compiles[CompLevel_count];
   int _highest_top_level;
   int _level_mask;  // bit-set of all possible levels
@@ -754,7 +784,7 @@ class MethodTrainingData : public TrainingData {
   virtual void cleanup(Visitor& visitor) NOT_CDS_RETURN;
 
   template<typename Function>
-  void iterate_all_compiles(Function fn) const { // lambda enabled API
+  void iterate_compiles(Function fn) const { // lambda enabled API
     for (int i = 0; i < CompLevel_count; i++) {
       CompileTrainingData* ctd = _last_toplevel_compiles[i];
       if (ctd != nullptr) {
@@ -784,33 +814,4 @@ class MethodTrainingData : public TrainingData {
     return TrainingData::allocate<MethodTrainingData>(m, ktd);
   }
 };
-
-// CDS support
-
-class DumpTimeTrainingDataInfo {
-  TrainingData* _training_data;
-public:
-  DumpTimeTrainingDataInfo() : DumpTimeTrainingDataInfo(nullptr) {}
-
-  DumpTimeTrainingDataInfo(TrainingData* training_data)
-      : _training_data(training_data) {}
-
-  void metaspace_pointers_do(MetaspaceClosure* it) {
-    it->push(&_training_data);
-  }
-
-  TrainingData* training_data() {
-    return _training_data;
-  }
-};
-
-
-class TrainingDataPrinter : StackObj {
-  outputStream* _st;
-  int _index;
-public:
-  TrainingDataPrinter(outputStream* st) : _st(st), _index(0) {}
-  void do_value(TrainingData* record);
-};
-
 #endif // SHARE_OOPS_TRAININGDATA_HPP

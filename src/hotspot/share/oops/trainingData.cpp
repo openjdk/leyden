@@ -260,7 +260,7 @@ uint CompileTrainingData::compute_init_deps_left(bool count_initialized) {
       } else if (holder->is_shared_unregistered_class()) {
         Key k(holder);
         if (CDS_ONLY(!Key::can_compute_cds_hash(&k)) NOT_CDS(true)) {
-          ++left; // FIXME: !!! init tracking doesn't work well for custom loaders !!!
+          ++left;
         }
       }
     }
@@ -411,7 +411,7 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
       case InstanceKlass::loaded:               st->print("[D]"); break;
       case InstanceKlass::linked:               st->print("[L]"); break;
       case InstanceKlass::being_initialized:    st->print("[i]"); break;
-      case InstanceKlass::fully_initialized:    /*st->print("");*/ break;
+      case InstanceKlass::fully_initialized:                      break;
       case InstanceKlass::initialization_error: st->print("[E]"); break;
       default: fatal("unknown state: %d", holder()->init_state());
     }
@@ -443,16 +443,6 @@ KlassTrainingData::KlassTrainingData(InstanceKlass* klass) : TrainingData(klass)
     assert(JNIHandles::is_global_handle(hmj), "");
     JNIHandles::destroy_global(hmj);
   }
-
-  // Keep the klass alive during the training run, unconditionally.
-  //
-  // FIXME: Revisit this decision; we could allow training runs to
-  // unload classes in the normal way.  We might use make_weak_global
-  // instead of make_global.
-  //
-  // The data from the training run would mention the name of the
-  // unloaded class (and of its loader).  Is it worth the complexity
-  // to track and then unload classes, remembering just their names?
 
   if (klass != nullptr) {
     Handle hm(JavaThread::current(), klass->java_mirror());
@@ -608,7 +598,7 @@ void KlassTrainingData::verify() {
 }
 
 void MethodTrainingData::verify() {
-  iterate_all_compiles([](CompileTrainingData* ctd) {
+  iterate_compiles([](CompileTrainingData* ctd) {
     ctd->verify();
 
     int init_deps_left1 = ctd->init_deps_left();
@@ -657,6 +647,38 @@ void TrainingData::serialize_training_data(SerializeClosure* soc) {
   }
   RecompilationSchedule::serialize_training_data(soc);
 }
+
+class TrainingDataPrinter : StackObj {
+  outputStream* _st;
+  int _index;
+public:
+  TrainingDataPrinter(outputStream* st) : _st(st), _index(0) {}
+  void do_value(TrainingData* td) {
+    const char* type = (td->is_KlassTrainingData()   ? "K" :
+                        td->is_MethodTrainingData()  ? "M" :
+                        td->is_CompileTrainingData() ? "C" : "?");
+    _st->print("%4d: %p %s ", _index++, td, type);
+    td->print_on(_st);
+    _st->cr();
+    if (td->is_KlassTrainingData()) {
+      td->as_KlassTrainingData()->iterate_comp_deps([&](CompileTrainingData* ctd) {
+        ResourceMark rm;
+        _st->print_raw("  C ");
+        ctd->print_on(_st);
+        _st->cr();
+      });
+    } else if (td->is_MethodTrainingData()) {
+      td->as_MethodTrainingData()->iterate_compiles([&](CompileTrainingData* ctd) {
+        ResourceMark rm;
+        _st->print_raw("  C ");
+        ctd->print_on(_st);
+        _st->cr();
+      });
+    } else if (td->is_CompileTrainingData()) {
+      // ?
+    }
+  }
+};
 
 void TrainingData::print_archived_training_data_on(outputStream* st) {
   st->print_cr("Archived TrainingData Dictionary");
@@ -781,33 +803,6 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
     }
   }
 }
-
-void TrainingDataPrinter::do_value(TrainingData* td) {
-  const char* type = (td->is_KlassTrainingData()   ? "K" :
-                      td->is_MethodTrainingData()  ? "M" :
-                      td->is_CompileTrainingData() ? "C" : "?");
-  _st->print("%4d: %p %s ", _index++, td, type);
-  td->print_on(_st);
-  _st->cr();
-  if (td->is_KlassTrainingData()) {
-    td->as_KlassTrainingData()->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
-      ResourceMark rm;
-      _st->print_raw("  C ");
-      ctd->print_on(_st);
-      _st->cr();
-    });
-  } else if (td->is_MethodTrainingData()) {
-    td->as_MethodTrainingData()->iterate_all_compiles([&](CompileTrainingData* ctd) {
-      ResourceMark rm;
-      _st->print_raw("  C ");
-      ctd->print_on(_st);
-      _st->cr();
-    });
-  } else if (td->is_CompileTrainingData()) {
-    // ?
-  }
-}
-
 
 #if INCLUDE_CDS
 void KlassTrainingData::remove_unshareable_info() {

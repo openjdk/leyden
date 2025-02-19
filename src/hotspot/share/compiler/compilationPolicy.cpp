@@ -167,7 +167,7 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
       ktd->notice_fully_initialized(); // sets klass->has_init_deps_processed bit
       assert(klass->has_init_deps_processed(), "");
 
-      ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
+      ktd->iterate_comp_deps([&](CompileTrainingData* ctd) {
         if (ctd->init_deps_left() == 0) {
           MethodTrainingData* mtd = ctd->method();
           if (mtd->has_holder()) {
