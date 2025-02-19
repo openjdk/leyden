@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "classfile/vmClasses.hpp"
 #include "code/SCCache.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
@@ -887,5 +886,5 @@ int C2Compiler::initial_code_buffer_size(int const_size) {
   // See Compile::init_scratch_buffer_blob
   int locs_size = sizeof(relocInfo) * PhaseOutput::MAX_locs_size;
   int slop = 2 * CodeSection::end_slop(); // space between sections
-  return PhaseOutput::MAX_inst_size + PhaseOutput::MAX_stubs_size + const_size + slop + locs_size;
+  return PhaseOutput::max_inst_size() + PhaseOutput::MAX_stubs_size + const_size + slop + locs_size;
 }

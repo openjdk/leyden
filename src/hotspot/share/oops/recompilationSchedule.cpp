@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/methodProfiler.hpp"
 #include "code/nmethod.hpp"
 #include "memory/metadataFactory.hpp"

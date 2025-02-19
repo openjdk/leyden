@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "classfile/javaClasses.hpp"
 #if INCLUDE_CDS
 #include "code/SCCache.hpp"
@@ -542,7 +541,7 @@ void G1BarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   GrowableArray<G1BarrierStubC2*>* const stubs = barrier_set_state()->stubs();
   for (int i = 0; i < stubs->length(); i++) {
     // Make sure there is enough space in the code buffer
-    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::MAX_inst_size) && cb.blob() == nullptr) {
+    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::max_inst_gcstub_size()) && cb.blob() == nullptr) {
       ciEnv::current()->record_failure("CodeCache is full");
       return;
     }

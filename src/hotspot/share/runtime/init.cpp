@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
@@ -153,7 +152,6 @@ jint init_globals() {
                                   // initial_stubs_init and metaspace_init.
   if (status != JNI_OK)
     return status;
-  SCCache::initialize();
 #ifdef LEAK_SANITIZER
   {
     // Register the Java heap with LSan.
@@ -174,6 +172,8 @@ jint init_globals() {
   InterfaceSupport_init();
   VMRegImpl::set_regName();  // need this before generate_stubs (for printing oop maps).
   SharedRuntime::generate_stubs();
+  SCCache::init_shared_blobs_table();  // need this after generate_stubs
+  SharedRuntime::init_adapter_library(); // do this after SCCache::init_shared_blobs_table
   return JNI_OK;
 }
 
@@ -225,6 +225,7 @@ jint init_globals2() {
   }
   compiler_stubs_init(false /* in_compiler_thread */); // compiler's intrinsics stubs
   final_stubs_init();    // final StubRoutines stubs
+  SCCache::init_stubs_table();
   MethodHandles::generate_adapters();
 
   // All the flags that get adjusted by VM_Version_init and os::init_2

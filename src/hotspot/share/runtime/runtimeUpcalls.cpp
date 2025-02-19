@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/methodDetails.hpp"
 #include "runtime/runtimeUpcalls.hpp"

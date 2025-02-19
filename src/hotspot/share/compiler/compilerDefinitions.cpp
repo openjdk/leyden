@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "code/codeCache.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "interpreter/invocationCounter.hpp"
@@ -333,6 +332,13 @@ void CompilerConfig::set_compilation_policy_flags() {
         FLAG_SET_CMDLINE(Tier4InvocationThreshold, 0);
       }
     }
+  }
+
+  // Current Leyden implementation requires SegmentedCodeCache: the archive-backed code
+  // cache would be initialized only then. Force SegmentedCodeCache if we are loading/storing
+  // cached code. TODO: Resolve this in code cache initialization code.
+  if (!SegmentedCodeCache && (LoadCachedCode || StoreCachedCode)) {
+    FLAG_SET_ERGO(SegmentedCodeCache, true);
   }
 
   if (CompileThresholdScaling < 0) {

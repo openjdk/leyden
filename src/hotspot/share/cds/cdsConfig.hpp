@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -50,6 +50,7 @@ class CDSConfig : public AllStatic {
   static char* _dynamic_archive_path;
 
   static bool  _old_cds_flags_used;
+  static bool  _disable_heap_dumping;
 
   static JavaThread* _dumper_thread;
 #endif
@@ -132,6 +133,10 @@ public:
 
   // --- Archived java objects
 
+  static bool are_vm_options_incompatible_with_dumping_heap() NOT_CDS_JAVA_HEAP_RETURN_(true);
+  static void log_reasons_for_not_dumping_heap();
+
+  static void disable_heap_dumping()                         { CDS_ONLY(_disable_heap_dumping = true); }
   static bool is_dumping_heap()                              NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_loading_heap()                              NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_initing_classes_at_dump_time()              NOT_CDS_JAVA_HEAP_RETURN_(false);
@@ -164,6 +169,8 @@ public:
   static bool is_dumping_cached_code()                       NOT_CDS_RETURN_(false);
   static void disable_dumping_cached_code()                  NOT_CDS_RETURN;
   static void enable_dumping_cached_code()                   NOT_CDS_RETURN;
+
+  static bool is_dumping_adapters()                          NOT_CDS_RETURN_(false);
 
   // Some CDS functions assume that they are called only within a single-threaded context. I.e.,
   // they are called from:

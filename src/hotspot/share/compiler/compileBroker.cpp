@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/cdsConfig.hpp"
 #include "classfile/javaClasses.inline.hpp"
@@ -417,8 +416,9 @@ static bool process_pending(CompileTask* task) {
 
 void CompileQueue::transfer_pending() {
   assert(_lock->owned_by_self(), "must own lock");
-  while (!_queue.empty()) {
-    CompileTask* task = _queue.pop();
+
+  CompileTask* task;
+  while ((task = _queue.pop()) != nullptr) {
     bool is_stale = process_pending(task);
     if (is_stale) {
       task->set_next(_first_stale);
@@ -446,13 +446,24 @@ void CompileQueue::free_all() {
   while (next != nullptr) {
     CompileTask* current = next;
     next = current->next();
+    bool found_waiter = false;
     {
-      // Wake up thread that blocks on the compile task.
       MutexLocker ct_lock(current->lock());
-      current->lock()->notify();
+      assert(current->waiting_for_completion_count() <= 1, "more than one thread are waiting for task");
+      if (current->waiting_for_completion_count() > 0) {
+        // If another thread waits for this task, we must wake them up
+        // so they will stop waiting and free the task.
+        current->lock()->notify();
+        found_waiter = true;
+      }
     }
-    // Put the task back on the freelist.
-    CompileTask::free(current);
+    if (!found_waiter) {
+      // If no one was waiting for this task, we need to free it ourselves. In this case, the task
+      // is also certainly unlocked, because, again, there is no waiter.
+      // Otherwise, by convention, it's the waiters responsibility to free the task.
+      // Put the task back on the freelist.
+      CompileTask::free(current);
+    }
   }
   _first = nullptr;
   _last = nullptr;
@@ -492,6 +503,22 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
     if (_first != nullptr) {
       // The call to on_empty_queue may have temporarily unlocked the MCQ lock
       // so check again whether any tasks were added to the queue.
+      break;
+    }
+
+    // If we have added stale tasks, there might be waiters that want
+    // the notification these tasks have failed. Normally, this would
+    // be done by a compiler thread that would perform the purge at
+    // the end of some compilation. But, if compile queue is empty,
+    // there is no guarantee compilers would run and do the purge.
+    // Do the purge here and now to unblock the waiters.
+    // Perform this until we run out of stale tasks.
+    while (_first_stale != nullptr) {
+      purge_stale_tasks();
+    }
+    if (_first != nullptr) {
+      // Purge stale tasks may have transferred some new tasks,
+      // so check again.
       break;
     }
 
@@ -891,20 +918,6 @@ void TrainingReplayThread::training_replay_thread_entry(JavaThread* thread, TRAP
 }
 
 #if defined(ASSERT) && COMPILER2_OR_JVMCI
-// Stress testing. Dedicated threads revert optimizations based on escape analysis concurrently to
-// the running java application.  Configured with vm options DeoptimizeObjectsALot*.
-class DeoptimizeObjectsALotThread : public JavaThread {
-
-  static void deopt_objs_alot_thread_entry(JavaThread* thread, TRAPS);
-  void deoptimize_objects_alot_loop_single();
-  void deoptimize_objects_alot_loop_all();
-
-public:
-  DeoptimizeObjectsALotThread() : JavaThread(&deopt_objs_alot_thread_entry) { }
-
-  bool is_hidden_from_external_view() const      { return true; }
-};
-
 // Entry for DeoptimizeObjectsALotThread. The threads are started in
 // CompileBroker::init_compiler_threads() iff DeoptimizeObjectsALot is enabled
 void DeoptimizeObjectsALotThread::deopt_objs_alot_thread_entry(JavaThread* thread, TRAPS) {
@@ -1747,9 +1760,10 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     }
     bool is_blocking = ReplayCompiles                                             ||
                        !directive->BackgroundCompilationOption                    ||
+                       (PreloadBlocking && (compile_reason == CompileTask::Reason_Preload)) ||
                        (compile_reason == CompileTask::Reason_Precompile)         ||
                        (compile_reason == CompileTask::Reason_PrecompileForPreload);
-	  compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
+    compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
   }
 
   // return requested nmethod
@@ -2013,9 +2027,11 @@ void CompileBroker::wait_for_completion(CompileTask* task) {
   {
     MonitorLocker ml(thread, task->lock());
     free_task = true;
+    task->inc_waiting_for_completion();
     while (!task->is_complete() && !is_compilation_disabled_forever()) {
       ml.wait();
     }
+    task->dec_waiting_for_completion();
   }
 
   if (free_task) {
@@ -2059,11 +2075,6 @@ bool CompileBroker::init_compiler_runtime() {
     // Switch back to VM state to do compiler initialization
     ThreadInVMfromNative tv(thread);
 
-    // Perform per-thread and global initializations
-    {
-      MutexLocker only_one (thread, CompileThread_lock);
-      SCCache::init_table();
-    }
     comp->initialize();
   }
 
@@ -2463,10 +2474,6 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   elapsedTimer time;
 
   DirectiveSet* directive = task->directive();
-  if (directive->PrintCompilationOption) {
-    ResourceMark rm;
-    task->print_tty();
-  }
 
   CompilerThread* thread = CompilerThread::current();
   ResourceMark rm(thread);
@@ -2481,6 +2488,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   bool is_osr = (osr_bci != standard_entry_bci);
   bool should_log = (thread->log() != nullptr);
   bool should_break = false;
+  bool should_print_compilation = PrintCompilation || directive->PrintCompilationOption;
   const int task_level = task->comp_level();
   AbstractCompiler* comp = task->compiler();
   {
@@ -2722,7 +2730,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   method->clear_queued_for_compilation();
   method->set_pending_queue_processed(false);
 
-  if (PrintCompilation) {
+  if (should_print_compilation) {
     ResourceMark rm;
     task->print_tty();
   }
@@ -3262,9 +3270,9 @@ void CompileBroker::print_info(outputStream *out) {
   out->print_cr("CodeCache overview");
   out->print_cr("--------------------------------------------------------");
   out->cr();
-  out->print_cr("         Reserved size : " SIZE_FORMAT_W(7) " KB", CodeCache::max_capacity() / K);
-  out->print_cr("        Committed size : " SIZE_FORMAT_W(7) " KB", CodeCache::capacity() / K);
-  out->print_cr("  Unallocated capacity : " SIZE_FORMAT_W(7) " KB", CodeCache::unallocated_capacity() / K);
+  out->print_cr("         Reserved size : %7zu KB", CodeCache::max_capacity() / K);
+  out->print_cr("        Committed size : %7zu KB", CodeCache::capacity() / K);
+  out->print_cr("  Unallocated capacity : %7zu KB", CodeCache::unallocated_capacity() / K);
   out->cr();
 }
 

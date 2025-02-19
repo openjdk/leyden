@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "ci/ciCallProfile.hpp"
 #include "ci/ciExceptionHandler.hpp"
@@ -1064,7 +1063,7 @@ ciMethodData* ciMethod::method_data() {
     if (_method_data_recorded == nullptr) {
       VM_ENTRY_MARK;
       methodHandle h_m(thread, get_Method());
-      MethodTrainingData* mtd = TrainingData::lookup_for(h_m());
+      MethodTrainingData* mtd = MethodTrainingData::find(h_m);
       MethodData* mdo = (mtd != nullptr ? mtd->final_profile() : nullptr);
       DirectiveSet* directives = DirectivesStack::getMatchingDirective(h_m, CURRENT_ENV->task()->compiler());
       if (mdo == nullptr || directives->IgnoreRecordedProfileOption) {

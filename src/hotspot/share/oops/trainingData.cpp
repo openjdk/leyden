@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciMetadata.hpp"
 #include "cds/cdsConfig.hpp"
@@ -67,6 +66,9 @@ CompileTrainingData::CompileTrainingData() : _level(-1), _compile_id(-1) {
 void TrainingData::initialize() {
   // this is a nop if training modes are not enabled
   if (have_data() || need_data()) {
+    // Data structures that we have do not currently support iterative training. So you cannot replay
+    // and train at the same time. Going forward we may want to adjust iteration/search to enable that.
+    guarantee(have_data() != need_data(), "Iterative training is not supported");
     TrainingDataLocker::initialize();
   }
   RecompilationSchedule::initialize();
@@ -106,62 +108,76 @@ void TrainingData::verify() {
 #endif
 }
 
-MethodTrainingData* MethodTrainingData::make(const methodHandle& method,
-                                             bool null_if_not_found) {
+MethodTrainingData* MethodTrainingData::make(const methodHandle& method, bool null_if_not_found, bool use_cache) {
   MethodTrainingData* mtd = nullptr;
   if (!have_data() && !need_data()) {
     return mtd;
   }
   // Try grabbing the cached value first.
+  // Cache value is stored in MethodCounters and the following are the
+  // possible states:
+  // 1. Cached value is method_training_data_sentinel().
+  //    This is an initial state and needs a full lookup.
+  // 2. Cached value is null.
+  //    Lookup failed the last time, if we don't plan to create a new TD object,
+  //    i.e. null_if_no_found == true, then just return a null.
+  // 3. Cache value is not null.
+  //    Return it, the value of training_data_lookup_failed doesn't matter.
   MethodCounters* mcs = method->method_counters();
   if (mcs != nullptr) {
     mtd = mcs->method_training_data();
-    if (mtd != nullptr) {
+    if (mtd != nullptr && mtd != mcs->method_training_data_sentinel()) {
       return mtd;
     }
-  } else {
+    if (null_if_not_found && mtd == nullptr) {
+      assert(mtd == nullptr, "No training data found");
+      return nullptr;
+    }
+  } else if (use_cache) {
     mcs = Method::build_method_counters(Thread::current(), method());
   }
 
-  KlassTrainingData* holder = KlassTrainingData::make(method->method_holder(), null_if_not_found);
-  if (holder == nullptr) {
-    return nullptr; // allocation failure
-  }
+  TrainingData* td = nullptr;
+
   Key key(method());
-  TrainingData* td = CDS_ONLY(have_data() ? lookup_archived_training_data(&key) :) nullptr;
-  if (td != nullptr) {
-    mtd = td->as_MethodTrainingData();
-    method->init_training_data(mtd);  // Cache the pointer for next time.
-    return mtd;
-  } else {
-    TrainingDataLocker l;
-    td = training_data_set()->find(&key);
-    if (td == nullptr && null_if_not_found) {
-      return nullptr;
-    }
+  if (have_data()) {
+#if INCLUDE_CDS
+    td = lookup_archived_training_data(&key);
+#endif
     if (td != nullptr) {
       mtd = td->as_MethodTrainingData();
-      method->init_training_data(mtd); // Cache the pointer for next time.
-      return mtd;
+    } else {
+      mtd = nullptr;
     }
+    // Cache the pointer to MTD in MethodCounters for faster lookup (could be null if not found)
+    method->init_training_data(mtd);
   }
-  assert(td == nullptr && mtd == nullptr && !null_if_not_found, "Should return if have result");
-  KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder());
-  if (ktd != nullptr) {
+
+  if (need_data()) {
     TrainingDataLocker l;
     td = training_data_set()->find(&key);
     if (td == nullptr) {
-      mtd = MethodTrainingData::allocate(method(), ktd);
-      if (mtd == nullptr) {
-        return nullptr; // allocation failure
+      if (!null_if_not_found) {
+        KlassTrainingData* ktd = KlassTrainingData::make(method->method_holder());
+        if (ktd == nullptr) {
+          return nullptr; // allocation failure
+        }
+        mtd = MethodTrainingData::allocate(method(), ktd);
+        if (mtd == nullptr) {
+          return nullptr; // allocation failure
+        }
+        td = training_data_set()->install(mtd);
+        assert(td == mtd, "");
+      } else {
+        mtd = nullptr;
       }
-      td = training_data_set()->install(mtd);
-      assert(td == mtd, "");
     } else {
       mtd = td->as_MethodTrainingData();
     }
+    // Cache the pointer to MTD in MethodCounters for faster lookup (could be null if not found)
     method->init_training_data(mtd);
   }
+
   return mtd;
 }
 
@@ -244,7 +260,7 @@ uint CompileTrainingData::compute_init_deps_left(bool count_initialized) {
       } else if (holder->is_shared_unregistered_class()) {
         Key k(holder);
         if (CDS_ONLY(!Key::can_compute_cds_hash(&k)) NOT_CDS(true)) {
-          ++left; // FIXME: !!! init tracking doesn't work well for custom loaders !!!
+          ++left;
         }
       }
     }
@@ -360,26 +376,30 @@ KlassTrainingData* KlassTrainingData::make(InstanceKlass* holder, bool null_if_n
     guarantee(!ktd->has_holder() || ktd->holder() == holder, "");
     if (ktd->has_holder()) {
       return ktd;
+    } else {
+      ktd = nullptr;
     }
   }
-  TrainingDataLocker l;
-  td = training_data_set()->find(&key);
-  if (td == nullptr) {
-    if (null_if_not_found) {
-      return nullptr;
+  if (need_data()) {
+    TrainingDataLocker l;
+    td = training_data_set()->find(&key);
+    if (td == nullptr) {
+      if (null_if_not_found) {
+        return nullptr;
+      }
+      ktd = KlassTrainingData::allocate(holder);
+      if (ktd == nullptr) {
+        return nullptr; // allocation failure
+      }
+      td = training_data_set()->install(ktd);
+      assert(ktd == td, "");
+    } else {
+      ktd = td->as_KlassTrainingData();
+      guarantee(ktd->holder() != nullptr, "null holder");
     }
-    ktd = KlassTrainingData::allocate(holder);
-    if (ktd == nullptr) {
-      return nullptr; // allocation failure
-    }
-    td = training_data_set()->install(ktd);
-    assert(ktd == td, "");
-  } else {
-    ktd = td->as_KlassTrainingData();
-    guarantee(ktd->holder() != nullptr, "null holder");
+    assert(ktd != nullptr, "");
+    guarantee(ktd->holder() == holder, "");
   }
-  assert(ktd != nullptr, "");
-  guarantee(ktd->holder() == holder, "");
   return ktd;
 }
 
@@ -391,7 +411,7 @@ void KlassTrainingData::print_on(outputStream* st, bool name_only) const {
       case InstanceKlass::loaded:               st->print("[D]"); break;
       case InstanceKlass::linked:               st->print("[L]"); break;
       case InstanceKlass::being_initialized:    st->print("[i]"); break;
-      case InstanceKlass::fully_initialized:    /*st->print("");*/ break;
+      case InstanceKlass::fully_initialized:                      break;
       case InstanceKlass::initialization_error: st->print("[E]"); break;
       default: fatal("unknown state: %d", holder()->init_state());
     }
@@ -423,16 +443,6 @@ KlassTrainingData::KlassTrainingData(InstanceKlass* klass) : TrainingData(klass)
     assert(JNIHandles::is_global_handle(hmj), "");
     JNIHandles::destroy_global(hmj);
   }
-
-  // Keep the klass alive during the training run, unconditionally.
-  //
-  // FIXME: Revisit this decision; we could allow training runs to
-  // unload classes in the normal way.  We might use make_weak_global
-  // instead of make_global.
-  //
-  // The data from the training run would mention the name of the
-  // unloaded class (and of its loader).  Is it worth the complexity
-  // to track and then unload classes, remembering just their names?
 
   if (klass != nullptr) {
     Handle hm(JavaThread::current(), klass->java_mirror());
@@ -473,7 +483,7 @@ void TrainingData::init_dumptime_table(TRAPS) {
 
     ResourceMark rm;
     Visitor visitor(training_data_set()->size());
-    training_data_set()->iterate_all([&](const TrainingData::Key* k, TrainingData* td) {
+    training_data_set()->iterate([&](TrainingData* td) {
       td->prepare(visitor);
       if (!td->is_CompileTrainingData()) {
         _dumptime_training_data_dictionary->append(td);
@@ -562,6 +572,8 @@ void MethodTrainingData::cleanup(Visitor& visitor) {
       if (_final_profile != nullptr && _final_profile->method() != _holder) {
         log_warning(cds)("Stale MDO for  %s::%s", name()->as_klass_external_name(), signature()->as_utf8());
       }
+      _final_profile = nullptr;
+      _final_counters = nullptr;
       _holder = nullptr;
       key()->make_empty();
     }
@@ -586,7 +598,7 @@ void KlassTrainingData::verify() {
 }
 
 void MethodTrainingData::verify() {
-  iterate_all_compiles([](CompileTrainingData* ctd) {
+  iterate_compiles([](CompileTrainingData* ctd) {
     ctd->verify();
 
     int init_deps_left1 = ctd->init_deps_left();
@@ -635,6 +647,38 @@ void TrainingData::serialize_training_data(SerializeClosure* soc) {
   }
   RecompilationSchedule::serialize_training_data(soc);
 }
+
+class TrainingDataPrinter : StackObj {
+  outputStream* _st;
+  int _index;
+public:
+  TrainingDataPrinter(outputStream* st) : _st(st), _index(0) {}
+  void do_value(TrainingData* td) {
+    const char* type = (td->is_KlassTrainingData()   ? "K" :
+                        td->is_MethodTrainingData()  ? "M" :
+                        td->is_CompileTrainingData() ? "C" : "?");
+    _st->print("%4d: %p %s ", _index++, td, type);
+    td->print_on(_st);
+    _st->cr();
+    if (td->is_KlassTrainingData()) {
+      td->as_KlassTrainingData()->iterate_comp_deps([&](CompileTrainingData* ctd) {
+        ResourceMark rm;
+        _st->print_raw("  C ");
+        ctd->print_on(_st);
+        _st->cr();
+      });
+    } else if (td->is_MethodTrainingData()) {
+      td->as_MethodTrainingData()->iterate_compiles([&](CompileTrainingData* ctd) {
+        ResourceMark rm;
+        _st->print_raw("  C ");
+        ctd->print_on(_st);
+        _st->cr();
+      });
+    } else if (td->is_CompileTrainingData()) {
+      // ?
+    }
+  }
+};
 
 void TrainingData::print_archived_training_data_on(outputStream* st) {
   st->print_cr("Archived TrainingData Dictionary");
@@ -711,35 +755,6 @@ TrainingData* TrainingData::lookup_archived_training_data(const Key* k) {
 }
 #endif
 
-KlassTrainingData* TrainingData::lookup_for(InstanceKlass* ik) {
-#if INCLUDE_CDS
-  if (TrainingData::have_data() && ik != nullptr && ik->is_loaded()) {
-    TrainingData::Key key(ik);
-    TrainingData* td = TrainingData::lookup_archived_training_data(&key);
-    if (td != nullptr && td->is_KlassTrainingData()) {
-      return td->as_KlassTrainingData();
-    }
-  }
-#endif
-  return nullptr;
-}
-
-MethodTrainingData* TrainingData::lookup_for(Method* m) {
-#if INCLUDE_CDS
-  if (TrainingData::have_data() && m != nullptr) {
-    KlassTrainingData* holder_ktd = TrainingData::lookup_for(m->method_holder());
-    if (holder_ktd != nullptr) {
-      TrainingData::Key key(m);
-      TrainingData* td = TrainingData::lookup_archived_training_data(&key);
-      if (td != nullptr && td->is_MethodTrainingData()) {
-        return td->as_MethodTrainingData();
-      }
-    }
-  }
-#endif
-  return nullptr;
-}
-
 template <typename T>
 void TrainingData::DepList<T>::metaspace_pointers_do(MetaspaceClosure* iter) {
   iter->push(&_deps);
@@ -788,41 +803,6 @@ void TrainingData::DepList<T>::prepare(ClassLoaderData* loader_data) {
     }
   }
 }
-
-void TrainingDataPrinter::do_value(TrainingData* td) {
-#ifdef ASSERT
-#if INCLUDE_CDS
-  TrainingData::Key key(td->key()->meta());
-  assert(td == TrainingData::archived_training_data_dictionary()->lookup(td->key(), TrainingData::Key::cds_hash(td->key()), -1), "");
-  assert(td == TrainingData::archived_training_data_dictionary()->lookup(&key, TrainingData::Key::cds_hash(&key), -1), "");
-#endif
-#endif // ASSERT
-
-  const char* type = (td->is_KlassTrainingData()   ? "K" :
-                      td->is_MethodTrainingData()  ? "M" :
-                      td->is_CompileTrainingData() ? "C" : "?");
-  _st->print("%4d: %p %s ", _index++, td, type);
-  td->print_on(_st);
-  _st->cr();
-  if (td->is_KlassTrainingData()) {
-    td->as_KlassTrainingData()->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
-      ResourceMark rm;
-      _st->print_raw("  C ");
-      ctd->print_on(_st);
-      _st->cr();
-    });
-  } else if (td->is_MethodTrainingData()) {
-    td->as_MethodTrainingData()->iterate_all_compiles([&](CompileTrainingData* ctd) {
-      ResourceMark rm;
-      _st->print_raw("  C ");
-      ctd->print_on(_st);
-      _st->cr();
-    });
-  } else if (td->is_CompileTrainingData()) {
-    // ?
-  }
-}
-
 
 #if INCLUDE_CDS
 void KlassTrainingData::remove_unshareable_info() {

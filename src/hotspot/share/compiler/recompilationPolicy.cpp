@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/recompilationPolicy.hpp"
 #include "oops/method.inline.hpp"

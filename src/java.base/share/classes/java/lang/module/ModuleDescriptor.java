@@ -91,7 +91,7 @@ import jdk.internal.module.ModuleInfo;
  * @since 9
  */
 
-public class ModuleDescriptor
+public final class ModuleDescriptor
     implements Comparable<ModuleDescriptor>
 {
 

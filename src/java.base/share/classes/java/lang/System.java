@@ -1520,13 +1520,14 @@ public final class System {
 
     /**
      * Returns whether the AOT system is recording training data.
-     *
-     * @return  whether the AOT system is recording training data.
+     * @return whether the AOT system is recording training data.
+     * @since 25
      */
     public static native boolean AOTIsTraining();
 
     /**
      * Will stop the recording of AOT training data.
+     * @since 25
      */
     public static native void AOTEndTraining();
 
@@ -2189,14 +2190,6 @@ public final class System {
 
             public byte stringCoder(String str) {
                 return str.coder();
-            }
-
-            public int getCharsLatin1(long i, int index, byte[] buf) {
-                return StringLatin1.getChars(i, index, buf);
-            }
-
-            public int getCharsUTF16(long i, int index, byte[] buf) {
-                return StringUTF16.getChars(i, index, buf);
             }
 
             public String join(String prefix, String suffix, String delimiter, String[] elements, int size) {

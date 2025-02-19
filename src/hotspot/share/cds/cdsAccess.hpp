@@ -58,10 +58,11 @@ public:
 
   static void* allocate_from_code_cache(size_t size) NOT_CDS_RETURN_(nullptr);
 
-  static size_t get_cached_code_size() NOT_CDS_JAVA_HEAP_RETURN_(0);
-  static void set_cached_code_size(size_t sz) NOT_CDS_JAVA_HEAP_RETURN;
+  static size_t get_cached_code_size() NOT_CDS_RETURN_(0);
+  static void set_cached_code_size(size_t sz) NOT_CDS_RETURN;
 
-  static bool map_cached_code(ReservedSpace rs) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_cached_code_region_empty() NOT_CDS_RETURN_(true);
+  static bool map_cached_code(ReservedSpace rs) NOT_CDS_RETURN_(false);
 
   template <typename T>
   static void set_pointer(T** ptr, T* value) {
