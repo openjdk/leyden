@@ -1052,16 +1052,16 @@ void SCCache::log_stats_on_exit() {
                  total_stats.total_count(), max_size);
     for (uint kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
       if (total_stats.entry_count(kind) > 0) {
-	log.print_cr("  %s: total=%u(old=%u+new=%u)",
-		     sccentry_kind_name[kind], total_stats.entry_count(kind), prev_stats.entry_count(kind), current_stats.entry_count(kind));
-	if (kind == SCCEntry::Code) {
-	  for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
+        log.print_cr("  %s: total=%u(old=%u+new=%u)",
+                     sccentry_kind_name[kind], total_stats.entry_count(kind), prev_stats.entry_count(kind), current_stats.entry_count(kind));
+        if (kind == SCCEntry::Code) {
+          for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
             if (total_stats.nmethod_count(lvl) > 0) {
-	    log.print_cr("    Tier %d: total=%u(old=%u+new=%u)",
-			 lvl, total_stats.nmethod_count(lvl), prev_stats.nmethod_count(lvl), current_stats.nmethod_count(lvl));
+              log.print_cr("    Tier %d: total=%u(old=%u+new=%u)",
+                           lvl, total_stats.nmethod_count(lvl), prev_stats.nmethod_count(lvl), current_stats.nmethod_count(lvl));
             }
-	  }
-	}
+          }
+        }
       }
     }
     log.print_cr("Total=%u(old=%u+new=%u)", total_stats.total_count(), prev_stats.total_count(), current_stats.total_count());
