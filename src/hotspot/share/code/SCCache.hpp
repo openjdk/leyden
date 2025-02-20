@@ -136,15 +136,21 @@ public:
   }
 };
 
+#define DO_SCCENTRY_KIND(Fn) \
+  Fn(None) \
+  Fn(Adapter) \
+  Fn(Stub) \
+  Fn(Blob) \
+  Fn(Code) \
+
 // Code Cache's entry contain information from CodeBuffer
 class SCCEntry {
 public:
-  enum Kind {
-    None = 0,
-    Adapter = 1,
-    Stub = 2,
-    Blob = 3,
-    Code = 4
+  enum Kind : s1 {
+#define DECL_KIND_ENUM(kind) kind,
+    DO_SCCENTRY_KIND(DECL_KIND_ENUM)
+#undef DECL_KIND_ENUM
+    Kind_count
   };
 
 private:
@@ -211,6 +217,11 @@ public:
   void* operator new(size_t x, SCCache* cache);
   // Delete is a NOP
   void operator delete( void *ptr ) {}
+
+  bool is_adapter() { return _kind == Adapter; }
+  bool is_stub() { return _kind == Stub; }
+  bool is_blob() { return _kind == Blob; }
+  bool is_code() { return _kind == Code; }
 
   SCCEntry* next()    const { return _next; }
   void set_next(SCCEntry* next) { _next = next; }
@@ -509,6 +520,8 @@ public:
 
   bool finish_write();
 
+  void log_stats_on_exit();
+
   static bool load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) NOT_CDS_RETURN_(false);
   static bool store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) NOT_CDS_RETURN_(false);
 
@@ -623,6 +636,126 @@ public:
   static void print_statistics_on(outputStream* st) NOT_CDS_RETURN;
   static void print_timers_on(outputStream* st) NOT_CDS_RETURN;
   static void print_unused_entries_on(outputStream* st) NOT_CDS_RETURN;
+};
+
+// +1 for preload code, and another +1 because CompLevel_count is not really the count, but same as the highest comp level
+const int AOTCompLevel_count = CompLevel_count+1+1; // 6 levels indexed from 0 to 5
+
+struct AOTCodeStats {
+private:
+  struct {
+    uint _kind_cnt[SCCEntry::Kind_count];
+    uint _nmethod_cnt[AOTCompLevel_count];
+    uint _clinit_barriers_cnt;
+  } ccstats; // ccstats = cached code stats
+
+  void check_kind(uint kind) { assert(kind >= SCCEntry::None && kind < SCCEntry::Kind_count, "Invalid SCCEntry kind %d", kind); }
+  void check_complevel(uint lvl) { assert(lvl >= CompLevel_none && lvl < AOTCompLevel_count, "Invalid compilation level %d", lvl); }
+
+public:
+  void inc_entry_cnt(uint kind) { check_kind(kind); ccstats._kind_cnt[kind] += 1; }
+  void inc_nmethod_cnt(uint lvl) { check_complevel(lvl); ccstats._nmethod_cnt[lvl] += 1; }
+  void inc_preload_cnt() { ccstats._nmethod_cnt[AOTCompLevel_count-1] += 1; }
+  void inc_clinit_barriers_cnt() { ccstats._clinit_barriers_cnt += 1; }
+
+  void collect_entry_stats(SCCEntry* entry) {
+    inc_entry_cnt(entry->kind());
+    if (entry->is_code()) {
+      entry->for_preload() ? inc_nmethod_cnt(AOTCompLevel_count-1)
+                           : inc_nmethod_cnt(entry->comp_level());
+      if (entry->has_clinit_barriers()) {
+        inc_clinit_barriers_cnt();
+      }
+    }
+  }
+
+  uint entry_count(uint kind) { check_kind(kind); return ccstats._kind_cnt[kind]; }
+  uint nmethod_count(uint lvl) { check_complevel(lvl); return ccstats._nmethod_cnt[lvl]; }
+  uint preload_count() { return ccstats._nmethod_cnt[AOTCompLevel_count-1]; }
+  uint clinit_barriers_count() { return ccstats._clinit_barriers_cnt; }
+
+  uint total_count() {
+    uint total = 0;
+    for (int kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+      total += ccstats._kind_cnt[kind];
+    }
+    return total;
+  }
+
+  static AOTCodeStats add_cached_code_stats(AOTCodeStats stats1, AOTCodeStats stats2);
+
+  // Runtime stats of the AOT code
+private:
+  struct {
+    struct {
+      uint _loaded_cnt;
+      uint _invalidated_cnt;
+      uint _load_failed_cnt;
+    } _entry_kinds[SCCEntry::Kind_count],
+      _nmethods[AOTCompLevel_count];
+  } rs; // rs = runtime stats
+
+public:
+  void inc_entry_loaded_cnt(uint kind) { check_kind(kind); rs._entry_kinds[kind]._loaded_cnt += 1; }
+  void inc_entry_invalidated_cnt(uint kind) { check_kind(kind); rs._entry_kinds[kind]._invalidated_cnt += 1; }
+  void inc_entry_load_failed_cnt(uint kind) { check_kind(kind); rs._entry_kinds[kind]._load_failed_cnt += 1; }
+
+  void inc_nmethod_loaded_cnt(uint lvl) { check_complevel(lvl); rs._nmethods[lvl]._loaded_cnt += 1; }
+  void inc_nmethod_invalidated_cnt(uint lvl) { check_complevel(lvl); rs._nmethods[lvl]._invalidated_cnt += 1; }
+  void inc_nmethod_load_failed_cnt(uint lvl) { check_complevel(lvl); rs._nmethods[lvl]._load_failed_cnt += 1; }
+
+  uint entry_loaded_count(uint kind) { check_kind(kind); return rs._entry_kinds[kind]._loaded_cnt; }
+  uint entry_invalidated_count(uint kind) { check_kind(kind); return rs._entry_kinds[kind]._invalidated_cnt; }
+  uint entry_load_failed_count(uint kind) { check_kind(kind); return rs._entry_kinds[kind]._load_failed_cnt; }
+
+  uint nmethod_loaded_count(uint lvl) { check_complevel(lvl); return rs._nmethods[lvl]._loaded_cnt; }
+  uint nmethod_invalidated_count(uint lvl) { check_complevel(lvl); return rs._nmethods[lvl]._invalidated_cnt; }
+  uint nmethod_load_failed_count(uint lvl) { check_complevel(lvl); return rs._nmethods[lvl]._load_failed_cnt; }
+
+  void inc_loaded_cnt(SCCEntry* entry) {
+    inc_entry_loaded_cnt(entry->kind());
+    if (entry->is_code()) {
+      entry->for_preload() ? inc_nmethod_loaded_cnt(AOTCompLevel_count-1)
+                           : inc_nmethod_loaded_cnt(entry->comp_level());
+    }
+  }
+
+  void inc_invalidated_cnt(SCCEntry* entry) {
+    inc_entry_invalidated_cnt(entry->kind());
+    if (entry->is_code()) {
+      entry->for_preload() ? inc_nmethod_invalidated_cnt(AOTCompLevel_count-1)
+                           : inc_nmethod_invalidated_cnt(entry->comp_level());
+    }
+  }
+
+  void inc_load_failed_cnt(SCCEntry* entry) {
+    inc_entry_load_failed_cnt(entry->kind());
+    if (entry->is_code()) {
+      entry->for_preload() ? inc_nmethod_load_failed_cnt(AOTCompLevel_count-1)
+                           : inc_nmethod_load_failed_cnt(entry->comp_level());
+    }
+  }
+
+  void collect_entry_runtime_stats(SCCEntry* entry) {
+    if (entry->is_loaded()) {
+      inc_loaded_cnt(entry);
+    }
+    if (entry->not_entrant()) {
+      inc_invalidated_cnt(entry);
+    }
+    if (entry->load_fail()) {
+      inc_load_failed_cnt(entry);
+    }
+  }
+
+  void collect_all_stats(SCCEntry* entry) {
+    collect_entry_stats(entry);
+    collect_entry_runtime_stats(entry);
+  }
+
+  AOTCodeStats() {
+    memset(this, 0, sizeof(AOTCodeStats));
+  }
 };
 
 // code cache internal runtime constants area used by AOT code

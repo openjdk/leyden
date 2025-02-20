@@ -98,6 +98,12 @@
 #define O_BINARY 0     // otherwise do nothing.
 #endif
 
+const char* sccentry_kind_name[] = {
+#define DECL_KIND_STRING(kind) XSTR(kind),
+  DO_SCCENTRY_KIND(DECL_KIND_STRING)
+#undef DECL_KIND_STRING
+};
+
 static elapsedTimer _t_totalLoad;
 static elapsedTimer _t_totalRegister;
 static elapsedTimer _t_totalFind;
@@ -1005,9 +1011,57 @@ static int uint_cmp(const void *i, const void *j) {
   return a > b ? 1 : a < b ? -1 : 0;
 }
 
-static void log_counts_on_exit(const char* kind, uint counts[2]) {
-  int total = counts[0]+counts[1];
-  log_info(scc, exit)("  %s: total=%u(old=%u+new=%u)", kind, total, counts[0], counts[1]);
+AOTCodeStats AOTCodeStats::add_cached_code_stats(AOTCodeStats stats1, AOTCodeStats stats2) {
+  AOTCodeStats result;
+  for (int kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+    result.ccstats._kind_cnt[kind] = stats1.entry_count(kind) + stats2.entry_count(kind);
+  }
+
+  for (int lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
+    result.ccstats._nmethod_cnt[lvl] = stats1.nmethod_count(lvl) + stats2.nmethod_count(lvl);
+  }
+  result.ccstats._clinit_barriers_cnt = stats1.clinit_barriers_count() + stats2.clinit_barriers_count();
+  return result;
+}
+
+void SCCache::log_stats_on_exit() {
+  LogStreamHandle(Info, scc, exit) log;
+  if (log.is_enabled()) {
+    AOTCodeStats prev_stats;
+    AOTCodeStats current_stats;
+    AOTCodeStats total_stats;
+    uint max_size = 0;
+
+    uint load_count = (_load_header != nullptr) ? _load_header->entries_count() : 0;
+
+    for (uint i = 0; i < load_count; i++) {
+      prev_stats.collect_entry_stats(&_load_entries[i]);
+      if (max_size < _load_entries[i].size()) {
+        max_size = _load_entries[i].size();
+      }
+    }
+    for (uint i = 0; i < _store_entries_cnt; i++) {
+      current_stats.collect_entry_stats(&_store_entries[i]);
+      if (max_size < _store_entries[i].size()) {
+        max_size = _store_entries[i].size();
+      }
+    }
+    total_stats = AOTCodeStats::add_cached_code_stats(prev_stats, current_stats);
+
+    log.print_cr("Wrote %d SCCEntry entries(%u max size) to AOT Code Cache",
+                 total_stats.total_count(), max_size);
+    for (uint kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+      log.print_cr("  %s: total=%u(old=%u+new=%u)",
+                   sccentry_kind_name[kind], total_stats.entry_count(kind), prev_stats.entry_count(kind), current_stats.entry_count(kind));
+      if (kind == SCCEntry::Code) {
+        for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
+          log.print_cr("    Tier %d: total=%u(old=%u+new=%u)",
+                       lvl, total_stats.nmethod_count(lvl), prev_stats.nmethod_count(lvl), current_stats.nmethod_count(lvl));
+        }
+      }
+    }
+    log.print_cr("Total=%u(old=%u+new=%u)", total_stats.total_count(), prev_stats.total_count(), current_stats.total_count());
+  }
 }
 
 bool SCCache::finish_write() {
@@ -1058,14 +1112,6 @@ bool SCCache::finish_write() {
 
     SCCEntry* entries_address = _store_entries; // Pointer to latest entry
 
-    // Arrays to store counts of each kind.
-    uint not_entrant_nb[2] = {0};
-    uint stubs_count[2] = {0};
-    uint adapters_count[2] = {0};
-    uint blobs_count[2] = {0};
-    uint nmethods_count[2] = {0};
-    uint max_size = 0;
-
     // Add old entries first
     if (_for_read && (_load_header != nullptr)) {
       for(uint i = 0; i < load_count; i++) {
@@ -1074,7 +1120,6 @@ bool SCCache::finish_write() {
         }
         if (_load_entries[i].not_entrant()) {
           log_info(scc, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
-          not_entrant_nb[0]++;
           if (_load_entries[i].for_preload()) {
             // Skip not entrant preload code:
             // we can't pre-load code which may have failing dependencies.
@@ -1085,20 +1130,8 @@ bool SCCache::finish_write() {
           // record entrant first version code for pre-loading
           preload_entries[preload_entries_cnt++] = entries_count;
         }
-        if (_load_entries[i].kind() == SCCEntry::Adapter) {
-          adapters_count[0]++;
-        } else if (_load_entries[i].kind() == SCCEntry::Stub) {
-          stubs_count[0]++;
-        } else if (_load_entries[i].kind() == SCCEntry::Blob) {
-          blobs_count[0]++;
-        } else if (_load_entries[i].kind() == SCCEntry::Code) {
-          nmethods_count[0]++;
-        }
         {
           uint size = align_up(_load_entries[i].size(), DATA_ALIGNMENT);
-          if (size > max_size) {
-            max_size = size;
-          }
           copy_bytes((_load_buffer + _load_entries[i].offset()), (address)current, size);
           _load_entries[i].set_offset(current - start); // New offset
           current += size;
@@ -1122,7 +1155,6 @@ bool SCCache::finish_write() {
       }
       if (entries_address[i].not_entrant()) {
         log_info(scc, exit)("Not entrant new entry comp_id: %d, comp_level: %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s", entries_address[i].comp_id(), entries_address[i].comp_level(), entries_address[i].decompile(), entries_address[i].id(), (entries_address[i].has_clinit_barriers() ? ", has clinit barriers" : ""));
-        not_entrant_nb[1]++;
         if (entries_address[i].for_preload()) {
           // Skip not entrant preload code:
           // we can't pre-load code which may have failing dependencies.
@@ -1133,21 +1165,9 @@ bool SCCache::finish_write() {
         // record entrant first version code for pre-loading
         preload_entries[preload_entries_cnt++] = entries_count;
       }
-      if (entries_address[i].kind() == SCCEntry::Adapter) {
-        adapters_count[1]++;
-      } else if (entries_address[i].kind() == SCCEntry::Stub) {
-        stubs_count[1]++;
-      } else if (entries_address[i].kind() == SCCEntry::Blob) {
-        blobs_count[1]++;
-      } else if (entries_address[i].kind() == SCCEntry::Code) {
-        nmethods_count[1]++;
-      }
       {
         entries_address[i].set_next(nullptr); // clear pointers before storing data
         uint size = align_up(entries_address[i].size(), DATA_ALIGNMENT);
-        if (size > max_size) {
-          max_size = size;
-        }
         copy_bytes((_store_buffer + entries_address[i].offset()), (address)current, size);
         entries_address[i].set_offset(current - start); // New offset
         entries_address[i].update_method_for_writing();
@@ -1163,6 +1183,7 @@ bool SCCache::finish_write() {
         entries_count++;
       }
     }
+
     if (entries_count == 0) {
       log_info(scc, exit)("No entires written to AOT Code Cache");
       FREE_C_HEAP_ARRAY(char, buffer);
@@ -1199,12 +1220,8 @@ bool SCCache::finish_write() {
     entries_size = entries_count * sizeof(SCCEntry); // New size
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
     current += entries_size;
-    log_info(scc, exit)("Wrote %d SCCEntry entries (%u were not entrant(old=%u+new=%u), %u max size) to AOT Code Cache",
-                        entries_count, not_entrant_nb[0]+not_entrant_nb[1], not_entrant_nb[0], not_entrant_nb[1], max_size);
-    log_counts_on_exit("Adapters", adapters_count);
-    log_counts_on_exit("Stubs", stubs_count);
-    log_counts_on_exit("Blobs", blobs_count);
-    log_counts_on_exit("Nmethods", nmethods_count);
+
+    log_stats_on_exit();
 
     uint size = (current - start);
     assert(size <= total_size, "%d > %d", size , total_size);
@@ -3451,19 +3468,6 @@ static void print_helper1(outputStream* st, const char* name, int count) {
     st->print(" %s=%d", name, count);
   }
 }
-static void print_helper(outputStream* st, const char* name, int stats[6+3+1][6], int idx) {
-  int total = stats[idx][0];
-  if (total > 0) {
-    st->print("  %s:", name);
-    print_helper1(st, "total",               stats[idx][0]);
-    //print_helper1(st, "for_preload",         stats[idx][2]); // implied by Tier5
-    print_helper1(st, "loaded",              stats[idx][3]);
-    print_helper1(st, "invalidated",         stats[idx][4]);
-    print_helper1(st, "failed",              stats[idx][5]);
-    print_helper1(st, "has_clinit_barriers", stats[idx][1]);
-    st->cr();
-  }
-}
 
 void SCCache::print_statistics_on(outputStream* st) {
   SCCache* cache = open_for_read();
@@ -3478,45 +3482,36 @@ void SCCache::print_statistics_on(outputStream* st) {
     uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
     SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
 
-    // Entries are None, Adapter, Stub, Blob x 3 levels, Code x 6 levels
-    int stats[6 + 3 + 1][6] = {0};
+    AOTCodeStats stats;
     for (uint i = 0; i < count; i++) {
-      int index = search_entries[2*i + 1];
-      SCCEntry* entry = &(load_entries[index]);
-
-      int lvl = entry->kind();
-      if (entry->kind() == SCCEntry::Code) {
-        lvl += entry->comp_level() + (entry->for_preload() ? 1 : 0);
-      }
-      ++stats[lvl][0]; // total
-      if (entry->has_clinit_barriers()) {
-        ++stats[lvl][1];
-      }
-      if (entry->for_preload()) {
-        ++stats[lvl][2];
-      }
-      if (entry->is_loaded()) {
-        ++stats[lvl][3];
-      }
-      if (entry->not_entrant()) {
-        ++stats[lvl][4];
-      }
-      if (entry->load_fail()) {
-        ++stats[lvl][5];
-      }
+      stats.collect_all_stats(&load_entries[i]);
     }
 
-    print_helper(st, "None", stats, SCCEntry::None);
-    print_helper(st, "Stub", stats, SCCEntry::Stub);
-    print_helper(st, "Blob", stats, SCCEntry::Blob);
-    print_helper(st, "Adapters", stats, SCCEntry::Adapter);
-    for (int lvl = 0; lvl <= CompLevel_full_optimization + 1; lvl++) {
-      ResourceMark rm;
-      stringStream ss;
-      ss.print("SC T%d", lvl);
-      print_helper(st, ss.freeze(), stats, SCCEntry::Code + lvl);
+    for (uint kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+      if (stats.entry_count(kind) > 0) {
+        st->print("  %s:", sccentry_kind_name[kind]);
+        print_helper1(st, "total", stats.entry_count(kind));
+        print_helper1(st, "loaded", stats.entry_loaded_count(kind));
+        print_helper1(st, "invalidated", stats.entry_invalidated_count(kind));
+        print_helper1(st, "failed", stats.entry_load_failed_count(kind));
+        st->cr();
+      }
+      if (kind == SCCEntry::Code) {
+        for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
+          if (stats.nmethod_count(lvl) > 0) {
+            st->print("    SC T%d", lvl);
+            print_helper1(st, "total", stats.nmethod_count(lvl));
+            print_helper1(st, "loaded", stats.nmethod_loaded_count(lvl));
+            print_helper1(st, "invalidated", stats.nmethod_invalidated_count(lvl));
+            print_helper1(st, "failed", stats.nmethod_load_failed_count(lvl));
+            if (lvl == AOTCompLevel_count-1) {
+              print_helper1(st, "has_clinit_barriers", stats.clinit_barriers_count());
+            }
+            st->cr();
+          }
+        }
+      }
     }
-
   } else {
     st->print_cr("failed to open SCA at %s", CachedCodeFile);
   }
