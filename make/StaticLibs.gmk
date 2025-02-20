@@ -80,12 +80,14 @@ STATIC_LIB_FILES := $(foreach module, $(STATIC_LIB_MODULES), \
     $(SUPPORT_OUTPUTDIR)/native/$(module)/lib$(lib)/static/$(LIBRARY_PREFIX)$(lib)$(STATIC_LIBRARY_SUFFIX)))
 
 # Add Hotspot
-STATIC_LIB_FILES += $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)jvm$(STATIC_LIBRARY_SUFFIX)) \
-  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)epsilon_gc$(STATIC_LIBRARY_SUFFIX)) \
-  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)parallel_gc$(STATIC_LIBRARY_SUFFIX)) \
-  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)serial_gc$(STATIC_LIBRARY_SUFFIX)) \
-  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)z_gc$(STATIC_LIBRARY_SUFFIX)) \
-  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)shenandoah_gc$(STATIC_LIBRARY_SUFFIX))
+STATIC_LIB_FILES += $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)jvm$(STATIC_LIBRARY_SUFFIX))
+# The split libjvm.a is currently disabled.
+#STATIC_LIB_FILES += \
+#  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)epsilon_gc$(STATIC_LIBRARY_SUFFIX)) \
+#  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)parallel_gc$(STATIC_LIBRARY_SUFFIX)) \
+#  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)serial_gc$(STATIC_LIBRARY_SUFFIX)) \
+#  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)z_gc$(STATIC_LIBRARY_SUFFIX)) \
+#  $(wildcard $(HOTSPOT_STATIC_LIB_PATH)/$(LIBRARY_PREFIX)shenandoah_gc$(STATIC_LIBRARY_SUFFIX))
 
 # Figure out what external libraries are required to link these static JDK
 # libraries.

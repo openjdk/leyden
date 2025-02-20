@@ -67,35 +67,39 @@ JVM_EXCLUDE_FILES += args.cc
 JVM_EXCLUDES += adlc
 
 # Subcomponents that are excluded from libjvm.a.
-ifeq ($(STATIC_LIBS), true)
-JVM_EXCLUDES += \
- $(TOPDIR)/src/hotspot/share/gc/serial \
- $(TOPDIR)/src/hotspot/share/gc/epsilon \
- $(TOPDIR)/src/hotspot/share/gc/parallel \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah/c1 \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah/c2 \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah/heuristics \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah/mode \
- $(TOPDIR)/src/hotspot/share/gc/x \
- $(TOPDIR)/src/hotspot/share/gc/x/c1 \
- $(TOPDIR)/src/hotspot/share/gc/x/c2 \
- $(TOPDIR)/src/hotspot/share/gc/z \
- $(TOPDIR)/src/hotspot/share/gc/z/c1 \
- $(TOPDIR)/src/hotspot/share/gc/z/c2 \
- $(TOPDIR)/src/hotspot/cpu/aarch64/gc/shenandoah \
- $(TOPDIR)/src/hotspot/cpu/aarch64/gc/shenandoah/c1 \
- $(TOPDIR)/src/hotspot/cpu/aarch64/gc/x \
- $(TOPDIR)/src/hotspot/cpu/aarch64/gc/z \
- $(TOPDIR)/src/hotspot/cpu/x86/gc/shenandoah \
- $(TOPDIR)/src/hotspot/cpu/x86/gc/shenandoah/c1 \
- $(TOPDIR)/src/hotspot/cpu/x86/gc/x \
- $(TOPDIR)/src/hotspot/cpu/x86/gc/z \
- $(TOPDIR)/src/hotspot/os/linux/gc/x \
- $(TOPDIR)/src/hotspot/os/linux/gc/z \
- $(TOPDIR)/src/hotspot/os/posix/gc/x \
- $(TOPDIR)/src/hotspot/os/posix/gc/z
-endif
+#
+# Following excludes the VM parts that are not built into libjvm.a,
+# but in the separate static libraries. The split libjvm.a build
+# currently is not fully enabled.
+#ifeq ($(STATIC_LIBS), true)
+#JVM_EXCLUDES += \
+# $(TOPDIR)/src/hotspot/share/gc/serial \
+# $(TOPDIR)/src/hotspot/share/gc/epsilon \
+# $(TOPDIR)/src/hotspot/share/gc/parallel \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah/c1 \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah/c2 \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah/heuristics \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah/mode \
+# $(TOPDIR)/src/hotspot/share/gc/x \
+# $(TOPDIR)/src/hotspot/share/gc/x/c1 \
+# $(TOPDIR)/src/hotspot/share/gc/x/c2 \
+# $(TOPDIR)/src/hotspot/share/gc/z \
+# $(TOPDIR)/src/hotspot/share/gc/z/c1 \
+# $(TOPDIR)/src/hotspot/share/gc/z/c2 \
+# $(TOPDIR)/src/hotspot/cpu/aarch64/gc/shenandoah \
+# $(TOPDIR)/src/hotspot/cpu/aarch64/gc/shenandoah/c1 \
+# $(TOPDIR)/src/hotspot/cpu/aarch64/gc/x \
+# $(TOPDIR)/src/hotspot/cpu/aarch64/gc/z \
+# $(TOPDIR)/src/hotspot/cpu/x86/gc/shenandoah \
+# $(TOPDIR)/src/hotspot/cpu/x86/gc/shenandoah/c1 \
+# $(TOPDIR)/src/hotspot/cpu/x86/gc/x \
+# $(TOPDIR)/src/hotspot/cpu/x86/gc/z \
+# $(TOPDIR)/src/hotspot/os/linux/gc/x \
+# $(TOPDIR)/src/hotspot/os/linux/gc/z \
+# $(TOPDIR)/src/hotspot/os/posix/gc/x \
+# $(TOPDIR)/src/hotspot/os/posix/gc/z
+#endif
 
 # Needed by abstract_vm_version.cpp
 ifeq ($(call isTargetCpu, x86_64), true)
@@ -312,122 +316,123 @@ ifeq ($(call isTargetOs, windows), true)
 endif
 
 # Build separate static libraries for sub-components.
-ifeq ($(STATIC_LIBS), true)
-$(eval $(call SetupJdkLibrary, BUILD_LIBSERIAL_GC, \
-    NAME := serial_gc, \
-    TYPE := STATIC_LIBRARY, \
-    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
-    SRC := $(TOPDIR)/src/hotspot/share/gc/serial, \
-    DEFAULT_CFLAGS := false, \
-    CFLAGS := $(JVM_CFLAGS), \
-    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
-    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
-    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
-    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
-    ASFLAGS := $(JVM_ASFLAGS), \
-    DEFAULT_LDFLAGS := false, \
-    LDFLAGS := $(JVM_LDFLAGS), \
-    LIBS := $(JVM_LIBS), \
-    OPTIMIZATION := $(JVM_OPTIMIZATION), \
-    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
-    STRIPFLAGS := $(JVM_STRIPFLAGS), \
-))
-
-$(eval $(call SetupJdkLibrary, BUILD_LIBEPSILON_GC, \
-    NAME := epsilon_gc, \
-    TYPE := STATIC_LIBRARY, \
-    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
-    SRC := $(TOPDIR)/src/hotspot/share/gc/epsilon, \
-    DEFAULT_CFLAGS := false, \
-    CFLAGS := $(JVM_CFLAGS), \
-    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
-    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
-    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
-    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
-    ASFLAGS := $(JVM_ASFLAGS), \
-    DEFAULT_LDFLAGS := false, \
-    LDFLAGS := $(JVM_LDFLAGS), \
-    LIBS := $(JVM_LIBS), \
-    OPTIMIZATION := $(JVM_OPTIMIZATION), \
-    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
-    STRIPFLAGS := $(JVM_STRIPFLAGS), \
-))
-
-$(eval $(call SetupJdkLibrary, BUILD_LIBPARALLEL_GC, \
-    NAME := parallel_gc, \
-    TYPE := STATIC_LIBRARY, \
-    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
-    SRC := $(TOPDIR)/src/hotspot/share/gc/parallel, \
-    DEFAULT_CFLAGS := false, \
-    CFLAGS := $(JVM_CFLAGS), \
-    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
-    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
-    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
-    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
-    ASFLAGS := $(JVM_ASFLAGS), \
-    DEFAULT_LDFLAGS := false, \
-    LDFLAGS := $(JVM_LDFLAGS), \
-    LIBS := $(JVM_LIBS), \
-    OPTIMIZATION := $(JVM_OPTIMIZATION), \
-    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
-    STRIPFLAGS := $(JVM_STRIPFLAGS), \
-))
-
-SHENANDOAH_GC_SRC_DIRS := $(TOPDIR)/src/hotspot/share/gc/shenandoah \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah/c1 \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah/c2 \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah/heuristics \
- $(TOPDIR)/src/hotspot/share/gc/shenandoah/mode \
- $(TOPDIR)/src/hotspot/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/shenandoah \
- $(TOPDIR)/src/hotspot/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/shenandoah/c1
-
-$(eval $(call SetupJdkLibrary, BUILD_LIBSHENANDOAH_GC, \
-    NAME := shenandoah_gc, \
-    TYPE := STATIC_LIBRARY, \
-    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
-    SRC := $(SHENANDOAH_GC_SRC_DIRS), \
-    DEFAULT_CFLAGS := false, \
-    CFLAGS := $(JVM_CFLAGS), \
-    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
-    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
-    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
-    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
-    ASFLAGS := $(JVM_ASFLAGS), \
-    DEFAULT_LDFLAGS := false, \
-    LDFLAGS := $(JVM_LDFLAGS), \
-    LIBS := $(JVM_LIBS), \
-    OPTIMIZATION := $(JVM_OPTIMIZATION), \
-    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
-    STRIPFLAGS := $(JVM_STRIPFLAGS), \
-))
-
-Z_GC_SRC_DIRS := $(TOPDIR)/src/hotspot/share/gc/z \
- $(TOPDIR)/src/hotspot/share/gc/z/c1 \
- $(TOPDIR)/src/hotspot/share/gc/z/c2 \
- $(TOPDIR)/src/hotspot/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/z \
- $(TOPDIR)/src/hotspot/os/linux/gc/z \
- $(TOPDIR)/src/hotspot/os/posix/gc/z
-
-$(eval $(call SetupJdkLibrary, BUILD_LIBZ_GC, \
-    NAME := z_gc, \
-    TYPE := STATIC_LIBRARY, \
-    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
-    SRC := $(Z_GC_SRC_DIRS), \
-    DEFAULT_CFLAGS := false, \
-    CFLAGS := $(JVM_CFLAGS), \
-    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
-    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
-    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
-    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
-    ASFLAGS := $(JVM_ASFLAGS), \
-    DEFAULT_LDFLAGS := false, \
-    LDFLAGS := $(JVM_LDFLAGS), \
-    LIBS := $(JVM_LIBS), \
-    OPTIMIZATION := $(JVM_OPTIMIZATION), \
-    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
-    STRIPFLAGS := $(JVM_STRIPFLAGS), \
-))
-endif
+# The split libjvm.a build currently is not fully enabled.
+#ifeq ($(STATIC_LIBS), true)
+#$(eval $(call SetupJdkLibrary, BUILD_LIBSERIAL_GC, \
+#    NAME := serial_gc, \
+#    TYPE := STATIC_LIBRARY, \
+#    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
+#    SRC := $(TOPDIR)/src/hotspot/share/gc/serial, \
+#    DEFAULT_CFLAGS := false, \
+#    CFLAGS := $(JVM_CFLAGS), \
+#    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
+#    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
+#    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
+#    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
+#    ASFLAGS := $(JVM_ASFLAGS), \
+#    DEFAULT_LDFLAGS := false, \
+#    LDFLAGS := $(JVM_LDFLAGS), \
+#    LIBS := $(JVM_LIBS), \
+#    OPTIMIZATION := $(JVM_OPTIMIZATION), \
+#    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
+#    STRIPFLAGS := $(JVM_STRIPFLAGS), \
+#))
+#
+#$(eval $(call SetupJdkLibrary, BUILD_LIBEPSILON_GC, \
+#    NAME := epsilon_gc, \
+#    TYPE := STATIC_LIBRARY, \
+#    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
+#    SRC := $(TOPDIR)/src/hotspot/share/gc/epsilon, \
+#    DEFAULT_CFLAGS := false, \
+#    CFLAGS := $(JVM_CFLAGS), \
+#    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
+#    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
+#    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
+#    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
+#    ASFLAGS := $(JVM_ASFLAGS), \
+#    DEFAULT_LDFLAGS := false, \
+#    LDFLAGS := $(JVM_LDFLAGS), \
+#    LIBS := $(JVM_LIBS), \
+#    OPTIMIZATION := $(JVM_OPTIMIZATION), \
+#    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
+#    STRIPFLAGS := $(JVM_STRIPFLAGS), \
+#))
+#
+#$(eval $(call SetupJdkLibrary, BUILD_LIBPARALLEL_GC, \
+#    NAME := parallel_gc, \
+#    TYPE := STATIC_LIBRARY, \
+#    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
+#    SRC := $(TOPDIR)/src/hotspot/share/gc/parallel, \
+#    DEFAULT_CFLAGS := false, \
+#    CFLAGS := $(JVM_CFLAGS), \
+#    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
+#    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
+#    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
+#    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
+#    ASFLAGS := $(JVM_ASFLAGS), \
+#    DEFAULT_LDFLAGS := false, \
+#    LDFLAGS := $(JVM_LDFLAGS), \
+#    LIBS := $(JVM_LIBS), \
+#    OPTIMIZATION := $(JVM_OPTIMIZATION), \
+#    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
+#    STRIPFLAGS := $(JVM_STRIPFLAGS), \
+#))
+#
+#SHENANDOAH_GC_SRC_DIRS := $(TOPDIR)/src/hotspot/share/gc/shenandoah \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah/c1 \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah/c2 \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah/heuristics \
+# $(TOPDIR)/src/hotspot/share/gc/shenandoah/mode \
+# $(TOPDIR)/src/hotspot/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/shenandoah \
+# $(TOPDIR)/src/hotspot/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/shenandoah/c1
+#
+#$(eval $(call SetupJdkLibrary, BUILD_LIBSHENANDOAH_GC, \
+#    NAME := shenandoah_gc, \
+#    TYPE := STATIC_LIBRARY, \
+#    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
+#    SRC := $(SHENANDOAH_GC_SRC_DIRS), \
+#    DEFAULT_CFLAGS := false, \
+#    CFLAGS := $(JVM_CFLAGS), \
+#    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
+#    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
+#    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
+#    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
+#    ASFLAGS := $(JVM_ASFLAGS), \
+#    DEFAULT_LDFLAGS := false, \
+#    LDFLAGS := $(JVM_LDFLAGS), \
+#    LIBS := $(JVM_LIBS), \
+#    OPTIMIZATION := $(JVM_OPTIMIZATION), \
+#    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
+#    STRIPFLAGS := $(JVM_STRIPFLAGS), \
+#))
+#
+#Z_GC_SRC_DIRS := $(TOPDIR)/src/hotspot/share/gc/z \
+# $(TOPDIR)/src/hotspot/share/gc/z/c1 \
+# $(TOPDIR)/src/hotspot/share/gc/z/c2 \
+# $(TOPDIR)/src/hotspot/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/z \
+# $(TOPDIR)/src/hotspot/os/linux/gc/z \
+# $(TOPDIR)/src/hotspot/os/posix/gc/z
+#
+#$(eval $(call SetupJdkLibrary, BUILD_LIBZ_GC, \
+#    NAME := z_gc, \
+#    TYPE := STATIC_LIBRARY, \
+#    OUTPUT_DIR := $(JVM_LIB_OUTPUTDIR), \
+#    SRC := $(Z_GC_SRC_DIRS), \
+#    DEFAULT_CFLAGS := false, \
+#    CFLAGS := $(JVM_CFLAGS), \
+#    DISABLED_WARNINGS_gcc := $(DISABLED_WARNINGS_gcc), \
+#    DISABLED_WARNINGS_clang := $(DISABLED_WARNINGS_clang), \
+#    DISABLED_WARNINGS_xlc := $(DISABLED_WARNINGS_xlc), \
+#    DISABLED_WARNINGS_microsoft := $(DISABLED_WARNINGS_microsoft), \
+#    ASFLAGS := $(JVM_ASFLAGS), \
+#    DEFAULT_LDFLAGS := false, \
+#    LDFLAGS := $(JVM_LDFLAGS), \
+#    LIBS := $(JVM_LIBS), \
+#    OPTIMIZATION := $(JVM_OPTIMIZATION), \
+#    OBJECT_DIR := $(JVM_OUTPUTDIR)/objs, \
+#    STRIPFLAGS := $(JVM_STRIPFLAGS), \
+#))
+#endif
 
 # Always recompile abstract_vm_version.cpp if libjvm needs to be relinked. This ensures
 # that the internal vm version is updated as it relies on __DATE__ and __TIME__
