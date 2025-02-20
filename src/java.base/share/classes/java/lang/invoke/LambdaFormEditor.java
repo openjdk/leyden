@@ -89,13 +89,12 @@ class LambdaFormEditor {
      * Tightly coupled with the TransformKey class, which is used to lookup existing
      * Transforms.
      */
-    private static final class Transform {
-        final SoftReference<LambdaForm> cache;
+    private static final class Transform extends SoftReference<LambdaForm> {
         final long packedBytes;
         final byte[] fullBytes;
 
         private Transform(long packedBytes, byte[] fullBytes, LambdaForm result) {
-            cache = new SoftReference<LambdaForm>(result);
+            super(result);
             this.packedBytes = packedBytes;
             this.fullBytes = fullBytes;
         }
@@ -135,10 +134,6 @@ class LambdaFormEditor {
                 buf.append(result);
             }
             return buf.toString();
-        }
-
-        public LambdaForm get() {
-            return cache.get();
         }
     }
 

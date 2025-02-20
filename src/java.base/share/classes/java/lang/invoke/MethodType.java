@@ -31,7 +31,6 @@ import java.lang.constant.MethodTypeDesc;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.function.Supplier;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,7 +40,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import jdk.internal.util.ReferencedKeySet;
 import jdk.internal.util.ReferenceKey;
-import jdk.internal.misc.CDS;
 import jdk.internal.vm.annotation.Stable;
 import sun.invoke.util.BytecodeDescriptor;
 import sun.invoke.util.VerifyType;

@@ -51,7 +51,7 @@ final class MethodTypeForm {
     final MethodType basicType;         // the canonical erasure, with primitives simplified
 
     // Cached adapter information:
-    private final Object[] methodHandles;
+    private final SoftReference<MethodHandle>[] methodHandles;
 
     // Indexes into methodHandles:
     static final int
@@ -61,7 +61,7 @@ final class MethodTypeForm {
             MH_LIMIT          =  3;
 
     // Cached lambda form information, for basic types only:
-    private final Object[] lambdaForms;
+    private final SoftReference<LambdaForm>[] lambdaForms;
 
     // Indexes into lambdaForms:
     static final int
@@ -109,14 +109,9 @@ final class MethodTypeForm {
         return basicType;
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     public MethodHandle cachedMethodHandle(int which) {
-        Object entry = methodHandles[which];
-        if (entry == null) {
-            return null;
-        } else {
-            return ((SoftReference<MethodHandle>)entry).get();
-        }
+        SoftReference<MethodHandle> entry = methodHandles[which];
+        return (entry != null) ? entry.get() : null;
     }
 
     public synchronized MethodHandle setCachedMethodHandle(int which, MethodHandle mh) {
@@ -129,14 +124,9 @@ final class MethodTypeForm {
         return mh;
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     public LambdaForm cachedLambdaForm(int which) {
-        Object entry = lambdaForms[which];
-        if (entry == null) {
-            return null;
-        } else {
-            return ((SoftReference<LambdaForm>)entry).get();
-        }
+        SoftReference<LambdaForm> entry = lambdaForms[which];
+        return (entry != null) ? entry.get() : null;
     }
 
     public synchronized LambdaForm setCachedLambdaForm(int which, LambdaForm form) {
@@ -154,6 +144,7 @@ final class MethodTypeForm {
      * This MTF will stand for that type and all un-erased variations.
      * Eagerly compute some basic properties of the type, common to all variations.
      */
+     @SuppressWarnings({"rawtypes", "unchecked"})
     protected MethodTypeForm(MethodType erasedType) {
         this.erasedType = erasedType;
 
@@ -194,8 +185,8 @@ final class MethodTypeForm {
 
             this.primitiveCount = primitiveCount;
             this.parameterSlotCount = (short)pslotCount;
-            this.lambdaForms   = new Object[LF_LIMIT];
-            this.methodHandles = new Object[MH_LIMIT];
+            this.lambdaForms   = new SoftReference[LF_LIMIT];
+            this.methodHandles = new SoftReference[MH_LIMIT];
         } else {
             this.basicType = MethodType.methodType(basicReturnType, basicPtypes, true);
             // fill in rest of data from the basic type:
