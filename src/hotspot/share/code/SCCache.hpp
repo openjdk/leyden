@@ -25,6 +25,8 @@
 #ifndef SHARE_CODE_SCCACHE_HPP
 #define SHARE_CODE_SCCACHE_HPP
 
+#include "compiler/compilerDefinitions.hpp"
+
 /*
  * Startup Code Cache (SCC) collects compiled code and metadata during
  * an application training runs.
@@ -57,7 +59,6 @@ class SCCache;
 class StubCodeGenerator;
 
 enum class vmIntrinsicID : int;
-enum CompLevel : signed char;
 
 class SCConfig {
   uint _compressedOopShift;
