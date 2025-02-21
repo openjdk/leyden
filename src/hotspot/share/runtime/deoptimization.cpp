@@ -2127,10 +2127,11 @@ JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncomm
                                 reason_name, reason_action, pc,
                                 tm->name_and_sig_as_C_string(), trap_bci, nm->compiler_name());
 
-      if (nm->preloaded() && (action != Action_none)) {
+      if (PreloadReduceTraps && nm->preloaded() && (action != Action_none)) {
         // For performance reasons, preloaded nmethods should avoid deopts that lead to recompilations.
-        // Log if we catch deopts like that.
-        log_info(deoptimization)("DEOPT PRELOADED: reason=%s action=%s method=%s",
+        // Compiler logs all uncommon traps with -Xlog:scc. That log is noisy, and some traps may be
+        // legitimate. Here, we log the problems that really caused the deopts at runtime.
+        log_warning(deoptimization)("In preload code: reason=%s action=%s method=%s",
           reason_name, reason_action, tm->name_and_sig_as_C_string());
       }
     }
