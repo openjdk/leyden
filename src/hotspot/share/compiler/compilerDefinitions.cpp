@@ -587,6 +587,17 @@ void CompilerConfig::ergo_initialize() {
   set_jvmci_specific_flags();
 #endif
 
+  if (PreloadOnly) {
+    // Disable profiling/counter updates in interpreter and C1.
+    // This effectively disables most of the normal JIT (re-)compilations.
+    FLAG_SET_DEFAULT(ProfileInterpreter, false);
+    FLAG_SET_DEFAULT(UseOnStackReplacement, false);
+    FLAG_SET_DEFAULT(UseLoopCounter, false);
+
+    // Disable compilations through training data replay.
+    FLAG_SET_DEFAULT(ReplayTraining, false);
+  }
+
   if (UseOnStackReplacement && !UseLoopCounter) {
     warning("On-stack-replacement requires loop counters; enabling loop counters");
     FLAG_SET_DEFAULT(UseLoopCounter, true);
