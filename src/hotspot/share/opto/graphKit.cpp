@@ -2123,6 +2123,16 @@ Node* GraphKit::uncommon_trap(int trap_request,
                                                       trap_request), bci());
   }
 
+  if (PreloadReduceTraps && Compile::current()->for_preload() &&
+      (action != Deoptimization::Action_none)) {
+    ResourceMark rm;
+    ciMethod* cim = Compile::current()->method();
+    log_info(scc)("Uncommon trap in preload code: reason=%s action=%s method=%s::%s bci=%d",
+                  Deoptimization::trap_reason_name(reason), Deoptimization::trap_action_name(action),
+                  cim->holder()->name()->as_klass_external_name(), cim->name()->as_klass_external_name(),
+                  bci());
+  }
+
   CompileLog* log = C->log();
   if (log != nullptr) {
     int kid = (klass == nullptr)? -1: log->identify(klass);
