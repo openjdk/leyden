@@ -1225,21 +1225,6 @@ JVM_ENTRY_PROF(jboolean, JVM_IsHiddenClass, JVM_IsHiddenClass(JNIEnv *env, jclas
   return k->is_hidden();
 JVM_END
 
-JVM_ENTRY_PROF(jobject, JVM_GetProtectionDomain, JVM_GetProtectionDomain(JNIEnv *env, jclass cls))
-  oop mirror = JNIHandles::resolve_non_null(cls);
-  if (mirror == nullptr) {
-    THROW_(vmSymbols::java_lang_NullPointerException(), nullptr);
-  }
-
-  if (java_lang_Class::is_primitive(mirror)) {
-    // Primitive types does not have a protection domain.
-    return nullptr;
-  }
-
-  oop pd = java_lang_Class::protection_domain(mirror);
-  return (jobject) JNIHandles::make_local(THREAD, pd);
-JVM_END
-
 class ScopedValueBindingsResolver {
 public:
   InstanceKlass* Carrier_klass;
@@ -1299,22 +1284,6 @@ JVM_ENTRY_PROF(jboolean, JVM_IsPrimitiveClass, JVM_IsPrimitiveClass(JNIEnv *env,
   return (jboolean) java_lang_Class::is_primitive(mirror);
 JVM_END
 
-
-JVM_ENTRY_PROF(jint, JVM_GetClassModifiers, JVM_GetClassModifiers(JNIEnv *env, jclass cls))
-  oop mirror = JNIHandles::resolve_non_null(cls);
-  if (java_lang_Class::is_primitive(mirror)) {
-    // Primitive type
-    return JVM_ACC_ABSTRACT | JVM_ACC_FINAL | JVM_ACC_PUBLIC;
-  }
-
-  Klass* k = java_lang_Class::as_Klass(mirror);
-  debug_only(u2 computed_modifiers = k->compute_modifier_flags());
-  assert(k->modifier_flags() == computed_modifiers, "modifiers cache is OK");
-  return k->modifier_flags();
-JVM_END
-
-
-// Inner class reflection ///////////////////////////////////////////////////////////////////////////////
 
 JVM_ENTRY_PROF(jobjectArray, JVM_GetDeclaredClasses, JVM_GetDeclaredClasses(JNIEnv *env, jclass ofClass))
   JvmtiVMObjectAllocEventCollector oam;
@@ -3938,11 +3907,9 @@ JVM_END
   macro(JVM_GetClassInterfaces) \
   macro(JVM_IsInterface) \
   macro(JVM_IsHiddenClass) \
-  macro(JVM_GetProtectionDomain) \
   macro(JVM_FindScopedValueBindings) \
   macro(JVM_IsArrayClass) \
   macro(JVM_IsPrimitiveClass) \
-  macro(JVM_GetClassModifiers) \
   macro(JVM_GetDeclaredClasses) \
   macro(JVM_GetDeclaringClass) \
   macro(JVM_GetSimpleBinaryName) \
