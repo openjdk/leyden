@@ -216,8 +216,10 @@ inline int Method::backedge_count() const {
 
 inline int Method::highest_comp_level() const {
   const MethodCounters* mcs = method_counters();
+  nmethod* nm = code();
+  int level = (nm != nullptr) ? nm->comp_level() : CompLevel_none;
   if (mcs != nullptr) {
-    return mcs->highest_comp_level();
+    return MAX2(mcs->highest_comp_level(), level);
   } else {
     return CompLevel_none;
   }
