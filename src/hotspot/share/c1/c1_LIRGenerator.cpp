@@ -3274,6 +3274,10 @@ void LIRGenerator::increment_event_counter(CodeEmitInfo* info, LIR_Opr step, int
 void LIRGenerator::increment_event_counter_impl(CodeEmitInfo* info,
                                                 ciMethod *method, LIR_Opr step, int frequency,
                                                 int bci, bool backedge, bool notify) {
+  if (PreloadOnly) {
+    // Nothing to do if we only use preload code.
+    return;
+  }
   assert(frequency == 0 || is_power_of_2(frequency + 1), "Frequency must be x^2 - 1 or 0");
   int level = _compilation->env()->comp_level();
   assert(level > CompLevel_simple, "Shouldn't be here");

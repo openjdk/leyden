@@ -1181,6 +1181,8 @@ JRT_END
 
 
 nmethod* InterpreterRuntime::frequency_counter_overflow(JavaThread* current, address branch_bcp) {
+  assert(!PreloadOnly, "Should not be using interpreter counters");
+
   // Enable WXWrite: the function is called directly by interpreter.
   MACOS_AARCH64_ONLY(ThreadWXEnable wx(WXWrite, current));
 
@@ -1285,6 +1287,7 @@ JRT_END
 #endif // ASSERT
 
 JRT_ENTRY_PROF(void, InterpreterRuntime, update_mdp_for_ret, InterpreterRuntime::update_mdp_for_ret(JavaThread* current, int return_bci))
+  assert(!PreloadOnly, "Should not be using interpreter counters");
   assert(ProfileInterpreter, "must be profiling interpreter");
   ResourceMark rm(current);
   LastFrameAccessor last_frame(current);

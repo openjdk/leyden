@@ -1307,7 +1307,7 @@ address TemplateInterpreterGenerator::generate_math_entry(AbstractInterpreter::M
 // native method than the typical interpreter frame setup.
 address TemplateInterpreterGenerator::generate_native_entry(bool synchronized, bool runtime_upcalls) {
   // Determine code generation flags.
-  bool inc_counter = UseCompiler || CountCompiledCalls;
+  bool inc_counter = (UseCompiler || CountCompiledCalls) && !PreloadOnly;
 
   // Interpreter entry for ordinary Java methods.
   //
@@ -1666,7 +1666,7 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized, b
 address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized, bool runtime_upcalls) {
   address entry_point = __ pc();
 
-  bool inc_counter = UseCompiler || CountCompiledCalls;
+  bool inc_counter = (UseCompiler || CountCompiledCalls) && !PreloadOnly;
 
   // Interpreter entry for ordinary Java methods.
   //

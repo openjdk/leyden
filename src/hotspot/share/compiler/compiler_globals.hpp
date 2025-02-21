@@ -495,6 +495,10 @@
           "Preload code is processed with blocking. Startup would not "     \
           "proceed until all code preloaded code is done loading.")         \
                                                                             \
+  product(bool, PreloadOnly, false, EXPERIMENTAL,                           \
+          "Use preload code exclusively. This effectively disables most of "\
+          "profiling and JIT compilation, running close to AOT-only mode.") \
+                                                                            \
 
 // end of COMPILER_FLAGS
 
