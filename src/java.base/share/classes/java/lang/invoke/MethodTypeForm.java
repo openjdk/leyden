@@ -144,7 +144,7 @@ final class MethodTypeForm {
      * This MTF will stand for that type and all un-erased variations.
      * Eagerly compute some basic properties of the type, common to all variations.
      */
-     @SuppressWarnings({"rawtypes", "unchecked"})
+    @SuppressWarnings({"rawtypes", "unchecked"})
     protected MethodTypeForm(MethodType erasedType) {
         this.erasedType = erasedType;
 
