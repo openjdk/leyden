@@ -395,10 +395,10 @@
                                                                             \
   /* flags to control training and deployment modes  */                     \
                                                                             \
-  product(bool, RecordTraining, false,                                      \
+  product(bool, RecordTraining, false, DIAGNOSTIC,                          \
           "Request output of training data for improved deployment.")       \
                                                                             \
-  product(bool, ReplayTraining, false,                                      \
+  product(bool, ReplayTraining, false, DIAGNOSTIC,                          \
           "Read training data, if available, for use in this execution")    \
                                                                             \
   product(bool, PrintTrainingInfo, false, DIAGNOSTIC,                       \
