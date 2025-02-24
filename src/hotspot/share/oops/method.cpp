@@ -2032,41 +2032,6 @@ void Method::clear_all_breakpoints() {
 
 #endif // INCLUDE_JVMTI
 
-int Method::invocation_count() const {
-  MethodCounters* mcs = method_counters();
-  MethodData* mdo = method_data();
-  if (((mcs != nullptr) ? mcs->invocation_counter()->carry() : false) ||
-      ((mdo != nullptr) ? mdo->invocation_counter()->carry() : false)) {
-    return InvocationCounter::count_limit;
-  } else {
-    return ((mcs != nullptr) ? mcs->invocation_counter()->count() : 0) +
-           ((mdo != nullptr) ? mdo->invocation_counter()->count() : 0);
-  }
-}
-
-int Method::backedge_count() const {
-  MethodCounters* mcs = method_counters();
-  MethodData* mdo = method_data();
-  if (((mcs != nullptr) ? mcs->backedge_counter()->carry() : false) ||
-      ((mdo != nullptr) ? mdo->backedge_counter()->carry() : false)) {
-    return InvocationCounter::count_limit;
-  } else {
-    return ((mcs != nullptr) ? mcs->backedge_counter()->count() : 0) +
-           ((mdo != nullptr) ? mdo->backedge_counter()->count() : 0);
-  }
-}
-
-int Method::highest_comp_level() const {
-  const MethodCounters* mcs = method_counters();
-  nmethod* nm = code();
-  int level = (nm != nullptr) ? nm->comp_level() : CompLevel_none;
-  if (mcs != nullptr) {
-    return MAX2(mcs->highest_comp_level(), level);
-  } else {
-    return CompLevel_none;
-  }
-}
-
 int Method::highest_osr_comp_level() const {
   const MethodCounters* mcs = method_counters();
   if (mcs != nullptr) {

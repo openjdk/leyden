@@ -41,7 +41,7 @@ mkdir -p pet-clinic-bench
 cd pet-clinic-bench
 mkdir -p data
 
-CMDLINE="-XX:SharedArchiveFile=spring-petclinic.dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode"
+CMDLINE="-XX:SharedArchiveFile=spring-petclinic.dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+ReplayTraining -XX:+LoadCachedCode"
 CMDLINE="$CMDLINE -XX:CachedCodeFile=spring-petclinic.code.jsa -Xlog:init -Xlog:scc=error -Xmx2g"
 CMDLINE="$CMDLINE -cp @petclinic-snapshot/target/unpacked/classpath -DautoQuit=true"
 CMDLINE="$CMDLINE -Dspring.aot.enabled=true org.springframework.samples.petclinic.PetClinicApplication"

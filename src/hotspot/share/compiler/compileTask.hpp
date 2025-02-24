@@ -236,6 +236,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
   int          comp_level()                      { return _comp_level;}
   void         set_comp_level(int comp_level)    { _comp_level = comp_level;}
 
+  CompileReason compile_reason()                 { return _compile_reason; }
+
   AbstractCompiler* compiler() const;
   CompileTask*      select_for_compilation();
 
@@ -254,8 +256,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
 
   CompileTrainingData* training_data() const     { return _training_data; }
   void set_training_data(CompileTrainingData*td) { _training_data = td; }
-
-  CompileReason compile_reason()                 { return _compile_reason; }
 
   // RedefineClasses support
   void         metadata_do(MetadataClosure* f);
