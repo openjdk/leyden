@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotClassLinker.hpp"
+#include "cds/aotClassLocation.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
@@ -750,7 +751,7 @@ void AOTConstantPoolResolver::define_dynamic_proxy_class(Handle loader, Handle p
     ik->set_shared_classpath_index(0);
   } else {
     assert(ik->is_shared_app_class(), "must be");
-    ik->set_shared_classpath_index(ClassLoaderExt::app_class_paths_start_index());
+    ik->set_shared_classpath_index(AOTClassLocationConfig::dumptime()->app_cp_start_index());
   }
 
   ArchiveBuilder::alloc_stats()->record_dynamic_proxy_class();

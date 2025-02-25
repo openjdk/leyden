@@ -279,7 +279,6 @@ intptr_t* CppVtables::get_archived_vtable(MetaspaceObj::Type msotype, address ob
   case MetaspaceObj::ConstMethodType:
   case MetaspaceObj::ConstantPoolCacheType:
   case MetaspaceObj::AnnotationsType:
-  case MetaspaceObj::SharedClassPathEntryType:
   case MetaspaceObj::RecordComponentType:
   case MetaspaceObj::AdapterHandlerEntryType:
   case MetaspaceObj::AdapterFingerPrintType:

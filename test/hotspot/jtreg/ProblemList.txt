@@ -43,8 +43,6 @@
 
 # :hotspot_compiler
 
-compiler/tiered/Level2RecompilationTest.java 8350159 generic-all
-
 compiler/ciReplay/TestSAServer.java 8029528 generic-all
 compiler/compilercontrol/jcmd/ClearDirectivesFileStackTest.java 8225370 generic-all
 
@@ -235,3 +233,6 @@ gtest/GTestWrapper.java 8318142 generic-all
 runtime/ErrorHandling/TestDwarf.java#dontCheckDecoder 8318142 generic-all
 serviceability/dcmd/compiler/CodelistTest.java 8318142 generic-all
 
+runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#dynamic 8350619 generic-all
+runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#leyden 8350619 generic-all
+runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#static 8350619 generic-all

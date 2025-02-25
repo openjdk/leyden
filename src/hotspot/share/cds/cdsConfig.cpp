@@ -26,6 +26,7 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/classListWriter.hpp"
+#include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classLoaderDataShared.hpp"
