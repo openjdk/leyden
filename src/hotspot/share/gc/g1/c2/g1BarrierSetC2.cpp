@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "classfile/javaClasses.hpp"
 #if INCLUDE_CDS
 #include "code/SCCache.hpp"
@@ -533,8 +532,65 @@ int G1BarrierSetC2::get_store_barrier(C2Access& access) const {
   return barriers;
 }
 
+void G1BarrierSetC2::elide_dominated_barrier(MachNode* mach) const {
+  uint8_t barrier_data = mach->barrier_data();
+  barrier_data &= ~G1C2BarrierPre;
+  if (CardTableBarrierSetC2::use_ReduceInitialCardMarks()) {
+    barrier_data &= ~G1C2BarrierPost;
+    barrier_data &= ~G1C2BarrierPostNotNull;
+  }
+  mach->set_barrier_data(barrier_data);
+}
+
+void G1BarrierSetC2::analyze_dominating_barriers() const {
+  ResourceMark rm;
+  PhaseCFG* const cfg = Compile::current()->cfg();
+
+  // Find allocations and memory accesses (stores and atomic operations), and
+  // track them in lists.
+  Node_List accesses;
+  Node_List allocations;
+  for (uint i = 0; i < cfg->number_of_blocks(); ++i) {
+    const Block* const block = cfg->get_block(i);
+    for (uint j = 0; j < block->number_of_nodes(); ++j) {
+      Node* const node = block->get_node(j);
+      if (node->is_Phi()) {
+        if (BarrierSetC2::is_allocation(node)) {
+          allocations.push(node);
+        }
+        continue;
+      } else if (!node->is_Mach()) {
+        continue;
+      }
+
+      MachNode* const mach = node->as_Mach();
+      switch (mach->ideal_Opcode()) {
+      case Op_StoreP:
+      case Op_StoreN:
+      case Op_CompareAndExchangeP:
+      case Op_CompareAndSwapP:
+      case Op_GetAndSetP:
+      case Op_CompareAndExchangeN:
+      case Op_CompareAndSwapN:
+      case Op_GetAndSetN:
+        if (mach->barrier_data() != 0) {
+          accesses.push(mach);
+        }
+        break;
+      default:
+        break;
+      }
+    }
+  }
+
+  // Find dominating allocations for each memory access (store or atomic
+  // operation) and elide barriers if there is no safepoint poll in between.
+  elide_dominated_barriers(accesses, allocations);
+}
+
 void G1BarrierSetC2::late_barrier_analysis() const {
   compute_liveness_at_stubs();
+  analyze_dominating_barriers();
 }
 
 void G1BarrierSetC2::emit_stubs(CodeBuffer& cb) const {
@@ -542,7 +598,7 @@ void G1BarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   GrowableArray<G1BarrierStubC2*>* const stubs = barrier_set_state()->stubs();
   for (int i = 0; i < stubs->length(); i++) {
     // Make sure there is enough space in the code buffer
-    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::MAX_inst_size) && cb.blob() == nullptr) {
+    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::max_inst_gcstub_size()) && cb.blob() == nullptr) {
       ciEnv::current()->record_failure("CodeCache is full");
       return;
     }

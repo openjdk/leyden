@@ -22,8 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
-
 #include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/runtimeUpcallNop.hpp"

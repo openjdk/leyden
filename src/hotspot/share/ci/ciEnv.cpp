@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
 #include "ci/ciConstant.hpp"
@@ -472,14 +471,12 @@ ciKlass* ciEnv::get_klass_by_name_impl(ciKlass* accessing_klass,
   }
 
   Handle loader;
-  Handle domain;
   if (accessing_klass != nullptr) {
     loader = Handle(current, accessing_klass->loader());
-    domain = Handle(current, accessing_klass->protection_domain());
   }
 
   Klass* found_klass = require_local ?
-                         SystemDictionary::find_instance_or_array_klass(current, sym, loader, domain) :
+                         SystemDictionary::find_instance_or_array_klass(current, sym, loader) :
                          SystemDictionary::find_constrained_instance_or_array_klass(current, sym, loader);
 
   // If we fail to find an array klass, look again for its element type.
@@ -1220,7 +1217,7 @@ void ciEnv::register_method(ciMethod* target,
     CodeCache::gc_on_allocation();
 
     // To prevent compile queue updates.
-    MutexLocker locker(THREAD, MethodCompileQueue_lock);
+    MutexLocker locker(THREAD, task()->compile_queue()->lock());
 
     // Prevent InstanceKlass::add_to_hierarchy from running
     // and invalidating our dependencies until we install this method.
@@ -1805,8 +1802,7 @@ void ciEnv::dump_replay_data_helper(outputStream* out) {
   GrowableArray<ciMetadata*>* objects = _factory->get_ci_metadata();
   out->print_cr("# %d ciObject found", objects->length());
 
-  // The very first entry is the InstanceKlass of the root method of the current compilation in order to get the right
-  // protection domain to load subsequent classes during replay compilation.
+  // The very first entry is the InstanceKlass of the root method of the current compilation.
   ciInstanceKlass::dump_replay_instanceKlass(out, task()->method()->method_holder());
 
   for (int i = 0; i < objects->length(); i++) {
@@ -1894,7 +1890,8 @@ bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
   switch (task()->compile_reason()) {
     case CompileTask::Reason_Precompile: {
       // check init dependencies
-      MethodTrainingData* mtd = TrainingData::lookup_for(task()->method());
+      MethodTrainingData* mtd = nullptr;
+      GUARDED_VM_ENTRY(mtd = MethodTrainingData::find(methodHandle(Thread::current(), task()->method())); )
       if (mtd != nullptr) {
         CompileTrainingData* ctd = mtd->last_toplevel_compile(task()->comp_level());
         if (ctd != nullptr) {

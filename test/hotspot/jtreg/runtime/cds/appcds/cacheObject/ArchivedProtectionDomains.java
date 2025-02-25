@@ -31,7 +31,6 @@
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app1.jar ArchivedProtectionDomainsApp
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app2.jar pkg3.Package3A pkg3.Package3B
  * @run driver ArchivedProtectionDomains STATIC
- * @run driver ArchivedProtectionDomains STATIC allowSecurityManager
  */
 
 import java.io.File;
@@ -48,14 +47,9 @@ public class ArchivedProtectionDomains {
     static final String app1Jar = ClassFileInstaller.getJarPath("app1.jar");
     static final String app2Jar = ClassFileInstaller.getJarPath("app2.jar");
     static final String mainClass = "ArchivedProtectionDomainsApp";
-    static boolean allowSecurityManager = false;
 
     public static void main(String[] args) throws Exception {
         Tester t = new Tester();
-
-        if (args.length > 1 && args[1].equals("allowSecurityManager")) {
-            allowSecurityManager = true;
-        }
         t.run(new String[] {args[0]});
     }
 
@@ -76,9 +70,6 @@ public class ArchivedProtectionDomains {
                 "-XX:+AOTClassLinking",
                 "-XX:+ArchiveProtectionDomains",
                 "-Xlog:cds+protectiondomain");
-            if (allowSecurityManager) {
-                args = StringArrayUtils.concat(args, "-Djava.security.manager=allow");
-            }
             return args;
         }
 
@@ -92,12 +83,7 @@ public class ArchivedProtectionDomains {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (allowSecurityManager) {
-                out.shouldNotContain("Archiving ProtectionDomain ");
-                out.shouldNotMatch("Archived protection domain for .* = found");
-            } else {
-                assertArchived(out, runMode);
-            }
+            assertArchived(out, runMode);
         }
 
         void assertArchived(OutputAnalyzer out, RunMode runMode) {

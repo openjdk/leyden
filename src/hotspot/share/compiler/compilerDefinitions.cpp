@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "code/codeCache.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "interpreter/invocationCounter.hpp"
@@ -335,6 +334,13 @@ void CompilerConfig::set_compilation_policy_flags() {
     }
   }
 
+  // Current Leyden implementation requires SegmentedCodeCache: the archive-backed code
+  // cache would be initialized only then. Force SegmentedCodeCache if we are loading/storing
+  // cached code. TODO: Resolve this in code cache initialization code.
+  if (!SegmentedCodeCache && (LoadCachedCode || StoreCachedCode)) {
+    FLAG_SET_ERGO(SegmentedCodeCache, true);
+  }
+
   if (CompileThresholdScaling < 0) {
     vm_exit_during_initialization("Negative value specified for CompileThresholdScaling", nullptr);
   }
@@ -475,7 +481,8 @@ void CompilerConfig::set_jvmci_specific_flags() {
 
 bool CompilerConfig::check_args_consistency(bool status) {
   // Check lower bounds of the code cache
-  size_t min_code_cache_size = CompilerConfig::min_code_cache_size();
+  // Template Interpreter code is approximately 3X larger in debug builds.
+  uint min_code_cache_size = CodeCacheMinimumUseSpace DEBUG_ONLY(* 3);
   if (ReservedCodeCacheSize < InitialCodeCacheSize) {
     jio_fprintf(defaultStream::error_stream(),
                 "Invalid ReservedCodeCacheSize: %dK. Must be at least InitialCodeCacheSize=%dK.\n",
@@ -579,6 +586,17 @@ void CompilerConfig::ergo_initialize() {
   // Do JVMCI specific settings
   set_jvmci_specific_flags();
 #endif
+
+  if (PreloadOnly) {
+    // Disable profiling/counter updates in interpreter and C1.
+    // This effectively disables most of the normal JIT (re-)compilations.
+    FLAG_SET_DEFAULT(ProfileInterpreter, false);
+    FLAG_SET_DEFAULT(UseOnStackReplacement, false);
+    FLAG_SET_DEFAULT(UseLoopCounter, false);
+
+    // Disable compilations through training data replay.
+    FLAG_SET_DEFAULT(ReplayTraining, false);
+  }
 
   if (UseOnStackReplacement && !UseLoopCounter) {
     warning("On-stack-replacement requires loop counters; enabling loop counters");

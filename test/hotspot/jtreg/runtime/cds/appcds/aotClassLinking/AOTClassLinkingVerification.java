@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -99,7 +99,7 @@ class AOTClassLinkingVerificationApp {
         app1Jar = new File(args[0]);
         assertNotShared(UnlinkedSub.class);
         assertShared(UnlinkedSuper.class);
-        assertShared(Unlinked.class);
+        assertNotShared(Unlinked.class); // failed verification during dump time
         assertNotShared(Foo.class);
         assertNotShared(NotFoo.class);
         String s = Unlinked.doit();
@@ -108,28 +108,28 @@ class AOTClassLinkingVerificationApp {
         }
 
         Class cls_BadOldClass = Class.forName("BadOldClass", false, classLoader);
-        assertShared(cls_BadOldClass);
+        assertNotShared(cls_BadOldClass); // failed verification during dump time
         try {
             cls_BadOldClass.newInstance();
             throw new RuntimeException("BadOldClass cannot be verified");
         } catch (VerifyError expected) {}
 
         Class cls_BadOldClass2 = Class.forName("BadOldClass2", false, classLoader);
-        assertShared(cls_BadOldClass2);
+        assertNotShared(cls_BadOldClass2); // failed verification during dump time
         try {
             cls_BadOldClass2.newInstance();
             throw new RuntimeException("BadOldClass2 cannot be verified");
         } catch (VerifyError expected) {}
 
         Class cls_BadNewClass = Class.forName("BadNewClass", false, classLoader);
-        assertShared(cls_BadNewClass);
+        assertNotShared(cls_BadNewClass); // failed verification during dump time
         try {
             cls_BadNewClass.newInstance();
             throw new RuntimeException("BadNewClass cannot be verified");
         } catch (VerifyError expected) {}
 
         Class cls_BadNewClass2 = Class.forName("BadNewClass2", false, classLoader);
-        assertShared(cls_BadNewClass2);
+        assertNotShared(cls_BadNewClass2); // failed verification during dump time
         try {
             cls_BadNewClass2.newInstance();
             throw new RuntimeException("BadNewClass2 cannot be verified");

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "code/scopeDesc.hpp"
 #include "code/SCCache.hpp"
@@ -99,7 +98,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
     return;
   }
   if (!m->is_native() && MethodTrainingData::have_data()) {
-    MethodTrainingData* mtd = MethodTrainingData::find(m);
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
     if (mtd == nullptr) {
       return;              // there is no training data recorded for m
     }
@@ -168,7 +167,7 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
       ktd->notice_fully_initialized(); // sets klass->has_init_deps_processed bit
       assert(klass->has_init_deps_processed(), "");
 
-      ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
+      ktd->iterate_comp_deps([&](CompileTrainingData* ctd) {
         if (ctd->init_deps_left() == 0) {
           MethodTrainingData* mtd = ctd->method();
           if (mtd->has_holder()) {
@@ -488,7 +487,7 @@ void CompilationPolicy::print_counters(const char* prefix, Method* m) {
 void CompilationPolicy::print_training_data(const char* prefix, Method* method) {
   methodHandle m(Thread::current(), method);
   tty->print(" %smtd: ", prefix);
-  MethodTrainingData* mtd = MethodTrainingData::find(m);
+  MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
   if (mtd == nullptr) {
     tty->print("null");
   } else {
@@ -637,7 +636,7 @@ void CompilationPolicy::initialize() {
       c2_size = C2Compiler::initial_code_buffer_size();
 #endif
       size_t buffer_size = c1_only ? c1_size : (c1_size/3 + 2*c2_size/3);
-      int max_count = (ReservedCodeCacheSize - (int)CompilerConfig::min_code_cache_size()) / (int)buffer_size;
+      int max_count = (ReservedCodeCacheSize - (CodeCacheMinimumUseSpace DEBUG_ONLY(* 3))) / (int)buffer_size;
       if (count > max_count) {
         // Lower the compiler count such that all buffers fit into the code cache
         count = MAX2(max_count, c1_only ? 1 : 2);
@@ -831,6 +830,11 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       // the rest of the queue, just take the task and go.
       return task;
     }
+    if (task->compile_reason() == CompileTask::Reason_Whitebox) {
+      // Whitebox (CTW) tasks do not participate in rate selection and/or any level
+      // adjustments. Just return them in order.
+      return task;
+    }
     Method* method = task->method();
     methodHandle mh(THREAD, method);
     if (task->can_become_stale() && is_stale(t, TieredCompileTaskTimeout, mh) && !is_old(mh)) {
@@ -1016,7 +1020,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
     update_rate(nanos_to_millis(os::javaTimeNanos()), mh);
     bool requires_online_compilation = false;
     if (TrainingData::have_data()) {
-      MethodTrainingData* mtd = MethodTrainingData::find(mh);
+      MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
       if (mtd != nullptr) {
         CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
         if (ctd != nullptr) {
@@ -1152,7 +1156,7 @@ bool CompilationPolicy::should_create_mdo(const methodHandle& method, CompLevel 
   }
 
   if (TrainingData::have_data()) {
-    MethodTrainingData* mtd = MethodTrainingData::find(method);
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(method);
     if (mtd != nullptr && mtd->saw_level(CompLevel_full_optimization)) {
       return true;
     }
@@ -1389,7 +1393,7 @@ CompLevel CompilationPolicy::common(const methodHandle& method, CompLevel cur_le
     next_level = CompLevel_simple;
   } else {
     if (MethodTrainingData::have_data()) {
-      MethodTrainingData* mtd = MethodTrainingData::find(method);
+      MethodTrainingData* mtd = MethodTrainingData::find_fast(method);
       if (mtd == nullptr) {
         // We haven't see compilations of this method in training. It's either very cold or the behavior changed.
         // Feed it to the standard TF with no profiling delay.

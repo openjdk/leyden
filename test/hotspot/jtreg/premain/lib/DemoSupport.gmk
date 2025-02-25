@@ -160,7 +160,6 @@ ${DEMO_CDS}: ${DEMO_JAR}
 	    -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_CDS}.log::filesize=0 \
 	     ${DEMO_CMDLINE}
 	ls -l ${DEMO_CDS}
-	ls -l ${DEMO_CDS}.code
 
 run: runn
 

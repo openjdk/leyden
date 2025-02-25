@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,9 +30,6 @@ import java.lang.reflect.*;
 import java.util.Arrays;
 import java.util.Vector;
 import javax.sql.rowset.RowSetWarning;
-import jdk.internal.reflect.CallerSensitive;
-import jdk.internal.reflect.Reflection;
-import sun.reflect.misc.ReflectUtil;
 
 /**
  * A serializable mapping in the Java programming language of an SQL
@@ -59,7 +56,7 @@ import sun.reflect.misc.ReflectUtil;
 public class SerialJavaObject implements Serializable, Cloneable {
 
     /**
-     * Placeholder for object to be serialized.
+     * @serial Placeholder for object to be serialized.
      */
     @SuppressWarnings("serial") // Not statically typed as Serializable
     private Object obj;
@@ -125,23 +122,9 @@ public class SerialJavaObject implements Serializable, Cloneable {
      * the serialized object
      * @see Class#getFields
      */
-    @CallerSensitive
     public Field[] getFields() throws SerialException {
         if (fields != null) {
             Class<?> c = this.obj.getClass();
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                /*
-                 * Check if the caller is allowed to access the specified class's package.
-                 * If access is denied, throw a SecurityException.
-                 */
-                Class<?> caller = Reflection.getCallerClass();
-                if (ReflectUtil.needsPackageAccessCheck(caller.getClassLoader(),
-                                                        c.getClassLoader())) {
-                    ReflectUtil.checkPackageAccess(c);
-                }
-            }
             return c.getFields();
         } else {
             throw new SerialException("SerialJavaObject does not contain" +
@@ -156,7 +139,7 @@ public class SerialJavaObject implements Serializable, Cloneable {
     static final long serialVersionUID = -1465795139032831023L;
 
     /**
-     * A container for the warnings issued on this <code>SerialJavaObject</code>
+     * @serial A container for the warnings issued on this <code>SerialJavaObject</code>
      * object. When there are multiple warnings, each warning is chained to the
      * previous warning.
      */

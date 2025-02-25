@@ -35,7 +35,9 @@
  * @summary Run JavacBenchApp with the classic dynamic archive workflow
  * @requires vm.cds
  * @library /test/lib
- * @run driver JavacBench DYNAMIC
+ * @build jdk.test.whitebox.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. JavacBench DYNAMIC
  */
 
 /*
@@ -45,15 +47,6 @@
  * @requires vm.cds.write.archived.java.heap
  * @library /test/lib
  * @run driver JavacBench LEYDEN
- */
-
-/*
- * @test id=leyden_old
- * @summary Run JavacBenchApp with the "OLD" Leyden workflow
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @library /test/lib
- * @run driver JavacBench LEYDEN_OLD
  */
 
 import jdk.test.lib.cds.CDSAppTester;

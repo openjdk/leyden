@@ -370,8 +370,8 @@ TESTS="1 2"
 for i in $TESTS; do
     if test $i = 2; then
         REPLAY=" (With Training Data Replay)"
-        X1="-XX:+RecordTraining"
-        X2="-XX:+ReplayTraining"
+        X1="-XX:+UnlockDiagnosticVMOptions -XX:+RecordTraining"
+        X2="-XX:+UnlockDiagnosticVMOptions -XX:+ReplayTraining"
         STEP3="(STEP 3 of 5) "
         STEP4="(STEP 4 of 5) "
         STEP5="(STEP 5 of 5) "

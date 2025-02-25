@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2025, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2014, 2021, Red Hat Inc. All rights reserved.
  * Copyright (c) 2021, Azul Systems, Inc. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -24,7 +24,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "asm/macroAssembler.hpp"
 #include "asm/macroAssembler.inline.hpp"
 #include "code/codeCache.hpp"
@@ -558,40 +557,6 @@ void SharedRuntime::gen_i2c_adapter(MacroAssembler *masm,
   // If this happens, control eventually transfers back to the compiled
   // caller, but with an uncorrected stack, causing delayed havoc.
 
-  if (VerifyAdapterCalls &&
-      (Interpreter::code() != nullptr || StubRoutines::final_stubs_code() != nullptr)) {
-#if 0
-    // So, let's test for cascading c2i/i2c adapters right now.
-    //  assert(Interpreter::contains($return_addr) ||
-    //         StubRoutines::contains($return_addr),
-    //         "i2c adapter must return to an interpreter frame");
-    __ block_comment("verify_i2c { ");
-    Label L_ok;
-    if (Interpreter::code() != nullptr) {
-      range_check(masm, rax, r11,
-                  Interpreter::code()->code_start(), Interpreter::code()->code_end(),
-                  L_ok);
-    }
-    if (StubRoutines::initial_stubs_code() != nullptr) {
-      range_check(masm, rax, r11,
-                  StubRoutines::initial_stubs_code()->code_begin(),
-                  StubRoutines::initial_stubs_code()->code_end(),
-                  L_ok);
-    }
-    if (StubRoutines::final_stubs_code() != nullptr) {
-      range_check(masm, rax, r11,
-                  StubRoutines::final_stubs_code()->code_begin(),
-                  StubRoutines::final_stubs_code()->code_end(),
-                  L_ok);
-    }
-    const char* msg = "i2c adapter must return to an interpreter frame";
-    __ block_comment(msg);
-    __ stop(msg);
-    __ bind(L_ok);
-    __ block_comment("} verify_i2ce ");
-#endif
-  }
-
   // Cut-out for having no stack args.
   int comp_words_on_stack = align_up(comp_args_on_stack*VMRegImpl::stack_slot_size, wordSize)>>LogBytesPerWord;
   if (comp_args_on_stack) {
@@ -712,12 +677,12 @@ void SharedRuntime::gen_i2c_adapter(MacroAssembler *masm,
 }
 
 // ---------------------------------------------------------------
-AdapterHandlerEntry* SharedRuntime::generate_i2c2i_adapters(MacroAssembler *masm,
-                                                            int total_args_passed,
-                                                            int comp_args_on_stack,
-                                                            const BasicType *sig_bt,
-                                                            const VMRegPair *regs,
-                                                            AdapterFingerPrint* fingerprint) {
+void SharedRuntime::generate_i2c2i_adapters(MacroAssembler *masm,
+                                            int total_args_passed,
+                                            int comp_args_on_stack,
+                                            const BasicType *sig_bt,
+                                            const VMRegPair *regs,
+                                            AdapterHandlerEntry* handler) {
   address i2c_entry = __ pc();
 
   gen_i2c_adapter(masm, total_args_passed, comp_args_on_stack, sig_bt, regs);
@@ -760,7 +725,7 @@ AdapterHandlerEntry* SharedRuntime::generate_i2c2i_adapters(MacroAssembler *masm
     Label L_skip_barrier;
 
     { // Bypass the barrier for non-static methods
-      __ ldrw(rscratch1, Address(rmethod, Method::access_flags_offset()));
+      __ ldrh(rscratch1, Address(rmethod, Method::access_flags_offset()));
       __ andsw(zr, rscratch1, JVM_ACC_STATIC);
       __ br(Assembler::EQ, L_skip_barrier); // non-static
     }
@@ -778,7 +743,8 @@ AdapterHandlerEntry* SharedRuntime::generate_i2c2i_adapters(MacroAssembler *masm
 
   gen_c2i_adapter(masm, total_args_passed, comp_args_on_stack, sig_bt, regs, skip_fixup);
 
-  return AdapterHandlerLibrary::new_entry(fingerprint, i2c_entry, c2i_entry, c2i_unverified_entry, c2i_no_clinit_check_entry);
+  handler->set_entry_points(i2c_entry, c2i_entry, c2i_unverified_entry, c2i_no_clinit_check_entry);
+  return;
 }
 
 static int c_calling_convention_priv(const BasicType *sig_bt,
@@ -1479,7 +1445,6 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
 
   BasicType* out_sig_bt = NEW_RESOURCE_ARRAY(BasicType, total_c_args);
   VMRegPair* out_regs   = NEW_RESOURCE_ARRAY(VMRegPair, total_c_args);
-  BasicType* in_elem_bt = nullptr;
 
   int argc = 0;
   out_sig_bt[argc++] = T_ADDRESS;
@@ -1668,15 +1633,12 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
 
   // For JNI natives the incoming and outgoing registers are offset upwards.
   GrowableArray<int> arg_order(2 * total_in_args);
-  VMRegPair tmp_vmreg;
-  tmp_vmreg.set2(r19->as_VMReg());
 
   for (int i = total_in_args - 1, c_arg = total_c_args - 1; i >= 0; i--, c_arg--) {
     arg_order.push(i);
     arg_order.push(c_arg);
   }
 
-  int temploc = -1;
   for (int ai = 0; ai < arg_order.length(); ai += 2) {
     int i = arg_order.at(ai);
     int c_arg = arg_order.at(ai + 1);
@@ -1892,7 +1854,6 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
   }
 
   Label safepoint_in_progress, safepoint_in_progress_done;
-  Label after_transition;
 
   // Switch thread to "native transition" state before reading the synchronization state.
   // This additional state is necessary because reading and testing the synchronization
@@ -1925,7 +1886,6 @@ nmethod* SharedRuntime::generate_native_wrapper(MacroAssembler* masm,
   __ mov(rscratch1, _thread_in_Java);
   __ lea(rscratch2, Address(rthread, JavaThread::thread_state_offset()));
   __ stlrw(rscratch1, rscratch2);
-  __ bind(after_transition);
 
   if (LockingMode != LM_LEGACY && method->is_object_wait0()) {
     // Check preemption for Object.wait()

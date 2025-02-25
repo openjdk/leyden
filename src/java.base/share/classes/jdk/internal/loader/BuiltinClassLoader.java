@@ -325,7 +325,7 @@ public class BuiltinClassLoader
             if (module.loader() == this) {
                 URL url;
                 try {
-                    url = findResource(module.name(), name); // checks URL
+                    url = findResource(module.name(), name);
                 } catch (IOException ioe) {
                     return null;
                 }
@@ -365,7 +365,7 @@ public class BuiltinClassLoader
      */
     @Override
     public Enumeration<URL> findResources(String name) throws IOException {
-        List<URL> checked = new ArrayList<>();  // list of checked URLs
+        List<URL> resources = new ArrayList<>();  // list of resource URLs
 
         String pn = Resources.toPackageName(name);
         LoadedModule module = packageToModule.get(pn);
@@ -373,12 +373,12 @@ public class BuiltinClassLoader
 
             // resource is in a package of a module defined to this loader
             if (module.loader() == this) {
-                URL url = findResource(module.name(), name); // checks URL
+                URL url = findResource(module.name(), name);
                 if (url != null
                     && (name.endsWith(".class")
                         || url.toString().endsWith("/")
                         || isOpen(module.mref(), pn))) {
-                    checked.add(url);
+                    resources.add(url);
                 }
             }
 
@@ -386,17 +386,17 @@ public class BuiltinClassLoader
             // not in a package of a module defined to this loader
             for (URL url : findMiscResource(name)) {
                 if (url != null) {
-                    checked.add(url);
+                    resources.add(url);
                 }
             }
         }
 
-        // class path (not checked)
+        // class path
         Enumeration<URL> e = findResourcesOnClassPath(name);
 
-        // concat the checked URLs and the (not checked) class path
+        // concat the URLs of the resource in the modules and the class path
         return new Enumeration<>() {
-            final Iterator<URL> iterator = checked.iterator();
+            final Iterator<URL> iterator = resources.iterator();
             URL next;
             private boolean hasNext() {
                 if (next != null) {
@@ -405,7 +405,6 @@ public class BuiltinClassLoader
                     next = iterator.next();
                     return true;
                 } else {
-                    // need to check each URL
                     while (e.hasMoreElements() && next == null) {
                         next = e.nextElement();
                     }
@@ -495,7 +494,7 @@ public class BuiltinClassLoader
      */
     private URL findResourceOnClassPath(String name) {
         if (hasClassPath()) {
-            return ucp.findResource(name, false);
+            return ucp.findResource(name);
         } else {
             // no class path
             return null;
@@ -507,7 +506,7 @@ public class BuiltinClassLoader
      */
     private Enumeration<URL> findResourcesOnClassPath(String name) {
         if (hasClassPath()) {
-            return ucp.findResources(name, false);
+            return ucp.findResources(name);
         } else {
             // no class path
             return Collections.emptyEnumeration();
@@ -702,7 +701,7 @@ public class BuiltinClassLoader
      */
     private Class<?> findClassOnClassPathOrNull(String cn) {
         String path = cn.replace('.', '/').concat(".class");
-        Resource res = ucp.getResource(path, false);
+        Resource res = ucp.getResource(path);
         if (res != null) {
             try {
                 return defineClass(cn, res);

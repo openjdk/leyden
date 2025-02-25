@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "asm/assembler.hpp"
 #include "asm/assembler.inline.hpp"
 #include "code/SCCache.hpp"
@@ -781,9 +780,17 @@ void MacroAssembler::warn(const char* msg) {
   andq(rsp, -16);     // align stack as required by push_CPU_state and call
   push_CPU_state();   // keeps alignment at 16 bytes
 
+#ifdef _WIN64
+  // Windows always allocates space for its register args
+  subq(rsp,  frame::arg_reg_save_area_bytes);
+#endif
   lea(c_rarg0, ExternalAddress((address) msg));
   call(RuntimeAddress(CAST_FROM_FN_PTR(address, warning)));
 
+#ifdef _WIN64
+  // restore stack pointer
+  addq(rsp, frame::arg_reg_save_area_bytes);
+#endif
   pop_CPU_state();
   mov(rsp, rbp);
   pop(rbp);
@@ -1196,7 +1203,11 @@ void MacroAssembler::andpd(XMMRegister dst, AddressLiteral src, Register rscratc
   assert((UseAVX > 0) || (((intptr_t)src.target() & 15) == 0), "SSE mode requires address alignment 16 bytes");
   assert(rscratch != noreg || always_reachable(src), "missing");
 
-  if (reachable(src)) {
+  if (UseAVX > 2 &&
+      (!VM_Version::supports_avx512dq() || !VM_Version::supports_avx512vl()) &&
+      (dst->encoding() >= 16)) {
+    vpand(dst, dst, src, AVX_512bit, rscratch);
+  } else if (reachable(src)) {
     Assembler::andpd(dst, as_Address(src));
   } else {
     lea(rscratch, src);
@@ -2378,6 +2389,22 @@ void MacroAssembler::jump_cc(Condition cc, AddressLiteral dst, Register rscratch
   }
 }
 
+void MacroAssembler::cmp32_mxcsr_std(Address mxcsr_save, Register tmp, Register rscratch) {
+  ExternalAddress mxcsr_std(StubRoutines::x86::addr_mxcsr_std());
+  assert(rscratch != noreg || always_reachable(mxcsr_std), "missing");
+
+  stmxcsr(mxcsr_save);
+  movl(tmp, mxcsr_save);
+  if (EnableX86ECoreOpts) {
+    // The mxcsr_std has status bits set for performance on ECore
+    orl(tmp, 0x003f);
+  } else {
+    // Mask out status bits (only check control and mask bits)
+    andl(tmp, 0xFFC0);
+  }
+  cmp32(tmp, mxcsr_std, rscratch);
+}
+
 void MacroAssembler::ldmxcsr(AddressLiteral src, Register rscratch) {
   assert(rscratch != noreg || always_reachable(src), "missing");
 
@@ -3334,7 +3361,12 @@ void MacroAssembler::xorpd(XMMRegister dst, AddressLiteral src, Register rscratc
 
   // Used in sign-bit flipping with aligned address.
   assert((UseAVX > 0) || (((intptr_t)src.target() & 15) == 0), "SSE mode requires address alignment 16 bytes");
-  if (reachable(src)) {
+
+  if (UseAVX > 2 &&
+      (!VM_Version::supports_avx512dq() || !VM_Version::supports_avx512vl()) &&
+      (dst->encoding() >= 16)) {
+    vpxor(dst, dst, src, Assembler::AVX_512bit, rscratch);
+  } else if (reachable(src)) {
     Assembler::xorpd(dst, as_Address(src));
   } else {
     lea(rscratch, src);
@@ -3343,16 +3375,19 @@ void MacroAssembler::xorpd(XMMRegister dst, AddressLiteral src, Register rscratc
 }
 
 void MacroAssembler::xorpd(XMMRegister dst, XMMRegister src) {
-  if (UseAVX > 2 && !VM_Version::supports_avx512dq() && (dst->encoding() == src->encoding())) {
+  if (UseAVX > 2 &&
+      (!VM_Version::supports_avx512dq() || !VM_Version::supports_avx512vl()) &&
+      ((dst->encoding() >= 16) || (src->encoding() >= 16))) {
     Assembler::vpxor(dst, dst, src, Assembler::AVX_512bit);
-  }
-  else {
+  } else {
     Assembler::xorpd(dst, src);
   }
 }
 
 void MacroAssembler::xorps(XMMRegister dst, XMMRegister src) {
-  if (UseAVX > 2 && !VM_Version::supports_avx512dq() && (dst->encoding() == src->encoding())) {
+  if (UseAVX > 2 &&
+      (!VM_Version::supports_avx512dq() || !VM_Version::supports_avx512vl()) &&
+      ((dst->encoding() >= 16) || (src->encoding() >= 16))) {
     Assembler::vpxor(dst, dst, src, Assembler::AVX_512bit);
   } else {
     Assembler::xorps(dst, src);
@@ -3364,7 +3399,12 @@ void MacroAssembler::xorps(XMMRegister dst, AddressLiteral src, Register rscratc
 
   // Used in sign-bit flipping with aligned address.
   assert((UseAVX > 0) || (((intptr_t)src.target() & 15) == 0), "SSE mode requires address alignment 16 bytes");
-  if (reachable(src)) {
+
+  if (UseAVX > 2 &&
+      (!VM_Version::supports_avx512dq() || !VM_Version::supports_avx512vl()) &&
+      (dst->encoding() >= 16)) {
+    vpxor(dst, dst, src, Assembler::AVX_512bit, rscratch);
+  } else if (reachable(src)) {
     Assembler::xorps(dst, as_Address(src));
   } else {
     lea(rscratch, src);
@@ -4914,6 +4954,10 @@ void MacroAssembler::population_count(Register dst, Register src,
     }
     bind(done);
   }
+#ifdef ASSERT
+  mov64(scratch1, 0xCafeBabeDeadBeef);
+  movq(scratch2, scratch1);
+#endif
 }
 
 // Ensure that the inline code and the stub are using the same registers.
@@ -5115,6 +5159,7 @@ void MacroAssembler::lookup_secondary_supers_table_var(Register r_sub_klass,
   const Register r_array_base = *available_regs++;
 
   // Get the first array index that can contain super_klass into r_array_index.
+  // Note: Clobbers r_array_base and slot.
   population_count(r_array_index, r_array_index, /*temp2*/r_array_base, /*temp3*/slot);
 
   // NB! r_array_index is off by 1. It is compensated by keeping r_array_base off by 1 word.
@@ -5132,7 +5177,7 @@ void MacroAssembler::lookup_secondary_supers_table_var(Register r_sub_klass,
   jccb(Assembler::equal, L_success);
 
   // Restore slot to its true value
-  xorl(slot, (u1)(Klass::SECONDARY_SUPERS_TABLE_SIZE - 1)); // slot ^ 63 === 63 - slot (mod 64)
+  movb(slot, Address(r_super_klass, Klass::hash_slot_offset()));
 
   // Linear probe. Rotate the bitmap so that the next bit to test is
   // in Bit 1.
@@ -5442,7 +5487,6 @@ void MacroAssembler::vallones(XMMRegister dst, int vector_len) {
   } else if (VM_Version::supports_avx()) {
     vpcmpeqd(dst, dst, dst, vector_len);
   } else {
-    assert(VM_Version::supports_sse2(), "");
     pcmpeqd(dst, dst);
   }
 }
@@ -9118,14 +9162,14 @@ void MacroAssembler::crc32c_ipl_alg2_alt2(Register in_out, Register in1, Registe
   Label L_exit;
 
   if (is_pclmulqdq_supported ) {
-    const_or_pre_comp_const_index[1] = *(uint32_t *)StubRoutines::_crc32c_table_addr;
-    const_or_pre_comp_const_index[0] = *((uint32_t *)StubRoutines::_crc32c_table_addr+1);
+    const_or_pre_comp_const_index[1] = *(uint32_t *)StubRoutines::crc32c_table_addr();
+    const_or_pre_comp_const_index[0] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 1);
 
-    const_or_pre_comp_const_index[3] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 2);
-    const_or_pre_comp_const_index[2] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 3);
+    const_or_pre_comp_const_index[3] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 2);
+    const_or_pre_comp_const_index[2] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 3);
 
-    const_or_pre_comp_const_index[5] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 4);
-    const_or_pre_comp_const_index[4] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 5);
+    const_or_pre_comp_const_index[5] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 4);
+    const_or_pre_comp_const_index[4] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 5);
     assert((CRC32C_NUM_PRECOMPUTED_CONSTANTS - 1 ) == 5, "Checking whether you declared all of the constants based on the number of \"chunks\"");
   } else {
     const_or_pre_comp_const_index[0] = 1;
@@ -9198,14 +9242,14 @@ void MacroAssembler::crc32c_ipl_alg2_alt2(Register in_out, Register in1, Registe
   Label L_exit;
 
   if (is_pclmulqdq_supported) {
-    const_or_pre_comp_const_index[1] = *(uint32_t *)StubRoutines::_crc32c_table_addr;
-    const_or_pre_comp_const_index[0] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 1);
+    const_or_pre_comp_const_index[1] = *(uint32_t *)StubRoutines::crc32c_table_addr();
+    const_or_pre_comp_const_index[0] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 1);
 
-    const_or_pre_comp_const_index[3] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 2);
-    const_or_pre_comp_const_index[2] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 3);
+    const_or_pre_comp_const_index[3] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 2);
+    const_or_pre_comp_const_index[2] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 3);
 
-    const_or_pre_comp_const_index[5] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 4);
-    const_or_pre_comp_const_index[4] = *((uint32_t *)StubRoutines::_crc32c_table_addr + 5);
+    const_or_pre_comp_const_index[5] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 4);
+    const_or_pre_comp_const_index[4] = *((uint32_t *)StubRoutines::crc32c_table_addr() + 5);
   } else {
     const_or_pre_comp_const_index[0] = 1;
     const_or_pre_comp_const_index[1] = 0;

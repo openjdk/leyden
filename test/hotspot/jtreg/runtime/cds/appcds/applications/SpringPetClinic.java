@@ -38,7 +38,9 @@
  * @requires vm.cds
  * @summary run Spring Pet Clinic demo with the classic dynamic archive workflow
  * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic DYNAMIC
+ * @build jdk.test.whitebox.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
+ * @run main/othervm/timeout=120 -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. SpringPetClinic DYNAMIC
  */
 
 /*
@@ -50,17 +52,6 @@
  * @library /test/lib
  * @run driver/timeout=120 SpringPetClinic LEYDEN
  */
-
-/*
- * @test id=leyden_old
- * @key external-dep
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary run Spring Pet Clinic demo with leyden-premain
- * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic LEYDEN_OLD
- */
-
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;

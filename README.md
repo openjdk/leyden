@@ -49,7 +49,7 @@ We have implemented the following improvements over the JDK main line:
 - **[Ahead-of-Time Method Profiling (JEP draft 8325147)](https://openjdk.org/jeps/8325147)**: We store method profiles
   from training runs in the CDS archive, thereby enabling the JIT to begin compiling earlier during warmup.
   As a result, Java applications can reach peak performance faster.
-  - This feature is enabled by the new VM flags `-XX:+RecordTraining` and `-XX:+ReplayTraining`.
+  - This feature is enabled by the new diagnostic (`-XX:+UnlockDiagnosticVMOptions`) VM flags `-XX:+RecordTraining` and `-XX:+ReplayTraining`.
 
 - **Ahead-of-time resolution of constant pool entries**: many
   constant pool entries are resolved during the assembly phase. This allows the application to start up faster. Also,

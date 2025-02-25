@@ -57,7 +57,9 @@
  * @summary test the -XX:CacheOnlyClassesIn flag with the classic dynamic archive workflow
  * @requires vm.cds
  * @library /test/lib
- * @run driver CacheOnlyClassesIn DYNAMIC
+ * @build jdk.test.whitebox.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. CacheOnlyClassesIn DYNAMIC
  */
 
 /*

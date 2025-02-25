@@ -186,17 +186,17 @@ ${PC_DYNAMIC_JSA}: ${PC_STATIC_JSA}
 	rm -f ${PC_DYNAMIC_JSA} ${PC_DYNAMIC_JSA}.log
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_JSA} \
 	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=${PC_DYNAMIC_JSA}.log \
-	    -XX:+RecordTraining ${UNPACKED_CMDLINE}
+	    -XX:+UnlockDiagnosticVMOptions -XX:+RecordTraining ${UNPACKED_CMDLINE}
 	ls -l ${PC_DYNAMIC_JSA}
 
 ${PC_CACHED_CODE}: ${PC_DYNAMIC_JSA}
-	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} -XX:+ReplayTraining -XX:+StoreCachedCode \
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} -XX:+UnlockDiagnosticVMOptions -XX:+ReplayTraining -XX:+StoreCachedCode \
 	     -XX:CachedCodeFile=${PC_CACHED_CODE} -XX:CachedCodeMaxSize=512M ${UNPACKED_CMDLINE}
 	ls -l ${PC_CACHED_CODE}
 
 # run with premain optimizatipn
 run: ${PC_CACHED_CODE}
-	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_JSA} -XX:+UnlockDiagnosticVMOptions -XX:+ReplayTraining -XX:+LoadCachedCode \
 		-XX:CachedCodeFile=${PC_CACHED_CODE} ${LOG_INIT} -Xlog:scc=error ${UNPACKED_CMDLINE}
 
 # run with just static CDS archive
@@ -304,10 +304,10 @@ dummyn: ${PC_CDS} Dummy.jar
 
 dummyn-50: ${PC_CDS} Dummy.jar
 	bash -c "time for i in {1..50}; do ${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} \
-		-XX:-ReplayTraining -XX:-LoadCachedCode -Xlog:scc=error ${DUMMY_CMDLINE}; done"
+		-XX:+UnlockDiagnosticVMOptions -XX:-ReplayTraining -XX:-LoadCachedCode -Xlog:scc=error ${DUMMY_CMDLINE}; done"
 
 dummyn-50-perf: ${PC_CDS} Dummy.jar
-	perf stat -r 50 ${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} -XX:-ReplayTraining -XX:-LoadCachedCode -Xlog:scc=error ${DUMMY_CMDLINE}
+	perf stat -r 50 ${PREMAIN_JAVA} -XX:CacheDataStore=${PC_CDS} -XX:+UnlockDiagnosticVMOptions -XX:-ReplayTraining -XX:-LoadCachedCode -Xlog:scc=error ${DUMMY_CMDLINE}
 
 clean: clean0
 	rm -rf *~ ${PC_REPO} Dummy*.class Dummy.jar *.old.txt *.new.txt tmp.txt hs_err*

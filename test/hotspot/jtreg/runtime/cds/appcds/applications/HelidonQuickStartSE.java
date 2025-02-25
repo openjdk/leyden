@@ -46,7 +46,9 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @requires vm.cds
  * @summary run HelidonQuickStartSE with the classic dynamic archive workflow
  * @library /test/lib
- * @run driver/timeout=120 HelidonQuickStartSE DYNAMIC
+ * @build jdk.test.whitebox.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
+ * @run main/othervm/timeout=120 -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. HelidonQuickStartSE DYNAMIC
  */
 
 /*
@@ -57,16 +59,6 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @summary un HelidonQuickStartSE with the Leyden workflow
  * @library /test/lib
  * @run driver/timeout=120 HelidonQuickStartSE LEYDEN
- */
-
-/*
- * @test id=leyden_old
- * @key external-dep
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary un HelidonQuickStartSE with the "OLD" Leyden workflow
- * @library /test/lib
- * @run driver/timeout=120 HelidonQuickStartSE LEYDEN_OLD
  */
 
 // Test CDS with the example program in https://helidon.io/docs/v4/se/guides/quickstart

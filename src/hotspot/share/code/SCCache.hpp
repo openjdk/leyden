@@ -25,6 +25,8 @@
 #ifndef SHARE_CODE_SCCACHE_HPP
 #define SHARE_CODE_SCCACHE_HPP
 
+#include "compiler/compilerDefinitions.hpp"
+
 /*
  * Startup Code Cache (SCC) collects compiled code and metadata during
  * an application training runs.
@@ -57,7 +59,6 @@ class SCCache;
 class StubCodeGenerator;
 
 enum class vmIntrinsicID : int;
-enum CompLevel : signed char;
 
 class SCConfig {
   uint _compressedOopShift;
@@ -81,7 +82,7 @@ class SCConfig {
 
 public:
   void record(bool use_meta_ptrs);
-  bool verify(const char* cache_path) const;
+  bool verify() const;
 
   bool has_meta_ptrs()  const { return (_flags & metadataPointers) != 0; }
 };
@@ -94,7 +95,6 @@ private:
     SCC_VERSION = 1
   };
   uint _version;           // SCC version (should match when reading code cache)
-  uint _jvm_version_offset;// JVM version string
   uint _cache_size;        // cache size in bytes
   uint _strings_count;
   uint _strings_offset;    // offset to recorded C strings
@@ -105,13 +105,12 @@ private:
   SCConfig _config;
 
 public:
-  void init(uint jvm_version_offset, uint cache_size,
+  void init(uint cache_size,
             uint strings_count, uint strings_offset,
             uint entries_count, uint entries_offset,
             uint preload_entries_count, uint preload_entries_offset,
             bool use_meta_ptrs) {
     _version        = SCC_VERSION;
-     _jvm_version_offset = jvm_version_offset;
     _cache_size     = cache_size;
     _strings_count  = strings_count;
     _strings_offset = strings_offset;
@@ -123,8 +122,6 @@ public:
     _config.record(use_meta_ptrs);
   }
 
-  uint jvm_version_offset() const { return _jvm_version_offset; }
-
   uint cache_size()     const { return _cache_size; }
   uint strings_count()  const { return _strings_count; }
   uint strings_offset() const { return _strings_offset; }
@@ -134,20 +131,27 @@ public:
   uint preload_entries_offset() const { return _preload_entries_offset; }
   bool has_meta_ptrs()  const { return _config.has_meta_ptrs(); }
 
-  bool verify_config(const char* cache_path, uint load_size)  const;
-  bool verify_vm_config(const char* cache_path) const { // Called after Universe initialized
-    return _config.verify(cache_path);
+  bool verify_config(uint load_size)  const;
+  bool verify_vm_config() const { // Called after Universe initialized
+    return _config.verify();
   }
 };
+
+#define DO_SCCENTRY_KIND(Fn) \
+  Fn(None) \
+  Fn(Adapter) \
+  Fn(Stub) \
+  Fn(Blob) \
+  Fn(Code) \
 
 // Code Cache's entry contain information from CodeBuffer
 class SCCEntry {
 public:
-  enum Kind {
-    None = 0,
-    Stub = 1,
-    Blob = 2,
-    Code = 3
+  enum Kind : s1 {
+#define DECL_KIND_ENUM(kind) kind,
+    DO_SCCENTRY_KIND(DECL_KIND_ENUM)
+#undef DECL_KIND_ENUM
+    Kind_count
   };
 
 private:
@@ -215,6 +219,11 @@ public:
   // Delete is a NOP
   void operator delete( void *ptr ) {}
 
+  bool is_adapter() { return _kind == Adapter; }
+  bool is_stub() { return _kind == Stub; }
+  bool is_blob() { return _kind == Blob; }
+  bool is_code() { return _kind == Code; }
+
   SCCEntry* next()    const { return _next; }
   void set_next(SCCEntry* next) { _next = next; }
 
@@ -271,8 +280,10 @@ private:
   uint     _blobs_length;
   uint     _C1_blobs_length;
   uint     _C2_blobs_length;
-  uint     _final_blobs_length;
 
+  bool _extrs_complete;
+  bool _early_stubs_complete;
+  bool _shared_blobs_complete;
   bool _complete;
   bool _opto_complete;
   bool _c1_complete;
@@ -282,12 +293,18 @@ public:
     _extrs_addr = nullptr;
     _stubs_addr = nullptr;
     _blobs_addr = nullptr;
+    _extrs_complete = false;
+    _early_stubs_complete = false;
+    _shared_blobs_complete = false;
     _complete = false;
     _opto_complete = false;
     _c1_complete = false;
   }
   ~SCAddressTable();
-  void init();
+  void init_extrs();
+  void init_early_stubs();
+  void init_shared_blobs();
+  void init_stubs();
   void init_opto();
   void init_c1();
   void add_C_string(const char* str);
@@ -503,6 +520,8 @@ public:
   bool compile_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler);
   bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
+  bool compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]);
+
   Klass* read_klass(const methodHandle& comp_method, bool shared);
   Method* read_method(const methodHandle& comp_method, bool shared);
 
@@ -526,10 +545,8 @@ public:
 class SCCache : public CHeapObj<mtCode> {
 private:
   SCCHeader*  _load_header;
-  const char* _cache_path;
   char*       _load_buffer;    // Aligned buffer for loading cached code
   char*       _store_buffer;   // Aligned buffer for storing cached code
-  char*       _C_load_buffer;  // Original unaligned buffer
   char*       _C_store_buffer; // Original unaligned buffer
 
   uint        _write_position; // Position in _store_buffer
@@ -564,6 +581,10 @@ private:
   bool align_write();
   uint write_bytes(const void* buffer, uint nbytes);
   const char* addr(uint offset) const { return _load_buffer + offset; }
+
+  static SCAddressTable* addr_table() {
+    return is_on() && (cache()->_table != nullptr) ? cache()->_table : nullptr;
+  }
 
   bool _lookup_failed;       // Failed to lookup for info (skip only this code load)
   void set_lookup_failed()     { _lookup_failed = true; }
@@ -615,16 +636,16 @@ private:
   };
 
 public:
-  SCCache(const char* cache_path, int fd, uint load_size);
+  SCCache();
   ~SCCache();
 
   const char* cache_buffer() const { return _load_buffer; }
-  const char* cache_path()   const { return _cache_path; }
   bool failed() const { return _failed; }
   void set_failed()   { _failed = true; }
 
   static void copy_bytes(const char* from, address to, uint size);
   static bool is_address_in_aot_cache(address p);
+  static uint max_aot_code_size();
 
   uint load_size() const { return _load_size; }
   uint write_position() const { return _write_position; }
@@ -632,9 +653,12 @@ public:
   void load_strings();
   int store_strings();
 
-  static void init_table();
-  static void init_opto_table();
-  static void init_c1_table();
+  static void init_extrs_table() NOT_CDS_RETURN;
+  static void init_early_stubs_table() NOT_CDS_RETURN;
+  static void init_shared_blobs_table() NOT_CDS_RETURN;
+  static void init_stubs_table() NOT_CDS_RETURN;
+  static void init_opto_table() NOT_CDS_RETURN;
+  static void init_c1_table() NOT_CDS_RETURN;
   address address_for_id(int id) const { return _table->address_for_id(id); }
 
   bool for_read()  const { return _for_read  && !_failed; }
@@ -658,8 +682,10 @@ public:
 
   bool finish_write();
 
-  static bool load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start);
-  static bool store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start);
+  void log_stats_on_exit();
+
+  static bool load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) NOT_CDS_RETURN_(false);
+  static bool store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) NOT_CDS_RETURN_(false);
 
   bool write_klass(Klass* klass);
   bool write_method(Method* method);
@@ -686,10 +712,13 @@ public:
   bool write_oops(nmethod* nm);
   bool write_metadata(nmethod* nm);
 
-  static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset);
-  static bool store_exception_blob(CodeBuffer* buffer, int pc_offset);
+  static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset) NOT_CDS_RETURN_(false);
+  static bool store_exception_blob(CodeBuffer* buffer, int pc_offset) NOT_CDS_RETURN_(false);
 
-  static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level);
+  static bool load_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
+  static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
+
+  static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
 
   static SCCEntry* store_nmethod(const methodHandle& method,
                      int compile_id,
@@ -710,7 +739,7 @@ public:
                      bool has_unsafe_access,
                      bool has_wide_vectors,
                      bool has_monitors,
-                     bool has_scoped_access);
+                     bool has_scoped_access) NOT_CDS_RETURN_(nullptr);
 
   static SCCEntry* store_nmethod_v1(nmethod* nm, AbstractCompiler* compiler, int dependencies_size, bool for_preload);
 
@@ -726,26 +755,26 @@ public:
 private:
   static SCCache*  _cache;
 
-  static bool open_cache(const char* cache_path);
+  static bool open_cache();
   static bool verify_vm_config() {
     if (is_on_for_read()) {
-      return _cache->_load_header->verify_vm_config(_cache->_cache_path);
+      return _cache->_load_header->verify_vm_config();
     }
     return true;
   }
 public:
   static SCCache* cache() { return _cache; }
-  static void initialize();
-  static void init2();
-  static void close();
-  static bool is_on() { return _cache != nullptr && !_cache->closing(); }
-  static bool is_C3_on();
-  static bool is_code_load_thread_on();
+  static void initialize() NOT_CDS_RETURN;
+  static void init2() NOT_CDS_RETURN;
+  static void close() NOT_CDS_RETURN;
+  static bool is_on() CDS_ONLY({ return _cache != nullptr && !_cache->closing(); }) NOT_CDS_RETURN_(false);
+  static bool is_C3_on() NOT_CDS_RETURN_(false);
+  static bool is_code_load_thread_on() NOT_CDS_RETURN_(false);
   static bool is_on_for_read()  { return is_on() && _cache->for_read(); }
   static bool is_on_for_write() { return is_on() && _cache->for_write(); }
   static bool gen_preload_code(ciMethod* m, int entry_bci);
-  static bool allow_const_field(ciConstant& value);
-  static void invalidate(SCCEntry* entry);
+  static bool allow_const_field(ciConstant& value) NOT_CDS_RETURN_(false);
+  static void invalidate(SCCEntry* entry) NOT_CDS_RETURN;
   static bool is_loaded(SCCEntry* entry);
   static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level);
   static void preload_code(JavaThread* thread);
@@ -772,16 +801,132 @@ public:
     }
   }
 
-  static void add_C_string(const char* str);
+  static void add_C_string(const char* str) NOT_CDS_RETURN;
 
-  static void print_on(outputStream* st);
-  static void print_statistics_on(outputStream* st);
-  static void print_timers_on(outputStream* st);
-  static void print_unused_entries_on(outputStream* st);
+  static void print_on(outputStream* st) NOT_CDS_RETURN;
+  static void print_statistics_on(outputStream* st) NOT_CDS_RETURN;
+  static void print_timers_on(outputStream* st) NOT_CDS_RETURN;
+  static void print_unused_entries_on(outputStream* st) NOT_CDS_RETURN;
+};
 
-  static void new_workflow_start_writing_cache() NOT_CDS_JAVA_HEAP_RETURN;
-  static void new_workflow_end_writing_cache() NOT_CDS_JAVA_HEAP_RETURN;
-  static void new_workflow_load_cache() NOT_CDS_JAVA_HEAP_RETURN;
+// +1 for preload code, and another +1 because CompLevel_count is not really the count, but same as the highest comp level
+const int AOTCompLevel_count = CompLevel_count+1+1; // 6 levels indexed from 0 to 5
+
+struct AOTCodeStats {
+private:
+  struct {
+    uint _kind_cnt[SCCEntry::Kind_count];
+    uint _nmethod_cnt[AOTCompLevel_count];
+    uint _clinit_barriers_cnt;
+  } ccstats; // ccstats = cached code stats
+
+  void check_kind(uint kind) { assert(kind >= SCCEntry::None && kind < SCCEntry::Kind_count, "Invalid SCCEntry kind %d", kind); }
+  void check_complevel(uint lvl) { assert(lvl >= CompLevel_none && lvl < AOTCompLevel_count, "Invalid compilation level %d", lvl); }
+
+public:
+  void inc_entry_cnt(uint kind) { check_kind(kind); ccstats._kind_cnt[kind] += 1; }
+  void inc_nmethod_cnt(uint lvl) { check_complevel(lvl); ccstats._nmethod_cnt[lvl] += 1; }
+  void inc_preload_cnt() { ccstats._nmethod_cnt[AOTCompLevel_count-1] += 1; }
+  void inc_clinit_barriers_cnt() { ccstats._clinit_barriers_cnt += 1; }
+
+  void collect_entry_stats(SCCEntry* entry) {
+    inc_entry_cnt(entry->kind());
+    if (entry->is_code()) {
+      entry->for_preload() ? inc_nmethod_cnt(AOTCompLevel_count-1)
+                           : inc_nmethod_cnt(entry->comp_level());
+      if (entry->has_clinit_barriers()) {
+        inc_clinit_barriers_cnt();
+      }
+    }
+  }
+
+  uint entry_count(uint kind) { check_kind(kind); return ccstats._kind_cnt[kind]; }
+  uint nmethod_count(uint lvl) { check_complevel(lvl); return ccstats._nmethod_cnt[lvl]; }
+  uint preload_count() { return ccstats._nmethod_cnt[AOTCompLevel_count-1]; }
+  uint clinit_barriers_count() { return ccstats._clinit_barriers_cnt; }
+
+  uint total_count() {
+    uint total = 0;
+    for (int kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+      total += ccstats._kind_cnt[kind];
+    }
+    return total;
+  }
+
+  static AOTCodeStats add_cached_code_stats(AOTCodeStats stats1, AOTCodeStats stats2);
+
+  // Runtime stats of the AOT code
+private:
+  struct {
+    struct {
+      uint _loaded_cnt;
+      uint _invalidated_cnt;
+      uint _load_failed_cnt;
+    } _entry_kinds[SCCEntry::Kind_count],
+      _nmethods[AOTCompLevel_count];
+  } rs; // rs = runtime stats
+
+public:
+  void inc_entry_loaded_cnt(uint kind) { check_kind(kind); rs._entry_kinds[kind]._loaded_cnt += 1; }
+  void inc_entry_invalidated_cnt(uint kind) { check_kind(kind); rs._entry_kinds[kind]._invalidated_cnt += 1; }
+  void inc_entry_load_failed_cnt(uint kind) { check_kind(kind); rs._entry_kinds[kind]._load_failed_cnt += 1; }
+
+  void inc_nmethod_loaded_cnt(uint lvl) { check_complevel(lvl); rs._nmethods[lvl]._loaded_cnt += 1; }
+  void inc_nmethod_invalidated_cnt(uint lvl) { check_complevel(lvl); rs._nmethods[lvl]._invalidated_cnt += 1; }
+  void inc_nmethod_load_failed_cnt(uint lvl) { check_complevel(lvl); rs._nmethods[lvl]._load_failed_cnt += 1; }
+
+  uint entry_loaded_count(uint kind) { check_kind(kind); return rs._entry_kinds[kind]._loaded_cnt; }
+  uint entry_invalidated_count(uint kind) { check_kind(kind); return rs._entry_kinds[kind]._invalidated_cnt; }
+  uint entry_load_failed_count(uint kind) { check_kind(kind); return rs._entry_kinds[kind]._load_failed_cnt; }
+
+  uint nmethod_loaded_count(uint lvl) { check_complevel(lvl); return rs._nmethods[lvl]._loaded_cnt; }
+  uint nmethod_invalidated_count(uint lvl) { check_complevel(lvl); return rs._nmethods[lvl]._invalidated_cnt; }
+  uint nmethod_load_failed_count(uint lvl) { check_complevel(lvl); return rs._nmethods[lvl]._load_failed_cnt; }
+
+  void inc_loaded_cnt(SCCEntry* entry) {
+    inc_entry_loaded_cnt(entry->kind());
+    if (entry->is_code()) {
+      entry->for_preload() ? inc_nmethod_loaded_cnt(AOTCompLevel_count-1)
+                           : inc_nmethod_loaded_cnt(entry->comp_level());
+    }
+  }
+
+  void inc_invalidated_cnt(SCCEntry* entry) {
+    inc_entry_invalidated_cnt(entry->kind());
+    if (entry->is_code()) {
+      entry->for_preload() ? inc_nmethod_invalidated_cnt(AOTCompLevel_count-1)
+                           : inc_nmethod_invalidated_cnt(entry->comp_level());
+    }
+  }
+
+  void inc_load_failed_cnt(SCCEntry* entry) {
+    inc_entry_load_failed_cnt(entry->kind());
+    if (entry->is_code()) {
+      entry->for_preload() ? inc_nmethod_load_failed_cnt(AOTCompLevel_count-1)
+                           : inc_nmethod_load_failed_cnt(entry->comp_level());
+    }
+  }
+
+  void collect_entry_runtime_stats(SCCEntry* entry) {
+    if (entry->is_loaded()) {
+      inc_loaded_cnt(entry);
+    }
+    if (entry->not_entrant()) {
+      inc_invalidated_cnt(entry);
+    }
+    if (entry->load_fail()) {
+      inc_load_failed_cnt(entry);
+    }
+  }
+
+  void collect_all_stats(SCCEntry* entry) {
+    collect_entry_stats(entry);
+    collect_entry_runtime_stats(entry);
+  }
+
+  AOTCodeStats() {
+    memset(this, 0, sizeof(AOTCodeStats));
+  }
 };
 
 // code cache internal runtime constants area used by AOT code

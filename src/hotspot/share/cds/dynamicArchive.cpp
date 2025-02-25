@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,7 @@
  *
  */
 
-#include "precompiled.hpp"
+#include "cds/aotArtifactFinder.hpp"
 #include "cds/aotClassLinker.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapWriter.hpp"
@@ -113,7 +113,6 @@ public:
 
     // Block concurrent class unloading from changing the _dumptime_table
     MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
-    SystemDictionaryShared::find_all_archivable_classes();
 
     if (SystemDictionaryShared::is_dumptime_table_empty()) {
       log_warning(cds, dynamic)("There is no class to be included in the dynamic archive.");
@@ -133,8 +132,6 @@ public:
     dump_rw_metadata();
     dump_ro_metadata();
     relocate_metaspaceobj_embedded_pointers();
-
-    verify_estimate_size(_estimated_metaspaceobj_bytes, "MetaspaceObjs");
 
     sort_methods();
 
@@ -162,8 +159,6 @@ public:
       ArchiveBuilder::serialize_dynamic_archivable_items(&wc);
     }
 
-    verify_estimate_size(_estimated_hashtable_bytes, "Hashtables");
-
     log_info(cds)("Adjust lambda proxy class dictionary");
     SystemDictionaryShared::adjust_lambda_proxy_class_dictionary();
 
@@ -184,6 +179,7 @@ public:
 
   virtual void iterate_roots(MetaspaceClosure* it) {
     FileMapInfo::metaspace_pointers_do(it);
+    AOTArtifactFinder::all_cached_classes_do(it);
     SystemDictionaryShared::dumptime_classes_do(it);
     TrainingData::iterate_roots(it);
     iterate_primitive_array_klasses(it);
@@ -362,7 +358,7 @@ void DynamicArchiveBuilder::write_archive(char* serialized_data) {
   size_t file_size = pointer_delta(top, base, sizeof(char));
 
   log_info(cds, dynamic)("Written dynamic archive " PTR_FORMAT " - " PTR_FORMAT
-                         " [" UINT32_FORMAT " bytes header, " SIZE_FORMAT " bytes total]",
+                         " [" UINT32_FORMAT " bytes header, %zu bytes total]",
                          p2i(base), p2i(top), _header->header_size(), file_size);
 
   log_info(cds, dynamic)("%d klasses; %d symbols", klasses()->length(), symbols()->length());
@@ -518,14 +514,14 @@ void DynamicArchive::dump_at_exit(JavaThread* current, const char* archive_name)
   {
     // FIXME-HACK - make sure we have at least one class in the dynamic archive
     TempNewSymbol class_name = SymbolTable::new_symbol("sun/nio/cs/IBM850"); // unusual class; shouldn't be used by our tests cases.
-    SystemDictionary::resolve_or_null(class_name, Handle(), Handle(), THREAD);
+    SystemDictionary::resolve_or_null(class_name, Handle(), THREAD);
     guarantee(!HAS_PENDING_EXCEPTION, "must have this class");
   }
 
   MetaspaceShared::link_shared_classes(false/*not from jcmd*/, THREAD);
   if (!HAS_PENDING_EXCEPTION) {
     // copy shared path table to saved.
-    TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
+    TrainingData::init_dumptime_table(THREAD); // captures TrainingDataSetLocker
     if (!HAS_PENDING_EXCEPTION) {
       VM_PopulateDynamicDumpSharedSpace op(archive_name);
       VMThread::execute(&op);

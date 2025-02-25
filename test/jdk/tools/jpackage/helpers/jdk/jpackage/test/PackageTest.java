@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -45,14 +45,13 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-import jdk.jpackage.internal.ApplicationLayout;
-import jdk.jpackage.test.Functional.ThrowingBiConsumer;
-import static jdk.jpackage.test.Functional.ThrowingBiConsumer.toBiConsumer;
-import jdk.jpackage.test.Functional.ThrowingConsumer;
-import static jdk.jpackage.test.Functional.ThrowingConsumer.toConsumer;
-import jdk.jpackage.test.Functional.ThrowingRunnable;
-import static jdk.jpackage.test.Functional.ThrowingSupplier.toSupplier;
-import static jdk.jpackage.test.Functional.rethrowUnchecked;
+import jdk.jpackage.internal.util.function.ThrowingBiConsumer;
+import static jdk.jpackage.internal.util.function.ThrowingBiConsumer.toBiConsumer;
+import jdk.jpackage.internal.util.function.ThrowingConsumer;
+import static jdk.jpackage.internal.util.function.ThrowingConsumer.toConsumer;
+import jdk.jpackage.internal.util.function.ThrowingRunnable;
+import static jdk.jpackage.internal.util.function.ThrowingSupplier.toSupplier;
+import static jdk.jpackage.internal.util.function.ExceptionBox.rethrowUnchecked;
 import static jdk.jpackage.test.PackageType.LINUX;
 import static jdk.jpackage.test.PackageType.LINUX_DEB;
 import static jdk.jpackage.test.PackageType.LINUX_RPM;
@@ -447,6 +446,7 @@ public final class PackageTest extends RunnablePackageTest {
                         case UNINSTALL:
                             skip = (action == Action.VERIFY_UNINSTALL);
                             break;
+                        default: // NOP
                     }
                 }
 
@@ -617,6 +617,8 @@ public final class PackageTest extends RunnablePackageTest {
                         }
                     }
                     break;
+
+                default: // NOP
             }
         }
 
@@ -702,6 +704,10 @@ public final class PackageTest extends RunnablePackageTest {
                                 // License file is in /usr/share/doc subtree
                                 roots.add(Path.of("/usr"));
                             }
+                        }
+
+                        default -> {
+                            throw new UnsupportedOperationException();
                         }
                     }
                 }

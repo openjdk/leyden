@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/vmClasses.hpp"
@@ -79,9 +78,6 @@
 #include "utilities/checkedCast.hpp"
 #include "utilities/copy.hpp"
 #include "utilities/events.hpp"
-#ifdef COMPILER2
-#include "opto/runtime.hpp"
-#endif
 
 // Helper class to access current interpreter state
 class LastFrameAccessor : public StackObj {
@@ -1185,6 +1181,8 @@ JRT_END
 
 
 nmethod* InterpreterRuntime::frequency_counter_overflow(JavaThread* current, address branch_bcp) {
+  assert(!PreloadOnly, "Should not be using interpreter counters");
+
   // Enable WXWrite: the function is called directly by interpreter.
   MACOS_AARCH64_ONLY(ThreadWXEnable wx(WXWrite, current));
 
@@ -1289,6 +1287,7 @@ JRT_END
 #endif // ASSERT
 
 JRT_ENTRY_PROF(void, InterpreterRuntime, update_mdp_for_ret, InterpreterRuntime::update_mdp_for_ret(JavaThread* current, int return_bci))
+  assert(!PreloadOnly, "Should not be using interpreter counters");
   assert(ProfileInterpreter, "must be profiling interpreter");
   ResourceMark rm(current);
   LastFrameAccessor last_frame(current);
@@ -1598,38 +1597,6 @@ void SignatureHandlerLibrary::add(const methodHandle& method) {
          handler_index == fingerprint_index, "sanity check");
 #endif // ASSERT
 }
-
-void SignatureHandlerLibrary::add(uint64_t fingerprint, address handler) {
-  int handler_index = -1;
-  // use customized signature handler
-  MutexLocker mu(SignatureHandlerLibrary_lock);
-  // make sure data structure is initialized
-  initialize();
-  fingerprint = InterpreterRuntime::normalize_fast_native_fingerprint(fingerprint);
-  handler_index = _fingerprints->find(fingerprint);
-  // create handler if necessary
-  if (handler_index < 0) {
-    if (PrintSignatureHandlers && (handler != Interpreter::slow_signature_handler())) {
-      tty->cr();
-      tty->print_cr("argument handler #%d at " PTR_FORMAT " for fingerprint " UINT64_FORMAT,
-                    _handlers->length(),
-                    p2i(handler),
-                    fingerprint);
-    }
-    _fingerprints->append(fingerprint);
-    _handlers->append(handler);
-  } else {
-    if (PrintSignatureHandlers) {
-      tty->cr();
-      tty->print_cr("duplicate argument handler #%d for fingerprint " UINT64_FORMAT "(old: " PTR_FORMAT ", new : " PTR_FORMAT ")",
-                    _handlers->length(),
-                    fingerprint,
-                    p2i(_handlers->at(handler_index)),
-                    p2i(handler));
-    }
-  }
-}
-
 
 BufferBlob*              SignatureHandlerLibrary::_handler_blob = nullptr;
 address                  SignatureHandlerLibrary::_handler      = nullptr;

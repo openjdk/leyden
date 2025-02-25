@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classPrinter.hpp"
 #include "classfile/javaClasses.inline.hpp"
@@ -106,7 +105,7 @@ class BytecodePrinter {
       // the incoming method.  We could lose a line of trace output.
       // This is acceptable in a debug-only feature.
       st->cr();
-      st->print("[" UINTX_FORMAT "] ", Thread::current()->osthread()->thread_id_for_printing());
+      st->print("[%zu] ", Thread::current()->osthread()->thread_id_for_printing());
       method->print_name(st);
       st->cr();
       _current_method = method();
@@ -129,7 +128,7 @@ class BytecodePrinter {
         code == Bytecodes::_return_register_finalizer ||
         (code >= Bytecodes::_ireturn && code <= Bytecodes::_return)) {
       int bci = (int)(bcp - method->code_base());
-      st->print("[" UINTX_FORMAT  "] ", Thread::current()->osthread()->thread_id_for_printing());
+      st->print("[%zu] ", Thread::current()->osthread()->thread_id_for_printing());
       if (Verbose) {
         st->print(JLONG_FORMAT_W(8) "  %4d  " INTPTR_FORMAT " " INTPTR_FORMAT " %s",
             BytecodeCounter::counter_value(), bci, tos, tos2, Bytecodes::name(code));
@@ -307,8 +306,6 @@ void BytecodePrinter::print_invokedynamic(int indy_index, int cp_index, outputSt
       indy_entry->print_on(st);
       if (indy_entry->has_appendix()) {
         oop apx = constants()->resolved_reference_from_indy(indy_index);
-        //FIXME: lock out of order with runtime/interpreter/BytecodeTracerTest.java
-        //int perm_index = HeapShared::get_archived_object_permanent_index(apx);
         st->print_cr(" - appendix = " INTPTR_FORMAT, p2i(apx));
       }
     }
