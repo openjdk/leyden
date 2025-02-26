@@ -100,10 +100,10 @@ abstract public class CDSAppTester {
     public enum RunMode {
         TRAINING,       // -XX:DumpLoadedClassList OR {-XX:AOTMode=create -XX:AOTConfiguration}
         TRAINING0,      // LEYDEN only
-        TRAINING1,      // LEYDEN only
+        TRAINING1,      // LEYDEN only (assembly phase, app logic not executed)
         DUMP_STATIC,    // -Xshare:dump
         DUMP_DYNAMIC,   // -XX:ArchiveClassesArExit
-        ASSEMBLY,       // JEP 483
+        ASSEMBLY,       // JEP 483 (assembly phase, app logic not executed)
         PRODUCTION;     // Running with the CDS archive produced from the above steps
 
         public boolean isStaticDump() {
@@ -111,6 +111,12 @@ abstract public class CDSAppTester {
         }
         public boolean isProductionRun() {
             return this == PRODUCTION;
+        }
+
+        // When <code>CDSAppTester::checkExecution(out, runMode)</code> is called, has the application been
+        // executed? If so, <code>out</code> should contain logs printed by the application's own logic.
+        public boolean isApplicationExecuted() {
+            return (this != TRAINING1) && (this != ASSEMBLY) && (this != DUMP_STATIC);
         }
     }
 

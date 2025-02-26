@@ -37,7 +37,7 @@
  *                 TestApp$MyInvocationHandler
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
  *                 Custy
- * @run driver ExcludedClasses LEYDEN
+ * @run driver ExcludedClasses
  */
 
 import java.io.File;
@@ -63,8 +63,14 @@ public class ExcludedClasses {
     static final String mainClass = "TestApp";
 
     public static void main(String[] args) throws Exception {
-        Tester t = new Tester();
-        t.run(args);
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"AOT"} );
+        }
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"LEYDEN"} );
+        }
     }
 
     static class Tester extends CDSAppTester {

@@ -44,6 +44,16 @@
  */
 
 /*
+ * @test id=aot
+ * @key external-dep
+ * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
+ * @summary run Spring Pet Clinic demo with JEP 483 workflow
+ * @library /test/lib
+ * @run driver/timeout=120 SpringPetClinic AOT
+ */
+
+/*
  * @test id=leyden
  * @key external-dep
  * @requires vm.cds
@@ -191,10 +201,7 @@ public class SpringPetClinic {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            switch (runMode) {
-            case RunMode.TRAINING:
-            case RunMode.TRAINING0:
-            case RunMode.PRODUCTION:
+            if (runMode.isApplicationExecuted()) {
                 out.shouldContain("Booted and returned in ");
             }
         }

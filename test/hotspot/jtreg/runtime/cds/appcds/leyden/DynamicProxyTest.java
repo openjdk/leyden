@@ -36,7 +36,7 @@
  *                 jdk.test.lib.Asserts 
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app2.jar
  *                 Fruit Apple
- * @run driver DynamicProxyTest LEYDEN
+ * @run driver DynamicProxyTest
  */
 
 
@@ -59,8 +59,14 @@ public class DynamicProxyTest {
     static final String mainClass = "DynamicProxyApp";
 
     public static void main(String[] args) throws Exception {
-        Tester t = new Tester();
-        t.run(args);
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"AOT"} );
+        }
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"LEYDEN"} );
+        }
     }
 
     static class Tester extends CDSAppTester {

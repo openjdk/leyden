@@ -32,6 +32,15 @@
  */
 
 /*
+ * @test id=aot
+ * @requires vm.cds.write.archived.java.heap
+ * @library /test/jdk/lib/testlibrary /test/lib
+ * @build StringConcatStress
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar StringConcatStressApp
+ * @run driver StringConcatStress AOT
+ */
+
+/*
  * @test id=leyden
  * @requires vm.cds.write.archived.java.heap
  * @library /test/jdk/lib/testlibrary /test/lib
@@ -78,7 +87,7 @@ public class StringConcatStress {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (!runMode.isStaticDump()) {
+            if (runMode.isApplicationExecuted()) {
                 out.shouldContain("Result = 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1END");
             }
         }

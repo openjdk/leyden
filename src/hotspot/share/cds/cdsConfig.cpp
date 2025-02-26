@@ -611,7 +611,19 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       _is_dumping_final_static_archive = true;
     }
   } else {
-    // Old workflow
+    bool can_dump_profile_and_compiled_code = AOTClassLinking && new_aot_flags_used();
+
+    if (is_dumping_preimage_static_archive() && can_dump_profile_and_compiled_code) {
+      FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+      FLAG_SET_ERGO(ReplayTraining, false);
+    } else if (is_dumping_final_static_archive() && can_dump_profile_and_compiled_code) {
+      FLAG_SET_ERGO(RecordTraining, false); // This will be updated inside MetaspaceShared::preload_and_dump()
+      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+    } else {
+      FLAG_SET_ERGO(ReplayTraining, false);
+      FLAG_SET_ERGO(RecordTraining, false);
+    }
+
     if (CDSPreimage != nullptr) {
       vm_exit_during_initialization("CDSPreimage must be specified only when CacheDataStore is specified");
     }
@@ -714,13 +726,16 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
   }
 
   if (AOTClassLinking) {
-    if ((is_dumping_preimage_static_archive() && !is_using_optimized_module_handling()) ||
-        (is_dumping_final_static_archive()    && !is_dumping_full_module_graph())) {
+    if (is_dumping_final_static_archive() && !is_dumping_full_module_graph()) {
       if (bad_module_prop_key != nullptr) {
         log_warning(cds)("optimized module handling/full module graph: disabled due to incompatible property: %s=%s",
                          bad_module_prop_key, bad_module_prop_value);
       }
-      vm_exit_during_initialization("CacheDataStore cannot be created because AOTClassLinking is enabled but full module graph is disabled");
+      if (is_leyden_workflow()) {
+        vm_exit_during_initialization("CacheDataStore cannot be created because AOTClassLinking is enabled but full module graph is disabled");
+      } else {
+        vm_exit_during_initialization("AOT cache cannot be created because AOTClassLinking is enabled but full module graph is disabled");
+      }
     }
   }
 

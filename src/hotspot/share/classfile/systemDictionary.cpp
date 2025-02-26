@@ -161,7 +161,7 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     )
   }
 
-  if (CDSConfig::is_dumping_final_static_archive() && CDSConfig::is_leyden_workflow()) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
     AOTLinkedClassBulkLoader::load_unregistered_classes_from_preimage(THREAD);
   }
 }

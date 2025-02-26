@@ -1058,9 +1058,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   link_shared_classes(false/*not from jcmd*/, CHECK);
   log_info(cds)("Rewriting and linking classes: done");
 
-  if (CDSConfig::is_dumping_final_static_archive() && CDSConfig::is_leyden_workflow()) {
+  if (CDSConfig::is_dumping_final_static_archive()) {
     assert(RecordTraining == false, "must be");
-    RecordTraining = true;
+    if (CDSConfig::is_dumping_aot_linked_classes()) {
+      RecordTraining = true;
+    }
   }
 
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker

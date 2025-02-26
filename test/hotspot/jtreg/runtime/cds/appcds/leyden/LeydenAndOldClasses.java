@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -43,8 +43,14 @@ public class LeydenAndOldClasses {
     static final String mainClass = "AppUsesOldClass";
 
     public static void main(String[] args) throws Exception {
-        Tester tester = new Tester();
-        tester.run(new String[] {"LEYDEN"} );
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"AOT"} );
+        }
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"LEYDEN"} );
+        }
     }
 
     static class Tester extends CDSAppTester {
@@ -58,15 +64,21 @@ public class LeydenAndOldClasses {
         }
 
         @Override
+        public String[] vmArgs(RunMode runMode) {
+            return new String[] {"-Xlog:cds+class=debug"};
+        }
+
+        @Override
         public String[] appCommandLine(RunMode runMode) {
-            return new String[] {"-Xlog:cds+class=debug", mainClass};
+            return new String[] {mainClass};
         }
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
             if (runMode == RunMode.PRODUCTION) {
                 out.shouldContain("OldClass@");
-            } else if (runMode == RunMode.TRAINING || runMode == RunMode.TRAINING0 || runMode == RunMode.TRAINING1) {
+            } else if ((isLeydenWorkflow() && (runMode == RunMode.TRAINING || runMode == RunMode.TRAINING1)) ||
+                       (isAOTWorkflow() && runMode == RunMode.ASSEMBLY)) {
                 // !!! Leyden Repo Only !!!
                 // When AOTClassLinking is enabled, we can safely archive old classes. See comments around
                 // CDSConfig::preserve_all_dumptime_verification_states().
