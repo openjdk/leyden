@@ -144,17 +144,19 @@ void AOTLinkedClassBulkLoader::load_non_javabase_classes(JavaThread* current) {
     CDSAccess::test_heap_access_api();
   }
 
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    assert(_unregistered_classes_from_preimage != nullptr, "must be");
-    for (int i = 0; i < _unregistered_classes_from_preimage->length(); i++) {
-      InstanceKlass* ik = _unregistered_classes_from_preimage->at(i);
-      SystemDictionaryShared::init_dumptime_info(ik);
-      SystemDictionaryShared::add_unregistered_class(current, ik);
-    }
-  }
 
   _app_completed = true;
   Atomic::release_store(&_all_completed, true);
+}
+
+void AOTLinkedClassBulkLoader::load_unregistered_classes_from_preimage(JavaThread* current) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+  assert(_unregistered_classes_from_preimage != nullptr, "must be");
+  for (int i = 0; i < _unregistered_classes_from_preimage->length(); i++) {
+    InstanceKlass* ik = _unregistered_classes_from_preimage->at(i);
+    SystemDictionaryShared::init_dumptime_info(ik);
+    SystemDictionaryShared::add_unregistered_class(current, ik);
+  }
 }
 
 void AOTLinkedClassBulkLoader::load_classes_in_loader(JavaThread* current, AOTLinkedClassCategory class_category, oop class_loader_oop) {

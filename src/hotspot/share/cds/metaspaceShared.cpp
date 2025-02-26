@@ -848,7 +848,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
     }
   }
 
-  if (CDSConfig::is_dumping_preimage_static_archive()) {
+  if (CDSConfig::is_dumping_preimage_static_archive() && RecordTraining) {
     // Do this after all classes are verified by the above loop.
     // Any classes loaded from here on will be automatically excluded, so
     // there's no need to force verification or resolve CP entries.
@@ -1058,7 +1058,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   link_shared_classes(false/*not from jcmd*/, CHECK);
   log_info(cds)("Rewriting and linking classes: done");
 
-  if (CDSConfig::is_dumping_final_static_archive()) {
+  if (CDSConfig::is_dumping_final_static_archive() && CDSConfig::is_leyden_workflow()) {
     assert(RecordTraining == false, "must be");
     RecordTraining = true;
   }
@@ -1111,11 +1111,14 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   FileMapInfo* mapinfo = op.map_info();
   ArchiveHeapInfo* heap_info = op.heap_info();
   bool status;
-  if (CDSConfig::is_dumping_preimage_static_archive()) {
+  if (!CDSConfig::is_leyden_workflow()) {
+    status = write_static_archive(&builder, mapinfo, heap_info);
+  } else if (CDSConfig::is_dumping_preimage_static_archive()) {
     if ((status = write_static_archive(&builder, mapinfo, heap_info))) {
       fork_and_dump_final_static_archive();
     }
-  } else if (CDSConfig::is_dumping_final_static_archive()) {
+  } else {
+    assert(CDSConfig::is_dumping_final_static_archive(), "must be");
     RecordTraining = false;
     if (StoreCachedCode && CachedCodeFile != nullptr) { // FIXME: new workflow -- remove the CachedCodeFile flag
       if (log_is_enabled(Info, cds, jit)) {
@@ -1138,8 +1141,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       }
       CDSConfig::disable_dumping_cached_code();
     }
-    status = write_static_archive(&builder, mapinfo, heap_info);
-  } else {
     status = write_static_archive(&builder, mapinfo, heap_info);
   }
 

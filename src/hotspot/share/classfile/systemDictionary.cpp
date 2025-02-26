@@ -161,8 +161,8 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
     )
   }
 
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    AOTLinkedClassBulkLoader::load_non_javabase_classes(THREAD);
+  if (CDSConfig::is_dumping_final_static_archive() && CDSConfig::is_leyden_workflow()) {
+    AOTLinkedClassBulkLoader::load_unregistered_classes_from_preimage(THREAD);
   }
 }
 

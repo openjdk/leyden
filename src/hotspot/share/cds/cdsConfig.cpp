@@ -580,8 +580,9 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         stop_dumping_full_module_graph();
         FLAG_SET_ERGO(ArchivePackages, false);
         FLAG_SET_ERGO(ArchiveProtectionDomains, false);
-
         FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+        _is_dumping_static_archive = true;
+        _is_dumping_preimage_static_archive = true;
       }
     } else {
       // The final image dumping phase -- load the preimage and write the final image file
@@ -606,6 +607,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         log_info(cds)("ArchiveAdapters is enabled");
         FLAG_SET_ERGO_IF_DEFAULT(ArchiveAdapters, true);
       }
+      _is_dumping_static_archive = true;
+      _is_dumping_final_static_archive = true;
     }
   } else {
     // Old workflow
@@ -725,18 +728,12 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
 }
 
 bool CDSConfig::is_dumping_classic_static_archive() {
-#if 0
-  return _is_dumping_static_archive && CacheDataStore == nullptr && CDSPreimage == nullptr;
-#endif
   return _is_dumping_static_archive &&
     !is_dumping_preimage_static_archive() &&
     !is_dumping_final_static_archive();
 }
 
 bool CDSConfig::is_dumping_preimage_static_archive() {
-#if 0
-  return _is_dumping_static_archive && CacheDataStore != nullptr && CDSPreimage == nullptr;
-#endif
   return _is_dumping_preimage_static_archive;
 }
 
@@ -745,14 +742,6 @@ bool CDSConfig::is_dumping_preimage_static_archive_with_triggers() {
 }
 
 bool CDSConfig::is_dumping_final_static_archive() {
-#if 0
-  if (CDSPreimage != nullptr) {
-    assert(CacheDataStore != nullptr, "must be"); // should have been properly initialized by arguments.cpp
-  }
-
-  // Note: _is_dumping_static_archive is false! // FIXME -- refactor this so it makes more sense!
-  return CacheDataStore != nullptr && CDSPreimage != nullptr;
-#endif
   return _is_dumping_final_static_archive;
 }
 

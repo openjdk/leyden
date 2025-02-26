@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -191,7 +191,10 @@ public class SpringPetClinic {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (!runMode.isStaticDump()) {
+            switch (runMode) {
+            case RunMode.TRAINING:
+            case RunMode.TRAINING0:
+            case RunMode.PRODUCTION:
                 out.shouldContain("Booted and returned in ");
             }
         }

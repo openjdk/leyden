@@ -127,6 +127,20 @@ void FinalImageRecipes::record_recipes_impl() {
 
   // Dynamic Proxies
   if (_tmp_dynamic_proxy_classes != nullptr) {
+    // Remove proxies for excluded classes
+    for (int i = _tmp_dynamic_proxy_classes->length() - 1; i >= 0; i--) {
+      TmpDynamicProxyClassInfo* tmp_info = _tmp_dynamic_proxy_classes->adr_at(i);
+      bool exclude = false;
+      for (int j = 0; j < tmp_info->_interfaces->length(); j++) {
+        if (SystemDictionaryShared::is_excluded_class(InstanceKlass::cast(tmp_info->_interfaces->at(j)))) {
+          exclude = true;
+          break;
+        }
+      }
+      if (exclude) {
+        _tmp_dynamic_proxy_classes->remove_at(i);
+      }
+    }
     int len = _tmp_dynamic_proxy_classes->length();
     _dynamic_proxy_classes = ArchiveBuilder::new_ro_array<DynamicProxyClassInfo>(len);
     ArchivePtrMarker::mark_pointer(&_dynamic_proxy_classes);
@@ -140,8 +154,9 @@ void FinalImageRecipes::record_recipes_impl() {
       ResourceMark rm;
       GrowableArray<Klass*> buffered_interfaces;
       for (int j = 0; j < tmp_info->_interfaces->length(); j++) {
-        // FIXME: tmp_info->_interfaces->at(j) could be excluded from archive!
-        buffered_interfaces.append(ArchiveBuilder::current()->get_buffered_addr(tmp_info->_interfaces->at(j)));
+        InstanceKlass* intf = InstanceKlass::cast(tmp_info->_interfaces->at(j));
+        assert(!SystemDictionaryShared::is_excluded_class(intf), "sanity");
+        buffered_interfaces.append(ArchiveBuilder::current()->get_buffered_addr(intf));
       }
       info->_interfaces = ArchiveUtils::archive_array(&buffered_interfaces);
 
@@ -245,7 +260,7 @@ void FinalImageRecipes::add_dynamic_proxy_class(oop loader, const char* proxy_na
   info._interfaces = new (mtClassShared) GrowableArray<Klass*>(interfaces->length(), mtClassShared);
   for (int i = 0; i < interfaces->length(); i++) {
     Klass* intf = java_lang_Class::as_Klass(interfaces->obj_at(i));
-    info._interfaces->append(intf);
+    info._interfaces->append(InstanceKlass::cast(intf));
 
     if (log_is_enabled(Info, cds, dynamic, proxy)) {
       ResourceMark rm;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -64,6 +64,7 @@ public:
   static void record_unregistered_classes() NOT_CDS_RETURN;
   static void load_javabase_classes(JavaThread* current) NOT_CDS_RETURN;
   static void load_non_javabase_classes(JavaThread* current) NOT_CDS_RETURN;
+  static void load_unregistered_classes_from_preimage(JavaThread* current) NOT_CDS_RETURN;
   static void finish_loading_javabase_classes(TRAPS) NOT_CDS_RETURN;
   static void exit_on_exception(JavaThread* current);
   static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;
