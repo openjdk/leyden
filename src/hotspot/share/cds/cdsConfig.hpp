@@ -35,6 +35,8 @@ class JavaThread;
 class CDSConfig : public AllStatic {
 #if INCLUDE_CDS
   static bool _is_dumping_static_archive;
+  static bool _is_dumping_preimage_static_archive;
+  static bool _is_dumping_final_static_archive;
   static bool _is_dumping_dynamic_archive;
   static bool _is_using_optimized_module_handling;
   static bool _is_dumping_full_module_graph;
@@ -50,6 +52,7 @@ class CDSConfig : public AllStatic {
   static char* _dynamic_archive_path;
 
   static bool  _old_cds_flags_used;
+  static bool  _new_aot_flags_used;
   static bool  _disable_heap_dumping;
 
   static JavaThread* _dumper_thread;
@@ -61,7 +64,11 @@ class CDSConfig : public AllStatic {
   static void init_shared_archive_paths();
 
   static void check_flag_alias(bool alias_is_default, const char* alias_name);
-  static void check_flag_aliases();
+  static void check_aot_flags();
+  static void check_aotmode_off();
+  static void check_aotmode_auto_or_on();
+  static void check_aotmode_record();
+  static void check_aotmode_create();
 
 public:
   // Used by jdk.internal.misc.CDS.getCDSConfigStatus();
@@ -79,11 +86,14 @@ public:
   static void initialize() NOT_CDS_RETURN;
   static void set_old_cds_flags_used()                       { CDS_ONLY(_old_cds_flags_used = true); }
   static bool old_cds_flags_used()                           { return CDS_ONLY(_old_cds_flags_used) NOT_CDS(false); }
+  static bool new_aot_flags_used()                           { return CDS_ONLY(_new_aot_flags_used) NOT_CDS(false); }
   static void check_internal_module_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_incompatible_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_unsupported_dumping_module_options() NOT_CDS_RETURN;
   static bool has_unsupported_runtime_module_options() NOT_CDS_RETURN_(false);
   static bool check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) NOT_CDS_RETURN_(true);
+  static const char* type_of_archive_being_loaded();
+  static const char* type_of_archive_being_written();
 
   // --- Basic CDS features
 
@@ -97,10 +107,31 @@ public:
                                                                     || is_dumping_final_static_archive(); }
   static void enable_dumping_static_archive()                { CDS_ONLY(_is_dumping_static_archive = true); }
 
-  static bool is_dumping_classic_static_archive()                NOT_CDS_RETURN_(false); // -Xshare:dump
-  static bool is_dumping_preimage_static_archive()               NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping
-  static bool is_dumping_preimage_static_archive_with_triggers() NOT_CDS_RETURN_(false); // 1st phase of -XX:CacheDataStore dumping with triggers
-  static bool is_dumping_final_static_archive()                  NOT_CDS_RETURN_(false); // 2nd phase of -XX:CacheDataStore dumping
+
+  // A static CDS archive can be dumped in three modes:
+  //
+  // "classic"   - This is the traditional CDS workflow of
+  //               "java -Xshare:dump -XX:SharedClassListFile=file.txt".
+  //
+  // "preimage"  - This happens when we execute the JEP 483 training run, e.g:
+  //               "java -XX:AOTMode=record -XX:AOTConfiguration=app.aotconfig -cp app.jar App"
+  //               The above command writes app.aotconfig as a "CDS preimage". This
+  //               is a binary file that contains all the classes loaded during the
+  //               training run, plus profiling data (e.g., the resolved constant pool entries).
+  //
+  // "final"     - This happens when we execute the JEP 483 assembly phase, e.g:
+  //               "java -XX:AOTMode=create -XX:AOTConfiguration=app.aotconfig -XX:AOTCache=app.aot -cp app.jar"
+  //               The above command loads all classes from app.aotconfig, perform additional linking,
+  //               and writes app.aot as a "CDS final image" file.
+  //
+  // The main structural difference between "preimage" and "final" is that the preimage
+  // - has a different magic number (0xcafea07c)
+  // - does not have any archived Java heap objects
+  // - does not have aot-linked classes
+  static bool is_dumping_classic_static_archive()                NOT_CDS_RETURN_(false);
+  static bool is_dumping_preimage_static_archive()               NOT_CDS_RETURN_(false);
+  static bool is_dumping_preimage_static_archive_with_triggers() NOT_CDS_RETURN_(false); 
+  static bool is_dumping_final_static_archive()                  NOT_CDS_RETURN_(false);
 
   // dynamic_archive
   static bool is_dumping_dynamic_archive()                   { return CDS_ONLY(_is_dumping_dynamic_archive) NOT_CDS(false); }
@@ -171,6 +202,9 @@ public:
   static void enable_dumping_cached_code()                   NOT_CDS_RETURN;
 
   static bool is_dumping_adapters()                          NOT_CDS_RETURN_(false);
+
+  // Are we using the (to be deprecated) -XX:CacheDataStore workflow?
+  static bool is_leyden_workflow()                           NOT_CDS_RETURN_(false);
 
   // Some CDS functions assume that they are called only within a single-threaded context. I.e.,
   // they are called from:

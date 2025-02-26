@@ -49,7 +49,6 @@ Mutex*   CompiledIC_lock              = nullptr;
 Mutex*   VMStatistic_lock             = nullptr;
 Mutex*   JmethodIdCreation_lock       = nullptr;
 Mutex*   JfieldIdCreation_lock        = nullptr;
-Monitor* JNICritical_lock             = nullptr;
 Mutex*   JvmtiThreadState_lock        = nullptr;
 Monitor* EscapeBarrier_lock           = nullptr;
 Monitor* JvmtiVTMSTransition_lock     = nullptr;
@@ -364,7 +363,6 @@ void mutex_init() {
 #endif
   MUTEX_DEFL(Module_lock                    , PaddedMutex  ,  ClassLoaderDataGraph_lock);
   MUTEX_DEFL(SystemDictionary_lock          , PaddedMonitor, Module_lock);
-  MUTEX_DEFL(JNICritical_lock               , PaddedMonitor, AdapterHandlerLibrary_lock); // used for JNI critical regions
 #if INCLUDE_JVMCI
   // JVMCIRuntime_lock must be acquired before JVMCI_lock to avoid deadlock
   MUTEX_DEFL(JVMCI_lock                     , PaddedMonitor, JVMCIRuntime_lock);

@@ -517,7 +517,6 @@ bool ArchiveBuilder::is_excluded(Klass* klass) {
     Klass* bottom = ObjArrayKlass::cast(klass)->bottom_klass();
     if (CDSConfig::is_dumping_dynamic_archive() && MetaspaceShared::is_shared_static(bottom)) {
       // The bottom class is in the static archive so it's clearly not excluded.
-      assert(CDSConfig::is_dumping_dynamic_archive(), "sanity");
       return false;
     } else if (bottom->is_instance_klass()) {
       return SystemDictionaryShared::is_excluded_class(InstanceKlass::cast(bottom));
@@ -982,7 +981,6 @@ void ArchiveBuilder::serialize_dynamic_archivable_items(SerializeClosure* soc) {
   SystemDictionaryShared::serialize_dictionary_headers(soc, false);
   DynamicArchive::serialize_array_klasses(soc);
   AOTLinkedClassBulkLoader::serialize(soc, false);
-  FinalImageRecipes::serialize(soc, false);
   TrainingData::serialize_training_data(soc);
 }
 

@@ -932,11 +932,16 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     // Classic -Xshare:dump, aka "old workflow"
     MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
   } else if (CDSConfig::is_dumping_final_static_archive()) {
-    // TODO: copy the verification and loader constraints from preimage to final image
-    // TODO: load archived classes for custom loaders as well.
-    log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
-    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
-    vm_direct_exit(0, "CacheDataStore dumping is complete");
+    if (CDSConfig::is_leyden_workflow()) {
+      // TODO: copy the verification and loader constraints from preimage to final image
+      // TODO: load archived classes for custom loaders as well.
+      log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
+      MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
+      vm_direct_exit(0, "CacheDataStore dumping is complete");
+    } else {
+      tty->print_cr("Reading AOTConfiguration %s and writing AOTCache %s", AOTConfiguration, AOTCache);
+      MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
+    }
   }
 
   log_info(init)("At VM initialization completion:");

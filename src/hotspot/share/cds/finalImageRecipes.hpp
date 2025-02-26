@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,11 +34,18 @@ class Klass;
 template <typename T> class GrowableArray;
 template <typename T> class Array;
 
-// This class is used only by the "one step training workflow". It records the
-// "recipes" for creating the final CDS image.
-// - The recipes are recorded when CDSConfig::is_dumping_preimage_static_archive() is true;
-// - The recipes are applied when CDSConfig::is_dumping_final_static_archive() is true;
+// This class is used for transferring information from the AOTConfiguration file (aka the "preimage")
+// to the JVM that creates the AOTCache (aka the "final image").
+//   - The recipes are recorded when CDSConfig::is_dumping_preimage_static_archive() is true.
+//   - The recipes are applied when CDSConfig::is_dumping_final_static_archive() is true.
+// The following information are recorded:
+//   - The list of all classes that are stored in the AOTConfiguration file.
+//   - The list of all classes that require AOT resolution of invokedynamic call sites.
 class FinalImageRecipes {
+  // A list of all the archived classes from the preimage. We want to transfer all of these
+  // into the final image.
+  Array<Klass*>* _all_klasses;
+
   // The classes who have resolved at least one indy CP entry during the training run.
   // _indy_cp_indices[i] is a list of all resolved CP entries for _indy_klasses[i].
   Array<InstanceKlass*>* _indy_klasses;
@@ -73,18 +80,21 @@ class FinalImageRecipes {
                         _reflect_klasses(nullptr), _reflect_flags(nullptr),
                         _dynamic_proxy_classes(nullptr) {}
 
+
   void* operator new(size_t size) throw();
 
   // Called when dumping preimage
   void record_recipes_impl();
 
   // Called when dumping final image
+  void apply_recipes_impl(TRAPS);
+  void load_all_classes(TRAPS);
   void apply_recipes_for_dynamic_proxies(TRAPS);
   void apply_recipes_for_invokedynamic(TRAPS);
   void apply_recipes_for_reflection_data(JavaThread* current);
 
 public:
-  static void serialize(SerializeClosure* soc, bool is_static_archive);
+  static void serialize(SerializeClosure* soc);
 
   // Called when dumping preimage
   static void add_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags);

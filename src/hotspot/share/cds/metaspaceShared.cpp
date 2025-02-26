@@ -508,7 +508,7 @@ void MetaspaceShared::serialize(SerializeClosure* soc) {
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
   AOTLinkedClassBulkLoader::serialize(soc, true);
-  FinalImageRecipes::serialize(soc, true);
+  FinalImageRecipes::serialize(soc);
   TrainingData::serialize_training_data(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
 
@@ -636,8 +636,10 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables(AOTClassLocationConfig*&
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     FinalImageRecipes::record_recipes();
   }
+
   AOTLinkedClassBulkLoader::record_unregistered_classes();
   TrainingData::dump_training_data();
+
   MetaspaceShared::write_method_handle_intrinsics();
 
   // Write lambform lines into archive
@@ -657,7 +659,9 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables(AOTClassLocationConfig*&
 }
 
 void VM_PopulateDumpSharedSpace::doit() {
-  //guarantee(!CDSConfig::is_using_archive(), "We should not be using an archive when we dump");
+  if (!CDSConfig::is_dumping_final_static_archive()) {
+    guarantee(!CDSConfig::is_using_archive(), "We should not be using an archive when we dump");
+  }
 
   DEBUG_ONLY(SystemDictionaryShared::NoClassLoadingMark nclm);
 
@@ -717,9 +721,12 @@ void VM_PopulateDumpSharedSpace::doit() {
   // Write the archive file
   const char* static_archive;
   if (CDSConfig::is_dumping_final_static_archive()) {
-    static_archive = CacheDataStore;
-    assert(FileMapInfo::current_info() != nullptr, "sanity");
-    delete FileMapInfo::current_info();
+    if (CDSConfig::is_leyden_workflow()) {
+      static_archive = CacheDataStore;
+    } else {
+      static_archive = AOTCache;
+    }
+    FileMapInfo::free_current_info();
   } else {
     static_archive = CDSConfig::static_archive_path();
   }
@@ -783,7 +790,7 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   AOTClassLinker::initialize();
 
   if (!jcmd_request && !CDSConfig::is_dumping_dynamic_archive()
-      && !CDSConfig::is_dumping_preimage_static_archive()
+      && !CDSConfig::is_dumping_preimage_static_archive()   // FIXME -- remove this for Leyden??
       && !CDSConfig::is_dumping_final_static_archive()) {
     // If we have regenerated invoker classes in the dynamic archive,
     // they will conflict with the resolved CONSTANT_Klass references that are stored
@@ -887,13 +894,18 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
     }
   }
 
-  if (!CDSConfig::old_cds_flags_used() && !CDSConfig::is_dumping_preimage_static_archive() && !CDSConfig::is_dumping_final_static_archive()) {
-    // The JLI launcher only recognizes the "old" -Xshare:dump flag.
-    // When the new -XX:AOTMode=create flag is used, we can't return
-    // to the JLI launcher, as the launcher will fail when trying to
-    // run the main class, which is not what we want.
-    tty->print_cr("AOTCache creation is complete: %s", AOTCache);
-    vm_exit(0);
+  if (CDSConfig::new_aot_flags_used()) {
+    if (CDSConfig::is_dumping_preimage_static_archive()) {
+      tty->print_cr("AOTConfiguration recorded: %s", AOTConfiguration);
+      vm_exit(0);
+    } else {
+      // The JLI launcher only recognizes the "old" -Xshare:dump flag.
+      // When the new -XX:AOTMode=create flag is used, we can't return
+      // to the JLI launcher, as the launcher will fail when trying to
+      // run the main class, which is not what we want.
+      tty->print_cr("AOTCache creation is complete: %s", AOTCache);
+      vm_exit(0);
+    }
   }
 }
 
@@ -1018,13 +1030,21 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   }
 
   if (CDSConfig::is_dumping_preimage_static_archive()) {
-    log_info(cds)("Reading lambda form invokers of in JDK default classlist ...");
+    log_info(cds)("Reading lambda form invokers from JDK default classlist ...");
     char default_classlist[JVM_MAXPATHLEN];
     get_default_classlist(default_classlist, sizeof(default_classlist));
     struct stat statbuf;
     if (os::stat(default_classlist, &statbuf) == 0) {
       ClassListParser::parse_classlist(default_classlist,
                                        ClassListParser::_parse_lambda_forms_invokers_only, CHECK);
+    }
+  }
+
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    if (ExtraSharedClassListFile) {
+      log_info(cds)("Loading extra classes from %s ...", ExtraSharedClassListFile);
+      ClassListParser::parse_classlist(ExtraSharedClassListFile,
+                                       ClassListParser::_parse_all, CHECK);
     }
   }
 
@@ -1140,8 +1160,8 @@ bool MetaspaceShared::write_static_archive(ArchiveBuilder* builder, FileMapInfo*
   builder->write_archive(map_info, heap_info);
 
   if (AllowArchivingWithJavaAgent) {
-    log_warning(cds)("This archive was created with AllowArchivingWithJavaAgent. It should be used "
-            "for testing purposes only and should not be used in a production environment");
+    log_warning(cds)("This %s was created with AllowArchivingWithJavaAgent. It should be used "
+            "for testing purposes only and should not be used in a production environment", CDSConfig::type_of_archive_being_loaded());
   }
   return true;
 }
@@ -1309,11 +1329,18 @@ bool MetaspaceShared::is_shared_static(void* p) {
 // - When -XX:+RequireSharedSpaces is specified, AND the JVM cannot load the archive(s) due
 //   to version or classpath mismatch.
 void MetaspaceShared::unrecoverable_loading_error(const char* message) {
-  log_error(cds)("An error has occurred while processing the shared archive file.");
+  log_error(cds)("An error has occurred while processing the %s.", CDSConfig::type_of_archive_being_loaded());
   if (message != nullptr) {
     log_error(cds)("%s", message);
   }
-  vm_exit_during_initialization("Unable to use shared archive.", nullptr);
+
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    vm_exit_during_initialization("Must be a valid AOT configuration generated by the current JVM", AOTConfiguration);
+  } else if (CDSConfig::new_aot_flags_used()) {
+    vm_exit_during_initialization("Unable to use AOT cache.", nullptr);
+  } else {
+    vm_exit_during_initialization("Unable to use shared archive.", nullptr);
+  }
 }
 
 // This function is called when the JVM is unable to write the specified CDS archive due to an
