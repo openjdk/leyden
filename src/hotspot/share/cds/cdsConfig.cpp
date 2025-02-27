@@ -164,13 +164,6 @@ void CDSConfig::extract_shared_archive_paths(const char* archive_path,
   *top_archive_path = cur_path;
 }
 
-static void set_new_workflow_default_CachedCodeFile() {
-  size_t len = strlen(CacheDataStore) + 6;
-  char* file = AllocateHeap(len, mtArguments);
-  jio_snprintf(file, len, "%s.code", CacheDataStore);
-  FLAG_SET_ERGO(CachedCodeFile, file);
-}
-
 void CDSConfig::init_shared_archive_paths() {
   if (ArchiveClassesAtExit != nullptr) {
     assert(!RecordDynamicDumpInfo, "already checked");
@@ -535,11 +528,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     }
 
     if (FLAG_IS_DEFAULT(AOTClassLinking)) {
-      // New workflow - enable AOTClassLinking by default.
-      // TODO: make new workflow work, even when AOTClassLinking is false.
-      //
-      // NOTE: in old workflow, we cannot enable AOTClassLinking by default. That
-      // should be an opt-in option, per JEP nnn.
       FLAG_SET_ERGO(AOTClassLinking, true);
     }
 
@@ -547,9 +535,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       vm_exit_during_initialization("CacheDataStore and SharedArchiveFile cannot be both specified");
     }
     if (!AOTClassLinking) {
-      // TODO: in the forked JVM, we should ensure all classes are loaded from the hotspot.cds.preimage.
-      // AOTClassLinking only loads the classes for built-in loaders. We need to load the classes
-      // for custom loaders as well.
       vm_exit_during_initialization("CacheDataStore requires AOTClassLinking");
     }
 
@@ -559,9 +544,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         SharedArchiveFile = CacheDataStore;
         FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
         FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
-        if (LoadCachedCode && FLAG_IS_DEFAULT(CachedCodeFile)) {
-          set_new_workflow_default_CachedCodeFile();
-        }
       } else {
         // The preimage dumping phase -- run the app and write the preimage file
         size_t len = strlen(CacheDataStore) + 10;
@@ -598,8 +580,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
       // Settings for AOT
       FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
-      if (StoreCachedCode && FLAG_IS_DEFAULT(CachedCodeFile)) {
-        set_new_workflow_default_CachedCodeFile();
+      if (StoreCachedCode) {
         // Cannot dump cached code until metadata and heap are dumped.
         disable_dumping_cached_code();
       }
@@ -621,7 +602,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
       FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
       FLAG_SET_ERGO(LoadCachedCode, false);
-      FLAG_SET_ERGO(CachedCodeFile, os::strdup("unused")); // FIXME - remove this flag
       disable_dumping_cached_code(); // Cannot dump cached code until metadata and heap are dumped.
     } else if (is_using_archive() && new_aot_flags_used()) {
       // AOT workflow -- production
@@ -629,7 +609,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
       FLAG_SET_ERGO(StoreCachedCode, false);
       FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
-      FLAG_SET_ERGO(CachedCodeFile, os::strdup("unused")); // FIXME - remove this flag
     } else {
       FLAG_SET_ERGO(ReplayTraining, false);
       FLAG_SET_ERGO(RecordTraining, false);

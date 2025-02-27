@@ -1115,7 +1115,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   if (CDSConfig::is_dumping_final_static_archive()) {
     RecordTraining = false;
-    if (StoreCachedCode && CachedCodeFile != nullptr) { // FIXME: new workflow -- remove the CachedCodeFile flag
+    if (StoreCachedCode) {
       if (log_is_enabled(Info, cds, jit)) {
         CDSAccess::test_heap_access_api();
       }
@@ -2024,7 +2024,7 @@ void MetaspaceShared::initialize_shared_spaces() {
     TrainingData::print_archived_training_data_on(tty);
 
     if (LoadCachedCode) {
-      tty->print_cr("\n\nCached Code file: %s", CachedCodeFile);
+      tty->print_cr("\n\nCached Code");
       SCCache::print_on(tty);
     }
 
