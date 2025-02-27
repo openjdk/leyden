@@ -1112,15 +1112,8 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   VMThread::execute(&op);
   FileMapInfo* mapinfo = op.map_info();
   ArchiveHeapInfo* heap_info = op.heap_info();
-  bool status;
-  if (!CDSConfig::is_leyden_workflow()) {
-    status = write_static_archive(&builder, mapinfo, heap_info);
-  } else if (CDSConfig::is_dumping_preimage_static_archive()) {
-    if ((status = write_static_archive(&builder, mapinfo, heap_info))) {
-      fork_and_dump_final_static_archive();
-    }
-  } else {
-    assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+
+  if (CDSConfig::is_dumping_final_static_archive()) {
     RecordTraining = false;
     if (StoreCachedCode && CachedCodeFile != nullptr) { // FIXME: new workflow -- remove the CachedCodeFile flag
       if (log_is_enabled(Info, cds, jit)) {
@@ -1143,7 +1136,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       }
       CDSConfig::disable_dumping_cached_code();
     }
-    status = write_static_archive(&builder, mapinfo, heap_info);
+  }
+
+  bool status = write_static_archive(&builder, mapinfo, heap_info);
+  if (status && CDSConfig::is_leyden_workflow() && CDSConfig::is_dumping_preimage_static_archive()) {
+    fork_and_dump_final_static_archive();
   }
 
   if (!status) {

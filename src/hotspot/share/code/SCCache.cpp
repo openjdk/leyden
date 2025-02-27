@@ -139,6 +139,10 @@ void SCCache::initialize() {
   if (LoadCachedCode && !UseSharedSpaces) {
     return;
   }
+  if (LoadCachedCode && CDSAccess::get_cached_code_size() == 0) {
+    LoadCachedCode = false;
+    return;
+  }
   if (StoreCachedCode || LoadCachedCode) {
     if (FLAG_IS_DEFAULT(ClassInitBarrierMode)) {
       FLAG_SET_DEFAULT(ClassInitBarrierMode, 1);

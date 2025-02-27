@@ -603,10 +603,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         // Cannot dump cached code until metadata and heap are dumped.
         disable_dumping_cached_code();
       }
-      if (StoreCachedCode) {
-        log_info(cds)("ArchiveAdapters is enabled");
-        FLAG_SET_ERGO_IF_DEFAULT(ArchiveAdapters, true);
-      }
       _is_dumping_static_archive = true;
       _is_dumping_final_static_archive = true;
     }
@@ -614,14 +610,31 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     bool can_dump_profile_and_compiled_code = AOTClassLinking && new_aot_flags_used();
 
     if (is_dumping_preimage_static_archive() && can_dump_profile_and_compiled_code) {
+      // AOT workflow -- training
       FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
       FLAG_SET_ERGO(ReplayTraining, false);
+      FLAG_SET_ERGO(StoreCachedCode, false);
+      FLAG_SET_ERGO(LoadCachedCode, false);
     } else if (is_dumping_final_static_archive() && can_dump_profile_and_compiled_code) {
+      // AOT workflow -- assembly
       FLAG_SET_ERGO(RecordTraining, false); // This will be updated inside MetaspaceShared::preload_and_dump()
       FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+      FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
+      FLAG_SET_ERGO(LoadCachedCode, false);
+      FLAG_SET_ERGO(CachedCodeFile, os::strdup("unused")); // FIXME - remove this flag
+      disable_dumping_cached_code(); // Cannot dump cached code until metadata and heap are dumped.
+    } else if (is_using_archive() && new_aot_flags_used()) {
+      // AOT workflow -- production
+      FLAG_SET_ERGO(RecordTraining, false);
+      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+      FLAG_SET_ERGO(StoreCachedCode, false);
+      FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
+      FLAG_SET_ERGO(CachedCodeFile, os::strdup("unused")); // FIXME - remove this flag
     } else {
       FLAG_SET_ERGO(ReplayTraining, false);
       FLAG_SET_ERGO(RecordTraining, false);
+      FLAG_SET_ERGO(StoreCachedCode, false);
+      FLAG_SET_ERGO(LoadCachedCode, false);
     }
 
     if (CDSPreimage != nullptr) {
@@ -650,13 +663,24 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
   } else {
     // All of these *might* depend on AOTClassLinking. Better be safe than sorry.
-    // TODO: more fine-grained handling.
     FLAG_SET_ERGO(AOTInvokeDynamicLinking, false);
     FLAG_SET_ERGO(ArchiveDynamicProxies, false);
     FLAG_SET_ERGO(ArchiveLoaderLookupCache, false);
     FLAG_SET_ERGO(ArchivePackages, false);
     FLAG_SET_ERGO(ArchiveProtectionDomains, false);
     FLAG_SET_ERGO(ArchiveReflectionData, false);
+
+    if (CDSConfig::is_dumping_archive()) {
+      FLAG_SET_ERGO(RecordTraining, false);
+      FLAG_SET_ERGO(ReplayTraining, false);
+      FLAG_SET_ERGO(StoreCachedCode, false);
+      FLAG_SET_ERGO(LoadCachedCode, false);
+    }
+  }
+
+  if (StoreCachedCode) {
+    log_info(cds)("ArchiveAdapters is enabled");
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveAdapters, true);
   }
 
 #ifdef _WINDOWS
