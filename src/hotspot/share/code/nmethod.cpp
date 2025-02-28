@@ -1248,39 +1248,53 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   return nm;
 }
 
-nmethod* nmethod::new_nmethod(const methodHandle& method,
+void nmethod::restore_from_archive(nmethod* archived_nm,
+                                   const methodHandle& method,
+                                   GrowableArray<oop>& oop_list,
+                                   GrowableArray<Metadata*>& metadata_list,
+                                   ImmutableOopMapSet* oop_maps,
+                                   address immutable_data,
+                                   GrowableArray<oop>& reloc_imm_oop_list,
+                                   GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                                   SCCReader* scc_reader)
+{
+  archived_nm->copy_to((address)nm);
+  set_name("nmethod");
+  set_method(method());
+  set_oop_maps(oop_maps);
+  set_immutable_data(immutable_data);
+  copy_values(&oop_list);
+  copy_values(&metadata_list);
+
+  scc_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
+
+  // Create cache after PcDesc data is copied - it will be used to initialize cache
+  _pc_desc_container = new PcDescContainer(nm->scopes_pcs_begin());
+
+  set_scc_entry(scc_reader->scc_entry());
+
+  post_init();
+}
+
+nmethod* nmethod::new_nmethod(nmethod* archived_nm,
+                              const methodHandle& method,
                               AbstractCompiler* compiler,
-                              int compile_id,
-                              CompLevel comp_level,
-                              int entry_bci,
-                              bool preload,
                               GrowableArray<oop>& oop_list,
                               GrowableArray<Metadata*>& metadata_list,
+                              ImmutableOopMapSet* oop_maps,
+                              address immutable_data,
                               GrowableArray<oop>& reloc_imm_oop_list,
                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
-                              SCCReader* scc_reader,
-                              SCnmethod* scnm)
+                              SCCReader* scc_reader)
 {
   nmethod* nm = nullptr;
-  int nmethod_size = CodeBlob::allocation_size(scnm, sizeof(nmethod));
+  int nmethod_size = archived_nm->size();
   // create nmethod
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    nm = new (nmethod_size, comp_level)
-              nmethod(method(),
-              nmethod_size,
-              compiler,
-              compile_id,
-              comp_level,
-              entry_bci,
-              preload,
-              oop_list,
-              metadata_list,
-              reloc_imm_oop_list,
-              reloc_imm_metadata_list,
-              scc_reader,
-              scnm);
+    nm = (nmethod *)CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(archived_nm->comp_level()));
     if (nm != nullptr) {
+      nm->restore_from_archive(archived_nm, method, oop_list, metadata_list, oop_maps, immutable_data, reloc_imm_oop_list, reloc_imm_metadata_list, scc_reader);
       nm->record_nmethod_dependency();
       NOT_PRODUCT(note_java_nmethod(nm));
     }
@@ -1293,7 +1307,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
       LogStream out(log);
       out.print_cr("== new_nmethod 2");
       FlagSetting fs(PrintRelocations, true);
-      nm->print(&out);
+      nm->print_on_impl(&out);
       nm->decode(&out);
     }
 #endif
@@ -1302,108 +1316,6 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     nm->log_new_nmethod();
   }
   return nm;
-}
-
-nmethod::nmethod(Method* method,
-                 int nmethod_size,
-                 AbstractCompiler* compiler,
-                 int compile_id,
-                 CompLevel comp_level,
-                 int entry_bci,
-                 bool preload,
-		 GrowableArray<oop>& oop_list,
-		 GrowableArray<Metadata*>& metadata_list,
-		 GrowableArray<oop>& reloc_imm_oop_list,
-		 GrowableArray<Metadata*>& reloc_imm_metadata_list,
-                 SCCReader* scc_reader,
-                 SCnmethod* scnm)
-  : CodeBlob("nmethod", CodeBlobKind::Nmethod, scnm, nmethod_size, sizeof(nmethod)),
-  _deoptimization_generation(0),
-  _gc_epoch(CodeCache::gc_epoch()),
-  _method(method),
-  _osr_link(nullptr)
-{
-  _exception_cache = nullptr;
-  _gc_data = nullptr;
-  _oops_do_mark_link = nullptr;
-  _compiled_ic_data = nullptr; // set in post_init
-  _is_unloading_state         = 0;
-  _state                      = not_installed;
-  _osr_entry_point = nullptr; // OSR methods are not in AOT cache
-  _entry_offset = scnm->entry_offset();
-  _verified_entry_offset = scnm->verified_entry_offset();
-  _entry_bci = entry_bci;
-
-  _immutable_data_size = scnm->immutable_data_size();
-  _skipped_instructions_size = scnm->skipped_instructions_size();
-  _stub_offset = content_offset() + scnm->stub_offset();
-  _exception_offset = content_offset() + scnm->exception_offset();
-  _deopt_handler_offset = content_offset() + scnm->deopt_handler_offset();
-  _deopt_mh_handler_offset = content_offset() + scnm->deopt_mh_handler_offset();
-  _unwind_handler_offset = scnm->unwind_handler_offset();
-
-  _num_stack_arg_slots = entry_bci != InvocationEntryBci ? 0 : _method->constMethod()->num_stack_arg_slots();
-
-  _metadata_offset = scnm->metadata_offset();
-#if INCLUDE_JVMCI
-  _jvmci_data_offset = scnm->jvmci_data_offset();
-#endif
-
-  _nul_chk_table_offset = scnm->nul_chk_table_offset();
-  _handler_table_offset = scnm->handler_table_offset();
-  _scopes_pcs_offset = scnm->scopes_pcs_offset();
-  _scopes_data_offset = scnm->scopes_data_offset();
-#if INCLUDE_JVMCI
-  _speculations_offset = scnm->speculation_offset();
-  DEBUG_ONLY( int immutable_data_end_offset = _speculations_offset  + align_up(scnm->speculations_len(), oopSize); )
-#else
-  DEBUG_ONLY( int immutable_data_end_offset = _scopes_data_offset + align_up(debug_info->data_size(), oopSize); )
-#endif
-  assert(immutable_data_end_offset <= _immutable_data_size, "wrong read-only data size: %d > %d",
-         immutable_data_end_offset, _immutable_data_size);
-
-  _orig_pc_offset = scnm->orig_pc_offset();
-  _compile_id = compile_id;
-  _comp_level = comp_level;
-  _compiler_type = compiler->type();
-
-  set_has_unsafe_access(scnm->has_unsafe_access());
-  set_has_method_handle_invokes(scnm->has_method_handle_invokes());
-  set_has_wide_vectors(scnm->has_wide_vectors());
-  set_has_monitors(scnm->has_monitors());
-  set_has_scoped_access(scnm->has_scoped_access());
-  set_has_clinit_barriers(scnm->has_clinit_barriers());
-
-  set_preloaded(preload);
-
-  SCCEntry* scc_entry = scc_reader->scc_entry();
-  const char* reloc_addr = scc_reader->addr_of_entry_offset(scnm->relocation_data_offset());
-  SCCache::copy_bytes(reloc_addr, (address)relocation_begin(), scnm->relocation_size());
-  const char* content_addr = scc_reader->addr_of_entry_offset(scnm->content_offset());
-  SCCache::copy_bytes(content_addr, content_begin(), scnm->content_size());
-
-  ImmutableOopMapSet* oop_map_set = (ImmutableOopMapSet*)scc_reader->addr_of_entry_offset(scnm->oop_map_offset());
-  set_oop_maps(oop_map_set);
-  address immutable_data = (address)scc_reader->addr_of_entry_offset(scnm->immutable_data_offset());
-  set_immutable_data(immutable_data);
-
-  copy_values(&oop_list);
-  copy_values(&metadata_list);
-
-  scc_reader->apply_relocations(scnm, this, reloc_imm_oop_list, reloc_imm_metadata_list);
-
-  // Create cache after PcDesc data is copied - it will be used to initialize cache
-  _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
-
-  _scc_entry = scc_entry;
-
-  post_init();
-
-  // we use the information of entry points to find out if a method is
-  // static or non static
-  assert(compiler->is_c2() || compiler->is_jvmci() ||
-	 _method->is_static() == (entry_point() == verified_entry_point()),
-	 " entry points must be same for static methods and vice versa");
 }
 
 // Fill in default values for various fields
@@ -3173,10 +3085,10 @@ void nmethod::verify() {
 
   // Verification can triggered during shutdown after SCCache is closed.
   // If the Scopes data is in the SCCache, then we should avoid verification during shutdown.
-  if (!UseNewCode2 || (!is_scc() || SCCache::is_on())) {
+  if (!UseNewCode || (!is_scc() || SCCache::is_on())) {
     for (PcDesc* p = scopes_pcs_begin(); p < scopes_pcs_end(); p++) {
       if (! p->verify(this)) {
-	tty->print_cr("\t\tin nmethod at " INTPTR_FORMAT " (pcs)", p2i(this));
+        tty->print_cr("\t\tin nmethod at " INTPTR_FORMAT " (pcs)", p2i(this));
       }
     }
 
@@ -3187,18 +3099,18 @@ void nmethod::verify() {
       ImmutableOopMapSet* oms = oop_maps();
       ImplicitExceptionTable implicit_table(this);
       for (uint i = 0; i < implicit_table.len(); i++) {
-	int exec_offset = (int) implicit_table.get_exec_offset(i);
-	if (implicit_table.get_exec_offset(i) == implicit_table.get_cont_offset(i)) {
-	  assert(pc_desc_at(code_begin() + exec_offset) != nullptr, "missing PcDesc");
-	  bool found = false;
-	  for (int i = 0, imax = oms->count(); i < imax; i++) {
-	    if (oms->pair_at(i)->pc_offset() == exec_offset) {
-	      found = true;
-	      break;
-	    }
-	  }
-	  assert(found, "missing oopmap");
-	}
+        int exec_offset = (int) implicit_table.get_exec_offset(i);
+        if (implicit_table.get_exec_offset(i) == implicit_table.get_cont_offset(i)) {
+          assert(pc_desc_at(code_begin() + exec_offset) != nullptr, "missing PcDesc");
+          bool found = false;
+          for (int i = 0, imax = oms->count(); i < imax; i++) {
+            if (oms->pair_at(i)->pc_offset() == exec_offset) {
+              found = true;
+              break;
+            }
+          }
+          assert(found, "missing oopmap");
+        }
       }
     }
 #endif
@@ -4295,3 +4207,21 @@ const char* nmethod::jvmci_name() {
   return nullptr;
 }
 #endif
+
+void nmethod::prepare_for_archiving() {
+  set_name(nullptr);
+  _deoptimization_generation = 0;
+  _gc_epoch = 0;
+  _method_profiling_count = 0;
+  _osr_link = nullptr;
+  _method = nullptr;
+  _immutable_data = nullptr;
+  _pc_desc_container = nullptr;
+  _exception_cache = nullptr;
+  _gc_data = nullptr;
+  _oops_do_mark_link = nullptr;
+  _compiled_ic_data = nullptr;
+  _osr_entry_point = nullptr;
+  _compile_id = -1;
+  _deoptimization_status = not_marked;
+}

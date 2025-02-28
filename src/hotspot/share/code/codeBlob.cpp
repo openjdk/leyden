@@ -117,18 +117,6 @@ unsigned int CodeBlob::allocation_size(CodeBuffer* cb, int header_size) {
   return size;
 }
 
-// This must be consistent with the CodeBlob constructor's layout actions.
-unsigned int CodeBlob::allocation_size(SCnmethod* scnm, int header_size) {
-  unsigned int size = header_size;
-  size += align_up(scnm->relocation_size(), oopSize);
-  // align the size to CodeEntryAlignment
-  size = align_code_offset(size);
-  size += align_up(scnm->content_size(), oopSize);
-  size += align_up(scnm->oops_count() * sizeof(oop*), oopSize);
-  size += align_up(scnm->metadata_count() * sizeof(Metadata*), oopSize);
-  return size;
-}
-
 CodeBlob::CodeBlob(const char* name, CodeBlobKind kind, CodeBuffer* cb, int size, uint16_t header_size,
                    int16_t frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments,
                    int mutable_data_size) :
@@ -167,31 +155,6 @@ CodeBlob::CodeBlob(const char* name, CodeBlobKind kind, CodeBuffer* cb, int size
   }
 
   set_oop_maps(oop_maps);
-}
-
-CodeBlob::CodeBlob(const char* name, CodeBlobKind kind, SCnmethod* scnm, int size, uint16_t header_size) :
-  _oop_maps(nullptr), // will be set later when oop maps are read from AOT code cache
-  _name(name),
-  _size(size),
-  _relocation_size(align_up(scnm->relocation_size(), oopSize)),
-  _content_offset(CodeBlob::align_code_offset(header_size + _relocation_size)),
-  _code_offset(_content_offset + scnm->code_offset()),
-  _data_offset(_content_offset + scnm->content_size()),
-  _frame_size(scnm->frame_size()),
-  _header_size(header_size),
-  _frame_complete_offset(scnm->frame_complete_offset()),
-  _kind(kind),
-  _caller_must_gc_arguments(false)
-{
-  assert(is_aligned(_size,            oopSize), "unaligned size");
-  assert(is_aligned(header_size,      oopSize), "unaligned size");
-  assert(is_aligned(_relocation_size, oopSize), "unaligned size");
-  assert(_data_offset <= _size, "codeBlob is too small: %d > %d", _data_offset, _size);
-  assert(code_end() == content_end(), "must be the same - see code_end()");
-#ifdef COMPILER1
-  // probably wrong for tiered
-  assert(_frame_size > -1, "must use frame size");
-#endif // COMPILER1
 }
 
 // Simple CodeBlob used for simple BufferBlob.

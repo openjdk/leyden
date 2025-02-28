@@ -47,7 +47,6 @@ class NativeCallWrapper;
 class OopIterateClosure;
 class SCCReader;
 class SCCEntry;
-class SCnmethod;
 class ScopeDesc;
 class xmlStream;
 
@@ -305,21 +304,6 @@ class nmethod : public CodeBlob {
   // Post initialization
   void post_init();
 
-  // For nmethods loaded from AOT code cache
-  nmethod(Method* method,
-          int nmethod_size,
-          AbstractCompiler* compiler,
-          int compile_id,
-          CompLevel comp_level,
-          int entry_bci,
-          bool preload,
-          GrowableArray<oop>& oop_list,
-          GrowableArray<Metadata*>& metadata_list,
-          GrowableArray<oop>& reloc_imm_oop_list,
-          GrowableArray<Metadata*>& reloc_imm_metadata_list,
-          SCCReader* scc_reader,
-          SCnmethod* scnm);
-
   // For native wrappers
   nmethod(Method* method,
           CompilerType type,
@@ -497,20 +481,29 @@ class nmethod : public CodeBlob {
   void oops_do_set_strong_done(nmethod* old_head);
 
   void record_nmethod_dependency();
+
+  void restore_from_archive(nmethod* archived_nm,
+                            const methodHandle& method,
+                            GrowableArray<oop>& oop_list,
+                            GrowableArray<Metadata*>& metadata_list,
+                            ImmutableOopMapSet* oop_maps,
+                            address immutable_data,
+                            GrowableArray<oop>& reloc_imm_oop_list,
+                            GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                            SCCReader* scc_reader);
+
 public:
-  // create nmethod using data from AOT code cache
-  static nmethod* new_nmethod(const methodHandle& method,
+  // create nmethod using archived nmethod from AOT code cache
+  static nmethod* new_nmethod(nmethod* archived_nm,
+                              const methodHandle& method,
                               AbstractCompiler* compiler,
-                              int compile_id,
-                              CompLevel comp_level,
-                              int entry_bci,
-                              bool preload,
                               GrowableArray<oop>& oop_list,
                               GrowableArray<Metadata*>& metadata_list,
+                              ImmutableOopMapSet* oop_maps,
+                              address immutable_data,
                               GrowableArray<oop>& reloc_imm_oop_list,
                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
-                              SCCReader* scc_reader,
-                              SCnmethod* scnm);
+                              SCCReader* scc_reader);
 
   // create nmethod with entry_bci
   static nmethod* new_nmethod(const methodHandle& method,
@@ -545,6 +538,10 @@ public:
                                      ByteSize basic_lock_sp_offset,
                                      OopMapSet* oop_maps,
                                      int exception_handler = -1);
+
+  void copy_to(address dest) {
+    memcpy(dest, this, size());
+  }
 
   Method* method       () const { return _method; }
   uint16_t entry_bci   () const { return _entry_bci; }
@@ -953,6 +950,7 @@ public:
 
   SCCEntry* scc_entry() const { return _scc_entry; }
   bool is_scc() const { return scc_entry() != nullptr; }
+  void set_scc_entry(SCCEntry* entry) { _scc_entry = entry; }
 
   bool     used() const { return _used; }
   void set_used()       { _used = true; }
@@ -1049,6 +1047,8 @@ public:
 
   void make_deoptimized();
   void finalize_relocations();
+
+  void prepare_for_archiving();
 
   class Vptr : public CodeBlob::Vptr {
     void print_on(const CodeBlob* instance, outputStream* st) const override {

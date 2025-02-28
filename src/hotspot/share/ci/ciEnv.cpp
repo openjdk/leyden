@@ -985,7 +985,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
   // We require method counters to store some method state (max compilation levels) required by the compilation policy.
   if (!preload && method->get_method_counters(thread) == nullptr) {
     record_failure("can't create method counters");
-    if (scc_entry == nullptr || !UseNewCode2) {
+    if (scc_entry == nullptr || !UseNewCode) {
       // All buffers in the CodeBuffer are allocated in the CodeCache.
       // If the code buffer is created on each compile attempt
       // as in C2, then it must be freed.
@@ -1000,7 +1000,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
     //  - SCCache is closed, SCC entry is garbage.
     //  - SCC entry indicates this shared code was marked invalid while it was loaded.
     if (!SCCache::is_on() || scc_entry->not_entrant()) {
-      if (!UseNewCode2) {
+      if (!UseNewCode) {
 	code_buffer->free_blob();
       }
       return false;
@@ -1051,7 +1051,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
       mdo->inc_decompile_count();
     }
 
-    if (scc_entry == nullptr && !UseNewCode2) {
+    if (scc_entry == nullptr && !UseNewCode) {
       // All buffers in the CodeBuffer are allocated in the CodeCache.
       // If the code buffer is created on each compile attempt
       // as in C2, then it must be freed.
@@ -1125,13 +1125,15 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
 
 void ciEnv::register_aot_method(ciMethod* target,
                                 AbstractCompiler* compiler,
-                                int entry_bci,
+                                nmethod* archived_nm,
                                 GrowableArray<oop>& oop_list,
                                 GrowableArray<Metadata*>& metadata_list,
+                                ImmutableOopMapSet* oopmaps,
+                                address immutable_data,
                                 GrowableArray<oop>& reloc_imm_oop_list,
                                 GrowableArray<Metadata*>& reloc_imm_metadata_list,
-                                SCCReader* scc_reader,
-                                SCnmethod* scnm) {
+                                SCCReader* scc_reader)
+{
   SCCEntry* scc_entry = task()->scc_entry();
   assert(scc_entry != nullptr, "must be");
   VM_ENTRY_MARK;
@@ -1156,21 +1158,19 @@ void ciEnv::register_aot_method(ciMethod* target,
       return;
     }
 
-    nm = nmethod::new_nmethod(method,
+    nm = nmethod::new_nmethod(archived_nm,
+                              method,
                               compiler,
-                              compile_id(),
-                              CompLevel(task()->comp_level()),
-                              entry_bci,
-                              preload,
                               oop_list,
                               metadata_list,
+                              oopmaps,
+                              immutable_data,
                               reloc_imm_oop_list,
                               reloc_imm_metadata_list,
-                              scc_reader,
-                              scnm);
+                              scc_reader);
 
     if (nm != nullptr) {
-      make_code_usable(THREAD, target, preload, entry_bci, scc_entry, nm);
+      make_code_usable(THREAD, target, preload, InvocationEntryBci, scc_entry, nm);
     }
   }
 
@@ -1232,7 +1232,7 @@ void ciEnv::register_method(ciMethod* target,
     assert(offsets->value(CodeOffsets::Deopt) != -1, "must have deopt entry");
     assert(offsets->value(CodeOffsets::Exceptions) != -1, "must have exception entry");
 
-    if (scc_entry == nullptr && !UseNewCode2) {
+    if (scc_entry == nullptr && !UseNewCode) {
       scc_entry = SCCache::store_nmethod(method,
                              compile_id(),
                              entry_bci,
@@ -1286,10 +1286,9 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
-      if (scc_entry == nullptr && UseNewCode2) {
+      if (scc_entry == nullptr && UseNewCode) {
 	scc_entry = SCCache::store_nmethod_v1(nm,
                                               compiler,
-                                              dependencies()->size_in_bytes(),
                                               for_preload);
 	if (scc_entry != nullptr) {
 	  scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());

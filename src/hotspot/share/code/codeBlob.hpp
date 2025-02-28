@@ -38,7 +38,6 @@ class ImmutableOopMap;
 class ImmutableOopMapSet;
 class JNIHandleBlock;
 class OopMapSet;
-class SCnmethod;
 
 // CodeBlob Types
 // Used in the CodeCache to assign CodeBlobs to different CodeHeaps
@@ -149,8 +148,6 @@ protected:
            int16_t frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments,
            int mutable_data_size);
 
-  CodeBlob(const char* name, CodeBlobKind kind, SCnmethod* scnmethod, int size, uint16_t header_size);
-
   // Simple CodeBlob used for simple BufferBlob.
   CodeBlob(const char* name, CodeBlobKind kind, int size, uint16_t header_size);
 
@@ -164,7 +161,6 @@ public:
 
   // Returns the space needed for CodeBlob
   static unsigned int allocation_size(CodeBuffer* cb, int header_size);
-  static unsigned int allocation_size(SCnmethod* scnm, int header_size);
   static unsigned int align_code_offset(int offset);
 
   // Deletion

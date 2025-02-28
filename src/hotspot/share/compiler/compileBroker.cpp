@@ -2631,7 +2631,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
         whitebox_lock_compilation();
       }
       if (StoreCachedCode && task->is_precompiled()) {
-        if (!UseNewCode2) {
+        if (!UseNewCode) {
           install_code = false; // not suitable in the current context
         }
       }
