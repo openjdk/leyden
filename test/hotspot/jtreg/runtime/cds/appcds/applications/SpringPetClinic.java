@@ -68,7 +68,9 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -113,7 +115,17 @@ public class SpringPetClinic {
             extractZip(zip.toString(), new File("."));
         }
 
-        return "@" + cpFile.toString();
+        // Copy the classpath file and edit its path separator if necessary.
+        String cpFileCopy = "petclinic-classpath.txt";
+        String cp = Files.readString(cpFile.toPath());
+        if (File.pathSeparatorChar == ';') {
+            // This file was generated with ":" as path separator. Change it
+            // to ';' for Windows.
+            cp = cp.replace(':', ';');
+        }
+        System.out.println("\nClasspath = \"" + cp + "\"\n");
+        Files.writeString(Paths.get(cpFileCopy), cp);
+        return "@" + cpFileCopy;
     }
 
     static void extractZip(String srcFile, File outDir) throws Exception {
