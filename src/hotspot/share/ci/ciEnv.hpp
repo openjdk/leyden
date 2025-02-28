@@ -41,7 +41,6 @@ class CompileTask;
 class OopMapSet;
 class SCCEntry;
 class SCCReader;
-class SCnmethod;
 
 // ciEnv
 //
@@ -375,13 +374,14 @@ public:
   // Register method loaded from AOT code cache
   void register_aot_method(ciMethod* target,
                            AbstractCompiler* compiler,
-                           int entry_bci,
+                           nmethod* archived_nm,
                            GrowableArray<oop>& oop_list,
                            GrowableArray<Metadata*>& metadata_list,
+                           ImmutableOopMapSet* oopmaps,
+                           address immutable_data,
                            GrowableArray<oop>& reloc_imm_oop_list,
                            GrowableArray<Metadata*>& reloc_imm_metadata_list,
-                           SCCReader* scc_reader,
-                           SCnmethod* scnm);
+                           SCCReader* scc_reader);
 
   // Register the result of a compilation.
   void register_method(ciMethod*                 target,
