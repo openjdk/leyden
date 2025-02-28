@@ -323,7 +323,7 @@ class Method : public Metadata {
   void set_method_data(MethodData* data);
 
   MethodTrainingData* training_data_or_null() const;
-  bool init_training_data(MethodTrainingData* tdata);
+  bool init_training_data(MethodTrainingData* td);
 
   // mark an exception handler as entered (used to prune dead catch blocks in C2)
   void set_exception_handler_entered(int handler_bci);

@@ -622,12 +622,12 @@ MethodTrainingData* Method::training_data_or_null() const {
   }
 }
 
-bool Method::init_training_data(MethodTrainingData* tdata) {
+bool Method::init_training_data(MethodTrainingData* td) {
   MethodCounters* mcs = method_counters();
   if (mcs == nullptr) {
     return false;
   } else {
-    return mcs->init_method_training_data(tdata);
+    return mcs->init_method_training_data(td);
   }
 }
 
@@ -667,19 +667,11 @@ void Method::build_profiling_method_data(const methodHandle& method, TRAPS) {
     return;
   }
 
-  /*
-  LogStreamHandle(Info, mdo) lsh;
-  if (lsh.is_enabled()) {
-    ResourceMark rm(THREAD);
-    lsh.print("build_profiling_method_data for ");
-    method->print_name(&lsh);
-    lsh.cr();
-  }
-  */
   if (ForceProfiling && TrainingData::need_data()) {
     MethodTrainingData* mtd = MethodTrainingData::make(method, false);
     guarantee(mtd != nullptr, "");
   }
+
   if (PrintMethodData) {
     ResourceMark rm(THREAD);
     tty->print("build_profiling_method_data for ");

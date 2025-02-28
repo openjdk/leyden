@@ -372,11 +372,10 @@ void CompileQueue::add(CompileTask* task) {
     task->log_task_queued();
   }
 
-  if (TrainingData::need_data() &&
-      !CDSConfig::is_dumping_final_static_archive()) { // FIXME: !!! MetaspaceShared::preload_and_dump() temporarily enables RecordTraining !!!
-    CompileTrainingData* tdata = CompileTrainingData::make(task);
-    if (tdata != nullptr) {
-      task->set_training_data(tdata);
+  if (TrainingData::need_data() && !CDSConfig::is_dumping_final_static_archive()) {
+    CompileTrainingData* td = CompileTrainingData::make(task);
+    if (td != nullptr) {
+      task->set_training_data(td);
     }
   }
 

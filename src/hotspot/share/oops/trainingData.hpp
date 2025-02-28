@@ -176,15 +176,17 @@ public:
     bool remove(const Key* key) {
       return _table.remove(key);
     }
-    TrainingData* install(TrainingData* tdata) {
+    TrainingData* install(TrainingData* td) {
       TrainingDataLocker::assert_locked();
       TrainingDataLocker::assert_can_add();
-      auto key = tdata->key();
-      if (key->is_empty())   return tdata;  // unkeyed TD not installed
+      auto key = td->key();
+      if (key->is_empty()) {
+        return td;  // unkeyed TD not installed
+      }
       bool created = false;
-      auto prior = _table.put_if_absent(key, tdata, &created);
-      if (prior == nullptr || *prior == tdata) {
-        return tdata;
+      auto prior = _table.put_if_absent(key, td, &created);
+      if (prior == nullptr || *prior == td) {
+        return td;
       }
       assert(false, "no pre-existing elements allowed");
       return *prior;
