@@ -1048,6 +1048,18 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     }
   }
 
+#if INCLUDE_CDS_JAVA_HEAP
+  if (CDSConfig::is_dumping_heap()) {
+    assert(CDSConfig::allow_only_single_java_thread(), "Required");
+    if (!HeapShared::is_archived_boot_layer_available(THREAD)) {
+      log_info(cds)("archivedBootLayer not available, disabling full module graph");
+      CDSConfig::stop_dumping_full_module_graph();
+    }
+    // Do this before link_shared_classes(), as the following line may load new classes.
+    HeapShared::init_for_dumping(CHECK);
+  }
+#endif
+
   // Rewrite and link classes
   log_info(cds)("Rewriting and linking classes ...");
 
@@ -1069,12 +1081,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_heap()) {
-    assert(CDSConfig::allow_only_single_java_thread(), "Required");
-    if (!HeapShared::is_archived_boot_layer_available(THREAD)) {
-      log_info(cds)("archivedBootLayer not available, disabling full module graph");
-      CDSConfig::stop_dumping_full_module_graph();
-    }
-    HeapShared::init_for_dumping(CHECK);
     ArchiveHeapWriter::init();
     if (CDSConfig::is_dumping_full_module_graph()) {
       ClassLoaderDataShared::ensure_module_entry_tables_exist();
