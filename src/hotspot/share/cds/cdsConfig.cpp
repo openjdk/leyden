@@ -80,8 +80,19 @@ int CDSConfig::get_status() {
 
 void CDSConfig::initialize() {
   if (is_dumping_static_archive() && !is_dumping_final_static_archive()) {
+    // If dumping the classic archive, or making an AOT training run (dumping a preimage archive),
+    // for sanity, parse all classes from classfiles.
+    // TODO: in the future, if we want to support re-training on top of an existing AOT cache, this
+    // needs to be changed.
     if (RequireSharedSpaces) {
-      warning("Cannot dump shared archive while using shared archive");
+      if (is_leyden_workflow()) {
+        log_info(cds)("-Xshare:on flag is ignored when creating a CacheDataStore");
+      } else {
+        // -Xshare and -XX:AOTMode flags are mutually exclusive:
+        //   Class workflow: -Xshare:on and -Xshare:dump cannot take effect at the same time.
+        //   JEP 483 workflow: -XX:AOTMode:record and -XX:AOTMode=on cannot take effect at the same time.
+        ShouldNotReachHere();
+      }
     }
     UseSharedSpaces = false;
   }
@@ -521,12 +532,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     // FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true); // FIXME @iklam - merge with mainline - UseCompatibleCompressedOops
 #endif
 
-    // Leyden temp: make sure the user knows if CDS archive somehow fails to load.
-    if (UseSharedSpaces && !xshare_auto_cmd_line) {
-      log_info(cds)("Enabled -Xshare:on by default for troubleshooting Leyden prototype");
-      RequireSharedSpaces = true;
-    }
-
     if (FLAG_IS_DEFAULT(AOTClassLinking)) {
       FLAG_SET_ERGO(AOTClassLinking, true);
     }
@@ -539,11 +544,17 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     }
 
     if (CDSPreimage == nullptr) {
-      if (os::file_exists(CacheDataStore) /* && TODO: CDS file is valid*/) {
+      if (os::file_exists(CacheDataStore) /* && TODO: Need to check if CDS file is valid*/) {
         // The CacheDataStore is already up to date. Use it. Also turn on cached code by default.
         SharedArchiveFile = CacheDataStore;
         FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
         FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
+
+        // Leyden temp: make sure the user knows if CDS archive somehow fails to load.
+        if (UseSharedSpaces && !xshare_auto_cmd_line) {
+          log_info(cds)("Enabled -Xshare:on by default for troubleshooting Leyden prototype");
+          RequireSharedSpaces = true;
+        }
       } else {
         // The preimage dumping phase -- run the app and write the preimage file
         size_t len = strlen(CacheDataStore) + 10;
