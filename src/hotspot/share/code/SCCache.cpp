@@ -3043,12 +3043,7 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
   }
 
   SCCReader reader(cache, entry, task);
-  bool success = false;
-  if (UseNewCode) {
-    success = reader.compile_nmethod(env, target, compiler);
-  } else {
-    success = reader.compile(env, target, entry_bci, compiler);
-  }
+  bool success = reader.compile_nmethod(env, target, compiler);
   if (success) {
     task->set_num_inlined_bytecodes(entry->num_inlined_bytecodes());
   } else {
@@ -3073,144 +3068,6 @@ SCCReader::SCCReader(SCCache* cache, SCCEntry* entry, CompileTask* task) {
     _preload    = false;
   }
   _lookup_failed = false;
-}
-
-bool SCCReader::compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler) {
-  uint entry_position = _entry->offset();
-  uint code_offset = entry_position + _entry->code_offset();
-  set_read_position(code_offset);
-
-  // Read flags
-  int flags = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  bool has_monitors      = (flags & 0x1) != 0;
-  bool has_wide_vectors  = (flags & 0x2) != 0;
-  bool has_unsafe_access = (flags & 0x4) != 0;
-  bool has_scoped_access = (flags & 0x8) != 0;
-
-  int orig_pc_offset = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  int frame_size = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-
-  // Read offsets
-  CodeOffsets* offsets = (CodeOffsets*)addr(code_offset);
-  code_offset += sizeof(CodeOffsets);
-
-  // Create Debug Information Recorder to record scopes, oopmaps, etc.
-  OopRecorder* oop_recorder = new OopRecorder(env->arena());
-  env->set_oop_recorder(oop_recorder);
-
-  set_read_position(code_offset);
-
-  // Write OopRecorder data
-  if (!read_oops(oop_recorder, target)) {
-    return false;
-  }
-  if (!read_metadata(oop_recorder, target)) {
-    return false;
-  }
-
-  // Read Debug info
-  DebugInformationRecorder* recorder = read_debug_info(oop_recorder);
-  if (recorder == nullptr) {
-    return false;
-  }
-  env->set_debug_info(recorder);
-
-  // Read Dependencies (compressed already)
-  Dependencies* dependencies = new Dependencies(env);
-  if (!read_dependencies(dependencies)) {
-    return false;
-  }
-  env->set_dependencies(dependencies);
-
-  // Read oop maps
-  OopMapSet* oop_maps = read_oop_maps();
-  if (oop_maps == nullptr) {
-    return false;
-  }
-
-  // Read exception handles
-  code_offset = read_position();
-  int exc_table_length = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  ExceptionHandlerTable handler_table(MAX2(exc_table_length, 4));
-  if (exc_table_length > 0) {
-    handler_table.set_length(exc_table_length);
-    uint exc_table_size = handler_table.size_in_bytes();
-    SCCache::copy_bytes(addr(code_offset), (address)handler_table.table(), exc_table_size);
-    code_offset += exc_table_size;
-  }
-
-  // Read null check table
-  int nul_chk_length = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  ImplicitExceptionTable nul_chk_table;
-  if (nul_chk_length > 0) {
-    nul_chk_table.set_size(nul_chk_length);
-    nul_chk_table.set_len(nul_chk_length);
-    uint nul_chk_size = nul_chk_table.size_in_bytes();
-    SCCache::copy_bytes(addr(code_offset), (address)nul_chk_table.data(), nul_chk_size - sizeof(implicit_null_entry));
-    code_offset += nul_chk_size;
-  }
-
-  uint reloc_size = _entry->reloc_size();
-  CodeBuffer buffer("Compile::Fill_buffer", _entry->code_size(), reloc_size);
-  buffer.initialize_oop_recorder(oop_recorder);
-
-  const char* name = addr(entry_position + _entry->name_offset());
-
-  // Create fake original CodeBuffer
-  CodeBuffer orig_buffer(name);
-
-  // Read code
-  if (!read_code(&buffer, &orig_buffer, align_up(code_offset, DATA_ALIGNMENT))) {
-    return false;
-  }
-
-  // Read relocations
-  uint reloc_offset = entry_position + _entry->reloc_offset();
-  set_read_position(reloc_offset);
-  if (!read_relocations(&buffer, &orig_buffer, oop_recorder, target)) {
-    return false;
-  }
-
-  log_info(scc, nmethod)("%d (L%d): Read nmethod '%s' from AOT Code Cache", compile_id(), comp_level(), name);
-#ifdef ASSERT
-  LogStreamHandle(Debug, scc, nmethod) log;
-  if (log.is_enabled()) {
-    FlagSetting fs(PrintRelocations, true);
-    buffer.print_on(&log);
-    buffer.decode();
-  }
-#endif
-
-  if (VerifyCachedCode) {
-    return false;
-  }
-
-  // Register nmethod
-  TraceTime t1("SC total nmethod register time", &_t_totalRegister, enable_timers(), false);
-  env->register_method(target, entry_bci,
-                       offsets, orig_pc_offset,
-                       &buffer, frame_size,
-                       oop_maps, &handler_table,
-                       &nul_chk_table, compiler,
-                       _entry->has_clinit_barriers(),
-                       false,
-                       has_unsafe_access,
-                       has_wide_vectors,
-                       has_monitors,
-                       has_scoped_access,
-                       0, true /* install_code */,
-                       (SCCEntry *)_entry);
-  CompileTask* task = env->task();
-  bool success = task->is_success();
-  if (success) {
-    ((SCCEntry *)_entry)->set_loaded();
-  }
-  return success;
 }
 
 bool SCCReader::read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder) {
@@ -3303,6 +3160,9 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   nmethod* archived_nm = (nmethod*)addr(archived_nm_offset);
   set_read_position(archived_nm_offset + archived_nm->size());
 
+  OopRecorder* oop_recorder = new OopRecorder(env->arena());
+  env->set_oop_recorder(oop_recorder);
+
   // Read oops and metadata
   GrowableArray<oop> oop_list;
   GrowableArray<Metadata*> metadata_list;
@@ -3323,9 +3183,6 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   if (!read_oop_metadata_list(target, reloc_immediate_oop_list, reloc_immediate_metadata_list, nullptr)) {
    return false;
   }
-
-  OopRecorder* oop_recorder = new OopRecorder(env->arena());
-  env->set_oop_recorder(oop_recorder);
 
   // Read Dependencies (compressed already)
   Dependencies* dependencies = new Dependencies(env);
@@ -3467,312 +3324,7 @@ void SCCReader::apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, Gro
   assert(j == count, "must be");
 }
 
-// No concurency for writing to cache file because this method is called from
-// ciEnv::register_method() under MethodCompileQueue_lock and Compile_lock locks.
-SCCEntry* SCCache::store_nmethod(const methodHandle& method,
-                     int comp_id,
-                     int entry_bci,
-                     CodeOffsets* offsets,
-                     int orig_pc_offset,
-                     DebugInformationRecorder* recorder,
-                     Dependencies* dependencies,
-                     CodeBuffer* buffer,
-                     int frame_size,
-                     OopMapSet* oop_maps,
-                     ExceptionHandlerTable* handler_table,
-                     ImplicitExceptionTable* nul_chk_table,
-                     AbstractCompiler* compiler,
-                     CompLevel comp_level,
-                     bool has_clinit_barriers,
-                     bool for_preload,
-                     bool has_unsafe_access,
-                     bool has_wide_vectors,
-                     bool has_monitors,
-                     bool has_scoped_access) {
-  if (!CDSConfig::is_dumping_cached_code()) {
-    return nullptr; // The metadata and heap in the CDS image haven't been finalized yet.
-  }
-  if (entry_bci != InvocationEntryBci) {
-    return nullptr; // No OSR
-  }
-  if (compiler->is_c1() && (comp_level == CompLevel_simple || comp_level == CompLevel_limited_profile)) {
-    // Cache tier1 compilations
-  } else if (!compiler->is_c2()) {
-    return nullptr; // Only C2 now
-  }
-  TraceTime t1("SC total store time", &_t_totalStore, enable_timers(), false);
-  SCCache* cache = open_for_write();
-  if (cache == nullptr) {
-    return nullptr; // Cache file is closed
-  }
-  SCCEntry* entry = cache->write_nmethod(method, comp_id, entry_bci, offsets, orig_pc_offset, recorder, dependencies, buffer,
-                                  frame_size, oop_maps, handler_table, nul_chk_table, compiler, comp_level,
-                                  has_clinit_barriers, for_preload, has_unsafe_access, has_wide_vectors, has_monitors, has_scoped_access);
-  if (entry == nullptr) {
-    ResourceMark rm;
-    log_warning(scc, nmethod)("%d (L%d): Cannot store nmethod '%s'", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
-  }
-  return entry;
-}
-
-SCCEntry* SCCache::write_nmethod(const methodHandle& method,
-                                 int comp_id,
-                                 int entry_bci,
-                                 CodeOffsets* offsets,
-                                 int orig_pc_offset,
-                                 DebugInformationRecorder* recorder,
-                                 Dependencies* dependencies,
-                                 CodeBuffer* buffer,
-                                 int frame_size,
-                                 OopMapSet* oop_maps,
-                                 ExceptionHandlerTable* handler_table,
-                                 ImplicitExceptionTable* nul_chk_table,
-                                 AbstractCompiler* compiler,
-                                 CompLevel comp_level,
-                                 bool has_clinit_barriers,
-                                 bool for_preload,
-                                 bool has_unsafe_access,
-                                 bool has_wide_vectors,
-                                 bool has_monitors,
-                                 bool has_scoped_access) {
-//  if (method->is_hidden()) {
-//    ResourceMark rm;
-//    log_info(scc, nmethod)("%d (L%d): Skip hidden method '%s'", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
-//    return nullptr;
-//  }
-  if (buffer->before_expand() != nullptr) {
-    ResourceMark rm;
-    log_warning(scc, nmethod)("%d (L%d): Skip nmethod with expanded buffer '%s'", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
-    return nullptr;
-  }
-#ifdef ASSERT
-  LogStreamHandle(Debug, scc, nmethod) log;
-  if (log.is_enabled()) {
-    tty->print_cr(" == store_nmethod");
-    FlagSetting fs(PrintRelocations, true);
-    buffer->print_on(&log);
-    buffer->decode();
-  }
-#endif
-  assert(!has_clinit_barriers || _gen_preload_code, "sanity");
-  Method* m = method();
-  bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)m); // herere
-  InstanceKlass* holder = m->method_holder();
-  bool klass_in_cds = holder->is_shared() && !holder->is_shared_unregistered_class();
-  bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
-  if (!builtin_loader) {
-    ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip method '%s' loaded by custom class loader %s", comp_id, (int)comp_level, method->name_and_sig_as_C_string(), holder->class_loader_data()->loader_name());
-    return nullptr;
-  }
-  if (for_preload && !(method_in_cds && klass_in_cds)) {
-    ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip method '%s' for preload: not in CDS", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
-    return nullptr;
-  }
-  assert(!for_preload || method_in_cds, "sanity");
-  _for_preload = for_preload;
-  _has_clinit_barriers = has_clinit_barriers;
-
-  if (!align_write()) {
-    return nullptr;
-  }
-  _compile_id = comp_id;
-  _comp_level = (int)comp_level;
-
-  uint entry_position = _write_position;
-
-  uint decomp = (method->method_data() == nullptr) ? 0 : method->method_data()->decompile_count();
-
-  // Is this one-step workflow assembly phase?
-  // In this phase compilation is done based on saved profiling data
-  // without application run. Ignore decompilation counters in such case.
-  // Also ignore it for C1 code because it is decompiled unconditionally
-  // when C2 generated code is published.
-  bool ignore_decompile = (comp_level == CompLevel_limited_profile) ||
-                          CDSConfig::is_dumping_final_static_archive();
-
-  // Write name
-  uint name_offset = 0;
-  uint name_size   = 0;
-  uint hash = 0;
-  uint n;
-  {
-    ResourceMark rm;
-    const char* name   = method->name_and_sig_as_C_string();
-    log_info(scc, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s%s) to AOT Code Cache",
-                           comp_id, (int)comp_level, name, comp_level, decomp,
-                           (ignore_decompile ? ", ignore_decomp" : ""),
-                           (has_clinit_barriers ? ", has clinit barriers" : ""));
-
-    LogStreamHandle(Info, scc, loader) log;
-    if (log.is_enabled()) {
-      oop loader = holder->class_loader();
-      oop domain = holder->protection_domain();
-      log.print("Holder: ");
-      holder->print_value_on(&log);
-      log.print(" loader: ");
-      if (loader == nullptr) {
-        log.print("nullptr");
-      } else {
-        loader->print_value_on(&log);
-      }
-      log.print(" domain: ");
-      if (domain == nullptr) {
-        log.print("nullptr");
-      } else {
-        domain->print_value_on(&log);
-      }
-      log.cr();
-    }
-    name_offset = _write_position  - entry_position;
-    name_size   = (uint)strlen(name) + 1; // Includes '/0'
-    n = write_bytes(name, name_size);
-    if (n != name_size) {
-      return nullptr;
-    }
-    hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
-  }
-
-  if (!align_write()) {
-    return nullptr;
-  }
-
-  uint code_offset = _write_position - entry_position;
-
-  int flags = (has_scoped_access ? 0x8 : 0) |
-              (has_unsafe_access ? 0x4 : 0) |
-              (has_wide_vectors  ? 0x2 : 0) |
-              (has_monitors      ? 0x1 : 0);
-  n = write_bytes(&flags, sizeof(int));
-  if (n != sizeof(int)) {
-    return nullptr;
-  }
-
-  n = write_bytes(&orig_pc_offset, sizeof(int));
-  if (n != sizeof(int)) {
-    return nullptr;
-  }
-
-  n = write_bytes(&frame_size, sizeof(int));
-  if (n != sizeof(int)) {
-    return nullptr;
-  }
-
-  // Write offsets
-  n = write_bytes(offsets, sizeof(CodeOffsets));
-  if (n != sizeof(CodeOffsets)) {
-    return nullptr;
-  }
-
-  // Write OopRecorder data
-  if (!write_oops(buffer->oop_recorder())) {
-    if (lookup_failed() && !failed()) {
-      // Skip this method and reposition file
-      set_write_position(entry_position);
-    }
-    return nullptr;
-  }
-  if (!write_metadata(buffer->oop_recorder())) {
-    if (lookup_failed() && !failed()) {
-      // Skip this method and reposition file
-      set_write_position(entry_position);
-    }
-    return nullptr;
-  }
-
-  // Write Debug info
-  if (!write_debug_info(recorder)) {
-    return nullptr;
-  }
-  // Write Dependencies
-  int dependencies_size = (int)dependencies->size_in_bytes();
-  n = write_bytes(&dependencies_size, sizeof(int));
-  if (n != sizeof(int)) {
-    return nullptr;
-  }
-  if (!align_write()) {
-    return nullptr;
-  }
-  n = write_bytes(dependencies->content_bytes(), dependencies_size);
-  if (n != (uint)dependencies_size) {
-    return nullptr;
-  }
-
-  // Write oop maps
-  if (!write_oop_maps(oop_maps)) {
-    return nullptr;
-  }
-
-  // Write exception handles
-  int exc_table_length = handler_table->length();
-  n = write_bytes(&exc_table_length, sizeof(int));
-  if (n != sizeof(int)) {
-    return nullptr;
-  }
-  uint exc_table_size = handler_table->size_in_bytes();
-  n = write_bytes(handler_table->table(), exc_table_size);
-  if (n != exc_table_size) {
-    return nullptr;
-  }
-
-  // Write null check table
-  int nul_chk_length = nul_chk_table->len();
-  n = write_bytes(&nul_chk_length, sizeof(int));
-  if (n != sizeof(int)) {
-    return nullptr;
-  }
-  uint nul_chk_size = nul_chk_table->size_in_bytes();
-  n = write_bytes(nul_chk_table->data(), nul_chk_size);
-  if (n != nul_chk_size) {
-    return nullptr;
-  }
-
-  // Write code section
-  if (!align_write()) {
-    return nullptr;
-  }
-  uint code_size = 0;
-  if (!write_code(buffer, code_size)) {
-    return nullptr;
-  }
-  // Write relocInfo array
-  uint reloc_offset = _write_position - entry_position;
-  uint reloc_size = 0;
-  if (!write_relocations(buffer, reloc_size)) {
-    if (lookup_failed() && !failed()) {
-      // Skip this method and reposition file
-      set_write_position(entry_position);
-    }
-    return nullptr;
-  }
-  uint entry_size = _write_position - entry_position;
-
-  SCCEntry* entry = new (this) SCCEntry(entry_position, entry_size, name_offset, name_size,
-                                        code_offset, code_size, reloc_offset, reloc_size,
-                                        SCCEntry::Code, hash, nullptr, (uint)comp_level, (uint)comp_id, decomp,
-                                        has_clinit_barriers, _for_preload, ignore_decompile);
-  if (method_in_cds) {
-    entry->set_method(m);
-  }
-#ifdef ASSERT
-  if (has_clinit_barriers || _for_preload) {
-    assert(for_preload, "sanity");
-    assert(entry->method() != nullptr, "sanity");
-  }
-#endif
-  {
-    ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Wrote nmethod '%s'%s to AOT Code Cache",
-                           comp_id, (int)comp_level, method->name_and_sig_as_C_string(), (_for_preload ? " (for preload)" : ""));
-  }
-  if (VerifyCachedCode) {
-    return nullptr;
-  }
-  return entry;
-}
-
-SCCEntry* SCCache::store_nmethod_v1(nmethod* nm, AbstractCompiler* compiler, bool for_preload) {
+SCCEntry* SCCache::store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) {
   if (!CDSConfig::is_dumping_cached_code()) {
     return nullptr; // The metadata and heap in the CDS image haven't been finalized yet.
   }
@@ -3796,7 +3348,7 @@ SCCEntry* SCCache::store_nmethod_v1(nmethod* nm, AbstractCompiler* compiler, boo
     return nullptr; // Cache file is closed
   }
   SCCEntry* entry = nullptr;
-  entry = cache->write_nmethod_v1(nm, for_preload);
+  entry = cache->write_nmethod(nm, for_preload);
   if (entry == nullptr) {
     log_info(scc, nmethod)("%d (L%d): nmethod store attempt failed", nm->compile_id(), comp_level);
   }
@@ -3842,7 +3394,7 @@ bool SCCache::write_oop_map_set(nmethod* nm) {
   return true;
 }
 
-SCCEntry* SCCache::write_nmethod_v1(nmethod* nm, bool for_preload) {
+SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   assert(!nm->has_clinit_barriers() || _gen_preload_code, "sanity");
   uint comp_id = nm->compile_id();
   uint comp_level = nm->comp_level();

@@ -1258,7 +1258,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
                                    GrowableArray<Metadata*>& reloc_imm_metadata_list,
                                    SCCReader* scc_reader)
 {
-  archived_nm->copy_to((address)nm);
+  archived_nm->copy_to((address)this);
   set_name("nmethod");
   set_method(method());
   set_oop_maps(oop_maps);
@@ -1269,7 +1269,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   scc_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
 
   // Create cache after PcDesc data is copied - it will be used to initialize cache
-  _pc_desc_container = new PcDescContainer(nm->scopes_pcs_begin());
+  _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
 
   set_scc_entry(scc_reader->scc_entry());
 
@@ -3084,8 +3084,8 @@ void nmethod::verify() {
   }
 
   // Verification can triggered during shutdown after SCCache is closed.
-  // If the Scopes data is in the SCCache, then we should avoid verification during shutdown.
-  if (!UseNewCode || (!is_scc() || SCCache::is_on())) {
+  // If the Scopes data is in the AOT code cache, then we should avoid verification during shutdown.
+  if (!is_scc() || SCCache::is_on()) {
     for (PcDesc* p = scopes_pcs_begin(); p < scopes_pcs_end(); p++) {
       if (! p->verify(this)) {
         tty->print_cr("\t\tin nmethod at " INTPTR_FORMAT " (pcs)", p2i(this));

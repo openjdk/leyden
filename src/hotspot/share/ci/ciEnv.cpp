@@ -985,11 +985,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
   // We require method counters to store some method state (max compilation levels) required by the compilation policy.
   if (!preload && method->get_method_counters(thread) == nullptr) {
     record_failure("can't create method counters");
-    if (scc_entry == nullptr || !UseNewCode) {
-      // All buffers in the CodeBuffer are allocated in the CodeCache.
-      // If the code buffer is created on each compile attempt
-      // as in C2, then it must be freed.
-      // But keep shared code.
+    if (code_buffer != nullptr) {
       code_buffer->free_blob();
     }
     return false;
@@ -1000,9 +996,6 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
     //  - SCCache is closed, SCC entry is garbage.
     //  - SCC entry indicates this shared code was marked invalid while it was loaded.
     if (!SCCache::is_on() || scc_entry->not_entrant()) {
-      if (!UseNewCode) {
-	code_buffer->free_blob();
-      }
       return false;
     }
   }
@@ -1051,10 +1044,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
       mdo->inc_decompile_count();
     }
 
-    if (scc_entry == nullptr && !UseNewCode) {
-      // All buffers in the CodeBuffer are allocated in the CodeCache.
-      // If the code buffer is created on each compile attempt
-      // as in C2, then it must be freed.
+    if (code_buffer != nullptr) {
       code_buffer->free_blob();
     }
     return false;
@@ -1232,36 +1222,6 @@ void ciEnv::register_method(ciMethod* target,
     assert(offsets->value(CodeOffsets::Deopt) != -1, "must have deopt entry");
     assert(offsets->value(CodeOffsets::Exceptions) != -1, "must have exception entry");
 
-    if (scc_entry == nullptr && !UseNewCode) {
-      scc_entry = SCCache::store_nmethod(method,
-                             compile_id(),
-                             entry_bci,
-                             offsets,
-                             orig_pc_offset,
-                             debug_info(), dependencies(), code_buffer,
-                             frame_words, oop_map_set,
-                             handler_table, inc_table,
-                             compiler,
-                             CompLevel(task()->comp_level()),
-                             has_clinit_barriers,
-                             for_preload,
-                             has_unsafe_access,
-                             has_wide_vectors,
-                             has_monitors,
-                             has_scoped_access);
-      if (scc_entry != nullptr) {
-        scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());
-        if (has_clinit_barriers) {
-          set_scc_clinit_barriers_entry(scc_entry); // Record it
-          // Build second version of code without class initialization barriers
-          code_buffer->free_blob();
-          return;
-        } else if (!for_preload) {
-          SCCEntry* previous_entry = scc_clinit_barriers_entry();
-          scc_entry->set_next(previous_entry); // Link it for case of deoptimization
-        }
-      }
-    }
     if (install_code) {
       nm =  nmethod::new_nmethod(method,
                                  compile_id(),
@@ -1286,10 +1246,10 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
-      if (scc_entry == nullptr && UseNewCode) {
-	scc_entry = SCCache::store_nmethod_v1(nm,
-                                              compiler,
-                                              for_preload);
+      if (scc_entry == nullptr) {
+	scc_entry = SCCache::store_nmethod(nm,
+                                           compiler,
+                                           for_preload);
 	if (scc_entry != nullptr) {
 	  scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());
 	  if (has_clinit_barriers) {

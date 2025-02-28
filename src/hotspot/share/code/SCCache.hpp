@@ -377,7 +377,6 @@ public:
 
   // convenience method to convert offset in SCCEntry data to its address
   const char* addr_of_entry_offset(uint offset_in_entry) const { return addr(_entry->offset() + offset_in_entry); }
-  bool compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler);
   bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
   bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
@@ -456,28 +455,7 @@ private:
 
   address reserve_bytes(uint nbytes);
 
-  SCCEntry* write_nmethod(const methodHandle& method,
-                          int compile_id,
-                          int entry_bci,
-                          CodeOffsets* offsets,
-                          int orig_pc_offset,
-                          DebugInformationRecorder* recorder,
-                          Dependencies* dependencies,
-                          CodeBuffer *code_buffer,
-                          int frame_size,
-                          OopMapSet* oop_maps,
-                          ExceptionHandlerTable* handler_table,
-                          ImplicitExceptionTable* nul_chk_table,
-                          AbstractCompiler* compiler,
-                          CompLevel comp_level,
-                          bool has_clinit_barriers,
-                          bool for_preload,
-                          bool has_unsafe_access,
-                          bool has_wide_vectors,
-                          bool has_monitors,
-                          bool has_scoped_access);
-
-  SCCEntry* write_nmethod_v1(nmethod* nm, bool for_preload);
+  SCCEntry* write_nmethod(nmethod* nm, bool for_preload);
 
   // States:
   //   S >= 0: allow new readers, S readers are currently active
@@ -582,29 +560,7 @@ public:
   static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
-
-  static SCCEntry* store_nmethod(const methodHandle& method,
-                     int compile_id,
-                     int entry_bci,
-                     CodeOffsets* offsets,
-                     int orig_pc_offset,
-                     DebugInformationRecorder* recorder,
-                     Dependencies* dependencies,
-                     CodeBuffer *code_buffer,
-                     int frame_size,
-                     OopMapSet* oop_maps,
-                     ExceptionHandlerTable* handler_table,
-                     ImplicitExceptionTable* nul_chk_table,
-                     AbstractCompiler* compiler,
-                     CompLevel comp_level,
-                     bool has_clinit_barriers,
-                     bool for_preload,
-                     bool has_unsafe_access,
-                     bool has_wide_vectors,
-                     bool has_monitors,
-                     bool has_scoped_access) NOT_CDS_RETURN_(nullptr);
-
-  static SCCEntry* store_nmethod_v1(nmethod* nm, AbstractCompiler* compiler, bool for_preload);
+  static SCCEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload);
 
   static uint store_entries_cnt() {
     if (is_on_for_write()) {
