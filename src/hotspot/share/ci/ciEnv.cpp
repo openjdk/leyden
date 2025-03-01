@@ -1247,9 +1247,7 @@ void ciEnv::register_method(ciMethod* target,
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
       if (scc_entry == nullptr) {
-	scc_entry = SCCache::store_nmethod(nm,
-                                           compiler,
-                                           for_preload);
+	scc_entry = SCCache::store_nmethod(nm, compiler, for_preload);
 	if (scc_entry != nullptr) {
 	  scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());
 	  if (has_clinit_barriers) {
