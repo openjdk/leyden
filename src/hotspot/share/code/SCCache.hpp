@@ -26,6 +26,10 @@
 #define SHARE_CODE_SCCACHE_HPP
 
 #include "compiler/compilerDefinitions.hpp"
+#include "memory/allocation.hpp"
+#include "nmt/memTag.hpp"
+#include "oops/oopsHierarchy.hpp"
+#include "utilities/exceptions.hpp"
 
 /*
  * Startup Code Cache (SCC) collects compiled code and metadata during
@@ -47,10 +51,16 @@ class DebugInformationRecorder;
 class Dependencies;
 class ExceptionTable;
 class ExceptionHandlerTable;
+template<typename E>
+class GrowableArray;
+class ImmutableOopMapSet;
 class ImplicitExceptionTable;
 class JavaThread;
+class Klass;
 class methodHandle;
+class Metadata;
 class Method;
+class nmethod;
 class OopMapSet;
 class OopRecorder;
 class outputStream;
@@ -376,7 +386,6 @@ public:
   SCCEntry* scc_entry() { return (SCCEntry*)_entry; }
 
   // convenience method to convert offset in SCCEntry data to its address
-  const char* addr_of_entry_offset(uint offset_in_entry) const { return addr(_entry->offset() + offset_in_entry); }
   bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
   bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
@@ -397,7 +406,7 @@ public:
   bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
 
   bool read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
-  void apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list);
+  void apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list) NOT_CDS_RETURN;
 
   ImmutableOopMapSet* read_oop_map_set();
 
@@ -484,9 +493,9 @@ public:
   bool failed() const { return _failed; }
   void set_failed()   { _failed = true; }
 
-  static uint max_aot_code_size();
   static void copy_bytes(const char* from, address to, uint size);
-  static bool is_address_in_aot_cache(address p);
+  static bool is_address_in_aot_cache(address p) NOT_CDS_RETURN_(false);
+  static uint max_aot_code_size();
 
   uint load_size() const { return _load_size; }
   uint write_position() const { return _write_position; }
@@ -560,7 +569,7 @@ public:
   static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
-  static SCCEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload);
+  static SCCEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
 
   static uint store_entries_cnt() {
     if (is_on_for_write()) {
