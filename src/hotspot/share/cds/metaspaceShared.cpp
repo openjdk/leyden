@@ -788,6 +788,7 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
 
 void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
   AOTClassLinker::initialize();
+  AOTClassInitializer::init_test_class(CHECK);
 
   if (!jcmd_request && !CDSConfig::is_dumping_dynamic_archive()
       && !CDSConfig::is_dumping_preimage_static_archive()   // FIXME -- remove this for Leyden??

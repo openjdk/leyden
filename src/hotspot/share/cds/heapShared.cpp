@@ -988,8 +988,11 @@ void KlassSubGraphInfo::add_subgraph_object_klass(Klass* orig_k) {
 #ifdef ASSERT
     InstanceKlass* ik = InstanceKlass::cast(orig_k);
     if (CDSConfig::is_dumping_invokedynamic()) {
+      // -XX:AOTInitTestClass must be used carefully in regression tests to
+      // include only classes that are safe to aot-initialize.
       assert(ik->class_loader() == nullptr ||
-             HeapShared::is_lambda_proxy_klass(ik),
+             HeapShared::is_lambda_proxy_klass(ik) ||
+             AOTClassInitializer::has_test_class(),
             "we can archive only instances of boot classes or lambda proxy classes");
     } else {
       assert(ik->class_loader() == nullptr, "must be boot class");
