@@ -125,6 +125,7 @@ public class JmodTask {
     private static final Path CWD = Paths.get("");
 
     private Options options;
+    private boolean withStaticLibs = false;
     private PrintWriter out = new PrintWriter(System.out, true);
     void setLog(PrintWriter out, PrintWriter err) {
         this.out = out;
@@ -155,6 +156,7 @@ public class JmodTask {
         List<Path> cmds;
         List<Path> configs;
         List<Path> libs;
+        List<Path> staticLibs;
         List<Path> headerFiles;
         List<Path> manPages;
         List<Path> legalNotices;;
@@ -440,7 +442,7 @@ public class JmodTask {
         Path target = options.jmodFile;
         Path tempTarget = jmodTempFilePath(target);
         try {
-            try (JmodOutputStream jos = JmodOutputStream.newOutputStream(tempTarget, options.date, options.compressLevel)) {
+            try (JmodOutputStream jos = JmodOutputStream.newOutputStream(tempTarget, options.date, options.compressLevel, withStaticLibs)) {
                 jmod.write(jos);
             }
             Files.move(tempTarget, target);
@@ -465,6 +467,7 @@ public class JmodTask {
     private class JmodFileWriter {
         final List<Path> cmds = options.cmds;
         final List<Path> libs = options.libs;
+        final List<Path> staticLibs = options.staticLibs;
         final List<Path> configs = options.configs;
         final List<Path> classpath = options.classpath;
         final List<Path> headerFiles = options.headerFiles;
@@ -495,6 +498,7 @@ public class JmodTask {
             processSection(out, Section.MAN_PAGES, manPages);
             processSection(out, Section.NATIVE_CMDS, cmds);
             processSection(out, Section.NATIVE_LIBS, libs);
+            processSection(out, Section.STATIC_LIBS, staticLibs);
 
         }
 
@@ -1026,7 +1030,7 @@ public class JmodTask {
         {
 
             try (JmodFile jf = new JmodFile(target);
-                 JmodOutputStream jos = JmodOutputStream.newOutputStream(tempTarget, options.date, options.compressLevel))
+                 JmodOutputStream jos = JmodOutputStream.newOutputStream(tempTarget, options.date, options.compressLevel, withStaticLibs))
             {
                 jf.stream().forEach(e -> {
                     try (InputStream in = jf.getInputStream(e.section(), e.name())) {
@@ -1399,6 +1403,11 @@ public class JmodTask {
                         .withRequiredArg()
                         .withValuesConvertedBy(DirPathConverter.INSTANCE);
 
+        OptionSpec<List<Path>> staticLibs
+                = parser.accepts("static-libs", getMessage("main.opt.static-libs"))
+                        .withRequiredArg()
+                        .withValuesConvertedBy(DirPathConverter.INSTANCE);
+
         OptionSpec<List<Path>> legalNotices
                 = parser.accepts("legal-notices", getMessage("main.opt.legal-notices"))
                         .withRequiredArg()
@@ -1490,6 +1499,10 @@ public class JmodTask {
                 options.excludes = opts.valuesOf(excludes);  // excludes is repeatable
             if (opts.has(libs))
                 options.libs = getLastElement(opts.valuesOf(libs));
+            if (opts.has(staticLibs)) {
+                options.staticLibs = getLastElement(opts.valuesOf(staticLibs));
+                withStaticLibs = !options.staticLibs.isEmpty();
+            }
             if (opts.has(headerFiles))
                 options.headerFiles = getLastElement(opts.valuesOf(headerFiles));
             if (opts.has(manPages))
