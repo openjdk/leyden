@@ -2891,7 +2891,7 @@ jint Arguments::parse_each_vm_init_arg(const JavaVMInitArgs* args, JVMFlagOrigin
       } else {
         log_info(hermetic)(
           "Use hermetic JDK from %s, hermetic packaged modules image starts at: "
-          PTR_FORMAT ", size: %zu",
+          "%llu, size: %zu",
           _hermetic_jdk_image_path,
           _hermetic_jdk_jimage_offset,
           _hermetic_jdk_jimage_size);
