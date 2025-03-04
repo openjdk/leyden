@@ -311,7 +311,16 @@ void MetaspaceShared::initialize_for_static_dump() {
 
   if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
     if (!((UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC || UseShenandoahGC) && UseCompressedClassPointers)) {
-      vm_exit_during_initialization("Cannot create the CacheDataStore",
+      const char* error;
+      if (CDSConfig::is_leyden_workflow()) {
+        error = "Cannot create the CacheDataStore";
+      } else if (CDSConfig::is_dumping_preimage_static_archive()) {
+        error = "Cannot create the AOT configuration file";
+      } else {
+        error = "Cannot create the AOT cache";
+      }
+
+      vm_exit_during_initialization(error,
                                     "UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah");
     }
   }
