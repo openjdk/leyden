@@ -442,7 +442,7 @@ public class JmodTest {
                 }
             });
 
-        assertMagic(jmod, 0);
+        assertMagic(jmod, 1, 0);
     }
 
     @Test
@@ -466,7 +466,7 @@ public class JmodTest {
                 }
             });
 
-        assertMagic(jmod, 1);
+        assertMagic(jmod, 1, 1);
     }
 
     @Test
@@ -956,7 +956,7 @@ public class JmodTest {
         }
     }
 
-    static void assertMagic(Path file, int minorVersion) throws IOException {
+    static void assertMagic(Path file, int majorVersion, int minorVersion) throws IOException {
         try (InputStream in = Files.newInputStream(file)) {
             // validate the header
             byte[] magic = in.readNBytes(4);
@@ -965,7 +965,7 @@ public class JmodTest {
             }
             assertEquals(magic[0], 0x4A); // J
             assertEquals(magic[1], 0x4D); // M
-            assertEquals(magic[2], 0x01);
+            assertEquals(magic[2], majorVersion);
             assertEquals(magic[3], minorVersion);
         }
     }
