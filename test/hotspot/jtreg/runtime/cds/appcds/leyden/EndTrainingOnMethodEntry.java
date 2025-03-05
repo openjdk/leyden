@@ -27,7 +27,7 @@
  * @requires vm.cds.write.archived.java.heap
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build EndTrainingOnMethodEntry
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldNotBeCached
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
  * @run driver EndTrainingOnMethodEntry AOT
  */
 
@@ -36,7 +36,7 @@
  * @requires vm.cds.write.archived.java.heap
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build EndTrainingOnMethodEntry
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldNotBeCached
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
  * @run driver EndTrainingOnMethodEntry LEYDEN
  */
 
@@ -67,19 +67,11 @@ public class EndTrainingOnMethodEntry {
         }
 
         public String[] vmArgs(RunMode runMode) {
-            if (runMode.isProductionRun()) {
-                return new String[] {
-                    "-Xlog:class+load",
-                };
-            } else if (useCount) {
-                return new String[] {
-                    "-XX:AOTEndTrainingOnMethodEntry=MyTestApp.stopTrainingOnMeWithCount,count=" + MyTestApp.MAX,
-                };
-            } else {
-                return new String[] {
-                    "-XX:AOTEndTrainingOnMethodEntry=MyTestApp.stopTrainingOnMe",
-                };
-            }
+            String stop = useCount ? ("stopTrainingOnMeWithCount,count=" + MyTestApp.COUNT) : "stopTrainingOnMe";
+            return new String[] {
+                "-Xlog:cds+class=debug",
+                "-XX:AOTEndTrainingOnMethodEntry=MyTestApp." + stop,
+            };
         }
 
         @Override
@@ -94,22 +86,24 @@ public class EndTrainingOnMethodEntry {
             if (runMode.isApplicationExecuted()) {
                 out.shouldContain("Hello Leyden " + runMode.name());
             }
-            if (runMode.isProductionRun()) {
-                out.shouldMatch("class,load.* ShouldNotBeCached source: .*app.jar");
+            if (isDumping(runMode)) {
+                out.shouldMatch("cds,class.* ShouldBeCached");
+                out.shouldNotMatch("cds,class.* ShouldNotBeCached");
             }
         }
     }
 }
 
 class MyTestApp {
-    public static final int MAX = 10; // FIXME (JDK-8351100): debug build crashes with MAX = 10000;
+    public static final int COUNT = 10; // FIXME (JDK-8351100): debug build crashes with COUNT = 10000;
     public static void main(String args[]) {
-        System.out.println("Hello Leyden " + args[0]);
+        System.out.println("Hello Leyden " + args[0] + ", useCount = " + args[1]);
         if (args[1].equals("true")) {
-            for (int i = 0; i < MAX + 10; i++) {
+            for (int i = 0; i < COUNT + 10; i++) {
                 stopTrainingOnMeWithCount(i);
             }
         } else {
+            ShouldBeCached.dummy();
             stopTrainingOnMe();
         }
     }
@@ -122,7 +116,11 @@ class MyTestApp {
     }
 
     static void stopTrainingOnMeWithCount(int i) {
-        if (i >= MAX) {
+        if (i >= COUNT - 2) {
+            System.out.println("COUNT = " + COUNT + ", i = " + i);
+            ShouldBeCached.dummy();
+        }
+        if (i >= COUNT) {
             // The AOT configuration file should have been recorded before this block is entered,
             // so the ShouldNotBeCached class should not be recorded in the config.
             ShouldNotBeCached.dummy();
@@ -130,6 +128,14 @@ class MyTestApp {
     }
 }
 
+class ShouldBeCached {
+    static void dummy() {
+        System.out.println("ShouldBeCached.dummy()");
+    }
+}
+
 class ShouldNotBeCached {
-    static void dummy() {}
+    static void dummy() {
+        System.out.println("ShouldNotBeCached.dummy()");
+    }
 }
