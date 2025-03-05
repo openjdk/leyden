@@ -146,10 +146,6 @@
           "(** internal use only **) -- if false, automatically launch a "  \
           "child process to create the final image.")                       \
                                                                             \
-  product(bool, PrelinkSharedClasses, true,                                 \
-          "Link all shared classes for the boot/platform/app loaders "      \
-          "immediately at VM start-up")                                     \
-                                                                            \
   product(bool, ArchiveDynamicProxies, false,                               \
           "Archive classes generated for java/lang/reflect/Proxy")          \
                                                                             \
@@ -165,12 +161,6 @@
                                                                             \
   product(bool, ArchiveReflectionData, false,                               \
           "Archive Class::reflectionData field")                            \
-                                                                            \
-  product(bool, TempDisableAddJVMCIModule, false,                           \
-          "Do not add jdk.internal.vm.ci module even for -XX:+EnableJVMCI") \
-                                                                            \
-  product(bool, UsePermanentHeapObjects, false, DIAGNOSTIC,                 \
-          "Allow AOT code to access permanent archived heap objects")       \
                                                                             \
   product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
           "Verify archived training data")                                  \

@@ -981,7 +981,6 @@ void ArchiveBuilder::serialize_dynamic_archivable_items(SerializeClosure* soc) {
   SystemDictionaryShared::serialize_dictionary_headers(soc, false);
   DynamicArchive::serialize_array_klasses(soc);
   AOTLinkedClassBulkLoader::serialize(soc, false);
-  TrainingData::serialize_training_data(soc);
 }
 
 uintx ArchiveBuilder::buffer_to_offset(address p) const {

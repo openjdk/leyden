@@ -154,7 +154,6 @@ public:
       cl_config = AOTClassLocationConfig::dumptime()->write_to_archive();
       DynamicArchive::dump_array_klasses();
       AOTClassLinker::write_to_archive();
-      TrainingData::dump_training_data();
 
       serialized_data = ro_region()->top();
       WriteClosure wc(ro_region());
@@ -163,9 +162,6 @@ public:
 
     log_info(cds)("Adjust lambda proxy class dictionary");
     SystemDictionaryShared::adjust_lambda_proxy_class_dictionary();
-
-    log_info(cds)("Make training data shareable");
-    make_training_data_shareable();
 
     relocate_to_requested();
 
@@ -182,7 +178,6 @@ public:
   virtual void iterate_roots(MetaspaceClosure* it) {
     AOTArtifactFinder::all_cached_classes_do(it);
     SystemDictionaryShared::dumptime_classes_do(it);
-    TrainingData::iterate_roots(it);
     iterate_primitive_array_klasses(it);
   }
 
@@ -521,13 +516,9 @@ void DynamicArchive::dump_at_exit(JavaThread* current, const char* archive_name)
 
   MetaspaceShared::link_shared_classes(false/*not from jcmd*/, THREAD);
   if (!HAS_PENDING_EXCEPTION) {
-    // copy shared path table to saved.
-    TrainingData::init_dumptime_table(THREAD); // captures TrainingDataSetLocker
-    if (!HAS_PENDING_EXCEPTION) {
-      VM_PopulateDynamicDumpSharedSpace op(archive_name);
-      VMThread::execute(&op);
-      return;
-    }
+    VM_PopulateDynamicDumpSharedSpace op(archive_name);
+    VMThread::execute(&op);
+    return;
   }
 
   // One of the prepatory steps failed
@@ -547,7 +538,6 @@ void DynamicArchive::dump_for_jcmd(const char* archive_name, TRAPS) {
   assert(CDSConfig::is_dumping_dynamic_archive(), "already checked by check_for_dynamic_dump() during VM startup");
   MetaspaceShared::link_shared_classes(true/*from jcmd*/, CHECK);
   // copy shared path table to saved.
-  TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
   VM_PopulateDynamicDumpSharedSpace op(archive_name);
   VMThread::execute(&op);
 }

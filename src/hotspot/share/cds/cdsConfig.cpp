@@ -85,7 +85,7 @@ void CDSConfig::initialize() {
     // TODO: in the future, if we want to support re-training on top of an existing AOT cache, this
     // needs to be changed.
     if (RequireSharedSpaces) {
-      if (is_leyden_workflow()) {
+      if (is_experimental_leyden_workflow()) {
         log_info(cds)("-Xshare:on flag is ignored when creating a CacheDataStore");
       } else {
         // -Xshare and -XX:AOTMode flags are mutually exclusive:
@@ -516,136 +516,15 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
   }
 
   if (CacheDataStore != nullptr) {
-    // Leyden temp work-around:
-    //
-    // By default, when using CacheDataStore, use the HeapBasedNarrowOop mode so that
-    // AOT code can be always work regardless of runtime heap range.
-    //
-    // If you are *absolutely sure* that the CompressedOops::mode() will be the same
-    // between training and production runs (e.g., if you specify -Xmx128m
-    // for both training and production runs, and you know the OS will always reserve
-    // the heap under 4GB), you can explicitly disable this with:
-    //     java -XX:-UseCompatibleCompressedOops -XX:CacheDataStore=...
-    // However, this is risky and there's a chance that the production run will be slower
-    // because it is unable to load the AOT code cache.
-#ifdef _LP64
-    // FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true); // FIXME @iklam - merge with mainline - UseCompatibleCompressedOops
-#endif
-
-    if (FLAG_IS_DEFAULT(AOTClassLinking)) {
-      FLAG_SET_ERGO(AOTClassLinking, true);
-    }
-
-    if (SharedArchiveFile != nullptr) {
-      vm_exit_during_initialization("CacheDataStore and SharedArchiveFile cannot be both specified");
-    }
-    if (!AOTClassLinking) {
-      vm_exit_during_initialization("CacheDataStore requires AOTClassLinking");
-    }
-
-    if (CDSPreimage == nullptr) {
-      if (os::file_exists(CacheDataStore) /* && TODO: Need to check if CDS file is valid*/) {
-        // The CacheDataStore is already up to date. Use it. Also turn on cached code by default.
-        SharedArchiveFile = CacheDataStore;
-        FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
-        FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
-
-        // Leyden temp: make sure the user knows if CDS archive somehow fails to load.
-        if (UseSharedSpaces && !xshare_auto_cmd_line) {
-          log_info(cds)("Enabled -Xshare:on by default for troubleshooting Leyden prototype");
-          RequireSharedSpaces = true;
-        }
-      } else {
-        // The preimage dumping phase -- run the app and write the preimage file
-        size_t len = strlen(CacheDataStore) + 10;
-        char* preimage = AllocateHeap(len, mtArguments);
-        jio_snprintf(preimage, len, "%s.preimage", CacheDataStore);
-
-        UseSharedSpaces = false;
-        enable_dumping_static_archive();
-        SharedArchiveFile = preimage;
-        log_info(cds)("CacheDataStore needs to be updated. Writing %s file", SharedArchiveFile);
-
-        // At VM exit, the module graph may be contaminated with program states. We should rebuild the
-        // module graph when dumping the CDS final image.
-        log_info(cds)("full module graph: disabled when writing CDS preimage");
-        disable_heap_dumping();
-        stop_dumping_full_module_graph();
-        FLAG_SET_ERGO(ArchivePackages, false);
-        FLAG_SET_ERGO(ArchiveProtectionDomains, false);
-        FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
-        _is_dumping_static_archive = true;
-        _is_dumping_preimage_static_archive = true;
-      }
-    } else {
-      // The final image dumping phase -- load the preimage and write the final image file
-      SharedArchiveFile = CDSPreimage;
-      UseSharedSpaces = true;
-      log_info(cds)("Generate CacheDataStore %s from CDSPreimage %s", CacheDataStore, CDSPreimage);
-      // Force -Xbatch for AOT compilation.
-      if (FLAG_SET_CMDLINE(BackgroundCompilation, false) != JVMFlag::SUCCESS) {
-        return false;
-      }
-      RecordTraining = false; // This will be updated inside MetaspaceShared::preload_and_dump()
-
-      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
-      // Settings for AOT
-      FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
-      if (StoreCachedCode) {
-        // Cannot dump cached code until metadata and heap are dumped.
-        disable_dumping_cached_code();
-      }
-      _is_dumping_static_archive = true;
-      _is_dumping_final_static_archive = true;
+    if (!setup_experimental_leyden_workflow(xshare_auto_cmd_line)) {
+      return false;
     }
   } else {
-    bool can_dump_profile_and_compiled_code = AOTClassLinking && new_aot_flags_used();
-
-    if (is_dumping_preimage_static_archive() && can_dump_profile_and_compiled_code) {
-      // AOT workflow -- training
-      FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
-      FLAG_SET_ERGO(ReplayTraining, false);
-      FLAG_SET_ERGO(StoreCachedCode, false);
-      FLAG_SET_ERGO(LoadCachedCode, false);
-    } else if (is_dumping_final_static_archive() && can_dump_profile_and_compiled_code) {
-      // AOT workflow -- assembly
-      FLAG_SET_ERGO(RecordTraining, false); // This will be updated inside MetaspaceShared::preload_and_dump()
-      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
-      FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
-      FLAG_SET_ERGO(LoadCachedCode, false);
-      disable_dumping_cached_code(); // Cannot dump cached code until metadata and heap are dumped.
-    } else if (is_using_archive() && new_aot_flags_used()) {
-      // AOT workflow -- production
-      FLAG_SET_ERGO(RecordTraining, false);
-      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
-      FLAG_SET_ERGO(StoreCachedCode, false);
-      FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
-
-      if (UseSharedSpaces && FLAG_IS_DEFAULT(AOTMode)) {
-        log_info(cds)("Enabled -XX:AOTMode=on by default for troubleshooting Leyden prototype");
-        RequireSharedSpaces = true;
-      }
-    } else {
-      FLAG_SET_ERGO(ReplayTraining, false);
-      FLAG_SET_ERGO(RecordTraining, false);
-      FLAG_SET_ERGO(StoreCachedCode, false);
-      FLAG_SET_ERGO(LoadCachedCode, false);
-    }
-
     if (CDSPreimage != nullptr) {
       vm_exit_during_initialization("CDSPreimage must be specified only when CacheDataStore is specified");
     }
-  }
 
-  if (FLAG_IS_DEFAULT(UsePermanentHeapObjects)) {
-    if (StoreCachedCode || AOTClassLinking) {
-      FLAG_SET_ERGO(UsePermanentHeapObjects, true);
-    }
-  }
-
-  if (LoadCachedCode) {
-    // This must be true. Cached code is hard-wired to use permanent objects.
-    UsePermanentHeapObjects = true;
+    setup_compiler_args();
   }
 
   if (AOTClassLinking) {
@@ -750,12 +629,137 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
         log_warning(cds)("optimized module handling/full module graph: disabled due to incompatible property: %s=%s",
                          bad_module_prop_key, bad_module_prop_value);
       }
-      if (is_leyden_workflow()) {
+      if (is_experimental_leyden_workflow()) {
         vm_exit_during_initialization("CacheDataStore cannot be created because AOTClassLinking is enabled but full module graph is disabled");
       } else {
         vm_exit_during_initialization("AOT cache cannot be created because AOTClassLinking is enabled but full module graph is disabled");
       }
     }
+  }
+
+  return true;
+}
+
+void CDSConfig::setup_compiler_args() {
+  // AOT profiles and AOT-compiled methods are supported only in the JEP 483 workflow.
+  bool can_dump_profile_and_compiled_code = AOTClassLinking && new_aot_flags_used();
+
+  if (is_dumping_preimage_static_archive() && can_dump_profile_and_compiled_code) {
+    // JEP 483 workflow -- training
+    FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+    FLAG_SET_ERGO(ReplayTraining, false);
+    FLAG_SET_ERGO(StoreCachedCode, false);
+    FLAG_SET_ERGO(LoadCachedCode, false);
+  } else if (is_dumping_final_static_archive() && can_dump_profile_and_compiled_code) {
+    // JEP 483 workflow -- assembly
+    FLAG_SET_ERGO(RecordTraining, false); // This will be updated inside MetaspaceShared::preload_and_dump()
+    FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+    FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
+    FLAG_SET_ERGO(LoadCachedCode, false);
+    disable_dumping_cached_code(); // Cannot dump cached code until metadata and heap are dumped.
+  } else if (is_using_archive() && new_aot_flags_used()) {
+    // JEP 483 workflow -- production
+    FLAG_SET_ERGO(RecordTraining, false);
+    FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+    FLAG_SET_ERGO(StoreCachedCode, false);
+    FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
+
+    if (UseSharedSpaces && FLAG_IS_DEFAULT(AOTMode)) {
+      log_info(cds)("Enabled -XX:AOTMode=on by default for troubleshooting Leyden prototype");
+      RequireSharedSpaces = true;
+    }
+  } else {
+    FLAG_SET_ERGO(ReplayTraining, false);
+    FLAG_SET_ERGO(RecordTraining, false);
+    FLAG_SET_ERGO(StoreCachedCode, false);
+    FLAG_SET_ERGO(LoadCachedCode, false);
+  }
+}
+
+// Ergo set-up of various flags used by the experimental workflow that uses -XX:CacheDataStore. This workflow
+// is deprecated and will be removed from Leyden.
+bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
+  // Leyden temp work-around:
+  //
+  // By default, when using CacheDataStore, use the HeapBasedNarrowOop mode so that
+  // AOT code can be always work regardless of runtime heap range.
+  //
+  // If you are *absolutely sure* that the CompressedOops::mode() will be the same
+  // between training and production runs (e.g., if you specify -Xmx128m
+  // for both training and production runs, and you know the OS will always reserve
+  // the heap under 4GB), you can explicitly disable this with:
+  //     java -XX:-UseCompatibleCompressedOops -XX:CacheDataStore=...
+  // However, this is risky and there's a chance that the production run will be slower
+  // because it is unable to load the AOT code cache.
+#ifdef _LP64
+  // FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true); // FIXME @iklam - merge with mainline - UseCompatibleCompressedOops
+#endif
+
+  if (FLAG_IS_DEFAULT(AOTClassLinking)) {
+    FLAG_SET_ERGO(AOTClassLinking, true);
+  }
+
+  if (SharedArchiveFile != nullptr) {
+    vm_exit_during_initialization("CacheDataStore and SharedArchiveFile cannot be both specified");
+  }
+  if (!AOTClassLinking) {
+    vm_exit_during_initialization("CacheDataStore requires AOTClassLinking");
+  }
+
+  if (CDSPreimage == nullptr) {
+    if (os::file_exists(CacheDataStore) /* && TODO: Need to check if CDS file is valid*/) {
+      // The CacheDataStore is already up to date. Use it. Also turn on cached code by default.
+      SharedArchiveFile = CacheDataStore;
+      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+      FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
+
+      // Leyden temp: make sure the user knows if CDS archive somehow fails to load.
+      if (UseSharedSpaces && !xshare_auto_cmd_line) {
+        log_info(cds)("Enabled -Xshare:on by default for troubleshooting Leyden prototype");
+        RequireSharedSpaces = true;
+      }
+    } else {
+      // The preimage dumping phase -- run the app and write the preimage file
+      size_t len = strlen(CacheDataStore) + 10;
+      char* preimage = AllocateHeap(len, mtArguments);
+      jio_snprintf(preimage, len, "%s.preimage", CacheDataStore);
+
+      UseSharedSpaces = false;
+      enable_dumping_static_archive();
+      SharedArchiveFile = preimage;
+      log_info(cds)("CacheDataStore needs to be updated. Writing %s file", SharedArchiveFile);
+
+      // At VM exit, the module graph may be contaminated with program states. We should rebuild the
+      // module graph when dumping the CDS final image.
+      log_info(cds)("full module graph: disabled when writing CDS preimage");
+      disable_heap_dumping();
+      stop_dumping_full_module_graph();
+      FLAG_SET_ERGO(ArchivePackages, false);
+      FLAG_SET_ERGO(ArchiveProtectionDomains, false);
+      FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+      _is_dumping_static_archive = true;
+      _is_dumping_preimage_static_archive = true;
+    }
+  } else {
+    // The final image dumping phase -- load the preimage and write the final image file
+    SharedArchiveFile = CDSPreimage;
+    UseSharedSpaces = true;
+    log_info(cds)("Generate CacheDataStore %s from CDSPreimage %s", CacheDataStore, CDSPreimage);
+    // Force -Xbatch for AOT compilation.
+    if (FLAG_SET_CMDLINE(BackgroundCompilation, false) != JVMFlag::SUCCESS) {
+      return false;
+    }
+    RecordTraining = false; // This will be updated inside MetaspaceShared::preload_and_dump()
+
+    FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+    // Settings for AOT
+    FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
+    if (StoreCachedCode) {
+      // Cannot dump cached code until metadata and heap are dumped.
+      disable_dumping_cached_code();
+    }
+    _is_dumping_static_archive = true;
+    _is_dumping_final_static_archive = true;
   }
 
   return true;
@@ -1048,6 +1052,6 @@ bool CDSConfig::is_dumping_adapters() {
   return (ArchiveAdapters && is_dumping_final_static_archive());
 }
 
-bool CDSConfig::is_leyden_workflow() {
+bool CDSConfig::is_experimental_leyden_workflow() {
   return CacheDataStore != nullptr || CDSPreimage != nullptr;
 }

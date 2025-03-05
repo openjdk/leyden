@@ -932,7 +932,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     // Classic -Xshare:dump, aka "old workflow"
     MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
   } else if (CDSConfig::is_dumping_final_static_archive()) {
-    if (CDSConfig::is_leyden_workflow()) {
+    if (CDSConfig::is_experimental_leyden_workflow()) {
       // TODO: copy the verification and loader constraints from preimage to final image
       // TODO: load archived classes for custom loaders as well.
       log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);

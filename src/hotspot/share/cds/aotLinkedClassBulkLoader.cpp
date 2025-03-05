@@ -467,7 +467,8 @@ void AOTLinkedClassBulkLoader::replay_training_at_init(Array<InstanceKlass*>* cl
 
 void AOTLinkedClassBulkLoader::replay_training_at_init_for_preloaded_classes(TRAPS) {
   if (CDSConfig::is_using_aot_linked_classes() && TrainingData::have_data()) {
-    AOTLinkedClassTable* table = AOTLinkedClassTable::for_static_archive(); // not applicable for dynamic archive (?? why??)
+    // Only static archive can have training data.
+    AOTLinkedClassTable* table = AOTLinkedClassTable::for_static_archive();
     replay_training_at_init(table->boot(),     CHECK);
     replay_training_at_init(table->boot2(),    CHECK);
     replay_training_at_init(table->platform(), CHECK);

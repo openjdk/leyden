@@ -312,7 +312,7 @@ void MetaspaceShared::initialize_for_static_dump() {
   if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
     if (!((UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC || UseShenandoahGC) && UseCompressedClassPointers)) {
       const char* error;
-      if (CDSConfig::is_leyden_workflow()) {
+      if (CDSConfig::is_experimental_leyden_workflow()) {
         error = "Cannot create the CacheDataStore";
       } else if (CDSConfig::is_dumping_preimage_static_archive()) {
         error = "Cannot create the AOT configuration file";
@@ -729,7 +729,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   // Write the archive file
   const char* static_archive;
   if (CDSConfig::is_dumping_final_static_archive()) {
-    if (CDSConfig::is_leyden_workflow()) {
+    if (CDSConfig::is_experimental_leyden_workflow()) {
       static_archive = CacheDataStore;
     } else {
       static_archive = AOTCache;
@@ -1153,7 +1153,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   }
 
   bool status = write_static_archive(&builder, mapinfo, heap_info);
-  if (status && CDSConfig::is_leyden_workflow() && CDSConfig::is_dumping_preimage_static_archive()) {
+  if (status && CDSConfig::is_experimental_leyden_workflow() && CDSConfig::is_dumping_preimage_static_archive()) {
     fork_and_dump_final_static_archive();
   }
 
