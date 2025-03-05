@@ -646,7 +646,6 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables(AOTClassLocationConfig*&
     FinalImageRecipes::record_recipes();
   }
 
-  AOTLinkedClassBulkLoader::record_unregistered_classes();
   TrainingData::dump_training_data();
 
   MetaspaceShared::write_method_handle_intrinsics();

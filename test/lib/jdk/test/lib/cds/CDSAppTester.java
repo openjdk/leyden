@@ -120,6 +120,18 @@ abstract public class CDSAppTester {
         }
     }
 
+    public boolean isDumping(RunMode runMode) {
+        if (isStaticWorkflow()) {
+            return runMode == RunMode.DUMP_STATIC;
+        } else if (isDynamicWorkflow()) {
+            return runMode == RunMode.DUMP_DYNAMIC;
+        } else if (isAOTWorkflow()) {
+            return runMode == RunMode.TRAINING || runMode == RunMode.ASSEMBLY;
+        } else {
+            return runMode == RunMode.TRAINING || runMode == RunMode.TRAINING0 || runMode == RunMode.TRAINING1;
+        }
+    }
+
     public final String name() {
         return this.name;
     }
@@ -208,7 +220,9 @@ abstract public class CDSAppTester {
                                                    "-XX:AOTConfiguration=" + aotConfigurationFile,
                                                    "-cp", classpath(runMode),
                                                    logToFile(aotConfigurationFileLog,
-                                                             "class+load=debug"));
+                                                             "class+load=debug",
+                                                             "cds=debug",
+                                                             "cds+class=debug"));
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         return executeAndCheck(cmdLine, runMode, aotConfigurationFile, aotConfigurationFileLog);
     }

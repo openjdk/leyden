@@ -48,7 +48,6 @@ class AOTLinkedClassBulkLoader :  AllStatic {
   static bool _app_completed;
   static bool _all_completed;
   static bool _preloading_non_javavase_classes;
-  static Array<InstanceKlass*>* _unregistered_classes_from_preimage;
 
   static void load_classes_in_loader(JavaThread* current, AOTLinkedClassCategory class_category, oop class_loader_oop);
   static void load_classes_in_loader_impl(AOTLinkedClassCategory class_category, oop class_loader_oop, TRAPS);
@@ -61,10 +60,8 @@ class AOTLinkedClassBulkLoader :  AllStatic {
   static void replay_training_at_init(Array<InstanceKlass*>* classes, TRAPS) NOT_CDS_RETURN;
 public:
   static void serialize(SerializeClosure* soc, bool is_static_archive) NOT_CDS_RETURN;
-  static void record_unregistered_classes() NOT_CDS_RETURN;
   static void load_javabase_classes(JavaThread* current) NOT_CDS_RETURN;
   static void load_non_javabase_classes(JavaThread* current) NOT_CDS_RETURN;
-  static void load_unregistered_classes_from_preimage(JavaThread* current) NOT_CDS_RETURN;
   static void finish_loading_javabase_classes(TRAPS) NOT_CDS_RETURN;
   static void exit_on_exception(JavaThread* current);
   static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;

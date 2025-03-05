@@ -160,10 +160,6 @@ void SystemDictionary::compute_java_loaders(TRAPS) {
       assert(_java_system_loader.resolve() == system_loader, "must be");
     )
   }
-
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    AOTLinkedClassBulkLoader::load_unregistered_classes_from_preimage(THREAD);
-  }
 }
 
 oop SystemDictionary::get_system_class_loader_impl(TRAPS) {

@@ -61,36 +61,13 @@ bool AOTLinkedClassBulkLoader::_platform_completed = false;
 bool AOTLinkedClassBulkLoader::_app_completed = false;
 bool AOTLinkedClassBulkLoader::_all_completed = false;
 
-Array<InstanceKlass*>* AOTLinkedClassBulkLoader::_unregistered_classes_from_preimage = nullptr;
-
 static PerfCounter* _perf_classes_preloaded = nullptr;
 static PerfTickCounters* _perf_class_preload_counters = nullptr;
-
-void AOTLinkedClassBulkLoader::record_unregistered_classes() {
-  if (CDSConfig::is_dumping_preimage_static_archive()) {
-    GrowableArray<InstanceKlass*> unreg_classes;
-    GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
-    for (int i = 0; i < klasses->length(); i++) {
-      Klass* k = klasses->at(i);
-      if (k->is_instance_klass()) {
-        InstanceKlass* ik = InstanceKlass::cast(k);
-        if (ik->is_shared_unregistered_class()) {
-          unreg_classes.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
-        }
-      }
-    }
-    _unregistered_classes_from_preimage = ArchiveUtils::archive_array(&unreg_classes);
-  } else {
-    _unregistered_classes_from_preimage = nullptr;
-  }
-}
 
 void AOTLinkedClassBulkLoader::serialize(SerializeClosure* soc, bool is_static_archive) {
   AOTLinkedClassTable::get(is_static_archive)->serialize(soc);
 
   if (is_static_archive) {
-    soc->do_ptr((void**)&_unregistered_classes_from_preimage);
-
     if (soc->reading() && UsePerfData) {
       JavaThread* THREAD = JavaThread::current();
       NEWPERFEVENTCOUNTER(_perf_classes_preloaded, SUN_CLS, "preloadedClasses");
@@ -147,16 +124,6 @@ void AOTLinkedClassBulkLoader::load_non_javabase_classes(JavaThread* current) {
 
   _app_completed = true;
   Atomic::release_store(&_all_completed, true);
-}
-
-void AOTLinkedClassBulkLoader::load_unregistered_classes_from_preimage(JavaThread* current) {
-  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-  assert(_unregistered_classes_from_preimage != nullptr, "must be");
-  for (int i = 0; i < _unregistered_classes_from_preimage->length(); i++) {
-    InstanceKlass* ik = _unregistered_classes_from_preimage->at(i);
-    SystemDictionaryShared::init_dumptime_info(ik);
-    SystemDictionaryShared::add_unregistered_class(current, ik);
-  }
 }
 
 void AOTLinkedClassBulkLoader::load_classes_in_loader(JavaThread* current, AOTLinkedClassCategory class_category, oop class_loader_oop) {
