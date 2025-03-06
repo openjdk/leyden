@@ -861,7 +861,6 @@ void ClassLoader::load_jimage_library() {
   char path[JVM_MAXPATHLEN];
   char ebuf[1024];
   void* handle = nullptr;
-
   if (os::dll_locate_lib(path, sizeof(path), Arguments::get_dll_dir(), "jimage")) {
     handle = os::dll_load(path, ebuf, sizeof ebuf);
   }

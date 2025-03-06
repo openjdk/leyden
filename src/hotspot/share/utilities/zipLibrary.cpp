@@ -89,7 +89,6 @@ static void store_function_pointers(const char* path, bool vm_exit_on_failure) {
 
 static void load_zip_library(bool vm_exit_on_failure) {
   assert(!is_loaded(), "should not load zip library twice");
-
   char path[JVM_MAXPATHLEN];
 
   if (is_vm_statically_linked()) {

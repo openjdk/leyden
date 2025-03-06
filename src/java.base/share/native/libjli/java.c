@@ -2381,4 +2381,3 @@ JLI_ShowMessage(const char* fmt, ...)
     fprintf(stdout, "\n");
     va_end(vl);
 }
-
