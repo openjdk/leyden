@@ -1149,7 +1149,7 @@ void nmethod::record_nmethod_dependency() {
     } else {
       InstanceKlass* ik = deps.context_type();
       if (ik == nullptr) {
-	continue;  // ignore things like evol_method
+        continue;  // ignore things like evol_method
       }
       // record this nmethod as dependent on this klass
       ik->add_dependent_nmethod(this);

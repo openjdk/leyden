@@ -3229,7 +3229,7 @@ void SCCReader::apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, Gro
   while (iter.next()) {
     switch (iter.type()) {
       case relocInfo::none:
-	break;
+        break;
       case relocInfo::oop_type: {
         oop_Relocation* r = (oop_Relocation*)iter.reloc();
         if (r->oop_is_immediate()) {
