@@ -794,18 +794,8 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
 }
 
 
-void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
+void MetaspaceShared::link_shared_classes(TRAPS) {
   AOTClassLinker::initialize();
-
-  if (!jcmd_request && !CDSConfig::is_dumping_dynamic_archive()
-      && !CDSConfig::is_dumping_preimage_static_archive()   // FIXME -- remove this for Leyden??
-      && !CDSConfig::is_dumping_final_static_archive()) {
-    // If we have regenerated invoker classes in the dynamic archive,
-    // they will conflict with the resolved CONSTANT_Klass references that are stored
-    // in the static archive. This is not easy to handle. Let's disable
-    // it for dynamic archive for now.
-    LambdaFormInvokers::regenerate_holder_classes(CHECK);
-  }
 
   // Collect all loaded ClassLoaderData.
   CollectCLDClosure collect_cld(THREAD);
@@ -854,16 +844,6 @@ void MetaspaceShared::link_shared_classes(bool jcmd_request, TRAPS) {
         }
       }
     }
-  }
-
-  if (CDSConfig::is_dumping_preimage_static_archive() && RecordTraining) {
-    // Do this after all classes are verified by the above loop.
-    // Any classes loaded from here on will be automatically excluded, so
-    // there's no need to force verification or resolve CP entries.
-    RecordTraining = false;
-    SystemDictionaryShared::ignore_new_classes();
-    LambdaFormInvokers::regenerate_holder_classes(CHECK);
-    RecordTraining = true;
   }
 
   if (CDSConfig::is_dumping_final_static_archive()) {
@@ -1075,7 +1055,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   // were not explicitly specified in the classlist. E.g., if an interface implemented by class K
   // fails verification, all other interfaces that were not specified in the classlist but
   // are implemented by K are not verified.
-  link_shared_classes(false/*not from jcmd*/, CHECK);
+  link_shared_classes(CHECK);
   log_info(cds)("Rewriting and linking classes: done");
 
   if (CDSConfig::is_dumping_final_static_archive()) {
@@ -1086,6 +1066,15 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   }
 
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
+
+  if (CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
+    // Lambda form invoker regeneration may load extra classes and execute
+    // a lot of Java code. We don't want these to be included into the AOT cache.
+    // This should be done after capturing the training data table, so we won't pollute the
+    // profile.
+    SystemDictionaryShared::ignore_new_classes();
+    LambdaFormInvokers::regenerate_holder_classes(CHECK);
+  }
 
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_heap()) {

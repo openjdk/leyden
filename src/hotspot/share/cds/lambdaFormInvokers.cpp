@@ -99,21 +99,6 @@ void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
     return;
   }
 
-  if (CDSConfig::is_dumping_static_archive() && CDSConfig::is_dumping_invokedynamic()) {
-    // Work around JDK-8310831, as some methods in lambda form holder classes may not get generated.
-    log_info(cds)("Archived MethodHandles may refer to lambda form holder classes. Cannot regenerate.");
-    return;
-  }
-
-  if (CDSConfig::is_dumping_dynamic_archive() && CDSConfig::is_dumping_aot_linked_classes() &&
-      CDSConfig::is_using_aot_linked_classes()) {
-    // The base archive may have some pre-resolved CP entries that point to the lambda form holder
-    // classes in the base archive. If we generate new versions of these classes, those CP entries
-    // will be pointing to invalid classes.
-    log_info(cds)("Base archive already has aot-linked lambda form holder classes. Cannot regenerate.");
-    return;
-  }
-
   ResourceMark rm(THREAD);
 
   Symbol* cds_name  = vmSymbols::jdk_internal_misc_CDS();
@@ -226,13 +211,6 @@ void LambdaFormInvokers::regenerate_class(char* class_name, ClassFileStream& st,
 }
 
 void LambdaFormInvokers::dump_static_archive_invokers() {
-  if (CDSConfig::is_dumping_preimage_static_archive() ||
-      CDSConfig::is_dumping_final_static_archive()) {
-    // This function writes the "names" of the invokers.
-    // This is not supported in new CDS workflow for now.
-    return;
-  }
-
   if (_lambdaform_lines != nullptr && _lambdaform_lines->length() > 0) {
     int count = 0;
     int len   = _lambdaform_lines->length();
@@ -258,7 +236,7 @@ void LambdaFormInvokers::dump_static_archive_invokers() {
       }
       assert(index == count, "Should match");
     }
-    log_debug(cds)("Total LF lines stored into static archive: %d", count);
+    log_debug(cds)("Total LF lines stored into %s: %d", CDSConfig::type_of_archive_being_written(), count);
   }
 }
 
@@ -270,14 +248,20 @@ void LambdaFormInvokers::read_static_archive_invokers() {
       char* str = line->adr_at(0);
       append(str);
     }
-    log_debug(cds)("Total LF lines read from static archive: %d", _static_archive_invokers->length());
+    log_debug(cds)("Total LF lines read from %s: %d", CDSConfig::type_of_archive_being_loaded(), _static_archive_invokers->length());
   }
 }
 
 void LambdaFormInvokers::serialize(SerializeClosure* soc) {
   soc->do_ptr(&_static_archive_invokers);
   if (soc->reading() && CDSConfig::is_dumping_final_static_archive()) {
-    LambdaFormInvokers::read_static_archive_invokers();
+    if (!CDSConfig::is_dumping_aot_linked_classes()) {
+      // See CDSConfig::is_dumping_regenerated_lambdaform_invokers() -- a dynamic archive can
+      // regenerate lambda form invokers only if the base archive does not contain aot-linked classes.
+      // If so, we copy the contents of _static_archive_invokers (from the preimage) into
+      //_lambdaform_lines, which will be written as _static_archive_invokers into final static archive.
+      LambdaFormInvokers::read_static_archive_invokers();
+    }
     _static_archive_invokers = nullptr;
   }
 }

@@ -790,9 +790,16 @@ bool CDSConfig::allow_only_single_java_thread() {
 
 bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
   if (is_dumping_final_static_archive()) {
-    // Not yet supported in new workflow -- the training data may point
-    // to a method in a lambdaform holder class that was not regenerated
-    // due to JDK-8318064.
+    // No need to regenerate -- the lambda form invokers should have been regenerated
+    // in the preimage archive (if allowed)
+    return false;
+  } else if (is_dumping_dynamic_archive() && is_using_aot_linked_classes()) {
+    // The base archive has aot-linked classes that may have AOT-resolved CP references
+    // that point to the lambda form invokers in the base archive. Such pointers will
+    // be invalid if lambda form invokers are regenerated in the dynamic archive.
+    return false;
+  } else if (CDSConfig::is_dumping_invokedynamic()) {
+    // Work around JDK-8310831, as some methods in lambda form holder classes may not get generated.
     return false;
   } else {
     return is_dumping_archive();

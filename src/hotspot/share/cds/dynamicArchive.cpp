@@ -31,6 +31,7 @@
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/dynamicArchive.hpp"
+#include "cds/lambdaFormInvokers.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
@@ -494,6 +495,20 @@ void DynamicArchive::check_for_dynamic_dump() {
   }
 }
 
+void DynamicArchive::dump_impl(bool jcmd_request, const char* archive_name, TRAPS) {
+  MetaspaceShared::link_shared_classes(CHECK);
+  if (!jcmd_request && CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
+    LambdaFormInvokers::regenerate_holder_classes(CHECK);
+  } else {
+    // Make sure we have at least one class in the dynamic archive
+    TempNewSymbol class_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$DummyForDynamicArchive");
+    SystemDictionary::resolve_or_null(class_name, Handle(), CHECK);
+  }
+
+  VM_PopulateDynamicDumpSharedSpace op(archive_name);
+  VMThread::execute(&op);
+}
+
 void DynamicArchive::dump_at_exit(JavaThread* current, const char* archive_name) {
   ExceptionMark em(current);
   ResourceMark rm(current);
@@ -506,28 +521,16 @@ void DynamicArchive::dump_at_exit(JavaThread* current, const char* archive_name)
   log_info(cds, dynamic)("Preparing for dynamic dump at exit in thread %s", current->name());
 
   JavaThread* THREAD = current; // For TRAPS processing related to link_shared_classes
-
-  {
-    // FIXME-HACK - make sure we have at least one class in the dynamic archive
-    TempNewSymbol class_name = SymbolTable::new_symbol("sun/nio/cs/IBM850"); // unusual class; shouldn't be used by our tests cases.
-    SystemDictionary::resolve_or_null(class_name, Handle(), THREAD);
-    guarantee(!HAS_PENDING_EXCEPTION, "must have this class");
+  dump_impl(/*jcmd_request=*/false, archive_name, THREAD);
+  if (HAS_PENDING_EXCEPTION) {
+    // One of the prepatory steps failed
+    oop ex = current->pending_exception();
+    log_error(cds)("Dynamic dump has failed");
+    log_error(cds)("%s: %s", ex->klass()->external_name(),
+                   java_lang_String::as_utf8_string(java_lang_Throwable::message(ex)));
+    CLEAR_PENDING_EXCEPTION;
+    CDSConfig::disable_dumping_dynamic_archive();  // Just for good measure
   }
-
-  MetaspaceShared::link_shared_classes(false/*not from jcmd*/, THREAD);
-  if (!HAS_PENDING_EXCEPTION) {
-    VM_PopulateDynamicDumpSharedSpace op(archive_name);
-    VMThread::execute(&op);
-    return;
-  }
-
-  // One of the prepatory steps failed
-  oop ex = current->pending_exception();
-  log_error(cds)("Dynamic dump has failed");
-  log_error(cds)("%s: %s", ex->klass()->external_name(),
-                 java_lang_String::as_utf8_string(java_lang_Throwable::message(ex)));
-  CLEAR_PENDING_EXCEPTION;
-  CDSConfig::disable_dumping_dynamic_archive();  // Just for good measure
 }
 
 // This is called by "jcmd VM.cds dynamic_dump"
@@ -536,10 +539,7 @@ void DynamicArchive::dump_for_jcmd(const char* archive_name, TRAPS) {
   assert(CDSConfig::is_using_archive() && RecordDynamicDumpInfo, "already checked in arguments.cpp");
   assert(ArchiveClassesAtExit == nullptr, "already checked in arguments.cpp");
   assert(CDSConfig::is_dumping_dynamic_archive(), "already checked by check_for_dynamic_dump() during VM startup");
-  MetaspaceShared::link_shared_classes(true/*from jcmd*/, CHECK);
-  // copy shared path table to saved.
-  VM_PopulateDynamicDumpSharedSpace op(archive_name);
-  VMThread::execute(&op);
+  dump_impl(/*jcmd_request=*/true, archive_name, CHECK);
 }
 
 bool DynamicArchive::validate(FileMapInfo* dynamic_info) {
