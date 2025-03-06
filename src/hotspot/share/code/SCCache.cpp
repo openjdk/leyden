@@ -3096,11 +3096,11 @@ bool SCCReader::read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop
     if (log.is_enabled()) {
       log.print("%d: " INTPTR_FORMAT " ", i, p2i(obj));
       if (obj == Universe::non_oop_word()) {
-	log.print("non-oop word");
+        log.print("non-oop word");
       } else if (obj == nullptr) {
-	log.print("nullptr-oop");
+        log.print("nullptr-oop");
       } else {
-	obj->print_value_on(&log);
+        obj->print_value_on(&log);
       }
       log.cr();
     }
@@ -3128,11 +3128,11 @@ bool SCCReader::read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop
       LogStream ls(log);
       ls.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
       if (m == (Metadata*)Universe::non_oop_word()) {
-	ls.print("non-metadata word");
+        ls.print("non-metadata word");
       } else if (m == nullptr) {
-	ls.print("nullptr-oop");
+        ls.print("nullptr-oop");
       } else {
-	Metadata::print_value_on_maybe_null(&ls, m);
+        Metadata::print_value_on_maybe_null(&ls, m);
       }
       ls.cr();
     }
@@ -3232,12 +3232,12 @@ void SCCReader::apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, Gro
 	break;
       case relocInfo::oop_type: {
         oop_Relocation* r = (oop_Relocation*)iter.reloc();
-	if (r->oop_is_immediate()) {
-	  r->set_value(cast_from_oop<address>(oop_list.at(reloc_data[j])));
-	} else {
+        if (r->oop_is_immediate()) {
+          r->set_value(cast_from_oop<address>(oop_list.at(reloc_data[j])));
+        } else {
           r->fix_oop_relocation();
-	}
-	break;
+        }
+        break;
       }
       case relocInfo::metadata_type: {
         metadata_Relocation* r = (metadata_Relocation*)iter.reloc();
@@ -3245,76 +3245,74 @@ void SCCReader::apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, Gro
         if (r->metadata_is_immediate()) {
           m = metadata_list.at(reloc_data[j]);
         } else {
-	  // Get already updated value from nmethod.
-	  int index = r->metadata_index();
-	  m = nm->metadata_at(index);
-	}
-	r->set_value((address)m);
+          // Get already updated value from nmethod.
+          int index = r->metadata_index();
+          m = nm->metadata_at(index);
+        }
+        r->set_value((address)m);
         break;
       }
       case relocInfo::virtual_call_type:   // Fall through. They all call resolve_*_call blobs.
       case relocInfo::opt_virtual_call_type:
       case relocInfo::static_call_type: {
-	address dest = _cache->address_for_id(reloc_data[j]);
-	if (dest != (address)-1) {
-	  ((CallRelocation*)iter.reloc())->set_destination(dest);
-	}
-	break;
+        address dest = _cache->address_for_id(reloc_data[j]);
+        if (dest != (address)-1) {
+          ((CallRelocation*)iter.reloc())->set_destination(dest);
+        }
+        break;
       }
       case relocInfo::trampoline_stub_type: {
-	address dest = _cache->address_for_id(reloc_data[j]);
-	if (dest != (address)-1) {
-	  ((trampoline_stub_Relocation*)iter.reloc())->set_destination(dest);
-	}
-	break;
+        address dest = _cache->address_for_id(reloc_data[j]);
+        if (dest != (address)-1) {
+          ((trampoline_stub_Relocation*)iter.reloc())->set_destination(dest);
+        }
+        break;
       }
       case relocInfo::static_stub_type:
-	break;
+        break;
       case relocInfo::runtime_call_type: {
-	address dest = _cache->address_for_id(reloc_data[j]);
-	if (dest != (address)-1) {
-	  ((CallRelocation*)iter.reloc())->set_destination(dest);
-	}
-	break;
+        address dest = _cache->address_for_id(reloc_data[j]);
+        if (dest != (address)-1) {
+          ((CallRelocation*)iter.reloc())->set_destination(dest);
+        }
+        break;
       }
       case relocInfo::runtime_call_w_cp_type:
-	fatal("runtime_call_w_cp_type unimplemented");
-	//address destination = iter.reloc()->value();
-	break;
+        fatal("runtime_call_w_cp_type unimplemented");
+        //address destination = iter.reloc()->value();
+        break;
       case relocInfo::external_word_type: {
-	address target = _cache->address_for_id(reloc_data[j]);
-	// Add external address to global table
-	int index = ExternalsRecorder::find_index(target);
-	// Update index in relocation
-	Relocation::add_jint(iter.data(), index);
-	external_word_Relocation* reloc = (external_word_Relocation*)iter.reloc();
-	assert(reloc->target() == target, "sanity");
-	reloc->set_value(target); // Patch address in the code
-        //TODO: Is fix_relocation_after_move() required here?
-	//iter.reloc()->fix_relocation_after_move(orig_buffer, buffer);
-	break;
+        address target = _cache->address_for_id(reloc_data[j]);
+        // Add external address to global table
+        int index = ExternalsRecorder::find_index(target);
+        // Update index in relocation
+        Relocation::add_jint(iter.data(), index);
+        external_word_Relocation* reloc = (external_word_Relocation*)iter.reloc();
+        assert(reloc->target() == target, "sanity");
+        reloc->set_value(target); // Patch address in the code
+        break;
       }
       case relocInfo::internal_word_type: {
         internal_word_Relocation* r = (internal_word_Relocation*)iter.reloc();
         r->fix_relocation_after_aot_load(scc_entry()->dumptime_content_start_addr(), nm->content_begin());
-	break;
+        break;
       }
       case relocInfo::section_word_type: {
         section_word_Relocation* r = (section_word_Relocation*)iter.reloc();
         r->fix_relocation_after_aot_load(scc_entry()->dumptime_content_start_addr(), nm->content_begin());
-	break;
+        break;
       }
       case relocInfo::poll_type:
-	break;
+        break;
       case relocInfo::poll_return_type:
-	break;
+        break;
       case relocInfo::post_call_nop_type:
-	break;
+        break;
       case relocInfo::entry_guard_type:
-	break;
+        break;
       default:
-	fatal("relocation %d unimplemented", (int)iter.type());
-	break;
+        fatal("relocation %d unimplemented", (int)iter.type());
+        break;
     }
     if (log.is_enabled()) {
       iter.print_current_on(&log);
@@ -3562,81 +3560,81 @@ bool SCCache::write_nmethod_extra_relocations(nmethod* nm, GrowableArray<oop>& o
     int idx = reloc_data.append(0); // default value
     switch (iter.type()) {
       case relocInfo::none:
-	break;
+      break;
       case relocInfo::oop_type: {
-	oop_Relocation* r = (oop_Relocation*)iter.reloc();
-	if (r->oop_is_immediate()) {
+        oop_Relocation* r = (oop_Relocation*)iter.reloc();
+        if (r->oop_is_immediate()) {
           // store index of oop in the reloc immediate oop list
           int oop_idx = oop_list.find(r->oop_value());
           assert(oop_idx != -1, "sanity check");
           reloc_data.at_put(idx, (uint)oop_idx);
           has_immediate = true;
-	}
-	break;
+        }
+        break;
       }
       case relocInfo::metadata_type: {
-	metadata_Relocation* r = (metadata_Relocation*)iter.reloc();
-	if (r->metadata_is_immediate()) {
+        metadata_Relocation* r = (metadata_Relocation*)iter.reloc();
+        if (r->metadata_is_immediate()) {
           // store index of metadata in the reloc immediate metadata list
           int metadata_idx = metadata_list.find(r->metadata_value());
           assert(metadata_idx != -1, "sanity check");
           reloc_data.at_put(idx, (uint)metadata_idx);
           has_immediate = true;
-	}
-	break;
+        }
+        break;
       }
       case relocInfo::virtual_call_type:  // Fall through. They all call resolve_*_call blobs.
       case relocInfo::opt_virtual_call_type:
       case relocInfo::static_call_type: {
-	CallRelocation* r = (CallRelocation*)iter.reloc();
-	address dest = r->destination();
-	if (dest == r->addr()) { // possible call via trampoline on Aarch64
-	  dest = (address)-1;    // do nothing in this case when loading this relocation
-	}
-	reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
-	break;
+        CallRelocation* r = (CallRelocation*)iter.reloc();
+        address dest = r->destination();
+        if (dest == r->addr()) { // possible call via trampoline on Aarch64
+          dest = (address)-1;    // do nothing in this case when loading this relocation
+        }
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+        break;
       }
       case relocInfo::trampoline_stub_type: {
-	address dest = ((trampoline_stub_Relocation*)iter.reloc())->destination();
-	reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
-	break;
+        address dest = ((trampoline_stub_Relocation*)iter.reloc())->destination();
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+        break;
       }
       case relocInfo::static_stub_type:
-	break;
+        break;
       case relocInfo::runtime_call_type: {
-	// Record offset of runtime destination
-	CallRelocation* r = (CallRelocation*)iter.reloc();
-	address dest = r->destination();
-	if (dest == r->addr()) { // possible call via trampoline on Aarch64
-	  dest = (address)-1;    // do nothing in this case when loading this relocation
-	}
-	reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
-	break;
+        // Record offset of runtime destination
+        CallRelocation* r = (CallRelocation*)iter.reloc();
+        address dest = r->destination();
+        if (dest == r->addr()) { // possible call via trampoline on Aarch64
+          dest = (address)-1;    // do nothing in this case when loading this relocation
+        }
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+        break;
       }
       case relocInfo::runtime_call_w_cp_type:
-	fatal("runtime_call_w_cp_type unimplemented");
-	break;
+        fatal("runtime_call_w_cp_type unimplemented");
+        break;
       case relocInfo::external_word_type: {
-	// Record offset of runtime target
-	address target = ((external_word_Relocation*)iter.reloc())->target();
-	reloc_data.at_put(idx, _table->id_for_address(target, iter, nullptr));
-	break;
+        // Record offset of runtime target
+        address target = ((external_word_Relocation*)iter.reloc())->target();
+        reloc_data.at_put(idx, _table->id_for_address(target, iter, nullptr));
+        break;
       }
       case relocInfo::internal_word_type:
-	break;
+        break;
       case relocInfo::section_word_type:
-	break;
+        break;
       case relocInfo::poll_type:
-	break;
+        break;
       case relocInfo::poll_return_type:
-	break;
+        break;
       case relocInfo::post_call_nop_type:
-	break;
+        break;
       case relocInfo::entry_guard_type:
-	break;
+        break;
       default:
-	fatal("relocation %d unimplemented", (int)iter.type());
-	break;
+        fatal("relocation %d unimplemented", (int)iter.type());
+        break;
     }
     if (log.is_enabled()) {
       iter.print_current_on(&log);

@@ -4210,6 +4210,10 @@ const char* nmethod::jvmci_name() {
 
 void nmethod::prepare_for_archiving() {
   set_name(nullptr);
+#ifndef PRODUCT
+  asm_remarks().clear();
+  dbg_strings().clear();
+#endif /* PRODUCT */
   _deoptimization_generation = 0;
   _gc_epoch = 0;
   _method_profiling_count = 0;
