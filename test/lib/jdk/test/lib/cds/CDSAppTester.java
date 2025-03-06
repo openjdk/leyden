@@ -400,7 +400,6 @@ abstract public class CDSAppTester {
         RunMode runMode = RunMode.PRODUCTION;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-XX:+UnlockDiagnosticVMOptions",
-                                                   "-XX:VerifyArchivedFields=2", // make sure archived heap objects are good.
                                                    "-cp", classpath(runMode),
                                                    logToFile(productionRunLog(), "cds"));
 

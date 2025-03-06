@@ -175,11 +175,12 @@ public class SpringPetClinic {
         @Override
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
-                "-Xlog:init",
+                "-Xlog:init,cds",
                 "-DautoQuit=true",
                 "-Dspring.output.ansi.enabled=NEVER",
                 "-Dspring.aot.enabled=true",
                 "-Dserver.port=0", // use system-assigned port
+                "--enable-native-access=ALL-UNNAMED",
 
                 // PetClinic runs very slowly in debug builds if VerifyDependencies is enabled.
                 "-XX:+IgnoreUnrecognizedVMOptions", "-XX:-VerifyDependencies",
@@ -200,6 +201,7 @@ public class SpringPetClinic {
             String cmdLine[] = new String[] {
                 "org.springframework.samples.petclinic.PetClinicApplication"
             };
+/*
             if (runMode == RunMode.PRODUCTION) {
                 // FIXME: bug JDK-8318393
                 cmdLine = StringArrayUtils.concat("-XX:-LoadCachedCode", cmdLine);
@@ -208,6 +210,7 @@ public class SpringPetClinic {
             if (runMode.isProductionRun()) {
                 cmdLine = StringArrayUtils.concat("-Xlog:scc=error", cmdLine);
             }
+ */
             return cmdLine;
         }
 
