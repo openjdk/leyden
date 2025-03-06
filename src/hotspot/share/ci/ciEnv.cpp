@@ -1008,7 +1008,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
   // Change in DTrace flags may invalidate compilation.
   if (!failing() &&
       ( (!dtrace_method_probes() && DTraceMethodProbes) ||
-	(!dtrace_alloc_probes() && DTraceAllocProbes) )) {
+        (!dtrace_alloc_probes() && DTraceAllocProbes) )) {
     record_failure("DTrace flags change invalidated dependencies");
   }
 
@@ -1060,12 +1060,12 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
       // If there is an old version we're done with it
       nmethod* old = method->code();
       if (TraceMethodReplacement && old != nullptr) {
-	ResourceMark rm;
-	char *method_name = method->name_and_sig_as_C_string();
-	tty->print_cr("Replacing method %s", method_name);
+        ResourceMark rm;
+        char *method_name = method->name_and_sig_as_C_string();
+        tty->print_cr("Replacing method %s", method_name);
       }
       if (old != nullptr) {
-	old->make_not_used();
+        old->make_not_used();
       }
     }
 
@@ -1074,9 +1074,9 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
       ResourceMark rm;
       char *method_name = method->name_and_sig_as_C_string();
       lt.print("Installing method (L%d) %s id=%d scc=%s%s%u",
-		task()->comp_level(), method_name, compile_id(),
-		task()->is_scc() ? "A" : "", preload ? "P" : "",
-		(scc_entry != nullptr ? scc_entry->offset() : 0));
+               task()->comp_level(), method_name, compile_id(),
+               task()->is_scc() ? "A" : "", preload ? "P" : "",
+               (scc_entry != nullptr ? scc_entry->offset() : 0));
     }
     // Allow the code to be executed
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
@@ -1084,16 +1084,16 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
 #ifdef ASSERT
       BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
       if (bs_nm != nullptr && bs_nm->supports_entry_barrier(nm)) {
-	if (!bs_nm->is_armed(nm)) {
-	  log_info(init)("nmethod %d %d not armed", nm->compile_id(), nm->comp_level());
-	}
+        if (!bs_nm->is_armed(nm)) {
+          log_info(init)("nmethod %d %d not armed", nm->compile_id(), nm->comp_level());
+        }
       }
 #endif // ASSERT
       if (preload) {
-	method->set_preload_code(nm);
+        method->set_preload_code(nm);
       }
       if (!preload || target->holder()->is_linked()) {
-	method->set_code(method, nm);
+        method->set_code(method, nm);
       }
     }
   } else {
@@ -1102,9 +1102,9 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
       ResourceMark rm;
       char *method_name = method->name_and_sig_as_C_string();
       lt.print("Installing osr method (L%d) %s @ %d id=%u scc=%s%u",
-	       task()->comp_level(), method_name, entry_bci, compile_id(),
-	       task()->is_scc() ? "A" : "",
-	       (scc_entry != nullptr ? scc_entry->offset() : 0));
+               task()->comp_level(), method_name, entry_bci, compile_id(),
+               task()->is_scc() ? "A" : "",
+               (scc_entry != nullptr ? scc_entry->offset() : 0));
     }
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     if (nm->make_in_use()) {
@@ -1247,17 +1247,17 @@ void ciEnv::register_method(ciMethod* target,
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
       if (scc_entry == nullptr) {
-	scc_entry = SCCache::store_nmethod(nm, compiler, for_preload);
-	if (scc_entry != nullptr) {
-	  scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());
-	  if (has_clinit_barriers) {
-	    set_scc_clinit_barriers_entry(scc_entry); // Record it
+        scc_entry = SCCache::store_nmethod(nm, compiler, for_preload);
+        if (scc_entry != nullptr) {
+          scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());
+          if (has_clinit_barriers) {
+            set_scc_clinit_barriers_entry(scc_entry); // Record it
             return;
-	  } else if (!for_preload) {
-	    SCCEntry* previous_entry = scc_clinit_barriers_entry();
-	    scc_entry->set_next(previous_entry); // Link it for case of deoptimization
-	  }
-	}
+          } else if (!for_preload) {
+            SCCEntry* previous_entry = scc_clinit_barriers_entry();
+            scc_entry->set_next(previous_entry); // Link it for case of deoptimization
+          }
+        }
       }
       make_code_usable(THREAD, target, preload, entry_bci, scc_entry, nm);
     }
