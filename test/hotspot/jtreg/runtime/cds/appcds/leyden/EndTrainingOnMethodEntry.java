@@ -24,7 +24,9 @@
 
 /*
  * @test id=aot
- * @requires vm.cds.write.archived.java.heap
+ * @requires vm.cds.supports.aot.class.linking
+ * @comment work around JDK-8345635
+ * @requires !vm.jvmci.enabled
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build EndTrainingOnMethodEntry
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
@@ -33,7 +35,9 @@
 
 /*
  * @test id=leyden
- * @requires vm.cds.write.archived.java.heap
+ * @requires vm.cds.supports.aot.class.linking
+ * @comment work around JDK-8345635
+ * @requires !vm.jvmci.enabled
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build EndTrainingOnMethodEntry
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
@@ -49,16 +53,18 @@ public class EndTrainingOnMethodEntry {
     static final String mainClass = "MyTestApp";
 
     public static void main(String[] args) throws Exception {
-        (new Tester(false)).run(args);
-        (new Tester(true)).run(args);
+        // We want to test the entry count implementation in both interpreter and compiler.
+        (new Tester(1)).run(args);
+        (new Tester(10)).run(args);    // the loop will probably be interpreted
+        (new Tester(10000)).run(args); // the loop will probably be compiled.
     }
 
     static class Tester extends CDSAppTester {
-        boolean useCount;
+        int count;
 
-        public Tester(boolean useCount) {
+        public Tester(int count) {
             super(mainClass);
-            this.useCount = useCount;
+            this.count = count;
         }
 
         @Override
@@ -67,7 +73,7 @@ public class EndTrainingOnMethodEntry {
         }
 
         public String[] vmArgs(RunMode runMode) {
-            String stop = useCount ? ("stopTrainingOnMeWithCount,count=" + MyTestApp.COUNT) : "stopTrainingOnMe";
+            String stop = count > 1 ? ("stopTrainingOnMeWithCount,count=" + count) : "stopTrainingOnMe";
             return new String[] {
                 "-Xlog:cds+class=debug",
                 "-XX:AOTEndTrainingOnMethodEntry=MyTestApp." + stop,
@@ -77,7 +83,7 @@ public class EndTrainingOnMethodEntry {
         @Override
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
-                mainClass, runMode.name(), Boolean.toString(useCount),
+                mainClass, runMode.name(), Integer.toString(count),
             };
         }
 
@@ -85,6 +91,8 @@ public class EndTrainingOnMethodEntry {
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
             if (runMode.isApplicationExecuted()) {
                 out.shouldContain("Hello Leyden " + runMode.name());
+                out.shouldContain("ShouldBeCached.dummy()");
+                out.shouldContain("ShouldNotBeCached.dummy()");
             }
             if (isDumping(runMode)) {
                 out.shouldMatch("cds,class.* ShouldBeCached");
@@ -95,11 +103,13 @@ public class EndTrainingOnMethodEntry {
 }
 
 class MyTestApp {
-    public static final int COUNT = 10; // FIXME (JDK-8351100): debug build crashes with COUNT = 10000;
-    public static void main(String args[]) {
-        System.out.println("Hello Leyden " + args[0] + ", useCount = " + args[1]);
-        if (args[1].equals("true")) {
-            for (int i = 0; i < COUNT + 10; i++) {
+    public static int COUNT;
+    public static void main(String args[]) throws Exception {
+        System.out.println("Hello Leyden " + args[0] + ", count = " + args[1]);
+        COUNT = Integer.parseInt(args[1]);
+        if (COUNT > 1) {
+            int max = COUNT + 10;
+            for (int i = 0; i < max; i++) {
                 stopTrainingOnMeWithCount(i);
             }
         } else {
@@ -117,7 +127,6 @@ class MyTestApp {
 
     static void stopTrainingOnMeWithCount(int i) {
         if (i >= COUNT - 2) {
-            System.out.println("COUNT = " + COUNT + ", i = " + i);
             ShouldBeCached.dummy();
         }
         if (i >= COUNT) {
