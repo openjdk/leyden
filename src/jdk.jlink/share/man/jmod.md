@@ -165,6 +165,10 @@ e.g. "2022-02-12T12:30:00-05:00".
 :   Specifies location of native libraries to copy into the resulting JMOD
     file.
 
+`--static-libs` *path*
+:   Specifies location of native static libraries to copy into the resulting
+    JMOD file.
+
 `--main-class` *class-name*
 :   Specifies main class to record in the module-info.class file.
 
