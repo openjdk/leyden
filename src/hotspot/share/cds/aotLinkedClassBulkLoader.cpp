@@ -473,8 +473,6 @@ void AOTLinkedClassBulkLoader::replay_training_at_init_for_preloaded_classes(TRA
     replay_training_at_init(table->boot2(),    CHECK);
     replay_training_at_init(table->platform(), CHECK);
     replay_training_at_init(table->app(),      CHECK);
-
-    CompilationPolicy::replay_training_at_init(false, CHECK);
   }
 }
 

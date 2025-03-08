@@ -616,7 +616,8 @@ void before_exit(JavaThread* thread, bool halt) {
 
   if (VerifyTrainingData) {
     EXCEPTION_MARK;
-    CompilationPolicy::replay_training_at_init(true, THREAD); // implies TrainingData::verify()
+    CompilationPolicy::flush_replay_training_at_init(THREAD);
+    TrainingData::verify();
   }
 
   print_statistics();

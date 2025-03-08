@@ -128,7 +128,6 @@
 #endif // ndef DTRACE_ENABLED
 
 bool CompileBroker::_initialized = false;
-bool CompileBroker::_replay_initialized = false;
 volatile bool CompileBroker::_should_block = false;
 volatile int  CompileBroker::_print_compilation_warning = 0;
 volatile jint CompileBroker::_should_compile_new_jobs = run_compilation;
@@ -1213,12 +1212,9 @@ void CompileBroker::init_training_replay() {
   // Ensure any exceptions lead to vm_exit_during_initialization.
   EXCEPTION_MARK;
   if (TrainingData::have_data()) {
-    if (UseConcurrentTrainingReplay) {
-      Handle thread_oop = create_thread_oop("Training replay thread", CHECK);
-      jobject thread_handle = JNIHandles::make_local(THREAD, thread_oop());
-      make_thread(training_replay_t, thread_handle, nullptr, nullptr, THREAD);
-    }
-    _replay_initialized = true;
+    Handle thread_oop = create_thread_oop("Training replay thread", CHECK);
+    jobject thread_handle = JNIHandles::make_local(THREAD, thread_oop());
+    make_thread(training_replay_t, thread_handle, nullptr, nullptr, THREAD);
   }
 }
 
