@@ -1122,6 +1122,31 @@ nmethod* nmethod::new_native_nmethod(const methodHandle& method,
   return nm;
 }
 
+void nmethod::record_nmethod_dependency() {
+  // To make dependency checking during class loading fast, record
+  // the nmethod dependencies in the classes it is dependent on.
+  // This allows the dependency checking code to simply walk the
+  // class hierarchy above the loaded class, checking only nmethods
+  // which are dependent on those classes.  The slow way is to
+  // check every nmethod for dependencies which makes it linear in
+  // the number of methods compiled.  For applications with a lot
+  // classes the slow way is too slow.
+  for (Dependencies::DepStream deps(this); deps.next(); ) {
+    if (deps.type() == Dependencies::call_site_target_value) {
+      // CallSite dependencies are managed on per-CallSite instance basis.
+      oop call_site = deps.argument_oop(0);
+      MethodHandles::add_dependent_nmethod(call_site, this);
+    } else {
+      InstanceKlass* ik = deps.context_type();
+      if (ik == nullptr) {
+        continue;  // ignore things like evol_method
+      }
+      // record this nmethod as dependent on this klass
+      ik->add_dependent_nmethod(this);
+    }
+  }
+}
+
 nmethod* nmethod::new_nmethod(const methodHandle& method,
   int compile_id,
   int entry_bci,
@@ -1189,29 +1214,8 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
             );
 
     if (nm != nullptr) {
-      // To make dependency checking during class loading fast, record
-      // the nmethod dependencies in the classes it is dependent on.
-      // This allows the dependency checking code to simply walk the
-      // class hierarchy above the loaded class, checking only nmethods
-      // which are dependent on those classes.  The slow way is to
-      // check every nmethod for dependencies which makes it linear in
-      // the number of methods compiled.  For applications with a lot
-      // classes the slow way is too slow.
-      for (Dependencies::DepStream deps(nm); deps.next(); ) {
-        if (deps.type() == Dependencies::call_site_target_value) {
-          // CallSite dependencies are managed on per-CallSite instance basis.
-          oop call_site = deps.argument_oop(0);
-          MethodHandles::add_dependent_nmethod(call_site, nm);
-        } else {
-          InstanceKlass* ik = deps.context_type();
-          if (ik == nullptr) {
-            continue;  // ignore things like evol_method
-          }
-          // record this nmethod as dependent on this klass
-          ik->add_dependent_nmethod(nm);
-        }
-      }
-      NOT_PRODUCT(if (nm != nullptr)  note_java_nmethod(nm));
+      nm->record_nmethod_dependency();
+      NOT_PRODUCT(note_java_nmethod(nm));
     }
   }
   // Do verification and logging outside CodeCache_lock.
@@ -1228,6 +1232,76 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     }
 #endif
 
+    // Safepoints in nmethod::verify aren't allowed because nm hasn't been installed yet.
+    DEBUG_ONLY(nm->verify();)
+    nm->log_new_nmethod();
+  }
+  return nm;
+}
+
+void nmethod::restore_from_archive(nmethod* archived_nm,
+                                   const methodHandle& method,
+                                   GrowableArray<oop>& oop_list,
+                                   GrowableArray<Metadata*>& metadata_list,
+                                   ImmutableOopMapSet* oop_maps,
+                                   address immutable_data,
+                                   GrowableArray<oop>& reloc_imm_oop_list,
+                                   GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                                   SCCReader* scc_reader)
+{
+  archived_nm->copy_to((address)this);
+  set_name("nmethod");
+  set_method(method());
+  set_oop_maps(oop_maps);
+  set_immutable_data(immutable_data);
+  copy_values(&oop_list);
+  copy_values(&metadata_list);
+
+  scc_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
+
+  // Create cache after PcDesc data is copied - it will be used to initialize cache
+  _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
+
+  set_scc_entry(scc_reader->scc_entry());
+
+  post_init();
+}
+
+nmethod* nmethod::new_nmethod(nmethod* archived_nm,
+                              const methodHandle& method,
+                              AbstractCompiler* compiler,
+                              GrowableArray<oop>& oop_list,
+                              GrowableArray<Metadata*>& metadata_list,
+                              ImmutableOopMapSet* oop_maps,
+                              address immutable_data,
+                              GrowableArray<oop>& reloc_imm_oop_list,
+                              GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                              SCCReader* scc_reader)
+{
+  nmethod* nm = nullptr;
+  int nmethod_size = archived_nm->size();
+  // create nmethod
+  {
+    MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    nm = (nmethod *)CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(archived_nm->comp_level()));
+    if (nm != nullptr) {
+      nm->restore_from_archive(archived_nm, method, oop_list, metadata_list, oop_maps, immutable_data, reloc_imm_oop_list, reloc_imm_metadata_list, scc_reader);
+      nm->record_nmethod_dependency();
+      NOT_PRODUCT(note_java_nmethod(nm));
+    }
+  }
+  // Do verification and logging outside CodeCache_lock.
+  if (nm != nullptr) {
+#ifdef ASSERT
+    LogTarget(Debug, scc, nmethod) log;
+    if (log.is_enabled()) {
+      LogStream out(log);
+      out.print_cr("== new_nmethod 2");
+      FlagSetting fs(PrintRelocations, true);
+      nm->print_on_impl(&out);
+      nm->decode(&out);
+    }
+#endif
     // Safepoints in nmethod::verify aren't allowed because nm hasn't been installed yet.
     DEBUG_ONLY(nm->verify();)
     nm->log_new_nmethod();
@@ -1754,6 +1828,14 @@ inline void nmethod::initialize_immediate_oop(oop* dest, jobject handle) {
   }
 }
 
+void nmethod::copy_values(GrowableArray<oop>* array) {
+  int length = array->length();
+  assert((address)(oops_begin() + length) <= (address)oops_end(), "oops big enough");
+  oop* dest = oops_begin();
+  for (int index = 0 ; index < length; index++) {
+    dest[index] = array->at(index);
+  }
+}
 
 // Have to have the same name because it's called by a template
 void nmethod::copy_values(GrowableArray<jobject>* array) {
@@ -1797,6 +1879,25 @@ void nmethod::fix_oop_relocations(address begin, address end, bool initialize_im
     } else if (iter.type() == relocInfo::metadata_type) {
       metadata_Relocation* reloc = iter.metadata_reloc();
       reloc->fix_metadata_relocation();
+    }
+  }
+}
+
+void nmethod::create_reloc_immediates_list(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+  RelocIterator iter(this);
+  while (iter.next()) {
+    if (iter.type() == relocInfo::oop_type) {
+      oop_Relocation* reloc = iter.oop_reloc();
+      if (reloc->oop_is_immediate()) {
+        oop dest = reloc->oop_value();
+        oop_list.append(dest);
+      }
+    } else if (iter.type() == relocInfo::metadata_type) {
+      metadata_Relocation* reloc = iter.metadata_reloc();
+      if (reloc->metadata_is_immediate()) {
+        Metadata* m = reloc->metadata_value();
+        metadata_list.append(m);
+      }
     }
   }
 }
@@ -2165,9 +2266,11 @@ void nmethod::purge(bool unregister_nmethod) {
   if (_pc_desc_container != nullptr) {
     delete _pc_desc_container;
   }
-  delete[] _compiled_ic_data;
+  if (_compiled_ic_data != nullptr) {
+    delete[] _compiled_ic_data;
+  }
 
-  if (_immutable_data != data_end()) {
+  if (_immutable_data != data_end() && !SCCache::is_address_in_aot_cache((address)_oop_maps)) {
     os::free(_immutable_data);
     _immutable_data = data_end(); // Valid not null address
   }
@@ -2965,35 +3068,39 @@ void nmethod::verify() {
     fatal("find_nmethod did not find this nmethod (" INTPTR_FORMAT ")", p2i(this));
   }
 
-  for (PcDesc* p = scopes_pcs_begin(); p < scopes_pcs_end(); p++) {
-    if (! p->verify(this)) {
-      tty->print_cr("\t\tin nmethod at " INTPTR_FORMAT " (pcs)", p2i(this));
+  // Verification can triggered during shutdown after SCCache is closed.
+  // If the Scopes data is in the AOT code cache, then we should avoid verification during shutdown.
+  if (!is_scc() || SCCache::is_on()) {
+    for (PcDesc* p = scopes_pcs_begin(); p < scopes_pcs_end(); p++) {
+      if (! p->verify(this)) {
+        tty->print_cr("\t\tin nmethod at " INTPTR_FORMAT " (pcs)", p2i(this));
+      }
     }
-  }
 
 #ifdef ASSERT
 #if INCLUDE_JVMCI
-  {
-    // Verify that implicit exceptions that deoptimize have a PcDesc and OopMap
-    ImmutableOopMapSet* oms = oop_maps();
-    ImplicitExceptionTable implicit_table(this);
-    for (uint i = 0; i < implicit_table.len(); i++) {
-      int exec_offset = (int) implicit_table.get_exec_offset(i);
-      if (implicit_table.get_exec_offset(i) == implicit_table.get_cont_offset(i)) {
-        assert(pc_desc_at(code_begin() + exec_offset) != nullptr, "missing PcDesc");
-        bool found = false;
-        for (int i = 0, imax = oms->count(); i < imax; i++) {
-          if (oms->pair_at(i)->pc_offset() == exec_offset) {
-            found = true;
-            break;
+    {
+      // Verify that implicit exceptions that deoptimize have a PcDesc and OopMap
+      ImmutableOopMapSet* oms = oop_maps();
+      ImplicitExceptionTable implicit_table(this);
+      for (uint i = 0; i < implicit_table.len(); i++) {
+        int exec_offset = (int) implicit_table.get_exec_offset(i);
+        if (implicit_table.get_exec_offset(i) == implicit_table.get_cont_offset(i)) {
+          assert(pc_desc_at(code_begin() + exec_offset) != nullptr, "missing PcDesc");
+          bool found = false;
+          for (int i = 0, imax = oms->count(); i < imax; i++) {
+            if (oms->pair_at(i)->pc_offset() == exec_offset) {
+              found = true;
+              break;
+            }
           }
+          assert(found, "missing oopmap");
         }
-        assert(found, "missing oopmap");
       }
     }
+#endif
+#endif
   }
-#endif
-#endif
 
   VerifyOopsClosure voc(this);
   oops_do(&voc);
@@ -3002,7 +3109,9 @@ void nmethod::verify() {
 
   assert(_oops_do_mark_link == nullptr, "_oops_do_mark_link for %s should be nullptr but is " PTR_FORMAT,
          nm->method()->external_name(), p2i(_oops_do_mark_link));
-  verify_scopes();
+  if (!is_scc() || SCCache::is_on()) {
+    verify_scopes();
+  }
 
   CompiledICLocker nm_verify(this);
   VerifyMetadataClosure vmc;
@@ -4076,3 +4185,25 @@ const char* nmethod::jvmci_name() {
   return nullptr;
 }
 #endif
+
+void nmethod::prepare_for_archiving() {
+  set_name(nullptr);
+#ifndef PRODUCT
+  asm_remarks().clear();
+  dbg_strings().clear();
+#endif /* PRODUCT */
+  _deoptimization_generation = 0;
+  _gc_epoch = 0;
+  _method_profiling_count = 0;
+  _osr_link = nullptr;
+  _method = nullptr;
+  _immutable_data = nullptr;
+  _pc_desc_container = nullptr;
+  _exception_cache = nullptr;
+  _gc_data = nullptr;
+  _oops_do_mark_link = nullptr;
+  _compiled_ic_data = nullptr;
+  _osr_entry_point = nullptr;
+  _compile_id = -1;
+  _deoptimization_status = not_marked;
+}
