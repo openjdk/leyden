@@ -1394,7 +1394,7 @@ char* ClassLoader::lookup_vm_options() {
     jio_snprintf(modules_path, JVM_MAXPATHLEN, "%s%slib%smodules", Arguments::get_java_home(), fileSep, fileSep);
     JImage_file =(*JImageOpen)(modules_path, 0, 0, &error);
   }
-  
+
   if (JImage_file == nullptr) {
     return nullptr;
   }
