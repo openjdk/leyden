@@ -235,6 +235,7 @@ public:
   // OopMap for frame
   ImmutableOopMapSet* oop_maps() const           { return _oop_maps; }
   void set_oop_maps(OopMapSet* p);
+  void set_oop_maps(ImmutableOopMapSet* p)       { _oop_maps = p; }
 
   const ImmutableOopMap* oop_map_for_slot(int slot, address return_address) const;
   const ImmutableOopMap* oop_map_for_return_address(address return_address) const;
