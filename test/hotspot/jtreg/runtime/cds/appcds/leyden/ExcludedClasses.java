@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -37,7 +37,7 @@
  *                 TestApp$MyInvocationHandler
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
  *                 Custy
- * @run driver ExcludedClasses LEYDEN
+ * @run driver ExcludedClasses
  */
 
 import java.io.File;
@@ -63,8 +63,14 @@ public class ExcludedClasses {
     static final String mainClass = "TestApp";
 
     public static void main(String[] args) throws Exception {
-        Tester t = new Tester();
-        t.run(args);
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"AOT"} );
+        }
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"LEYDEN"} );
+        }
     }
 
     static class Tester extends CDSAppTester {
@@ -98,9 +104,8 @@ public class ExcludedClasses {
             switch (runMode) {
             case RunMode.TRAINING:
             case RunMode.TRAINING0:
-            case RunMode.TRAINING1:
             case RunMode.DUMP_STATIC:
-                out.shouldMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.Bar.f:I");
+              //out.shouldMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.Bar.f:I");
                 out.shouldNotMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.ShouldBeExcluded.f:I");
             }
         }

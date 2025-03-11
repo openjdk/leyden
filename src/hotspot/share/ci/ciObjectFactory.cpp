@@ -234,35 +234,35 @@ void ciObjectFactory::remove_symbols() {
 ciObject* ciObjectFactory::get(oop key) {
   ASSERT_IN_VM;
 
-  assert(Universe::heap()->is_in(key), "must be");
+  Handle keyHandle(Thread::current(), key);
+  assert(Universe::heap()->is_in(keyHandle()), "must be");
 
-  NonPermObject* &bucket = find_non_perm(key);
+  NonPermObject* &bucket = find_non_perm(keyHandle);
   if (bucket != nullptr) {
     return bucket->object();
   }
 
   // The ciObject does not yet exist.  Create it and insert it
   // into the cache.
-  Handle keyHandle(Thread::current(), key);
   ciObject* new_object = create_new_object(keyHandle());
   assert(keyHandle() == new_object->get_oop(), "must be properly recorded");
   init_ident_of(new_object);
   assert(Universe::heap()->is_in(new_object->get_oop()), "must be");
 
   // Not a perm-space object.
-  insert_non_perm(bucket, keyHandle(), new_object);
+  insert_non_perm(bucket, keyHandle, new_object);
   notice_new_object(new_object);
   return new_object;
 }
 
 void ciObjectFactory::notice_new_object(ciBaseObject* new_object) {
-  if (RecordTraining) {
+  if (TrainingData::need_data()) {
     ciEnv* env = ciEnv::current();
     if (env->task() != nullptr) {
       // Note: task will be null during init_compiler_runtime.
-      CompileTrainingData* tdata = env->task()->training_data();
-      if (tdata != nullptr) {
-        tdata->notice_jit_observation(env, new_object);
+      CompileTrainingData* td = env->task()->training_data();
+      if (td != nullptr) {
+        td->notice_jit_observation(env, new_object);
       }
     }
   }
@@ -653,12 +653,12 @@ static ciObjectFactory::NonPermObject* emptyBucket = nullptr;
 // Use a small hash table, hashed on the klass of the key.
 // If there is no entry in the cache corresponding to this oop, return
 // the null tail of the bucket into which the oop should be inserted.
-ciObjectFactory::NonPermObject* &ciObjectFactory::find_non_perm(oop key) {
-  assert(Universe::heap()->is_in(key), "must be");
-  ciMetadata* klass = get_metadata(key->klass());
+ciObjectFactory::NonPermObject* &ciObjectFactory::find_non_perm(Handle keyHandle) {
+  assert(Universe::heap()->is_in(keyHandle()), "must be");
+  ciMetadata* klass = get_metadata(keyHandle->klass()); // This may safepoint!
   NonPermObject* *bp = &_non_perm_bucket[(unsigned) klass->hash() % NON_PERM_BUCKETS];
   for (NonPermObject* p; (p = (*bp)) != nullptr; bp = &p->next()) {
-    if (is_equal(p, key))  break;
+    if (is_equal(p, keyHandle()))  break;
   }
   return (*bp);
 }
@@ -681,12 +681,12 @@ inline ciObjectFactory::NonPermObject::NonPermObject(ciObjectFactory::NonPermObj
 // ciObjectFactory::insert_non_perm
 //
 // Insert a ciObject into the non-perm table.
-void ciObjectFactory::insert_non_perm(ciObjectFactory::NonPermObject* &where, oop key, ciObject* obj) {
-  assert(Universe::heap()->is_in_or_null(key), "must be");
+void ciObjectFactory::insert_non_perm(ciObjectFactory::NonPermObject* &where, Handle keyHandle, ciObject* obj) {
+  assert(Universe::heap()->is_in_or_null(keyHandle()), "must be");
   assert(&where != &emptyBucket, "must not try to fill empty bucket");
-  NonPermObject* p = new (arena()) NonPermObject(where, key, obj);
-  assert(where == p && is_equal(p, key) && p->object() == obj, "entry must match");
-  assert(find_non_perm(key) == p, "must find the same spot");
+  NonPermObject* p = new (arena()) NonPermObject(where, keyHandle(), obj);
+  assert(where == p && is_equal(p, keyHandle()) && p->object() == obj, "entry must match");
+  assert(find_non_perm(keyHandle) == p, "must find the same spot");
   ++_non_perm_count;
 }
 

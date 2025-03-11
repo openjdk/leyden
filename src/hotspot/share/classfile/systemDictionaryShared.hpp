@@ -153,13 +153,6 @@ class SystemDictionaryShared: public SystemDictionary {
     void print_table_statistics(const char* prefix, outputStream* st);
   };
 
-public:
-  enum : char {
-    FROM_FIELD_IS_PROTECTED = 1 << 0,
-    FROM_IS_ARRAY           = 1 << 1,
-    FROM_IS_OBJECT          = 1 << 2
-  };
-
 private:
 
   static DumpTimeSharedClassTable* _dumptime_table;
@@ -193,6 +186,9 @@ private:
   static void remove_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
   static InstanceKlass* retrieve_lambda_proxy_class(const RunTimeLambdaProxyClassInfo* info) NOT_CDS_RETURN_(nullptr);
   DEBUG_ONLY(static bool _class_loading_may_happen;)
+
+  static void copy_verification_constraints_from_preimage(InstanceKlass* klass);
+  static void copy_linking_constraints_from_preimage(InstanceKlass* klass);
 
 public:
   // Guaranteed to return non-null value for non-shared classes.
@@ -235,6 +231,7 @@ public:
 
   static void initialize() NOT_CDS_RETURN;
   static void init_dumptime_info(InstanceKlass* k) NOT_CDS_RETURN;
+  static void init_dumptime_info_from_preimage(InstanceKlass* k) NOT_CDS_RETURN;
   static void handle_class_unloading(InstanceKlass* k) NOT_CDS_RETURN;
 
   static bool can_be_preinited(InstanceKlass* ik);

@@ -139,6 +139,10 @@ void SCCache::initialize() {
   if (LoadCachedCode && !UseSharedSpaces) {
     return;
   }
+  if (LoadCachedCode && CDSAccess::get_cached_code_size() == 0) {
+    LoadCachedCode = false;
+    return;
+  }
   if (StoreCachedCode || LoadCachedCode) {
     if (FLAG_IS_DEFAULT(ClassInitBarrierMode)) {
       FLAG_SET_DEFAULT(ClassInitBarrierMode, 1);
@@ -147,7 +151,7 @@ void SCCache::initialize() {
     log_info(scc, init)("Set ClassInitBarrierMode to 0 because StoreCachedCode and LoadCachedCode are false.");
     FLAG_SET_DEFAULT(ClassInitBarrierMode, 0);
   }
-  if ((LoadCachedCode || StoreCachedCode) && CachedCodeFile != nullptr) {
+  if (LoadCachedCode || StoreCachedCode) {
     if (!open_cache()) {
       exit_vm_on_load_failure();
       return;
@@ -3519,7 +3523,7 @@ void SCCache::print_statistics_on(outputStream* st) {
       }
     }
   } else {
-    st->print_cr("failed to open SCA at %s", CachedCodeFile);
+    st->print_cr("failed to map code cache");
   }
 }
 
@@ -3552,7 +3556,7 @@ void SCCache::print_on(outputStream* st) {
       reader.print_on(st);
     }
   } else {
-    st->print_cr("failed to open SCA at %s", CachedCodeFile);
+    st->print_cr("failed to map code cache");
   }
 }
 

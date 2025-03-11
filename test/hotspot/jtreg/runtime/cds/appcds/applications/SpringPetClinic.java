@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -44,6 +44,16 @@
  */
 
 /*
+ * @test id=aot
+ * @key external-dep
+ * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
+ * @summary run Spring Pet Clinic demo with JEP 483 workflow
+ * @library /test/lib
+ * @run driver/timeout=120 SpringPetClinic AOT
+ */
+
+/*
  * @test id=leyden
  * @key external-dep
  * @requires vm.cds
@@ -58,7 +68,9 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -103,7 +115,17 @@ public class SpringPetClinic {
             extractZip(zip.toString(), new File("."));
         }
 
-        return "@" + cpFile.toString();
+        // Copy the classpath file and edit its path separator if necessary.
+        String cpFileCopy = "petclinic-classpath.txt";
+        String cp = Files.readString(cpFile.toPath());
+        if (File.pathSeparatorChar == ';') {
+            // This file was generated with ":" as path separator. Change it
+            // to ';' for Windows.
+            cp = cp.replace(':', ';');
+        }
+        System.out.println("\nClasspath = \"" + cp + "\"\n");
+        Files.writeString(Paths.get(cpFileCopy), cp);
+        return "@" + cpFileCopy;
     }
 
     static void extractZip(String srcFile, File outDir) throws Exception {
@@ -153,11 +175,12 @@ public class SpringPetClinic {
         @Override
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
-                "-Xlog:init",
+                "-Xlog:init,cds",
                 "-DautoQuit=true",
                 "-Dspring.output.ansi.enabled=NEVER",
                 "-Dspring.aot.enabled=true",
                 "-Dserver.port=0", // use system-assigned port
+                "--enable-native-access=ALL-UNNAMED",
 
                 // PetClinic runs very slowly in debug builds if VerifyDependencies is enabled.
                 "-XX:+IgnoreUnrecognizedVMOptions", "-XX:-VerifyDependencies",
@@ -178,6 +201,7 @@ public class SpringPetClinic {
             String cmdLine[] = new String[] {
                 "org.springframework.samples.petclinic.PetClinicApplication"
             };
+/*
             if (runMode == RunMode.PRODUCTION) {
                 // FIXME: bug JDK-8318393
                 cmdLine = StringArrayUtils.concat("-XX:-LoadCachedCode", cmdLine);
@@ -186,12 +210,13 @@ public class SpringPetClinic {
             if (runMode.isProductionRun()) {
                 cmdLine = StringArrayUtils.concat("-Xlog:scc=error", cmdLine);
             }
+ */
             return cmdLine;
         }
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (!runMode.isStaticDump()) {
+            if (runMode.isApplicationExecuted()) {
                 out.shouldContain("Booted and returned in ");
             }
         }

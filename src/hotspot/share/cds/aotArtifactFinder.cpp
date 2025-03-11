@@ -149,10 +149,11 @@ void AOTArtifactFinder::find_artifacts() {
   SystemDictionaryShared::dumptime_table()->iterate_all_live_classes([&] (InstanceKlass* k, DumpTimeClassInfo& info) {
     if (!info.is_excluded() && _seen_classes->get(k) == nullptr) {
       info.set_excluded();
+      info.set_has_checked_exclusion();
       assert(k->is_hidden(), "must be");
       if (log_is_enabled(Info, cds)) {
         ResourceMark rm;
-        log_info(cds)("Skipping %s: Hidden class", k->name()->as_C_string());
+        log_debug(cds)("Skipping %s: Unreferenced hidden class", k->name()->as_C_string());
       }
     }
   });

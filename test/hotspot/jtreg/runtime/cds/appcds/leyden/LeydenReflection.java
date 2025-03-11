@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,7 +23,16 @@
  */
 
 /*
- * @test
+ * @test id=aot
+ * @requires vm.cds.write.archived.java.heap
+ * @library /test/jdk/lib/testlibrary /test/lib
+ * @build LeydenReflection
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar LeydenReflectionApp
+ * @run driver LeydenReflection AOT
+ */
+
+/*
+ * @test id=leyden
  * @requires vm.cds.write.archived.java.heap
  * @library /test/jdk/lib/testlibrary /test/lib
  * @build LeydenReflection
@@ -64,11 +73,11 @@ public class LeydenReflection {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (!runMode.isStaticDump()) {
+            if (runMode.isApplicationExecuted()) {
                 out.shouldContain("Hello Leyden Reflection " + runMode.name());
             }
 
-            if (runMode == RunMode.DUMP_STATIC || runMode == RunMode.TRAINING || runMode == RunMode.TRAINING1) {
+            if (runMode == RunMode.ASSEMBLY || (isLeydenWorkflow() && runMode == RunMode.TRAINING) || runMode == RunMode.TRAINING1) {
               out.shouldContain("Generate ReflectionData: LeydenReflectionApp");
               out.shouldContain("Generate ReflectionData: java.util.Random");
             }

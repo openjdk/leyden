@@ -61,36 +61,13 @@ bool AOTLinkedClassBulkLoader::_platform_completed = false;
 bool AOTLinkedClassBulkLoader::_app_completed = false;
 bool AOTLinkedClassBulkLoader::_all_completed = false;
 
-Array<InstanceKlass*>* AOTLinkedClassBulkLoader::_unregistered_classes_from_preimage = nullptr;
-
 static PerfCounter* _perf_classes_preloaded = nullptr;
 static PerfTickCounters* _perf_class_preload_counters = nullptr;
-
-void AOTLinkedClassBulkLoader::record_unregistered_classes() {
-  if (CDSConfig::is_dumping_preimage_static_archive()) {
-    GrowableArray<InstanceKlass*> unreg_classes;
-    GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
-    for (int i = 0; i < klasses->length(); i++) {
-      Klass* k = klasses->at(i);
-      if (k->is_instance_klass()) {
-        InstanceKlass* ik = InstanceKlass::cast(k);
-        if (ik->is_shared_unregistered_class()) {
-          unreg_classes.append((InstanceKlass*)ArchiveBuilder::get_buffered_klass(ik));
-        }
-      }
-    }
-    _unregistered_classes_from_preimage = ArchiveUtils::archive_array(&unreg_classes);
-  } else {
-    _unregistered_classes_from_preimage = nullptr;
-  }
-}
 
 void AOTLinkedClassBulkLoader::serialize(SerializeClosure* soc, bool is_static_archive) {
   AOTLinkedClassTable::get(is_static_archive)->serialize(soc);
 
   if (is_static_archive) {
-    soc->do_ptr((void**)&_unregistered_classes_from_preimage);
-
     if (soc->reading() && UsePerfData) {
       JavaThread* THREAD = JavaThread::current();
       NEWPERFEVENTCOUNTER(_perf_classes_preloaded, SUN_CLS, "preloadedClasses");
@@ -144,14 +121,6 @@ void AOTLinkedClassBulkLoader::load_non_javabase_classes(JavaThread* current) {
     CDSAccess::test_heap_access_api();
   }
 
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    assert(_unregistered_classes_from_preimage != nullptr, "must be");
-    for (int i = 0; i < _unregistered_classes_from_preimage->length(); i++) {
-      InstanceKlass* ik = _unregistered_classes_from_preimage->at(i);
-      SystemDictionaryShared::init_dumptime_info(ik);
-      SystemDictionaryShared::add_unregistered_class(current, ik);
-    }
-  }
 
   _app_completed = true;
   Atomic::release_store(&_all_completed, true);
@@ -498,13 +467,12 @@ void AOTLinkedClassBulkLoader::replay_training_at_init(Array<InstanceKlass*>* cl
 
 void AOTLinkedClassBulkLoader::replay_training_at_init_for_preloaded_classes(TRAPS) {
   if (CDSConfig::is_using_aot_linked_classes() && TrainingData::have_data()) {
-    AOTLinkedClassTable* table = AOTLinkedClassTable::for_static_archive(); // not applicable for dynamic archive (?? why??)
+    // Only static archive can have training data.
+    AOTLinkedClassTable* table = AOTLinkedClassTable::for_static_archive();
     replay_training_at_init(table->boot(),     CHECK);
     replay_training_at_init(table->boot2(),    CHECK);
     replay_training_at_init(table->platform(), CHECK);
     replay_training_at_init(table->app(),      CHECK);
-
-    CompilationPolicy::replay_training_at_init(false, CHECK);
   }
 }
 

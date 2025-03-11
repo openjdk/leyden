@@ -24,12 +24,14 @@
 
 #include "cds/aotArtifactFinder.hpp"
 #include "cds/aotClassLinker.hpp"
+#include "cds/aotClassLocation.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/dynamicArchive.hpp"
+#include "cds/lambdaFormInvokers.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoader.hpp"
@@ -90,7 +92,7 @@ public:
   void sort_methods();
   void sort_methods(InstanceKlass* ik) const;
   void remark_pointers_for_instance_klass(InstanceKlass* k, bool should_mark) const;
-  void write_archive(char* serialized_data);
+  void write_archive(char* serialized_data, AOTClassLocationConfig* cl_config);
   void gather_array_klasses();
 
 public:
@@ -139,6 +141,7 @@ public:
     make_klasses_shareable();
 
     char* serialized_data;
+    AOTClassLocationConfig* cl_config;
     {
       // Write the symbol table and system dictionaries to the RO space.
       // Note that these tables still point to the *original* objects, so
@@ -149,10 +152,9 @@ public:
 
       ArchiveBuilder::OtherROAllocMark mark;
       SystemDictionaryShared::write_to_archive(false);
-
+      cl_config = AOTClassLocationConfig::dumptime()->write_to_archive();
       DynamicArchive::dump_array_klasses();
       AOTClassLinker::write_to_archive();
-      TrainingData::dump_training_data();
 
       serialized_data = ro_region()->top();
       WriteClosure wc(ro_region());
@@ -162,12 +164,9 @@ public:
     log_info(cds)("Adjust lambda proxy class dictionary");
     SystemDictionaryShared::adjust_lambda_proxy_class_dictionary();
 
-    log_info(cds)("Make training data shareable");
-    make_training_data_shareable();
-
     relocate_to_requested();
 
-    write_archive(serialized_data);
+    write_archive(serialized_data, cl_config);
     release_header();
     DynamicArchive::post_dump();
 
@@ -178,10 +177,8 @@ public:
   }
 
   virtual void iterate_roots(MetaspaceClosure* it) {
-    FileMapInfo::metaspace_pointers_do(it);
     AOTArtifactFinder::all_cached_classes_do(it);
     SystemDictionaryShared::dumptime_classes_do(it);
-    TrainingData::iterate_roots(it);
     iterate_primitive_array_klasses(it);
   }
 
@@ -342,8 +339,8 @@ void DynamicArchiveBuilder::remark_pointers_for_instance_klass(InstanceKlass* k,
   }
 }
 
-void DynamicArchiveBuilder::write_archive(char* serialized_data) {
-  _header->set_shared_path_table(FileMapInfo::shared_path_table().table());
+void DynamicArchiveBuilder::write_archive(char* serialized_data, AOTClassLocationConfig* cl_config) {
+  _header->set_class_location_config(cl_config);
   _header->set_serialized_data(serialized_data);
 
   FileMapInfo* dynamic_info = FileMapInfo::dynamic_info();
@@ -393,11 +390,11 @@ public:
   void doit() {
     ResourceMark rm;
     if (AllowArchivingWithJavaAgent) {
-      log_warning(cds)("This archive was created with AllowArchivingWithJavaAgent. It should be used "
-              "for testing purposes only and should not be used in a production environment");
+      log_warning(cds)("This %s was created with AllowArchivingWithJavaAgent. It should be used "
+                       "for testing purposes only and should not be used in a production environment",
+                       CDSConfig::type_of_archive_being_loaded());
     }
-    FileMapInfo::check_nonempty_dir_in_shared_path_table();
-
+    AOTClassLocationConfig::dumptime_check_nonempty_dirs();
     _builder.doit();
   }
   ~VM_PopulateDynamicDumpSharedSpace() {
@@ -498,6 +495,20 @@ void DynamicArchive::check_for_dynamic_dump() {
   }
 }
 
+void DynamicArchive::dump_impl(bool jcmd_request, const char* archive_name, TRAPS) {
+  MetaspaceShared::link_shared_classes(CHECK);
+  if (!jcmd_request && CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
+    LambdaFormInvokers::regenerate_holder_classes(CHECK);
+  } else {
+    // Make sure we have at least one class in the dynamic archive
+    TempNewSymbol class_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$DummyForDynamicArchive");
+    SystemDictionary::resolve_or_null(class_name, Handle(), CHECK);
+  }
+
+  VM_PopulateDynamicDumpSharedSpace op(archive_name);
+  VMThread::execute(&op);
+}
+
 void DynamicArchive::dump_at_exit(JavaThread* current, const char* archive_name) {
   ExceptionMark em(current);
   ResourceMark rm(current);
@@ -510,32 +521,16 @@ void DynamicArchive::dump_at_exit(JavaThread* current, const char* archive_name)
   log_info(cds, dynamic)("Preparing for dynamic dump at exit in thread %s", current->name());
 
   JavaThread* THREAD = current; // For TRAPS processing related to link_shared_classes
-
-  {
-    // FIXME-HACK - make sure we have at least one class in the dynamic archive
-    TempNewSymbol class_name = SymbolTable::new_symbol("sun/nio/cs/IBM850"); // unusual class; shouldn't be used by our tests cases.
-    SystemDictionary::resolve_or_null(class_name, Handle(), THREAD);
-    guarantee(!HAS_PENDING_EXCEPTION, "must have this class");
+  dump_impl(/*jcmd_request=*/false, archive_name, THREAD);
+  if (HAS_PENDING_EXCEPTION) {
+    // One of the prepatory steps failed
+    oop ex = current->pending_exception();
+    log_error(cds)("Dynamic dump has failed");
+    log_error(cds)("%s: %s", ex->klass()->external_name(),
+                   java_lang_String::as_utf8_string(java_lang_Throwable::message(ex)));
+    CLEAR_PENDING_EXCEPTION;
+    CDSConfig::disable_dumping_dynamic_archive();  // Just for good measure
   }
-
-  MetaspaceShared::link_shared_classes(false/*not from jcmd*/, THREAD);
-  if (!HAS_PENDING_EXCEPTION) {
-    // copy shared path table to saved.
-    TrainingData::init_dumptime_table(THREAD); // captures TrainingDataSetLocker
-    if (!HAS_PENDING_EXCEPTION) {
-      VM_PopulateDynamicDumpSharedSpace op(archive_name);
-      VMThread::execute(&op);
-      return;
-    }
-  }
-
-  // One of the prepatory steps failed
-  oop ex = current->pending_exception();
-  log_error(cds)("Dynamic dump has failed");
-  log_error(cds)("%s: %s", ex->klass()->external_name(),
-                 java_lang_String::as_utf8_string(java_lang_Throwable::message(ex)));
-  CLEAR_PENDING_EXCEPTION;
-  CDSConfig::disable_dumping_dynamic_archive();  // Just for good measure
 }
 
 // This is called by "jcmd VM.cds dynamic_dump"
@@ -544,11 +539,7 @@ void DynamicArchive::dump_for_jcmd(const char* archive_name, TRAPS) {
   assert(CDSConfig::is_using_archive() && RecordDynamicDumpInfo, "already checked in arguments.cpp");
   assert(ArchiveClassesAtExit == nullptr, "already checked in arguments.cpp");
   assert(CDSConfig::is_dumping_dynamic_archive(), "already checked by check_for_dynamic_dump() during VM startup");
-  MetaspaceShared::link_shared_classes(true/*from jcmd*/, CHECK);
-  // copy shared path table to saved.
-  TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
-  VM_PopulateDynamicDumpSharedSpace op(archive_name);
-  VMThread::execute(&op);
+  dump_impl(/*jcmd_request=*/true, archive_name, CHECK);
 }
 
 bool DynamicArchive::validate(FileMapInfo* dynamic_info) {

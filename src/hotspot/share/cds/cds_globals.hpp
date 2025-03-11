@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -106,7 +106,9 @@
           constraint(AOTModeConstraintFunc, AtParse)                        \
                                                                             \
   product(ccstr, AOTConfiguration, nullptr,                                 \
-          "Configuration information used by CreateAOTCache")               \
+          "The configuration file written by -XX:AOTMode=record, and "      \
+          "loaded by -XX:AOTMode=create. This file contains profiling data "\
+          "for deciding what contents should be added to AOTCache. ")       \
                                                                             \
   product(ccstr, AOTCache, nullptr,                                         \
           "Cache for improving start up and warm up")                       \
@@ -144,10 +146,6 @@
           "(** internal use only **) -- if false, automatically launch a "  \
           "child process to create the final image.")                       \
                                                                             \
-  product(bool, PrelinkSharedClasses, true,                                 \
-          "Link all shared classes for the boot/platform/app loaders "      \
-          "immediately at VM start-up")                                     \
-                                                                            \
   product(bool, ArchiveDynamicProxies, false,                               \
           "Archive classes generated for java/lang/reflect/Proxy")          \
                                                                             \
@@ -163,12 +161,6 @@
                                                                             \
   product(bool, ArchiveReflectionData, false,                               \
           "Archive Class::reflectionData field")                            \
-                                                                            \
-  product(bool, TempDisableAddJVMCIModule, false,                           \
-          "Do not add jdk.internal.vm.ci module even for -XX:+EnableJVMCI") \
-                                                                            \
-  product(bool, UsePermanentHeapObjects, false, DIAGNOSTIC,                 \
-          "Allow AOT code to access permanent archived heap objects")       \
                                                                             \
   product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
           "Verify archived training data")                                  \

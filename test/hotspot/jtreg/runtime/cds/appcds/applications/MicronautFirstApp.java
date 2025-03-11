@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -49,6 +49,16 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
  * @run main/othervm/timeout=120 -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. MicronautFirstApp DYNAMIC
+ */
+
+/*
+ * @test id=aot
+ * @key external-dep
+ * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
+ * @summary un MicronautFirstApp with the JEP 483 workflow
+ * @library /test/lib
+ * @run driver/timeout=120 MicronautFirstApp AOT
  */
 
 /*
@@ -126,7 +136,7 @@ public class MicronautFirstApp {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (!runMode.isStaticDump()) {
+            if (runMode.isApplicationExecuted()) {
                 out.shouldContain("Booted and returned in ");
             }
         }

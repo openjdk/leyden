@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -50,5 +50,6 @@ clean: clean0
 	rm -rf getting-started ${DEMO_ARTIFACT} download/target
 
 clean0:
-	rm -f *.cds *.cds.code *.classlist *.jsa *~ *.log *.log.* hs_err_*
+	rm -f *.cds *.cds.code *.classlist *.jsa *~ *.log *.log.* hs_err_* *.aot *.aotconf
+
 

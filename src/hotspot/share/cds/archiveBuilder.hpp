@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -444,6 +444,7 @@ public:
   template <typename T> bool has_been_buffered(T src_addr) const {
     return has_been_buffered((address)src_addr);
   }
+
   address get_buffered_addr(address src_addr) const;
   template <typename T> T get_buffered_addr(T src_addr) const {
     CDS_ONLY(return (T)get_buffered_addr((address)src_addr);)

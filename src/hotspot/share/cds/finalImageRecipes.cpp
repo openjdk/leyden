@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,6 +28,7 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/finalImageRecipes.hpp"
 #include "classfile/classLoader.hpp"
+#include "classfile/javaClasses.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
@@ -55,6 +56,9 @@ void FinalImageRecipes::record_recipes_impl() {
   // ignored during the final image assembly.
 
   // InvokeDynamic
+  // Record the indys that have been resolved in the training run. These indys will be
+  // resolved during the final image assembly.
+
   GrowableArray<InstanceKlass*> tmp_indy_klasses;
   GrowableArray<Array<int>*> tmp_indy_cp_indices;
   int total_indys_to_resolve = 0;
@@ -84,6 +88,9 @@ void FinalImageRecipes::record_recipes_impl() {
       }
     }
   }
+
+  _all_klasses = ArchiveUtils::archive_array(klasses);
+  ArchivePtrMarker::mark_pointer(&_all_klasses);
 
   assert(tmp_indy_klasses.length() == tmp_indy_cp_indices.length(), "must be");
   if (tmp_indy_klasses.length() > 0) {
@@ -120,6 +127,20 @@ void FinalImageRecipes::record_recipes_impl() {
 
   // Dynamic Proxies
   if (_tmp_dynamic_proxy_classes != nullptr) {
+    // Remove proxies for excluded classes
+    for (int i = _tmp_dynamic_proxy_classes->length() - 1; i >= 0; i--) {
+      TmpDynamicProxyClassInfo* tmp_info = _tmp_dynamic_proxy_classes->adr_at(i);
+      bool exclude = false;
+      for (int j = 0; j < tmp_info->_interfaces->length(); j++) {
+        if (SystemDictionaryShared::is_excluded_class(InstanceKlass::cast(tmp_info->_interfaces->at(j)))) {
+          exclude = true;
+          break;
+        }
+      }
+      if (exclude) {
+        _tmp_dynamic_proxy_classes->remove_at(i);
+      }
+    }
     int len = _tmp_dynamic_proxy_classes->length();
     _dynamic_proxy_classes = ArchiveBuilder::new_ro_array<DynamicProxyClassInfo>(len);
     ArchivePtrMarker::mark_pointer(&_dynamic_proxy_classes);
@@ -133,14 +154,41 @@ void FinalImageRecipes::record_recipes_impl() {
       ResourceMark rm;
       GrowableArray<Klass*> buffered_interfaces;
       for (int j = 0; j < tmp_info->_interfaces->length(); j++) {
-        // FIXME: tmp_info->_interfaces->at(j) could be excluded from archive!
-        buffered_interfaces.append(ArchiveBuilder::current()->get_buffered_addr(tmp_info->_interfaces->at(j)));
+        InstanceKlass* intf = InstanceKlass::cast(tmp_info->_interfaces->at(j));
+        assert(!SystemDictionaryShared::is_excluded_class(intf), "sanity");
+        buffered_interfaces.append(ArchiveBuilder::current()->get_buffered_addr(intf));
       }
       info->_interfaces = ArchiveUtils::archive_array(&buffered_interfaces);
 
       ArchivePtrMarker::mark_pointer(&info->_proxy_name);
       ArchivePtrMarker::mark_pointer(&info->_interfaces);
       ArchiveBuilder::alloc_stats()->record_dynamic_proxy_class();
+    }
+  }
+}
+
+void FinalImageRecipes::load_all_classes(TRAPS) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "sanity");
+  Handle class_loader(THREAD, SystemDictionary::java_system_loader());
+  for (int i = 0; i < _all_klasses->length(); i++) {
+    Klass* k = _all_klasses->at(i);
+    if (k->is_instance_klass()) {
+      InstanceKlass* ik = InstanceKlass::cast(k);
+      if (ik->is_shared_unregistered_class()) {
+        SystemDictionaryShared::init_dumptime_info(ik);
+        SystemDictionaryShared::add_unregistered_class(THREAD, ik);
+      } else if (!ik->is_hidden()) {
+        Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), class_loader, true, CHECK);
+        if (actual != ik) {
+          ResourceMark rm(THREAD);
+          log_error(cds)("Unable to resolve class from CDS archive: %s", ik->external_name());
+          log_error(cds)("Expected: " INTPTR_FORMAT ", actual: " INTPTR_FORMAT, p2i(ik), p2i(actual));
+          log_error(cds)("Please check if your VM command-line is the same as in the training run");
+          MetaspaceShared::unrecoverable_writing_error();
+        }
+        assert(ik->is_loaded(), "must be");
+        ik->link_class(CHECK);
+      }
     }
   }
 }
@@ -215,7 +263,7 @@ void FinalImageRecipes::add_dynamic_proxy_class(oop loader, const char* proxy_na
   info._interfaces = new (mtClassShared) GrowableArray<Klass*>(interfaces->length(), mtClassShared);
   for (int i = 0; i < interfaces->length(); i++) {
     Klass* intf = java_lang_Class::as_Klass(interfaces->obj_at(i));
-    info._interfaces->append(intf);
+    info._interfaces->append(InstanceKlass::cast(intf));
 
     if (log_is_enabled(Info, cds, dynamic, proxy)) {
       ResourceMark rm;
@@ -256,19 +304,27 @@ void FinalImageRecipes::record_recipes() {
 
 void FinalImageRecipes::apply_recipes(TRAPS) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-
   if (_final_image_recipes != nullptr) {
-    _final_image_recipes->apply_recipes_for_invokedynamic(CHECK);
-    _final_image_recipes->apply_recipes_for_reflection_data(THREAD);
-    _final_image_recipes->apply_recipes_for_dynamic_proxies(CHECK);
+    _final_image_recipes->apply_recipes_impl(THREAD);
+    if (HAS_PENDING_EXCEPTION) {
+      log_error(cds)("%s: %s", PENDING_EXCEPTION->klass()->external_name(),
+                     java_lang_String::as_utf8_string(java_lang_Throwable::message(PENDING_EXCEPTION)));
+      log_error(cds)("Please check if your VM command-line is the same as in the training run");
+      MetaspaceShared::unrecoverable_writing_error("Unexpected exception, use -Xlog:cds,exceptions=trace for detail");
+    }
   }
 
   // Set it to null as we don't need to write this table into the final image.
   _final_image_recipes = nullptr;
 }
 
-void FinalImageRecipes::serialize(SerializeClosure* soc, bool is_static_archive) {
-  if (is_static_archive) {
-    soc->do_ptr((void**)&_final_image_recipes);
-  }
+void FinalImageRecipes::apply_recipes_impl(TRAPS) {
+  load_all_classes(CHECK);
+  apply_recipes_for_invokedynamic(CHECK);
+  apply_recipes_for_reflection_data(CHECK);
+  apply_recipes_for_dynamic_proxies(CHECK);
+}
+
+void FinalImageRecipes::serialize(SerializeClosure* soc) {
+  soc->do_ptr((void**)&_final_image_recipes);
 }

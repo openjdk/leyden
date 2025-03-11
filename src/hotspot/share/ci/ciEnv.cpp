@@ -1245,11 +1245,11 @@ int ciEnv::compile_id() {
 // ciEnv::notice_inlined_method()
 void ciEnv::notice_inlined_method(ciMethod* method) {
   _num_inlined_bytecodes += method->code_size_for_inlining();
-  CompileTrainingData* tdata = task()->training_data();
-  if (tdata != nullptr) {
+  CompileTrainingData* td = task()->training_data();
+  if (td != nullptr) {
     GUARDED_VM_ENTRY({
       methodHandle mh(Thread::current(), method->get_Method());
-      tdata->notice_inlined_method(task(), mh);
+      td->notice_inlined_method(task(), mh);
     });
   }
 }

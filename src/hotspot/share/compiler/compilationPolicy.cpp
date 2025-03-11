@@ -185,48 +185,17 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
   }
 }
 
-void CompilationPolicy::replay_training_at_init(bool is_on_shutdown, TRAPS) {
-  // Drain pending queue when no concurrent processing thread is present.
-  if (UseConcurrentTrainingReplay) {
-    if (VerifyTrainingData) {
-      MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
-      while (!_training_replay_queue.is_empty_unlocked()) {
-        locker.wait(); // let the replay training thread drain the queue
-      }
-    }
-  } else {
-    do {
-      InstanceKlass* pending = _training_replay_queue.try_pop(TrainingReplayQueue_lock, THREAD);
-      if (pending == nullptr) {
-        break; // drained the queue
-      }
-      if (is_on_shutdown) {
-        LogStreamHandle(Warning, training) log;
-        if (log.is_enabled()) {
-          ResourceMark rm;
-          log.print("pending training replay request: %s%s",
-                    pending->external_name(), (pending->has_aot_initialized_mirror() ? " (preinitialized)" : ""));
-        }
-      }
-      replay_training_at_init_impl(pending, THREAD);
-    } while (true);
-  }
-
-  if (VerifyTrainingData) {
-    TrainingData::verify();
-  }
+void CompilationPolicy::flush_replay_training_at_init(TRAPS) {
+   MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
+   while (!_training_replay_queue.is_empty_unlocked()) {
+     locker.wait(); // let the replay training thread drain the queue
+   }
 }
 
 void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
   assert(klass->is_initialized(), "");
-  if (TrainingData::have_data() && klass->is_shared() &&
-      (CompileBroker::replay_initialized() || !klass->has_aot_initialized_mirror())) { // ignore preloaded classes during early startup
-    if (UseConcurrentTrainingReplay || !CompileBroker::replay_initialized()) {
-      _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
-    } else {
-      replay_training_at_init_impl(klass, THREAD);
-    }
-    assert(!HAS_PENDING_EXCEPTION, "");
+  if (TrainingData::have_data() && klass->is_shared()) {
+    _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
   }
 }
 
@@ -242,8 +211,6 @@ void CompilationPolicyUtils::Queue<InstanceKlass>::print_on(outputStream* st) {
 }
 
 void CompilationPolicy::replay_training_at_init_loop(TRAPS) {
-  precond(UseConcurrentTrainingReplay);
-
   while (!CompileBroker::is_compilation_disabled_forever() || VerifyTrainingData) {
     InstanceKlass* ik = _training_replay_queue.pop(TrainingReplayQueue_lock, THREAD);
     replay_training_at_init_impl(ik, THREAD);
@@ -830,9 +797,9 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       // the rest of the queue, just take the task and go.
       return task;
     }
-    if (task->compile_reason() == CompileTask::Reason_Whitebox) {
-      // Whitebox (CTW) tasks do not participate in rate selection and/or any level
-      // adjustments. Just return them in order.
+    if (task->is_blocking() && task->compile_reason() == CompileTask::Reason_Whitebox) {
+      // CTW tasks, submitted as blocking Whitebox requests, do not participate in rate
+      // selection and/or any level adjustments. Just return them in order.
       return task;
     }
     Method* method = task->method();

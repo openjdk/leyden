@@ -78,8 +78,8 @@ private:
     return p->object()->get_oop() == key;
   }
 
-  NonPermObject* &find_non_perm(oop key);
-  void insert_non_perm(NonPermObject* &where, oop key, ciObject* obj);
+  NonPermObject* &find_non_perm(Handle keyHandle);
+  void insert_non_perm(NonPermObject* &where, Handle keyHandle, ciObject* obj);
 
   void init_ident_of(ciBaseObject* obj);
 

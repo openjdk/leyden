@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -36,7 +36,7 @@
  *                 jdk.test.lib.Asserts 
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app2.jar
  *                 Fruit Apple
- * @run driver DynamicProxyTest LEYDEN
+ * @run driver DynamicProxyTest
  */
 
 
@@ -59,8 +59,14 @@ public class DynamicProxyTest {
     static final String mainClass = "DynamicProxyApp";
 
     public static void main(String[] args) throws Exception {
-        Tester t = new Tester();
-        t.run(args);
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"AOT"} );
+        }
+        {
+          Tester tester = new Tester();
+          tester.run(new String[] {"LEYDEN"} );
+        }
     }
 
     static class Tester extends CDSAppTester {
@@ -70,9 +76,13 @@ public class DynamicProxyTest {
 
         @Override
         public String classpath(RunMode runMode) {
-            if (runMode == RunMode.CLASSLIST || runMode == RunMode.DUMP_STATIC) {
+            switch (runMode) {
+            case RunMode.TRAINING:
+            case RunMode.TRAINING0:
+            case RunMode.TRAINING1:
+            case RunMode.DUMP_STATIC:
                 return app1Jar;
-            } else {
+            default:
                 return app1Jar + File.pathSeparator + app2Jar;
             }
         }

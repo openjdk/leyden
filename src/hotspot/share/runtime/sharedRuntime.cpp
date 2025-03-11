@@ -41,7 +41,6 @@
 #include "compiler/disassembler.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/collectedHeap.hpp"
-#include "gc/shared/gcLocker.inline.hpp"
 #include "interpreter/interpreter.hpp"
 #include "interpreter/interpreterRuntime.hpp"
 #include "jvm.h"

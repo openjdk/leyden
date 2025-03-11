@@ -43,8 +43,6 @@
 
 # :hotspot_compiler
 
-compiler/tiered/Level2RecompilationTest.java 8350159 generic-all
-
 compiler/ciReplay/TestSAServer.java 8029528 generic-all
 compiler/compilercontrol/jcmd/ClearDirectivesFileStackTest.java 8225370 generic-all
 
@@ -98,7 +96,6 @@ gc/TestAlwaysPreTouchBehavior.java#Shenandoah 8334513 generic-all
 gc/TestAlwaysPreTouchBehavior.java#G1 8334513 generic-all
 gc/TestAlwaysPreTouchBehavior.java#Z 8334513 generic-all
 gc/TestAlwaysPreTouchBehavior.java#Epsilon 8334513 generic-all
-gc/stress/gclocker/TestExcessGCLockerCollections.java 8229120 generic-all
 gc/shenandoah/oom/TestAllocOutOfMemory.java#large 8344312 linux-ppc64le
 gc/shenandoah/TestEvilSyncBug.java#generational 8345501 generic-all
 
@@ -172,8 +169,6 @@ vmTestbase/nsk/jvmti/AttachOnDemand/attach045/TestDescription.java 8202971 gener
 vmTestbase/nsk/jvmti/scenarios/capability/CM03/cm03t001/TestDescription.java 8073470 linux-all
 vmTestbase/nsk/jvmti/InterruptThread/intrpthrd003/TestDescription.java 8288911 macosx-all
 
-vmTestbase/gc/lock/jni/jnilock002/TestDescription.java 8192647 generic-all
-
 vmTestbase/jit/escape/LockCoarsening/LockCoarsening001.java 8148743 generic-all
 vmTestbase/jit/escape/LockCoarsening/LockCoarsening002.java 8208259 generic-all
 
@@ -209,15 +204,9 @@ runtime/cds/appcds/dynamicArchive/TestDynamicRegenerateHolderClasses.java 831814
 runtime/cds/appcds/dynamicArchive/TestLambdaInvokers.java 8318142 generic-all
 runtime/cds/appcds/javaldr/ExceptionDuringDumpAtObjectsInitPhase.java 8318142 generic-all
 
-# Windows path handling
-runtime/cds/appcds/applications/SpringPetClinic.java#dynamic 8338613 windows-all
-runtime/cds/appcds/applications/SpringPetClinic.java#leyden 8338613 windows-all
-runtime/cds/appcds/applications/SpringPetClinic.java#leyden_old 8338613 windows-all
-runtime/cds/appcds/applications/SpringPetClinic.java#static 8338613 windows-all
-
 # Windows failures
-runtime/cds/appcds/leyden/LeydenReflection.java 8338604 windows-all
-runtime/cds/appcds/leyden/LeydenReflectionOldWF.java 8338604 windows-all
+runtime/cds/appcds/leyden/LeydenReflection.java#aot 8338604 windows-all
+runtime/cds/appcds/leyden/LeydenReflection.java#leyden 8338604 windows-all
 
 # Misc failures -- need to investigate
 runtime/logging/ItablesTest.java 8318142 generic-all
@@ -235,3 +224,7 @@ gtest/GTestWrapper.java 8318142 generic-all
 runtime/ErrorHandling/TestDwarf.java#dontCheckDecoder 8318142 generic-all
 serviceability/dcmd/compiler/CodelistTest.java 8318142 generic-all
 
+runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#aot 8350619 generic-all
+runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#dynamic 8350619 generic-all
+runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#leyden 8350619 generic-all
+runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#static 8350619 generic-all
