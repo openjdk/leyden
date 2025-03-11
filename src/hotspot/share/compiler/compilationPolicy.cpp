@@ -177,11 +177,6 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
         }
       });
     }
-    Array<Method*>* methods = klass->methods();
-    for (int i = 0; i < methods->length(); i++) {
-      const methodHandle mh(THREAD, methods->at(i));
-      CompilationPolicy::maybe_compile_early_after_init(mh, THREAD);
-    }
   }
 }
 
