@@ -1256,6 +1256,10 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
                                    address immutable_data,
                                    GrowableArray<oop>& reloc_imm_oop_list,
                                    GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                                   AsmRemarks& archived_asm_remarks,
+                                   DbgStrings& archived_dbg_strings,
+#endif /* PRODUCT */
                                    SCCReader* scc_reader)
 {
   archived_nm->copy_to((address)this);
@@ -1267,6 +1271,15 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   copy_values(&metadata_list);
 
   scc_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
+
+#ifndef PRODUCT
+  AsmRemarks::init(asm_remarks());
+  use_remarks(archived_asm_remarks);
+  archived_asm_remarks.clear();
+  DbgStrings::init(dbg_strings());
+  use_strings(archived_dbg_strings);
+  archived_dbg_strings.clear();
+#endif /* PRODUCT */
 
   // Create cache after PcDesc data is copied - it will be used to initialize cache
   _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
@@ -1285,6 +1298,10 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                               address immutable_data,
                               GrowableArray<oop>& reloc_imm_oop_list,
                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                              AsmRemarks& asm_remarks,
+                              DbgStrings& dbg_strings,
+#endif /* PRODUCT */
                               SCCReader* scc_reader)
 {
   nmethod* nm = nullptr;
@@ -1294,7 +1311,17 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
     nm = (nmethod *)CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(archived_nm->comp_level()));
     if (nm != nullptr) {
-      nm->restore_from_archive(archived_nm, method, oop_list, metadata_list, oop_maps, immutable_data, reloc_imm_oop_list, reloc_imm_metadata_list, scc_reader);
+      nm->restore_from_archive(archived_nm,
+                               method,
+                               oop_list,
+                               metadata_list,
+                               oop_maps,
+                               immutable_data,
+                               reloc_imm_oop_list,
+                               reloc_imm_metadata_list,
+                               NOT_PRODUCT_ARG(asm_remarks)
+                               NOT_PRODUCT_ARG(dbg_strings)
+                               scc_reader);
       nm->record_nmethod_dependency();
       NOT_PRODUCT(note_java_nmethod(nm));
     }
@@ -4228,4 +4255,6 @@ void nmethod::prepare_for_archiving() {
   _osr_entry_point = nullptr;
   _compile_id = -1;
   _deoptimization_status = not_marked;
+  _is_unloading_state = 0;
+  _state = not_installed;
 }

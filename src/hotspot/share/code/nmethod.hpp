@@ -490,6 +490,10 @@ class nmethod : public CodeBlob {
                             address immutable_data,
                             GrowableArray<oop>& reloc_imm_oop_list,
                             GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                            AsmRemarks& asm_remarks,
+                            DbgStrings& dbg_strings,
+#endif /* PRODUCT */
                             SCCReader* scc_reader);
 
 public:
@@ -503,6 +507,10 @@ public:
                               address immutable_data,
                               GrowableArray<oop>& reloc_imm_oop_list,
                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                              AsmRemarks& asm_remarks,
+                              DbgStrings& dbg_strings,
+#endif /* PRODUCT */
                               SCCReader* scc_reader);
 
   // create nmethod with entry_bci

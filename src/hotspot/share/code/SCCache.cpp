@@ -23,6 +23,7 @@
  */
 
 #include "asm/macroAssembler.hpp"
+#include "asm/codeBuffer.hpp"
 #include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
@@ -3163,6 +3164,34 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   OopRecorder* oop_recorder = new OopRecorder(env->arena());
   env->set_oop_recorder(oop_recorder);
 
+  uint offset = read_position();
+
+#ifndef PRODUCT
+  // Read asm remarks
+  uint count = *(uint *)addr(offset);
+  offset += sizeof(uint);
+  AsmRemarks asm_remarks;
+  for (uint i = 0; i < count; i++) {
+    uint remark_offset = *(uint *)addr(offset);
+    offset += sizeof(uint);
+    const char* remark = (const char*)addr(offset);
+    offset += strlen(remark)+1;
+    asm_remarks.insert(remark_offset, remark);
+  }
+  set_read_position(offset);
+
+  // Read dbg strings
+  count = *(uint *)addr(offset);
+  offset += sizeof(uint);
+  DbgStrings dbg_strings;
+  for (uint i = 0; i < count; i++) {
+    const char* str = (const char*)addr(offset);
+    offset += strlen(str)+1;
+    dbg_strings.insert(str);
+  }
+  set_read_position(offset);
+#endif /* PRODUCT */
+
   // Read oops and metadata
   GrowableArray<oop> oop_list;
   GrowableArray<Metadata*> metadata_list;
@@ -3173,7 +3202,7 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
 
   ImmutableOopMapSet* oopmaps = read_oop_map_set();
 
-  uint offset = read_position();
+  offset = read_position();
   address immutable_data = (address)addr(offset);
   offset += archived_nm->immutable_data_size();
   set_read_position(offset);
@@ -3203,6 +3232,8 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
                            immutable_data,
                            reloc_immediate_oop_list,
                            reloc_immediate_metadata_list,
+                           NOT_PRODUCT_ARG(asm_remarks)
+                           NOT_PRODUCT_ARG(dbg_strings)
                            this);
   bool success = task->is_success();
   if (success) {
@@ -3481,6 +3512,55 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   nm->copy_to((address)archived_nm);
 
   archived_nm->prepare_for_archiving();
+
+#ifndef PRODUCT
+  // Write asm remarks
+  uint* count_ptr = (uint *)reserve_bytes(sizeof(uint));
+  if (count_ptr == nullptr) {
+    return nullptr;
+  }
+  uint count = 0;
+  bool result = nm->asm_remarks().iterate([&] (uint offset, const char* str) -> bool {
+    log_info(scc, nmethod)("asm remark offset=%d, str=%s", offset, str);
+    n = write_bytes(&offset, sizeof(uint));
+    if (n != sizeof(uint)) {
+      return false;
+    }
+    n = write_bytes(str, strlen(str) + 1);
+    if (n != strlen(str) + 1) {
+      return false;
+    }
+    count += 1;
+    return true;
+  });
+  if (!result) {
+    return nullptr;
+  }
+  *count_ptr = count;
+
+  // Write dbg strings
+  count_ptr = (uint *)reserve_bytes(sizeof(uint));
+  if (count_ptr == nullptr) {
+    return nullptr;
+  }
+  count = 0;
+  result = nm->dbg_strings().iterate([&] (const char* str) -> bool {
+    log_info(scc, nmethod)("dbg string=%s", str);
+    n = write_bytes(str, strlen(str) + 1);
+    if (n != strlen(str) + 1) {
+      return false;
+    }
+    count += 1;
+    return true;
+  });
+  if (!result) {
+    return nullptr;
+  }
+  *count_ptr = count;
+  if (!result) {
+    return nullptr;
+  }
+#endif /* PRODUCT */
 
   // Write oops and metadata present in the nmethod's data region
   if (!write_oops(nm)) {

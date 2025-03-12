@@ -1122,6 +1122,10 @@ void ciEnv::register_aot_method(ciMethod* target,
                                 address immutable_data,
                                 GrowableArray<oop>& reloc_imm_oop_list,
                                 GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                                AsmRemarks& asm_remarks,
+                                DbgStrings& dbg_strings,
+#endif /* PRODUCT */
                                 SCCReader* scc_reader)
 {
   SCCEntry* scc_entry = task()->scc_entry();
@@ -1157,6 +1161,8 @@ void ciEnv::register_aot_method(ciMethod* target,
                               immutable_data,
                               reloc_imm_oop_list,
                               reloc_imm_metadata_list,
+                              NOT_PRODUCT_ARG(asm_remarks)
+                              NOT_PRODUCT_ARG(dbg_strings)
                               scc_reader);
 
     if (nm != nullptr) {
