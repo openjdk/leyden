@@ -2131,8 +2131,8 @@ JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncomm
         // For performance reasons, preloaded nmethods should avoid deopts that lead to recompilations.
         // Compiler logs all uncommon traps with -Xlog:scc. That log is noisy, and some traps may be
         // legitimate. Here, we log the problems that really caused the deopts at runtime.
-        log_info(scc,deoptimization)("In preload code: reason=%s action=%s method=%s",
-          reason_name, reason_action, tm->name_and_sig_as_C_string());
+        log_debug(deoptimization)("In preload code: reason=%s action=%s method=%s bci=%d",
+          reason_name, reason_action, tm->name_and_sig_as_C_string(), trap_bci);
       }
     }
 

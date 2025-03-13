@@ -2127,7 +2127,7 @@ Node* GraphKit::uncommon_trap(int trap_request,
       (action != Deoptimization::Action_none)) {
     ResourceMark rm;
     ciMethod* cim = Compile::current()->method();
-    log_info(scc)("Uncommon trap in preload code: reason=%s action=%s method=%s::%s bci=%d, %s",
+    log_debug(scc,deoptimization)("Uncommon trap in preload code: reason=%s action=%s method=%s::%s bci=%d, %s",
                   Deoptimization::trap_reason_name(reason), Deoptimization::trap_action_name(action),
                   cim->holder()->name()->as_klass_external_name(), cim->name()->as_klass_external_name(),
                   bci(), comment);
