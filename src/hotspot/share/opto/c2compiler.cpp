@@ -22,6 +22,7 @@
  *
  */
 
+#include "ci/ciMethodData.hpp"
 #include "classfile/vmClasses.hpp"
 #include "code/SCCache.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
@@ -128,6 +129,14 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   CompilationMemoryStatisticMark cmsm(directive);
   CompileTask* task = env->task();
   if (install_code && task->is_scc()) {
+    if (target->method_data() != nullptr && target->method_data()->decompile_count() > 0) {
+      // Decompilations detected in this method. It was likely caused by a trap in preload code.
+      // There is no point in trying to load non-preload code, which will trap again.
+      // Skip AOT version and wait for normal compilation to occur.
+      //SCCache::invalidate(task->scc_entry()); // mark sca_entry as not entrant
+      env->record_failure("Detected decompilations");
+      return;
+    }
     bool success = SCCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
     if (success) {
       assert(task->is_success(), "sanity");
