@@ -796,6 +796,7 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
 
 void MetaspaceShared::link_shared_classes(TRAPS) {
   AOTClassLinker::initialize();
+  AOTClassInitializer::init_test_class(CHECK);
 
   // Collect all loaded ClassLoaderData.
   CollectCLDClosure collect_cld(THREAD);
