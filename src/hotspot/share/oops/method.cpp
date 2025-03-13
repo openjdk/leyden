@@ -633,8 +633,7 @@ bool Method::init_training_data(MethodTrainingData* td) {
 
 bool Method::install_training_method_data(const methodHandle& method) {
   MethodTrainingData* mtd = MethodTrainingData::find(method);
-  if (mtd != nullptr && mtd->has_holder() && mtd->final_profile() != nullptr &&
-      mtd->holder() == method() && mtd->final_profile()->method() == method()) { // FIXME
+  if (mtd != nullptr && mtd->final_profile() != nullptr) {
     Atomic::replace_if_null(&method->_method_data, mtd->final_profile());
     return true;
   }
