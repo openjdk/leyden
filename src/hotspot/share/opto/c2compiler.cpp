@@ -133,7 +133,6 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
       // Decompilations detected in this method. It was likely caused by a trap in preload code.
       // There is no point in trying to load non-preload code, which will trap again.
       // Skip AOT version and wait for normal compilation to occur.
-      //SCCache::invalidate(task->scc_entry()); // mark sca_entry as not entrant
       env->record_failure("Detected decompilations");
       return;
     }
