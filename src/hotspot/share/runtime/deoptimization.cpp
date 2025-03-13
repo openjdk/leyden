@@ -2006,8 +2006,8 @@ static void log_deopt(nmethod* nm, Method* tm, intptr_t pc, frame& fr, int trap_
   if (lt.is_enabled()) {
     LogStream ls(lt);
     bool is_osr = nm->is_osr_method();
-    ls.print("cid=%4d %s level=%d",
-             nm->compile_id(), (is_osr ? "osr" : "   "), nm->comp_level());
+    ls.print("cid=%4d %s%s level=%d",
+             nm->compile_id(), (is_osr ? "osr" : "   "), (nm->preloaded() ? "preload" : ""), nm->comp_level());
     ls.print(" %s", tm->name_and_sig_as_C_string());
     ls.print(" trap_bci=%d ", trap_bci);
     if (is_osr) {
@@ -2126,14 +2126,6 @@ JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncomm
       Events::log_deopt_message(current, "Uncommon trap: reason=%s action=%s pc=" INTPTR_FORMAT " method=%s @ %d %s",
                                 reason_name, reason_action, pc,
                                 tm->name_and_sig_as_C_string(), trap_bci, nm->compiler_name());
-
-      if (PreloadReduceTraps && nm->preloaded() && (action != Action_none)) {
-        // For performance reasons, preloaded nmethods should avoid deopts that lead to recompilations.
-        // Compiler logs all uncommon traps with -Xlog:scc. That log is noisy, and some traps may be
-        // legitimate. Here, we log the problems that really caused the deopts at runtime.
-        log_debug(deoptimization)("In preload code: reason=%s action=%s method=%s bci=%d",
-          reason_name, reason_action, tm->name_and_sig_as_C_string(), trap_bci);
-      }
     }
 
     // Print a bunch of diagnostics, if requested.
