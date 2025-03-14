@@ -38,6 +38,7 @@
 #include "code/SCCache.hpp"
 
 CompileTask*  CompileTask::_task_free_list = nullptr;
+int CompileTask::_active_tasks = 0;
 
 /**
  * Allocate a CompileTask, from the free list if possible.
@@ -57,6 +58,7 @@ CompileTask* CompileTask::allocate() {
   }
   assert(task->is_free(), "Task must be free.");
   task->set_is_free(false);
+  _active_tasks++;
   return task;
 }
 
@@ -84,7 +86,13 @@ void CompileTask::free(CompileTask* task) {
     task->set_is_free(true);
     task->set_next(_task_free_list);
     _task_free_list = task;
+    _active_tasks--;
   }
+}
+
+int CompileTask::active_tasks() {
+  MutexLocker locker(CompileTaskAlloc_lock);
+  return _active_tasks;
 }
 
 void CompileTask::initialize(int compile_id,

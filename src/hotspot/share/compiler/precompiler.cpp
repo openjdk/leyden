@@ -32,6 +32,7 @@
 #include "compiler/precompiler.hpp"
 #include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
+#include "oops/method.inline.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
 
@@ -45,41 +46,18 @@ private:
   Thread* _thread;
   GrowableArray<Method*> _methods;
 
-  bool precompile(Method* m, TRAPS) {
+  void precompile(Method* m, TRAPS) {
     assert(!HAS_PENDING_EXCEPTION, "");
     assert(m->method_holder()->is_linked(), "required");
-
-    ++precompiled_total_count;
-
-    uint entries_cnt_before = SCCache::store_entries_cnt();
 
     methodHandle mh(THREAD, m);
     CompileTask::CompileReason compile_reason = (_for_preload ? CompileTask::Reason_PrecompileForPreload
                                                               : CompileTask::Reason_Precompile);
-    nmethod* nm = CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level, methodHandle(), 0,
-                                                true /*requires_online_comp*/, compile_reason,
-                                                THREAD);
+    CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level, methodHandle(), 0,
+                                  true /*requires_online_comp*/, compile_reason,
+                                  THREAD);
 
-    uint entries_cnt_after = SCCache::store_entries_cnt();
-
-    return (nm != nullptr) || (entries_cnt_after > entries_cnt_before);
-  }
-
-  bool precompile(Method* m, ArchiveBuilder* builder, TRAPS) {
-    bool status = precompile(m, THREAD);
-
-    LogStreamHandle(Info, precompile) log;
-    if (log.is_enabled()) {
-      ResourceMark rm;
-      log.print("[%4d] T%d Compiled %s [%p",
-                precompiled_total_count, _comp_level + (_for_preload ? 1 : 0), m->external_name(), m);
-      if (builder != nullptr) {
-        Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
-        log.print(" -> %p", requested_m);
-      }
-      log.print("] [%d] (%s)", SCCache::store_entries_cnt(), (status ? "success" : "FAILED"));
-    }
-    return status;
+    assert(mh->queued_for_compilation(), "Sanity");
   }
 
 public:
@@ -164,20 +142,50 @@ public:
     }
   }
 
+  void log_compilation(ArchiveBuilder* builder, Method* m, bool status) {
+    LogStreamHandle(Info, precompile) log;
+    if (log.is_enabled()) {
+      ResourceMark rm;
+      log.print("[%4d] T%d Compiled %s [%p",
+                precompiled_total_count, _comp_level + (_for_preload ? 1 : 0), m->external_name(), m);
+      if (builder != nullptr) {
+        Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
+        log.print(" -> %p", requested_m);
+      }
+      log.print("] [%d] (%s)", SCCache::store_entries_cnt(), (status ? "success" : "FAILED"));
+    }
+  }
+
   void precompile(ArchiveBuilder* builder, TRAPS) {
     sort_methods_by_compile_id(&_methods);
 
+    // Schedule the compilations
     for (int i = 0; i < _methods.length(); i++) {
       Method* m = _methods.at(i);
 
       assert(!HAS_PENDING_EXCEPTION, "");
-      precompile(m, builder, THREAD);
+      precompile(m, THREAD);
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION;
       }
     }
+
+    // Wait for compilations to complete.
+    while (CompileTask::active_tasks() != 0) {
+      log_info(precompile)("Waiting for %d compiles to complete", CompileTask::active_tasks());
+      os::naked_short_sleep(100);
+    }
+
+    // Print method status
+    for (int i = 0; i < _methods.length(); i++) {
+      Method* m = _methods.at(i);
+      precompiled_total_count++;
+      bool status = !m->is_not_compilable(_comp_level);
+      log_compilation(builder, m, status);
+    }
   }
 };
+
 void Precompiler::compile_cached_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS) {
   ResourceMark rm;
   PrecompileIterator pi(comp_level, for_preload, search_level, THREAD);
