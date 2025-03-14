@@ -32,7 +32,6 @@
 #include "compiler/precompiler.hpp"
 #include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
-#include "oops/method.inline.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
 
@@ -175,7 +174,7 @@ public:
   void precompile(ArchiveBuilder* builder, TRAPS) {
     sort_methods_by_compile_id();
     schedule_compilations(THREAD);
-    CompileTask::wait_for_no_active_tasks();
+    CompileBroker::wait_for_no_active_tasks();
     print_compilation_status(builder);
   }
 };
