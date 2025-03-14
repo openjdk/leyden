@@ -399,6 +399,7 @@ define DeclareJmodRecipe
 endef
 
 $(foreach m, $(JMOD_MODULES), $(eval $(call DeclareJmodRecipe,$m)))
+java.base-static-jmod: hotspot-static-libs
 
 ALL_TARGETS += $(JMOD_TARGETS) $(STATIC_JMOD_TARGETS)
 

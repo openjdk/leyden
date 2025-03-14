@@ -88,6 +88,7 @@ endif
 
 ifeq ($(STATIC_JMOD), true)
   ifneq ($(STATIC_LIBS_DIR), )
+    # Copy native static archive to module_static-libs for inclusion in jmod
     STATIC_LIB_FILES := $(filter %$(STATIC_LIBRARY_SUFFIX), \
           $(call FindFiles, $(SUPPORT_OUTPUTDIR)/native/$(MODULE)/*/static))
     $(eval $(call SetupCopyFiles, COPY_STATIC_LIBS, \
@@ -98,6 +99,19 @@ ifeq ($(STATIC_JMOD), true)
     ))
     DEPS += $(COPY_STATIC_LIBS)
     JMOD_FLAGS += --static-libs $(STATIC_LIBS_DIR)
+  endif
+
+  # Copy hotspot libs, currently only libjvm.a
+  ifeq ($(MODULE), java.base)
+    HOTSPOT_LIB_FILES := $(filter %$(STATIC_LIBRARY_SUFFIX), \
+          $(call FindFiles, $(HOTSPOT_OUTPUTDIR)/*/*/objs/static))
+    $(eval $(call SetupCopyFiles, COPY_HOTSPOT_STATIC_LIBS, \
+        FLATTEN := true, \
+        SRC := $(HOTSPOT_OUTPUTDIR), \
+        DEST := $(SUPPORT_OUTPUTDIR)/modules_static-libs/$(MODULE), \
+        FILES := $(HOTSPOT_LIB_FILES), \
+    ))
+    DEPS += $(COPY_HOTSPOT_STATIC_LIBS)
   endif
 endif
 
