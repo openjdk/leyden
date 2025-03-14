@@ -26,6 +26,7 @@
 #define SHARE_CODE_CODEBLOB_HPP
 
 #include "asm/codeBuffer.hpp"
+#include "code/SCCache.hpp"
 #include "compiler/compilerDefinitions.hpp"
 #include "compiler/oopMap.hpp"
 #include "runtime/javaFrameAnchor.hpp"
@@ -152,7 +153,7 @@ protected:
 public:
 
   ~CodeBlob() {
-    assert(_oop_maps == nullptr, "Not flushed");
+    assert(_oop_maps == nullptr || SCCache::is_address_in_aot_cache((address)_oop_maps), "Not flushed");
   }
 
   // Returns the space needed for CodeBlob
@@ -235,6 +236,7 @@ public:
   // OopMap for frame
   ImmutableOopMapSet* oop_maps() const           { return _oop_maps; }
   void set_oop_maps(OopMapSet* p);
+  void set_oop_maps(ImmutableOopMapSet* p)       { _oop_maps = p; }
 
   const ImmutableOopMap* oop_map_for_slot(int slot, address return_address) const;
   const ImmutableOopMap* oop_map_for_return_address(address return_address) const;
