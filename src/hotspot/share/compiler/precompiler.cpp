@@ -35,8 +35,6 @@
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
 
-static int precompiled_total_count = 0;
-
 class PrecompileIterator : StackObj {
 private:
   CompLevel _comp_level;
@@ -44,43 +42,6 @@ private:
   bool _for_preload;
   Thread* _thread;
   GrowableArray<Method*> _methods;
-
-  bool precompile(Method* m, TRAPS) {
-    assert(!HAS_PENDING_EXCEPTION, "");
-    assert(m->method_holder()->is_linked(), "required");
-
-    ++precompiled_total_count;
-
-    uint entries_cnt_before = SCCache::store_entries_cnt();
-
-    methodHandle mh(THREAD, m);
-    CompileTask::CompileReason compile_reason = (_for_preload ? CompileTask::Reason_PrecompileForPreload
-                                                              : CompileTask::Reason_Precompile);
-    nmethod* nm = CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level, methodHandle(), 0,
-                                                true /*requires_online_comp*/, compile_reason,
-                                                THREAD);
-
-    uint entries_cnt_after = SCCache::store_entries_cnt();
-
-    return (nm != nullptr) || (entries_cnt_after > entries_cnt_before);
-  }
-
-  bool precompile(Method* m, ArchiveBuilder* builder, TRAPS) {
-    bool status = precompile(m, THREAD);
-
-    LogStreamHandle(Info, precompile) log;
-    if (log.is_enabled()) {
-      ResourceMark rm;
-      log.print("[%4d] T%d Compiled %s [%p",
-                precompiled_total_count, _comp_level + (_for_preload ? 1 : 0), m->external_name(), m);
-      if (builder != nullptr) {
-        Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
-        log.print(" -> %p", requested_m);
-      }
-      log.print("] [%d] (%s)", SCCache::store_entries_cnt(), (status ? "success" : "FAILED"));
-    }
-    return status;
-  }
 
 public:
   PrecompileIterator(CompLevel comp_level, bool for_preload, CompLevel search_level, JavaThread* thread)
@@ -153,31 +114,71 @@ public:
     return compare_by_compile_id(m1, m2, CompLevel_full_optimization);
   }
 
-  void sort_methods_by_compile_id(GrowableArray<Method*>* methods) {
+  void sort_methods_by_compile_id() {
     switch(_search_level) {
-      case CompLevel_simple:            methods->sort(&compare_by_compile_id_tier1); break;
-      case CompLevel_limited_profile:   methods->sort(&compare_by_compile_id_tier2); break;
-      case CompLevel_full_profile:      methods->sort(&compare_by_compile_id_tier3); break;
-      case CompLevel_full_optimization: methods->sort(&compare_by_compile_id_tier4); break;
+      case CompLevel_simple:            _methods.sort(&compare_by_compile_id_tier1); break;
+      case CompLevel_limited_profile:   _methods.sort(&compare_by_compile_id_tier2); break;
+      case CompLevel_full_profile:      _methods.sort(&compare_by_compile_id_tier3); break;
+      case CompLevel_full_optimization: _methods.sort(&compare_by_compile_id_tier4); break;
 
       default: fatal("%d", _search_level);
     }
   }
 
-  void precompile(ArchiveBuilder* builder, TRAPS) {
-    sort_methods_by_compile_id(&_methods);
-
+  void schedule_compilations(TRAPS) {
     for (int i = 0; i < _methods.length(); i++) {
       Method* m = _methods.at(i);
+      methodHandle mh(THREAD, m);
+      assert(mh()->method_holder()->is_linked(), "required");
 
       assert(!HAS_PENDING_EXCEPTION, "");
-      precompile(m, builder, THREAD);
+      CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level,
+                                    methodHandle(), 0,
+                                    true /*requires_online_comp*/,
+                                    _for_preload ? CompileTask::Reason_PrecompileForPreload : CompileTask::Reason_Precompile,
+                                    THREAD);
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION;
       }
     }
   }
+
+  void print_compilation_status(ArchiveBuilder* builder) {
+    int success_count = 0;
+    const int log_comp_level = _comp_level + (_for_preload ? 1 : 0);
+
+    for (int i = 0; i < _methods.length(); i++) {
+      Method* m = _methods.at(i);
+
+      bool is_success = !m->is_not_compilable(_comp_level);
+      if (is_success) {
+        success_count++;
+      }
+
+      LogStreamHandle(Info, precompile) log;
+      if (log.is_enabled()) {
+        ResourceMark rm;
+        log.print("[%4d] T%d Compiled %s [%p", i, log_comp_level, m->external_name(), m);
+        if (builder != nullptr) {
+          Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
+          log.print(" -> %p", requested_m);
+        }
+        log.print("] [%d] (%s)", SCCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
+      }
+    }
+
+    log_info(precompile)("Precompilation for level %d finished (%d successful out of %d total)",
+      log_comp_level, success_count, _methods.length());
+  }
+
+  void precompile(ArchiveBuilder* builder, TRAPS) {
+    sort_methods_by_compile_id();
+    schedule_compilations(THREAD);
+    CompileBroker::wait_for_no_active_tasks();
+    print_compilation_status(builder);
+  }
 };
+
 void Precompiler::compile_cached_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS) {
   ResourceMark rm;
   PrecompileIterator pi(comp_level, for_preload, search_level, THREAD);
@@ -214,7 +215,6 @@ void Precompiler::compile_cached_code(TRAPS) {
     compile_cached_code(CompLevel_limited_profile,   false, CompLevel_limited_profile,   CHECK);
     compile_cached_code(CompLevel_simple,            false, CompLevel_simple,            CHECK);
   }
-  log_info(precompile)("Precompilation finished (total: %d)", precompiled_total_count);
 }
 
 // New workflow only

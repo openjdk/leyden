@@ -298,6 +298,10 @@ class CompileBroker: AllStatic {
 #if INCLUDE_JVMCI
   static bool wait_for_jvmci_completion(JVMCICompiler* comp, CompileTask* task, JavaThread* thread);
 #endif
+public:
+  static void wait_for_no_active_tasks();
+
+private:
 
   static void free_buffer_blob_if_allocated(CompilerThread* thread);
 

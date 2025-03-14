@@ -95,6 +95,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
 
  private:
   static CompileTask*  _task_free_list;
+  static int           _active_tasks;
   Monitor*             _lock;
   int                  _compile_id;
   Method*              _method;
@@ -151,6 +152,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
 
   static CompileTask* allocate();
   static void         free(CompileTask* task);
+  static void         wait_for_no_active_tasks();
 
   int          compile_id() const                   { return _compile_id; }
   Method*      method() const                       { return _method; }
