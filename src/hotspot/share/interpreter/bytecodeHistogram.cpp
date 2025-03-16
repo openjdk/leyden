@@ -31,7 +31,7 @@
 
 // Implementation of BytecodeCounter
 
-jlong BytecodeCounter::_counter_value = 0;
+uintx BytecodeCounter::_counter_value = 0;
 jlong BytecodeCounter::_reset_time    = 0;
 
 void BytecodeCounter::reset() {
@@ -48,8 +48,12 @@ double BytecodeCounter::frequency() {
 }
 
 void BytecodeCounter::print() {
-  tty->print_cr(JLONG_FORMAT " bytecodes executed in %.1fs (%.3fMHz)",
-                counter_value(), elapsed_time(), frequency() / 1000000.0);
+  tty->print_cr(
+    "%zu bytecodes executed in %.1fs (%.3fMHz)",
+    counter_value(),
+    elapsed_time(),
+    frequency() / 1000000.0
+  );
 }
 
 

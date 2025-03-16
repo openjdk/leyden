@@ -160,7 +160,7 @@ static bool shared_base_valid(char* shared_base) {
   // We check user input for SharedBaseAddress at dump time.
 
   // At CDS runtime, "shared_base" will be the (attempted) mapping start. It will also
-  // be the encoding base, since the the headers of archived base objects (and with Lilliput,
+  // be the encoding base, since the headers of archived base objects (and with Lilliput,
   // the prototype mark words) carry pre-computed narrow Klass IDs that refer to the mapping
   // start as base.
   //
@@ -225,30 +225,9 @@ void MetaspaceShared::dump_loaded_classes(const char* file_name, TRAPS) {
   }
 }
 
-// If p is not aligned, move it up to the next address that's aligned with alignment.
-// If this is not possible (because p is too high), return nullptr. Example:
-//     p = 0xffffffffffff0000, alignment= 0x10000    => return nullptr.
-static char* align_up_or_null(char* p, size_t alignment) {
-  assert(p != nullptr, "sanity");
-  if (is_aligned(p, alignment)) {
-    return p;
-  }
-
-  char* down = align_down(p, alignment);
-  if (max_uintx - uintx(down) < uintx(alignment)) {
-    // Run out of address space to align up.
-    return nullptr;
-  }
-
-  char* aligned = align_up(p, alignment);
-  assert(aligned >= p, "sanity");
-  assert(aligned != nullptr, "sanity");
-  return aligned;
-}
-
 static bool shared_base_too_high(char* specified_base, char* aligned_base, size_t cds_max) {
-  // Caller should have checked if align_up_or_null( returns nullptr (comparing specified_base
-  // with nullptr is UB).
+  // Caller should have checked that aligned_base was successfully aligned and is not nullptr.
+  // Comparing specified_base with nullptr is UB.
   assert(aligned_base != nullptr, "sanity");
   assert(aligned_base >= specified_base, "sanity");
 
@@ -272,7 +251,9 @@ static char* compute_shared_base(size_t cds_max) {
     return specified_base;
   }
 
-  char* aligned_base = align_up_or_null(specified_base, alignment);
+  char* aligned_base = can_align_up(specified_base, alignment)
+                           ? align_up(specified_base, alignment)
+                           : nullptr;
 
   if (aligned_base != specified_base) {
     log_info(cds)("SharedBaseAddress (" INTPTR_FORMAT ") aligned up to " INTPTR_FORMAT,
@@ -674,7 +655,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   DEBUG_ONLY(SystemDictionaryShared::NoClassLoadingMark nclm);
 
   _pending_method_handle_intrinsics = new (mtClassShared) GrowableArray<Method*>(256, mtClassShared);
-  if (CDSConfig::is_dumping_aot_linked_classes()) {
+  if (CDSConfig::is_dumping_method_handles()) {
     // When dumping AOT-linked classes, some classes may have direct references to a method handle
     // intrinsic. The easiest thing is to save all of them into the AOT cache.
     SystemDictionary::get_all_method_handle_intrinsics(_pending_method_handle_intrinsics);
@@ -1091,7 +1072,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       SystemDictionaryShared::create_loader_positive_lookup_cache(CHECK);
     }
 
-    if (CDSConfig::is_dumping_invokedynamic()) {
+    if (CDSConfig::is_initing_classes_at_dump_time()) {
       // java.lang.Class::reflectionFactory cannot be archived yet. We set this field
       // to null, and it will be initialized again at runtime.
       log_debug(cds)("Resetting Class::reflectionFactory");

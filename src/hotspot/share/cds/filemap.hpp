@@ -140,7 +140,6 @@ private:
                                         // some expensive operations.
   bool   _has_aot_linked_classes;       // Was the CDS archive created with -XX:+AOTClassLinking
   bool   _has_full_module_graph;        // Does this CDS archive contain the full archived module graph?
-  bool   _has_archived_invokedynamic;   // Does the archive have aot-linked invokedynamic CP entries?
   bool   _has_archived_packages;
   bool   _has_archived_protection_domains;
   int    _gc_kind;                      // Universe::heap()->kind();

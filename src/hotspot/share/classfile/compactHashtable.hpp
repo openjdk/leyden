@@ -134,8 +134,6 @@ private:
 
 public:
   void dump(SimpleCompactHashtable *cht, const char* table_name);
-
-  static size_t estimate_size(int num_entries);
 };
 #endif // INCLUDE_CDS
 
@@ -243,7 +241,6 @@ template <
   bool (*EQUALS)(V value, K key, int len)
   >
 class CompactHashtable : public SimpleCompactHashtable {
-  friend class VMStructs;
 
   V decode(u4 offset) const {
     return DECODE(_base_address, offset);
