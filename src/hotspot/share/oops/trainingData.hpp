@@ -429,10 +429,6 @@ class KlassTrainingData : public TrainingData {
     precond(has_holder());
     return holder()->name();
   }
-  Symbol* loader_name() const {
-    precond(has_holder());
-    return holder()->class_loader_name_and_id();
-  }
   bool has_holder()       const { return _holder != nullptr; }
   InstanceKlass* holder() const { return _holder; }
 
