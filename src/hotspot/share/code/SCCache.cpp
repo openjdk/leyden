@@ -3192,6 +3192,11 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   set_read_position(offset);
 #endif /* PRODUCT */
 
+  offset = read_position();
+  address reloc_data = (address)addr(offset);
+  offset += archived_nm->relocation_size();
+  set_read_position(offset);
+
   // Read oops and metadata
   GrowableArray<oop> oop_list;
   GrowableArray<Metadata*> metadata_list;
@@ -3226,6 +3231,7 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   env->register_aot_method(target,
                            compiler,
                            archived_nm,
+                           reloc_data,
                            oop_list,
                            metadata_list,
                            oopmaps,
@@ -3562,6 +3568,12 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   }
 #endif /* PRODUCT */
 
+  uint reloc_data_size = nm->relocation_size();
+  n = write_bytes((address)nm->relocation_begin(), reloc_data_size);
+  if (n != reloc_data_size) {
+    return nullptr;
+  }
+
   // Write oops and metadata present in the nmethod's data region
   if (!write_oops(nm)) {
     if (lookup_failed() && !failed()) {
@@ -3582,9 +3594,9 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
     return nullptr;
   }
 
-  int immutable_data_size = nm->immutable_data_size();
+  uint immutable_data_size = nm->immutable_data_size();
   n = write_bytes(nm->immutable_data_begin(), immutable_data_size);
-  if (n != (uint)immutable_data_size) {
+  if (n != immutable_data_size) {
     return nullptr;
   }
 

@@ -375,6 +375,7 @@ public:
   void register_aot_method(ciMethod* target,
                            AbstractCompiler* compiler,
                            nmethod* archived_nm,
+                           address reloc_data,
                            GrowableArray<oop>& oop_list,
                            GrowableArray<Metadata*>& metadata_list,
                            ImmutableOopMapSet* oopmaps,

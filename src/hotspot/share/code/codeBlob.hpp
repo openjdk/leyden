@@ -280,6 +280,8 @@ public:
   void use_remarks(AsmRemarks &remarks) { _asm_remarks.share(remarks); }
   void use_strings(DbgStrings &strings) { _dbg_strings.share(strings); }
 #endif
+
+  void prepare_for_archiving();
 };
 
 //----------------------------------------------------------------------------------------------------

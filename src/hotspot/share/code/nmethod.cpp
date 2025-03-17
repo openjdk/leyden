@@ -1250,6 +1250,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
 
 void nmethod::restore_from_archive(nmethod* archived_nm,
                                    const methodHandle& method,
+                                   address reloc_data,
                                    GrowableArray<oop>& oop_list,
                                    GrowableArray<Metadata*>& metadata_list,
                                    ImmutableOopMapSet* oop_maps,
@@ -1265,6 +1266,15 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   archived_nm->copy_to((address)this);
   set_name("nmethod");
   set_method(method());
+
+  // allocate _mutable_data before copying relocation data because relocation data is now stored as part of mutable data area
+  if (archived_nm->mutable_data_size() > 0) {
+    _mutable_data = (address)os::malloc(archived_nm->mutable_data_size(), mtCode);
+    if (_mutable_data == nullptr) {
+      vm_exit_out_of_memory(archived_nm->mutable_data_size(), OOM_MALLOC_ERROR, "codebuffer: no space for mutable data");
+    }
+  }
+  memcpy((address)relocation_begin(), reloc_data, archived_nm->relocation_size());
   set_oop_maps(oop_maps);
   set_immutable_data(immutable_data);
   copy_values(&oop_list);
@@ -1292,6 +1302,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
 nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                               const methodHandle& method,
                               AbstractCompiler* compiler,
+                              address reloc_data,
                               GrowableArray<oop>& oop_list,
                               GrowableArray<Metadata*>& metadata_list,
                               ImmutableOopMapSet* oop_maps,
@@ -1313,6 +1324,7 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
     if (nm != nullptr) {
       nm->restore_from_archive(archived_nm,
                                method,
+                               reloc_data,
                                oop_list,
                                metadata_list,
                                oop_maps,
@@ -4236,11 +4248,7 @@ const char* nmethod::jvmci_name() {
 #endif
 
 void nmethod::prepare_for_archiving() {
-  set_name(nullptr);
-#ifndef PRODUCT
-  asm_remarks().clear();
-  dbg_strings().clear();
-#endif /* PRODUCT */
+  CodeBlob::prepare_for_archiving();
   _deoptimization_generation = 0;
   _gc_epoch = 0;
   _method_profiling_count = 0;
