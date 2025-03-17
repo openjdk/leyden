@@ -3175,7 +3175,7 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
     uint remark_offset = *(uint *)addr(offset);
     offset += sizeof(uint);
     const char* remark = (const char*)addr(offset);
-    offset += strlen(remark)+1;
+    offset += (uint)strlen(remark)+1;
     asm_remarks.insert(remark_offset, remark);
   }
   set_read_position(offset);
@@ -3186,7 +3186,7 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   DbgStrings dbg_strings;
   for (uint i = 0; i < count; i++) {
     const char* str = (const char*)addr(offset);
-    offset += strlen(str)+1;
+    offset += (uint)strlen(str)+1;
     dbg_strings.insert(str);
   }
   set_read_position(offset);
@@ -3526,7 +3526,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
     if (n != sizeof(uint)) {
       return false;
     }
-    n = write_bytes(str, strlen(str) + 1);
+    n = write_bytes(str, (uint)strlen(str) + 1);
     if (n != strlen(str) + 1) {
       return false;
     }
@@ -3546,7 +3546,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   count = 0;
   result = nm->dbg_strings().iterate([&] (const char* str) -> bool {
     log_info(scc, nmethod)("dbg string=%s", str);
-    n = write_bytes(str, strlen(str) + 1);
+    n = write_bytes(str, (uint)strlen(str) + 1);
     if (n != strlen(str) + 1) {
       return false;
     }
