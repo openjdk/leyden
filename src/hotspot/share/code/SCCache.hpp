@@ -493,7 +493,6 @@ public:
   bool failed() const { return _failed; }
   void set_failed()   { _failed = true; }
 
-  static void copy_bytes(const char* from, address to, uint size);
   static bool is_address_in_aot_cache(address p) NOT_CDS_RETURN_(false);
   static uint max_aot_code_size();
 

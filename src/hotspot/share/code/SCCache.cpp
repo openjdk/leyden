@@ -733,7 +733,7 @@ bool SCCache::is_address_in_aot_cache(address p) {
   return false;
 }
 
-void SCCache::copy_bytes(const char* from, address to, uint size) {
+static void copy_bytes(const char* from, address to, uint size) {
   assert(size > 0, "sanity");
   bool by_words = true;
   if ((size > 2 * HeapWordSize) && (((intptr_t)from | (intptr_t)to) & (HeapWordSize - 1)) == 0) {
@@ -1816,7 +1816,7 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
       cs->expand_locs(reloc_count);
     }
     relocInfo* reloc_start = cs->locs_start();
-    SCCache::copy_bytes(addr(code_offset), (address)reloc_start, reloc_size);
+    copy_bytes(addr(code_offset), (address)reloc_start, reloc_size);
     code_offset += reloc_size;
     cs->set_locs_end(reloc_start + reloc_count);
     cs->set_locs_point(cs->start() + locs_point_off);
@@ -1980,7 +1980,7 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
 
     // Load code to new buffer.
     address code_start = cs->start();
-    SCCache::copy_bytes(addr(scc_cs[i]._offset + code_offset), code_start, orig_size_align);
+    copy_bytes(addr(scc_cs[i]._offset + code_offset), code_start, orig_size_align);
     cs->set_end(code_start + orig_size);
   }
 
@@ -2495,12 +2495,12 @@ DebugInformationRecorder* SCCReader::read_debug_info(OopRecorder* oop_recorder) 
   assert(sizeof(PcDesc) > DATA_ALIGNMENT, "sanity");
   DebugInformationRecorder* recorder = new DebugInformationRecorder(oop_recorder, data_size_align, pcs_length);
 
-  SCCache::copy_bytes(addr(code_offset), recorder->stream()->buffer(), data_size_align);
+  copy_bytes(addr(code_offset), recorder->stream()->buffer(), data_size_align);
   recorder->stream()->set_position(data_size);
   code_offset += data_size;
 
   uint pcs_size = pcs_length * sizeof(PcDesc);
-  SCCache::copy_bytes(addr(code_offset), (address)recorder->pcs(), pcs_size);
+  copy_bytes(addr(code_offset), (address)recorder->pcs(), pcs_size);
   code_offset += pcs_size;
   set_read_position(code_offset);
   return recorder;
@@ -2550,12 +2550,12 @@ OopMapSet* SCCReader::read_oop_maps() {
     CompressedWriteStream* stream = oop_map->write_stream();
 
     // Read data which overwrites default data
-    SCCache::copy_bytes(addr(code_offset), (address)oop_map, sizeof(OopMap));
+    copy_bytes(addr(code_offset), (address)oop_map, sizeof(OopMap));
     code_offset += sizeof(OopMap);
     stream->set_position(data_size);
     oop_map->set_write_stream(stream);
     if (data_size > 0) {
-      SCCache::copy_bytes(addr(code_offset), (address)(oop_map->data()), (uint)data_size);
+      copy_bytes(addr(code_offset), (address)(oop_map->data()), (uint)data_size);
       code_offset += data_size;
     }
 #ifdef ASSERT
