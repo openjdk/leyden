@@ -1080,7 +1080,7 @@ void CodeSection::print_on(outputStream* st, const char* name) {
 
 void CodeBuffer::print_on(outputStream* st) {
 #if 0
-  if (this == nullptr) { // gcc complains 'nonnull' argument 'this' compared to nullptr 
+  if (this == nullptr) { // gcc complains 'nonnull' argument 'this' compared to nullptr
     st->print_cr("null CodeBuffer pointer");
     return;
   }
