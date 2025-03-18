@@ -3021,10 +3021,6 @@ public:
   }
 };
 
-size_t AdapterHandlerLibrary::estimate_size_for_archive() {
-  return CompactHashtableWriter::estimate_size(_adapter_handler_table->number_of_entries());
-}
-
 void AdapterHandlerLibrary::archive_adapter_table() {
   CompactHashtableStats stats;
   CompactHashtableWriter writer(_adapter_handler_table->number_of_entries(), &stats);

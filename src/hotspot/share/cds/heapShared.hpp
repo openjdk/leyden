@@ -285,8 +285,7 @@ private:
   static GrowableArrayCHeap<const char*, mtClassShared>* _context; // for debugging unarchivable objects
   static int _root_segment_max_size_elems;
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
-  static MetaspaceObjToOopHandleTable* _scratch_java_mirror_table;
-  static MetaspaceObjToOopHandleTable* _scratch_references_table;
+  static MetaspaceObjToOopHandleTable* _scratch_objects_table;
 
   static void init_seen_objects_table() {
     assert(_seen_objects_table == nullptr, "must be");
@@ -343,6 +342,7 @@ private:
   static void prepare_resolved_references();
   static void archive_strings();
   static void archive_subgraphs();
+
   // PendingOop and PendingOopStack are used for recursively discovering all cacheable
   // heap objects. The recursion is done using PendingOopStack so we won't overflow the
   // C stack with deep reference chains.
@@ -434,7 +434,7 @@ private:
   static objArrayOop scratch_resolved_references(ConstantPool* src);
   static void add_scratch_resolved_references(ConstantPool* src, objArrayOop dest) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_dumping() NOT_CDS_JAVA_HEAP_RETURN;
-  static void init_scratch_objects(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
+  static void init_scratch_objects_for_basic_type_mirrors(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_box_classes(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static bool is_heap_region(int idx) {
     CDS_JAVA_HEAP_ONLY(return (idx == MetaspaceShared::hp);)

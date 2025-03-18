@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -56,8 +56,6 @@ enum class SharedStubId :int {
 #undef SHARED_STUB_ID_ENUM_DECLARE
 
 class SharedRuntime: AllStatic {
-  friend class VMStructs;
-
  private:
   // Declare shared stub fields
 #define SHARED_STUB_FIELD_DECLARE(name, type) \
@@ -825,7 +823,6 @@ class AdapterHandlerLibrary: public AllStatic {
   static bool is_abstract_method_adapter(AdapterHandlerEntry* adapter);
 
   static bool link_adapter_handler(AdapterHandlerEntry* handler, AdapterBlob*& adapter_blob) NOT_CDS_RETURN_(false);
-  static size_t estimate_size_for_archive() NOT_CDS_RETURN_(0);
   static void archive_adapter_table() NOT_CDS_RETURN;
   static void serialize_shared_table_header(SerializeClosure* soc) NOT_CDS_RETURN;
 };

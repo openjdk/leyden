@@ -1840,18 +1840,6 @@ void TemplateInterpreterGenerator::set_vtos_entry_points(Template* t,
 
 //-----------------------------------------------------------------------------
 
-void TemplateInterpreterGenerator::count_bytecode() {
-#ifdef _LP64
-  __ incrementq(ExternalAddress((address) &BytecodeCounter::_counter_value), rscratch1);
-#else
-  Unimplemented();
-#endif
-}
-
-void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
-  __ incrementl(ExternalAddress((address) &BytecodeHistogram::_counters[t->bytecode()]), rscratch1);
-}
-
 // Non-product code
 #ifndef PRODUCT
 
@@ -1893,7 +1881,21 @@ address TemplateInterpreterGenerator::generate_trace_code(TosState state) {
 
   return entry;
 }
+#endif // PRODUCT
 
+void TemplateInterpreterGenerator::count_bytecode() {
+  #ifndef _LP64
+  __ incrementl(ExternalAddress((address) &BytecodeCounter::_counter_value), rscratch1);
+  #else
+  __ incrementq(ExternalAddress((address) &BytecodeCounter::_counter_value), rscratch1);
+  #endif
+}
+
+void TemplateInterpreterGenerator::histogram_bytecode(Template* t) {
+  __ incrementl(ExternalAddress((address) &BytecodeHistogram::_counters[t->bytecode()]), rscratch1);
+}
+
+#ifndef PRODUCT
 void TemplateInterpreterGenerator::histogram_bytecode_pair(Template* t) {
   __ mov32(rbx, ExternalAddress((address) &BytecodePairHistogram::_index));
   __ shrl(rbx, BytecodePairHistogram::log2_number_of_codes);
@@ -1927,9 +1929,14 @@ void TemplateInterpreterGenerator::trace_bytecode(Template* t) {
 
 void TemplateInterpreterGenerator::stop_interpreter_at() {
   Label L;
+  #ifndef _LP64
   __ cmp32(ExternalAddress((address) &BytecodeCounter::_counter_value),
            StopInterpreterAt,
            rscratch1);
+  #else
+  __ mov64(rscratch1, StopInterpreterAt);
+  __ cmp64(rscratch1, ExternalAddress((address) &BytecodeCounter::_counter_value), rscratch2);
+  #endif
   __ jcc(Assembler::notEqual, L);
   __ int3();
   __ bind(L);

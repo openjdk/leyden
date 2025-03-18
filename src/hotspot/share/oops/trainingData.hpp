@@ -374,7 +374,6 @@ private:
   static void serialize_training_data(SerializeClosure* soc);
   static void print_archived_training_data_on(outputStream* st);
   static void write_training_data_dictionary(TrainingDataDictionary* dictionary);
-  static size_t estimate_size_for_archive();
 
   static TrainingData* lookup_archived_training_data(const Key* k);
 #endif
@@ -429,10 +428,6 @@ class KlassTrainingData : public TrainingData {
   Symbol* name() const {
     precond(has_holder());
     return holder()->name();
-  }
-  Symbol* loader_name() const {
-    precond(has_holder());
-    return holder()->class_loader_name_and_id();
   }
   bool has_holder()       const { return _holder != nullptr; }
   InstanceKlass* holder() const { return _holder; }

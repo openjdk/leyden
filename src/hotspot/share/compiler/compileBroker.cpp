@@ -1755,9 +1755,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     }
     bool is_blocking = ReplayCompiles                                             ||
                        !directive->BackgroundCompilationOption                    ||
-                       (PreloadBlocking && (compile_reason == CompileTask::Reason_Preload)) ||
-                       (compile_reason == CompileTask::Reason_Precompile)         ||
-                       (compile_reason == CompileTask::Reason_PrecompileForPreload);
+                       (PreloadBlocking && (compile_reason == CompileTask::Reason_Preload));
     compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
   }
 
@@ -2045,6 +2043,10 @@ void CompileBroker::wait_for_completion(CompileTask* task) {
     // be using this CompileTask; we can free it.
     CompileTask::free(task);
   }
+}
+
+void CompileBroker::wait_for_no_active_tasks() {
+  CompileTask::wait_for_no_active_tasks();
 }
 
 /**
@@ -2679,7 +2681,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
     if (CompilationLog::log() != nullptr) {
       CompilationLog::log()->log_failure(thread, task, failure_reason, retry_message);
     }
-    if (PrintCompilation) {
+    if (PrintCompilation || task->directive()->PrintCompilationOption) {
       FormatBufferResource msg = retry_message != nullptr ?
         FormatBufferResource("COMPILE SKIPPED: %s (%s)", failure_reason, retry_message) :
         FormatBufferResource("COMPILE SKIPPED: %s",      failure_reason);

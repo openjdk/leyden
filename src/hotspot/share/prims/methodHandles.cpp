@@ -1221,38 +1221,6 @@ JVM_ENTRY_PROF(void, MHN_setCallSiteTargetNormal, MHN_setCallSiteTargetNormal(JN
 }
 JVM_END
 
-// Make sure the class is linked. If the class cannot be verified, etc, an exception will be thrown.
-JVM_ENTRY_PROF(void, MHN_checkArchivable, MHN_checkArchivable(JNIEnv *env, jobject igcls, jclass klass_jh)) {
-  if (klass_jh == nullptr) { THROW_MSG(vmSymbols::java_lang_InternalError(), "klass is null"); }
-
-  if (CDSConfig::is_dumping_invokedynamic()) {
-    Klass* klass = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(klass_jh));
-    if (klass != nullptr && klass->is_instance_klass()) {
-      // klass could be null during very early VM start-up
-      InstanceKlass* ik = InstanceKlass::cast(klass);
-      ik->link_class(THREAD); // exception will be thrown if unverifiable
-      if (!ik->is_linked()) {
-        assert(HAS_PENDING_EXCEPTION, "must be");
-        ResourceMark rm;
-        log_warning(cds)("Cannot use unverifiable class %s in MethodType",
-                         klass->external_name());
-        return;
-      }
-
-      if (SystemDictionaryShared::is_jfr_event_class(ik)) {
-        ResourceMark rm;
-        log_warning(cds)("Cannot use JFR event class %s in MethodType",
-                         klass->external_name());
-        Exceptions::fthrow(THREAD_AND_LOCATION,
-                           vmSymbols::java_lang_NoClassDefFoundError(),
-                           "Class %s, or one of its supertypes, is a JFR event class",
-                           klass->external_name());
-      }
-    }
-  }
-}
-JVM_END
-
 JVM_ENTRY_PROF(void, MHN_setCallSiteTargetVolatile, MHN_setCallSiteTargetVolatile(JNIEnv* env, jobject igcls, jobject call_site_jh, jobject target_jh)) {
   Handle call_site(THREAD, JNIHandles::resolve_non_null(call_site_jh));
   Handle target   (THREAD, JNIHandles::resolve_non_null(target_jh));
@@ -1495,7 +1463,6 @@ JVM_END
   macro(MHN_init_Mem)                  \
   macro(MHN_expand_Mem)                \
   macro(MHN_resolve_Mem)               \
-  macro(MHN_checkArchivable)           \
   macro(MHN_getNamedCon)               \
   macro(MHN_objectFieldOffset)         \
   macro(MHN_setCallSiteTargetNormal)   \

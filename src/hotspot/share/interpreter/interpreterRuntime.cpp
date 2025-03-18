@@ -1200,7 +1200,7 @@ nmethod* InterpreterRuntime::frequency_counter_overflow(JavaThread* current, add
     int bci = method->bci_from(last_frame.bcp());
     nm = method->lookup_osr_nmethod_for(bci, CompLevel_none, false);
     BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
-    if (nm != nullptr && bs_nm != nullptr) {
+    if (nm != nullptr) {
       // in case the transition passed a safepoint we need to barrier this again
       if (!bs_nm->nmethod_osr_entry_barrier(nm)) {
         nm = nullptr;
@@ -1241,7 +1241,7 @@ JRT_ENTRY_PROF(nmethod*, InterpreterRuntime, frequency_counter_overflow,
   nmethod* osr_nm = CompilationPolicy::event(method, method, branch_bci, bci, CompLevel_none, nullptr, CHECK_NULL);
 
   BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
-  if (osr_nm != nullptr && bs_nm != nullptr) {
+  if (osr_nm != nullptr) {
     if (!bs_nm->nmethod_osr_entry_barrier(osr_nm)) {
       osr_nm = nullptr;
     }
