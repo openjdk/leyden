@@ -608,7 +608,7 @@ public:
   static bool allow_const_field(ciConstant& value) NOT_CDS_RETURN_(false);
   static void invalidate(SCCEntry* entry) NOT_CDS_RETURN;
   static bool is_loaded(SCCEntry* entry);
-  static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level);
+  static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level, bool maybe_ignore = true);
   static void preload_code(JavaThread* thread);
 
   template<typename Function>

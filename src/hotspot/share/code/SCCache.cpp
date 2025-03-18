@@ -321,7 +321,7 @@ void SCCache::preload_code(JavaThread* thread) {
   _cache->preload_startup_code(thread);
 }
 
-SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) {
+SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level, bool maybe_ignore) {
   switch (comp_level) {
     case CompLevel_simple:
       if ((DisableCachedCode & (1 << 0)) != 0) {
@@ -363,14 +363,16 @@ SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) 
 #endif
     }
 
-    DirectiveSet* directives = DirectivesStack::getMatchingDirective(method, nullptr);
-    if (directives->IgnorePrecompiledOption) {
-      LogStreamHandle(Info, scc, compilation) log;
-      if (log.is_enabled()) {
-        log.print("Ignore cached code entry on level %d for ", comp_level);
-        method->print_value_on(&log);
+    if (maybe_ignore) {
+      DirectiveSet* directives = DirectivesStack::getMatchingDirective(method, nullptr);
+      if (directives->IgnorePrecompiledOption) {
+        LogStreamHandle(Info, scc, compilation) log;
+        if (log.is_enabled()) {
+          log.print("Ignore cached code entry on level %d for ", comp_level);
+          method->print_value_on(&log);
+        }
+        return nullptr;
       }
-      return nullptr;
     }
 
     return entry;
@@ -4472,6 +4474,6 @@ void SCCache::block_loading(Method* method, CompLevel comp_level) {
   Thread* current = Thread::current();
   HandleMark hm(current);
   methodHandle mh(current, method);
-  SCCEntry* scc_entry = cache->find_code_entry(mh, comp_level);
+  SCCEntry* scc_entry = cache->find_code_entry(mh, comp_level, /* maybe_ignore = */ false);
   cache->invalidate_entry(scc_entry);
 }
