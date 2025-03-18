@@ -134,6 +134,7 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
       // traps, but some are still there. Since preload code is compiled more conservatively,
       // we assume that non-preload code would trap again in similar conditions. Therefore,
       // there is no point in trying to load it. Instead, wait for normal compilation to occur.
+      SCCache::invalidate(task->scc_entry()); // mark sca_entry as not entrant
       env->record_failure("Preload code was decompiled");
       return;
     }
