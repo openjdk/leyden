@@ -1080,6 +1080,9 @@ void ciEnv::register_method(ciMethod* target,
       MethodData* mdo = method()->method_data();
       if (mdo != nullptr && _inc_decompile_count_on_failure) {
         mdo->inc_decompile_count();
+        if (nm->preloaded()) {
+          mdo->inc_preload_decompile_count();
+        }
       }
 
       // All buffers in the CodeBuffer are allocated in the CodeCache.

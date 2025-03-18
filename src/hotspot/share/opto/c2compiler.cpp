@@ -129,11 +129,12 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   CompilationMemoryStatisticMark cmsm(directive);
   CompileTask* task = env->task();
   if (install_code && task->is_scc()) {
-    if (target->method_data() != nullptr && target->method_data()->decompile_count() > 0) {
-      // Decompilations detected in this method. It was likely caused by a trap in preload code.
-      // There is no point in trying to load non-preload code, which will trap again.
-      // Skip AOT version and wait for normal compilation to occur.
-      env->record_failure("Detected decompilations");
+    if (target->method_data() != nullptr && target->method_data()->preload_decompile_count() > 0) {
+      // Preload code was decompiled, possibly due to a trap. Preload code should not normally have
+      // traps, but some are still there. Since preload code is compiled more conservatively,
+      // we assume that non-preload code would trap again in similar conditions. Therefore,
+      // there is no point in trying to load it. Instead, wait for normal compilation to occur.
+      env->record_failure("Preload code was decompiled");
       return;
     }
     bool success = SCCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);

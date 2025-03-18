@@ -1967,6 +1967,9 @@ void nmethod::inc_decompile_count() {
   if (mdo == nullptr)  return;
   // There is a benign race here.  See comments in methodData.hpp.
   mdo->inc_decompile_count();
+  if (preloaded()) {
+    mdo->inc_preload_decompile_count();
+  }
 }
 
 void nmethod::inc_method_profiling_count() {
