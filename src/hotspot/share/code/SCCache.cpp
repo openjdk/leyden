@@ -4456,3 +4456,22 @@ SCCache::ReadingMark::~ReadingMark() {
     }
   }
 }
+
+void SCCache::block_loading(Method* method, CompLevel comp_level) {
+  SCCache* cache = open_for_read();
+  if (cache == nullptr) {
+    return;
+  }
+
+  ReadingMark rdmk;
+  if (rdmk.failed()) {
+    // Cache is closed, cannot touch anything.
+    return;
+  }
+
+  Thread* current = Thread::current();
+  HandleMark hm(current);
+  methodHandle mh(current, method);
+  SCCEntry* scc_entry = cache->find_code_entry(mh, comp_level);
+  cache->invalidate_entry(scc_entry);
+}

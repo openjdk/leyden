@@ -1967,9 +1967,6 @@ void nmethod::inc_decompile_count() {
   if (mdo == nullptr)  return;
   // There is a benign race here.  See comments in methodData.hpp.
   mdo->inc_decompile_count();
-  if (preloaded()) {
-    mdo->inc_preload_decompile_count();
-  }
 }
 
 void nmethod::inc_method_profiling_count() {
@@ -2076,6 +2073,15 @@ bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
     if (update_recompile_counts()) {
       // Mark the method as decompiled.
       inc_decompile_count();
+    }
+
+    if (preloaded() && method() != nullptr) {
+      // Preload code was decompiled, possibly due to a trap. Preload code should not
+      // normally have traps, but some are still there. Since preload code is compiled
+      // more conservatively, we assume that non-preload code would trap again in similar
+      // conditions. Therefore, there is no point in trying to load it. Instead, wait for
+      // normal compilation to occur.
+      SCCache::block_loading(method(), CompLevel_full_optimization);
     }
 
     BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();

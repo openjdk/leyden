@@ -552,6 +552,8 @@ public:
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
 
+  static void block_loading(Method* method, CompLevel comp_level);
+
   static SCCEntry* store_nmethod(const methodHandle& method,
                      int compile_id,
                      int entry_bci,

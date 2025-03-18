@@ -537,9 +537,6 @@ public:
   uint decompile_count() const {
     return _orig.decompile_count();
   }
-  uint preload_decompile_count() const {
-    return _orig.preload_decompile_count();
-  }
   uint trap_count(int reason) const {
     return _orig.trap_count(reason);
   }
