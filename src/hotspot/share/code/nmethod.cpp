@@ -2075,6 +2075,7 @@ bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
       inc_decompile_count();
     }
 
+#if INCLUDE_CDS
     if (preloaded() && method() != nullptr) {
       // Preload code was decompiled, possibly due to a trap. Preload code should not
       // normally have traps, but some are still there. Since preload code is compiled
@@ -2083,6 +2084,7 @@ bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
       // normal compilation to occur.
       SCCache::block_loading(method(), CompLevel_full_optimization);
     }
+#endif
 
     BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
     if (bs_nm == nullptr || !bs_nm->supports_entry_barrier(this)) {
