@@ -861,7 +861,6 @@ void ClassLoader::load_jimage_library() {
   char path[JVM_MAXPATHLEN];
   char ebuf[1024];
   void* handle = nullptr;
-
   if (os::dll_locate_lib(path, sizeof(path), Arguments::get_dll_dir(), "jimage")) {
     handle = os::dll_load(path, ebuf, sizeof ebuf);
   }
@@ -1395,7 +1394,7 @@ char* ClassLoader::lookup_vm_options() {
     jio_snprintf(modules_path, JVM_MAXPATHLEN, "%s%slib%smodules", Arguments::get_java_home(), fileSep, fileSep);
     JImage_file =(*JImageOpen)(modules_path, 0, 0, &error);
   }
-  
+
   if (JImage_file == nullptr) {
     return nullptr;
   }
