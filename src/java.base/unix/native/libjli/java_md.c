@@ -25,7 +25,6 @@
 
 #include "java.h"
 #include "jvm_md.h"
-#include <assert.h>
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
