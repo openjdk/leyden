@@ -226,7 +226,8 @@ void FinalImageRecipes::apply_recipes_for_reflection_data(JavaThread* current) {
 
 void FinalImageRecipes::add_reflection_data_flags(InstanceKlass* ik, TRAPS) {
   assert(CDSConfig::is_dumping_preimage_static_archive(), "must be");
-  if (SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->is_hidden() &&
+  if (ik->is_linked() &&
+      SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->is_hidden() &&
       java_lang_Class::has_reflection_data(ik->java_mirror())) {
     int rd_flags = AOTConstantPoolResolver::class_reflection_data_flags(ik, CHECK);
     if (_tmp_reflect_klasses == nullptr) {
