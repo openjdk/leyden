@@ -2627,17 +2627,13 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
     TraceTime t1("compilation", &time);
     EventCompilation event;
 
-    bool install_code = true;
     if (comp == nullptr) {
       ci_env.record_method_not_compilable("no compiler");
     } else if (!ci_env.failing()) {
       if (WhiteBoxAPI && WhiteBox::compilation_locked) {
         whitebox_lock_compilation();
       }
-      if (StoreCachedCode && task->is_precompiled()) {
-        install_code = false; // not suitable in the current context
-      }
-      comp->compile_method(&ci_env, target, osr_bci, install_code, directive);
+      comp->compile_method(&ci_env, target, osr_bci, true, directive);
 
       /* Repeat compilation without installing code for profiling purposes */
       int repeat_compilation_count = directive->RepeatCompilationOption;
@@ -2651,7 +2647,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
 
     DirectivesStack::release(directive);
 
-    if (!ci_env.failing() && !task->is_success() && install_code) {
+    if (!ci_env.failing() && !task->is_success() && !task->is_precompiled()) {
       assert(ci_env.failure_reason() != nullptr, "expect failure reason");
       assert(false, "compiler should always document failure: %s", ci_env.failure_reason());
       // The compiler elected, without comment, not to register a result.
