@@ -1250,6 +1250,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
 
 void nmethod::restore_from_archive(nmethod* archived_nm,
                                    const methodHandle& method,
+                                   int compile_id,
                                    address reloc_data,
                                    GrowableArray<oop>& oop_list,
                                    GrowableArray<Metadata*>& metadata_list,
@@ -1267,6 +1268,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   set_name("nmethod");
   set_method(method());
 
+  _compile_id = compile_id;
   // allocate _mutable_data before copying relocation data because relocation data is now stored as part of mutable data area
   if (archived_nm->mutable_data_size() > 0) {
     _mutable_data = (address)os::malloc(archived_nm->mutable_data_size(), mtCode);
@@ -1302,6 +1304,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
 nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                               const methodHandle& method,
                               AbstractCompiler* compiler,
+                              int compile_id,
                               address reloc_data,
                               GrowableArray<oop>& oop_list,
                               GrowableArray<Metadata*>& metadata_list,
@@ -1324,6 +1327,7 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
     if (nm != nullptr) {
       nm->restore_from_archive(archived_nm,
                                method,
+                               compile_id,
                                reloc_data,
                                oop_list,
                                metadata_list,

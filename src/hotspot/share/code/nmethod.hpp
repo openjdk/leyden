@@ -484,6 +484,7 @@ class nmethod : public CodeBlob {
 
   void restore_from_archive(nmethod* archived_nm,
                             const methodHandle& method,
+                            int compile_id,
                             address reloc_data,
                             GrowableArray<oop>& oop_list,
                             GrowableArray<Metadata*>& metadata_list,
@@ -502,6 +503,7 @@ public:
   static nmethod* new_nmethod(nmethod* archived_nm,
                               const methodHandle& method,
                               AbstractCompiler* compiler,
+                              int compile_id,
                               address reloc_data,
                               GrowableArray<oop>& oop_list,
                               GrowableArray<Metadata*>& metadata_list,
