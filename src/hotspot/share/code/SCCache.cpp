@@ -3164,10 +3164,11 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   OopRecorder* oop_recorder = new OopRecorder(env->arena());
   env->set_oop_recorder(oop_recorder);
 
-  uint offset = read_position();
+  uint offset;
 
 #ifndef PRODUCT
   // Read asm remarks
+  offset = read_position();
   uint count = *(uint *)addr(offset);
   offset += sizeof(uint);
   AsmRemarks asm_remarks;
@@ -3563,9 +3564,6 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
     return nullptr;
   }
   *count_ptr = count;
-  if (!result) {
-    return nullptr;
-  }
 #endif /* PRODUCT */
 
   uint reloc_data_size = nm->relocation_size();
