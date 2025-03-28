@@ -399,7 +399,9 @@ void Method::metaspace_pointers_do(MetaspaceClosure* it) {
   } else {
     it->push(&_constMethod);
   }
-  it->push(&_adapter);
+  if (CDSConfig::is_dumping_adapters()) {
+    it->push(&_adapter);
+  }
   it->push(&_method_data);
   it->push(&_method_counters);
   NOT_PRODUCT(it->push(&_name);)
@@ -413,8 +415,12 @@ void Method::metaspace_pointers_do(MetaspaceClosure* it) {
 
 void Method::remove_unshareable_info() {
   unlink_method();
-  if (CDSConfig::is_dumping_adapters() && _adapter != nullptr) {
-    _adapter->remove_unshareable_info();
+  if (CDSConfig::is_dumping_adapters()) {
+    if (_adapter != nullptr) {
+      _adapter->remove_unshareable_info();
+    }
+  } else {
+    _adapter = nullptr;
   }
   if (method_data() != nullptr) {
     method_data()->remove_unshareable_info();
