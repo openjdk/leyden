@@ -449,7 +449,7 @@ void CompilationPolicy::print_counters(const char* prefix, Method* m) {
 void CompilationPolicy::print_training_data(const char* prefix, Method* method) {
   methodHandle m(Thread::current(), method);
   tty->print(" %smtd: ", prefix);
-  MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
+  MethodTrainingData* mtd = MethodTrainingData::find(m);
   if (mtd == nullptr) {
     tty->print("null");
   } else {

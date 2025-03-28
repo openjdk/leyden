@@ -1674,7 +1674,9 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
 
   assert(!HAS_PENDING_EXCEPTION, "No exception should be present");
   // some prerequisites that are compiler specific
-  if (compile_reason != CompileTask::Reason_Preload && (comp->is_c2() || comp->is_jvmci())) {
+  if (compile_reason != CompileTask::Reason_Preload &&
+      !CompileTask::reason_is_precompiled(compile_reason) &&
+     (comp->is_c2() || comp->is_jvmci())) {
     InternalOOMEMark iom(THREAD);
     method->constants()->resolve_string_constants(CHECK_AND_CLEAR_NONASYNC_NULL);
     // Resolve all classes seen in the signature of the method
@@ -1755,9 +1757,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     }
     bool is_blocking = ReplayCompiles                                             ||
                        !directive->BackgroundCompilationOption                    ||
-                       (PreloadBlocking && (compile_reason == CompileTask::Reason_Preload)) ||
-                       (compile_reason == CompileTask::Reason_Precompile)         ||
-                       (compile_reason == CompileTask::Reason_PrecompileForPreload);
+                       (PreloadBlocking && (compile_reason == CompileTask::Reason_Preload));
     compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
   }
 
@@ -2045,6 +2045,10 @@ void CompileBroker::wait_for_completion(CompileTask* task) {
     // be using this CompileTask; we can free it.
     CompileTask::free(task);
   }
+}
+
+void CompileBroker::wait_for_no_active_tasks() {
+  CompileTask::wait_for_no_active_tasks();
 }
 
 /**
