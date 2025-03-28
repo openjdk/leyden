@@ -3610,7 +3610,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
     return nullptr;
   }
 
-  if (!write_nmethod_extra_relocations(nm, oop_list, metadata_list)) {
+  if (!write_nmethod_loadtime_relocations(nm, oop_list, metadata_list)) {
     return nullptr;
   }
 
@@ -3640,7 +3640,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   return entry;
 }
 
-bool SCCache::write_nmethod_extra_relocations(nmethod* nm, GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+bool SCCache::write_nmethod_loadtime_relocations(nmethod* nm, GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list) {
   LogStreamHandle(Info, scc, reloc) log;
   GrowableArray<uint> reloc_data;
   // Collect additional data
