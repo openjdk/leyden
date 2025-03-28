@@ -1293,6 +1293,9 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   archived_dbg_strings.clear();
 #endif /* PRODUCT */
 
+  // Flush the code block
+  ICache::invalidate_range(code_begin(), code_size());
+
   // Create cache after PcDesc data is copied - it will be used to initialize cache
   _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
 
