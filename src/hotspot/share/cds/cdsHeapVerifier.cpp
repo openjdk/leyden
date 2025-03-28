@@ -135,6 +135,10 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
                                                           "INVOKER_SUPER_DESC");   // E same as java.lang.constant.ConstantDescs::CD_Object
   }
 
+  if (CDSConfig::is_dumping_packages()) {
+    ADD_EXCL("java/lang/Package$VersionInfo",             "NULL_VERSION_INFO");    // D
+  }
+
   // These are used by BuiltinClassLoader::negativeLookupCache, etc but seem to be
   // OK. TODO - we should completely disable the caching unless ArchiveLoaderLookupCache
   // is enabled

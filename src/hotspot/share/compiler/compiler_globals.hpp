@@ -404,6 +404,9 @@
   product(bool, PrintTrainingInfo, false, DIAGNOSTIC,                       \
           "Print additional information about training")                    \
                                                                             \
+  product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
+                  "Verify archived training data")                          \
+                                                                            \
   product(bool, RecordOptCompilationOrder, false,                           \
           "Record c2/jvmci nmethod temperature to guide compilation order.")\
                                                                             \

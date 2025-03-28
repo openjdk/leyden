@@ -170,9 +170,7 @@ void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
       char *buf = NEW_RESOURCE_ARRAY(char, len);
       memcpy(buf, (char*)h_bytes->byte_at_addr(0), len);
       ClassFileStream st((u1*)buf, len, nullptr);
-      if (!CDSConfig::is_dumping_method_handles() /* work around JDK-8310831 */) {
-        regenerate_class(class_name, st, CHECK);
-      }
+      regenerate_class(class_name, st, CHECK);
     }
   }
 }

@@ -62,12 +62,12 @@
   f(InstanceRefKlass) \
   f(InstanceStackChunkKlass) \
   f(Method) \
-  f(MethodData)                \
-  f(MethodCounters)            \
+  f(MethodData) \
+  f(MethodCounters) \
   f(ObjArrayKlass) \
-  f(TypeArrayKlass)            \
-  f(KlassTrainingData)         \
-  f(MethodTrainingData)        \
+  f(TypeArrayKlass) \
+  f(KlassTrainingData) \
+  f(MethodTrainingData) \
   f(CompileTrainingData)
 
 class CppVtableInfo {
