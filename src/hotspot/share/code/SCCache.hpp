@@ -552,6 +552,8 @@ public:
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
 
+  static void block_loading(Method* method, CompLevel comp_level);
+
   static SCCEntry* store_nmethod(const methodHandle& method,
                      int compile_id,
                      int entry_bci,
@@ -606,7 +608,7 @@ public:
   static bool allow_const_field(ciConstant& value) NOT_CDS_RETURN_(false);
   static void invalidate(SCCEntry* entry) NOT_CDS_RETURN;
   static bool is_loaded(SCCEntry* entry);
-  static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level);
+  static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level, bool maybe_ignore = true);
   static void preload_code(JavaThread* thread);
 
   template<typename Function>
