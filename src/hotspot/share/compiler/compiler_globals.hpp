@@ -488,6 +488,9 @@
   product(bool, PrecompileOnlyAndExit, false,                               \
           "Exit after precompilation step is over")                         \
                                                                             \
+  product(bool, PreloadReduceTraps, true, DIAGNOSTIC,                       \
+          "Preload code should avoid traps as much as possible.")           \
+                                                                            \
   product(bool, PreloadBlocking, false, DIAGNOSTIC,                         \
           "Preload code is processed with blocking. Startup would not "     \
           "proceed until all code preloaded code is done loading.")         \
