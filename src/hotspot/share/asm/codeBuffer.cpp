@@ -1080,7 +1080,7 @@ void CodeSection::print_on(outputStream* st, const char* name) {
 
 void CodeBuffer::print_on(outputStream* st) {
 #if 0
-  if (this == nullptr) { // gcc complains 'nonnull' argument 'this' compared to nullptr 
+  if (this == nullptr) { // gcc complains 'nonnull' argument 'this' compared to nullptr
     st->print_cr("null CodeBuffer pointer");
     return;
   }
@@ -1094,105 +1094,6 @@ void CodeBuffer::print_on(outputStream* st) {
   }
 }
 
-// ----- CHeapString -----------------------------------------------------------
-
-class CHeapString : public CHeapObj<mtCode> {
- public:
-  CHeapString(const char* str) : _string(os::strdup(str)) {}
- ~CHeapString() {
-    os::free((void*)_string);
-    _string = nullptr;
-  }
-  const char* string() const { return _string; }
-
- private:
-  const char* _string;
-};
-
-// ----- AsmRemarkCollection ---------------------------------------------------
-
-class AsmRemarkCollection : public CHeapObj<mtCode> {
- public:
-  AsmRemarkCollection() : _ref_cnt(1), _remarks(nullptr), _next(nullptr) {}
- ~AsmRemarkCollection() {
-    assert(is_empty(), "Must 'clear()' before deleting!");
-    assert(_ref_cnt == 0, "No uses must remain when deleting!");
-  }
-  AsmRemarkCollection* reuse() {
-    precond(_ref_cnt > 0);
-    return _ref_cnt++, this;
-  }
-
-  const char* insert(uint offset, const char* remark);
-  const char* lookup(uint offset) const;
-  const char* next(uint offset) const;
-
-  bool is_empty() const { return _remarks == nullptr; }
-  uint clear();
-
- private:
-  struct Cell : CHeapString {
-    Cell(const char* remark, uint offset) :
-        CHeapString(remark), offset(offset), prev(nullptr), next(nullptr) {}
-    void push_back(Cell* cell) {
-      Cell* head = this;
-      Cell* tail = prev;
-      tail->next = cell;
-      cell->next = head;
-      cell->prev = tail;
-      prev = cell;
-    }
-    uint offset;
-    Cell* prev;
-    Cell* next;
-  };
-  uint  _ref_cnt;
-  Cell* _remarks;
-  // Using a 'mutable' iteration pointer to allow 'const' on lookup/next (that
-  // does not change the state of the list per se), supportig a simplistic
-  // iteration scheme.
-  mutable Cell* _next;
-};
-
-// ----- DbgStringCollection ---------------------------------------------------
-
-class DbgStringCollection : public CHeapObj<mtCode> {
- public:
-  DbgStringCollection() : _ref_cnt(1), _strings(nullptr) {}
- ~DbgStringCollection() {
-    assert(is_empty(), "Must 'clear()' before deleting!");
-    assert(_ref_cnt == 0, "No uses must remain when deleting!");
-  }
-  DbgStringCollection* reuse() {
-    precond(_ref_cnt > 0);
-    return _ref_cnt++, this;
-  }
-
-  const char* insert(const char* str);
-  const char* lookup(const char* str) const;
-
-  bool is_empty() const { return _strings == nullptr; }
-  uint clear();
-
- private:
-  struct Cell : CHeapString {
-    Cell(const char* dbgstr) :
-        CHeapString(dbgstr), prev(nullptr), next(nullptr) {}
-    void push_back(Cell* cell) {
-      Cell* head = this;
-      Cell* tail = prev;
-      tail->next = cell;
-      cell->next = head;
-      cell->prev = tail;
-      prev = cell;
-    }
-    Cell* prev;
-    Cell* next;
-  };
-  uint  _ref_cnt;
-  Cell* _strings;
-};
-
 // ----- AsmRemarks ------------------------------------------------------------
 //
 // Acting as interface to reference counted mapping [offset -> remark], where
@@ -1204,7 +1105,14 @@ AsmRemarks::AsmRemarks() : _remarks(new AsmRemarkCollection()) {
 }
 
 AsmRemarks::~AsmRemarks() {
+  if (_remarks != nullptr) {
+    clear();
+  }
   assert(_remarks == nullptr, "Must 'clear()' before deleting!");
+}
+
+void AsmRemarks::init(AsmRemarks& asm_remarks) {
+  asm_remarks._remarks = new AsmRemarkCollection();
 }
 
 const char* AsmRemarks::insert(uint offset, const char* remstr) {
@@ -1223,6 +1131,7 @@ void AsmRemarks::share(const AsmRemarks &src) {
 }
 
 void AsmRemarks::clear() {
+  assert(_remarks != nullptr, "sanity check");
   if (_remarks->clear() == 0) {
     delete _remarks;
   }
@@ -1256,7 +1165,14 @@ DbgStrings::DbgStrings() : _strings(new DbgStringCollection()) {
 }
 
 DbgStrings::~DbgStrings() {
+  if (_strings != nullptr) {
+    clear();
+  }
   assert(_strings == nullptr, "Must 'clear()' before deleting!");
+}
+
+void DbgStrings::init(DbgStrings& dbg_strings) {
+  dbg_strings._strings = new DbgStringCollection();
 }
 
 const char* DbgStrings::insert(const char* dbgstr) {
@@ -1275,6 +1191,7 @@ void DbgStrings::share(const DbgStrings &src) {
 }
 
 void DbgStrings::clear() {
+  assert(_strings != nullptr, "sanity check");
   if (_strings->clear() == 0) {
     delete _strings;
   }

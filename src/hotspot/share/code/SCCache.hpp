@@ -26,6 +26,10 @@
 #define SHARE_CODE_SCCACHE_HPP
 
 #include "compiler/compilerDefinitions.hpp"
+#include "memory/allocation.hpp"
+#include "nmt/memTag.hpp"
+#include "oops/oopsHierarchy.hpp"
+#include "utilities/exceptions.hpp"
 
 /*
  * Startup Code Cache (SCC) collects compiled code and metadata during
@@ -47,10 +51,16 @@ class DebugInformationRecorder;
 class Dependencies;
 class ExceptionTable;
 class ExceptionHandlerTable;
+template<typename E>
+class GrowableArray;
+class ImmutableOopMapSet;
 class ImplicitExceptionTable;
 class JavaThread;
+class Klass;
 class methodHandle;
+class Metadata;
 class Method;
+class nmethod;
 class OopMapSet;
 class OopRecorder;
 class outputStream;
@@ -180,12 +190,14 @@ private:
   bool   _load_fail;   // Failed to load due to some klass state
   bool   _ignore_decompile; // ignore decompile counter if compilation is done
                             // during "assembly" phase without running application
-
+  address _dumptime_content_start_addr;
 public:
   SCCEntry(uint offset, uint size, uint name_offset, uint name_size,
            uint code_offset, uint code_size,
            uint reloc_offset, uint reloc_size,
-           Kind kind, uint id, uint comp_level = 0,
+           Kind kind, uint id,
+           address dumptime_content_start_addr = nullptr,
+           uint comp_level = 0,
            uint comp_id = 0, uint decomp = 0,
            bool has_clinit_barriers = false,
            bool for_preload = false,
@@ -203,6 +215,9 @@ public:
     _code_size    = code_size;
     _reloc_offset = reloc_offset;
     _reloc_size   = reloc_size;
+
+    _dumptime_content_start_addr = dumptime_content_start_addr;
+
     _num_inlined_bytecodes = 0;
 
     _comp_level   = comp_level;
@@ -244,6 +259,9 @@ public:
   uint code_size()    const { return _code_size; }
   uint reloc_offset() const { return _reloc_offset; }
   uint reloc_size()   const { return _reloc_size; }
+
+  address dumptime_content_start_addr() const { return _dumptime_content_start_addr; }
+
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
   void set_inlined_bytecodes(int bytes) { _num_inlined_bytecodes = bytes; }
 
@@ -365,7 +383,10 @@ private:
 public:
   SCCReader(SCCache* cache, SCCEntry* entry, CompileTask* task);
 
-  bool compile(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler);
+  SCCEntry* scc_entry() { return (SCCEntry*)_entry; }
+
+  // convenience method to convert offset in SCCEntry data to its address
+  bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
   bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
   bool compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]);
@@ -379,10 +400,15 @@ public:
   OopMapSet* read_oop_maps();
   bool read_dependencies(Dependencies* dependencies);
 
-  jobject read_oop(JavaThread* thread, const methodHandle& comp_method);
+  oop read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
   bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
   bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
+
+  bool read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
+  void apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list) NOT_CDS_RETURN;
+
+  ImmutableOopMapSet* read_oop_map_set();
 
   void print_on(outputStream* st);
 };
@@ -436,26 +462,9 @@ private:
   void clear_lookup_failed()   { _lookup_failed = false; }
   bool lookup_failed()   const { return _lookup_failed; }
 
-  SCCEntry* write_nmethod(const methodHandle& method,
-                          int compile_id,
-                          int entry_bci,
-                          CodeOffsets* offsets,
-                          int orig_pc_offset,
-                          DebugInformationRecorder* recorder,
-                          Dependencies* dependencies,
-                          CodeBuffer *code_buffer,
-                          int frame_size,
-                          OopMapSet* oop_maps,
-                          ExceptionHandlerTable* handler_table,
-                          ImplicitExceptionTable* nul_chk_table,
-                          AbstractCompiler* compiler,
-                          CompLevel comp_level,
-                          bool has_clinit_barriers,
-                          bool for_preload,
-                          bool has_unsafe_access,
-                          bool has_wide_vectors,
-                          bool has_monitors,
-                          bool has_scoped_access);
+  address reserve_bytes(uint nbytes);
+
+  SCCEntry* write_nmethod(nmethod* nm, bool for_preload);
 
   // States:
   //   S >= 0: allow new readers, S readers are currently active
@@ -484,6 +493,7 @@ public:
   bool failed() const { return _failed; }
   void set_failed()   { _failed = true; }
 
+  static bool is_address_in_aot_cache(address p) NOT_CDS_RETURN_(false);
   static uint max_aot_code_size();
 
   uint load_size() const { return _load_size; }
@@ -534,15 +544,22 @@ public:
   bool write_debug_info(DebugInformationRecorder* recorder);
   bool write_oop_maps(OopMapSet* oop_maps);
 
+  bool write_oop_map_set(nmethod* nm);
+  bool write_nmethod_reloc_immediates(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list);
+  bool write_nmethod_loadtime_relocations(nmethod* nm, GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list);
+
   jobject read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
   bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
   bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
 
   bool write_oop(jobject& jo);
+  bool write_oop(oop obj);
   bool write_oops(OopRecorder* oop_recorder);
   bool write_metadata(Metadata* m);
   bool write_metadata(OopRecorder* oop_recorder);
+  bool write_oops(nmethod* nm);
+  bool write_metadata(nmethod* nm);
 
   static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset) NOT_CDS_RETURN_(false);
   static bool store_exception_blob(CodeBuffer* buffer, int pc_offset) NOT_CDS_RETURN_(false);
@@ -551,27 +568,7 @@ public:
   static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
-
-  static SCCEntry* store_nmethod(const methodHandle& method,
-                     int compile_id,
-                     int entry_bci,
-                     CodeOffsets* offsets,
-                     int orig_pc_offset,
-                     DebugInformationRecorder* recorder,
-                     Dependencies* dependencies,
-                     CodeBuffer *code_buffer,
-                     int frame_size,
-                     OopMapSet* oop_maps,
-                     ExceptionHandlerTable* handler_table,
-                     ImplicitExceptionTable* nul_chk_table,
-                     AbstractCompiler* compiler,
-                     CompLevel comp_level,
-                     bool has_clinit_barriers,
-                     bool for_preload,
-                     bool has_unsafe_access,
-                     bool has_wide_vectors,
-                     bool has_monitors,
-                     bool has_scoped_access) NOT_CDS_RETURN_(nullptr);
+  static SCCEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
 
   static uint store_entries_cnt() {
     if (is_on_for_write()) {

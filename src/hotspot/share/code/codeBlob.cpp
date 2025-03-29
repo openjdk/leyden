@@ -22,6 +22,7 @@
  *
  */
 
+#include "code/SCCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/relocInfo.hpp"
@@ -182,7 +183,7 @@ void CodeBlob::purge() {
     os::free(_mutable_data);
     _mutable_data = nullptr;
   }
-  if (_oop_maps != nullptr) {
+  if (_oop_maps != nullptr && !SCCache::is_address_in_aot_cache((address)_oop_maps)) {
     delete _oop_maps;
     _oop_maps = nullptr;
   }
@@ -208,6 +209,16 @@ const ImmutableOopMap* CodeBlob::oop_map_for_return_address(address return_addre
 void CodeBlob::print_code_on(outputStream* st) {
   ResourceMark m;
   Disassembler::decode(this, st);
+}
+
+void CodeBlob::prepare_for_archiving() {
+  set_name(nullptr);
+  _oop_maps = nullptr;
+  _mutable_data = nullptr;
+#ifndef PRODUCT
+  asm_remarks().clear();
+  dbg_strings().clear();
+#endif /* PRODUCT */
 }
 
 //-----------------------------------------------------------------------------------------
