@@ -68,7 +68,7 @@ public:
 #if INCLUDE_CDS
   static void iterate_roots(MetaspaceClosure* it);
   static void cleanup();
-  static void serialize_training_data(SerializeClosure* soc);
+  static void serialize(SerializeClosure* soc);
   static void print_archived_training_data_on(outputStream* st);
 #endif
 };

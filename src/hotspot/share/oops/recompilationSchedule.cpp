@@ -85,7 +85,7 @@ void RecompilationSchedule::cleanup() {
   _status = nullptr;
 }
 
-void RecompilationSchedule::serialize_training_data(SerializeClosure* soc) {
+void RecompilationSchedule::serialize(SerializeClosure* soc) {
   if (soc->writing()) {
     soc->do_ptr(&_schedule_for_dumping);
   } else {
