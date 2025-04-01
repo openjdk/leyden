@@ -1402,8 +1402,6 @@ void InterpreterMacroAssembler::_interp_verify_oop(Register reg, TosState state,
   }
 }
 
-void InterpreterMacroAssembler::verify_FPU(int stack_depth, TosState state) { ; }
-
 void InterpreterMacroAssembler::generate_runtime_upcalls_on_method_entry()
 {
   address upcall = RuntimeUpcalls::on_method_entry_upcall_address();
