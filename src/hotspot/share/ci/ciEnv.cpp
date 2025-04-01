@@ -1090,6 +1090,7 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
       }
 #endif // ASSERT
       if (preload) {
+        nm->set_preloaded(true);
         method->set_preload_code(nm);
       }
       if (!preload || target->holder()->is_linked()) {
