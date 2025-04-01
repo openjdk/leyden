@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -96,7 +96,9 @@ int CDSAccess::get_archived_object_permanent_index(oop obj) {
 }
 
 oop CDSAccess::get_archived_object(int permanent_index) {
-  return HeapShared::get_archived_object(permanent_index);
+  oop o = HeapShared::get_archived_object(permanent_index);
+  assert(oopDesc::is_oop_or_null(o), "sanity");
+  return o;
 }
 
 static void test_cds_heap_access_api_for_object(oop obj) {

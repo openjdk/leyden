@@ -486,11 +486,11 @@ class nmethod : public CodeBlob {
                             const methodHandle& method,
                             int compile_id,
                             address reloc_data,
-                            GrowableArray<oop>& oop_list,
+                            GrowableArray<Handle>& oop_list,
                             GrowableArray<Metadata*>& metadata_list,
                             ImmutableOopMapSet* oop_maps,
                             address immutable_data,
-                            GrowableArray<oop>& reloc_imm_oop_list,
+                            GrowableArray<Handle>& reloc_imm_oop_list,
                             GrowableArray<Metadata*>& reloc_imm_metadata_list,
 #ifndef PRODUCT
                             AsmRemarks& asm_remarks,
@@ -505,11 +505,11 @@ public:
                               AbstractCompiler* compiler,
                               int compile_id,
                               address reloc_data,
-                              GrowableArray<oop>& oop_list,
+                              GrowableArray<Handle>& oop_list,
                               GrowableArray<Metadata*>& metadata_list,
                               ImmutableOopMapSet* oop_maps,
                               address immutable_data,
-                              GrowableArray<oop>& reloc_imm_oop_list,
+                              GrowableArray<Handle>& reloc_imm_oop_list,
                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
 #ifndef PRODUCT
                               AsmRemarks& asm_remarks,
@@ -771,7 +771,7 @@ public:
     return &metadata_begin()[index - 1];
   }
 
-  void copy_values(GrowableArray<oop>* array);
+  void copy_values(GrowableArray<Handle>* array);
   void copy_values(GrowableArray<jobject>* oops);
   void copy_values(GrowableArray<Metadata*>* metadata);
   void copy_values(GrowableArray<address>* metadata) {} // Nothing to do
@@ -788,7 +788,7 @@ public:
   void fix_oop_relocations(address begin, address end) { fix_oop_relocations(begin, end, false); }
   void fix_oop_relocations()                           { fix_oop_relocations(nullptr, nullptr, false); }
 
-  void create_reloc_immediates_list(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list);
+  void create_reloc_immediates_list(JavaThread* thread, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
 
   bool is_at_poll_return(address pc);
   bool is_at_poll_or_poll_return(address pc);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -372,15 +372,16 @@ public:
   int compile_id();  // task()->compile_id()
 
   // Register method loaded from AOT code cache
-  void register_aot_method(ciMethod* target,
+  void register_aot_method(JavaThread* thread,
+                           ciMethod* target,
                            AbstractCompiler* compiler,
                            nmethod* archived_nm,
                            address reloc_data,
-                           GrowableArray<oop>& oop_list,
+                           GrowableArray<Handle>& oop_list,
                            GrowableArray<Metadata*>& metadata_list,
                            ImmutableOopMapSet* oopmaps,
                            address immutable_data,
-                           GrowableArray<oop>& reloc_imm_oop_list,
+                           GrowableArray<Handle>& reloc_imm_oop_list,
                            GrowableArray<Metadata*>& reloc_imm_metadata_list,
 #ifndef PRODUCT
                            AsmRemarks& asm_remarks,
