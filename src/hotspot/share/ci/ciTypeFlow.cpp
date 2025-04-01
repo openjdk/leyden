@@ -847,6 +847,16 @@ void ciTypeFlow::StateVector::trap(ciBytecodeStream* str, ciKlass* klass, int in
       log->print(" klass='%d'", kid);
     log->end_elem();
   }
+
+  LogTarget(Debug, deoptimization) lt;
+  if (lt.is_enabled()) {
+    ResourceMark rm;
+    LogStream ls(lt);
+    const char * name = outer()->method()->get_Method()->name_and_sig_as_C_string();
+    ls.print("ciTypeFlow uncommon_trap method=%s bci=%d", name, str->cur_bci());
+    char buf[100];
+    ls.print_cr(" %s", Deoptimization::format_trap_request(buf, sizeof(buf), index));
+  }
 }
 
 // ------------------------------------------------------------------
