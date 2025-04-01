@@ -45,6 +45,7 @@ class JvmtiThreadState;
 class MetadataClosure;
 class NativeCallWrapper;
 class OopIterateClosure;
+class SCCReader;
 class SCCEntry;
 class ScopeDesc;
 class xmlStream;
@@ -479,7 +480,43 @@ class nmethod : public CodeBlob {
   // transitions).
   void oops_do_set_strong_done(nmethod* old_head);
 
+  void record_nmethod_dependency();
+
+  void restore_from_archive(nmethod* archived_nm,
+                            const methodHandle& method,
+                            int compile_id,
+                            address reloc_data,
+                            GrowableArray<oop>& oop_list,
+                            GrowableArray<Metadata*>& metadata_list,
+                            ImmutableOopMapSet* oop_maps,
+                            address immutable_data,
+                            GrowableArray<oop>& reloc_imm_oop_list,
+                            GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                            AsmRemarks& asm_remarks,
+                            DbgStrings& dbg_strings,
+#endif /* PRODUCT */
+                            SCCReader* scc_reader);
+
 public:
+  // create nmethod using archived nmethod from AOT code cache
+  static nmethod* new_nmethod(nmethod* archived_nm,
+                              const methodHandle& method,
+                              AbstractCompiler* compiler,
+                              int compile_id,
+                              address reloc_data,
+                              GrowableArray<oop>& oop_list,
+                              GrowableArray<Metadata*>& metadata_list,
+                              ImmutableOopMapSet* oop_maps,
+                              address immutable_data,
+                              GrowableArray<oop>& reloc_imm_oop_list,
+                              GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                              AsmRemarks& asm_remarks,
+                              DbgStrings& dbg_strings,
+#endif /* PRODUCT */
+                              SCCReader* scc_reader);
+
   // create nmethod with entry_bci
   static nmethod* new_nmethod(const methodHandle& method,
                               int compile_id,
@@ -514,7 +551,12 @@ public:
                                      OopMapSet* oop_maps,
                                      int exception_handler = -1);
 
+  void copy_to(address dest) {
+    memcpy(dest, this, size());
+  }
+
   Method* method       () const { return _method; }
+  uint16_t entry_bci   () const { return _entry_bci; }
   bool is_native_method() const { return _method != nullptr && _method->is_native(); }
   bool is_java_method  () const { return _method != nullptr && !_method->is_native(); }
   bool is_osr_method   () const { return _entry_bci != InvocationEntryBci; }
@@ -541,7 +583,7 @@ public:
   address stub_end              () const { return           code_end()     ; }
   address exception_begin       () const { return           header_begin() + _exception_offset        ; }
   address deopt_handler_begin   () const { return           header_begin() + _deopt_handler_offset    ; }
-  address deopt_mh_handler_begin() const { return           header_begin() + _deopt_mh_handler_offset ; }
+  address deopt_mh_handler_begin() const { return _deopt_mh_handler_offset != -1 ? (header_begin() + _deopt_mh_handler_offset) : nullptr; }
   address unwind_handler_begin  () const { return _unwind_handler_offset != -1 ? (insts_end() - _unwind_handler_offset) : nullptr; }
   oop*    oops_begin            () const { return (oop*)    data_begin(); }
   oop*    oops_end              () const { return (oop*)    data_end(); }
@@ -557,6 +599,7 @@ public:
 #endif
 
   // immutable data
+  void set_immutable_data(address data) { _immutable_data = data; }
   address immutable_data_begin  () const { return           _immutable_data; }
   address immutable_data_end    () const { return           _immutable_data + _immutable_data_size ; }
   address dependencies_begin    () const { return           _immutable_data; }
@@ -728,6 +771,7 @@ public:
     return &metadata_begin()[index - 1];
   }
 
+  void copy_values(GrowableArray<oop>* array);
   void copy_values(GrowableArray<jobject>* oops);
   void copy_values(GrowableArray<Metadata*>* metadata);
   void copy_values(GrowableArray<address>* metadata) {} // Nothing to do
@@ -743,6 +787,8 @@ protected:
 public:
   void fix_oop_relocations(address begin, address end) { fix_oop_relocations(begin, end, false); }
   void fix_oop_relocations()                           { fix_oop_relocations(nullptr, nullptr, false); }
+
+  void create_reloc_immediates_list(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list);
 
   bool is_at_poll_return(address pc);
   bool is_at_poll_or_poll_return(address pc);
@@ -916,6 +962,7 @@ public:
 
   SCCEntry* scc_entry() const { return _scc_entry; }
   bool is_scc() const { return scc_entry() != nullptr; }
+  void set_scc_entry(SCCEntry* entry) { _scc_entry = entry; }
 
   bool     used() const { return _used; }
   void set_used()       { _used = true; }
@@ -1012,6 +1059,8 @@ public:
 
   void make_deoptimized();
   void finalize_relocations();
+
+  void prepare_for_archiving();
 
   class Vptr : public CodeBlob::Vptr {
     void print_on(const CodeBlob* instance, outputStream* st) const override {

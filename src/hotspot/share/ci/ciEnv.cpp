@@ -978,6 +978,213 @@ void ciEnv::validate_compile_task_dependencies(ciMethod* target) {
   }
 }
 
+// scc_entry != nullptr implies loading compiled code from AOT code cache
+bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool preload, bool install_code, CodeBuffer* code_buffer, SCCEntry* scc_entry) {
+  methodHandle method(thread, target->get_Method());
+
+  // We require method counters to store some method state (max compilation levels) required by the compilation policy.
+  if (!preload && method->get_method_counters(thread) == nullptr) {
+    record_failure("can't create method counters");
+    if (code_buffer != nullptr) {
+      code_buffer->free_blob();
+    }
+    return false;
+  }
+
+  if (scc_entry != nullptr) {
+    // Invalid compilation states:
+    //  - SCCache is closed, SCC entry is garbage.
+    //  - SCC entry indicates this shared code was marked invalid while it was loaded.
+    if (!SCCache::is_on() || scc_entry->not_entrant()) {
+      return false;
+    }
+  }
+
+  // Change in Jvmti state may invalidate compilation.
+  if (!failing() && jvmti_state_changed()) {
+    record_failure("Jvmti state change invalidated dependencies");
+  }
+
+  // Change in DTrace flags may invalidate compilation.
+  if (!failing() &&
+      ( (!dtrace_method_probes() && DTraceMethodProbes) ||
+        (!dtrace_alloc_probes() && DTraceAllocProbes) )) {
+    record_failure("DTrace flags change invalidated dependencies");
+  }
+
+  if (!preload && !failing() && target->needs_clinit_barrier() &&
+      target->holder()->is_in_error_state()) {
+    record_failure("method holder is in error state");
+  }
+
+  if (!failing() && (scc_entry == nullptr)) {
+    if (log() != nullptr) {
+      // Log the dependencies which this compilation declares.
+      dependencies()->log_all_dependencies();
+    }
+
+    // Encode the dependencies now, so we can check them right away.
+    dependencies()->encode_content_bytes();
+  }
+  // Check for {class loads, evolution, breakpoints, ...} during compilation
+  if (!failing() && install_code) {
+    // Check for {class loads, evolution, breakpoints, ...} during compilation
+    validate_compile_task_dependencies(target);
+    if (failing() && preload) {
+      ResourceMark rm;
+      char *method_name = method->name_and_sig_as_C_string();
+      log_info(scc)("preload code for '%s' failed dependency check", method_name);
+    }
+  }
+
+  if (failing()) {
+    // While not a true deoptimization, it is a preemptive decompile.
+    MethodData* mdo = method()->method_data();
+    if (mdo != nullptr && _inc_decompile_count_on_failure) {
+      mdo->inc_decompile_count();
+    }
+
+    if (code_buffer != nullptr) {
+      code_buffer->free_blob();
+    }
+    return false;
+  }
+  return true;
+}
+
+void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload, int entry_bci, SCCEntry* scc_entry, nmethod* nm) {
+  methodHandle method(thread, target->get_Method());
+
+  if (entry_bci == InvocationEntryBci) {
+    if (TieredCompilation) {
+      // If there is an old version we're done with it
+      nmethod* old = method->code();
+      if (TraceMethodReplacement && old != nullptr) {
+        ResourceMark rm;
+        char *method_name = method->name_and_sig_as_C_string();
+        tty->print_cr("Replacing method %s", method_name);
+      }
+      if (old != nullptr) {
+        old->make_not_used();
+      }
+    }
+
+    LogTarget(Info, nmethod, install) lt;
+    if (lt.is_enabled()) {
+      ResourceMark rm;
+      char *method_name = method->name_and_sig_as_C_string();
+      lt.print("Installing method (L%d) %s id=%d scc=%s%s%u",
+               task()->comp_level(), method_name, compile_id(),
+               task()->is_scc() ? "A" : "", preload ? "P" : "",
+               (scc_entry != nullptr ? scc_entry->offset() : 0));
+    }
+    // Allow the code to be executed
+    MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
+    if (nm->make_in_use()) {
+#ifdef ASSERT
+      BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
+      if (bs_nm != nullptr && bs_nm->supports_entry_barrier(nm)) {
+        if (!bs_nm->is_armed(nm)) {
+          log_info(init)("nmethod %d %d not armed", nm->compile_id(), nm->comp_level());
+        }
+      }
+#endif // ASSERT
+      if (preload) {
+        method->set_preload_code(nm);
+      }
+      if (!preload || target->holder()->is_linked()) {
+        method->set_code(method, nm);
+      }
+    }
+  } else {
+    LogTarget(Info, nmethod, install) lt;
+    if (lt.is_enabled()) {
+      ResourceMark rm;
+      char *method_name = method->name_and_sig_as_C_string();
+      lt.print("Installing osr method (L%d) %s @ %d id=%u scc=%s%u",
+               task()->comp_level(), method_name, entry_bci, compile_id(),
+               task()->is_scc() ? "A" : "",
+               (scc_entry != nullptr ? scc_entry->offset() : 0));
+    }
+    MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
+    if (nm->make_in_use()) {
+      method->method_holder()->add_osr_nmethod(nm);
+    }
+  }
+}
+
+void ciEnv::register_aot_method(ciMethod* target,
+                                AbstractCompiler* compiler,
+                                nmethod* archived_nm,
+                                address reloc_data,
+                                GrowableArray<oop>& oop_list,
+                                GrowableArray<Metadata*>& metadata_list,
+                                ImmutableOopMapSet* oopmaps,
+                                address immutable_data,
+                                GrowableArray<oop>& reloc_imm_oop_list,
+                                GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                                AsmRemarks& asm_remarks,
+                                DbgStrings& dbg_strings,
+#endif /* PRODUCT */
+                                SCCReader* scc_reader)
+{
+  SCCEntry* scc_entry = task()->scc_entry();
+  assert(scc_entry != nullptr, "must be");
+  VM_ENTRY_MARK;
+  nmethod* nm = nullptr;
+  {
+    methodHandle method(THREAD, target->get_Method());
+    bool preload = task()->preload(); // Code is preloaded before Java method execution
+
+    // Check if memory should be freed before allocation
+    CodeCache::gc_on_allocation();
+
+    // To prevent compile queue updates.
+    MutexLocker locker(THREAD, MethodCompileQueue_lock);
+
+    // Prevent InstanceKlass::add_to_hierarchy from running
+    // and invalidating our dependencies until we install this method.
+    // No safepoints are allowed. Otherwise, class redefinition can occur in between.
+    MutexLocker ml(Compile_lock);
+    NoSafepointVerifier nsv;
+
+    if (!is_compilation_valid(THREAD, target, preload, true /*install_code*/, nullptr /*code_buffer*/, scc_entry)) {
+      return;
+    }
+
+    nm = nmethod::new_nmethod(archived_nm,
+                              method,
+                              compiler,
+                              compile_id(),
+                              reloc_data,
+                              oop_list,
+                              metadata_list,
+                              oopmaps,
+                              immutable_data,
+                              reloc_imm_oop_list,
+                              reloc_imm_metadata_list,
+                              NOT_PRODUCT_ARG(asm_remarks)
+                              NOT_PRODUCT_ARG(dbg_strings)
+                              scc_reader);
+
+    if (nm != nullptr) {
+      make_code_usable(THREAD, target, preload, InvocationEntryBci, scc_entry, nm);
+    }
+  }
+
+  NoSafepointVerifier nsv;
+  if (nm != nullptr) {
+    // Compilation succeeded, post what we know about it
+    nm->post_compiled_method(task());
+    task()->set_num_inlined_bytecodes(num_inlined_bytecodes());
+  } else {
+    // The CodeCache is full.
+    record_failure("code cache is full");
+  }
+  // safepoints are allowed again
+}
+
 // ------------------------------------------------------------------
 // ciEnv::register_method
 void ciEnv::register_method(ciMethod* target,
@@ -1005,17 +1212,6 @@ void ciEnv::register_method(ciMethod* target,
     methodHandle method(THREAD, target->get_Method());
     bool preload = task()->preload(); // Code is preloaded before Java method execution
 
-    // We require method counters to store some method state (max compilation levels) required by the compilation policy.
-    if (!preload && method->get_method_counters(THREAD) == nullptr) {
-      record_failure("can't create method counters");
-      // All buffers in the CodeBuffer are allocated in the CodeCache.
-      // If the code buffer is created on each compile attempt
-      // as in C2, then it must be freed.
-      // But keep shared code.
-      code_buffer->free_blob();
-      return;
-    }
-
     // Check if memory should be freed before allocation
     CodeCache::gc_on_allocation();
 
@@ -1028,100 +1224,13 @@ void ciEnv::register_method(ciMethod* target,
     MutexLocker ml(Compile_lock);
     NoSafepointVerifier nsv;
 
-    if (scc_entry != nullptr) {
-      // Invalid compilation states:
-      //  - SCCache is closed, SCC entry is garbage.
-      //  - SCC entry indicates this shared code was marked invalid while it was loaded.
-      if (!SCCache::is_on() || scc_entry->not_entrant()) {
-        code_buffer->free_blob();
-        return;
-      }
-    }
-
-    // Change in Jvmti state may invalidate compilation.
-    if (!failing() && jvmti_state_changed()) {
-      record_failure("Jvmti state change invalidated dependencies");
-    }
-
-    // Change in DTrace flags may invalidate compilation.
-    if (!failing() &&
-        ( (!dtrace_method_probes() && DTraceMethodProbes) ||
-          (!dtrace_alloc_probes() && DTraceAllocProbes) )) {
-      record_failure("DTrace flags change invalidated dependencies");
-    }
-
-    if (!preload && !failing() && target->needs_clinit_barrier() &&
-        target->holder()->is_in_error_state()) {
-      record_failure("method holder is in error state");
-    }
-
-    if (!failing() && (scc_entry == nullptr)) {
-      if (log() != nullptr) {
-        // Log the dependencies which this compilation declares.
-        dependencies()->log_all_dependencies();
-      }
-
-      // Encode the dependencies now, so we can check them right away.
-      dependencies()->encode_content_bytes();
-    }
-    // Check for {class loads, evolution, breakpoints, ...} during compilation
-    if (!failing() && install_code) {
-      // Check for {class loads, evolution, breakpoints, ...} during compilation
-      validate_compile_task_dependencies(target);
-      if (failing() && preload) {
-        ResourceMark rm;
-        char *method_name = method->name_and_sig_as_C_string();
-        log_info(scc)("preload code for '%s' failed dependency check", method_name);
-      }
-    }
-
-    if (failing()) {
-      // While not a true deoptimization, it is a preemptive decompile.
-      MethodData* mdo = method()->method_data();
-      if (mdo != nullptr && _inc_decompile_count_on_failure) {
-        mdo->inc_decompile_count();
-      }
-
-      // All buffers in the CodeBuffer are allocated in the CodeCache.
-      // If the code buffer is created on each compile attempt
-      // as in C2, then it must be freed.
-      code_buffer->free_blob();
+    if (!is_compilation_valid(THREAD, target, preload, install_code, code_buffer, scc_entry)) {
       return;
     }
 
     assert(offsets->value(CodeOffsets::Deopt) != -1, "must have deopt entry");
     assert(offsets->value(CodeOffsets::Exceptions) != -1, "must have exception entry");
 
-    if (scc_entry == nullptr) {
-      scc_entry = SCCache::store_nmethod(method,
-                             compile_id(),
-                             entry_bci,
-                             offsets,
-                             orig_pc_offset,
-                             debug_info(), dependencies(), code_buffer,
-                             frame_words, oop_map_set,
-                             handler_table, inc_table,
-                             compiler,
-                             CompLevel(task()->comp_level()),
-                             has_clinit_barriers,
-                             for_preload,
-                             has_unsafe_access,
-                             has_wide_vectors,
-                             has_monitors,
-                             has_scoped_access);
-      if (scc_entry != nullptr) {
-        scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());
-        if (has_clinit_barriers) {
-          set_scc_clinit_barriers_entry(scc_entry); // Record it
-          // Build second version of code without class initialization barriers
-          code_buffer->free_blob();
-          return;
-        } else if (!for_preload) {
-          SCCEntry* previous_entry = scc_clinit_barriers_entry();
-          scc_entry->set_next(previous_entry); // Link it for case of deoptimization
-        }
-      }
-    }
     if (install_code) {
       nm =  nmethod::new_nmethod(method,
                                  compile_id(),
@@ -1146,62 +1255,20 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
-      if (entry_bci == InvocationEntryBci) {
-        if (TieredCompilation) {
-          // If there is an old version we're done with it
-          nmethod* old = method->code();
-          if (TraceMethodReplacement && old != nullptr) {
-            ResourceMark rm;
-            char *method_name = method->name_and_sig_as_C_string();
-            tty->print_cr("Replacing method %s", method_name);
+      if (scc_entry == nullptr) {
+        scc_entry = SCCache::store_nmethod(nm, compiler, for_preload);
+        if (scc_entry != nullptr) {
+          scc_entry->set_inlined_bytecodes(num_inlined_bytecodes());
+          if (has_clinit_barriers) {
+            set_scc_clinit_barriers_entry(scc_entry); // Record it
+            return;
+          } else if (!for_preload) {
+            SCCEntry* previous_entry = scc_clinit_barriers_entry();
+            scc_entry->set_next(previous_entry); // Link it for case of deoptimization
           }
-          if (old != nullptr) {
-            old->make_not_used();
-          }
-        }
-
-        LogTarget(Info, nmethod, install) lt;
-        if (lt.is_enabled()) {
-          ResourceMark rm;
-          char *method_name = method->name_and_sig_as_C_string();
-          lt.print("Installing method (L%d) %s id=%d scc=%s%s%u",
-                    task()->comp_level(), method_name, compile_id(),
-                    task()->is_scc() ? "A" : "", preload ? "P" : "",
-                    (scc_entry != nullptr ? scc_entry->offset() : 0));
-        }
-        // Allow the code to be executed
-        MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
-        if (nm->make_in_use()) {
-#ifdef ASSERT
-          BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
-          if (bs_nm != nullptr && bs_nm->supports_entry_barrier(nm)) {
-            if (!bs_nm->is_armed(nm)) {
-              log_info(init)("nmethod %d %d not armed", nm->compile_id(), nm->comp_level());
-            }
-          }
-#endif // ASSERT
-          if (preload) {
-            method->set_preload_code(nm);
-          }
-          if (!preload || target->holder()->is_linked()) {
-            method->set_code(method, nm);
-          }
-        }
-      } else {
-        LogTarget(Info, nmethod, install) lt;
-        if (lt.is_enabled()) {
-          ResourceMark rm;
-          char *method_name = method->name_and_sig_as_C_string();
-          lt.print("Installing osr method (L%d) %s @ %d id=%u scc=%s%u",
-                   task()->comp_level(), method_name, entry_bci, compile_id(),
-                   task()->is_scc() ? "A" : "",
-                   (scc_entry != nullptr ? scc_entry->offset() : 0));
-        }
-        MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
-        if (nm->make_in_use()) {
-          method->method_holder()->add_osr_nmethod(nm);
         }
       }
+      make_code_usable(THREAD, target, preload, entry_bci, scc_entry, nm);
     }
   }
 

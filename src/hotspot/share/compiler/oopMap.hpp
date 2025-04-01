@@ -296,9 +296,7 @@ public:
   bool has_derived_oops() const { return _has_derived_oops; }
   bool has_any(OopMapValue::oop_types type) const;
 
-#ifdef ASSERT
-  int nr_of_bytes() const; // this is an expensive operation, only used in debug builds
-#endif
+  int nr_of_bytes() const; // this is an expensive operation, only used in debug builds and when storing aot compiled nmethods
 
   void oops_do(const frame* fr, const RegisterMap* reg_map, OopClosure* f, DerivedOopClosure* df) const;
   void oops_do(const frame* fr, const RegisterMap* reg_map, OopClosure* f, DerivedPointerIterationMode derived_mode) const;

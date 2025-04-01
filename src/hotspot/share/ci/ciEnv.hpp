@@ -40,6 +40,7 @@
 class CompileTask;
 class OopMapSet;
 class SCCEntry;
+class SCCReader;
 
 // ciEnv
 //
@@ -292,6 +293,12 @@ private:
   // Helper routine for determining the validity of a compilation with
   // respect to method dependencies (e.g. concurrent class loading).
   void validate_compile_task_dependencies(ciMethod* target);
+
+  // Helper rountimes to factor out common code used by routines that register a method
+  // i.e. register_aot_method() and register_method()
+  bool is_compilation_valid(JavaThread* thread, ciMethod* target, bool preload, bool install_code, CodeBuffer* code_buffer, SCCEntry* scc_entry);
+  void make_code_usable(JavaThread* thread, ciMethod* target, bool preload, int entry_bci, SCCEntry* scc_entry, nmethod* nm);
+
 public:
   enum {
     MethodCompilable,
@@ -363,6 +370,23 @@ public:
   // Handy forwards to the task:
   int comp_level();   // task()->comp_level()
   int compile_id();  // task()->compile_id()
+
+  // Register method loaded from AOT code cache
+  void register_aot_method(ciMethod* target,
+                           AbstractCompiler* compiler,
+                           nmethod* archived_nm,
+                           address reloc_data,
+                           GrowableArray<oop>& oop_list,
+                           GrowableArray<Metadata*>& metadata_list,
+                           ImmutableOopMapSet* oopmaps,
+                           address immutable_data,
+                           GrowableArray<oop>& reloc_imm_oop_list,
+                           GrowableArray<Metadata*>& reloc_imm_metadata_list,
+#ifndef PRODUCT
+                           AsmRemarks& asm_remarks,
+                           DbgStrings& dbg_strings,
+#endif /* PRODUCT */
+                           SCCReader* scc_reader);
 
   // Register the result of a compilation.
   void register_method(ciMethod*                 target,

@@ -148,7 +148,6 @@ void RelocIterator::initialize(nmethod* nm, address begin, address limit) {
   set_limits(begin, limit);
 }
 
-
 RelocIterator::RelocIterator(CodeSection* cs, address begin, address limit) {
   initialize_misc();
   assert(((cs->locs_start() != nullptr) && (cs->locs_end() != nullptr)), "valid start and end pointer");
@@ -771,6 +770,14 @@ void internal_word_Relocation::fix_relocation_after_move(const CodeBuffer* src, 
   set_value(target);
 }
 
+void internal_word_Relocation::fix_relocation_after_aot_load(address orig_base_addr, address current_base_addr) {
+  address target = _target;
+  if (target == nullptr) {
+    target = this->target();
+    target = current_base_addr + (target - orig_base_addr);
+  }
+  set_value(target);
+}
 
 address internal_word_Relocation::target() {
   address target = _target;

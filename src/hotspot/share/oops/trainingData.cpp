@@ -214,15 +214,16 @@ CompileTrainingData* CompileTrainingData::make(CompileTask* task) {
   TrainingDataLocker l;
   CompileTrainingData* ctd = CompileTrainingData::allocate(mtd, level, compile_id);
   if (ctd != nullptr) {
-    if (mtd->_last_toplevel_compiles[level - 1] != nullptr) {
-      if (mtd->_last_toplevel_compiles[level - 1]->compile_id() < compile_id) {
-        mtd->_last_toplevel_compiles[level - 1]->clear_init_deps();
-        mtd->_last_toplevel_compiles[level - 1] = ctd;
-        mtd->_highest_top_level = MAX2(mtd->_highest_top_level, level);
+    CompileTrainingData*& last_ctd = mtd->_last_toplevel_compiles[level - 1];
+    if (last_ctd != nullptr) {
+      assert(mtd->highest_top_level() >= level, "consistency");
+      if (last_ctd->compile_id() < compile_id) {
+        last_ctd->clear_init_deps();
+        last_ctd = ctd;
       }
     } else {
-      mtd->_last_toplevel_compiles[level - 1] = ctd;
-      mtd->_highest_top_level = MAX2(mtd->_highest_top_level, level);
+      last_ctd = ctd;
+      mtd->notice_toplevel_compilation(level);
     }
   }
   return ctd;
@@ -639,13 +640,13 @@ void CompileTrainingData::cleanup(Visitor& visitor) {
   method()->cleanup(visitor);
 }
 
-void TrainingData::serialize_training_data(SerializeClosure* soc) {
+void TrainingData::serialize(SerializeClosure* soc) {
   if (soc->writing()) {
     _archived_training_data_dictionary_for_dumping.serialize_header(soc);
   } else {
     _archived_training_data_dictionary.serialize_header(soc);
   }
-  RecompilationSchedule::serialize_training_data(soc);
+  RecompilationSchedule::serialize(soc);
 }
 
 class TrainingDataPrinter : StackObj {

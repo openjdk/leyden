@@ -138,6 +138,8 @@ void CompileTask::initialize(int compile_id,
   _time_queued = 0;
   _time_started = 0;
   _time_finished = 0;
+  _aot_load_start = 0;
+  _aot_load_finish = 0;
   _compile_reason = compile_reason;
   _nm_content_size = 0;
   _nm_insts_size = 0;
@@ -264,7 +266,8 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
                              bool is_osr_method, int osr_bci, bool is_blocking, bool is_scc, bool is_preload,
                              const char* compiler_name,
                              const char* msg, bool short_form, bool cr,
-                             jlong time_created, jlong time_queued, jlong time_started, jlong time_finished) {
+                             jlong time_created, jlong time_queued, jlong time_started, jlong time_finished,
+                             jlong aot_load_start, jlong aot_load_finish) {
   if (!short_form) {
     {
       stringStream ss;
@@ -289,6 +292,13 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
       stringStream ss;
       if (time_started != 0 && time_finished != 0) {
         ss.print("C%.1f", TimeHelper::counter_to_millis(time_finished - time_started));
+      }
+      st->print("%7s ", ss.freeze());
+    }
+    { // Time to load from AOT code cache
+      stringStream ss;
+      if (aot_load_start != 0 && aot_load_finish != 0) {
+        ss.print("A%.1f", TimeHelper::counter_to_millis(aot_load_finish - aot_load_start));
       }
       st->print("%7s ", ss.freeze());
     }
@@ -353,7 +363,7 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
 void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool cr) {
   bool is_osr_method = osr_bci() != InvocationEntryBci;
   print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_scc(), preload(),
-             compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished);
+             compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished, _aot_load_start, _aot_load_finish);
 }
 
 // ------------------------------------------------------------------
