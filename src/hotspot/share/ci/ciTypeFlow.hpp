@@ -461,7 +461,7 @@ public:
     }
 
     // Stop interpretation of this path with a trap.
-    void trap(ciBytecodeStream* str, ciKlass* klass, int index, const char* reason);
+    void trap(ciBytecodeStream* str, ciKlass* klass, int index);
 
   public:
     StateVector(ciTypeFlow* outer);

@@ -562,8 +562,7 @@ void ciTypeFlow::StateVector::do_aaload(ciBytecodeStream* str) {
     trap(str, array_klass,
          Deoptimization::make_trap_request
          (Deoptimization::Reason_unloaded,
-          Deoptimization::Action_reinterpret),
-          "do_aaload: array class is not loaded");
+          Deoptimization::Action_reinterpret));
     return;
   }
   ciKlass* element_klass = array_klass->element_klass();
@@ -572,8 +571,7 @@ void ciTypeFlow::StateVector::do_aaload(ciBytecodeStream* str) {
     trap(str, element_klass,
          Deoptimization::make_trap_request
          (Deoptimization::Reason_unloaded,
-          Deoptimization::Action_reinterpret),
-          "do_aaload: array element class is not loaded");
+          Deoptimization::Action_reinterpret));
   } else {
     push_object(element_klass);
   }
@@ -612,7 +610,7 @@ void ciTypeFlow::StateVector::do_getstatic(ciBytecodeStream* str) {
   bool will_link;
   ciField* field = str->get_field(will_link);
   if (!will_link) {
-    trap(str, field->holder(), str->get_field_holder_index(), "do_getstatic: will not link");
+    trap(str, field->holder(), str->get_field_holder_index());
   } else {
     ciType* field_type = field->type();
     if (!field_type->is_loaded()) {
@@ -655,12 +653,10 @@ void ciTypeFlow::StateVector::do_invoke(ciBytecodeStream* str,
       trap(str, nullptr,
            Deoptimization::make_trap_request
            (Deoptimization::Reason_uninitialized,
-            Deoptimization::Action_reinterpret),
-            "do_invoke: invoked dynamic method does not exist");
+            Deoptimization::Action_reinterpret));
     } else {
       ciKlass* unloaded_holder = callee->holder();
-      trap(str, unloaded_holder, str->get_method_holder_index(),
-        "do_invoke: unloaded method");
+      trap(str, unloaded_holder, str->get_method_holder_index());
     }
   } else {
     // We are using the declared signature here because it might be
@@ -722,8 +718,7 @@ void ciTypeFlow::StateVector::do_jsr(ciBytecodeStream* str) {
 void ciTypeFlow::StateVector::do_ldc(ciBytecodeStream* str) {
   if (str->is_in_error()) {
     trap(str, nullptr, Deoptimization::make_trap_request(Deoptimization::Reason_unhandled,
-                                                         Deoptimization::Action_none),
-                                                         "do_ldc: unhandled exception");
+                                                         Deoptimization::Action_none));
     return;
   }
   ciConstant con = str->get_constant();
@@ -732,8 +727,7 @@ void ciTypeFlow::StateVector::do_ldc(ciBytecodeStream* str) {
     if (!con.is_loaded()) {
       trap(str, nullptr, Deoptimization::make_trap_request(Deoptimization::Reason_unloaded,
                                                            Deoptimization::Action_reinterpret,
-                                                           cp_index),
-                                                           "do_ldc: unloaded constant");
+                                                           cp_index));
       return;
     }
     BasicType basic_type = str->get_basic_type_for_constant_at(cp_index);
@@ -764,7 +758,7 @@ void ciTypeFlow::StateVector::do_multianewarray(ciBytecodeStream* str) {
   bool will_link;
   ciArrayKlass* array_klass = str->get_klass(will_link)->as_array_klass();
   if (!will_link) {
-    trap(str, array_klass, str->get_klass_index(), "do_multianewarray: will not link");
+    trap(str, array_klass, str->get_klass_index());
   } else {
     for (int i = 0; i < dimensions; i++) {
       pop_int();
@@ -778,10 +772,8 @@ void ciTypeFlow::StateVector::do_multianewarray(ciBytecodeStream* str) {
 void ciTypeFlow::StateVector::do_new(ciBytecodeStream* str) {
   bool will_link;
   ciKlass* klass = str->get_klass(will_link);
-  if (!will_link) {
-    trap(str, klass, str->get_klass_index(), "do_new: will not link");
-  } else if (str->is_unresolved_klass()) {
-    trap(str, klass, str->get_klass_index(), "do_new: unresolved klass");
+  if (!will_link || str->is_unresolved_klass()) {
+    trap(str, klass, str->get_klass_index());
   } else {
     push_object(klass);
   }
@@ -810,7 +802,7 @@ void ciTypeFlow::StateVector::do_putstatic(ciBytecodeStream* str) {
   bool will_link;
   ciField* field = str->get_field(will_link);
   if (!will_link) {
-    trap(str, field->holder(), str->get_field_holder_index(), "do_putstatic: will not link");
+    trap(str, field->holder(), str->get_field_holder_index());
   } else {
     ciType* field_type = field->type();
     ciType* type = pop_value();
@@ -838,7 +830,7 @@ void ciTypeFlow::StateVector::do_ret(ciBytecodeStream* str) {
 // ciTypeFlow::StateVector::trap
 //
 // Stop interpretation of this path with a trap.
-void ciTypeFlow::StateVector::trap(ciBytecodeStream* str, ciKlass* klass, int index, const char* reason) {
+void ciTypeFlow::StateVector::trap(ciBytecodeStream* str, ciKlass* klass, int index) {
   _trap_bci = str->cur_bci();
   _trap_index = index;
 
@@ -854,17 +846,6 @@ void ciTypeFlow::StateVector::trap(ciBytecodeStream* str, ciKlass* klass, int in
     if (kid >= 0)
       log->print(" klass='%d'", kid);
     log->end_elem();
-  }
-
-  LogTarget(Debug, deoptimization) lt;
-  if (lt.is_enabled()) {
-    ResourceMark rm;
-    LogStream ls(lt);
-    const char * name = outer()->method()->get_Method()->name_and_sig_as_C_string();
-    ls.print("ciTypeFlow uncommon_trap method=%s bci=%d", name, str->cur_bci());
-    char buf[100];
-    ls.print(" %s", Deoptimization::format_trap_request(buf, sizeof(buf), index));
-    ls.print_cr(" %s", reason);
   }
 }
 
@@ -929,7 +910,7 @@ bool ciTypeFlow::StateVector::apply_one_bytecode(ciBytecodeStream* str) {
       bool will_link;
       ciKlass* element_klass = str->get_klass(will_link);
       if (!will_link) {
-        trap(str, element_klass, str->get_klass_index(), "anewarray: will not link");
+        trap(str, element_klass, str->get_klass_index());
       } else {
         push_object(ciObjArrayKlass::make(element_klass));
       }
