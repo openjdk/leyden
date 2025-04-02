@@ -2773,7 +2773,7 @@ void InstanceKlass::remove_unshareable_info() {
   _methods_jmethod_ids = nullptr;
   _jni_ids = nullptr;
   _oop_map_cache = nullptr;
-  if (CDSConfig::is_dumping_invokedynamic() && HeapShared::is_lambda_proxy_klass(this)) {
+  if (CDSConfig::is_dumping_method_handles() && HeapShared::is_lambda_proxy_klass(this)) {
     // keep _nest_host
   } else {
     // clear _nest_host to ensure re-load at runtime
@@ -4049,7 +4049,7 @@ void InstanceKlass::print_class_load_helper(ClassLoaderData* loader_data,
 
   info_stream.print(" loader:");
   if (is_shared()) {
-    info_stream.print(" %s", SystemDictionaryShared::class_loader_name_for_shared((Klass*)this));
+    info_stream.print(" %s", SystemDictionaryShared::loader_type_for_shared_class((Klass*)this));
   } else if (loader_data == ClassLoaderData::the_null_class_loader_data()) {
     info_stream.print(" boot_loader");
   } else {

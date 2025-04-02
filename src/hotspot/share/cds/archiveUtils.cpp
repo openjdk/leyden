@@ -31,6 +31,7 @@
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
+#include "cds/lambdaProxyClassDictionary.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -76,52 +77,49 @@ void ArchivePtrMarker::initialize(CHeapBitMap* ptrmap, VirtualSpace* vs) {
 }
 
 void ArchivePtrMarker::initialize_rw_ro_cc_maps(CHeapBitMap* rw_ptrmap, CHeapBitMap* ro_ptrmap, CHeapBitMap* cc_ptrmap) {
-  address* rw_bottom = (address*)ArchiveBuilder::current()->rw_region()->base();
-  address* ro_bottom = (address*)ArchiveBuilder::current()->ro_region()->base();
-  address* cc_bottom = (address*)ArchiveBuilder::current()->cc_region()->base();
+  address* buff_bottom = (address*)ArchiveBuilder::current()->buffer_bottom();
+  address* rw_bottom   = (address*)ArchiveBuilder::current()->rw_region()->base();
+  address* ro_bottom   = (address*)ArchiveBuilder::current()->ro_region()->base();
+  address* cc_bottom   = (address*)ArchiveBuilder::current()->cc_region()->base();
+
+  // The bit in _ptrmap that cover the very first word in the rw/ro/cc regions.
+  size_t rw_start = rw_bottom - buff_bottom;
+  size_t ro_start = ro_bottom - buff_bottom;
+  size_t cc_start = cc_bottom - buff_bottom;
+
+  // The number of bits used by the rw/ro ptrmaps. We might have lots of zero
+  // bits at the bottom and top of rw/ro ptrmaps, but these zeros will be
+  // removed by FileMapInfo::write_bitmap_region().
+  size_t rw_size = ArchiveBuilder::current()->rw_region()->used() / sizeof(address);
+  size_t ro_size = ArchiveBuilder::current()->ro_region()->used() / sizeof(address);
+  size_t cc_size = ArchiveBuilder::current()->cc_region()->used() / sizeof(address);
+
+  // The last (exclusive) bit in _ptrmap that covers the rw/ro regions.
+  // Note: _ptrmap is dynamically expanded only when an actual pointer is written, so
+  // it may not be as large as we want.
+  size_t rw_end = MIN2<size_t>(rw_start + rw_size, _ptrmap->size());
+  size_t ro_end = MIN2<size_t>(ro_start + ro_size, _ptrmap->size());
+  size_t cc_end = MIN2<size_t>(cc_start + cc_size, _ptrmap->size());
+
+  rw_ptrmap->initialize(rw_size);
+  ro_ptrmap->initialize(ro_size);
+  cc_ptrmap->initialize(cc_size);
+
+  for (size_t rw_bit = rw_start; rw_bit < rw_end; rw_bit++) {
+    rw_ptrmap->at_put(rw_bit - rw_start, _ptrmap->at(rw_bit));
+  }
+
+  for(size_t ro_bit = ro_start; ro_bit < ro_end; ro_bit++) {
+    ro_ptrmap->at_put(ro_bit - ro_start, _ptrmap->at(ro_bit));
+  }
+
+  for (size_t cc_bit = cc_start; cc_bit < cc_end; cc_bit++) {
+    cc_ptrmap->at_put(cc_bit - cc_start, _ptrmap->at(cc_bit));
+  }
 
   _rw_ptrmap = rw_ptrmap;
   _ro_ptrmap = ro_ptrmap;
   _cc_ptrmap = cc_ptrmap;
-
-  size_t rw_size = ArchiveBuilder::current()->rw_region()->used() / sizeof(address);
-  size_t ro_size = ArchiveBuilder::current()->ro_region()->used() / sizeof(address);
-  size_t cc_size = ArchiveBuilder::current()->cc_region()->used() / sizeof(address);
-  // ro_start is the first bit in _ptrmap that covers the pointer that would sit at ro_bottom.
-  // E.g., if rw_bottom = (address*)100
-  //          ro_bottom = (address*)116
-  //       then for 64-bit platform:
-  //          ro_start = ro_bottom - rw_bottom = (116 - 100) / sizeof(address) = 2;
-  size_t ro_start = ro_bottom - rw_bottom;
-  size_t cc_start = cc_bottom - rw_bottom;
-
-  // Note: ptrmap is big enough only to cover the last pointer in cc_region or ro_region.
-  // See ArchivePtrMarker::compact()
-  if (ro_start + ro_size >_ptrmap->size()) {
-    ro_size = _ptrmap->size() - ro_start; // ro is smaller than we thought
-    cc_size = 0;                          // cc is empty
-  } else if (cc_size != 0 && cc_start + cc_size > _ptrmap->size()) {
-    cc_size = _ptrmap->size() - cc_start; // ro is smaller than we thought
-  }
-
-  assert(rw_size < _ptrmap->size(), "sanity");
-  assert(ro_size < _ptrmap->size(), "sanity");
-  assert(cc_size < _ptrmap->size(), "sanity");
-  assert(rw_size + ro_size + cc_size <= _ptrmap->size(), "sanity");
-
-  _rw_ptrmap->initialize(rw_size);
-  _ro_ptrmap->initialize(ro_size);
-  _cc_ptrmap->initialize(cc_size);
-
-  for (size_t i = 0; i < rw_size; i++) {
-    _rw_ptrmap->at_put(i, _ptrmap->at(i));
-  }
-  for (size_t i = 0; i < ro_size; i++) {
-    _ro_ptrmap->at_put(i, _ptrmap->at(ro_start + i));
-  }
-  for (size_t i = 0; i < cc_size; i++) {
-    _cc_ptrmap->at_put(i, _ptrmap->at(cc_start + i));
-  }
 }
 
 void ArchivePtrMarker::mark_pointer(address* ptr_loc) {
@@ -374,7 +372,7 @@ void ReadClosure::do_tag(int tag) {
 
 void ArchiveUtils::log_to_classlist(BootstrapInfo* bootstrap_specifier, TRAPS) {
   if (ClassListWriter::is_enabled()) {
-    if (SystemDictionaryShared::is_supported_invokedynamic(bootstrap_specifier)) {
+    if (LambdaProxyClassDictionary::is_supported_invokedynamic(bootstrap_specifier)) {
       const constantPoolHandle& pool = bootstrap_specifier->pool();
       if (SystemDictionaryShared::is_builtin_loader(pool->pool_holder()->class_loader_data())) {
         // Currently lambda proxy classes are supported only for the built-in loaders.

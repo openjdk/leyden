@@ -152,7 +152,7 @@ KlassSubGraphInfo* HeapShared::_dump_time_special_subgraph;
 ArchivedKlassSubGraphInfoRecord* HeapShared::_run_time_special_subgraph;
 GrowableArrayCHeap<OopHandle, mtClassShared>* HeapShared::_pending_roots = nullptr;
 GrowableArrayCHeap<const char*, mtClassShared>* HeapShared::_context = nullptr;
-GrowableArrayCHeap<OopHandle, mtClassShared>* HeapShared::_root_segments;
+GrowableArrayCHeap<OopHandle, mtClassShared>* HeapShared::_root_segments = nullptr;
 int HeapShared::_root_segment_max_size_elems;
 OopHandle HeapShared::_scratch_basic_type_mirrors[T_VOID+1];
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_objects_table = nullptr;
@@ -238,10 +238,6 @@ int HeapShared::append_root(oop obj) {
   }
   // No GC should happen since we aren't scanning _pending_roots.
   assert(Thread::current() == (Thread*)VMThread::vm_thread(), "should be in vm thread");
-
-  if (_pending_roots == nullptr) {
-    _pending_roots = new GrowableArrayCHeap<OopHandle, mtClassShared>(500);
-  }
 
   OopHandle oh(Universe::vm_global(), obj);
   return _pending_roots->append(oh);
@@ -519,6 +515,12 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
         if (mirror_k != nullptr) {
           AOTArtifactFinder::add_cached_class(mirror_k);
         }
+      } else if (java_lang_invoke_ResolvedMethodName::is_instance(obj)) {
+        Method* m = java_lang_invoke_ResolvedMethodName::vmtarget(obj);
+        if (m != nullptr) {
+          InstanceKlass* method_holder = m->method_holder();
+          AOTArtifactFinder::add_cached_class(method_holder);
+        }
       }
     }
 
@@ -585,6 +587,7 @@ objArrayOop HeapShared::scratch_resolved_references(ConstantPool* src) {
 
 void HeapShared::init_dumping() {
   _scratch_objects_table = new (mtClass)MetaspaceObjToOopHandleTable();
+  _pending_roots = new GrowableArrayCHeap<OopHandle, mtClassShared>(500);
 }
 
 void HeapShared::init_scratch_objects_for_basic_type_mirrors(TRAPS) {
@@ -759,7 +762,7 @@ void HeapShared::copy_and_rescan_aot_inited_mirror(InstanceKlass* ik) {
     assert(success, "sanity");
   }
 
-  if (log_is_enabled(Info, cds, init)) {
+  if (log_is_enabled(Debug, cds, init)) {
     ResourceMark rm;
     log_debug(cds, init)("copied %3d field(s) in aot-initialized mirror %s%s%s", nfields, ik->external_name(),
                          ik->is_hidden() ? " (hidden)" : "",
@@ -1034,7 +1037,7 @@ void KlassSubGraphInfo::add_subgraph_object_klass(Klass* orig_k) {
 void KlassSubGraphInfo::check_allowed_klass(InstanceKlass* ik) {
 #ifndef PRODUCT
   if (AOTClassInitializer::has_test_class()) {
-    // The tests can put in arbitrary types of objects.
+    // The tests can cache arbitrary types of objects.
     return;
   }
 #endif

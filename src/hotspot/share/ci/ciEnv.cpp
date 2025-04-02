@@ -1090,6 +1090,7 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
       }
 #endif // ASSERT
       if (preload) {
+        nm->set_preloaded(true);
         method->set_preload_code(nm);
       }
       if (!preload || target->holder()->is_linked()) {
@@ -1113,15 +1114,16 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
   }
 }
 
-void ciEnv::register_aot_method(ciMethod* target,
+void ciEnv::register_aot_method(JavaThread* thread,
+                                ciMethod* target,
                                 AbstractCompiler* compiler,
                                 nmethod* archived_nm,
                                 address reloc_data,
-                                GrowableArray<oop>& oop_list,
+                                GrowableArray<Handle>& oop_list,
                                 GrowableArray<Metadata*>& metadata_list,
                                 ImmutableOopMapSet* oopmaps,
                                 address immutable_data,
-                                GrowableArray<oop>& reloc_imm_oop_list,
+                                GrowableArray<Handle>& reloc_imm_oop_list,
                                 GrowableArray<Metadata*>& reloc_imm_metadata_list,
 #ifndef PRODUCT
                                 AsmRemarks& asm_remarks,
@@ -1131,17 +1133,16 @@ void ciEnv::register_aot_method(ciMethod* target,
 {
   SCCEntry* scc_entry = task()->scc_entry();
   assert(scc_entry != nullptr, "must be");
-  VM_ENTRY_MARK;
   nmethod* nm = nullptr;
   {
-    methodHandle method(THREAD, target->get_Method());
+    methodHandle method(thread, target->get_Method());
     bool preload = task()->preload(); // Code is preloaded before Java method execution
 
     // Check if memory should be freed before allocation
     CodeCache::gc_on_allocation();
 
     // To prevent compile queue updates.
-    MutexLocker locker(THREAD, MethodCompileQueue_lock);
+    MutexLocker locker(thread, MethodCompileQueue_lock);
 
     // Prevent InstanceKlass::add_to_hierarchy from running
     // and invalidating our dependencies until we install this method.
@@ -1149,7 +1150,7 @@ void ciEnv::register_aot_method(ciMethod* target,
     MutexLocker ml(Compile_lock);
     NoSafepointVerifier nsv;
 
-    if (!is_compilation_valid(THREAD, target, preload, true /*install_code*/, nullptr /*code_buffer*/, scc_entry)) {
+    if (!is_compilation_valid(thread, target, preload, true /*install_code*/, nullptr /*code_buffer*/, scc_entry)) {
       return;
     }
 
@@ -1169,7 +1170,7 @@ void ciEnv::register_aot_method(ciMethod* target,
                               scc_reader);
 
     if (nm != nullptr) {
-      make_code_usable(THREAD, target, preload, InvocationEntryBci, scc_entry, nm);
+      make_code_usable(thread, target, preload, InvocationEntryBci, scc_entry, nm);
     }
   }
 

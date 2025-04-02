@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -405,8 +405,8 @@ public:
   bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
   bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
 
-  bool read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
-  void apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list) NOT_CDS_RETURN;
+  bool read_oop_metadata_list(JavaThread* thread, ciMethod* target, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
+  void apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) NOT_CDS_RETURN;
 
   ImmutableOopMapSet* read_oop_map_set();
 
@@ -545,8 +545,8 @@ public:
   bool write_oop_maps(OopMapSet* oop_maps);
 
   bool write_oop_map_set(nmethod* nm);
-  bool write_nmethod_reloc_immediates(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list);
-  bool write_nmethod_loadtime_relocations(nmethod* nm, GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list);
+  bool write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
+  bool write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
 
   jobject read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);

@@ -3071,8 +3071,7 @@ SCCReader::SCCReader(SCCache* cache, SCCEntry* entry, CompileTask* task) {
   _lookup_failed = false;
 }
 
-bool SCCReader::read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder) {
-  VM_ENTRY_MARK
+bool SCCReader::read_oop_metadata_list(JavaThread* thread, ciMethod* target, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder) {
   methodHandle comp_method(JavaThread::current(), target->get_Method());
   JavaThread* current = JavaThread::current();
   uint offset = read_position();
@@ -3084,9 +3083,10 @@ bool SCCReader::read_oop_metadata_list(ciMethod* target, GrowableArray<oop> &oop
     if (lookup_failed()) {
       return false;
     }
-    oop_list.append(obj);
+    Handle h(thread, obj);
+    oop_list.append(h);
     if (oop_recorder != nullptr) {
-      jobject jo = JNIHandles::make_local(THREAD, obj);
+      jobject jo = JNIHandles::make_local(thread, obj);
       if (oop_recorder->is_real(jo)) {
         oop_recorder->find_index(jo);
       } else {
@@ -3199,10 +3199,11 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   set_read_position(offset);
 
   // Read oops and metadata
-  GrowableArray<oop> oop_list;
+  VM_ENTRY_MARK
+  GrowableArray<Handle> oop_list;
   GrowableArray<Metadata*> metadata_list;
 
-  if (!read_oop_metadata_list(target, oop_list, metadata_list, oop_recorder)) {
+  if (!read_oop_metadata_list(THREAD, target, oop_list, metadata_list, oop_recorder)) {
    return false;
   }
 
@@ -3213,9 +3214,9 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   offset += archived_nm->immutable_data_size();
   set_read_position(offset);
 
-  GrowableArray<oop> reloc_immediate_oop_list;
+  GrowableArray<Handle> reloc_immediate_oop_list;
   GrowableArray<Metadata*> reloc_immediate_metadata_list;
-  if (!read_oop_metadata_list(target, reloc_immediate_oop_list, reloc_immediate_metadata_list, nullptr)) {
+  if (!read_oop_metadata_list(THREAD, target, reloc_immediate_oop_list, reloc_immediate_metadata_list, nullptr)) {
    return false;
   }
 
@@ -3229,7 +3230,8 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   }
 
   TraceTime t1("SC total nmethod register time", &_t_totalRegister, enable_timers(), false);
-  env->register_aot_method(target,
+  env->register_aot_method(THREAD,
+                           target,
                            compiler,
                            archived_nm,
                            reloc_data,
@@ -3249,7 +3251,7 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
   return success;
 }
 
-void SCCReader::apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, GrowableArray<Metadata*> &metadata_list) {
+void SCCReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) {
   LogStreamHandle(Info, scc, reloc) log;
   uint buffer_offset = read_position();
   int count = *(int*)addr(buffer_offset);
@@ -3271,7 +3273,8 @@ void SCCReader::apply_relocations(nmethod* nm, GrowableArray<oop> &oop_list, Gro
       case relocInfo::oop_type: {
         oop_Relocation* r = (oop_Relocation*)iter.reloc();
         if (r->oop_is_immediate()) {
-          r->set_value(cast_from_oop<address>(oop_list.at(reloc_data[j])));
+          Handle h = oop_list.at(reloc_data[j]);
+          r->set_value(cast_from_oop<address>(h()));
         } else {
           r->fix_oop_relocation();
         }
@@ -3598,10 +3601,12 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
     return nullptr;
   }
 
-  GrowableArray<oop> oop_list;
+  JavaThread* thread = JavaThread::current();
+  HandleMark hm(thread);
+  GrowableArray<Handle> oop_list;
   GrowableArray<Metadata*> metadata_list;
 
-  nm->create_reloc_immediates_list(oop_list, metadata_list);
+  nm->create_reloc_immediates_list(thread, oop_list, metadata_list);
   if (!write_nmethod_reloc_immediates(oop_list, metadata_list)) {
     if (lookup_failed() && !failed()) {
       // Skip this method and reposition file
@@ -3610,7 +3615,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
     return nullptr;
   }
 
-  if (!write_nmethod_loadtime_relocations(nm, oop_list, metadata_list)) {
+  if (!write_nmethod_loadtime_relocations(thread, nm, oop_list, metadata_list)) {
     return nullptr;
   }
 
@@ -3640,7 +3645,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   return entry;
 }
 
-bool SCCache::write_nmethod_loadtime_relocations(nmethod* nm, GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+bool SCCache::write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
   LogStreamHandle(Info, scc, reloc) log;
   GrowableArray<uint> reloc_data;
   // Collect additional data
@@ -3655,7 +3660,8 @@ bool SCCache::write_nmethod_loadtime_relocations(nmethod* nm, GrowableArray<oop>
         oop_Relocation* r = (oop_Relocation*)iter.reloc();
         if (r->oop_is_immediate()) {
           // store index of oop in the reloc immediate oop list
-          int oop_idx = oop_list.find(r->oop_value());
+          Handle h(thread, r->oop_value());
+          int oop_idx = oop_list.find(h);
           assert(oop_idx != -1, "sanity check");
           reloc_data.at_put(idx, (uint)oop_idx);
           has_immediate = true;
@@ -3752,15 +3758,15 @@ bool SCCache::write_nmethod_loadtime_relocations(nmethod* nm, GrowableArray<oop>
   return true; //success;
 }
 
-bool SCCache::write_nmethod_reloc_immediates(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+bool SCCache::write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
   int count = oop_list.length();
   if (!write_bytes(&count, sizeof(int))) {
     return false;
   }
-  for (GrowableArrayIterator<oop> iter = oop_list.begin();
+  for (GrowableArrayIterator<Handle> iter = oop_list.begin();
        iter != oop_list.end(); ++iter) {
-    oop obj = *iter;
-    if (!write_oop(obj)) {
+    Handle h = *iter;
+    if (!write_oop(h())) {
       return false;
     }
   }

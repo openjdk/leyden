@@ -1252,11 +1252,11 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
                                    const methodHandle& method,
                                    int compile_id,
                                    address reloc_data,
-                                   GrowableArray<oop>& oop_list,
+                                   GrowableArray<Handle>& oop_list,
                                    GrowableArray<Metadata*>& metadata_list,
                                    ImmutableOopMapSet* oop_maps,
                                    address immutable_data,
-                                   GrowableArray<oop>& reloc_imm_oop_list,
+                                   GrowableArray<Handle>& reloc_imm_oop_list,
                                    GrowableArray<Metadata*>& reloc_imm_metadata_list,
 #ifndef PRODUCT
                                    AsmRemarks& archived_asm_remarks,
@@ -1309,11 +1309,11 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                               AbstractCompiler* compiler,
                               int compile_id,
                               address reloc_data,
-                              GrowableArray<oop>& oop_list,
+                              GrowableArray<Handle>& oop_list,
                               GrowableArray<Metadata*>& metadata_list,
                               ImmutableOopMapSet* oop_maps,
                               address immutable_data,
-                              GrowableArray<oop>& reloc_imm_oop_list,
+                              GrowableArray<Handle>& reloc_imm_oop_list,
                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
 #ifndef PRODUCT
                               AsmRemarks& asm_remarks,
@@ -1881,12 +1881,12 @@ inline void nmethod::initialize_immediate_oop(oop* dest, jobject handle) {
   }
 }
 
-void nmethod::copy_values(GrowableArray<oop>* array) {
+void nmethod::copy_values(GrowableArray<Handle>* array) {
   int length = array->length();
   assert((address)(oops_begin() + length) <= (address)oops_end(), "oops big enough");
   oop* dest = oops_begin();
   for (int index = 0 ; index < length; index++) {
-    dest[index] = array->at(index);
+    dest[index] = array->at(index)();
   }
 }
 
@@ -1936,14 +1936,15 @@ void nmethod::fix_oop_relocations(address begin, address end, bool initialize_im
   }
 }
 
-void nmethod::create_reloc_immediates_list(GrowableArray<oop>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+void nmethod::create_reloc_immediates_list(JavaThread* thread, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
   RelocIterator iter(this);
   while (iter.next()) {
     if (iter.type() == relocInfo::oop_type) {
       oop_Relocation* reloc = iter.oop_reloc();
       if (reloc->oop_is_immediate()) {
         oop dest = reloc->oop_value();
-        oop_list.append(dest);
+        Handle h(thread, dest);
+        oop_list.append(h);
       }
     } else if (iter.type() == relocInfo::metadata_type) {
       metadata_Relocation* reloc = iter.metadata_reloc();

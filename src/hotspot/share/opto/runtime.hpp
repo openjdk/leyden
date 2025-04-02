@@ -259,8 +259,8 @@ private:
   // CodeBlob support
   // ===================================================================
 
-  static void generate_uncommon_trap_blob(void);
-  static void generate_exception_blob();
+  static UncommonTrapBlob* generate_uncommon_trap_blob(void);
+  static ExceptionBlob* generate_exception_blob();
 
   static void register_finalizer_C(oopDesc* obj, JavaThread* current);
   static void class_init_barrier_C(Klass* k, JavaThread* current);

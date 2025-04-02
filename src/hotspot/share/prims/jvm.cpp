@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/aotClassInitializer.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
@@ -29,6 +30,7 @@
 #include "cds/dynamicArchive.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.hpp"
+#include "cds/lambdaProxyClassDictionary.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.inline.hpp"
 #include "classfile/classLoaderData.hpp"
@@ -3364,7 +3366,6 @@ JVM_END
 
 JVM_ENTRY_PROF(void, JVM_InitializeFromArchive, JVM_InitializeFromArchive(JNIEnv* env, jclass cls))
   Klass* k = java_lang_Class::as_Klass(JNIHandles::resolve(cls));
-  assert(k->is_klass(), "just checking");
   HeapShared::initialize_from_archived_subgraph(THREAD, k);
 JVM_END
 
@@ -3377,7 +3378,7 @@ JVM_ENTRY_PROF(void, JVM_RegisterLambdaProxyClassForArchiving, JVM_RegisterLambd
                                               jobject dynamicMethodType,
                                               jclass lambdaProxyClass))
 #if INCLUDE_CDS
-  if (!CDSConfig::is_dumping_archive()) {
+  if (!CDSConfig::is_dumping_archive() || !CDSConfig::is_dumping_lambdas_in_legacy_mode()) {
     return;
   }
 
@@ -3411,8 +3412,8 @@ JVM_ENTRY_PROF(void, JVM_RegisterLambdaProxyClassForArchiving, JVM_RegisterLambd
   Handle dynamic_method_type_oop(THREAD, JNIHandles::resolve_non_null(dynamicMethodType));
   Symbol* dynamic_method_type = java_lang_invoke_MethodType::as_signature(dynamic_method_type_oop(), true);
 
-  SystemDictionaryShared::add_lambda_proxy_class(caller_ik, lambda_ik, interface_method_name, factory_type,
-                                                 interface_method_type, m, dynamic_method_type, THREAD);
+  LambdaProxyClassDictionary::add_lambda_proxy_class(caller_ik, lambda_ik, interface_method_name, factory_type,
+                                                     interface_method_type, m, dynamic_method_type, THREAD);
 #endif // INCLUDE_CDS
 JVM_END
 
@@ -3451,14 +3452,11 @@ JVM_ENTRY_PROF(jclass, JVM_LookupLambdaProxyClassFromArchive, JVM_LookupLambdaPr
   Handle dynamic_method_type_oop(THREAD, JNIHandles::resolve_non_null(dynamicMethodType));
   Symbol* dynamic_method_type = java_lang_invoke_MethodType::as_signature(dynamic_method_type_oop(), true);
 
-  InstanceKlass* lambda_ik = SystemDictionaryShared::get_shared_lambda_proxy_class(caller_ik, interface_method_name, factory_type,
-                                                                                   interface_method_type, m, dynamic_method_type);
-  jclass jcls = nullptr;
-  if (lambda_ik != nullptr) {
-    InstanceKlass* loaded_lambda = SystemDictionaryShared::prepare_shared_lambda_proxy_class(lambda_ik, caller_ik, THREAD);
-    jcls = loaded_lambda == nullptr ? nullptr : (jclass) JNIHandles::make_local(THREAD, loaded_lambda->java_mirror());
-  }
-  return jcls;
+  InstanceKlass* loaded_lambda =
+    LambdaProxyClassDictionary::load_shared_lambda_proxy_class(caller_ik, interface_method_name, factory_type,
+                                                               interface_method_type, m, dynamic_method_type,
+                                                               CHECK_(nullptr));
+  return loaded_lambda == nullptr ? nullptr : (jclass) JNIHandles::make_local(THREAD, loaded_lambda->java_mirror());
 #else
   return nullptr;
 #endif // INCLUDE_CDS
@@ -3540,6 +3538,29 @@ JVM_ENTRY_PROF(void, JVM_DumpDynamicArchive, JVM_DumpDynamicArchive(JNIEnv *env,
   Handle file_handle(THREAD, JNIHandles::resolve_non_null(archiveName));
   char* archive_name  = java_lang_String::as_utf8_string(file_handle());
   DynamicArchive::dump_for_jcmd(archive_name, CHECK);
+#endif // INCLUDE_CDS
+JVM_END
+
+JVM_ENTRY(jboolean, JVM_NeedsClassInitBarrierForCDS(JNIEnv* env, jclass cls))
+#if INCLUDE_CDS
+  Klass* k = java_lang_Class::as_Klass(JNIHandles::resolve(cls));
+  if (!k->is_instance_klass()) {
+    return false;
+  } else {
+    if (InstanceKlass::cast(k)->is_enum_subclass() ||
+        AOTClassInitializer::can_archive_initialized_mirror(InstanceKlass::cast(k))) {
+      // This class will be cached in AOT-initialized state. No need for init barriers.
+      return false;
+    } else {
+      // If we cannot cache the class in AOT-initialized state, java.lang.invoke handles
+      // must emit barriers to ensure class initialization during production run.
+      ResourceMark rm(THREAD);
+      log_debug(cds)("NeedsClassInitBarrierForCDS: %s", k->external_name());
+      return true;
+    }
+  }
+#else
+  return false;
 #endif // INCLUDE_CDS
 JVM_END
 
