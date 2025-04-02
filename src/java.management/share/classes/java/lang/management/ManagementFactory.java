@@ -248,6 +248,13 @@ public class ManagementFactory {
 
     /**
      * String representation of the
+     * {@code ObjectName} for the {@link AOTMXBean}.
+     */
+    public static final String AOT_MXBEAN_NAME =
+        "java.lang:type=AOT";
+
+    /**
+     * String representation of the
      * {@code ObjectName} for the {@link ClassLoadingMXBean}.
      */
     public static final String CLASS_LOADING_MXBEAN_NAME =
@@ -317,6 +324,17 @@ public class ManagementFactory {
      */
     public static final String MEMORY_POOL_MXBEAN_DOMAIN_TYPE=
         "java.lang:type=MemoryPool";
+
+    /**
+     * Returns the managed bean for the AOTsystem of
+     * the Java virtual machine.
+     *
+     * @return a {@link AOTMXBean} object for
+     * the Java virtual machine.
+     */
+    public static AOTMXBean getAOTMXBean() {
+        return getPlatformMXBean(AOTMXBean.class);
+    }
 
     /**
      * Returns the managed bean for the class loading system of

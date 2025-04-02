@@ -48,6 +48,12 @@ public interface VMManagement {
     public boolean isGcNotificationSupported();
     public boolean isRemoteDiagnosticCommandsSupported();
 
+    // AOT Subsytem
+    public String  getAOTMode();
+    public boolean isAOTRecording();
+    public long    getAOTRecordingDuration();
+    public boolean endAOTRecording();
+
     // Class Loading Subsystem
     public long    getTotalClassCount();
     public int     getLoadedClassCount();
