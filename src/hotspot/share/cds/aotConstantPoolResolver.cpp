@@ -682,7 +682,7 @@ void AOTConstantPoolResolver::trace_dynamic_proxy_class(oop loader, const char* 
         Klass* k = java_lang_Class::as_Klass(mirror);
         ss.print(" %s", k->name()->as_C_string());
       }
-      ClassListWriter w;
+      ClassListWriter w; // This locks ClassListFile_lock
       w.stream()->print_cr("@dynamic-proxy %s", ss.freeze());
     }
   }

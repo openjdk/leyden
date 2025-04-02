@@ -36,6 +36,7 @@
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/mutexLocker.hpp"
 
 GrowableArray<InstanceKlass*>* FinalImageRecipes::_tmp_reflect_klasses = nullptr;
 GrowableArray<int>* FinalImageRecipes::_tmp_reflect_flags = nullptr;
@@ -46,63 +47,129 @@ void* FinalImageRecipes::operator new(size_t size) throw() {
   return ArchiveBuilder::current()->ro_region_alloc(size);
 }
 
-void FinalImageRecipes::record_recipes_impl() {
-  assert(CDSConfig::is_dumping_preimage_static_archive(), "must be");
+void FinalImageRecipes::record_all_classes() {
+  _all_klasses = ArchiveUtils::archive_array(ArchiveBuilder::current()->klasses());
+  ArchivePtrMarker::mark_pointer(&_all_klasses);
+}
+
+void FinalImageRecipes::record_recipes_for_constantpool() {
   ResourceMark rm;
-  GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
 
   // The recipes are recorded regardless of CDSConfig::is_dumping_{invokedynamic,dynamic_proxies,reflection_data}().
   // If some of these options are not enabled, the corresponding recipes will be
   // ignored during the final image assembly.
 
-  // InvokeDynamic
-  // Record the indys that have been resolved in the training run. These indys will be
-  // resolved during the final image assembly.
+  GrowableArray<Array<int>*> tmp_cp_recipes;
+  GrowableArray<int> tmp_cp_flags;
 
-  GrowableArray<InstanceKlass*> tmp_indy_klasses;
-  GrowableArray<Array<int>*> tmp_indy_cp_indices;
-  int total_indys_to_resolve = 0;
+  GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
   for (int i = 0; i < klasses->length(); i++) {
+    GrowableArray<int> cp_indices;
+    int flags = 0;
+
     Klass* k = klasses->at(i);
     if (k->is_instance_klass()) {
       InstanceKlass* ik = InstanceKlass::cast(k);
-      GrowableArray<int> indices;
+      ConstantPool* cp = ik->constants();
+      ConstantPoolCache* cp_cache = cp->cache();
 
-      if (ik->constants()->cache() != nullptr) {
-        Array<ResolvedIndyEntry>* tmp_indy_entries = ik->constants()->cache()->resolved_indy_entries();
-        if (tmp_indy_entries != nullptr) {
-          for (int i = 0; i < tmp_indy_entries->length(); i++) {
-            ResolvedIndyEntry* rie = tmp_indy_entries->adr_at(i);
-            int cp_index = rie->constant_pool_index();
-            if (rie->is_resolved()) {
-              indices.append(cp_index);
-            }
+      for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is unused
+        if (cp->tag_at(cp_index).value() == JVM_CONSTANT_Class) {
+          Klass* k = cp->resolved_klass_at(cp_index);
+          if (k->is_instance_klass()) {
+            cp_indices.append(cp_index);
+            flags |= HAS_CLASS;
           }
         }
       }
 
-      if (indices.length() > 0) {
-        tmp_indy_klasses.append(ArchiveBuilder::current()->get_buffered_addr(ik));
-        tmp_indy_cp_indices.append(ArchiveUtils::archive_array(&indices));
-        total_indys_to_resolve += indices.length();
+      if (cp_cache != nullptr) {
+        Array<ResolvedFieldEntry>* field_entries = cp_cache->resolved_field_entries();
+        if (field_entries != nullptr) {
+          for (int i = 0; i < field_entries->length(); i++) {
+            ResolvedFieldEntry* rfe = field_entries->adr_at(i);
+            if (rfe->is_resolved(Bytecodes::_getfield) ||
+                rfe->is_resolved(Bytecodes::_putfield)) {
+              cp_indices.append(rfe->constant_pool_index());
+              flags |= HAS_FIELD_AND_METHOD;
+            }
+          }
+        }
+
+        Array<ResolvedMethodEntry>* method_entries = cp_cache->resolved_method_entries();
+        if (method_entries != nullptr) {
+          for (int i = 0; i < method_entries->length(); i++) {
+            ResolvedMethodEntry* rme = method_entries->adr_at(i);
+            if (rme->is_resolved(Bytecodes::_invokevirtual) ||
+                rme->is_resolved(Bytecodes::_invokespecial) ||
+                rme->is_resolved(Bytecodes::_invokeinterface) ||
+                rme->is_resolved(Bytecodes::_invokestatic) ||
+                rme->is_resolved(Bytecodes::_invokehandle)) {
+              cp_indices.append(rme->constant_pool_index());
+              flags |= HAS_FIELD_AND_METHOD;
+            }
+          }
+        }
+
+        Array<ResolvedIndyEntry>* indy_entries = cp_cache->resolved_indy_entries();
+        if (indy_entries != nullptr) {
+          for (int i = 0; i < indy_entries->length(); i++) {
+            ResolvedIndyEntry* rie = indy_entries->adr_at(i);
+            int cp_index = rie->constant_pool_index();
+            if (rie->is_resolved()) {
+              cp_indices.append(cp_index);
+              flags |= HAS_INDY;
+            }
+          }
+        }
+      }
+    }
+
+    if (cp_indices.length() > 0) {
+      tmp_cp_recipes.append(ArchiveUtils::archive_array(&cp_indices));
+    } else {
+      tmp_cp_recipes.append(nullptr);
+    }
+    tmp_cp_flags.append(flags);
+  }
+
+  _cp_recipes = ArchiveUtils::archive_array(&tmp_cp_recipes);
+  ArchivePtrMarker::mark_pointer(&_cp_recipes);
+
+  _cp_flags = ArchiveUtils::archive_array(&tmp_cp_flags);
+  ArchivePtrMarker::mark_pointer(&_cp_flags);
+}
+
+void FinalImageRecipes::apply_recipes_for_constantpool(JavaThread* current) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+
+  for (int i = 0; i < _all_klasses->length(); i++) {
+    Array<int>* cp_indices = _cp_recipes->at(i);
+    int flags = _cp_flags->at(i);
+    if (cp_indices != nullptr) {
+      InstanceKlass* ik = InstanceKlass::cast(_all_klasses->at(i));
+      if (ik->is_loaded()) {
+        ResourceMark rm(current);
+        ConstantPool* cp = ik->constants();
+        GrowableArray<bool> preresolve_list(cp->length(), cp->length(), false);
+        for (int j = 0; j < cp_indices->length(); j++) {
+          preresolve_list.at_put(cp_indices->at(j), true);
+        }
+        if ((flags & HAS_CLASS) != 0) {
+          AOTConstantPoolResolver::preresolve_class_cp_entries(current, ik, &preresolve_list);
+        }
+        if ((flags & HAS_FIELD_AND_METHOD) != 0) {
+          AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(current, ik, &preresolve_list);
+        }
+        if ((flags & HAS_INDY) != 0) {
+          AOTConstantPoolResolver::preresolve_indy_cp_entries(current, ik, &preresolve_list);
+        }
       }
     }
   }
+}
 
-  _all_klasses = ArchiveUtils::archive_array(klasses);
-  ArchivePtrMarker::mark_pointer(&_all_klasses);
-
-  assert(tmp_indy_klasses.length() == tmp_indy_cp_indices.length(), "must be");
-  if (tmp_indy_klasses.length() > 0) {
-    _indy_klasses = ArchiveUtils::archive_array(&tmp_indy_klasses);
-    _indy_cp_indices = ArchiveUtils::archive_array(&tmp_indy_cp_indices);
-
-    ArchivePtrMarker::mark_pointer(&_indy_klasses);
-    ArchivePtrMarker::mark_pointer(&_indy_cp_indices);
-  }
-  log_info(cds)("%d indies in %d classes will be resolved in final CDS image", total_indys_to_resolve, tmp_indy_klasses.length());
-
-  // Reflection Data
+void FinalImageRecipes::record_recipes_for_reflection_data() {
   int reflect_count = 0;
   if (_tmp_reflect_klasses != nullptr) {
     for (int i = _tmp_reflect_klasses->length() - 1; i >= 0; i--) {
@@ -124,8 +191,9 @@ void FinalImageRecipes::record_recipes_impl() {
     }
   }
   log_info(cds)("ReflectionData of %d classes will be archived in final CDS image", reflect_count);
+}
 
-  // Dynamic Proxies
+void FinalImageRecipes::record_recipes_for_dynamic_proxies() {
   if (_tmp_dynamic_proxy_classes != nullptr) {
     // Remove proxies for excluded classes
     for (int i = _tmp_dynamic_proxy_classes->length() - 1; i >= 0; i--) {
@@ -193,24 +261,6 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
   }
 }
 
-void FinalImageRecipes::apply_recipes_for_invokedynamic(TRAPS) {
-  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-
-  if (CDSConfig::is_dumping_invokedynamic() && _indy_klasses != nullptr) {
-    assert(_indy_cp_indices != nullptr, "must be");
-    for (int i = 0; i < _indy_klasses->length(); i++) {
-      InstanceKlass* ik = _indy_klasses->at(i);
-      ConstantPool* cp = ik->constants();
-      Array<int>* cp_indices = _indy_cp_indices->at(i);
-      GrowableArray<bool> preresolve_list(cp->length(), cp->length(), false);
-      for (int j = 0; j < cp_indices->length(); j++) {
-        preresolve_list.at_put(cp_indices->at(j), true);
-      }
-      AOTConstantPoolResolver::preresolve_indy_cp_entries(THREAD, ik, &preresolve_list);
-    }
-  }
-}
-
 void FinalImageRecipes::apply_recipes_for_reflection_data(JavaThread* current) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
 
@@ -230,6 +280,8 @@ void FinalImageRecipes::add_reflection_data_flags(InstanceKlass* ik, TRAPS) {
       SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->is_hidden() &&
       java_lang_Class::has_reflection_data(ik->java_mirror())) {
     int rd_flags = AOTConstantPoolResolver::class_reflection_data_flags(ik, CHECK);
+
+    MutexLocker mu(FinalImageRecipes_lock, Mutex::_no_safepoint_check_flag);
     if (_tmp_reflect_klasses == nullptr) {
       _tmp_reflect_klasses = new (mtClassShared) GrowableArray<InstanceKlass*>(100, mtClassShared);
       _tmp_reflect_flags = new (mtClassShared) GrowableArray<int>(100, mtClassShared);
@@ -251,6 +303,7 @@ void FinalImageRecipes::add_dynamic_proxy_class(oop loader, const char* proxy_na
     return;
   }
 
+  MutexLocker mu(FinalImageRecipes_lock, Mutex::_no_safepoint_check_flag);
   if (_tmp_dynamic_proxy_classes == nullptr) {
     _tmp_dynamic_proxy_classes = new (mtClassShared) GrowableArray<TmpDynamicProxyClassInfo>(32, mtClassShared);
   }
@@ -280,7 +333,6 @@ void FinalImageRecipes::apply_recipes_for_dynamic_proxies(TRAPS) {
       DynamicProxyClassInfo* info = _dynamic_proxy_classes->adr_at(proxy_index);
 
       Handle loader(THREAD, ArchiveUtils::builtin_loader_from_type(info->_loader_type));
-
       oop proxy_name_oop = java_lang_String::create_oop_from_str(info->_proxy_name, CHECK);
       Handle proxy_name(THREAD, proxy_name_oop);
 
@@ -299,8 +351,12 @@ void FinalImageRecipes::apply_recipes_for_dynamic_proxies(TRAPS) {
 }
 
 void FinalImageRecipes::record_recipes() {
+  assert(CDSConfig::is_dumping_preimage_static_archive(), "must be");
   _final_image_recipes = new FinalImageRecipes();
-  _final_image_recipes->record_recipes_impl();
+  _final_image_recipes->record_all_classes();
+  _final_image_recipes->record_recipes_for_constantpool();
+  _final_image_recipes->record_recipes_for_reflection_data();
+  _final_image_recipes->record_recipes_for_dynamic_proxies();
 }
 
 void FinalImageRecipes::apply_recipes(TRAPS) {
@@ -321,7 +377,7 @@ void FinalImageRecipes::apply_recipes(TRAPS) {
 
 void FinalImageRecipes::apply_recipes_impl(TRAPS) {
   load_all_classes(CHECK);
-  apply_recipes_for_invokedynamic(CHECK);
+  apply_recipes_for_constantpool(THREAD);
   apply_recipes_for_reflection_data(CHECK);
   apply_recipes_for_dynamic_proxies(CHECK);
 }
