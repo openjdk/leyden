@@ -37,12 +37,20 @@ endif
 
 ################################################################################
 
-JMODS_DIR := $(IMAGES_OUTPUTDIR)/jmods
-JMODS_SUPPORT_DIR := $(SUPPORT_OUTPUTDIR)/images/jmods
+ifeq ($(STATIC_JMOD), true)
+  JMODS_DIR := $(IMAGES_OUTPUTDIR)/static-jmods
+  JMODS_SUPPORT_DIR := $(SUPPORT_OUTPUTDIR)/images/static-jmods
+  JMOD_TYPE_MSG := static $(SPACE)
+else
+  JMODS_DIR := $(IMAGES_OUTPUTDIR)/jmods
+  JMODS_SUPPORT_DIR := $(SUPPORT_OUTPUTDIR)/images/jmods
+endif
 JMOD_FILE := $(MODULE).jmod
 
 LIBS_DIR ?= $(firstword $(wildcard $(addsuffix /$(MODULE), \
     $(SUPPORT_OUTPUTDIR)/modules_libs $(IMPORT_MODULES_LIBS))))
+STATIC_LIBS_DIR ?= $(firstword $(wildcard $(addsuffix /$(MODULE), \
+    $(SUPPORT_OUTPUTDIR)/modules_static-libs $(IMPORT_MODULES_STATIC_LIBS))))
 CMDS_DIR ?= $(firstword $(wildcard $(addsuffix /$(MODULE), \
     $(SUPPORT_OUTPUTDIR)/modules_cmds $(IMPORT_MODULES_CMDS))))
 CONF_DIR ?= $(firstword $(wildcard $(addsuffix /$(MODULE), \
@@ -54,7 +62,7 @@ MAN_DIR ?= $(firstword $(wildcard $(addsuffix /$(MODULE), \
     $(SUPPORT_OUTPUTDIR)/modules_man $(IMPORT_MODULES_MAN))))
 
 $(call FillFindCache, \
-    $(LIBS_DIR) $(CMDS_DIR) $(CONF_DIR) $(CLASSES_DIR) \
+    $(LIBS_DIR) $(STATIC_LIBS_DIR) $(CMDS_DIR) $(CONF_DIR) $(CLASSES_DIR) \
 )
 
 ifneq ($(LIBS_DIR), )
@@ -77,6 +85,36 @@ ifneq ($(LIBS_DIR), )
     JMOD_FLAGS += --libs $(LIBS_DIR)
   endif
 endif
+
+ifeq ($(STATIC_JMOD), true)
+  ifneq ($(STATIC_LIBS_DIR), )
+    # Copy native static archive to module_static-libs for inclusion in jmod
+    STATIC_LIB_FILES := $(filter %$(STATIC_LIBRARY_SUFFIX), \
+          $(call FindFiles, $(SUPPORT_OUTPUTDIR)/native/$(MODULE)/*/static))
+    $(eval $(call SetupCopyFiles, COPY_STATIC_LIBS, \
+        FLATTEN := true, \
+        SRC := $(SUPPORT_OUTPUTDIR)/native/$(MODULE), \
+        DEST := $(SUPPORT_OUTPUTDIR)/modules_static-libs/$(MODULE), \
+        FILES := $(STATIC_LIB_FILES), \
+    ))
+    DEPS += $(COPY_STATIC_LIBS)
+    JMOD_FLAGS += --static-libs $(STATIC_LIBS_DIR)
+  endif
+
+  # Copy hotspot libs, currently only libjvm.a
+  ifeq ($(MODULE), java.base)
+    HOTSPOT_LIB_FILES := $(filter %$(STATIC_LIBRARY_SUFFIX), \
+          $(call FindFiles, $(HOTSPOT_OUTPUTDIR)/*/*/objs/static))
+    $(eval $(call SetupCopyFiles, COPY_HOTSPOT_STATIC_LIBS, \
+        FLATTEN := true, \
+        SRC := $(HOTSPOT_OUTPUTDIR), \
+        DEST := $(SUPPORT_OUTPUTDIR)/modules_static-libs/$(MODULE), \
+        FILES := $(HOTSPOT_LIB_FILES), \
+    ))
+    DEPS += $(COPY_HOTSPOT_STATIC_LIBS)
+  endif
+endif
+
 ifneq ($(CMDS_DIR), )
   DEPS += $(call FindFiles, $(CMDS_DIR))
   ifeq ($(call isTargetOs, windows)+$(SHIP_DEBUG_SYMBOLS), true+public)
@@ -211,7 +249,7 @@ endif
 # to avoid false incremental rebuilds.
 ifeq ($(INTERIM_JMOD), true)
   DEPS := $(filter-out $(SUPPORT_OUTPUTDIR)/modules_libs/java.base/classlist, $(DEPS))
-  INTERIM_MSG := interim$(SPACE)
+  JMOD_TYPE_MSG := interim$(SPACE)
 endif
 
 ifeq ($(call isTargetOs, windows), true)
@@ -254,7 +292,7 @@ endif
 # Create jmods in the support dir and then move them into place to keep the
 # module path in $(IMAGES_OUTPUTDIR)/jmods valid at all times.
 $(eval $(call SetupExecute, create_$(JMOD_FILE), \
-    WARN := Creating $(INTERIM_MSG)$(JMOD_FILE), \
+    WARN := Creating $(JMOD_TYPE_MSG)$(JMOD_FILE), \
     DEPS := $(DEPS), \
     OUTPUT_FILE := $(JMODS_DIR)/$(JMOD_FILE), \
     SUPPORT_DIR := $(JMODS_SUPPORT_DIR), \
