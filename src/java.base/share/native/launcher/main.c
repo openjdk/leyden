@@ -34,6 +34,94 @@
 #include "jli_util.h"
 #include "jni.h"
 
+static unsigned long long read_u8(FILE *f, jboolean is_little_endian) {
+    unsigned long long res = 0;
+    unsigned char* v = (unsigned char*)&res;
+    if (is_little_endian) {
+        v += 7;
+    }
+    for (int idx = 0; idx < 8; idx++) {
+        fread(v, 1, 1, f);
+        if (is_little_endian) {
+            v--;
+        } else {
+            v++;
+        }
+    }
+    return res;
+}
+
+static jboolean is_little_endian() {
+    unsigned int x = 1;
+    return (*(unsigned char *)&x != 0);
+}
+
+// Check if the current executable is a hermetic Java image.
+// If so, read the embedded jimage offset from the hermetic
+// image and compute jimage length.
+//
+// A hermetic Java image format:
+//
+//     ---------------------
+//     |                   |
+//     |    executable     |
+//     |                   |
+//     ---------------------
+//     |                   |
+//     |     jimage        |
+//     |                   |
+//     ---------------------
+//     |offset|magic|
+//     --------------
+//
+static jboolean get_hermetic_jdk_arg(char* arg) {
+    char *execname;
+    unsigned long long jimage_offset = 0;
+    long jimage_len = 0;
+
+    // FIXME: Handle AIX
+#ifdef __linux__
+    char path[MAXPATHLEN+1];
+    ssize_t n = readlink("/proc/self/exe", path, MAXPATHLEN);
+    if (n == -1) {
+        return JNI_FALSE;
+    }
+
+    path[n] = '\0';
+    execname = path;
+#elif defined(__APPLE__)
+    // TODO: Add support
+    return JNI_FALSE;
+#elif defined(_WIN32)
+    // TODO: Add support
+    return JNI_FALSE;
+#endif
+
+    FILE *execfile = fopen(execname, "r");
+    if (fseek(execfile, 0, SEEK_END) != 0) {
+        return JNI_FALSE;
+    }
+    long end_pos = ftell(execfile);
+    if (fseek(execfile, -16, SEEK_CUR) != 0) {
+        return JNI_FALSE;
+    }
+
+    jboolean little_endian = is_little_endian();
+    // Read the last 8 bytes from the executable file. If it matches
+    // with the expected magic number, we have a hermetic image.
+    if (read_u8(execfile, little_endian) == 0xCAFEBABECAFEDADA) {
+        // Read the hermetic jimage offset.
+        jimage_offset = read_u8(execfile, little_endian);
+        fclose(execfile);
+
+        jimage_len = end_pos - jimage_offset;
+        sprintf(arg, "-XX:UseHermeticJDK=%s,%lld,%ld",
+                execname, jimage_offset, jimage_len);
+        return JNI_TRUE;
+    }
+    return JNI_FALSE;
+}
+
 /*
  * Entry point.
  */
@@ -66,6 +154,9 @@ main(int argc, char **argv)
 
     JLI_InitArgProcessing(jargc > 0, const_disable_argfile);
 
+    char hermetic_jdk_arg[4096];
+    jboolean is_hermetic = get_hermetic_jdk_arg(hermetic_jdk_arg);
+
 #ifdef _WIN32
     {
         int i = 0;
@@ -97,6 +188,7 @@ main(int argc, char **argv)
 
     margc = JLI_GetStdArgc();
     // add one more to mark the end
+    // TODO: Add hermetic Java arg.
     margv = (char **)JLI_MemAlloc((margc + 1) * (sizeof(char *)));
     {
         int i = 0;
@@ -125,6 +217,11 @@ main(int argc, char **argv)
                 }
             }
         }
+
+        if (is_hermetic) {
+            JLI_List_add(args, hermetic_jdk_arg);
+        }
+
         // Iterate the rest of command line
         for (i = 1; i < argc; i++) {
             JLI_List argsInFile = JLI_PreprocessArg(argv[i], JNI_TRUE);

@@ -191,9 +191,11 @@ public class JlinkTask {
         // be used for linking from the run-time image.
         new Option<JlinkTask>(false, (task, opt, arg) -> {
             task.options.generateLinkableRuntime = true;
-        }, true, "--generate-linkable-runtime")
-    };
-
+        }, true, "--generate-linkable-runtime"),
+        new Option<JlinkTask>(false, (task, opt, arg) -> {
+              task.options.hermetic = true;
+        }, true, "--hermetic"),
+  };
 
     private static final String PROGNAME = "jlink";
     private final OptionsValues options = new OptionsValues();
@@ -235,6 +237,7 @@ public class JlinkTask {
         boolean suggestProviders = false;
         boolean ignoreModifiedRuntime = false;
         boolean generateLinkableRuntime = false;
+        boolean hermetic = false;
     }
 
     public static final String OPTIONS_RESOURCE = "jdk/tools/jlink/internal/options";
@@ -356,6 +359,7 @@ public class JlinkTask {
                                     false,
                                     null,
                                     false,
+                                    false, /* hermetic */
                                     new OptionsValues(),
                                     null);
 
@@ -492,6 +496,7 @@ public class JlinkTask {
                                                         options.bindServices,
                                                         options.endian,
                                                         options.verbose,
+                                                        options.hermetic,
                                                         options,
                                                         log);
 
@@ -628,6 +633,7 @@ public class JlinkTask {
                                                    boolean bindService,
                                                    ByteOrder endian,
                                                    boolean verbose,
+                                                   boolean hermetic,
                                                    OptionsValues opts,
                                                    PrintWriter log)
             throws IOException
@@ -740,7 +746,8 @@ public class JlinkTask {
         return new ImageHelper(archives,
                                targetPlatform,
                                retainModulesPath,
-                               config.isGenerateRuntimeImage());
+                               config.isGenerateRuntimeImage(),
+                               hermetic);
     }
 
     private static Archive newArchive(String module,
@@ -1030,11 +1037,12 @@ public class JlinkTask {
     private static record ImageHelper(Set<Archive> archives,
                                       Platform targetPlatform,
                                       Path packagedModulesPath,
-                                      boolean generateRuntimeImage) implements ImageProvider {
+                                      boolean generateRuntimeImage,
+                                      boolean hermetic) implements ImageProvider {
         @Override
         public ExecutableImage retrieve(ImagePluginStack stack) throws IOException {
             ExecutableImage image = ImageFileCreator.create(archives,
-                    targetPlatform.arch().byteOrder(), stack, generateRuntimeImage);
+                    targetPlatform.arch().byteOrder(), stack, generateRuntimeImage, hermetic);
             if (packagedModulesPath != null) {
                 // copy the packaged modules to the given path
                 Files.createDirectories(packagedModulesPath);
