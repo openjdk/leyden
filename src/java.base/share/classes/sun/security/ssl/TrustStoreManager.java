@@ -177,7 +177,7 @@ final class TrustStoreManager {
                         if (FilePaths.class.getResource(fileName) != null) {
                             // Keep temporaryFile as null in hermetic case.
                             temporaryName = fileName;
-                            temporaryTime = JavaHome.hermeticExecutableFile().lastModified();
+                            temporaryTime = JavaHome.hermeticImageFile().lastModified();
                             break;
                         }
                     }

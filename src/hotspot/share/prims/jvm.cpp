@@ -494,6 +494,15 @@ JVM_LEAF(jboolean, JVM_IsContainerized(void))
   return JNI_FALSE;
 JVM_END
 
+// jdk.internal.misc.JavaHome ///////////////////////////////////////////////
+JVM_LEAF(jboolean, JVM_UseHermeticJDKImage())
+  return (Arguments::hermetic_jdk_image_path() != nullptr);
+JVM_END
+
+JVM_LEAF(jlong, JVM_HermeticJimageOffset())
+  return ((jlong)Arguments::hermetic_jdk_jimage_offset());
+JVM_END
+
 // java.lang.Throwable //////////////////////////////////////////////////////
 
 JVM_ENTRY(void, JVM_FillInStackTrace(JNIEnv *env, jobject receiver))

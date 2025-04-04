@@ -222,6 +222,15 @@ JNIEXPORT jboolean JNICALL
 JVM_NeedsClassInitBarrierForCDS(JNIEnv* env, jclass cls);
 
 /*
+ * jdk.internal.misc.JavaHome
+ */
+JNIEXPORT jboolean JNICALL
+JVM_UseHermeticJDKImage();
+
+JNIEXPORT jlong JNICALL
+JVM_HermeticJimageOffset();
+
+/*
  * java.lang.Throwable
  */
 JNIEXPORT void JNICALL

@@ -120,13 +120,20 @@ final class ProcessImpl extends Process {
     }
 
     private static final LaunchMechanism launchMechanism = launchMechanism();
-    // Use the launcher executable if we are executing in hermetic Java mode.
+    // If we are running on hermetic Java:
+    //   - Use the hermetic image as posix_spawn helper if it is an executable
+    //     (image contains the launcher).
+    //   - Use <jdk>/lib/jspawnhelper as the helper if the hermetic image is not
+    //     an executable. Testing runs in this mode.
     //
-    // When executing in non-hermetic Java mode, we still use 'lib/jspawnhelper'
-    // currently as the executable for posix_spawn.
+    // When executing in non-hermetic Java mode, we use <jdk>/lib/jspawnhelper
+    // as the executable for posix_spawn.
     private static final byte[] helperpath =
-        JavaHome.isHermetic() ? toCString(JavaHome.hermeticExecutable())
-                              : toCString(StaticProperty.javaHome() + "/lib/jspawnhelper");
+        JavaHome.isHermetic() ?
+            (JavaHome.isHermeticImageExecutable() ?
+                toCString(JavaHome.hermeticImage()) :
+                toCString(StaticProperty.sunBootLibraryPath() + "/jspawnhelper")) :
+            toCString(StaticProperty.javaHome() + "/lib/jspawnhelper");
 
     private static byte[] toCString(String s) {
         if (s == null)

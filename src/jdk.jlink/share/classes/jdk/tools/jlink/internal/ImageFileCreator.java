@@ -197,13 +197,17 @@ public final class ImageFileCreator {
         }
 
         //Handle files.
-        try {
-            plugins.storeFiles(allContent.resourcePool(), result, writer);
-        } catch (Exception ex) {
-            if (JlinkTask.DEBUG) {
-                ex.printStackTrace();
+        if (!hermetic) {
+            // In hermetic case, we only write out the single hermetic
+            // executable image. Other artifacts are not written out.
+            try {
+                plugins.storeFiles(allContent.resourcePool(), result, writer);
+            } catch (Exception ex) {
+                if (JlinkTask.DEBUG) {
+                    ex.printStackTrace();
+                }
+                throw new IOException(ex);
             }
-            throw new IOException(ex);
         }
     }
 
