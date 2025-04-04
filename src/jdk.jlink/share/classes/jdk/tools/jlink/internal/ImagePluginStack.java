@@ -28,6 +28,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.module.ModuleDescriptor;
 import java.nio.ByteOrder;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -205,6 +206,10 @@ public final class ImagePluginStack {
 
     public DataOutputStream getJImageFileOutputStream() throws IOException {
         return imageBuilder.getJImageOutputStream();
+    }
+
+    public Path getJImageFile() {
+        return imageBuilder.getJImageFile();
     }
 
     public ImageBuilder getImageBuilder() {

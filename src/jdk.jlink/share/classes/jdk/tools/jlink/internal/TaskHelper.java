@@ -407,7 +407,7 @@ public final class TaskHelper {
         }
 
         private PluginsConfiguration getPluginsConfig(Path output, Map<String, String> launchers,
-                                                      Platform targetPlatform)
+                                                      Platform targetPlatform, boolean hermetic)
                 throws IOException, BadArgs {
             if (output != null) {
                 if (Files.exists(output)) {
@@ -455,7 +455,7 @@ public final class TaskHelper {
             // recreate or postprocessing don't require an output directory.
             ImageBuilder builder = null;
             if (output != null) {
-                builder = new DefaultImageBuilder(output, launchers, targetPlatform);
+                builder = new DefaultImageBuilder(output, launchers, targetPlatform, hermetic);
             }
 
             return new Jlink.PluginsConfiguration(pluginsList,
@@ -721,9 +721,9 @@ public final class TaskHelper {
     }
 
     public PluginsConfiguration getPluginsConfig(Path output, Map<String, String> launchers,
-                                                 Platform targetPlatform)
+                                                 Platform targetPlatform, Boolean hermetic)
             throws IOException, BadArgs {
-        return pluginOptions.getPluginsConfig(output, launchers, targetPlatform);
+        return pluginOptions.getPluginsConfig(output, launchers, targetPlatform, hermetic);
     }
 
     public void showVersion(boolean full) {

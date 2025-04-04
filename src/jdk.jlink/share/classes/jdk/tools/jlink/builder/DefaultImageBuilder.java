@@ -145,6 +145,7 @@ public final class DefaultImageBuilder implements ImageBuilder {
     private final Path mdir;
     private final Set<String> modules = new HashSet<>();
     private final Platform platform;
+    private final boolean hermetic;
 
     /**
      * Default image builder constructor.
@@ -155,13 +156,19 @@ public final class DefaultImageBuilder implements ImageBuilder {
      * @throws IOException
      * @throws NullPointerException If any of the params is null
      */
-    public DefaultImageBuilder(Path root, Map<String, String> launchers, Platform targetPlatform)
+    public DefaultImageBuilder(Path root, Map<String, String> launchers,
+                               Platform targetPlatform, boolean hermetic)
             throws IOException {
         this.root = Objects.requireNonNull(root);
         this.platform = Objects.requireNonNull(targetPlatform);
         this.launchers = Objects.requireNonNull(launchers);
-        this.mdir = root.resolve("lib");
-        Files.createDirectories(mdir);
+        this.hermetic = hermetic;
+        if (hermetic) {
+            this.mdir = null;
+        } else {
+            this.mdir = root.resolve("lib");
+            Files.createDirectories(mdir);
+        }
     }
 
     @Override
@@ -352,12 +359,26 @@ public final class DefaultImageBuilder implements ImageBuilder {
     @Override
     public DataOutputStream getJImageOutputStream() {
         try {
-            Path jimageFile = mdir.resolve(BasicImageWriter.MODULES_IMAGE_NAME);
+            Path jimageFile;
+            if (hermetic) {
+                jimageFile = root;
+            } else {
+                jimageFile = mdir.resolve(BasicImageWriter.MODULES_IMAGE_NAME);
+            }
             OutputStream fos = Files.newOutputStream(jimageFile);
             BufferedOutputStream bos = new BufferedOutputStream(fos);
             return new DataOutputStream(bos);
         } catch (IOException ex) {
             throw new UncheckedIOException(ex);
+        }
+    }
+
+    @Override
+    public Path getJImageFile() {
+        if (hermetic) {
+            return root;
+        } else {
+            return mdir.resolve(BasicImageWriter.MODULES_IMAGE_NAME);
         }
     }
 
@@ -492,7 +513,7 @@ public final class DefaultImageBuilder implements ImageBuilder {
     /**
      * chmod ugo+x file
      */
-    private void setExecutable(Path file) {
+    public void setExecutable(Path file) {
         try {
             Set<PosixFilePermission> perms = Files.getPosixFilePermissions(file);
             perms.add(PosixFilePermission.OWNER_EXECUTE);

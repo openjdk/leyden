@@ -37,6 +37,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -194,6 +195,18 @@ public final class ImageFileCreator {
         ResourcePool result = null;
         try (DataOutputStream out = plugins.getJImageFileOutputStream()) {
             result = generateJImage(allContent, writer, plugins, out, generateRuntimeImage, hermetic);
+            if (hermetic) {
+                Path jimage = plugins.getJImageFile();
+                try {
+                    Set<PosixFilePermission> perms = Files.getPosixFilePermissions(jimage);
+                    perms.add(PosixFilePermission.OWNER_EXECUTE);
+                    perms.add(PosixFilePermission.GROUP_EXECUTE);
+                    perms.add(PosixFilePermission.OTHERS_EXECUTE);
+                    Files.setPosixFilePermissions(jimage, perms);
+                } catch (IOException ioe) {
+                    throw new UncheckedIOException(ioe);
+                }
+            }
         }
 
         //Handle files.
