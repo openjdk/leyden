@@ -34,6 +34,8 @@
 #include "jli_util.h"
 #include "jni.h"
 
+#include <limits.h>
+
 static unsigned long long read_u8(FILE *f, jboolean is_little_endian) {
     unsigned long long res = 0;
     unsigned char* v = (unsigned char*)&res;
@@ -81,7 +83,7 @@ static jboolean get_hermetic_jdk_arg(char* arg) {
 
     // FIXME: Handle AIX
 #ifdef __linux__
-    char path[MAXPATHLEN+1];
+    char path[PATH_MAX+1];
     ssize_t n = readlink("/proc/self/exe", path, MAXPATHLEN);
     if (n == -1) {
         return JNI_FALSE;
@@ -154,7 +156,7 @@ main(int argc, char **argv)
 
     JLI_InitArgProcessing(jargc > 0, const_disable_argfile);
 
-    char hermetic_jdk_arg[4096];
+    char hermetic_jdk_arg[PATH_MAX+100];
     jboolean is_hermetic = get_hermetic_jdk_arg(hermetic_jdk_arg);
 
 #ifdef _WIN32
