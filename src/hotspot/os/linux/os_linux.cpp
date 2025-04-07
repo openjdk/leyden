@@ -622,7 +622,13 @@ void os::init_system_properties_values() {
         *pslash = '\0';
       }
     }
-    Arguments::set_java_home(buf);
+    if (Arguments::hermetic_jdk_image_path() != nullptr) {
+      // We are running on hermetic Java. Set JAVA_HOME to use
+      // the hermetic Java image.
+      Arguments::set_java_home(Arguments::hermetic_jdk_image_path());
+    } else {
+      Arguments::set_java_home(buf);
+    }
     if (!set_boot_path('/', ':')) {
       vm_exit_during_initialization("Failed setting boot class path.", nullptr);
     }

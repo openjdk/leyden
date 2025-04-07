@@ -60,6 +60,17 @@ public class JavaHome {
 
     private static final boolean isHermetic;
 
+    // When a single hermetic executable image is used,
+    // executableHermeticImage is set to true.
+    //
+    // For testing, we support 'scattered' hermetic Java execution
+    // environment without using a single image. A standalone launcher
+    // executable and a JAR file containing the hermetic jimage and
+    // JDK resources are used in that case. The JAR file is not an
+    // executable. executableHermeticImage is set to false in that
+    // case.
+    private static final boolean executableHermeticImage;
+
     private static final String JAVA_HOME;
 
     private static final String HERMETIC_IMAGE_NAME;
@@ -78,9 +89,19 @@ public class JavaHome {
             throw new Error("Can't find java.home");
         }
 
-        if (JAVA_HOME.endsWith(".jar")) {
-            // The JAVA_HOME is a jar file. We are dealing with hermetic Java.
+        if (useHermeticJDKImage()) {
             isHermetic = true;
+            if (hermeticJimageOffset() == 0) {
+                // jimage is at the beginning of the hermetic image.
+                // There is no executable.
+                executableHermeticImage = false;
+            } else {
+                // ELF should be at the beginning of a hermetic executable
+                // jimage. Currently we assume that the image contains the
+                // ELF part and is an executable as long as the jimage is
+                // not at the beginning of the hermetic image file.
+                executableHermeticImage = true;
+            }
 
             // JAVA_HOME is the hermetic executable JAR.
             HERMETIC_IMAGE_NAME = props.getProperty(
@@ -100,12 +121,12 @@ public class JavaHome {
                                    HERMETIC_JAR_JDK_RESOURCES_HOME);
             }
 
-            // Initialize JavaHome explicitly.
-            HermeticImageHelper.init(JAVA_HOME);
-
             HERMETIC_IMAGE_FILE = new File(HERMETIC_IMAGE_NAME);
+
+            HermeticImageHelper.init(HERMETIC_IMAGE_NAME);
         } else {
             isHermetic = false;
+            executableHermeticImage = false;
             jarFileSystem = null;
             HERMETIC_JAR_JDK_RESOURCES_HOME = "";
             HERMETIC_IMAGE_NAME = "";
@@ -113,18 +134,26 @@ public class JavaHome {
         }
     }
 
+    private static native boolean useHermeticJDKImage();
+
+    private static native long hermeticJimageOffset();
+
     public static boolean isHermetic() {
         return isHermetic;
     }
 
-    public static String hermeticExecutable() {
+    public static boolean isHermeticImageExecutable() {
+        return executableHermeticImage;
+    }
+
+    public static String hermeticImage() {
         if (!isHermetic()) {
             throw new IllegalStateException("Not hermetic Java");
         }
         return HERMETIC_IMAGE_NAME;
     }
 
-    public static File hermeticExecutableFile() {
+    public static File hermeticImageFile() {
         if (!isHermetic()) {
             throw new IllegalStateException("Not hermetic Java");
         }

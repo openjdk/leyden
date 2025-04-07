@@ -37,6 +37,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -115,7 +116,8 @@ public final class ImageFileCreator {
     public static ExecutableImage create(Set<Archive> archives,
             ByteOrder byteOrder,
             ImagePluginStack plugins,
-            boolean generateRuntimeImage)
+            boolean generateRuntimeImage,
+            boolean hermetic)
             throws IOException
     {
         ImageFileCreator image = new ImageFileCreator(plugins,
@@ -123,7 +125,7 @@ public final class ImageFileCreator {
         try {
             image.readAllEntries(archives);
             // write to modular image
-            image.writeImage(archives, byteOrder);
+            image.writeImage(archives, byteOrder, hermetic);
         } catch (UncheckedIOException e) {
             // When linking from the run-time image, readAllEntries() might
             // throw this exception for a modified runtime. Unpack and
@@ -174,7 +176,7 @@ public final class ImageFileCreator {
             try (OutputStream fos = Files.newOutputStream(jimageFile);
                     BufferedOutputStream bos = new BufferedOutputStream(fos);
                     DataOutputStream out = new DataOutputStream(bos)) {
-                generateJImage(pool, writer, pluginSupport, out, generateRuntimeImage);
+                generateJImage(pool, writer, pluginSupport, out, generateRuntimeImage, false);
             }
         } finally {
             //Close all archives
@@ -185,24 +187,40 @@ public final class ImageFileCreator {
     }
 
     private void writeImage(Set<Archive> archives,
-            ByteOrder byteOrder)
+            ByteOrder byteOrder, boolean hermetic)
             throws IOException {
         BasicImageWriter writer = new BasicImageWriter(byteOrder);
         ResourcePoolManager allContent = createPoolManager(archives,
                 entriesForModule, byteOrder, writer);
         ResourcePool result = null;
         try (DataOutputStream out = plugins.getJImageFileOutputStream()) {
-            result = generateJImage(allContent, writer, plugins, out, generateRuntimeImage);
+            result = generateJImage(allContent, writer, plugins, out, generateRuntimeImage, hermetic);
+            if (hermetic) {
+                Path jimage = plugins.getJImageFile();
+                try {
+                    Set<PosixFilePermission> perms = Files.getPosixFilePermissions(jimage);
+                    perms.add(PosixFilePermission.OWNER_EXECUTE);
+                    perms.add(PosixFilePermission.GROUP_EXECUTE);
+                    perms.add(PosixFilePermission.OTHERS_EXECUTE);
+                    Files.setPosixFilePermissions(jimage, perms);
+                } catch (IOException ioe) {
+                    throw new UncheckedIOException(ioe);
+                }
+            }
         }
 
         //Handle files.
-        try {
-            plugins.storeFiles(allContent.resourcePool(), result, writer);
-        } catch (Exception ex) {
-            if (JlinkTask.DEBUG) {
-                ex.printStackTrace();
+        if (!hermetic) {
+            // In hermetic case, we only write out the single hermetic
+            // executable image. Other artifacts are not written out.
+            try {
+                plugins.storeFiles(allContent.resourcePool(), result, writer);
+            } catch (Exception ex) {
+                if (JlinkTask.DEBUG) {
+                    ex.printStackTrace();
+                }
+                throw new IOException(ex);
             }
-            throw new IOException(ex);
         }
     }
 
@@ -225,7 +243,8 @@ public final class ImageFileCreator {
             BasicImageWriter writer,
             ImagePluginStack pluginSupport,
             DataOutputStream out,
-            boolean generateRuntimeImage
+            boolean generateRuntimeImage,
+            boolean hermetic
     ) throws IOException {
         ResourcePool resultResources;
         try {
@@ -255,6 +274,7 @@ public final class ImageFileCreator {
         Set<String> duplicates = new HashSet<>();
         long[] offset = new long[1];
 
+        List<ResourcePoolEntry> executable = new ArrayList<>();
         List<ResourcePoolEntry> content = new ArrayList<>();
         List<String> paths = new ArrayList<>();
         // the order of traversing the resources and the order of
@@ -286,10 +306,31 @@ public final class ImageFileCreator {
                 writer.addLocation(path, offset[0], compressedSize, uncompressedSize);
                 paths.add(path);
                 offset[0] += onFileSize;
-            }
-        });
+              } else if (res.type().equals(ResourcePoolEntry.Type.NATIVE_CMD)) {
+                if ("/java.base/bin/static-java".equals(res.path())) {
+                  executable.add(res);
+                }
+              }
+            });
 
         ImageResourcesTree tree = new ImageResourcesTree(offset[0], writer, paths);
+
+        // Write executable before jimage
+        long jimageOffset = 0;
+        if (hermetic) {
+          ResourcePoolEntry exe = executable.get(0);
+          exe.write(out);
+
+          // Write extra bytes to Align jimage start at page boundary.
+          // FIXME: get os page size
+          int pageSize = 4096;
+          long len = exe.contentLength();
+          jimageOffset = (len + (pageSize - 1)) & ~(pageSize - 1);
+          int extra = (int) (jimageOffset - len);
+          for (int i = 0; i < extra; i++) {
+            out.writeByte(0);
+          }
+        }
 
         // write header and indices
         byte[] bytes = writer.getBytes();
@@ -301,6 +342,12 @@ public final class ImageFileCreator {
         });
 
         tree.addContent(out);
+
+        // write jimage start offset and size
+        if (hermetic) {
+            out.writeLong(0xCAFEBABECAFEDADAL);
+            out.writeLong(jimageOffset);
+        }
 
         out.close();
 

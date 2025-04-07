@@ -25,6 +25,7 @@
 package jdk.tools.jlink.builder;
 
 import java.io.DataOutputStream;
+import java.nio.file.Path;
 import java.util.Properties;
 
 import jdk.tools.jlink.internal.ExecutableImage;
@@ -67,6 +68,13 @@ public interface ImageBuilder {
      * @throws PluginException
      */
     public DataOutputStream getJImageOutputStream();
+
+    /**
+     * The Path to the jimage file.
+     *
+     * @return The path to jimage file
+     */
+    public Path getJImageFile();
 
     /**
      * Gets the executable image that is generated.

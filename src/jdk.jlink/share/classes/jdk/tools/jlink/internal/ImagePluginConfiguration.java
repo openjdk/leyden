@@ -26,6 +26,7 @@ package jdk.tools.jlink.internal;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -115,6 +116,11 @@ public final class ImagePluginConfiguration {
 
                 @Override
                 public DataOutputStream getJImageOutputStream() {
+                    throw new PluginException("No directory setup to store files");
+                }
+
+                @Override
+                public Path getJImageFile() {
                     throw new PluginException("No directory setup to store files");
                 }
 
