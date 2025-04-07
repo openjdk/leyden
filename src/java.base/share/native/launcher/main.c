@@ -36,21 +36,24 @@
 
 #include <limits.h>
 
-static unsigned long long read_u8(FILE *f, jboolean is_little_endian) {
-    unsigned long long res = 0;
-    unsigned char* v = (unsigned char*)&res;
+static jboolean read_u8(FILE *f, jboolean is_little_endian, unsigned long long* res) {
+    unsigned char* v = (unsigned char*)res;
     if (is_little_endian) {
         v += 7;
     }
     for (int idx = 0; idx < 8; idx++) {
-        fread(v, 1, 1, f);
-        if (is_little_endian) {
-            v--;
+        const size_t r = fread(v, 1, 1, f);
+        if (r == 1) {
+            if (is_little_endian) {
+                v--;
+            } else {
+                v++;
+            }
         } else {
-            v++;
+            return JNI_FALSE;
         }
     }
-    return res;
+    return JNI_TRUE;
 }
 
 static jboolean is_little_endian() {
@@ -105,22 +108,28 @@ static jboolean get_hermetic_jdk_arg(char* arg) {
     }
     long end_pos = ftell(execfile);
     if (fseek(execfile, -16, SEEK_CUR) != 0) {
+        fclose(execfile);
         return JNI_FALSE;
     }
 
     jboolean little_endian = is_little_endian();
     // Read the last 8 bytes from the executable file. If it matches
     // with the expected magic number, we have a hermetic image.
-    if (read_u8(execfile, little_endian) == 0xCAFEBABECAFEDADA) {
-        // Read the hermetic jimage offset.
-        jimage_offset = read_u8(execfile, little_endian);
-        fclose(execfile);
+    unsigned long long magic = 0;
+    if (read_u8(execfile, little_endian, &magic)) {
+        if (magic  == 0xCAFEBABECAFEDADA) {
+            // Read the hermetic jimage offset.
+            if (read_u8(execfile, little_endian, &jimage_offset)) {
+                fclose(execfile);
 
-        jimage_len = end_pos - jimage_offset;
-        sprintf(arg, "-XX:UseHermeticJDK=%s,%lld,%ld",
-                execname, jimage_offset, jimage_len);
-        return JNI_TRUE;
+                jimage_len = end_pos - jimage_offset;
+                sprintf(arg, "-XX:UseHermeticJDK=%s,%lld,%ld",
+                        execname, jimage_offset, jimage_len);
+                return JNI_TRUE;
+            }
+        }
     }
+    fclose(execfile);
     return JNI_FALSE;
 }
 
