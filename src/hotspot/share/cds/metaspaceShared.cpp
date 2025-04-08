@@ -716,18 +716,11 @@ void VM_PopulateDumpSharedSpace::doit() {
   CppVtables::zero_archived_vtables();
 
   // Write the archive file
-  const char* static_archive;
   if (CDSConfig::is_dumping_final_static_archive()) {
-    if (CDSConfig::is_experimental_leyden_workflow()) {
-      static_archive = CacheDataStore;
-    } else {
-      static_archive = AOTCache;
-    }
-    FileMapInfo::free_current_info();
-  } else {
-    static_archive = CDSConfig::static_archive_path();
+    FileMapInfo::free_current_info(); // FIXME: should not free current info
   }
-  assert(static_archive != nullptr, "SharedArchiveFile not set?");
+  const char* static_archive = CDSConfig::output_archive_path();
+  assert(static_archive != nullptr, "sanity");
   _map_info = new FileMapInfo(static_archive, true);
   _map_info->populate_header(MetaspaceShared::core_region_alignment());
   _map_info->set_early_serialized_data(early_serialized_data);
@@ -842,11 +835,6 @@ void MetaspaceShared::link_shared_classes(TRAPS) {
   if (CDSConfig::is_dumping_final_static_archive()) {
     FinalImageRecipes::apply_recipes(CHECK);
   }
-}
-
-void MetaspaceShared::prepare_for_dumping() {
-  assert(CDSConfig::is_dumping_archive(), "sanity");
-  CDSConfig::check_unsupported_dumping_module_options();
 }
 
 // Preload classes from a list, populate the shared spaces and dump to a
@@ -1130,7 +1118,7 @@ bool MetaspaceShared::write_static_archive(ArchiveBuilder* builder, FileMapInfo*
   // without runtime relocation.
   builder->relocate_to_requested();
 
-  map_info->open_for_write();
+  map_info->open_as_output();
   if (!map_info->is_open()) {
     return false;
   }
@@ -1167,7 +1155,7 @@ void MetaspaceShared::fork_and_dump_final_static_archive() {
   stringStream ss;
   print_java_launcher(&ss);
   print_vm_arguments(&ss);
-  ss.print(" -XX:CDSPreimage=%s", SharedArchiveFile);
+  ss.print(" -XX:CDSPreimage=%s", CDSPreimage);
 
   const char* cmd = ss.freeze();
   if (CDSManualFinalImage) {
@@ -1216,12 +1204,12 @@ void MetaspaceShared::fork_and_dump_final_static_archive() {
     } else {
       log_info(cds)("Child process finished; status = %d", status);
       // On Windows, need WRITE permission to remove the file.
-      WINDOWS_ONLY(chmod(SharedArchiveFile, _S_IREAD | _S_IWRITE));
-      status = remove(SharedArchiveFile);
+      WINDOWS_ONLY(chmod(CDSPreimage, _S_IREAD | _S_IWRITE));
+      status = remove(CDSPreimage);
       if (status != 0) {
-        log_error(cds)("Failed to remove CDSPreimage file %s", SharedArchiveFile);
+        log_error(cds)("Failed to remove CDSPreimage file %s", CDSPreimage);
       } else {
-        log_info(cds)("Removed CDSPreimage file %s", SharedArchiveFile);
+        log_info(cds)("Removed CDSPreimage file %s", CDSPreimage);
       }
     }
   }
@@ -1414,10 +1402,10 @@ void MetaspaceShared::open_static_archive() {
   if (!UseSharedSpaces) {
     return;
   }
-  const char* static_archive = CDSConfig::static_archive_path();
+  const char* static_archive = CDSConfig::input_static_archive_path();
   assert(static_archive != nullptr, "sanity");
   FileMapInfo* mapinfo = new FileMapInfo(static_archive, true);
-  if (!mapinfo->initialize()) {
+  if (!mapinfo->open_as_input()) {
     delete(mapinfo);
   } else {
     FileMapRegion* r = mapinfo->region_at(MetaspaceShared::cc);
@@ -1429,13 +1417,13 @@ FileMapInfo* MetaspaceShared::open_dynamic_archive() {
   if (CDSConfig::is_dumping_dynamic_archive()) {
     return nullptr;
   }
-  const char* dynamic_archive = CDSConfig::dynamic_archive_path();
+  const char* dynamic_archive = CDSConfig::input_dynamic_archive_path();
   if (dynamic_archive == nullptr) {
     return nullptr;
   }
 
   FileMapInfo* mapinfo = new FileMapInfo(dynamic_archive, false);
-  if (!mapinfo->initialize()) {
+  if (!mapinfo->open_as_input()) {
     delete(mapinfo);
     if (RequireSharedSpaces) {
       MetaspaceShared::unrecoverable_loading_error("Failed to initialize dynamic archive");
@@ -2024,7 +2012,7 @@ void MetaspaceShared::initialize_shared_spaces() {
   if (PrintSharedArchiveAndExit) {
     // Print archive names
     if (dynamic_mapinfo != nullptr) {
-      tty->print_cr("\n\nBase archive name: %s", CDSConfig::static_archive_path());
+      tty->print_cr("\n\nBase archive name: %s", CDSConfig::input_static_archive_path());
       tty->print_cr("Base archive version %d", static_mapinfo->version());
     } else {
       tty->print_cr("Static archive name: %s", static_mapinfo->full_path());

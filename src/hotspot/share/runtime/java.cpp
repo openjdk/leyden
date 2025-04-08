@@ -525,7 +525,7 @@ void before_exit(JavaThread* thread, bool halt) {
   MethodProfiler::process_method_hotness();
   // Dynamic CDS dumping must happen whilst we can still reliably
   // run Java code.
-  DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
+  DynamicArchive::dump_at_exit(thread);
   assert(!thread->has_pending_exception(), "must be");
 #endif
 
