@@ -523,7 +523,12 @@ void before_exit(JavaThread* thread, bool halt) {
 
 #if INCLUDE_CDS
   MethodProfiler::process_method_hotness();
+  // Dynamic CDS dumping must happen whilst we can still reliably
+  // run Java code.
+  DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
+  assert(!thread->has_pending_exception(), "must be");
 #endif
+
 
   // Actual shutdown logic begins here.
 
@@ -537,15 +542,11 @@ void before_exit(JavaThread* thread, bool halt) {
   ClassListWriter::write_resolved_constants();
   ClassListWriter::write_reflection_data();
   ClassListWriter::write_loader_negative_lookup_cache();
-  // Dynamic CDS dumping must happen whilst we can still reliably
-  // run Java code.
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     // Creating the hotspot.cds.preimage file
     MetaspaceShared::preload_and_dump(thread);
-  } else {
-    DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
+    assert(!thread->has_pending_exception(), "must be");
   }
-  assert(!thread->has_pending_exception(), "must be");
 #endif
 
   SCCache::close(); // Write final data and close archive
