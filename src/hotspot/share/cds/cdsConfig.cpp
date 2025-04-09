@@ -551,6 +551,7 @@ void CDSConfig::ergo_init_experimental_leyden_paths() {
 
 bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) {
   assert(!_cds_ergo_initialize_started, "This is called earlier than CDSConfig::ergo_initialize()");
+
   check_aot_flags();
 
   if (!FLAG_IS_DEFAULT(AOTMode)) {
@@ -869,24 +870,6 @@ bool CDSConfig::allow_only_single_java_thread() {
   return is_dumping_classic_static_archive() || is_dumping_final_static_archive();
 }
 
-bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
-  if (is_dumping_final_static_archive()) {
-    // No need to regenerate -- the lambda form invokers should have been regenerated
-    // in the preimage archive (if allowed)
-    return false;
-  } else if (is_dumping_dynamic_archive() && is_using_aot_linked_classes()) {
-    // The base archive has aot-linked classes that may have AOT-resolved CP references
-    // that point to the lambda form invokers in the base archive. Such pointers will
-    // be invalid if lambda form invokers are regenerated in the dynamic archive.
-    return false;
-  } else if (CDSConfig::is_dumping_method_handles()) {
-    // Work around JDK-8310831, as some methods in lambda form holder classes may not get generated.
-    return false;
-  } else {
-    return is_dumping_archive();
-  }
-}
-
 bool CDSConfig::is_logging_dynamic_proxies() {
   return ClassListWriter::is_enabled() || is_dumping_preimage_static_archive();
 }
@@ -907,6 +890,24 @@ bool CDSConfig::is_using_archive() {
 
 bool CDSConfig::is_logging_lambda_form_invokers() {
   return ClassListWriter::is_enabled() || is_dumping_dynamic_archive() || is_dumping_preimage_static_archive();
+}
+
+bool CDSConfig::is_dumping_regenerated_lambdaform_invokers() {
+  if (is_dumping_final_static_archive()) {
+    // No need to regenerate -- the lambda form invokers should have been regenerated
+    // in the preimage archive (if allowed)
+    return false;
+  } else if (is_dumping_dynamic_archive() && is_using_aot_linked_classes()) {
+    // The base archive has aot-linked classes that may have AOT-resolved CP references
+    // that point to the lambda form invokers in the base archive. Such pointers will
+    // be invalid if lambda form invokers are regenerated in the dynamic archive.
+    return false;
+  } else if (CDSConfig::is_dumping_method_handles()) {
+    // Work around JDK-8310831, as some methods in lambda form holder classes may not get generated.
+    return false;
+  } else {
+    return is_dumping_archive();
+  }
 }
 
 void CDSConfig::stop_using_optimized_module_handling() {

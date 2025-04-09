@@ -478,10 +478,6 @@ void DynamicArchive::dump_impl(bool jcmd_request, const char* archive_name, TRAP
   MetaspaceShared::link_shared_classes(CHECK);
   if (!jcmd_request && CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
     LambdaFormInvokers::regenerate_holder_classes(CHECK);
-  } else {
-    // Make sure we have at least one class in the dynamic archive
-    TempNewSymbol class_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$DummyForDynamicArchive");
-    SystemDictionary::resolve_or_null(class_name, Handle(), CHECK);
   }
 
   VM_PopulateDynamicDumpSharedSpace op(archive_name);

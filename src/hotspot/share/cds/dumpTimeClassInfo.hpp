@@ -39,11 +39,13 @@ class Method;
 class Symbol;
 
 class DumpTimeClassInfo: public CHeapObj<mtClass> {
-  bool                         _excluded;
-  bool                         _is_early_klass;
-  bool                         _has_checked_exclusion;
-  bool                         _can_be_preinited;
-  bool                         _has_done_preinit_check;
+  bool _excluded;
+  bool _is_aot_tooling_class;
+  bool _is_early_klass;
+  bool _has_checked_exclusion;
+  bool _can_be_preinited;
+  bool _has_done_preinit_check;
+
   class DTLoaderConstraint {
     Symbol* _name;
     char _loader_type1;
@@ -144,6 +146,7 @@ public:
     _clsfile_size = -1;
     _clsfile_crc32 = -1;
     _excluded = false;
+    _is_aot_tooling_class = false;
     _is_early_klass = JvmtiExport::is_early_phase();
     _verifier_constraints = nullptr;
     _verifier_constraint_flags = nullptr;
@@ -200,6 +203,14 @@ public:
   }
 
   bool is_excluded();
+
+  bool is_aot_tooling_class() {
+    return _is_aot_tooling_class;
+  }
+
+  void set_is_aot_tooling_class() {
+    _is_aot_tooling_class = true;
+  }
 
   // Was this class loaded while JvmtiExport::is_early_phase()==true
   bool is_early_klass() {

@@ -26,9 +26,9 @@
 #define SHARE_COMPILER_METHODMATCHER_HPP
 
 #include "memory/allocation.hpp"
+#include "memory/resourceArea.hpp"
 #include "runtime/handles.hpp"
 #include "runtime/methodDetails.hpp"
-#include "memory/resourceArea.hpp"
 
 class MethodMatcher : public CHeapObj<mtCompiler> {
  public:

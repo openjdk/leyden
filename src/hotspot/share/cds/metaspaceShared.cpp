@@ -105,6 +105,8 @@
 #include "utilities/ostream.hpp"
 #include "utilities/resourceHash.hpp"
 
+#include <sys/stat.h>
+
 ReservedSpace MetaspaceShared::_symbol_rs;
 VirtualSpace MetaspaceShared::_symbol_vs;
 bool MetaspaceShared::_archive_loading_failed = false;
@@ -733,6 +735,16 @@ class CollectClassesForLinking : public KlassClosure {
   GrowableArray<OopHandle> _mirrors;
 
 public:
+   CollectClassesForLinking() : _mirrors() {
+     // ClassLoaderDataGraph::loaded_classes_do_keepalive() requires ClassLoaderDataGraph_lock.
+     // We cannot link the classes while holding this lock (or else we may run into deadlock).
+     // Therefore, we need to first collect all the classes, keeping them alive by
+     // holding onto their java_mirrors in global OopHandles. We then link the classes after
+     // releasing the lock.
+     MutexLocker lock(ClassLoaderDataGraph_lock);
+     ClassLoaderDataGraph::loaded_classes_do_keepalive(this);
+   }
+
   ~CollectClassesForLinking() {
     for (int i = 0; i < _mirrors.length(); i++) {
       _mirrors.at(i).release(Universe::vm_global());
@@ -777,23 +789,13 @@ bool MetaspaceShared::may_be_eagerly_linked(InstanceKlass* ik) {
   return true;
 }
 
-
 void MetaspaceShared::link_shared_classes(TRAPS) {
   AOTClassLinker::initialize();
   AOTClassInitializer::init_test_class(CHECK);
 
   while (true) {
+    ResourceMark rm(THREAD);
     CollectClassesForLinking collect_classes;
-    {
-      // ClassLoaderDataGraph::loaded_classes_do_keepalive() requires ClassLoaderDataGraph_lock.
-      // We cannot link the classes while holding this lock (or else we may run into deadlock).
-      // Therefore, we need to first collect all the classes, keeping them alive by
-      // holding onto their java_mirrors in global OopHandles. We then link the classes after
-      // releasing the lock.
-      MutexLocker lock(ClassLoaderDataGraph_lock);
-      ClassLoaderDataGraph::loaded_classes_do_keepalive(&collect_classes);
-    }
-
     bool has_linked = false;
     const GrowableArray<OopHandle>* mirrors = collect_classes.mirrors();
     for (int i = 0; i < mirrors->length(); i++) {
@@ -816,11 +818,8 @@ void MetaspaceShared::link_shared_classes(TRAPS) {
 
   // Resolve constant pool entries -- we don't load any new classes during this stage
   {
+    ResourceMark rm(THREAD);
     CollectClassesForLinking collect_classes;
-    {
-      MutexLocker lock(ClassLoaderDataGraph_lock);
-      ClassLoaderDataGraph::loaded_classes_do_keepalive(&collect_classes);
-    }
     const GrowableArray<OopHandle>* mirrors = collect_classes.mirrors();
     for (int i = 0; i < mirrors->length(); i++) {
       OopHandle mirror = mirrors->at(i);
@@ -874,8 +873,14 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
       // When the new -XX:AOTMode=create flag is used, we can't return
       // to the JLI launcher, as the launcher will fail when trying to
       // run the main class, which is not what we want.
-      tty->print_cr("AOTCache creation is complete: %s", AOTCache);
-      vm_exit(0);
+      struct stat st;
+      if (os::stat(AOTCache, &st) != 0) {
+        tty->print_cr("AOTCache creation failed: %s", AOTCache);
+        vm_exit(0);
+      } else {
+        tty->print_cr("AOTCache creation is complete: %s " INT64_FORMAT " bytes", AOTCache, (int64_t)(st.st_size));
+        vm_exit(0);
+      }
     }
   }
 }
@@ -990,14 +995,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     }
   }
 
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    if (ExtraSharedClassListFile) {
-      log_info(cds)("Loading extra classes from %s ...", ExtraSharedClassListFile);
-      ClassListParser::parse_classlist(ExtraSharedClassListFile,
-                                       ClassListParser::_parse_all, CHECK);
-    }
-  }
-
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_heap()) {
     assert(CDSConfig::allow_only_single_java_thread(), "Required");
@@ -1009,6 +1006,14 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     HeapShared::init_for_dumping(CHECK);
   }
 #endif
+
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    if (ExtraSharedClassListFile) {
+      log_info(cds)("Loading extra classes from %s ...", ExtraSharedClassListFile);
+      ClassListParser::parse_classlist(ExtraSharedClassListFile,
+                                       ClassListParser::_parse_all, CHECK);
+    }
+  }
 
   // Rewrite and link classes
   log_info(cds)("Rewriting and linking classes ...");
@@ -1030,11 +1035,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
 
   if (CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
-    // Lambda form invoker regeneration may load extra classes and execute
-    // a lot of Java code. We don't want these to be included into the AOT cache.
-    // This should be done after capturing the training data table, so we won't pollute the
-    // profile.
-    SystemDictionaryShared::ignore_new_classes();
     LambdaFormInvokers::regenerate_holder_classes(CHECK);
   }
 
@@ -1399,7 +1399,7 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
 
 // This is called very early at VM start up to get the size of the cached_code region
 void MetaspaceShared::open_static_archive() {
-  if (!UseSharedSpaces) {
+  if (!UseSharedSpaces) { // FIXME -- is this still needed??
     return;
   }
   const char* static_archive = CDSConfig::input_static_archive_path();
@@ -1739,7 +1739,7 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
       assert(base_address == nullptr ||
              (address)archive_space_rs.base() == base_address, "Sanity");
       // Register archive space with NMT.
-      MemTracker::record_virtual_memory_tag(archive_space_rs.base(), mtClassShared);
+      MemTracker::record_virtual_memory_tag(archive_space_rs, mtClassShared);
       return archive_space_rs.base();
     }
     return nullptr;
@@ -1812,9 +1812,8 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
       release_reserved_spaces(total_space_rs, archive_space_rs, class_space_rs);
       return nullptr;
     }
-    // NMT: fix up the space tags
-    MemTracker::record_virtual_memory_tag(archive_space_rs.base(), mtClassShared);
-    MemTracker::record_virtual_memory_tag(class_space_rs.base(), mtClass);
+    MemTracker::record_virtual_memory_tag(archive_space_rs, mtClassShared);
+    MemTracker::record_virtual_memory_tag(class_space_rs, mtClass);
   } else {
     if (use_archive_base_addr && base_address != nullptr) {
       total_space_rs = MemoryReserver::reserve((char*) base_address,

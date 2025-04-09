@@ -529,7 +529,6 @@ void before_exit(JavaThread* thread, bool halt) {
   assert(!thread->has_pending_exception(), "must be");
 #endif
 
-
   // Actual shutdown logic begins here.
 
 #if INCLUDE_JVMCI

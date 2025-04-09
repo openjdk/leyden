@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/aotClassFilter.hpp"
 #include "cds/aotClassLocation.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.hpp"
@@ -35,6 +36,7 @@
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/lambdaProxyClassDictionary.hpp"
+#include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "cds/unregisteredClasses.hpp"
@@ -82,8 +84,6 @@ SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_static_archive;
 SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_dynamic_archive;
 
 DumpTimeSharedClassTable* SystemDictionaryShared::_dumptime_table = nullptr;
-
-static bool _ignore_new_classes = false;
 
 // Used by NoClassLoadingMark
 DEBUG_ONLY(bool SystemDictionaryShared::_class_loading_may_happen = true;)
@@ -251,10 +251,6 @@ bool SystemDictionaryShared::is_jfr_event_class(InstanceKlass *k) {
 bool SystemDictionaryShared::is_early_klass(InstanceKlass* ik) {
   DumpTimeClassInfo* info = _dumptime_table->get(ik);
   return (info != nullptr) ? info->is_early_klass() : false;
-}
-
-void SystemDictionaryShared::ignore_new_classes() {
-  _ignore_new_classes = true;
 }
 
 bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
@@ -483,6 +479,21 @@ bool SystemDictionaryShared::add_unregistered_class(Thread* current, InstanceKla
   return (klass == *v);
 }
 
+void SystemDictionaryShared::copy_unregistered_class_size_and_crc32(InstanceKlass* klass) {
+  precond(CDSConfig::is_dumping_final_static_archive());
+  precond(klass->is_shared());
+
+  // A shared class must have a RunTimeClassInfo record
+  const RunTimeClassInfo* record = find_record(&_static_archive._unregistered_dictionary,
+                                               nullptr, klass->name());
+  precond(record != nullptr);
+  precond(record->klass() == klass);
+
+  DumpTimeClassInfo* info = get_info(klass);
+  info->_clsfile_size = record->crc()->_clsfile_size;
+  info->_clsfile_crc32 = record->crc()->_clsfile_crc32;
+}
+
 void SystemDictionaryShared::set_shared_class_misc_info(InstanceKlass* k, ClassFileStream* cfs) {
   assert(CDSConfig::is_dumping_archive(), "sanity");
   assert(!is_builtin(k), "must be unregistered class");
@@ -505,13 +516,8 @@ void SystemDictionaryShared::init_dumptime_info(InstanceKlass* k) {
   MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
   assert(SystemDictionaryShared::class_loading_may_happen(), "sanity");
   DumpTimeClassInfo* info = _dumptime_table->allocate_info(k);
-  if (_ignore_new_classes) {
-    if (!LambdaFormInvokers::may_be_regenerated_class(k->name())) {
-      ResourceMark rm;
-      log_debug(cds)("Skipping %s: Class loaded for lambda form invoker regeneration", k->name()->as_C_string());
-      info->set_has_checked_exclusion();
-      info->set_excluded();
-    }
+  if (AOTClassFilter::is_aot_tooling_class(k)) {
+    info->set_is_aot_tooling_class();
   }
 }
 
@@ -690,7 +696,7 @@ bool SystemDictionaryShared::should_be_excluded(Klass* k) {
 }
 
 void SystemDictionaryShared::finish_exclusion_checks() {
-  if (CDSConfig::is_dumping_dynamic_archive()) {
+  if (CDSConfig::is_dumping_dynamic_archive() || CDSConfig::is_dumping_preimage_static_archive()) {
     // Do this first -- if a base class is excluded due to duplication,
     // all of its subclasses will also be excluded.
     ResourceMark rm;

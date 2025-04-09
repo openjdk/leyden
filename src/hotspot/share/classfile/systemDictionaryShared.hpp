@@ -257,6 +257,7 @@ public:
     return (k->shared_classpath_index() != UNREGISTERED_INDEX);
   }
   static bool add_unregistered_class(Thread* current, InstanceKlass* k);
+  static void copy_unregistered_class_size_and_crc32(InstanceKlass* klass);
 
   static void finish_exclusion_checks();
 
@@ -279,9 +280,6 @@ public:
   static void print_table_statistics(outputStream* st) NOT_CDS_RETURN;
   static bool is_dumptime_table_empty() NOT_CDS_RETURN_(true);
   DEBUG_ONLY(static bool class_loading_may_happen() {return _class_loading_may_happen;})
-  // Do not archive any new InstanceKlasses that are loaded after this method is called.
-  // This avoids polluting the archive with classes that are only used by GenerateJLIClassesHelper.
-  static void ignore_new_classes();
 
 #ifdef ASSERT
   // This object marks a critical period when writing the CDS archive. During this

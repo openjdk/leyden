@@ -22,9 +22,10 @@
  *
  */
 
+#include "cds/aotClassFilter.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/lambdaFormInvokers.hpp"
+#include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classFileStream.hpp"
@@ -89,10 +90,28 @@ class PrintLambdaFormMessage {
   }
 };
 
+class LambdaFormInvokersClassFilterMark : public AOTClassFilter::FilterMark {
+public:
+  bool is_aot_tooling_class(InstanceKlass* ik) {
+    if (ik->name()->index_of_at(0, "$Species_", 9) > 0) {
+      // Classes like java.lang.invoke.BoundMethodHandle$Species_L should be included in AOT cache
+      return false;
+    }
+    if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
+      // Regenerated holder classes should be included in AOT cache.
+      return false;
+    }
+    // Treat all other classes loaded during LambdaFormInvokers::regenerate_holder_classes() as
+    // "AOT tooling classes".
+    return true;
+  }
+};
+
 void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
   if (!CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
     return;
   }
+
   PrintLambdaFormMessage plm;
   if (_lambdaform_lines == nullptr || _lambdaform_lines->length() == 0) {
     log_info(cds)("Nothing to regenerate for holder classes");
@@ -100,6 +119,9 @@ void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
   }
 
   ResourceMark rm(THREAD);
+
+  // Filter out AOT tooling classes like java.lang.invoke.GenerateJLIClassesHelper, etc.
+  LambdaFormInvokersClassFilterMark filter_mark;
 
   Symbol* cds_name  = vmSymbols::jdk_internal_misc_CDS();
   Klass*  cds_klass = SystemDictionary::resolve_or_null(cds_name, THREAD);
