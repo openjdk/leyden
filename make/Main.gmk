@@ -385,17 +385,23 @@ $(eval $(call SetupTarget, generate-summary, \
 
 JMOD_MODULES := $(ALL_MODULES)
 JMOD_TARGETS := $(addsuffix -jmod, $(JMOD_MODULES))
+STATIC_JMOD_TARGETS := $(addsuffix -static-jmod, $(JMOD_MODULES))
 
 define DeclareJmodRecipe
   $1-jmod:
 	+($(CD) $(TOPDIR)/make && $(MAKE) $(MAKE_ARGS) \
 	    $(patsubst %,-I%/modules/$1,$(PHASE_MAKEDIRS)) \
 	    -f CreateJmods.gmk MODULE=$1)
+  $1-static-jmod:
+	+($(CD) $(TOPDIR)/make && $(MAKE) $(MAKE_ARGS) \
+	    $(patsubst %,-I%/modules/$1,$(PHASE_MAKEDIRS)) \
+	    -f CreateJmods.gmk MODULE=$1 STATIC_JMOD=true)
 endef
 
 $(foreach m, $(JMOD_MODULES), $(eval $(call DeclareJmodRecipe,$m)))
+java.base-static-jmod: hotspot-static-libs
 
-ALL_TARGETS += $(JMOD_TARGETS)
+ALL_TARGETS += $(JMOD_TARGETS) $(STATIC_JMOD_TARGETS)
 
 ################################################################################
 # Images targets
@@ -1014,6 +1020,10 @@ else
         $(foreach m, $(filter-out $(call FindAllUpgradeableModules), $(JMOD_MODULES)), \
           $m $(call FindTransitiveDepsForModules, $m) \
         ))))
+    java.base-static-jmod: jrtfs-jar $(addsuffix -static-jmod, $(filter-out java.base, $(sort \
+        $(foreach m, $(filter-out $(call FindAllUpgradeableModules), $(JMOD_MODULES)), \
+          $m $(call FindTransitiveDepsForModules, $m) \
+        ))))
   endif
 
   # If not already set, set the JVM target so that the JVM will be built.
@@ -1021,6 +1031,7 @@ else
 
   # Building java.base-jmod requires all of VM (ie hotspot) to be built.
   java.base-jmod: $(JVM_MAIN_TARGETS)
+  java.base-static-jmod: $(JVM_MAIN_TARGETS)
 
   # Declare dependencies from <module>-jmod to all other module targets
   $(foreach m, $(JAVA_MODULES), $(eval $m_JMOD_DEPS += $m-java))
@@ -1028,7 +1039,12 @@ else
   $(foreach m, $(LIBS_MODULES), $(eval $m_JMOD_DEPS += $m-libs))
   $(foreach m, $(LAUNCHER_MODULES), $(eval $m_JMOD_DEPS += $m-launchers))
   $(foreach m, $(COPY_MODULES), $(eval $m_JMOD_DEPS += $m-copy))
+
   $(foreach m, $(ALL_MODULES), $(eval $m-jmod: $($(m)_JMOD_DEPS)))
+
+  $(foreach m, $(STATIC_LIBS_MODULES), $(eval $m_STATIC_JMOD_DEPS += $m-static-libs))
+  $(foreach m, $(ALL_MODULES), $(eval $m-static-jmod: $($(m)_JMOD_DEPS) $($(m)_STATIC_JMOD_DEPS)))
+
   $(foreach m, $(INTERIM_IMAGE_MODULES), $(eval $m-interim-jmod: $($(m)_JMOD_DEPS)))
 
   # Setup the minimal set of generated native source dependencies for hotspot
@@ -1059,7 +1075,7 @@ else
     ifneq ($(CREATING_BUILDJDK), true)
       # When cross compiling and buildjdk is to be created, simply depend on
       # creating the buildjdk.
-      $(JMOD_TARGETS): create-buildjdk
+      $(JMOD_TARGETS) $(STATIC_JMOD_TARGETS): create-buildjdk
       buildtools-modules: create-buildjdk
     else
       # While actually creating the buildjdk, we need to list the bare
@@ -1070,20 +1086,20 @@ else
       # * copy jvm.cfg (done in java.base-copy)
       # * tzdb.dat (done in java.base-gendata)
       # Without all of these jimage, jlink and jmod won't start.
-      $(JMOD_TARGETS) $(INTERIM_JMOD_TARGETS): java.base-libs java.base-copy \
+      $(JMOD_TARGETS) $(INTERIM_JMOD_TARGETS) $(STATIC_JMOD_TARGETS): java.base-libs java.base-copy \
           java.base-gendata jdk.jlink-launchers java
     endif
   else ifeq ($(EXTERNAL_BUILDJDK), false)
     # The normal non cross compilation usecase needs to wait for the full
     # exploded-image to avoid a race with the optimize target.
-    $(JMOD_TARGETS) $(INTERIM_JMOD_TARGETS): exploded-image
+    $(JMOD_TARGETS) $(INTERIM_JMOD_TARGETS) $(STATIC_JMOD_TARGETS): exploded-image
     # The buildtools-modules are used for the exploded-image-optimize target,
     # but can be built either using the exploded-image or an external BUILDJDK.
     buildtools-modules: exploded-image-base
   endif
 
   # All modules include the main license files from java.base.
-  $(JMOD_TARGETS): java.base-copy
+  $(JMOD_TARGETS) $(STATIC_JMOD_TARGETS): java.base-copy
 
   # jdk.javadoc uses an internal copy of the main license files from java.base.
   jdk.javadoc-copy: java.base-copy
@@ -1102,8 +1118,10 @@ else
     endif
     generate-link-opt-data: buildtools-jdk
 
-    # The generated classlist needs to go into java.base-jmod.
-    java.base-jmod jdk.jlink-jmod jdk-image legacy-jre-image: generate-link-opt-data
+    # The generated classlist is needed by images and core jmods.
+    java.base-jmod jdk.jlink-jmod: generate-link-opt-data
+    java.base-static-jmod jdk.jlink-static-jmod: generate-link-opt-data
+    jdk-image legacy-jre-image: generate-link-opt-data
   endif
 
   symbols-image: $(LIBS_TARGETS) $(LAUNCHER_TARGETS)
@@ -1179,6 +1197,8 @@ launchers: $(LAUNCHER_TARGETS)
 
 jmods: $(JMOD_TARGETS)
 
+static-jmods: $(STATIC_JMOD_TARGETS)
+
 # Explicitly declare dependency for virtual target jdk.jdwp.agent-gensrc which
 # is actually handled by jdk.jdi-gensrc
 jdk.jdwp.agent-gensrc: jdk.jdi-gensrc
@@ -1189,6 +1209,7 @@ $(foreach m, $(GENSRC_MODULES), $(eval $m: $m-gensrc))
 $(foreach m, $(JAVA_MODULES), $(eval $m: $m-java))
 $(foreach m, $(GENDATA_MODULES), $(eval $m: $m-gendata))
 $(foreach m, $(LIBS_MODULES), $(eval $m: $m-libs))
+$(foreach m, $(STATIC_LIBS_MODULES), $(eval $m: $m-static-libs))
 $(foreach m, $(LAUNCHER_MODULES), $(eval $m: $m-launchers))
 $(foreach m, $(ALL_COPY_MODULES), $(eval $m: $m-copy))
 
@@ -1328,7 +1349,7 @@ all-bundles: product-bundles test-bundles docs-bundles static-libs-bundles
 
 ALL_TARGETS += buildtools hotspot hotspot-libs hotspot-static-libs \
     hotspot-gensrc gensrc gendata \
-    copy java libs static-libs launchers jmods \
+    copy java libs static-libs launchers jmods static-jmods \
     jdk.jdwp.agent-gensrc $(ALL_MODULES) demos \
     exploded-image-base exploded-image runnable-buildjdk \
     create-buildjdk docs-jdk-api docs-javase-api docs-reference-api docs-jdk \
