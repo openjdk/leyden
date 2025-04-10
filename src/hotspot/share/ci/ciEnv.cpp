@@ -1142,7 +1142,7 @@ void ciEnv::register_aot_method(JavaThread* thread,
     CodeCache::gc_on_allocation();
 
     // To prevent compile queue updates.
-    MutexLocker locker(thread, MethodCompileQueue_lock);
+    MutexLocker locker(thread, task()->compile_queue()->lock());
 
     // Prevent InstanceKlass::add_to_hierarchy from running
     // and invalidating our dependencies until we install this method.
