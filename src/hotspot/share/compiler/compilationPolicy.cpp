@@ -23,8 +23,8 @@
  */
 
 #include "cds/aotLinkedClassBulkLoader.hpp"
-#include "code/scopeDesc.hpp"
 #include "code/SCCache.hpp"
+#include "code/scopeDesc.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
