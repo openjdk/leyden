@@ -45,6 +45,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import jdk.tools.jlink.builder.DefaultImageBuilder;
+import jdk.tools.jlink.builder.HermeticImageBuilder;
 import jdk.tools.jlink.builder.ImageBuilder;
 import jdk.tools.jlink.internal.Jlink.PluginsConfiguration;
 import jdk.tools.jlink.internal.plugins.DefaultCompressPlugin;
@@ -455,7 +456,11 @@ public final class TaskHelper {
             // recreate or postprocessing don't require an output directory.
             ImageBuilder builder = null;
             if (output != null) {
-                builder = new DefaultImageBuilder(output, launchers, targetPlatform, hermetic);
+                if (hermetic) {
+                    builder = new HermeticImageBuilder(targetPlatform, output);
+                } else {
+                    builder = new DefaultImageBuilder(output, launchers, targetPlatform);
+                }
             }
 
             return new Jlink.PluginsConfiguration(pluginsList,
