@@ -574,6 +574,18 @@ void CompilationPolicy::print_event(EventType type, Method* m, Method* im, int b
 
 void CompilationPolicy::initialize() {
   if (!CompilerConfig::is_interpreter_only()) {
+    if (StoreCachedCode) {
+      // Assembly phase runs C1 and C2 compilation in separate phases,
+      // and can use all the CPU threads it can reach. Adjust the common
+      // options before policy starts overwriting them. There is a block
+      // at the very end that overrides final thread counts.
+      if (FLAG_IS_DEFAULT(UseDynamicNumberOfCompilerThreads)) {
+        FLAG_SET_ERGO(UseDynamicNumberOfCompilerThreads, false);
+      }
+      if (FLAG_IS_DEFAULT(CICompilerCount)) {
+        FLAG_SET_ERGO(CICompilerCount, MAX2(2, os::active_processor_count()));
+      }
+    }
     int count = CICompilerCount;
     bool c1_only = CompilerConfig::is_c1_only();
     bool c2_only = CompilerConfig::is_c2_or_jvmci_compiler_only();
@@ -641,6 +653,11 @@ void CompilationPolicy::initialize() {
         set_c1_count(MAX2(count / 3, 1));
         set_c2_count(MAX2(count - c1_count(), 1));
       }
+    }
+    if (StoreCachedCode) {
+      set_c1_count(count);
+      set_c2_count(count);
+      count *= 2; // satisfy the assert below
     }
     if (SCCache::is_code_load_thread_on()) {
       set_sc_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
