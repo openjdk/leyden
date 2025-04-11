@@ -60,6 +60,13 @@ abstract public class CDSAppTester {
     private int numProductionRuns = 0;
     private String whiteBoxJar = null;
 
+    /**
+     * All files created in the CDS/AOT workflow will be name + extension. E.g.
+     * - name.aot
+     * - name.aotconfig
+     * - name.classlist
+     * - name.jsa
+     */
     public CDSAppTester(String name) {
         if (CDSTestUtils.DYNAMIC_DUMP) {
             throw new SkippedException("Tests based on CDSAppTester should be excluded when -Dtest.dynamic.cds.archive is specified");
@@ -67,28 +74,34 @@ abstract public class CDSAppTester {
 
         this.name = name;
         classListFile = name() + ".classlist";
-        classListFileLog = classListFile + ".log";
+        classListFileLog = logFileName(classListFile);;
         aotConfigurationFile = name() + ".aotconfig";
-        aotConfigurationFileLog = aotConfigurationFile + ".log";
+        aotConfigurationFileLog = logFileName(aotConfigurationFile);;
         staticArchiveFile = name() + ".static.jsa";
-        staticArchiveFileLog = staticArchiveFile + ".log";
+        staticArchiveFileLog = logFileName(staticArchiveFile);;
         aotCacheFile = name() + ".aot";
-        aotCacheFileLog = aotCacheFile + ".log";
+        aotCacheFileLog = logFileName(aotCacheFile);;
         dynamicArchiveFile = name() + ".dynamic.jsa";
-        dynamicArchiveFileLog = dynamicArchiveFile + ".log";
+        dynamicArchiveFileLog = logFileName(dynamicArchiveFile);;
         cdsFile = name() + ".cds";
-        cdsFileLog = cdsFile + ".log";
+        cdsFileLog = logFileName(cdsFile);;
         cdsFilePreImage = cdsFile + ".preimage";
-        cdsFilePreImageLog = cdsFilePreImage + ".log";
+        cdsFilePreImageLog = logFileName(cdsFilePreImage);;
         tempBaseArchiveFile = name() + ".temp-base.jsa";
     }
 
     private String productionRunLog() {
         if (numProductionRuns == 0) {
-            return name() + ".production.log";
+            return logFileName(name() + ".production");
         } else {
-            return name() + ".production." + numProductionRuns + ".log";
+            return logFileName(name() + ".production." + numProductionRuns);
         }
+    }
+
+    private static String logFileName(String file) {
+        file = file.replace("\"", "%22");
+        file = file.replace("'", "%27");
+        return file + ".log";
     }
 
     private enum Workflow {

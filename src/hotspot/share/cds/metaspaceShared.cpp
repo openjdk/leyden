@@ -74,6 +74,7 @@
 #include "memory/memoryReserver.hpp"
 #include "memory/metaspace.hpp"
 #include "memory/metaspaceClosure.hpp"
+#include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "nmt/memTracker.hpp"
@@ -860,6 +861,9 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
                      java_lang_String::as_utf8_string(java_lang_Throwable::message(PENDING_EXCEPTION)));
       MetaspaceShared::writing_error("Unexpected exception, use -Xlog:cds,exceptions=trace for detail");
     }
+    if (CDSConfig::is_experimental_leyden_workflow()) {
+      vm_exit(1);
+    }
   }
 
   if (CDSConfig::new_aot_flags_used()) {
@@ -1105,7 +1109,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   bool status = write_static_archive(&builder, mapinfo, heap_info);
   if (status && CDSConfig::is_experimental_leyden_workflow() && CDSConfig::is_dumping_preimage_static_archive()) {
-    fork_and_dump_final_static_archive();
+    fork_and_dump_final_static_archive(CHECK);
   }
 
   if (!status) {
@@ -1135,30 +1139,101 @@ static void print_java_launcher(outputStream* st) {
   st->print("%s%sbin%sjava", Arguments::get_java_home(), os::file_separator(), os::file_separator());
 }
 
+static void append_args(GrowableArray<Handle>* args, const char* arg, TRAPS) {
+  Handle string = java_lang_String::create_from_str(arg, CHECK);
+  args->append(string);
+}
+
+// Pass all options in Arguments::jvm_args_array() to a child JVM process
+// using the JAVA_TOOL_OPTIONS environment variable.
+static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS) {
+  ResourceMark rm(THREAD);
+  HandleMark hm(THREAD);
+  GrowableArray<Handle> args;
+
+  const char* cp = Arguments::get_appclasspath();
+  if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
+    // We cannot use "-cp", because "-cp" is only interpreted by the java launcher,
+    // and is not interpreter by arguments.cpp when it loads args from JAVA_TOOL_OPTIONS
+    stringStream ss;
+    ss.print("-Djava.class.path=");
+    ss.print_raw(cp);
+    append_args(&args, ss.freeze(), CHECK_0);
+    // CDS$ProcessLauncher::execWithJavaToolOptions() must unset CLASSPATH, which has
+    // a higher priority than -Djava.class.path=
+  }
+
+  // Pass all arguments. These include those from JAVA_TOOL_OPTIONS and _JAVA_OPTIONS.
+  for (int i = 0; i < Arguments::num_jvm_args(); i++) {
+    const char* arg = Arguments::jvm_args_array()[i];
+    append_args(&args, arg, CHECK_0);
+  }
+
+  // We don't pass Arguments::jvm_flags_array(), as those will be added by
+  // the child process when it loads .hotspotrc
+
+  {
+    stringStream ss;
+    ss.print("-XX:CDSPreimage=");
+    ss.print_raw(CDSPreimage);
+    append_args(&args, ss.freeze(), CHECK_0);
+  }
+
+  Symbol* klass_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$ProcessLauncher");
+  Klass* k = SystemDictionary::resolve_or_fail(klass_name, true, CHECK_0);
+  Symbol* methodName = SymbolTable::new_symbol("execWithJavaToolOptions");
+  Symbol* methodSignature = SymbolTable::new_symbol("(Ljava/lang/String;[Ljava/lang/String;)I");
+
+  Handle launcher = java_lang_String::create_from_str(java_launcher_path, CHECK_0);
+  objArrayOop array = oopFactory::new_objArray(vmClasses::String_klass(), args.length(), CHECK_0);
+  for (int i = 0; i < args.length(); i++) {
+    array->obj_at_put(i, args.at(i)());
+  }
+  objArrayHandle launcher_args(THREAD, array);
+
+  // The following call will pass all options inside the JAVA_TOOL_OPTIONS env variable to
+  // the child process. It will also clear the _JAVA_OPTIONS and CLASSPATH env variables for
+  // the child process.
+  //
+  // Note: the env variables are set only for the child process. They are not changed
+  // for the current process. See java.lang.ProcessBuilder::environment().
+  JavaValue result(T_OBJECT);
+  JavaCallArguments javacall_args(2);
+  javacall_args.push_oop(launcher);
+  javacall_args.push_oop(launcher_args);
+  JavaCalls::call_static(&result,
+                          InstanceKlass::cast(k),
+                          methodName,
+                          methodSignature,
+                          &javacall_args,
+                          CHECK_0);
+  return result.get_jint();
+}
+
+// This is for debugging purposes only (-XX:+CDSManualFinalImage) so we don't bother
+// quoating any special characters. The user should avoid using special chars.
 static void print_vm_arguments(outputStream* st) {
   const char* cp = Arguments::get_appclasspath();
   if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
     st->print(" -cp ");  st->print_raw(cp);
-  }
-  for (int i = 0; i < Arguments::num_jvm_flags(); i++) {
-    st->print(" %s", Arguments::jvm_flags_array()[i]);
   }
   for (int i = 0; i < Arguments::num_jvm_args(); i++) {
     st->print(" %s", Arguments::jvm_args_array()[i]);
   }
 }
 
-void MetaspaceShared::fork_and_dump_final_static_archive() {
+void MetaspaceShared::fork_and_dump_final_static_archive(TRAPS) {
   assert(CDSConfig::is_dumping_preimage_static_archive(), "sanity");
 
   ResourceMark rm;
   stringStream ss;
   print_java_launcher(&ss);
-  print_vm_arguments(&ss);
-  ss.print(" -XX:CDSPreimage=%s", CDSPreimage);
 
-  const char* cmd = ss.freeze();
   if (CDSManualFinalImage) {
+    print_vm_arguments(&ss);
+    ss.print(" -XX:CDSPreimage=%s", SharedArchiveFile);
+    const char* cmd = ss.freeze();
+
     tty->print_cr("-XX:+CDSManualFinalImage is specified");
     tty->print_cr("Please manually execute the following command to create the final CDS image:");
     tty->print("    "); tty->print_raw_cr(cmd);
@@ -1175,11 +1250,10 @@ void MetaspaceShared::fork_and_dump_final_static_archive() {
     }
     tty->cr();
   } else {
-    // FIXME: space characters are not properly quoated. E.g.,
-    //      java -Dfoo='a b c' HelloWorld
+    const char* cmd = ss.freeze();
     log_info(cds)("Launching child process to create final CDS image:");
     log_info(cds)("    %s", cmd);
-    int status = os::fork_and_exec(cmd);
+    int status = exec_jvm_with_java_tool_options(cmd, CHECK);
     if (status != 0) {
       log_error(cds)("Child process finished; status = %d", status);
       log_error(cds)("To reproduce the error");
