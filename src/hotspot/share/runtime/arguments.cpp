@@ -91,7 +91,7 @@ size_t Arguments::_conservative_max_heap_alignment = 0;
 Arguments::Mode Arguments::_mode                = _mixed;
 const char*  Arguments::_java_vendor_url_bug    = nullptr;
 const char*  Arguments::_sun_java_launcher      = DEFAULT_JAVA_LAUNCHER;
-bool   Arguments::_sun_java_launcher_is_altjvm  = false;
+bool   Arguments::_executing_unit_tests         = false;
 
 const char* Arguments::_hermetic_jdk_image_path = NULL;
 julong      Arguments::_hermetic_jdk_jimage_offset = 0;
@@ -360,7 +360,7 @@ bool Arguments::internal_module_property_helper(const char* property, bool check
 // Process java launcher properties.
 jint Arguments::process_sun_java_launcher_and_hermetic_options(
           JavaVMInitArgs* args) {
-  // See if sun.java.launcher or sun.java.launcher.is_altjvm is defined.
+  // See if sun.java.launcher is defined.
   // Must do this before setting up other system properties,
   // as some of them may depend on launcher type.
   for (int index = 0; index < args->nOptions; index++) {
@@ -371,10 +371,8 @@ jint Arguments::process_sun_java_launcher_and_hermetic_options(
       process_java_launcher_argument(tail, option->extraInfo);
       continue;
     }
-    if (match_option(option, "-Dsun.java.launcher.is_altjvm=", &tail)) {
-      if (strcmp(tail, "true") == 0) {
-        _sun_java_launcher_is_altjvm = true;
-      }
+    if (match_option(option, "-XX:+ExecutingUnitTests")) {
+      _executing_unit_tests = true;
       continue;
     }
     if (match_option(option, "-XX:+DisableHermetic")) {
@@ -1355,10 +1353,6 @@ bool Arguments::add_property(const char* prop, PropertyWriteable writeable, Prop
     } else {
         warning("The java.compiler system property is obsolete and no longer supported.");
     }
-  } else if (strcmp(key, "sun.java.launcher.is_altjvm") == 0) {
-    // sun.java.launcher.is_altjvm property is
-    // private and is processed in process_sun_java_launcher_properties();
-    // the sun.java.launcher property is passed on to the java application
   } else if (strcmp(key, "sun.boot.library.path") == 0) {
     // append is true, writable is true, internal is false
     PropertyList_unique_add(&_system_properties, key, value, AppendProperty,
@@ -1847,8 +1841,8 @@ bool Arguments::created_by_java_launcher() {
   return strcmp(DEFAULT_JAVA_LAUNCHER, _sun_java_launcher) != 0;
 }
 
-bool Arguments::sun_java_launcher_is_altjvm() {
-  return _sun_java_launcher_is_altjvm;
+bool Arguments::executing_unit_tests() {
+  return _executing_unit_tests;
 }
 
 //===========================================================================================================
@@ -3818,7 +3812,7 @@ jint Arguments::apply_ergo() {
     CompressedKlassPointers::pre_initialize();
   }
 
-  CDSConfig::initialize();
+  CDSConfig::ergo_initialize();
 
   // Initialize Metaspace flags and alignments
   Metaspace::ergo_initialize();
