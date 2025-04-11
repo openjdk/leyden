@@ -90,8 +90,14 @@ JVM_InternString(JNIEnv *env, jstring str);
 JNIEXPORT jboolean JNICALL
 JVM_AOTIsTraining(JNIEnv *env);
 
-JNIEXPORT void JNICALL
+JNIEXPORT jboolean JNICALL
 JVM_AOTEndTraining(JNIEnv *env);
+
+JNIEXPORT jstring JNICALL
+JVM_AOTGetMode(JNIEnv *env);
+
+JNIEXPORT jlong JNICALL
+JVM_AOTGetRecordingDuration(JNIEnv *env);
 
 JNIEXPORT jlong JNICALL
 JVM_CurrentTimeMillis(JNIEnv *env, jclass ignored);
