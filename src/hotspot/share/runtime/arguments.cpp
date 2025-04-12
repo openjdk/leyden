@@ -3081,6 +3081,29 @@ jint Arguments::parse_java_tool_options_environment_variable(ScopedVMInitArgs* a
   return parse_options_environment_variable("JAVA_TOOL_OPTIONS", args);
 }
 
+// We return the "initial" options without calling expand_vm_options_as_needed(). The intention is
+// that the options will be passed verbatim to the child process that assembles the AOT
+// cache (inside JAVA_TOOL_OPTIONS). The child process will do the expansion when processing
+// JAVA_TOOL_OPTIONS.
+jint Arguments::parse_aot_tool_options_environment_variable(GrowableArray<const char*>* options) {
+  ScopedVMInitArgs initial_args("env_var='AOT_TOOL_OPTIONS'");
+  jint code = parse_options_environment_variable("AOT_TOOL_OPTIONS", &initial_args);
+  if (code != JNI_OK) {
+    return code;
+  }
+
+  JavaVMInitArgs* args = initial_args.get();
+  for (int index = 0; index < args->nOptions; index++) {
+    const JavaVMOption *option = args->options + index;
+    const char* optionString = option->optionString;
+    char* s = NEW_RESOURCE_ARRAY(char, strlen(optionString) + 1);
+    strcpy(s, optionString);
+    options->append(s);
+  }
+
+  return JNI_OK;
+}
+
 jint Arguments::parse_options_environment_variable(const char* name,
                                                    ScopedVMInitArgs* vm_args) {
   char *buffer = ::getenv(name);

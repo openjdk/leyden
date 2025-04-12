@@ -42,6 +42,8 @@ class CDSConfig : public AllStatic {
   static bool _is_dumping_full_module_graph;
   static bool _is_using_full_module_graph;
   static bool _has_aot_linked_classes;
+  static bool _is_one_step_training;
+  static bool _has_temp_aot_config_file;
   static bool _is_loading_packages;
   static bool _is_loading_protection_domains;
   static bool _is_security_manager_allowed;
@@ -53,6 +55,7 @@ class CDSConfig : public AllStatic {
 
   static bool  _old_cds_flags_used;
   static bool  _new_aot_flags_used;
+  static bool  _experimental_leyden_flags_used;
   static bool  _disable_heap_dumping;
 
   static JavaThread* _dumper_thread;
@@ -98,6 +101,7 @@ public:
   static void set_old_cds_flags_used()                       { CDS_ONLY(_old_cds_flags_used = true); }
   static bool old_cds_flags_used()                           { return CDS_ONLY(_old_cds_flags_used) NOT_CDS(false); }
   static bool new_aot_flags_used()                           { return CDS_ONLY(_new_aot_flags_used) NOT_CDS(false); }
+  static bool experimental_leyden_flags_used()               { return CDS_ONLY(_experimental_leyden_flags_used) NOT_CDS(false); }
   static void check_internal_module_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_incompatible_property(const char* key, const char* value) NOT_CDS_RETURN;
   static bool has_unsupported_runtime_module_options() NOT_CDS_RETURN_(false);
@@ -153,6 +157,9 @@ public:
   // Misc CDS features
   static bool preserve_all_dumptime_verification_states(const InstanceKlass* ik);
   static bool allow_only_single_java_thread()                NOT_CDS_RETURN_(false);
+
+  static bool is_one_step_training()                         { return CDS_ONLY(_is_one_step_training) NOT_CDS(false); }
+  static bool has_temp_aot_config_file()                     { return CDS_ONLY(_has_temp_aot_config_file) NOT_CDS(false); }
 
   // This is *Legacy* optimization for lambdas before JEP 483. May be removed in the future.
   static bool is_dumping_lambdas_in_legacy_mode()            NOT_CDS_RETURN_(false);

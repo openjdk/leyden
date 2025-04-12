@@ -418,6 +418,10 @@ class Arguments : AllStatic {
   static void print_jvm_flags_on(outputStream* st);
   static void print_jvm_args_on(outputStream* st);
 
+  // Parse the environment variable AOT_TOOL_OPTIONS and store the individual "initial"
+  // arguments in the GrowableArray. Each string is resource allocated
+  static jint parse_aot_tool_options_environment_variable(GrowableArray<const char*>* options);
+
   // -Dkey=value flags
   static SystemProperty*  system_properties()   { return _system_properties; }
   static const char*    get_property(const char* key);

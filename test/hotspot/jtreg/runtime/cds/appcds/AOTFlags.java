@@ -34,6 +34,7 @@
  */
 
 import java.io.File;
+import java.util.Map;
 import jdk.test.lib.cds.CDSTestUtils;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
@@ -197,6 +198,69 @@ public class AOTFlags {
         out.shouldContain("Dumping shared data to file:");
         out.shouldMatch("cds.*hello[.]aot");
         out.shouldHaveExitValue(0);
+
+        //----------------------------------------------------------------------
+        printTestCase("One step training run (JEP-JDK-8354330");
+
+        // Set all AOTMode/AOTCacheOutput/AOTConfiguration
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTMode=record",
+            "-XX:AOTCacheOutput=" + aotCacheFile,
+            "-XX:AOTConfiguration=" + aotConfigFile,
+            "-Xlog:cds=debug",
+            "-cp", appJar, helloClass);
+        out = CDSTestUtils.executeAndLog(pb, "ontstep-train");
+        out.shouldContain("Hello World");
+        out.shouldContain("AOTConfiguration recorded: " + aotConfigFile);
+        out.shouldContain("AOTCache creation is complete: hello.aot");
+        out.shouldHaveExitValue(0);
+
+        // Set AOTCacheOutput/AOTConfiguration only; Ergo for: AOTMode=record
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTCacheOutput=" + aotCacheFile,
+            "-XX:AOTConfiguration=" + aotConfigFile,
+            "-Xlog:cds=debug",
+            "-cp", appJar, helloClass);
+        out = CDSTestUtils.executeAndLog(pb, "ontstep-train");
+        out.shouldContain("Hello World");
+        out.shouldContain("AOTConfiguration recorded: " + aotConfigFile);
+        out.shouldContain("AOTCache creation is complete: hello.aot");
+        out.shouldHaveExitValue(0);
+
+        // Set AOTCacheOutput only; Ergo for: AOTMode=record, AOTConfiguration=<temp>
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTCacheOutput=" + aotCacheFile,
+            "-Xlog:cds=debug",
+            "-cp", appJar, helloClass);
+        out = CDSTestUtils.executeAndLog(pb, "ontstep-train");
+        out.shouldContain("Hello World");
+        out.shouldContain("Temporary AOTConfiguration recorded: " + aotCacheFile + ".config");
+        out.shouldContain("AOTCache creation is complete: hello.aot");
+        out.shouldHaveExitValue(0);
+
+        //----------------------------------------------------------------------
+        printTestCase("AOT_TOOL_OPTIONS (JEP-JDK-8354330");
+
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTMode=record",
+            "-XX:AOTCacheOutput=" + aotCacheFile,
+            "-XX:AOTConfiguration=" + aotConfigFile,
+            "-Xlog:cds=debug",
+            "-cp", appJar, helloClass);
+        Map<String, String> env = pb.environment();
+        // The "-Xshare:off" below should be treated as part of a property value and not
+        // a VM option by itself
+        env.put("AOT_TOOL_OPTIONS", "-Dsome.option='foo -Xshare:off ' -Xmx512m -XX:-AOTClassLinking");
+        out = CDSTestUtils.executeAndLog(pb, "ontstep-train");
+        out.shouldContain("Hello World");
+        out.shouldContain("AOTConfiguration recorded: " + aotConfigFile);
+        out.shouldContain("AOTCache creation is complete: hello.aot");
+        out.shouldMatch("Picked up JAVA_TOOL_OPTIONS: .*-Dsome.option=foo' '-Xshare:off' '");
+
+        // -XX:-AOTClassLinking should take effect in the assembly process.
+        out.shouldMatch("aot-linked =[ ]+0,");
+        out.shouldNotMatch("aot-linked =[ ]+[1-9]");
+        out.shouldHaveExitValue(0);
     }
 
     static void negativeTests() throws Exception {
@@ -234,13 +298,13 @@ public class AOTFlags {
         out.shouldNotHaveExitValue(0);
 
         //----------------------------------------------------------------------
-        printTestCase("Use AOTMode without AOTConfiguration");
+        printTestCase("Use AOTMode without AOTCacheOutput or AOTConfiguration");
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTMode=record",
             "-cp", appJar, helloClass);
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("-XX:AOTMode=record cannot be used without setting AOTConfiguration");
+        out.shouldContain("-XX:AOTMode=record cannot be used without setting AOTCacheOutput or AOTConfiguration");
 
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTMode=create",
@@ -273,14 +337,27 @@ public class AOTFlags {
         out.shouldNotHaveExitValue(0);
 
         //----------------------------------------------------------------------
-        printTestCase("AOTCache not specified with -XX:AOTMode=create");
+        printTestCase("AOTCache/AOTCacheOutput not specified with -XX:AOTMode=create");
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTMode=create",
             "-XX:AOTConfiguration=" + aotConfigFile,
             "-cp", appJar, helloClass);
 
         out = CDSTestUtils.executeAndLog(pb, "neg");
-        out.shouldContain("AOTCache must be specified when using -XX:AOTMode=create");
+        out.shouldContain("AOTCache or AOTCacheOutput must be specified when using -XX:AOTMode=create");
+        out.shouldNotHaveExitValue(0);
+
+        //----------------------------------------------------------------------
+        printTestCase("AOTCache and AOTCacheOutput have different values");
+        pb = ProcessTools.createLimitedTestJavaProcessBuilder(
+            "-XX:AOTMode=create",
+            "-XX:AOTConfiguration=" + aotConfigFile,
+            "-XX:AOTCache=aaa",
+            "-XX:AOTCacheOutput=bbb",
+            "-cp", appJar, helloClass);
+
+        out = CDSTestUtils.executeAndLog(pb, "neg");
+        out.shouldContain("AOTCache and AOTCacheOutput have different values");
         out.shouldNotHaveExitValue(0);
 
         //----------------------------------------------------------------------

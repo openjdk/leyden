@@ -871,7 +871,6 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
       // We are in the JVM that runs the training run. Continue execution,
       // so that it can finish all clean-up and return the correct exit
       // code to the OS.
-      tty->print_cr("AOTConfiguration recorded: %s", AOTConfiguration);
     } else {
       // The JLI launcher only recognizes the "old" -Xshare:dump flag.
       // When the new -XX:AOTMode=create flag is used, we can't return
@@ -1108,8 +1107,16 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   }
 
   bool status = write_static_archive(&builder, mapinfo, heap_info);
-  if (status && CDSConfig::is_experimental_leyden_workflow() && CDSConfig::is_dumping_preimage_static_archive()) {
-    fork_and_dump_final_static_archive(CHECK);
+  if (status && CDSConfig::is_dumping_preimage_static_archive()) {
+    if (CDSConfig::is_experimental_leyden_workflow()) {
+      fork_and_dump_final_static_archive_experimental_leyden_workflow(CHECK);
+    } else {
+      tty->print_cr("%s AOTConfiguration recorded: %s",
+                    CDSConfig::has_temp_aot_config_file() ? "Temporary" : "", AOTConfiguration);
+      if (CDSConfig::is_one_step_training()) {
+        fork_and_dump_final_static_archive(CHECK);
+      }
+    }
   }
 
   if (!status) {
@@ -1166,17 +1173,38 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
   // Pass all arguments. These include those from JAVA_TOOL_OPTIONS and _JAVA_OPTIONS.
   for (int i = 0; i < Arguments::num_jvm_args(); i++) {
     const char* arg = Arguments::jvm_args_array()[i];
-    append_args(&args, arg, CHECK_0);
+    if (strncmp("-XX:AOTMode", arg, 11) == 0) {
+      // Filter it out. We will set AOTMode=create below.
+    } else {
+      append_args(&args, arg, CHECK_0);
+    }
   }
 
   // We don't pass Arguments::jvm_flags_array(), as those will be added by
   // the child process when it loads .hotspotrc
 
-  {
+  if (CDSConfig::is_experimental_leyden_workflow()) {
     stringStream ss;
     ss.print("-XX:CDSPreimage=");
     ss.print_raw(CDSPreimage);
     append_args(&args, ss.freeze(), CHECK_0);
+  } else {
+    if (CDSConfig::has_temp_aot_config_file()) {
+      stringStream ss;
+      ss.print("-XX:AOTConfiguration=");
+      ss.print_raw(AOTConfiguration);
+      append_args(&args, ss.freeze(), CHECK_0);
+    }
+    append_args(&args, "-XX:AOTMode=create", CHECK_0);
+  }
+
+  GrowableArray<const char*> aot_tool_options;
+  jint code;
+  if ((code = Arguments::parse_aot_tool_options_environment_variable(&aot_tool_options)) != JNI_OK) {
+    THROW_MSG_0(vmSymbols::java_lang_InternalError(), err_msg("failed to parse AOT_TOOL_OPTIONS: %d", code));
+  }
+  for (int i = 0; i < aot_tool_options.length(); i++) {
+    append_args(&args, aot_tool_options.at(i), CHECK_0);
   }
 
   Symbol* klass_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$ProcessLauncher");
@@ -1222,7 +1250,7 @@ static void print_vm_arguments(outputStream* st) {
   }
 }
 
-void MetaspaceShared::fork_and_dump_final_static_archive(TRAPS) {
+void MetaspaceShared::fork_and_dump_final_static_archive_experimental_leyden_workflow(TRAPS) {
   assert(CDSConfig::is_dumping_preimage_static_archive(), "sanity");
 
   ResourceMark rm;
@@ -1285,6 +1313,31 @@ void MetaspaceShared::fork_and_dump_final_static_archive(TRAPS) {
       } else {
         log_info(cds)("Removed CDSPreimage file %s", CDSPreimage);
       }
+    }
+  }
+}
+
+void MetaspaceShared::fork_and_dump_final_static_archive(TRAPS) {
+  assert(CDSConfig::is_dumping_preimage_static_archive(), "sanity");
+
+  ResourceMark rm;
+  stringStream ss;
+  print_java_launcher(&ss);
+  const char* cmd = ss.freeze();
+  tty->print_cr("Launching child process %s to assemble AOT cache %s using configuration %s", cmd, AOTCacheOutput, AOTConfiguration);
+  int status = exec_jvm_with_java_tool_options(cmd, CHECK);
+  if (status != 0) {
+    log_error(cds)("Child process failed; status = %d", status);
+    // We leave the temp config file for debugging
+  } else if (CDSConfig::has_temp_aot_config_file()) {
+    const char* tmp_config = AOTConfiguration;
+    // On Windows, need WRITE permission to remove the file.
+    WINDOWS_ONLY(chmod(tmp_config, _S_IREAD | _S_IWRITE));
+    status = remove(tmp_config);
+    if (status != 0) {
+      log_error(cds)("Failed to remove temporary AOT configuration file %s", tmp_config);
+    } else {
+      tty->print_cr("Removed temporary AOT configuration file %s", tmp_config);
     }
   }
 }
