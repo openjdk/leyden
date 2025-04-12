@@ -1771,7 +1771,6 @@ bool MethodData::profile_parameters_for_method(const methodHandle& m) {
 }
 
 void MethodData::metaspace_pointers_do(MetaspaceClosure* it) {
-  clean_method_data(true);
   log_trace(cds)("Iter(MethodData): %p for %p %s", this, _method, _method->name_and_sig_as_C_string());
   it->push(&_method);
   if (_parameters_type_data_di != no_parameters) {
@@ -1946,16 +1945,11 @@ void MethodData::clean_method_data(bool always_clean) {
 
   CleanExtraDataKlassClosure cl(always_clean);
 
-  if (SafepointSynchronize::is_at_safepoint() && 0) {
-    precond(CDSConfig::is_dumping_archive());
-    clean_extra_data(&cl);
-    verify_extra_data_clean(&cl);
-  } else {
-    // Lock to modify extra data, and prevent Safepoint from breaking the lock
-    MutexLocker ml(extra_data_lock(), Mutex::_no_safepoint_check_flag);
-    clean_extra_data(&cl);
-    verify_extra_data_clean(&cl);
-  }
+  // Lock to modify extra data, and prevent Safepoint from breaking the lock
+  MutexLocker ml(extra_data_lock(), Mutex::_no_safepoint_check_flag);
+
+  clean_extra_data(&cl);
+  verify_extra_data_clean(&cl);
 }
 
 // This is called during redefinition to clean all "old" redefined
