@@ -24,6 +24,7 @@
 
 #include "cds/cdsConfig.hpp"
 #include "ci/ciMethodData.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
@@ -111,7 +112,11 @@ char* ProfileData::print_data_on_helper(const MethodData* md) const {
         int trap = data->trap_state();
         char buf[100];
         ss.print("trap/");
-        data->method()->print_short_name(&ss);
+        if (data->method() == nullptr) {
+          ss.print("<null>");
+        } else {
+          data->method()->print_short_name(&ss);
+        }
         ss.print("(%s) ", Deoptimization::format_trap_state(buf, sizeof(buf), trap));
       }
       break;
@@ -683,13 +688,25 @@ void ParametersTypeData::print_data_on(outputStream* st, const char* extra) cons
 
 void SpeculativeTrapData::metaspace_pointers_do(MetaspaceClosure* it) {
   Method** m = (Method**)intptr_at_adr(speculative_trap_method);
+#if 0
+  if (*m != nullptr) {
+    InstanceKlass* holder = (*m)->method_holder();
+    if (holder == nullptr || !holder->is_loaded() || SystemDictionaryShared::check_for_exclusion(holder, nullptr)) {
+      *m = nullptr;
+    }
+  }
+#endif
   it->push(m);
 }
 
 void SpeculativeTrapData::print_data_on(outputStream* st, const char* extra) const {
   print_shared(st, "SpeculativeTrapData", extra);
   tab(st);
-  method()->print_short_name(st);
+  if (method() != nullptr) {
+    method()->print_short_name(st);
+  } else {
+    st->print_cr("<null>");
+  }
   st->cr();
 }
 
@@ -1505,7 +1522,7 @@ ProfileData* MethodData::bci_to_extra_data_find(int bci, Method* m, DataLayout*&
       if (m != nullptr) {
         SpeculativeTrapData* data = new SpeculativeTrapData(dp);
         if (dp->bci() == bci) {
-          assert(data->method() != nullptr, "method must be set");
+          //assert(data->method() != nullptr, "method must be set");
           if (data->method() == m) {
             return data;
           }
@@ -1533,6 +1550,13 @@ ProfileData* MethodData::bci_to_extra_data(int bci, Method* m, bool create_if_mi
   if (m != nullptr && m->is_old()) {
     return nullptr;
   }
+
+#if 0
+  // Do not create one of these if method doesn't belong to any class (dynamically generated)
+  if (m != nullptr && m->method_holder() == nullptr) {
+    return nullptr;
+  }
+#endif
 
   DataLayout* dp  = extra_data_base();
   DataLayout* end = args_data_limit();
@@ -1770,6 +1794,7 @@ bool MethodData::profile_parameters_for_method(const methodHandle& m) {
 }
 
 void MethodData::metaspace_pointers_do(MetaspaceClosure* it) {
+  clean_method_data(true);
   log_trace(cds)("Iter(MethodData): %p for %p %s", this, _method, _method->name_and_sig_as_C_string());
   it->push(&_method);
   if (_parameters_type_data_di != no_parameters) {
@@ -1863,8 +1888,16 @@ void MethodData::clean_extra_data(CleanExtraDataClosure* cl) {
     case DataLayout::speculative_trap_data_tag: {
       SpeculativeTrapData* data = new SpeculativeTrapData(dp);
       Method* m = data->method();
+#if 1
       assert(m != nullptr, "should have a method");
-      if (!cl->is_live(m)) {
+      bool exclude = false;
+      if (SafepointSynchronize::is_at_safepoint()) {
+        precond(CDSConfig::is_dumping_archive());
+        InstanceKlass* holder = m->method_holder();
+        exclude = (holder == nullptr || !holder->is_loaded() || SystemDictionaryShared::check_for_exclusion(holder, nullptr));
+      }
+#endif
+      if (exclude || !cl->is_live(m)) {
         // "shift" accumulates the number of cells for dead
         // SpeculativeTrapData entries that have been seen so
         // far. Following entries must be shifted left by that many
@@ -1909,7 +1942,7 @@ void MethodData::verify_extra_data_clean(CleanExtraDataClosure* cl) {
     case DataLayout::speculative_trap_data_tag: {
       SpeculativeTrapData* data = new SpeculativeTrapData(dp);
       Method* m = data->method();
-      assert(m != nullptr && cl->is_live(m), "Method should exist");
+      assert(m == nullptr || cl->is_live(m), "Method should exist");
       break;
     }
     case DataLayout::bit_data_tag:
@@ -1938,11 +1971,16 @@ void MethodData::clean_method_data(bool always_clean) {
 
   CleanExtraDataKlassClosure cl(always_clean);
 
-  // Lock to modify extra data, and prevent Safepoint from breaking the lock
-  MutexLocker ml(extra_data_lock(), Mutex::_no_safepoint_check_flag);
-
-  clean_extra_data(&cl);
-  verify_extra_data_clean(&cl);
+  if (SafepointSynchronize::is_at_safepoint()) {
+    precond(CDSConfig::is_dumping_archive());
+    clean_extra_data(&cl);
+    verify_extra_data_clean(&cl);
+  } else {
+    // Lock to modify extra data, and prevent Safepoint from breaking the lock
+    MutexLocker ml(extra_data_lock(), Mutex::_no_safepoint_check_flag);
+    clean_extra_data(&cl);
+    verify_extra_data_clean(&cl);
+  }
 }
 
 // This is called during redefinition to clean all "old" redefined
