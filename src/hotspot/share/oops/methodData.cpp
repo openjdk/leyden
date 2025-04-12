@@ -112,11 +112,7 @@ char* ProfileData::print_data_on_helper(const MethodData* md) const {
         int trap = data->trap_state();
         char buf[100];
         ss.print("trap/");
-        if (data->method() == nullptr) {
-          ss.print("<null>");
-        } else {
-          data->method()->print_short_name(&ss);
-        }
+        data->method()->print_short_name(&ss);
         ss.print("(%s) ", Deoptimization::format_trap_state(buf, sizeof(buf), trap));
       }
       break;
@@ -688,25 +684,13 @@ void ParametersTypeData::print_data_on(outputStream* st, const char* extra) cons
 
 void SpeculativeTrapData::metaspace_pointers_do(MetaspaceClosure* it) {
   Method** m = (Method**)intptr_at_adr(speculative_trap_method);
-#if 0
-  if (*m != nullptr) {
-    InstanceKlass* holder = (*m)->method_holder();
-    if (holder == nullptr || !holder->is_loaded() || SystemDictionaryShared::check_for_exclusion(holder, nullptr)) {
-      *m = nullptr;
-    }
-  }
-#endif
   it->push(m);
 }
 
 void SpeculativeTrapData::print_data_on(outputStream* st, const char* extra) const {
   print_shared(st, "SpeculativeTrapData", extra);
   tab(st);
-  if (method() != nullptr) {
-    method()->print_short_name(st);
-  } else {
-    st->print_cr("<null>");
-  }
+  method()->print_short_name(st);
   st->cr();
 }
 
@@ -1522,7 +1506,7 @@ ProfileData* MethodData::bci_to_extra_data_find(int bci, Method* m, DataLayout*&
       if (m != nullptr) {
         SpeculativeTrapData* data = new SpeculativeTrapData(dp);
         if (dp->bci() == bci) {
-          //assert(data->method() != nullptr, "method must be set");
+          assert(data->method() != nullptr, "method must be set");
           if (data->method() == m) {
             return data;
           }
@@ -1550,13 +1534,6 @@ ProfileData* MethodData::bci_to_extra_data(int bci, Method* m, bool create_if_mi
   if (m != nullptr && m->is_old()) {
     return nullptr;
   }
-
-#if 0
-  // Do not create one of these if method doesn't belong to any class (dynamically generated)
-  if (m != nullptr && m->method_holder() == nullptr) {
-    return nullptr;
-  }
-#endif
 
   DataLayout* dp  = extra_data_base();
   DataLayout* end = args_data_limit();
@@ -1863,7 +1840,8 @@ public:
 Mutex* MethodData::extra_data_lock() {
   Mutex* lock = Atomic::load(&_extra_data_lock);
   if (lock == nullptr) {
-    lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
+    // This lock could be acquired while we are holding DumpTimeTable_lock/nosafepoint
+    lock = new Mutex(Mutex::nosafepoint-1, "MDOExtraData_lock");
     Mutex* old = Atomic::cmpxchg(&_extra_data_lock, (Mutex*)nullptr, lock);
     if (old != nullptr) {
       // Another thread created the lock before us. Use that lock instead.
@@ -1888,15 +1866,12 @@ void MethodData::clean_extra_data(CleanExtraDataClosure* cl) {
     case DataLayout::speculative_trap_data_tag: {
       SpeculativeTrapData* data = new SpeculativeTrapData(dp);
       Method* m = data->method();
-#if 1
       assert(m != nullptr, "should have a method");
       bool exclude = false;
-      if (SafepointSynchronize::is_at_safepoint()) {
-        precond(CDSConfig::is_dumping_archive());
+      if (SafepointSynchronize::is_at_safepoint() && CDSConfig::is_dumping_archive()) {
         InstanceKlass* holder = m->method_holder();
         exclude = (holder == nullptr || !holder->is_loaded() || SystemDictionaryShared::check_for_exclusion(holder, nullptr));
       }
-#endif
       if (exclude || !cl->is_live(m)) {
         // "shift" accumulates the number of cells for dead
         // SpeculativeTrapData entries that have been seen so
@@ -1942,7 +1917,7 @@ void MethodData::verify_extra_data_clean(CleanExtraDataClosure* cl) {
     case DataLayout::speculative_trap_data_tag: {
       SpeculativeTrapData* data = new SpeculativeTrapData(dp);
       Method* m = data->method();
-      assert(m == nullptr || cl->is_live(m), "Method should exist");
+      assert(m != nullptr && cl->is_live(m), "Method should exist");
       break;
     }
     case DataLayout::bit_data_tag:
@@ -1971,7 +1946,7 @@ void MethodData::clean_method_data(bool always_clean) {
 
   CleanExtraDataKlassClosure cl(always_clean);
 
-  if (SafepointSynchronize::is_at_safepoint()) {
+  if (SafepointSynchronize::is_at_safepoint() && 0) {
     precond(CDSConfig::is_dumping_archive());
     clean_extra_data(&cl);
     verify_extra_data_clean(&cl);
