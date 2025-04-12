@@ -183,13 +183,9 @@ public final class SystemModuleFinders {
         }
 
         // probe to see if this is an images build
-        boolean isImages = JavaHome.isHermetic();
-        if (!isImages) {
-            Path modules = Path.of(StaticProperty.javaHome(), "lib", "modules");
-            if (Files.isRegularFile(modules)) {
-                isImages = true;
-            }
-        }
+        boolean isImages = JavaHome.isHermetic() ||
+                Files.isRegularFile(Path.of(StaticProperty.javaHome(),
+                        "lib", "modules"));
         if (isImages) {
             if (USE_FAST_PATH) {
                 SystemModules systemModules = allSystemModules();
