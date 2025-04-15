@@ -60,6 +60,7 @@ import jdk.internal.jimage.ImageReaderFactory;
 import jdk.internal.access.JavaNetUriAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.util.StaticProperty;
+import jdk.internal.misc.JavaHome;
 import jdk.internal.module.ModuleHashes.HashSupplier;
 
 /**
@@ -182,9 +183,10 @@ public final class SystemModuleFinders {
         }
 
         // probe to see if this is an images build
-        String home = StaticProperty.javaHome();
-        Path modules = Path.of(home, "lib", "modules");
-        if (Files.isRegularFile(modules)) {
+        boolean isImages = JavaHome.isHermetic() ||
+                Files.isRegularFile(Path.of(StaticProperty.javaHome(),
+                        "lib", "modules"));
+        if (isImages) {
             if (USE_FAST_PATH) {
                 SystemModules systemModules = allSystemModules();
                 if (systemModules != null) {
@@ -203,7 +205,7 @@ public final class SystemModuleFinders {
         }
 
         // exploded build (do not cache module finder)
-        Path dir = Path.of(home, "modules");
+        Path dir = Path.of(StaticProperty.javaHome(), "modules");
         if (!Files.isDirectory(dir))
             throw new InternalError("Unable to detect the run-time image");
         return ModulePath.of(ModuleBootstrap.patcher(), dir);
