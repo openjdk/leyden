@@ -25,11 +25,14 @@
 
 package jdk.tools.jlink.builder;
 
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toSet;
+
 import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -50,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -64,10 +66,6 @@ import jdk.tools.jlink.plugin.PluginException;
 import jdk.tools.jlink.plugin.ResourcePool;
 import jdk.tools.jlink.plugin.ResourcePoolEntry;
 import jdk.tools.jlink.plugin.ResourcePoolEntry.Type;
-
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.mapping;
-import static java.util.stream.Collectors.toSet;
 
 /**
  *
@@ -145,7 +143,6 @@ public final class DefaultImageBuilder implements ImageBuilder {
     private final Path mdir;
     private final Set<String> modules = new HashSet<>();
     private final Platform platform;
-    private final boolean hermetic;
 
     /**
      * Default image builder constructor.
@@ -157,18 +154,13 @@ public final class DefaultImageBuilder implements ImageBuilder {
      * @throws NullPointerException If any of the params is null
      */
     public DefaultImageBuilder(Path root, Map<String, String> launchers,
-                               Platform targetPlatform, boolean hermetic)
+                               Platform targetPlatform)
             throws IOException {
         this.root = Objects.requireNonNull(root);
         this.platform = Objects.requireNonNull(targetPlatform);
         this.launchers = Objects.requireNonNull(launchers);
-        this.hermetic = hermetic;
-        if (hermetic) {
-            this.mdir = null;
-        } else {
-            this.mdir = root.resolve("lib");
-            Files.createDirectories(mdir);
-        }
+        this.mdir = root.resolve("lib");
+        Files.createDirectories(mdir);
     }
 
     @Override
@@ -359,12 +351,7 @@ public final class DefaultImageBuilder implements ImageBuilder {
     @Override
     public DataOutputStream getJImageOutputStream() {
         try {
-            Path jimageFile;
-            if (hermetic) {
-                jimageFile = root;
-            } else {
-                jimageFile = mdir.resolve(BasicImageWriter.MODULES_IMAGE_NAME);
-            }
+            Path jimageFile = mdir.resolve(BasicImageWriter.MODULES_IMAGE_NAME);
             OutputStream fos = Files.newOutputStream(jimageFile);
             BufferedOutputStream bos = new BufferedOutputStream(fos);
             return new DataOutputStream(bos);
@@ -375,11 +362,7 @@ public final class DefaultImageBuilder implements ImageBuilder {
 
     @Override
     public Path getJImageFile() {
-        if (hermetic) {
-            return root;
-        } else {
-            return mdir.resolve(BasicImageWriter.MODULES_IMAGE_NAME);
-        }
+        return mdir.resolve(BasicImageWriter.MODULES_IMAGE_NAME);
     }
 
     /**
