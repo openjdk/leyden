@@ -457,7 +457,7 @@ public final class TaskHelper {
             ImageBuilder builder = null;
             if (output != null) {
                 if (hermetic) {
-                    builder = new HermeticImageBuilder(targetPlatform, output);
+                    builder = new HermeticImageBuilder(output, targetPlatform);
                 } else {
                     builder = new DefaultImageBuilder(output, launchers, targetPlatform);
                 }
