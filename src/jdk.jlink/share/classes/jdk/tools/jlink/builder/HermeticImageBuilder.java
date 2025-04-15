@@ -49,7 +49,7 @@ public final class HermeticImageBuilder implements ImageBuilder {
     private final Path hermeticImage;
     private final Set<String> modules = new HashSet<String>();
 
-    public HermeticImageBuilder(Platform platform, Path hermeticImage) {
+    public HermeticImageBuilder(Path hermeticImage, Platform platform) {
         this.hermeticImage = hermeticImage;
         this.platform = platform;
     }
@@ -82,7 +82,7 @@ public final class HermeticImageBuilder implements ImageBuilder {
 
     @Override
     public ExecutableImage getExecutableImage() {
-        return new HermeticExecutableImage(platform, hermeticImage, modules);
+        return new HermeticExecutableImage(hermeticImage, modules, platform);
     }
 
     static final class HermeticExecutableImage implements ExecutableImage {
@@ -91,8 +91,9 @@ public final class HermeticImageBuilder implements ImageBuilder {
         private final Platform platform;
         private final Path imagePath;
 
-        private HermeticExecutableImage(Platform platform, Path image,
-                Set<String> modules) {
+        private HermeticExecutableImage(Path image,
+                                        Set<String> modules,
+                                        Platform platform) {
             this.imagePath = Objects.requireNonNull(image);
             this.platform = platform;
             this.modules = Collections.unmodifiableSet(modules);
