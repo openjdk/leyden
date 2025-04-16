@@ -844,7 +844,7 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
   ResourceMark rm(THREAD);
   HandleMark hm(THREAD);
 
-  if (CDSConfig::is_dumping_final_static_archive() && PrintTrainingInfo) {
+  if (CDSConfig::is_dumping_final_static_archive() && AOTPrintTrainingInfo) {
     tty->print_cr("==================== archived_training_data ** before dumping ====================");
     TrainingData::print_archived_training_data_on(tty);
   }
@@ -1029,9 +1029,9 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   log_info(cds)("Rewriting and linking classes: done");
 
   if (CDSConfig::is_dumping_final_static_archive()) {
-    assert(!RecordTraining, "must be");
+    assert(!AOTRecordTraining, "must be");
     if (CDSConfig::is_dumping_aot_linked_classes()) {
-      RecordTraining = true;
+      AOTRecordTraining = true;
     }
   }
 
@@ -1082,14 +1082,14 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   ArchiveHeapInfo* heap_info = op.heap_info();
 
   if (CDSConfig::is_dumping_final_static_archive()) {
-    RecordTraining = false;
+    AOTRecordTraining = false;
     if (StoreCachedCode) {
       if (log_is_enabled(Info, cds, jit)) {
         CDSAccess::test_heap_access_api();
       }
 
       // We have just created the final image. Let's run the AOT compiler
-      if (PrintTrainingInfo) {
+      if (AOTPrintTrainingInfo) {
         tty->print_cr("==================== archived_training_data ** after dumping ====================");
         TrainingData::print_archived_training_data_on(tty);
       }

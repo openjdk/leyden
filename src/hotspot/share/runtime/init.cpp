@@ -232,7 +232,7 @@ jint init_globals2() {
   // have been set so dump the flags now.
   if (PrintFlagsFinal || PrintFlagsRanges) {
     JVMFlag::printFlags(tty, false, PrintFlagsRanges);
-  } else if (RecordTraining && xtty != nullptr) {
+  } else if (AOTRecordTraining && xtty != nullptr) {
     JVMFlag::printFlags(xtty->log_only(), false, PrintFlagsRanges);
   }
 

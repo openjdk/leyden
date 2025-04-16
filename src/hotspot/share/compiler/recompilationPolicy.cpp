@@ -32,7 +32,7 @@ RecompilationPolicy::LoadAverage RecompilationPolicy::_load_average;
 volatile bool RecompilationPolicy::_recompilation_done = false;
 
 void RecompilationPolicy::sample_load_average() {
-  if (UseRecompilation) {
+  if (AOTRecompilation) {
     const int c2_queue_size = CompileBroker::queue_size(CompLevel_full_optimization);
     _load_average.sample(c2_queue_size);
   }
@@ -43,9 +43,9 @@ void RecompilationPolicy::print_load_average() {
 }
 
 bool RecompilationPolicy::have_recompilation_work() {
-  if (UseRecompilation && TrainingData::have_data() && RecompilationSchedule::have_schedule() &&
+  if (AOTRecompilation && TrainingData::have_data() && RecompilationSchedule::have_schedule() &&
                           RecompilationSchedule::length() > 0 && !_recompilation_done) {
-    if (_load_average.value() <= RecompilationLoadAverageThreshold) {
+    if (_load_average.value() <= AOTRecompilationLoadAverageThreshold) {
       return true;
     }
   }
@@ -53,7 +53,7 @@ bool RecompilationPolicy::have_recompilation_work() {
 }
 
 bool RecompilationPolicy::recompilation_step(int step, TRAPS) {
-  if (!have_recompilation_work() || os::elapsedTime() < DelayRecompilation) {
+  if (!have_recompilation_work() || os::elapsedTime() < AOTDelayRecompilation) {
     return false;
   }
 
@@ -80,7 +80,7 @@ bool RecompilationPolicy::recompilation_step(int step, TRAPS) {
         continue;
       }
 
-      if (!ForceRecompilation && !(nm->is_scc() && nm->comp_level() == CompLevel_full_optimization)) {
+      if (!AOTForceRecompilation && !(nm->is_scc() && nm->comp_level() == CompLevel_full_optimization)) {
         // If it's already online-compiled at level 4, mark it as done.
         if (nm->comp_level() == CompLevel_full_optimization) {
           RecompilationSchedule::set_status_at(i, true);

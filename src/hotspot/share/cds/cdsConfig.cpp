@@ -641,8 +641,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO(ArchiveReflectionData, false);
 
     if (CDSConfig::is_dumping_archive()) {
-      FLAG_SET_ERGO(RecordTraining, false);
-      FLAG_SET_ERGO(ReplayTraining, false);
+      FLAG_SET_ERGO(AOTRecordTraining, false);
+      FLAG_SET_ERGO(AOTReplayTraining, false);
       FLAG_SET_ERGO(StoreCachedCode, false);
       FLAG_SET_ERGO(LoadCachedCode, false);
     }
@@ -742,21 +742,21 @@ void CDSConfig::setup_compiler_args() {
 
   if (is_dumping_preimage_static_archive() && can_dump_profile_and_compiled_code) {
     // JEP 483 workflow -- training
-    FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
-    FLAG_SET_ERGO(ReplayTraining, false);
+    FLAG_SET_ERGO_IF_DEFAULT(AOTRecordTraining, true);
+    FLAG_SET_ERGO(AOTReplayTraining, false);
     FLAG_SET_ERGO(StoreCachedCode, false);
     FLAG_SET_ERGO(LoadCachedCode, false);
   } else if (is_dumping_final_static_archive() && can_dump_profile_and_compiled_code) {
     // JEP 483 workflow -- assembly
-    FLAG_SET_ERGO(RecordTraining, false); // This will be updated inside MetaspaceShared::preload_and_dump()
-    FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+    FLAG_SET_ERGO(AOTRecordTraining, false); // This will be updated inside MetaspaceShared::preload_and_dump()
+    FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
     FLAG_SET_ERGO(LoadCachedCode, false);
     disable_dumping_cached_code(); // Cannot dump cached code until metadata and heap are dumped.
   } else if (is_using_archive() && new_aot_flags_used()) {
     // JEP 483 workflow -- production
-    FLAG_SET_ERGO(RecordTraining, false);
-    FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+    FLAG_SET_ERGO(AOTRecordTraining, false);
+    FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     FLAG_SET_ERGO(StoreCachedCode, false);
     FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
 
@@ -765,8 +765,8 @@ void CDSConfig::setup_compiler_args() {
       RequireSharedSpaces = true;
     }
   } else {
-    FLAG_SET_ERGO(ReplayTraining, false);
-    FLAG_SET_ERGO(RecordTraining, false);
+    FLAG_SET_ERGO(AOTReplayTraining, false);
+    FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO(StoreCachedCode, false);
     FLAG_SET_ERGO(LoadCachedCode, false);
   }
@@ -805,7 +805,7 @@ bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
   if (CDSPreimage == nullptr) {
     if (os::file_exists(CacheDataStore) /* && TODO: Need to check if CDS file is valid*/) {
       // The CacheDataStore is already up to date. Use it. Also turn on cached code by default.
-      FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+      FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
       FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
 
       // Leyden temp: make sure the user knows if CDS archive somehow fails to load.
@@ -831,7 +831,7 @@ bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
       stop_dumping_full_module_graph();
       FLAG_SET_ERGO(ArchivePackages, false);
       FLAG_SET_ERGO(ArchiveProtectionDomains, false);
-      FLAG_SET_ERGO_IF_DEFAULT(RecordTraining, true);
+      FLAG_SET_ERGO_IF_DEFAULT(AOTRecordTraining, true);
       _is_dumping_static_archive = true;
       _is_dumping_preimage_static_archive = true;
     }
@@ -843,9 +843,9 @@ bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
     if (FLAG_SET_CMDLINE(BackgroundCompilation, false) != JVMFlag::SUCCESS) {
       return false;
     }
-    RecordTraining = false; // This will be updated inside MetaspaceShared::preload_and_dump()
+    AOTRecordTraining = false; // This will be updated inside MetaspaceShared::preload_and_dump()
 
-    FLAG_SET_ERGO_IF_DEFAULT(ReplayTraining, true);
+    FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     // Settings for AOT
     FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
     if (StoreCachedCode) {

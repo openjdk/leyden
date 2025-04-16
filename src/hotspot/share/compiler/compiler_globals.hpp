@@ -393,29 +393,6 @@
           "If compilation is stopped with an error, capture diagnostic "    \
           "information at the bailout point")                               \
                                                                             \
-  /* flags to control training and deployment modes  */                     \
-                                                                            \
-  product(bool, RecordTraining, false, DIAGNOSTIC,                          \
-          "Request output of training data for improved deployment.")       \
-                                                                            \
-  product(bool, ReplayTraining, false, DIAGNOSTIC,                          \
-          "Read training data, if available, for use in this execution")    \
-                                                                            \
-  product(bool, PrintTrainingInfo, false, DIAGNOSTIC,                       \
-          "Print additional information about training")                    \
-                                                                            \
-  product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
-                  "Verify archived training data")                          \
-                                                                            \
-  product(bool, RecordOptCompilationOrder, false,                           \
-          "Record c2/jvmci nmethod temperature to guide compilation order.")\
-                                                                            \
-  product(bool, RecordOnlyTopCompilations, false,                           \
-          "Record only top compilations (non-zero counts)")                 \
-                                                                            \
-  product(int, RecordOptCompilationOrderInterval, 10,                       \
-          "Sampling interval for RecordOptCompilationOrder")                \
-                                                                            \
   /* Code Caching flags */                                                  \
                                                                             \
   product(bool, UseC2asC3, false,                                           \
@@ -458,23 +435,6 @@
                                                                             \
   product(bool, VerifyCachedCode, false, DIAGNOSTIC,                        \
           "Load compiled code but not publish")                             \
-                                                                            \
-  /* Recompilation flags */                                                 \
-                                                                            \
-  product(int, RecompilationLoadAverageThreshold, 5,                        \
-          "Queues load avergage after while recompilations are allowed")    \
-                                                                            \
-  product(int, RecompilationWorkUnitSize, 5,                                \
-          "Queues load avergage after while recompilations are allowed")    \
-                                                                            \
-  product(bool, UseRecompilation, false,                                    \
-          "Recompile methods for peak performance")                         \
-                                                                            \
-  product(bool, ForceRecompilation, false,                                  \
-          "Testing mode for recompilation")                                 \
-                                                                            \
-  product(double, DelayRecompilation, 0.0,                                  \
-          "Delay recompilation for given number of seconds")                \
                                                                             \
   product(bool, UseGlobalCompileQueueLock, false,                           \
           "Use a global lock for all compilation queues")                   \

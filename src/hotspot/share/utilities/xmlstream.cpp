@@ -457,7 +457,7 @@ void xmlStream::method(Method* method, const char* pfx) {
   method_text(method);
   print("' bytes='%d'", method->code_size());
   print(" count='%d'", method->invocation_count());
-  if (RecordTraining) {
+  if (AOTRecordTraining) {
     // print stuff about this method's compilation history
     print(" highest_comp_level='%d'", method->highest_comp_level());
     nmethod* nm = method->code();

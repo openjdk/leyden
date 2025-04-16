@@ -331,7 +331,7 @@ static void print_method_invocation_histogram() {}
 // General statistics printing (profiling ...)
 void print_statistics() {
 #if INCLUDE_CDS
-  if (ReplayTraining && PrintTrainingInfo) {
+  if (AOTReplayTraining && AOTPrintTrainingInfo) {
     TrainingData::print_archived_training_data_on(tty);
   }
 #endif
@@ -614,7 +614,7 @@ void before_exit(JavaThread* thread, bool halt) {
   // Note: we don't wait until it actually dies.
   os::terminate_signal_thread();
 
-  if (VerifyTrainingData) {
+  if (AOTVerifyTrainingData) {
     EXCEPTION_MARK;
     CompilationPolicy::flush_replay_training_at_init(THREAD);
     TrainingData::verify();

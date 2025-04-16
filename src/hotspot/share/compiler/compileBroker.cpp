@@ -2219,7 +2219,7 @@ void CompileBroker::compiler_thread_loop() {
     // We need this HandleMark to avoid leaking VM handles.
     HandleMark hm(thread);
 
-    RecompilationPolicy::recompilation_step(RecompilationWorkUnitSize, thread);
+    RecompilationPolicy::recompilation_step(AOTRecompilationWorkUnitSize, thread);
 
     CompileTask* task = queue->get(thread);
 

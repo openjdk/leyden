@@ -683,7 +683,7 @@ fileStream* defaultStream::open_file(const char* log_name) {
     return file;
   }
 
-  if (RecordTraining) {
+  if (AOTRecordTraining) {
     vm_exit_during_initialization("cannot create log file for RecordTraining mode: %s", try_name);
   }
 

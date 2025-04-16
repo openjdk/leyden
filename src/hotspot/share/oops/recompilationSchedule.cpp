@@ -53,7 +53,7 @@ void RecompilationSchedule::prepare(TRAPS) {
   GrowableArray<MethodTrainingData*> dyn_schedule;
   for (auto it = nmethods->begin(); it != nmethods->end(); ++it) {
     nmethod* nm = *it;
-    if (RecordOnlyTopCompilations && nm->method_profiling_count() == 0) {
+    if (AOTRecordOnlyTopCompilations && nm->method_profiling_count() == 0) {
       break;
     }
     if (nm->method() != nullptr) {

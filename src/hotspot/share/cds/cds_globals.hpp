@@ -132,6 +132,46 @@
   product(bool, AOTCacheParallelRelocation, true, DIAGNOSTIC,               \
           "Use parallel relocation code to speed up startup.")              \
                                                                             \
+  /* flags to control training and deployment modes  */                     \
+                                                                            \
+  product(bool, AOTRecordTraining, false, DIAGNOSTIC,                       \
+          "Request output of training data for improved deployment.")       \
+                                                                            \
+  product(bool, AOTReplayTraining, false, DIAGNOSTIC,                       \
+          "Read training data, if available, for use in this execution")    \
+                                                                            \
+  product(bool, AOTPrintTrainingInfo, false, DIAGNOSTIC,                    \
+          "Print additional information about training")                    \
+                                                                            \
+  product(bool, AOTVerifyTrainingData, trueInDebug, DIAGNOSTIC,             \
+                  "Verify archived training data")                          \
+                                                                            \
+  product(bool, AOTRecordOptCompilationOrder, false,                        \
+          "Record c2/jvmci nmethod temperature to guide compilation order.")\
+                                                                            \
+  product(bool, AOTRecordOnlyTopCompilations, false,                        \
+          "Record only top compilations (non-zero counts)")                 \
+                                                                            \
+  product(int, AOTRecordOptCompilationOrderInterval, 10,                    \
+          "Sampling interval for RecordOptCompilationOrder")                \
+                                                                            \
+   /* Recompilation flags */                                                \
+                                                                            \
+   product(int, AOTRecompilationLoadAverageThreshold, 5,                    \
+           "Queues load avergage after while recompilations are allowed")   \
+                                                                            \
+   product(int, AOTRecompilationWorkUnitSize, 5,                            \
+           "Queues load avergage after while recompilations are allowed")   \
+                                                                            \
+   product(bool, AOTRecompilation, false,                                   \
+           "Recompile methods for peak performance")                        \
+                                                                            \
+   product(bool, AOTForceRecompilation, false,                              \
+           "Testing mode for recompilation")                                \
+                                                                            \
+   product(double, AOTDelayRecompilation, 0.0,                              \
+           "Delay recompilation for given number of seconds")               \
+                                                                            \
   /*========== New options added by Leyden =============================*/  \
                                                                             \
   product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \

@@ -595,7 +595,7 @@ void CompilerConfig::ergo_initialize() {
     FLAG_SET_DEFAULT(UseLoopCounter, false);
 
     // Disable compilations through training data replay.
-    FLAG_SET_DEFAULT(ReplayTraining, false);
+    FLAG_SET_DEFAULT(AOTReplayTraining, false);
   }
 
   if (UseOnStackReplacement && !UseLoopCounter) {

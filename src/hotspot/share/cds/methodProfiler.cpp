@@ -36,7 +36,7 @@ volatile uint64_t MethodProfiler::_num_samples = 0;
 class MethodProfilerTask : public PeriodicTask {
 public:
   MethodProfilerTask()
-    : PeriodicTask(RecordOptCompilationOrderInterval) {}
+    : PeriodicTask(AOTRecordOptCompilationOrderInterval) {}
 
   void task() {
     MethodProfiler::tick();
@@ -46,7 +46,7 @@ public:
 static MethodProfilerTask* _task;
 
 void MethodProfiler::initialize() {
-  if (RecordOptCompilationOrder) {
+  if (AOTRecordOptCompilationOrder) {
     _task = new MethodProfilerTask();
     _task->enroll();
   }
