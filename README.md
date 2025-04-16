@@ -162,6 +162,82 @@ Note that `-XX:AOTEndTrainingOnMethodEntry` uses the same format as `-XX:Compile
 
 See [EndTrainingOnMethodEntry.java](test/hotspot/jtreg/runtime/cds/appcds/leyden/EndTrainingOnMethodEntry.java) for a test case.
 
+### Prototype for JEP Draft 8350022: Ahead-of-time Command Line Ergonomics
+
+We have implemented part of the JEP draft [8350022: Ahead-of-time Command Line Ergonomics](https://openjdk.org/jeps/8350022).
+This simplifies the training process, so that an AOT cache can be created with a single command-line:
+
+```
+$ java -XX:AOTCacheOutput=JavacBenchApp.aot -cp JavacBenchApp.jar \
+      JavacBenchApp 50
+Generated source code for 51 classes and compiled them in 2212 ms
+[3.720s][warning][cds] Skipping Sanity: Unsupported location
+Temporary AOTConfiguration recorded: JavacBenchApp.aot.config
+Launching child process /bld/images/jdk/bin/java to assemble AOT cache JavacBenchApp.aot
+using configuration JavacBenchApp.aot.config
+Picked up JAVA_TOOL_OPTIONS: -Djava.class.path=JavacBenchApp.jar
+                             -XX:AOTCacheOutput=JavacBenchApp.aot
+                             -XX:AOTConfiguration=JavacBenchApp.aot.config -XX:AOTMode=create
+Reading AOTConfiguration JavacBenchApp.aot.config and writing AOTCache JavacBenchApp.aot
+AOTCache creation is complete: JavacBenchApp.aot 39956480 bytes
+Removed temporary AOT configuration file JavacBenchApp.aot.config
+```
+
+As seen in the log messages, when the application is about to exit, the JVM writes a temporary AOT configuration file
+and spawns a child process to create an AOT cache using this configuration file.
+
+In the above example, the configuration file's name `JavacBenchApp.aot.config` is automatically picked by the JVM. This is a temporary
+file written into the same directory as the file specified by `-XX:AOTCacheOutput`, so you must make sure this directory is writable.
+After the cache is created, this temporary is automatically removed.
+
+If you want to persist the configuration file (for debugging purposes, or for manual cache creation at a later time), you can explicitly
+set the `AOTConfiguration` option:
+
+```
+$ java -XX:AOTCacheOutput=JavacBenchApp.aot -XX:AOTConfiguration=myconfig.aotconfig \
+      -cp JavacBenchApp.jar JavacBenchApp 50
+```
+
+When `-XX:AOTCacheOutput` is specified, the JVM automatically runs with `-XX:AOTMode=record`, although you can also specify this explicitly:
+
+```
+$ java -XX:AOTMode=record -XX:AOTCacheOutput=JavacBenchApp.aot \
+      -cp JavacBenchApp.jar JavacBenchApp 50
+```
+
+An alternative way for single-command cache creation is to specify `-XX:AOTCache=<file>` along with `-XX:AOTMode=record`. This essentially says:
+I want to record my training run directly into the specified AOT cache:
+
+```
+$ java -XX:AOTMode=record -XX:AOTCache=JavacBenchApp.aot \
+      -cp JavacBenchApp.jar JavacBenchApp 50
+
+```
+
+Note that in all the examples in this section, `-XX:AOTCache` and `-XX:AOTCacheOutput` are allowed to be specified at the same time, but in that case they are required to have the same value.
+
+### AOT_TOOL_OPTIONS
+
+When creating a AOT cache with a single command, the environment variable `AOT_TOOL_OPTIONS` can be used to pass extra VM options to
+the child JVM process that performs the assembly step. For example:
+
+```
+$ export AOT_TOOL_OPTIONS=-Xmx128m
+$ java -XX:AOTCacheOutput=JavacBenchApp.aot -cp JavacBenchApp.jar JavacBenchApp 50
+Generated source code for 51 classes and compiled them in 2242 ms
+[3.732s][warning][cds] Skipping Sanity: Unsupported location
+Temporary AOTConfiguration recorded: JavacBenchApp.aot.config
+Launching child process /jdk3/bld/le4-fastdebug/images/jdk/bin/java to assemble AOT 
+cache JavacBenchApp.aot using configuration JavacBenchApp.aot.config
+Picked up AOT_TOOL_OPTIONS: -Xmx128m
+Picked up JAVA_TOOL_OPTIONS: -Djava.class.path=JavacBenchApp.jar -XX:AOTCacheOutput=JavacBenchApp.aot
+                             -XX:AOTConfiguration=JavacBenchApp.aot.config -XX:AOTMode=create -Xmx128m
+Reading AOTConfiguration JavacBenchApp.aot.config and writing AOTCache JavacBenchApp.aot
+AOTCache creation is complete: JavacBenchApp.aot 51937280 bytes
+Removed temporary AOT configuration file JavacBenchApp.aot.config
+```
+
+
 ### Diagnostic VM Flags
 
 By default, all of the optimizations described
