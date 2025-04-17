@@ -42,10 +42,10 @@
 # The training run uses two JVM processes. We add "pid" to the log to distinguish their output.
 TRAINING_OPTS="${TRAINING_OPTS} -Xlog:scc -Xlog:cds=debug::uptime,tags,pid"
 TRAINING_OPTS="${TRAINING_OPTS} -XX:+AOTClassLinking"
-#TRAINING_OPTS="${TRAINING_OPTS} -XX:+UnlockDiagnosticVMOptions -XX:+RecordTraining"
+#TRAINING_OPTS="${TRAINING_OPTS} -XX:+UnlockDiagnosticVMOptions -XX:+AOTRecordTraining"
 
 # These options are enabled by default for training run.
-#PRODUCTION_OPTS="${PRODUCTION_OPTS} -XX:+UnlockDiagnosticVMOptions -XX:+ReplayTraining"
+#PRODUCTION_OPTS="${PRODUCTION_OPTS} -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining"
 
 
 launcher=$1

@@ -227,12 +227,12 @@ function dump_one_jvm () {
 
         echo "(Premain STEP 3 of 5) Run with $APPID-static.jsa and dump profile in $APPID-dynamic.jsa (With Training Data Replay)"
         rm -f $APPID-dynamic.dump.log
-        (set -x; $JAVA -XX:SharedArchiveFile=$APPID-static.jsa -XX:ArchiveClassesAtExit=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+RecordTraining \
+        (set -x; $JAVA -XX:SharedArchiveFile=$APPID-static.jsa -XX:ArchiveClassesAtExit=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTRecordTraining \
                        -Xlog:cds=debug,cds+class=debug:file=$APPID-dynamic.dump.log::filesize=0 $CMDLINE) || exit 1
 
         echo "(Premain  4 of 5) Run with $APPID-dynamic.jsa and generate AOT code"
         rm -f $APPID-store-sc.log
-        (set -x; $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+ReplayTraining -XX:+StoreCachedCode \
+        (set -x; $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+StoreCachedCode \
                        -Xlog:scc*=warning:file=$APPID-store-sc.log::filesize=0 \
                        -XX:CachedCodeFile=$APPID-dynamic.jsa-sc -XX:CachedCodeMaxSize=100M $CMDLINE) || exit 1
 
@@ -260,12 +260,12 @@ function exec_one_jvm () {
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_xon.$2)
         (set -x;
-         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+ReplayTraining \
+         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining \
               $CMDLINE 2> logs/${1}_td.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_td.$2)
         (set -x;
-         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+ReplayTraining -XX:+LoadCachedCode \
+         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+LoadCachedCode \
               -XX:CachedCodeFile=$APPID-dynamic.jsa-sc -Xlog:scc=error \
               $CMDLINE 2> logs/${1}_aot.$2
         )
