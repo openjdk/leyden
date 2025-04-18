@@ -129,7 +129,8 @@ ifneq ($(call check-jvm-feature, cds), true)
       classLoaderExt.cpp \
       precompiler.cpp \
       SCCache.cpp \
-      systemDictionaryShared.cpp
+      systemDictionaryShared.cpp \
+      trainingData.cpp
   JVM_EXCLUDE_PATTERNS += cds/
 endif
 
