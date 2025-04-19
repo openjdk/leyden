@@ -39,7 +39,7 @@
  * In additoin special compiled code is generated with class initialization
  * barriers which can be called on first Java method invocation.
  */
- 
+
 class AbstractCompiler;
 class ciConstant;
 class ciEnv;
@@ -636,8 +636,8 @@ public:
   static void print_unused_entries_on(outputStream* st) NOT_CDS_RETURN;
 };
 
-// +1 for preload code, and another +1 because CompLevel_count is not really the count, but same as the highest comp level
-const int AOTCompLevel_count = CompLevel_count+1+1; // 6 levels indexed from 0 to 5
+// +1 for preload code
+const int AOTCompLevel_count = CompLevel_count + 1; // 6 levels indexed from 0 to 5
 
 struct AOTCodeStats {
 private:
