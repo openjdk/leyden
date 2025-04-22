@@ -307,7 +307,7 @@ private:
 
   static void initialize() NOT_CDS_RETURN;
 
-  static void verify();
+  static void verify() NOT_CDS_RETURN;
 
   // Widget for recording dependencies, as an N-to-M graph relation,
   // possibly cyclic.
