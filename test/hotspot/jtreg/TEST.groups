@@ -408,6 +408,7 @@ hotspot_cds_only = \
 hotspot_appcds_dynamic = \
   runtime/cds/appcds/ \
  -runtime/cds/appcds/aotClassLinking \
+ -runtime/cds/appcds/aotCache \
  -runtime/cds/appcds/applications \
  -runtime/cds/appcds/cacheObject \
  -runtime/cds/appcds/complexURI \
@@ -428,7 +429,6 @@ hotspot_appcds_dynamic = \
  -runtime/cds/appcds/jvmti/redefineClasses/OldClassAndRedefineClass.java \
  -runtime/cds/appcds/lambdaForm/DefaultClassListLFInvokers.java \
  -runtime/cds/appcds/leyden/DynamicProxyTest.java \
- -runtime/cds/appcds/leyden/ExcludedClasses.java \
  -runtime/cds/appcds/leyden/LeydenAndOldClasses.java \
  -runtime/cds/appcds/leyden/LeydenGCFlags.java \
  -runtime/cds/appcds/leyden/LeydenHello.java \

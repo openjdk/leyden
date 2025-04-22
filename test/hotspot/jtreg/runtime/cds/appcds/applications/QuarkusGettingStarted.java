@@ -56,7 +56,7 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @key external-dep
  * @requires vm.cds
  * @requires vm.cds.write.archived.java.heap
- * @summary un QuarkusGettingStarted with the JEP 483 workflow
+ * @summary run QuarkusGettingStarted with the JEP 483 workflow
  * @library /test/lib
  * @run driver/timeout=120 QuarkusGettingStarted AOT
  */
@@ -66,7 +66,7 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @key external-dep
  * @requires vm.cds
  * @requires vm.cds.write.archived.java.heap
- * @summary un QuarkusGettingStarted with the Leyden workflow
+ * @summary run QuarkusGettingStarted with the Leyden workflow
  * @library /test/lib
  * @run driver/timeout=120 QuarkusGettingStarted LEYDEN
  */

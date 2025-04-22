@@ -24,11 +24,13 @@
 
 /*
  * @test
- * @summary test the handling of classes that are excluded from the CDS dump.
+ * @summary Test how various AOT optimizations handle classes that are excluded from the AOT cache.
  * @requires vm.cds.write.archived.java.heap
+ * @comment work around JDK-8345635
+ * @requires !vm.jvmci.enabled
  * @library /test/jdk/lib/testlibrary /test/lib
- *          /test/hotspot/jtreg/runtime/cds/appcds/leyden/test-classes
- * @build ExcludedClasses Custy
+ *          /test/hotspot/jtreg/runtime/cds/appcds/aotCache/test-classes
+ * @build ExcludedClasses CustyWithLoop
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar
  *                 TestApp
  *                 TestApp$Foo
@@ -36,20 +38,16 @@
  *                 TestApp$Foo$ShouldBeExcluded
  *                 TestApp$MyInvocationHandler
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
- *                 Custy
+ *                 CustyWithLoop
  * @run driver ExcludedClasses
  */
 
 import java.io.File;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.ProtectionDomain;
 import java.util.Map;
 
@@ -87,8 +85,6 @@ public class ExcludedClasses {
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
                 "-Xlog:cds+resolve=trace",
-                //TEMP: uncomment the next line to see the TrainingData::_archived_training_data_dictionary
-                //"-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintTrainingInfo",
             };
         }
 
@@ -105,7 +101,6 @@ public class ExcludedClasses {
             case RunMode.TRAINING:
             case RunMode.TRAINING0:
             case RunMode.DUMP_STATIC:
-              //out.shouldMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.Bar.f:I");
                 out.shouldNotMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.ShouldBeExcluded.f:I");
             }
         }
@@ -113,12 +108,15 @@ public class ExcludedClasses {
 }
 
 class TestApp {
-    static Object custInstance;
+    static volatile Object custInstance;
+    static volatile Object custArrayInstance;
 
     public static void main(String args[]) throws Exception {
         // In new workflow, classes from custom loaders are passed from the preimage
         // to the final image. See ClassPrelinker::record_unregistered_klasses().
         custInstance = initFromCustomLoader();
+        custArrayInstance = java.lang.reflect.Array.newInstance(custInstance.getClass(), 0);
+        System.out.println(custArrayInstance);
         System.out.println("Counter = " + Foo.hotSpot());
     }
 
@@ -128,7 +126,7 @@ class TestApp {
         URL[] urls = new URL[] {url};
         URLClassLoader urlClassLoader =
             new URLClassLoader("MyLoader", urls, null);
-        Class c = Class.forName("Custy", true, urlClassLoader);
+        Class c = Class.forName("CustyWithLoop", true, urlClassLoader);
         return c.newInstance();
     }
 
@@ -170,16 +168,24 @@ class TestApp {
                 s.hotSpot2();
                 b.hotSpot3();
 
-                // Currently, generated proxy classes are excluded from the CDS archive
+                // In JDK mainline, generated proxy classes are excluded from the AOT cache.
+                // In Leyden/premain, generated proxy classes included. The following code should
+                // work with either repos.
                 Integer i = (Integer)mapProxy.get(null);
                 counter += i.intValue();
 
-
                 if (custInstance != null) {
-                    // For new workflow only:
-                    // Currently, classes loaded by custom loaders are included in the preimage run
-                    // but excluded from the final image.
+                    // Classes loaded by custom loaders are included included in the AOT cache
+                    // but their array classes are excluded.
                     counter += custInstance.equals(null) ? 1 : 2;
+                }
+
+                if (custArrayInstance != null) {
+                    if ((counter % 3) == 0) {
+                        counter += (custArrayInstance instanceof String) ? 0 : 1;
+                    } else {
+                        counter += (custArrayInstance instanceof Object) ? 0 : 1;
+                    }
                 }
             }
 
@@ -192,7 +198,7 @@ class TestApp {
             }
         }
 
-        // Lambda classes should be excluded from new workflow training run
+        // Generated Lambda classes should be excluded from CDS preimage.
         static void lambdaHotSpot() {
             long start = System.currentTimeMillis();
             while (System.currentTimeMillis() - start < 20) {
@@ -242,3 +248,4 @@ class TestApp {
         }
     }
 }
+

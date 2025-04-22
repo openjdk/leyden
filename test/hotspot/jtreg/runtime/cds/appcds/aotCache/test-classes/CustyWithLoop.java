@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,9 @@
  *
  */
 
-public class Custy {
+// A class to be loaded by a custom class loader. It has a loop. AOT
+// optimizations may be applied to this loop.
+public class CustyWithLoop {
     volatile static int cnt;
 
     @Override
