@@ -75,6 +75,7 @@ public class JmodTest {
     static final String CLASSES_PREFIX = "classes/";
     static final String CMDS_PREFIX = "bin/";
     static final String LIBS_PREFIX = "lib/";
+    static final String STATIC_LIBS_PREFIX = "static-lib/";
     static final String CONFIGS_PREFIX = "conf/";
 
     @BeforeTest
@@ -90,6 +91,7 @@ public class JmodTest {
                          "jdk/test/foo/resources/foo.properties");
             createCmds(dir.resolve("bin"));
             createLibs(dir.resolve("lib"));
+            createStaticLibs(dir.resolve("static-lib"));
             createConfigs(dir.resolve("conf"));
         }
 
@@ -303,12 +305,14 @@ public class JmodTest {
         Path cp = EXPLODED_DIR.resolve("foo").resolve("classes");
         Path bp = EXPLODED_DIR.resolve("foo").resolve("bin");
         Path lp = EXPLODED_DIR.resolve("foo").resolve("lib");
+        Path slp = EXPLODED_DIR.resolve("foo").resolve("static-lib");
         Path cf = EXPLODED_DIR.resolve("foo").resolve("conf");
 
         jmod("create",
              "--conf", cf.toString(),
              "--cmds", bp.toString(),
              "--libs", lp.toString(),
+             "--static-libs", slp.toString(),
              "--class-path", cp.toString(),
              MODS_DIR.resolve("fooExtractDir.jmod").toString())
             .assertSuccess();
@@ -330,8 +334,10 @@ public class JmodTest {
                                   p.resolve("classes/jdk/test/foo/Foo.class"));
                 assertSameContent(bp.resolve("first"),
                                   p.resolve(CMDS_PREFIX).resolve("first"));
-                assertSameContent(lp.resolve("first.so"),
+                assertSameContent(lp.resolve("second.so"),
                                   p.resolve(LIBS_PREFIX).resolve("second.so"));
+                assertSameContent(slp.resolve("third").resolve("third.a"),
+                                  p.resolve(STATIC_LIBS_PREFIX).resolve("third").resolve("third.a"));
                 assertSameContent(cf.resolve("second.cfg"),
                                   p.resolve(CONFIGS_PREFIX).resolve("second.cfg"));
             });
@@ -437,6 +443,32 @@ public class JmodTest {
                     assertJmodContent(jmod, expectedFilenames);
                 }
             });
+
+        assertMagic(jmod, 1, 0);
+    }
+
+    @Test
+    public void testStaticLibs() throws IOException {
+        Path jmod = MODS_DIR.resolve("fooLibs.jmod");
+        FileUtils.deleteFileIfExistsWithRetry(jmod);
+        Path cp = EXPLODED_DIR.resolve("foo").resolve("classes");
+        Path slp = EXPLODED_DIR.resolve("foo").resolve("static-lib");
+
+        jmod("create",
+             "--static-libs=" + slp.toString(),
+             "--class-path", cp.toString(),
+             jmod.toString())
+            .assertSuccess()
+            .resultChecker(r -> {
+                try (Stream<String> s1 = findFiles(slp).map(p -> STATIC_LIBS_PREFIX + p);
+                     Stream<String> s2 = findFiles(cp).map(p -> CLASSES_PREFIX + p)) {
+                    Set<String> expectedFilenames = Stream.concat(s1,s2)
+                                                          .collect(toSet());
+                    assertJmodContent(jmod, expectedFilenames);
+                }
+            });
+
+        assertMagic(jmod, 1, 1);
     }
 
     @Test
@@ -446,12 +478,14 @@ public class JmodTest {
         Path cp = EXPLODED_DIR.resolve("foo").resolve("classes");
         Path bp = EXPLODED_DIR.resolve("foo").resolve("bin");
         Path lp = EXPLODED_DIR.resolve("foo").resolve("lib");
+        Path slp = EXPLODED_DIR.resolve("foo").resolve("static-lib");
         Path cf = EXPLODED_DIR.resolve("foo").resolve("conf");
 
         jmod("create",
              "--conf", cf.toString(),
              "--cmds=" + bp.toString(),
              "--libs=" + lp.toString(),
+             "--static-libs=" + slp.toString(),
              "--class-path", cp.toString(),
              jmod.toString())
             .assertSuccess()
@@ -459,9 +493,11 @@ public class JmodTest {
                 try (Stream<String> s1 = findFiles(lp).map(p -> LIBS_PREFIX + p);
                      Stream<String> s2 = findFiles(cp).map(p -> CLASSES_PREFIX + p);
                      Stream<String> s3 = findFiles(bp).map(p -> CMDS_PREFIX + p);
-                     Stream<String> s4 = findFiles(cf).map(p -> CONFIGS_PREFIX + p)) {
-                    Set<String> expectedFilenames = Stream.concat(Stream.concat(s1,s2),
-                                                                  Stream.concat(s3, s4))
+                     Stream<String> s4 = findFiles(cf).map(p -> CONFIGS_PREFIX + p);
+                     Stream<String> s5 = findFiles(slp).map(p -> STATIC_LIBS_PREFIX + p)) {
+                    Set<String> expectedFilenames = Stream.concat(Stream.concat(Stream.concat(s1,s2),
+                                                                                Stream.concat(s3, s4)),
+                                                                  s5)
                                                           .collect(toSet());
                     assertJmodContent(jmod, expectedFilenames);
                 }
@@ -958,6 +994,20 @@ public class JmodTest {
         }
     }
 
+    static void assertMagic(Path file, int majorVersion, int minorVersion) throws IOException {
+        try (InputStream in = Files.newInputStream(file)) {
+            // validate the header
+            byte[] magic = in.readNBytes(4);
+            if (magic.length != 4) {
+                throw new IOException("Invalid JMOD file: " + file);
+            }
+            assertEquals(magic[0], 0x4A); // J
+            assertEquals(magic[1], 0x4D); // M
+            assertEquals(magic[2], majorVersion);
+            assertEquals(magic[3], minorVersion);
+        }
+    }
+
     static JmodResult jmod(String... args) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PrintStream ps = new PrintStream(baos);
@@ -988,6 +1038,12 @@ public class JmodTest {
     static void createLibs(Path dir) throws IOException {
         List<String> files = Arrays.asList(
                 "first.so", "second.so", "third" + File.separator + "third.so");
+        createFiles(dir, files);
+    }
+
+    static void createStaticLibs(Path dir) throws IOException {
+        List<String> files = Arrays.asList(
+                "first.a", "second.a", "third" + File.separator + "third.a");
         createFiles(dir, files);
     }
 

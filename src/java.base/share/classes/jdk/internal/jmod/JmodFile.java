@@ -44,10 +44,14 @@ import java.util.zip.ZipFile;
 public class JmodFile implements AutoCloseable {
     // jmod magic number and version number
     private static final int JMOD_MAJOR_VERSION = 0x01;
-    private static final int JMOD_MINOR_VERSION = 0x00;
+    private static final int JMOD_MINOR_VERSION = 0x01;
     private static final byte[] JMOD_MAGIC_NUMBER = {
         0x4A, 0x4D, /* JM */
-        JMOD_MAJOR_VERSION, JMOD_MINOR_VERSION, /* version 1.0 */
+        JMOD_MAJOR_VERSION, JMOD_MINOR_VERSION, /* version 1.1 */
+    };
+    private static final byte[] JMOD_MAGIC_NO_STATIC_LIB = {
+        0x4A, 0x4D, /* JM */
+        JMOD_MAJOR_VERSION, 0x00, /* version 1.0 */
     };
 
     public static void checkMagic(Path file) throws IOException {
@@ -79,7 +83,8 @@ public class JmodFile implements AutoCloseable {
         LEGAL_NOTICES("legal"),
         MAN_PAGES("man"),
         NATIVE_LIBS("lib"),
-        NATIVE_CMDS("bin");
+        NATIVE_CMDS("bin"),
+        STATIC_LIBS("static-lib");
 
         private final String jmodDir;
         private Section(String jmodDir) {
@@ -182,8 +187,12 @@ public class JmodFile implements AutoCloseable {
         this.zipfile = new ZipFile(file.toFile());
     }
 
-    public static void writeMagicNumber(OutputStream os) throws IOException {
-        os.write(JMOD_MAGIC_NUMBER);
+    public static void writeMagicNumber(OutputStream os, boolean withStaticLib) throws IOException {
+        if (withStaticLib) {
+            os.write(JMOD_MAGIC_NUMBER);
+        } else {
+            os.write(JMOD_MAGIC_NO_STATIC_LIB);
+        }
     }
 
     /**
