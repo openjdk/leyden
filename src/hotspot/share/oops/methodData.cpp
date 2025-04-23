@@ -323,13 +323,20 @@ void VirtualCallTypeData::post_initialize(BytecodeStream* stream, MethodData* md
 
 static bool is_excluded(Klass* k) {
 #if INCLUDE_CDS
-  if (SafepointSynchronize::is_at_safepoint() && CDSConfig::is_dumping_archive()) {
+  if (SafepointSynchronize::is_at_safepoint() &&
+      CDSConfig::is_dumping_archive() &&
+      CDSConfig::current_thread_is_vm_or_dumper()) {
     if (k->is_instance_klass() && InstanceKlass::cast(k)->is_loaded() == false) {
+      log_debug(cds)("Purged %s from MDO: unloaded class", k->name()->as_C_string());
       return true;
     } else if (CDSConfig::is_dumping_dynamic_archive() && k->is_shared()) {
       return false;
     } else {
-      return SystemDictionaryShared::should_be_excluded(k);
+      bool excluded = SystemDictionaryShared::should_be_excluded(k);
+      if (excluded) {
+        log_debug(cds)("Purged %s from MDO: excluded class", k->name()->as_C_string());
+      }
+      return excluded;
     }
   }
 #endif
