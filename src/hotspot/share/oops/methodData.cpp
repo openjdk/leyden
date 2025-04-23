@@ -326,7 +326,7 @@ static bool is_excluded(Klass* k) {
   if (SafepointSynchronize::is_at_safepoint() &&
       CDSConfig::is_dumping_archive() &&
       CDSConfig::current_thread_is_vm_or_dumper()) {
-    if (k->is_instance_klass() && InstanceKlass::cast(k)->is_loaded() == false) {
+    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_loaded()) {
       log_debug(cds)("Purged %s from MDO: unloaded class", k->name()->as_C_string());
       return true;
     } else if (CDSConfig::is_dumping_dynamic_archive() && k->is_shared()) {
