@@ -26,7 +26,7 @@
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/gcHeapSummary.hpp"
@@ -159,7 +159,7 @@ jint init_globals() {
     LSAN_REGISTER_ROOT_REGION(summary.start(), summary.reserved_size());
   }
 #endif // LEAK_SANITIZER
-  SCCache::init2();        // depends on universe_init
+  AOTCodeCache::init2();        // depends on universe_init
   AsyncLogWriter::initialize();
   gc_barrier_stubs_init();   // depends on universe_init, must be before interpreter_init
   continuations_init();      // must precede continuation stub generation
@@ -172,8 +172,8 @@ jint init_globals() {
   InterfaceSupport_init();
   VMRegImpl::set_regName();  // need this before generate_stubs (for printing oop maps).
   SharedRuntime::generate_stubs();
-  SCCache::init_shared_blobs_table();  // need this after generate_stubs
-  SharedRuntime::init_adapter_library(); // do this after SCCache::init_shared_blobs_table
+  AOTCodeCache::init_shared_blobs_table();  // need this after generate_stubs
+  SharedRuntime::init_adapter_library(); // do this after AOTCodeCache::init_shared_blobs_table
   return JNI_OK;
 }
 
@@ -225,7 +225,7 @@ jint init_globals2() {
   }
   compiler_stubs_init(false /* in_compiler_thread */); // compiler's intrinsics stubs
   final_stubs_init();    // final StubRoutines stubs
-  SCCache::init_stubs_table();
+  AOTCodeCache::init_stubs_table();
   MethodHandles::generate_adapters();
 
   // All the flags that get adjusted by VM_Version_init and os::init_2

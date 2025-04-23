@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef SHARE_CODE_SCCACHE_HPP
-#define SHARE_CODE_SCCACHE_HPP
+#ifndef SHARE_CODE_AOTCODECACHE_HPP
+#define SHARE_CODE_AOTCODECACHE_HPP
 
 #include "compiler/compilerDefinitions.hpp"
 #include "memory/allocation.hpp"
@@ -32,11 +32,11 @@
 #include "utilities/exceptions.hpp"
 
 /*
- * Startup Code Cache (SCC) collects compiled code and metadata during
- * an application training runs.
- * In following "deployment" runs this code can me loaded into
- * Code Cache as normal nmethods skipping JIT compilation.
- * In additoin special compiled code is generated with class initialization
+ * AOT Code Cache collects code from Code Cache and corresponding metadata
+ * during application training run.
+ * In following "production" runs this code and data can me loaded into
+ * Code Cache skipping its generation.
+ * Additionaly special compiled code "preload" is generated with class initialization
  * barriers which can be called on first Java method invocation.
  */
 
@@ -65,89 +65,12 @@ class OopMapSet;
 class OopRecorder;
 class outputStream;
 class RelocIterator;
-class SCCache;
+class AOTCodeCache;
 class StubCodeGenerator;
 
 enum class vmIntrinsicID : int;
 
-class SCConfig {
-  uint _compressedOopShift;
-  uint _compressedKlassShift;
-  uint _contendedPaddingWidth;
-  uint _objectAlignment;
-  uint _gc;
-  enum Flags {
-    none                     = 0,
-    metadataPointers         = 1,
-    debugVM                  = 2,
-    compressedOops           = 4,
-    compressedClassPointers  = 8,
-    useTLAB                  = 16,
-    systemClassAssertions    = 32,
-    userClassAssertions      = 64,
-    enableContendedPadding   = 128,
-    restrictContendedPadding = 256,
-  };
-  uint _flags;
-
-public:
-  void record(bool use_meta_ptrs);
-  bool verify() const;
-
-  bool has_meta_ptrs()  const { return (_flags & metadataPointers) != 0; }
-};
-
-// Code Cache file header
-class SCCHeader : public CHeapObj<mtCode> {
-private:
-  // Here should be version and other verification fields
-  enum {
-    SCC_VERSION = 1
-  };
-  uint _version;           // SCC version (should match when reading code cache)
-  uint _cache_size;        // cache size in bytes
-  uint _strings_count;
-  uint _strings_offset;    // offset to recorded C strings
-  uint _entries_count;     // number of recorded entries in cache
-  uint _entries_offset;    // offset of SCCEntry array describing entries
-  uint _preload_entries_count; // entries for pre-loading code
-  uint _preload_entries_offset;
-  SCConfig _config;
-
-public:
-  void init(uint cache_size,
-            uint strings_count, uint strings_offset,
-            uint entries_count, uint entries_offset,
-            uint preload_entries_count, uint preload_entries_offset,
-            bool use_meta_ptrs) {
-    _version        = SCC_VERSION;
-    _cache_size     = cache_size;
-    _strings_count  = strings_count;
-    _strings_offset = strings_offset;
-    _entries_count  = entries_count;
-    _entries_offset = entries_offset;
-    _preload_entries_count  = preload_entries_count;
-    _preload_entries_offset = preload_entries_offset;
-
-    _config.record(use_meta_ptrs);
-  }
-
-  uint cache_size()     const { return _cache_size; }
-  uint strings_count()  const { return _strings_count; }
-  uint strings_offset() const { return _strings_offset; }
-  uint entries_count()  const { return _entries_count; }
-  uint entries_offset() const { return _entries_offset; }
-  uint preload_entries_count()  const { return _preload_entries_count; }
-  uint preload_entries_offset() const { return _preload_entries_offset; }
-  bool has_meta_ptrs()  const { return _config.has_meta_ptrs(); }
-
-  bool verify_config(uint load_size)  const;
-  bool verify_vm_config() const { // Called after Universe initialized
-    return _config.verify();
-  }
-};
-
-#define DO_SCCENTRY_KIND(Fn) \
+#define DO_AOTCODEENTRY_KIND(Fn) \
   Fn(None) \
   Fn(Adapter) \
   Fn(Stub) \
@@ -155,17 +78,17 @@ public:
   Fn(Code) \
 
 // Code Cache's entry contain information from CodeBuffer
-class SCCEntry {
+class AOTCodeEntry {
 public:
   enum Kind : s1 {
 #define DECL_KIND_ENUM(kind) kind,
-    DO_SCCENTRY_KIND(DECL_KIND_ENUM)
+    DO_AOTCODEENTRY_KIND(DECL_KIND_ENUM)
 #undef DECL_KIND_ENUM
     Kind_count
   };
 
 private:
-  SCCEntry* _next;
+  AOTCodeEntry* _next;
   Method*   _method;
   Kind   _kind;        //
   uint   _id;          // vmIntrinsic::ID for stub or name's hash for nmethod
@@ -192,7 +115,7 @@ private:
                             // during "assembly" phase without running application
   address _dumptime_content_start_addr;
 public:
-  SCCEntry(uint offset, uint size, uint name_offset, uint name_size,
+  AOTCodeEntry(uint offset, uint size, uint name_offset, uint name_size,
            uint code_offset, uint code_size,
            uint reloc_offset, uint reloc_size,
            Kind kind, uint id,
@@ -230,7 +153,7 @@ public:
     _load_fail    = false;
     _ignore_decompile = ignore_decompile;
   }
-  void* operator new(size_t x, SCCache* cache);
+  void* operator new(size_t x, AOTCodeCache* cache);
   // Delete is a NOP
   void operator delete( void *ptr ) {}
 
@@ -239,8 +162,8 @@ public:
   bool is_blob() { return _kind == Blob; }
   bool is_code() { return _kind == Code; }
 
-  SCCEntry* next()    const { return _next; }
-  void set_next(SCCEntry* next) { _next = next; }
+  AOTCodeEntry* next()    const { return _next; }
+  void set_next(AOTCodeEntry* next) { _next = next; }
 
   Method*   method()  const { return _method; }
   void set_method(Method* method) { _method = method; }
@@ -286,7 +209,7 @@ public:
 };
 
 // Addresses of stubs, blobs and runtime finctions called from compiled code.
-class SCAddressTable : public CHeapObj<mtCode> {
+class AOTCodeAddressTable : public CHeapObj<mtCode> {
 private:
   address* _extrs_addr;
   address* _stubs_addr;
@@ -307,7 +230,7 @@ private:
   bool _c1_complete;
 
 public:
-  SCAddressTable() {
+  AOTCodeAddressTable() {
     _extrs_addr = nullptr;
     _stubs_addr = nullptr;
     _blobs_addr = nullptr;
@@ -318,7 +241,7 @@ public:
     _opto_complete = false;
     _c1_complete = false;
   }
-  ~SCAddressTable();
+  ~AOTCodeAddressTable();
   void init_extrs();
   void init_early_stubs();
   void init_shared_blobs();
@@ -334,7 +257,7 @@ public:
   bool c1_complete() const { return _c1_complete; }
 };
 
-struct SCCodeSection {
+struct AOTCodeSection {
 public:
   address _origin_address;
   uint _size;
@@ -357,14 +280,13 @@ enum class DataKind: int {
   MH_Oop_Shared = 11
 };
 
-class SCCache;
-
-class SCCReader { // Concurent per compilation request
+// Concurent AOT code reader
+class AOTCodeReader {
 private:
-  const SCCache*  _cache;
-  const SCCEntry* _entry;
-  const char*     _load_buffer; // Loaded cached code buffer
-  uint  _read_position;            // Position in _load_buffer
+  const AOTCodeCache* _cache;
+  const AOTCodeEntry* _entry;
+  const char*         _load_buffer; // Loaded cached code buffer
+  uint  _read_position;             // Position in _load_buffer
   uint  read_position() const { return _read_position; }
   void  set_read_position(uint pos);
   const char* addr(uint offset) const { return _load_buffer + offset; }
@@ -381,11 +303,11 @@ private:
   bool lookup_failed()   const { return _lookup_failed; }
 
 public:
-  SCCReader(SCCache* cache, SCCEntry* entry, CompileTask* task);
+  AOTCodeReader(AOTCodeCache* cache, AOTCodeEntry* entry, CompileTask* task);
 
-  SCCEntry* scc_entry() { return (SCCEntry*)_entry; }
+  AOTCodeEntry* aot_code_entry() { return (AOTCodeEntry*)_entry; }
 
-  // convenience method to convert offset in SCCEntry data to its address
+  // convenience method to convert offset in AOTCodeEntry data to its address
   bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
   bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
@@ -413,9 +335,89 @@ public:
   void print_on(outputStream* st);
 };
 
-class SCCache : public CHeapObj<mtCode> {
+class AOTCodeCache : public CHeapObj<mtCode> {
+
+// Classes used to describe AOT code cache.
+protected:
+class Config {
+    uint _compressedOopShift;
+    uint _compressedKlassShift;
+    uint _contendedPaddingWidth;
+    uint _objectAlignment;
+    uint _gc;
+    enum Flags {
+      none                     = 0,
+      metadataPointers         = 1,
+      debugVM                  = 2,
+      compressedOops           = 4,
+      compressedClassPointers  = 8,
+      useTLAB                  = 16,
+      systemClassAssertions    = 32,
+      userClassAssertions      = 64,
+      enableContendedPadding   = 128,
+      restrictContendedPadding = 256,
+    };
+    uint _flags;
+
+  public:
+    void record(bool use_meta_ptrs);
+    bool verify() const;
+
+    bool has_meta_ptrs()  const { return (_flags & metadataPointers) != 0; }
+  };
+
+  class Header : public CHeapObj<mtCode> {
+  private:
+    // Here should be version and other verification fields
+    enum {
+      AOT_CODE_VERSION = 1
+    };
+    uint _version;           // AOT code version (should match when reading code cache)
+    uint _cache_size;        // cache size in bytes
+    uint _strings_count;     // number of recorded C strings
+    uint _strings_offset;    // offset to recorded C strings
+    uint _entries_count;     // number of recorded entries in cache
+    uint _entries_offset;    // offset of AOTCodeEntry array describing entries
+    uint _preload_entries_count; // entries for pre-loading code
+    uint _preload_entries_offset;
+    Config _config;
+
+  public:
+    void init(uint cache_size,
+              uint strings_count, uint strings_offset,
+              uint entries_count, uint entries_offset,
+              uint preload_entries_count, uint preload_entries_offset,
+              bool use_meta_ptrs) {
+      _version        = AOT_CODE_VERSION;
+      _cache_size     = cache_size;
+      _strings_count  = strings_count;
+      _strings_offset = strings_offset;
+      _entries_count  = entries_count;
+      _entries_offset = entries_offset;
+      _preload_entries_count  = preload_entries_count;
+      _preload_entries_offset = preload_entries_offset;
+
+      _config.record(use_meta_ptrs);
+    }
+
+    uint cache_size()     const { return _cache_size; }
+    uint strings_count()  const { return _strings_count; }
+    uint strings_offset() const { return _strings_offset; }
+    uint entries_count()  const { return _entries_count; }
+    uint entries_offset() const { return _entries_offset; }
+    uint preload_entries_count()  const { return _preload_entries_count; }
+    uint preload_entries_offset() const { return _preload_entries_offset; }
+    bool has_meta_ptrs()  const { return _config.has_meta_ptrs(); }
+
+    bool verify_config(uint load_size)  const;
+    bool verify_vm_config() const { // Called after Universe initialized
+      return _config.verify();
+    }
+  };
+
+// Continue with AOTCodeCache class definition.
 private:
-  SCCHeader*  _load_header;
+  Header*     _load_header;
   char*       _load_buffer;    // Aligned buffer for loading cached code
   char*       _store_buffer;   // Aligned buffer for storing cached code
   char*       _C_store_buffer; // Original unaligned buffer
@@ -432,11 +434,11 @@ private:
   bool _closing;               // Closing cache file
   bool _failed;                // Failed read/write to/from cache (cache is broken?)
 
-  SCAddressTable* _table;
+  AOTCodeAddressTable* _table;
 
-  SCCEntry* _load_entries;     // Used when reading cache
+  AOTCodeEntry* _load_entries;     // Used when reading cache
   uint*     _search_entries;   // sorted by ID table [id, index]
-  SCCEntry* _store_entries;    // Used when writing cache
+  AOTCodeEntry* _store_entries;    // Used when writing cache
   const char* _C_strings_buf;  // Loaded buffer for _C_strings[] table
   uint      _store_entries_cnt;
 
@@ -445,15 +447,15 @@ private:
   uint compile_id() const { return _compile_id; }
   uint comp_level() const { return _comp_level; }
 
-  static SCCache* open_for_read();
-  static SCCache* open_for_write();
+  static AOTCodeCache* open_for_read();
+  static AOTCodeCache* open_for_write();
 
   bool set_write_position(uint pos);
   bool align_write();
   uint write_bytes(const void* buffer, uint nbytes);
   const char* addr(uint offset) const { return _load_buffer + offset; }
 
-  static SCAddressTable* addr_table() {
+  static AOTCodeAddressTable* addr_table() {
     return is_on() && (cache()->_table != nullptr) ? cache()->_table : nullptr;
   }
 
@@ -464,7 +466,7 @@ private:
 
   address reserve_bytes(uint nbytes);
 
-  SCCEntry* write_nmethod(nmethod* nm, bool for_preload);
+  AOTCodeEntry* write_nmethod(nmethod* nm, bool for_preload);
 
   // States:
   //   S >= 0: allow new readers, S readers are currently active
@@ -486,8 +488,8 @@ private:
   };
 
 public:
-  SCCache();
-  ~SCCache();
+  AOTCodeCache();
+  ~AOTCodeCache();
 
   const char* cache_buffer() const { return _load_buffer; }
   bool failed() const { return _failed; }
@@ -519,15 +521,15 @@ public:
 
   void add_new_C_string(const char* str);
 
-  SCCEntry* add_entry() {
+  AOTCodeEntry* add_entry() {
     _store_entries_cnt++;
     _store_entries -= 1;
     return _store_entries;
   }
   void preload_startup_code(TRAPS);
 
-  SCCEntry* find_entry(SCCEntry::Kind kind, uint id, uint comp_level = 0, uint decomp = 0);
-  void invalidate_entry(SCCEntry* entry);
+  AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0, uint decomp = 0);
+  void invalidate_entry(AOTCodeEntry* entry);
 
   bool finish_write();
 
@@ -568,7 +570,7 @@ public:
   static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
-  static SCCEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
+  static AOTCodeEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
 
   static uint store_entries_cnt() {
     if (is_on_for_write()) {
@@ -580,7 +582,7 @@ public:
 // Static access
 
 private:
-  static SCCache*  _cache;
+  static AOTCodeCache*  _cache;
 
   static bool open_cache();
   static bool verify_vm_config() {
@@ -590,7 +592,7 @@ private:
     return true;
   }
 public:
-  static SCCache* cache() { return _cache; }
+  static AOTCodeCache* cache() { return _cache; }
   static void initialize() NOT_CDS_RETURN;
   static void init2() NOT_CDS_RETURN;
   static void close() NOT_CDS_RETURN;
@@ -601,14 +603,14 @@ public:
   static bool is_on_for_write() { return is_on() && _cache->for_write(); }
   static bool gen_preload_code(ciMethod* m, int entry_bci);
   static bool allow_const_field(ciConstant& value) NOT_CDS_RETURN_(false);
-  static void invalidate(SCCEntry* entry) NOT_CDS_RETURN;
-  static bool is_loaded(SCCEntry* entry);
-  static SCCEntry* find_code_entry(const methodHandle& method, uint comp_level);
+  static void invalidate(AOTCodeEntry* entry) NOT_CDS_RETURN;
+  static bool is_loaded(AOTCodeEntry* entry);
+  static AOTCodeEntry* find_code_entry(const methodHandle& method, uint comp_level);
   static void preload_code(JavaThread* thread);
 
   template<typename Function>
   static void iterate(Function function) { // lambda enabled API
-    SCCache* cache = open_for_read();
+    AOTCodeCache* cache = open_for_read();
     if (cache != nullptr) {
       ReadingMark rdmk;
       if (rdmk.failed()) {
@@ -618,11 +620,11 @@ public:
 
       uint count = cache->_load_header->entries_count();
       uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
-      SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
+      AOTCodeEntry* load_entries = (AOTCodeEntry*)(search_entries + 2 * count);
 
       for (uint i = 0; i < count; i++) {
         int index = search_entries[2*i + 1];
-        SCCEntry* entry = &(load_entries[index]);
+        AOTCodeEntry* entry = &(load_entries[index]);
         function(entry);
       }
     }
@@ -642,12 +644,12 @@ const int AOTCompLevel_count = CompLevel_count + 1; // 6 levels indexed from 0 t
 struct AOTCodeStats {
 private:
   struct {
-    uint _kind_cnt[SCCEntry::Kind_count];
+    uint _kind_cnt[AOTCodeEntry::Kind_count];
     uint _nmethod_cnt[AOTCompLevel_count];
     uint _clinit_barriers_cnt;
   } ccstats; // ccstats = cached code stats
 
-  void check_kind(uint kind) { assert(kind >= SCCEntry::None && kind < SCCEntry::Kind_count, "Invalid SCCEntry kind %d", kind); }
+  void check_kind(uint kind) { assert(kind >= AOTCodeEntry::None && kind < AOTCodeEntry::Kind_count, "Invalid AOTCodeEntry kind %d", kind); }
   void check_complevel(uint lvl) { assert(lvl >= CompLevel_none && lvl < AOTCompLevel_count, "Invalid compilation level %d", lvl); }
 
 public:
@@ -656,7 +658,7 @@ public:
   void inc_preload_cnt() { ccstats._nmethod_cnt[AOTCompLevel_count-1] += 1; }
   void inc_clinit_barriers_cnt() { ccstats._clinit_barriers_cnt += 1; }
 
-  void collect_entry_stats(SCCEntry* entry) {
+  void collect_entry_stats(AOTCodeEntry* entry) {
     inc_entry_cnt(entry->kind());
     if (entry->is_code()) {
       entry->for_preload() ? inc_nmethod_cnt(AOTCompLevel_count-1)
@@ -674,7 +676,7 @@ public:
 
   uint total_count() {
     uint total = 0;
-    for (int kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+    for (int kind = AOTCodeEntry::None; kind < AOTCodeEntry::Kind_count; kind++) {
       total += ccstats._kind_cnt[kind];
     }
     return total;
@@ -689,7 +691,7 @@ private:
       uint _loaded_cnt;
       uint _invalidated_cnt;
       uint _load_failed_cnt;
-    } _entry_kinds[SCCEntry::Kind_count],
+    } _entry_kinds[AOTCodeEntry::Kind_count],
       _nmethods[AOTCompLevel_count];
   } rs; // rs = runtime stats
 
@@ -710,7 +712,7 @@ public:
   uint nmethod_invalidated_count(uint lvl) { check_complevel(lvl); return rs._nmethods[lvl]._invalidated_cnt; }
   uint nmethod_load_failed_count(uint lvl) { check_complevel(lvl); return rs._nmethods[lvl]._load_failed_cnt; }
 
-  void inc_loaded_cnt(SCCEntry* entry) {
+  void inc_loaded_cnt(AOTCodeEntry* entry) {
     inc_entry_loaded_cnt(entry->kind());
     if (entry->is_code()) {
       entry->for_preload() ? inc_nmethod_loaded_cnt(AOTCompLevel_count-1)
@@ -718,7 +720,7 @@ public:
     }
   }
 
-  void inc_invalidated_cnt(SCCEntry* entry) {
+  void inc_invalidated_cnt(AOTCodeEntry* entry) {
     inc_entry_invalidated_cnt(entry->kind());
     if (entry->is_code()) {
       entry->for_preload() ? inc_nmethod_invalidated_cnt(AOTCompLevel_count-1)
@@ -726,7 +728,7 @@ public:
     }
   }
 
-  void inc_load_failed_cnt(SCCEntry* entry) {
+  void inc_load_failed_cnt(AOTCodeEntry* entry) {
     inc_entry_load_failed_cnt(entry->kind());
     if (entry->is_code()) {
       entry->for_preload() ? inc_nmethod_load_failed_cnt(AOTCompLevel_count-1)
@@ -734,7 +736,7 @@ public:
     }
   }
 
-  void collect_entry_runtime_stats(SCCEntry* entry) {
+  void collect_entry_runtime_stats(AOTCodeEntry* entry) {
     if (entry->is_loaded()) {
       inc_loaded_cnt(entry);
     }
@@ -746,7 +748,7 @@ public:
     }
   }
 
-  void collect_all_stats(SCCEntry* entry) {
+  void collect_all_stats(AOTCodeEntry* entry) {
     collect_entry_stats(entry);
     collect_entry_runtime_stats(entry);
   }
@@ -758,14 +760,14 @@ public:
 
 // code cache internal runtime constants area used by AOT code
 class AOTRuntimeConstants {
- friend class SCCache;
+ friend class AOTCodeCache;
   uint _grain_shift;
   uint _card_shift;
   static address _field_addresses_list[];
   static AOTRuntimeConstants _aot_runtime_constants;
   // private constructor for unique singleton
   AOTRuntimeConstants() { }
-  // private for use by friend class SCCache
+  // private for use by friend class AOTCodeCache
   static void initialize_from_runtime();
  public:
   static bool contains(address adr) {
@@ -780,4 +782,4 @@ class AOTRuntimeConstants {
   }
 };
 
-#endif // SHARE_CODE_SCCACHE_HPP
+#endif // SHARE_CODE_AOTCODECACHE_HPP

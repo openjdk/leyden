@@ -130,7 +130,7 @@ public class HelidonQuickStartSE {
             };
 
             if (runMode.isProductionRun()) {
-                cmdLine = StringArrayUtils.concat("-Xlog:scc=error", cmdLine);
+                cmdLine = StringArrayUtils.concat("-Xlog:aot+codecache=error", cmdLine);
             }
             return cmdLine;
         }

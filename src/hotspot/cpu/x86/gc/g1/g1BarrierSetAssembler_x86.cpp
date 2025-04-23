@@ -24,7 +24,7 @@
 
 #include "asm/macroAssembler.inline.hpp"
 #if INCLUDE_CDS
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #endif
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
@@ -307,7 +307,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
 
-  if (SCCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_write()) {
     address grain_shift_addr = AOTRuntimeConstants::grain_shift_address();
     Register save = pick_different_reg(rcx, tmp, new_val, store_addr);
     __ push(save);
@@ -341,7 +341,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   // AOT code needs to load the barrier card shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
-  if (SCCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_write()) {
     address card_shift_addr = AOTRuntimeConstants::card_shift_address();
     Register save = pick_different_reg(rcx, tmp);
     __ push(save);
@@ -360,8 +360,8 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   }
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
-  if (SCCache::is_on_for_write()) {
-    // SCA needs relocation info for this address
+  if (AOTCodeCache::is_on_for_write()) {
+    // AOT code needs relocation info for this address
     __ lea(tmp2, ExternalAddress((address)ct->card_table()->byte_map_base()));   // tmp2 := card table base address
   } else {
     __ movptr(tmp2, (intptr_t)ct->card_table()->byte_map_base());   // tmp2 := card table base address
@@ -716,8 +716,8 @@ void G1BarrierSetAssembler::generate_c1_post_barrier_runtime_stub(StubAssembler*
   __ shrptr(card_addr, CardTable::card_shift());
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
-  if (SCCache::is_on()) {
-    // SCA needs relocation info for this address
+  if (AOTCodeCache::is_on()) {
+    // AOT code needs relocation info for this address
     __ lea(cardtable, ExternalAddress((address)ct->card_table()->byte_map_base()));
   } else {
     __ movptr(cardtable, (intptr_t)ct->card_table()->byte_map_base());

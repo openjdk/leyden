@@ -23,13 +23,13 @@
  */
 
 #include "asm/assembler.inline.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/dependencies.hpp"
 #include "code/nativeInst.hpp"
 #include "code/nmethod.inline.hpp"
 #include "code/scopeDesc.hpp"
-#include "code/SCCache.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilationLog.hpp"
 #include "compiler/compileBroker.hpp"
@@ -1170,7 +1170,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
   CompLevel comp_level
-  , SCCEntry* scc_entry
+  , AOTCodeEntry* aot_code_entry
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -1214,7 +1214,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     nmethod(method(), compiler->type(), nmethod_size, immutable_data_size, mutable_data_size,
             compile_id, entry_bci, immutable_data, offsets, orig_pc_offset,
             debug_info, dependencies, code_buffer, frame_size, oop_maps,
-            handler_table, nul_chk_table, compiler, comp_level, scc_entry
+            handler_table, nul_chk_table, compiler, comp_level, aot_code_entry
 #if INCLUDE_JVMCI
             , speculations,
             speculations_len,
@@ -1231,7 +1231,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   if (nm != nullptr) {
 
 #ifdef ASSERT
-    LogTarget(Debug, scc, nmethod) log;
+    LogTarget(Debug, aot, codecache, nmethod) log;
     if (log.is_enabled()) {
       LogStream out(log);
       out.print_cr("== new_nmethod 2");
@@ -1262,7 +1262,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
                                    AsmRemarks& archived_asm_remarks,
                                    DbgStrings& archived_dbg_strings,
 #endif /* PRODUCT */
-                                   SCCReader* scc_reader)
+                                   AOTCodeReader* aot_code_reader)
 {
   archived_nm->copy_to((address)this);
   set_name("nmethod");
@@ -1282,7 +1282,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   copy_values(&oop_list);
   copy_values(&metadata_list);
 
-  scc_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
+  aot_code_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
 
 #ifndef PRODUCT
   AsmRemarks::init(asm_remarks());
@@ -1299,7 +1299,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   // Create cache after PcDesc data is copied - it will be used to initialize cache
   _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
 
-  set_scc_entry(scc_reader->scc_entry());
+  set_aot_code_entry(aot_code_reader->aot_code_entry());
 
   post_init();
 }
@@ -1319,7 +1319,7 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                               AsmRemarks& asm_remarks,
                               DbgStrings& dbg_strings,
 #endif /* PRODUCT */
-                              SCCReader* scc_reader)
+                              AOTCodeReader* aot_code_reader)
 {
   nmethod* nm = nullptr;
   int nmethod_size = archived_nm->size();
@@ -1340,7 +1340,7 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                                reloc_imm_metadata_list,
                                NOT_PRODUCT_ARG(asm_remarks)
                                NOT_PRODUCT_ARG(dbg_strings)
-                               scc_reader);
+                               aot_code_reader);
       nm->record_nmethod_dependency();
       NOT_PRODUCT(note_java_nmethod(nm));
     }
@@ -1348,7 +1348,7 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
   // Do verification and logging outside CodeCache_lock.
   if (nm != nullptr) {
 #ifdef ASSERT
-    LogTarget(Debug, scc, nmethod) log;
+    LogTarget(Debug, aot, codecache, nmethod) log;
     if (log.is_enabled()) {
       LogStream out(log);
       out.print_cr("== new_nmethod 2");
@@ -1459,7 +1459,7 @@ nmethod::nmethod(
     // something that will never match a pc like the nmethod vtable entry
     _deopt_handler_offset    = 0;
     _deopt_mh_handler_offset = 0;
-    _scc_entry               = nullptr;
+    _aot_code_entry          = nullptr;
     _method_profiling_count  = 0;
     _unwind_handler_offset   = 0;
 
@@ -1563,7 +1563,7 @@ nmethod::nmethod(
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
   CompLevel comp_level
-  , SCCEntry* scc_entry
+  , AOTCodeEntry* aot_code_entry
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -1583,7 +1583,7 @@ nmethod::nmethod(
     assert_locked_or_safepoint(CodeCache_lock);
 
     init_defaults(code_buffer, offsets);
-    _scc_entry      = scc_entry;
+    _aot_code_entry          = aot_code_entry;
     _method_profiling_count  = 0;
 
     _osr_entry_point = code_begin() + offsets->value(CodeOffsets::OSR_Entry);
@@ -2244,7 +2244,7 @@ bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
     if (make_not_entrant) {
       // Keep cached code if it was simply replaced
       // otherwise make it not entrant too.
-      SCCache::invalidate(_scc_entry);
+      AOTCodeCache::invalidate(_aot_code_entry);
     }
 
     CompileBroker::log_not_entrant(this);
@@ -2332,7 +2332,7 @@ void nmethod::purge(bool unregister_nmethod) {
     delete[] _compiled_ic_data;
   }
 
-  if (_immutable_data != data_end() && !SCCache::is_address_in_aot_cache((address)_oop_maps)) {
+  if (_immutable_data != data_end() && !AOTCodeCache::is_address_in_aot_cache((address)_oop_maps)) {
     os::free(_immutable_data);
     _immutable_data = blob_end(); // Valid not null address
   }
@@ -2393,11 +2393,11 @@ void nmethod::post_compiled_method(CompileTask* task) {
   task->set_nm_insts_size(insts_size());
   task->set_nm_total_size(total_size());
 
-  // task->is_scc() is true only for loaded cached code.
-  // nmethod::_scc_entry is set for loaded and stored cached code
+  // task->is_aot() is true only for loaded cached code.
+  // nmethod::_aot_code_entry is set for loaded and stored cached code
   // to invalidate the entry when nmethod is deoptimized.
   // There is option to not store in archive cached code.
-  guarantee((_scc_entry != nullptr) || !task->is_scc() || VerifyCachedCode, "sanity");
+  guarantee((_aot_code_entry != nullptr) || !task->is_aot() || VerifyCachedCode, "sanity");
 
   // JVMTI -- compiled method notification (must be done outside lock)
   post_compiled_method_load_event();
@@ -3130,9 +3130,9 @@ void nmethod::verify() {
     fatal("find_nmethod did not find this nmethod (" INTPTR_FORMAT ")", p2i(this));
   }
 
-  // Verification can triggered during shutdown after SCCache is closed.
+  // Verification can triggered during shutdown after AOTCodeCache is closed.
   // If the Scopes data is in the AOT code cache, then we should avoid verification during shutdown.
-  if (!is_scc() || SCCache::is_on()) {
+  if (!is_aot() || AOTCodeCache::is_on()) {
     for (PcDesc* p = scopes_pcs_begin(); p < scopes_pcs_end(); p++) {
       if (! p->verify(this)) {
         tty->print_cr("\t\tin nmethod at " INTPTR_FORMAT " (pcs)", p2i(this));
@@ -3171,7 +3171,7 @@ void nmethod::verify() {
 
   assert(_oops_do_mark_link == nullptr, "_oops_do_mark_link for %s should be nullptr but is " PTR_FORMAT,
          nm->method()->external_name(), p2i(_oops_do_mark_link));
-  if (!is_scc() || SCCache::is_on()) {
+  if (!is_aot() || AOTCodeCache::is_on()) {
     verify_scopes();
   }
 
@@ -3342,8 +3342,8 @@ void nmethod::print_on_impl(outputStream* st) const {
                                              p2i(speculations_end()),
                                              speculations_size());
 #endif
-  if (SCCache::is_on() && _scc_entry != nullptr) {
-    _scc_entry->print(st);
+  if (AOTCodeCache::is_on() && _aot_code_entry != nullptr) {
+    _aot_code_entry->print(st);
   }
 }
 

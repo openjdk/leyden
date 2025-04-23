@@ -22,7 +22,6 @@
  *
  */
 
-#include "code/SCCache.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileLog.hpp"
@@ -106,7 +105,7 @@ void CompileTask::initialize(int compile_id,
                              int comp_level,
                              const methodHandle& hot_method,
                              int hot_count,
-                             SCCEntry* scc_entry,
+                             AOTCodeEntry* aot_code_entry,
                              CompileTask::CompileReason compile_reason,
                              CompileQueue* compile_queue,
                              bool requires_online_compilation,
@@ -147,7 +146,7 @@ void CompileTask::initialize(int compile_id,
   _failure_reason = nullptr;
   _failure_reason_on_C_heap = false;
   _training_data = nullptr;
-  _scc_entry = scc_entry;
+  _aot_code_entry = aot_code_entry;
   _compile_queue = compile_queue;
 
   AbstractCompiler* comp = CompileBroker::compiler(comp_level);
@@ -263,7 +262,7 @@ void CompileTask::print_tty() {
 // ------------------------------------------------------------------
 // CompileTask::print_impl
 void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, int comp_level,
-                             bool is_osr_method, int osr_bci, bool is_blocking, bool is_scc, bool is_preload,
+                             bool is_osr_method, int osr_bci, bool is_blocking, bool is_aot, bool is_preload,
                              const char* compiler_name,
                              const char* msg, bool short_form, bool cr,
                              jlong time_created, jlong time_queued, jlong time_started, jlong time_finished,
@@ -325,11 +324,11 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
   const char exception_char = has_exception_handler           ? '!' : ' ';
   const char blocking_char  = is_blocking                     ? 'b' : ' ';
   const char native_char    = is_native                       ? 'n' : ' ';
-  const char scc_char       = is_scc                          ? 'A' : ' ';
+  const char aot_char       = is_aot                          ? 'A' : ' ';
   const char preload_char   = is_preload                      ? 'P' : ' ';
 
   // print method attributes
-  st->print("%c%c%c%c%c%c%c ", compile_type, sync_char, exception_char, blocking_char, native_char, scc_char, preload_char);
+  st->print("%c%c%c%c%c%c%c ", compile_type, sync_char, exception_char, blocking_char, native_char, aot_char, preload_char);
 
   if (TieredCompilation) {
     if (comp_level != -1)  st->print("%d ", comp_level);
@@ -362,7 +361,7 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
 // CompileTask::print_compilation
 void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool cr) {
   bool is_osr_method = osr_bci() != InvocationEntryBci;
-  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_scc(), preload(),
+  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot(), preload(),
              compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished, _aot_load_start, _aot_load_finish);
 }
 
@@ -560,7 +559,7 @@ void CompileTask::print_ul(const nmethod* nm, const char* msg) {
     print_impl(&ls, nm->method(), nm->compile_id(),
                nm->comp_level(), nm->is_osr_method(),
                nm->is_osr_method() ? nm->osr_entry_bci() : -1,
-               /*is_blocking*/ false, nm->scc_entry() != nullptr,
+               /*is_blocking*/ false, nm->aot_code_entry() != nullptr,
                nm->preloaded(), nm->compiler_name(),
                msg, /* short form */ true, /* cr */ true);
   }

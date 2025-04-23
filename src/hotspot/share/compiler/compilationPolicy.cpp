@@ -23,7 +23,7 @@
  */
 
 #include "cds/aotLinkedClassBulkLoader.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/scopeDesc.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
@@ -306,7 +306,7 @@ bool CompilationPolicy::force_comp_at_level_simple(const methodHandle& method) {
     if (UseJVMCICompiler) {
       AbstractCompiler* comp = CompileBroker::compiler(CompLevel_full_optimization);
       if (comp != nullptr && comp->is_jvmci() && ((JVMCICompiler*) comp)->force_comp_at_level_simple(method)) {
-        return !SCCache::is_C3_on();
+        return !AOTCodeCache::is_C3_on();
       }
     }
 #endif
@@ -643,7 +643,7 @@ void CompilationPolicy::initialize() {
         int c1_count = MAX2(count - libjvmci_count, 1);
         set_c2_count(libjvmci_count);
         set_c1_count(c1_count);
-      } else if (SCCache::is_C3_on()) {
+      } else if (AOTCodeCache::is_C3_on()) {
         set_c1_count(MAX2(count / 3, 1));
         set_c2_count(MAX2(count - c1_count(), 1));
         set_c3_count(1);
@@ -659,7 +659,7 @@ void CompilationPolicy::initialize() {
       set_c2_count(count);
       count *= 2; // satisfy the assert below
     }
-    if (SCCache::is_code_load_thread_on()) {
+    if (AOTCodeCache::is_code_load_thread_on()) {
       set_sc_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
     }
     assert(count == c1_count() + c2_count(), "inconsistent compiler thread count");
@@ -804,8 +804,8 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       task = next_task;
       continue;
     }
-    if (task->is_scc()) {
-      // SCC tasks are on separate queue, and they should load fast. There is no need to walk
+    if (task->is_aot()) {
+      // AOTCodeCache tasks are on separate queue, and they should load fast. There is no need to walk
       // the rest of the queue, just take the task and go.
       return task;
     }
@@ -1091,7 +1091,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  assert(!x->is_scc() && !y->is_scc(), "SC tasks are not expected here");
+  assert(!x->is_aot() && !y->is_aot(), "SC tasks are not expected here");
   if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }

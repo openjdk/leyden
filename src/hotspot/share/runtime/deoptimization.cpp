@@ -2863,7 +2863,7 @@ void Deoptimization::gather_statistics(nmethod* nm, DeoptReason reason, DeoptAct
 
   update(_deoptimization_hist[0][reason][1+action], bc);
 
-  uint lvl = nm->comp_level() + (nm->is_scc() ? 4 : 0) + (nm->preloaded() ? 1 : 0);
+  uint lvl = nm->comp_level() + (nm->is_aot() ? 4 : 0) + (nm->preloaded() ? 1 : 0);
   _deoptimization_hist[lvl][Reason_none][0][0] += 1;  // total
   _deoptimization_hist[lvl][reason][0][0]      += 1;  // per-reason total
   update(_deoptimization_hist[lvl][reason][1+action], bc);

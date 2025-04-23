@@ -32,7 +32,6 @@
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/moduleEntry.hpp"
 #include "classfile/systemDictionaryShared.hpp"
-#include "code/SCCache.hpp"
 #include "include/jvm_io.h"
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"

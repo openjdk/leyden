@@ -22,7 +22,6 @@
  *
  */
 
-#include "code/SCCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/relocInfo.hpp"
@@ -188,7 +187,7 @@ void CodeBlob::purge() {
     os::free(_mutable_data);
     _mutable_data = blob_end(); // Valid not null address
   }
-  if (_oop_maps != nullptr && !SCCache::is_address_in_aot_cache((address)_oop_maps)) {
+  if (_oop_maps != nullptr && !AOTCodeCache::is_address_in_aot_cache((address)_oop_maps)) {
     delete _oop_maps;
     _oop_maps = nullptr;
   }

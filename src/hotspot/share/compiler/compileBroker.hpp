@@ -265,8 +265,8 @@ class CompileBroker: AllStatic {
   static jlong _peak_compilation_time;
 
   static CompilerStatistics _stats_per_level[];
-  static CompilerStatistics _scc_stats;
-  static CompilerStatistics _scc_stats_per_level[];
+  static CompilerStatistics _aot_stats;
+  static CompilerStatistics _aot_stats_per_level[];
 
   static volatile int _print_compilation_warning;
 
@@ -290,7 +290,7 @@ class CompileBroker: AllStatic {
                                           int                 comp_level,
                                           const methodHandle& hot_method,
                                           int                 hot_count,
-                                          SCCEntry*           scc_entry,
+                                          AOTCodeEntry*       aot_code_entry,
                                           CompileTask::CompileReason compile_reason,
                                           bool                requires_online_compilation,
                                           bool                blocking);
@@ -322,13 +322,13 @@ private:
                                   bool blocking,
                                   Thread* thread);
 
-  static CompileQueue* compile_queue(int comp_level, bool is_scc);
+  static CompileQueue* compile_queue(int comp_level, bool is_aot);
   static bool init_compiler_runtime();
   static void shutdown_compiler_runtime(AbstractCompiler* comp, CompilerThread* thread);
 
-  static SCCEntry* find_scc_entry(const methodHandle& method, int osr_bci, int comp_level,
-                                  CompileTask::CompileReason compile_reason,
-                                  bool requires_online_compilation);
+  static AOTCodeEntry* find_aot_code_entry(const methodHandle& method, int osr_bci, int comp_level,
+                                           CompileTask::CompileReason compile_reason,
+                                           bool requires_online_compilation);
 
 public:
   enum {
@@ -347,8 +347,8 @@ public:
                                       CompileTask::CompileReason compile_reason);
   static bool compilation_is_in_queue(const methodHandle& method);
   static void print_compile_queues(outputStream* st);
-  static int queue_size(int comp_level, bool is_scc = false) {
-    CompileQueue *q = compile_queue(comp_level, is_scc);
+  static int queue_size(int comp_level, bool is_aot = false) {
+    CompileQueue *q = compile_queue(comp_level, is_aot);
     return q != nullptr ? q->size() : 0;
   }
   static void compilation_init(JavaThread* THREAD);

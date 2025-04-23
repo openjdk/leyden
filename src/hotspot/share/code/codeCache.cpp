@@ -31,7 +31,6 @@
 #include "code/dependencyContext.hpp"
 #include "code/nmethod.hpp"
 #include "code/pcDesc.hpp"
-#include "code/SCCache.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
@@ -1557,7 +1556,7 @@ void CodeCache::print_nmethod_statistics_on(outputStream* st) {
     }
     assert(!nm->preloaded() || nm->comp_level() == CompLevel_full_optimization, "");
 
-    int idx1 = nm->is_scc() ? 1 : 0;
+    int idx1 = nm->is_aot() ? 1 : 0;
     int idx2 = nm->comp_level() + (nm->preloaded() ? 1 : 0);
     int idx3 = (nm->is_in_use()      ? 0 :
                (nm->is_not_entrant() ? 1 :

@@ -41,17 +41,17 @@
 #include "classfile/systemDictionary.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmIntrinsics.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/oopRecorder.inline.hpp"
-#include "code/SCCache.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
 #include "gc/shared/gcConfig.hpp"
-#include "logging/log.hpp"
+#include "logging/logStream.hpp"
 #include "memory/memoryReserver.hpp"
 #include "memory/universe.hpp"
 #include "oops/klass.inline.hpp"
@@ -99,9 +99,9 @@
 #define O_BINARY 0     // otherwise do nothing.
 #endif
 
-const char* sccentry_kind_name[] = {
+const char* aot_code_entry_kind_name[] = {
 #define DECL_KIND_STRING(kind) XSTR(kind),
-  DO_SCCENTRY_KIND(DECL_KIND_STRING)
+  DO_AOTCODEENTRY_KIND(DECL_KIND_STRING)
 #undef DECL_KIND_STRING
 };
 
@@ -110,21 +110,21 @@ static elapsedTimer _t_totalRegister;
 static elapsedTimer _t_totalFind;
 static elapsedTimer _t_totalStore;
 
-SCCache* SCCache::_cache = nullptr;
+AOTCodeCache* AOTCodeCache::_cache = nullptr;
 
 static bool enable_timers() {
   return CITime || log_is_enabled(Info, init);
 }
 
 static void exit_vm_on_load_failure() {
-  // Treat SCC warnings as error when RequireSharedSpaces is on.
+  // Treat AOTCodeCache warnings as error when RequireSharedSpaces is on.
   if (RequireSharedSpaces) {
     vm_exit_during_initialization("Unable to use AOT Code Cache.", nullptr);
   }
 }
 
 static void exit_vm_on_store_failure() {
-  // Treat SCC warnings as error when RequireSharedSpaces is on.
+  // Treat AOTCodeCache warnings as error when RequireSharedSpaces is on.
   if (RequireSharedSpaces) {
     tty->print_cr("Unable to create startup cached code.");
     // Failure during AOT code caching, we don't want to dump core
@@ -132,11 +132,11 @@ static void exit_vm_on_store_failure() {
   }
 }
 
-uint SCCache::max_aot_code_size() {
+uint AOTCodeCache::max_aot_code_size() {
   return (uint)CachedCodeMaxSize;
 }
 
-void SCCache::initialize() {
+void AOTCodeCache::initialize() {
   if (LoadCachedCode && !UseSharedSpaces) {
     return;
   }
@@ -149,7 +149,7 @@ void SCCache::initialize() {
       FLAG_SET_DEFAULT(ClassInitBarrierMode, 1);
     }
   } else if (ClassInitBarrierMode > 0) {
-    log_info(scc, init)("Set ClassInitBarrierMode to 0 because StoreCachedCode and LoadCachedCode are false.");
+    log_info(aot, codecache, init)("Set ClassInitBarrierMode to 0 because StoreCachedCode and LoadCachedCode are false.");
     FLAG_SET_DEFAULT(ClassInitBarrierMode, 0);
   }
   if (LoadCachedCode || StoreCachedCode) {
@@ -165,7 +165,7 @@ void SCCache::initialize() {
   }
 }
 
-void SCCache::init2() {
+void AOTCodeCache::init2() {
   if (!is_on()) {
     return;
   }
@@ -175,7 +175,7 @@ void SCCache::init2() {
     address byte_map_base = ci_card_table_address_as<address>();
     if (is_on_for_write() && !external_word_Relocation::can_be_relocated(byte_map_base)) {
       // Bail out since we can't encode card table base address with relocation
-      log_warning(scc, init)("Can't create AOT Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
+      log_warning(aot, codecache, init)("Can't create AOT Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
       close();
       exit_vm_on_load_failure();
     }
@@ -196,7 +196,7 @@ void SCCache::init2() {
   init_early_stubs_table();
 }
 
-void SCCache::print_timers_on(outputStream* st) {
+void AOTCodeCache::print_timers_on(outputStream* st) {
   if (LoadCachedCode) {
     st->print_cr ("    SC Load Time:         %7.3f s", _t_totalLoad.seconds());
     st->print_cr ("      nmethod register:     %7.3f s", _t_totalRegister.seconds());
@@ -207,7 +207,7 @@ void SCCache::print_timers_on(outputStream* st) {
   }
 }
 
-bool SCCache::is_C3_on() {
+bool AOTCodeCache::is_C3_on() {
 #if INCLUDE_JVMCI
   if (UseJVMCICompiler) {
     return (StoreCachedCode || LoadCachedCode) && UseC2asC3;
@@ -216,18 +216,18 @@ bool SCCache::is_C3_on() {
   return false;
 }
 
-bool SCCache::is_code_load_thread_on() {
+bool AOTCodeCache::is_code_load_thread_on() {
   return UseCodeLoadThread && LoadCachedCode;
 }
 
-bool SCCache::gen_preload_code(ciMethod* m, int entry_bci) {
+bool AOTCodeCache::gen_preload_code(ciMethod* m, int entry_bci) {
   VM_ENTRY_MARK;
   return (entry_bci == InvocationEntryBci) && is_on() && _cache->gen_preload_code() &&
          CDSAccess::can_generate_cached_code(m->get_Method());
 }
 
 static void print_helper(nmethod* nm, outputStream* st) {
-  SCCache::iterate([&](SCCEntry* e) {
+  AOTCodeCache::iterate([&](AOTCodeEntry* e) {
     if (e->method() == nm->method()) {
       ResourceMark rm;
       stringStream ss;
@@ -246,44 +246,44 @@ static void print_helper(nmethod* nm, outputStream* st) {
   });
 }
 
-void SCCache::close() {
+void AOTCodeCache::close() {
   if (is_on()) {
-    if (SCCache::is_on_for_read()) {
+    if (AOTCodeCache::is_on_for_read()) {
       LogStreamHandle(Info, init) log;
       if (log.is_enabled()) {
         log.print_cr("AOT Code Cache statistics (when closed): ");
-        SCCache::print_statistics_on(&log);
+        AOTCodeCache::print_statistics_on(&log);
         log.cr();
-        SCCache::print_timers_on(&log);
+        AOTCodeCache::print_timers_on(&log);
 
-        LogStreamHandle(Info, scc, init) log1;
+        LogStreamHandle(Info, aot, codecache, init) log1;
         if (log1.is_enabled()) {
-          SCCache::print_unused_entries_on(&log1);
+          AOTCodeCache::print_unused_entries_on(&log1);
         }
 
-        LogStreamHandle(Info, scc, codecache) info_scc;
+        LogStreamHandle(Info, aot, codecache) aot_info;
         // need a lock to traverse the code cache
         MutexLocker locker(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-        if (info_scc.is_enabled()) {
+        if (aot_info.is_enabled()) {
           NMethodIterator iter(NMethodIterator::all);
           while (iter.next()) {
             nmethod* nm = iter.method();
             if (nm->is_in_use() && !nm->is_native_method() && !nm->is_osr_method()) {
-              info_scc.print("%5d:%c%c%c%d:", nm->compile_id(),
+              aot_info.print("%5d:%c%c%c%d:", nm->compile_id(),
                              (nm->method()->is_shared() ? 'S' : ' '),
-                             (nm->is_scc() ? 'A' : ' '),
+                             (nm->is_aot() ? 'A' : ' '),
                              (nm->preloaded() ? 'P' : ' '),
                              nm->comp_level());
-              print_helper(nm, &info_scc);
-              info_scc.print(": ");
-              CompileTask::print(&info_scc, nm, nullptr, true /*short_form*/);
+              print_helper(nm, &aot_info);
+              aot_info.print(": ");
+              CompileTask::print(&aot_info, nm, nullptr, true /*short_form*/);
 
-              LogStreamHandle(Debug, scc, codecache) debug_scc;
-              if (debug_scc.is_enabled()) {
+              LogStreamHandle(Debug, aot, codecache) aot_debug;
+              if (aot_debug.is_enabled()) {
                 MethodTrainingData* mtd = MethodTrainingData::find(methodHandle(Thread::current(), nm->method()));
                 if (mtd != nullptr) {
                   mtd->iterate_compiles([&](CompileTrainingData* ctd) {
-                    debug_scc.print("     CTD: "); ctd->print_on(&debug_scc); debug_scc.cr();
+                    aot_debug.print("     CTD: "); ctd->print_on(&aot_debug); aot_debug.cr();
                   });
                 }
               }
@@ -298,21 +298,21 @@ void SCCache::close() {
   }
 }
 
-void SCCache::invalidate(SCCEntry* entry) {
+void AOTCodeCache::invalidate(AOTCodeEntry* entry) {
   // This could be concurent execution
   if (entry != nullptr && is_on()) { // Request could come after cache is closed.
     _cache->invalidate_entry(entry);
   }
 }
 
-bool SCCache::is_loaded(SCCEntry* entry) {
+bool AOTCodeCache::is_loaded(AOTCodeEntry* entry) {
   if (is_on() && _cache->cache_buffer() != nullptr) {
     return (uint)((char*)entry - _cache->cache_buffer()) < _cache->load_size();
   }
   return false;
 }
 
-void SCCache::preload_code(JavaThread* thread) {
+void AOTCodeCache::preload_code(JavaThread* thread) {
   if ((ClassInitBarrierMode == 0) || !is_on_for_read()) {
     return;
   }
@@ -322,7 +322,7 @@ void SCCache::preload_code(JavaThread* thread) {
   _cache->preload_startup_code(thread);
 }
 
-SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) {
+AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint comp_level) {
   switch (comp_level) {
     case CompLevel_simple:
       if ((DisableCachedCode & (1 << 0)) != 0) {
@@ -350,9 +350,9 @@ SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) 
     ResourceMark rm;
     const char* target_name = method->name_and_sig_as_C_string();
     uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
-    SCCEntry* entry = _cache->find_entry(SCCEntry::Code, hash, comp_level, decomp);
+    AOTCodeEntry* entry = _cache->find_entry(AOTCodeEntry::Code, hash, comp_level, decomp);
     if (entry == nullptr) {
-      log_info(scc, nmethod)("Missing entry for '%s' (comp_level %d, decomp: %d, hash: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, decomp, hash);
+      log_info(aot, codecache, nmethod)("Missing entry for '%s' (comp_level %d, decomp: %d, hash: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, decomp, hash);
 #ifdef ASSERT
     } else {
       uint name_offset = entry->offset() + entry->name_offset();
@@ -366,7 +366,7 @@ SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) 
 
     DirectiveSet* directives = DirectivesStack::getMatchingDirective(method, nullptr);
     if (directives->IgnorePrecompiledOption) {
-      LogStreamHandle(Info, scc, compilation) log;
+      LogStreamHandle(Info, aot, codecache, compilation) log;
       if (log.is_enabled()) {
         log.print("Ignore cached code entry on level %d for ", comp_level);
         method->print_value_on(&log);
@@ -379,13 +379,13 @@ SCCEntry* SCCache::find_code_entry(const methodHandle& method, uint comp_level) 
   return nullptr;
 }
 
-void SCCache::add_C_string(const char* str) {
+void AOTCodeCache::add_C_string(const char* str) {
   if (is_on_for_write()) {
     _cache->add_new_C_string(str);
   }
 }
 
-bool SCCache::allow_const_field(ciConstant& value) {
+bool AOTCodeCache::allow_const_field(ciConstant& value) {
   return !is_on() || !StoreCachedCode // Restrict only when we generate cache
         // Can not trust primitive too   || !is_reference_type(value.basic_type())
         // May disable this too for now  || is_reference_type(value.basic_type()) && value.as_object()->should_be_constant()
@@ -393,8 +393,8 @@ bool SCCache::allow_const_field(ciConstant& value) {
 }
 
 
-bool SCCache::open_cache() {
-  SCCache* cache = new SCCache();
+bool AOTCodeCache::open_cache() {
+  AOTCodeCache* cache = new AOTCodeCache();
   if (cache->failed()) {
     delete cache;
     _cache = nullptr;
@@ -449,7 +449,7 @@ CachedCodeDirectory* CachedCodeDirectory::create() {
 
 #define DATA_ALIGNMENT HeapWordSize
 
-SCCache::SCCache() {
+AOTCodeCache::AOTCodeCache() {
   _load_header = nullptr;
   _for_read  = LoadCachedCode;
   _for_write = StoreCachedCode;
@@ -480,12 +480,12 @@ SCCache::SCCache() {
     // Read cache
     ReservedSpace rs = MemoryReserver::reserve(CDSAccess::get_cached_code_size(), mtCode);
     if (!rs.is_reserved()) {
-      log_warning(scc, init)("Failed to reserved %u bytes of memory for mapping cached code region in AOT Cache", (uint)CDSAccess::get_cached_code_size());
+      log_warning(aot, codecache, init)("Failed to reserved %u bytes of memory for mapping cached code region in AOT Cache", (uint)CDSAccess::get_cached_code_size());
       set_failed();
       return;
     }
     if (!CDSAccess::map_cached_code(rs)) {
-      log_warning(scc, init)("Failed to read/mmap cached code region in AOT Cache");
+      log_warning(aot, codecache, init)("Failed to read/mmap cached code region in AOT Cache");
       set_failed();
       return;
     }
@@ -495,14 +495,14 @@ SCCache::SCCache() {
     _load_size = _cached_code_directory->_aot_code_size;
     _load_buffer = _cached_code_directory->_aot_code_data;
     assert(is_aligned(_load_buffer, DATA_ALIGNMENT), "load_buffer is not aligned");
-    log_info(scc, init)("Mapped %u bytes at address " INTPTR_FORMAT " from AOT Code Cache", _load_size, p2i(_load_buffer));
+    log_info(aot, codecache, init)("Mapped %u bytes at address " INTPTR_FORMAT " from AOT Code Cache", _load_size, p2i(_load_buffer));
 
-    _load_header = (SCCHeader*)addr(0);
+    _load_header = (AOTCodeCache::Header*)addr(0);
     if (!_load_header->verify_config(_load_size)) {
       set_failed();
       return;
     }
-    log_info(scc, init)("Read header from AOT Code Cache");
+    log_info(aot, codecache, init)("Read header from AOT Code Cache");
     if (_load_header->has_meta_ptrs()) {
       assert(UseSharedSpaces, "should be verified already");
       _use_meta_ptrs = true; // Regardless UseMetadataPointers
@@ -517,52 +517,52 @@ SCCache::SCCache() {
     _C_store_buffer = NEW_C_HEAP_ARRAY(char, max_aot_code_size() + DATA_ALIGNMENT, mtCode);
     _store_buffer = align_up(_C_store_buffer, DATA_ALIGNMENT);
     // Entries allocated at the end of buffer in reverse (as on stack).
-    _store_entries = (SCCEntry*)align_up(_C_store_buffer + max_aot_code_size(), DATA_ALIGNMENT);
-    log_info(scc, init)("Allocated store buffer at address " INTPTR_FORMAT " of size " UINT32_FORMAT " bytes", p2i(_store_buffer), max_aot_code_size());
+    _store_entries = (AOTCodeEntry*)align_up(_C_store_buffer + max_aot_code_size(), DATA_ALIGNMENT);
+    log_info(aot, codecache, init)("Allocated store buffer at address " INTPTR_FORMAT " of size " UINT32_FORMAT " bytes", p2i(_store_buffer), max_aot_code_size());
   }
-  _table = new SCAddressTable();
+  _table = new AOTCodeAddressTable();
 }
 
-void SCCache::init_extrs_table() {
-  SCAddressTable* table = addr_table();
+void AOTCodeCache::init_extrs_table() {
+  AOTCodeAddressTable* table = addr_table();
   if (table != nullptr) {
     table->init_extrs();
   }
 }
-void SCCache::init_early_stubs_table() {
-  SCAddressTable* table = addr_table();
+void AOTCodeCache::init_early_stubs_table() {
+  AOTCodeAddressTable* table = addr_table();
   if (table != nullptr) {
     table->init_early_stubs();
   }
 }
-void SCCache::init_shared_blobs_table() {
-  SCAddressTable* table = addr_table();
+void AOTCodeCache::init_shared_blobs_table() {
+  AOTCodeAddressTable* table = addr_table();
   if (table != nullptr) {
     table->init_shared_blobs();
   }
 }
-void SCCache::init_stubs_table() {
-  SCAddressTable* table = addr_table();
+void AOTCodeCache::init_stubs_table() {
+  AOTCodeAddressTable* table = addr_table();
   if (table != nullptr) {
     table->init_stubs();
   }
 }
 
-void SCCache::init_opto_table() {
-  SCAddressTable* table = addr_table();
+void AOTCodeCache::init_opto_table() {
+  AOTCodeAddressTable* table = addr_table();
   if (table != nullptr) {
     table->init_opto();
   }
 }
 
-void SCCache::init_c1_table() {
-  SCAddressTable* table = addr_table();
+void AOTCodeCache::init_c1_table() {
+  AOTCodeAddressTable* table = addr_table();
   if (table != nullptr) {
     table->init_c1();
   }
 }
 
-void SCConfig::record(bool use_meta_ptrs) {
+void AOTCodeCache::Config::record(bool use_meta_ptrs) {
   _flags = 0;
   if (use_meta_ptrs) {
     _flags |= metadataPointers;
@@ -598,85 +598,85 @@ void SCConfig::record(bool use_meta_ptrs) {
   _gc                    = (uint)Universe::heap()->kind();
 }
 
-bool SCConfig::verify() const {
+bool AOTCodeCache::Config::verify() const {
 #ifdef ASSERT
   if ((_flags & debugVM) == 0) {
-    log_warning(scc, init)("Disable AOT Code: it was created by product VM, it can't be used by debug VM");
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created by product VM, it can't be used by debug VM");
     return false;
   }
 #else
   if ((_flags & debugVM) != 0) {
-    log_warning(scc, init)("Disable AOT Code: it was created by debug VM, it can't be used by product VM");
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created by debug VM, it can't be used by product VM");
     return false;
   }
 #endif
 
-  CollectedHeap::Name scc_gc = (CollectedHeap::Name)_gc;
-  if (scc_gc != Universe::heap()->kind()) {
-    log_warning(scc, init)("Disable AOT Code: it was created with different GC: %s vs current %s", GCConfig::hs_err_name(scc_gc), GCConfig::hs_err_name());
+  CollectedHeap::Name aot_gc = (CollectedHeap::Name)_gc;
+  if (aot_gc != Universe::heap()->kind()) {
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with different GC: %s vs current %s", GCConfig::hs_err_name(aot_gc), GCConfig::hs_err_name());
     return false;
   }
 
   if (((_flags & compressedOops) != 0) != UseCompressedOops) {
-    log_warning(scc, init)("Disable AOT Code: it was created with UseCompressedOops = %s", UseCompressedOops ? "false" : "true");
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with UseCompressedOops = %s", UseCompressedOops ? "false" : "true");
     return false;
   }
   if (((_flags & compressedClassPointers) != 0) != UseCompressedClassPointers) {
-    log_warning(scc, init)("Disable AOT Code: it was created with UseCompressedClassPointers = %s", UseCompressedClassPointers ? "false" : "true");
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with UseCompressedClassPointers = %s", UseCompressedClassPointers ? "false" : "true");
     return false;
   }
 
   if (((_flags & systemClassAssertions) != 0) != JavaAssertions::systemClassDefault()) {
-    log_warning(scc, init)("Disable AOT Code: it was created with JavaAssertions::systemClassDefault() = %s", JavaAssertions::systemClassDefault() ? "disabled" : "enabled");
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with JavaAssertions::systemClassDefault() = %s", JavaAssertions::systemClassDefault() ? "disabled" : "enabled");
     return false;
   }
   if (((_flags & userClassAssertions) != 0) != JavaAssertions::userClassDefault()) {
-    log_warning(scc, init)("Disable AOT Code: it was created with JavaAssertions::userClassDefault() = %s", JavaAssertions::userClassDefault() ? "disabled" : "enabled");
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with JavaAssertions::userClassDefault() = %s", JavaAssertions::userClassDefault() ? "disabled" : "enabled");
     return false;
   }
 
   if (((_flags & enableContendedPadding) != 0) != EnableContended) {
-    log_warning(scc, init)("Disable AOT Code: it was created with EnableContended = %s", EnableContended ? "false" : "true");
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with EnableContended = %s", EnableContended ? "false" : "true");
     return false;
   }
   if (((_flags & restrictContendedPadding) != 0) != RestrictContended) {
-    log_warning(scc, init)("Disable AOT Code: it was created with RestrictContended = %s", RestrictContended ? "false" : "true");
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with RestrictContended = %s", RestrictContended ? "false" : "true");
     return false;
   }
   if (_compressedOopShift != (uint)CompressedOops::shift()) {
-    log_warning(scc, init)("Disable AOT Code: it was created with CompressedOops::shift() = %d vs current %d", _compressedOopShift, CompressedOops::shift());
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with CompressedOops::shift() = %d vs current %d", _compressedOopShift, CompressedOops::shift());
     return false;
   }
   if (_compressedKlassShift != (uint)CompressedKlassPointers::shift()) {
-    log_warning(scc, init)("Disable AOT Code: it was created with CompressedKlassPointers::shift() = %d vs current %d", _compressedKlassShift, CompressedKlassPointers::shift());
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with CompressedKlassPointers::shift() = %d vs current %d", _compressedKlassShift, CompressedKlassPointers::shift());
     return false;
   }
   if (_contendedPaddingWidth != (uint)ContendedPaddingWidth) {
-    log_warning(scc, init)("Disable AOT Code: it was created with ContendedPaddingWidth = %d vs current %d", _contendedPaddingWidth, ContendedPaddingWidth);
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with ContendedPaddingWidth = %d vs current %d", _contendedPaddingWidth, ContendedPaddingWidth);
     return false;
   }
   if (_objectAlignment != (uint)ObjectAlignmentInBytes) {
-    log_warning(scc, init)("Disable AOT Code: it was created with ObjectAlignmentInBytes = %d vs current %d", _objectAlignment, ObjectAlignmentInBytes);
+    log_warning(aot, codecache, init)("Disable AOT Code: it was created with ObjectAlignmentInBytes = %d vs current %d", _objectAlignment, ObjectAlignmentInBytes);
     return false;
   }
   return true;
 }
 
-bool SCCHeader::verify_config(uint load_size) const {
-  if (_version != SCC_VERSION) {
-    log_warning(scc, init)("Disable AOT Code: different SCC version %d vs %d recorded in AOT Cache", SCC_VERSION, _version);
+bool AOTCodeCache::Header::verify_config(uint load_size) const {
+  if (_version != AOT_CODE_VERSION) {
+    log_warning(aot, codecache, init)("Disable AOT Code: different AOT Code version %d vs %d recorded in AOT Cache", AOT_CODE_VERSION, _version);
     return false;
   }
   if (_cache_size != load_size) {
-    log_warning(scc, init)("Disable AOT Code: different cached code size %d vs %d recorded in AOT Cache", load_size, _cache_size);
+    log_warning(aot, codecache, init)("Disable AOT Code: different cached code size %d vs %d recorded in AOT Cache", load_size, _cache_size);
     return false;
   }
   return true;
 }
 
-volatile int SCCache::_nmethod_readers = 0;
+volatile int AOTCodeCache::_nmethod_readers = 0;
 
-SCCache::~SCCache() {
+AOTCodeCache::~AOTCodeCache() {
   if (_closing) {
     return; // Already closed
   }
@@ -705,24 +705,24 @@ SCCache::~SCCache() {
   }
 }
 
-SCCache* SCCache::open_for_read() {
-  if (SCCache::is_on_for_read()) {
-    return SCCache::cache();
+AOTCodeCache* AOTCodeCache::open_for_read() {
+  if (AOTCodeCache::is_on_for_read()) {
+    return AOTCodeCache::cache();
   }
   return nullptr;
 }
 
-SCCache* SCCache::open_for_write() {
-  if (SCCache::is_on_for_write()) {
-    SCCache* cache = SCCache::cache();
+AOTCodeCache* AOTCodeCache::open_for_write() {
+  if (AOTCodeCache::is_on_for_write()) {
+    AOTCodeCache* cache = AOTCodeCache::cache();
     cache->clear_lookup_failed(); // Reset bit
     return cache;
   }
   return nullptr;
 }
 
-bool SCCache::is_address_in_aot_cache(address p) {
-  SCCache* cache = open_for_read();
+bool AOTCodeCache::is_address_in_aot_cache(address p) {
+  AOTCodeCache* cache = open_for_read();
   if (cache == nullptr) {
     return false;
   }
@@ -745,10 +745,10 @@ static void copy_bytes(const char* from, address to, uint size) {
     by_words = false;
     Copy::conjoint_jbytes(from, to, (size_t)size);
   }
-  log_trace(scc)("Copied %d bytes as %s from " INTPTR_FORMAT " to " INTPTR_FORMAT, size, (by_words ? "HeapWord" : "bytes"), p2i(from), p2i(to));
+  log_trace(aot, codecache)("Copied %d bytes as %s from " INTPTR_FORMAT " to " INTPTR_FORMAT, size, (by_words ? "HeapWord" : "bytes"), p2i(from), p2i(to));
 }
 
-void SCCReader::set_read_position(uint pos) {
+void AOTCodeReader::set_read_position(uint pos) {
   if (pos == _read_position) {
     return;
   }
@@ -756,7 +756,7 @@ void SCCReader::set_read_position(uint pos) {
   _read_position = pos;
 }
 
-bool SCCache::set_write_position(uint pos) {
+bool AOTCodeCache::set_write_position(uint pos) {
   if (pos == _write_position) {
     return true;
   }
@@ -770,7 +770,7 @@ bool SCCache::set_write_position(uint pos) {
 
 static char align_buffer[256] = { 0 };
 
-bool SCCache::align_write() {
+bool AOTCodeCache::align_write() {
   // We are not executing code from cache - we copy it by bytes first.
   // No need for big alignment (or at all).
   uint padding = DATA_ALIGNMENT - (_write_position & (DATA_ALIGNMENT - 1));
@@ -781,16 +781,16 @@ bool SCCache::align_write() {
   if (n != padding) {
     return false;
   }
-  log_trace(scc)("Adjust write alignment in AOT Code Cache");
+  log_trace(aot, codecache)("Adjust write alignment in AOT Code Cache");
   return true;
 }
 
 // Check to see if AOT code cache has required space to store "nbytes" of data
-address SCCache::reserve_bytes(uint nbytes) {
+address AOTCodeCache::reserve_bytes(uint nbytes) {
   assert(for_write(), "Code Cache file is not created");
   uint new_position = _write_position + nbytes;
   if (new_position >= (uint)((char*)_store_entries - _store_buffer)) {
-    log_warning(scc)("Failed to ensure %d bytes at offset %d in AOT Code Cache. Increase CachedCodeMaxSize.",
+    log_warning(aot, codecache)("Failed to ensure %d bytes at offset %d in AOT Code Cache. Increase CachedCodeMaxSize.",
                      nbytes, _write_position);
     set_failed();
     exit_vm_on_store_failure();
@@ -804,21 +804,21 @@ address SCCache::reserve_bytes(uint nbytes) {
   return buffer;
 }
 
-uint SCCache::write_bytes(const void* buffer, uint nbytes) {
+uint AOTCodeCache::write_bytes(const void* buffer, uint nbytes) {
   assert(for_write(), "Code Cache file is not created");
   if (nbytes == 0) {
     return 0;
   }
   uint new_position = _write_position + nbytes;
   if (new_position >= (uint)((char*)_store_entries - _store_buffer)) {
-    log_warning(scc)("Failed to write %d bytes at offset %d to AOT Code Cache. Increase CachedCodeMaxSize.",
+    log_warning(aot, codecache)("Failed to write %d bytes at offset %d to AOT Code Cache. Increase CachedCodeMaxSize.",
                      nbytes, _write_position);
     set_failed();
     exit_vm_on_store_failure();
     return 0;
   }
   copy_bytes((const char* )buffer, (address)(_store_buffer + _write_position), nbytes);
-  log_trace(scc)("Wrote %d bytes at offset %d to AOT Code Cache", nbytes, _write_position);
+  log_trace(aot, codecache)("Wrote %d bytes at offset %d to AOT Code Cache", nbytes, _write_position);
   _write_position += nbytes;
   if (_store_size < _write_position) {
     _store_size = _write_position;
@@ -826,14 +826,14 @@ uint SCCache::write_bytes(const void* buffer, uint nbytes) {
   return nbytes;
 }
 
-void SCCEntry::update_method_for_writing() {
+void AOTCodeEntry::update_method_for_writing() {
   if (_method != nullptr) {
     _method = CDSAccess::method_in_cached_code(_method);
   }
 }
 
-void SCCEntry::print(outputStream* st) const {
-  st->print_cr(" SCA entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s%s%s]",
+void AOTCodeEntry::print(outputStream* st) const {
+  st->print_cr(" AOT Code Cache entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s%s%s]",
                p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id, _decompile,
                (_not_entrant? "not_entrant" : "entrant"),
                (_loaded ? ", loaded" : ""),
@@ -842,7 +842,7 @@ void SCCEntry::print(outputStream* st) const {
                (_ignore_decompile ? ", ignore_decomp" : ""));
 }
 
-void* SCCEntry::operator new(size_t x, SCCache* cache) {
+void* AOTCodeEntry::operator new(size_t x, AOTCodeCache* cache) {
   return (void*)(cache->add_entry());
 }
 
@@ -852,7 +852,7 @@ bool skip_preload(methodHandle mh) {
   }
   DirectiveSet* directives = DirectivesStack::getMatchingDirective(mh, nullptr);
   if (directives->DontPreloadOption) {
-    LogStreamHandle(Info, scc, init) log;
+    LogStreamHandle(Info, aot, codecache, init) log;
     if (log.is_enabled()) {
       log.print("Exclude preloading code for ");
       mh->print_value_on(&log);
@@ -862,7 +862,7 @@ bool skip_preload(methodHandle mh) {
   return false;
 }
 
-void SCCache::preload_startup_code(TRAPS) {
+void AOTCodeCache::preload_startup_code(TRAPS) {
   if (CompilationPolicy::compiler_count(CompLevel_full_optimization) == 0) {
     // Since we reuse the CompilerBroker API to install cached code, we're required to have a JIT compiler for the
     // level we want (that is CompLevel_full_optimization).
@@ -873,17 +873,17 @@ void SCCache::preload_startup_code(TRAPS) {
   if (_load_entries == nullptr) {
     // Read it
     _search_entries = (uint*)addr(_load_header->entries_offset()); // [id, index]
-    _load_entries = (SCCEntry*)(_search_entries + 2 * count);
-    log_info(scc, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
+    _load_entries = (AOTCodeEntry*)(_search_entries + 2 * count);
+    log_info(aot, codecache, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
   }
   uint preload_entries_count = _load_header->preload_entries_count();
   if (preload_entries_count > 0) {
     uint* entries_index = (uint*)addr(_load_header->preload_entries_offset());
-    log_info(scc, init)("Load %d preload entries from AOT Code Cache", preload_entries_count);
+    log_info(aot, codecache, init)("Load %d preload entries from AOT Code Cache", preload_entries_count);
     uint count = MIN2(preload_entries_count, SCLoadStop);
     for (uint i = SCLoadStart; i < count; i++) {
       uint index = entries_index[i];
-      SCCEntry* entry = &(_load_entries[index]);
+      AOTCodeEntry* entry = &(_load_entries[index]);
       if (entry->not_entrant()) {
         continue;
       }
@@ -897,33 +897,33 @@ void SCCache::preload_startup_code(TRAPS) {
         assert(!HAS_PENDING_EXCEPTION, "");
         mh->method_holder()->link_class(THREAD);
         if (HAS_PENDING_EXCEPTION) {
-          LogStreamHandle(Info, scc) log;
+          LogStreamHandle(Info, aot, codecache) log;
           if (log.is_enabled()) {
             ResourceMark rm;
             log.print("Linkage failed for %s: ", mh->method_holder()->external_name());
             THREAD->pending_exception()->print_value_on(&log);
-            if (log_is_enabled(Debug, scc)) {
+            if (log_is_enabled(Debug, aot, codecache)) {
               THREAD->pending_exception()->print_on(&log);
             }
           }
           CLEAR_PENDING_EXCEPTION;
         }
       }
-      if (mh->scc_entry() != nullptr) {
+      if (mh->aot_code_entry() != nullptr) {
         // Second C2 compilation of the same method could happen for
         // different reasons without marking first entry as not entrant.
         continue; // Keep old entry to avoid issues
       }
-      mh->set_scc_entry(entry);
+      mh->set_aot_code_entry(entry);
       CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0, false, CompileTask::Reason_Preload, CHECK);
     }
   }
 }
 
-static bool check_entry(SCCEntry::Kind kind, uint id, uint comp_level, uint decomp, SCCEntry* entry) {
+static bool check_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level, uint decomp, AOTCodeEntry* entry) {
   if (entry->kind() == kind) {
     assert(entry->id() == id, "sanity");
-    if (kind != SCCEntry::Code || (!entry->not_entrant() && !entry->has_clinit_barriers() &&
+    if (kind != AOTCodeEntry::Code || (!entry->not_entrant() && !entry->has_clinit_barriers() &&
                                   (entry->comp_level() == comp_level) &&
                                   (entry->ignore_decompile() || entry->decompile() == decomp))) {
       return true; // Found
@@ -932,14 +932,14 @@ static bool check_entry(SCCEntry::Kind kind, uint id, uint comp_level, uint deco
   return false;
 }
 
-SCCEntry* SCCache::find_entry(SCCEntry::Kind kind, uint id, uint comp_level, uint decomp) {
+AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level, uint decomp) {
   assert(_for_read, "sanity");
   uint count = _load_header->entries_count();
   if (_load_entries == nullptr) {
     // Read it
     _search_entries = (uint*)addr(_load_header->entries_offset()); // [id, index]
-    _load_entries = (SCCEntry*)(_search_entries + 2 * count);
-    log_info(scc, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
+    _load_entries = (AOTCodeEntry*)(_search_entries + 2 * count);
+    log_info(aot, codecache, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
   }
   // Binary search
   int l = 0;
@@ -950,7 +950,7 @@ SCCEntry* SCCache::find_entry(SCCEntry::Kind kind, uint id, uint comp_level, uin
     uint is = _search_entries[ix];
     if (is == id) {
       int index = _search_entries[ix + 1];
-      SCCEntry* entry = &(_load_entries[index]);
+      AOTCodeEntry* entry = &(_load_entries[index]);
       if (check_entry(kind, id, comp_level, decomp, entry)) {
         return entry; // Found
       }
@@ -962,7 +962,7 @@ SCCEntry* SCCache::find_entry(SCCEntry::Kind kind, uint id, uint comp_level, uin
           break;
         }
         index = _search_entries[ix + 1];
-        SCCEntry* entry = &(_load_entries[index]);
+        AOTCodeEntry* entry = &(_load_entries[index]);
         if (check_entry(kind, id, comp_level, decomp, entry)) {
           return entry; // Found
         }
@@ -974,7 +974,7 @@ SCCEntry* SCCache::find_entry(SCCEntry::Kind kind, uint id, uint comp_level, uin
           break;
         }
         index = _search_entries[ix + 1];
-        SCCEntry* entry = &(_load_entries[index]);
+        AOTCodeEntry* entry = &(_load_entries[index]);
         if (check_entry(kind, id, comp_level, decomp, entry)) {
           return entry; // Found
         }
@@ -989,7 +989,7 @@ SCCEntry* SCCache::find_entry(SCCEntry::Kind kind, uint id, uint comp_level, uin
   return nullptr;
 }
 
-void SCCache::invalidate_entry(SCCEntry* entry) {
+void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
   assert(entry!= nullptr, "all entries should be read already");
   if (entry->not_entrant()) {
     return; // Someone invalidated it already
@@ -1022,7 +1022,7 @@ void SCCache::invalidate_entry(SCCEntry* entry) {
   {
     uint name_offset = entry->offset() + entry->name_offset();
     const char* name;
-    if (SCCache::is_loaded(entry)) {
+    if (AOTCodeCache::is_loaded(entry)) {
       name = _load_buffer + name_offset;
     } else {
       name = _store_buffer + name_offset;
@@ -1031,7 +1031,7 @@ void SCCache::invalidate_entry(SCCEntry* entry) {
     uint comp_id = entry->comp_id();
     uint decomp  = entry->decompile();
     bool clinit_brs = entry->has_clinit_barriers();
-    log_info(scc, nmethod)("Invalidated entry for '%s' (comp_id %d, comp_level %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s)",
+    log_info(aot, codecache, nmethod)("Invalidated entry for '%s' (comp_id %d, comp_level %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s)",
                            name, comp_id, level, decomp, entry->id(), (clinit_brs ? ", has clinit barriers" : ""));
   }
   if (entry->next() != nullptr) {
@@ -1049,7 +1049,7 @@ static int uint_cmp(const void *i, const void *j) {
 
 AOTCodeStats AOTCodeStats::add_cached_code_stats(AOTCodeStats stats1, AOTCodeStats stats2) {
   AOTCodeStats result;
-  for (int kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+  for (int kind = AOTCodeEntry::None; kind < AOTCodeEntry::Kind_count; kind++) {
     result.ccstats._kind_cnt[kind] = stats1.entry_count(kind) + stats2.entry_count(kind);
   }
 
@@ -1060,8 +1060,8 @@ AOTCodeStats AOTCodeStats::add_cached_code_stats(AOTCodeStats stats1, AOTCodeSta
   return result;
 }
 
-void SCCache::log_stats_on_exit() {
-  LogStreamHandle(Info, scc, exit) log;
+void AOTCodeCache::log_stats_on_exit() {
+  LogStreamHandle(Info, aot, codecache, exit) log;
   if (log.is_enabled()) {
     AOTCodeStats prev_stats;
     AOTCodeStats current_stats;
@@ -1084,13 +1084,13 @@ void SCCache::log_stats_on_exit() {
     }
     total_stats = AOTCodeStats::add_cached_code_stats(prev_stats, current_stats);
 
-    log.print_cr("Wrote %d SCCEntry entries(%u max size) to AOT Code Cache",
+    log.print_cr("Wrote %d AOTCodeEntry entries(%u max size) to AOT Code Cache",
                  total_stats.total_count(), max_size);
-    for (uint kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+    for (uint kind = AOTCodeEntry::None; kind < AOTCodeEntry::Kind_count; kind++) {
       if (total_stats.entry_count(kind) > 0) {
         log.print_cr("  %s: total=%u(old=%u+new=%u)",
-                     sccentry_kind_name[kind], total_stats.entry_count(kind), prev_stats.entry_count(kind), current_stats.entry_count(kind));
-        if (kind == SCCEntry::Code) {
+                     aot_code_entry_kind_name[kind], total_stats.entry_count(kind), prev_stats.entry_count(kind), current_stats.entry_count(kind));
+        if (kind == AOTCodeEntry::Code) {
           for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
             if (total_stats.nmethod_count(lvl) > 0) {
               log.print_cr("    Tier %d: total=%u(old=%u+new=%u)",
@@ -1104,7 +1104,7 @@ void SCCache::log_stats_on_exit() {
   }
 }
 
-bool SCCache::finish_write() {
+bool AOTCodeCache::finish_write() {
   if (!align_write()) {
     return false;
   }
@@ -1126,12 +1126,12 @@ bool SCCache::finish_write() {
     _cached_code_directory = CachedCodeDirectory::create();
     assert(_cached_code_directory != nullptr, "Sanity check");
 
-    uint header_size = (uint)align_up(sizeof(SCCHeader),  DATA_ALIGNMENT);
+    uint header_size = (uint)align_up(sizeof(AOTCodeCache::Header),  DATA_ALIGNMENT);
     uint load_count = (_load_header != nullptr) ? _load_header->entries_count() : 0;
     uint code_count = store_count + load_count;
     uint search_count = code_count * 2;
     uint search_size = search_count * sizeof(uint);
-    uint entries_size = (uint)align_up(code_count * sizeof(SCCEntry), DATA_ALIGNMENT); // In bytes
+    uint entries_size = (uint)align_up(code_count * sizeof(AOTCodeEntry), DATA_ALIGNMENT); // In bytes
     uint preload_entries_cnt = 0;
     uint* preload_entries = NEW_C_HEAP_ARRAY(uint, code_count, mtCode);
     uint preload_entries_size = code_count * sizeof(uint);
@@ -1150,7 +1150,7 @@ bool SCCache::finish_write() {
     char* start = align_up(buffer, DATA_ALIGNMENT);
     char* current = start + header_size; // Skip header
 
-    SCCEntry* entries_address = _store_entries; // Pointer to latest entry
+    AOTCodeEntry* entries_address = _store_entries; // Pointer to latest entry
 
     // Add old entries first
     if (_for_read && (_load_header != nullptr)) {
@@ -1159,7 +1159,7 @@ bool SCCache::finish_write() {
           continue;
         }
         if (_load_entries[i].not_entrant()) {
-          log_info(scc, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
+          log_info(aot, codecache, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
           if (_load_entries[i].for_preload()) {
             // Skip not entrant preload code:
             // we can't pre-load code which may have failing dependencies.
@@ -1175,8 +1175,8 @@ bool SCCache::finish_write() {
           copy_bytes((_load_buffer + _load_entries[i].offset()), (address)current, size);
           _load_entries[i].set_offset(current - start); // New offset
           current += size;
-          uint n = write_bytes(&(_load_entries[i]), sizeof(SCCEntry));
-          if (n != sizeof(SCCEntry)) {
+          uint n = write_bytes(&(_load_entries[i]), sizeof(AOTCodeEntry));
+          if (n != sizeof(AOTCodeEntry)) {
             FREE_C_HEAP_ARRAY(char, buffer);
             FREE_C_HEAP_ARRAY(uint, search);
             return false;
@@ -1187,14 +1187,14 @@ bool SCCache::finish_write() {
         }
       }
     }
-    // SCCEntry entries were allocated in reverse in store buffer.
+    // AOTCodeEntry entries were allocated in reverse in store buffer.
     // Process them in reverse order to cache first code first.
     for (int i = store_count - 1; i >= 0; i--) {
       if (entries_address[i].load_fail()) {
         continue;
       }
       if (entries_address[i].not_entrant()) {
-        log_info(scc, exit)("Not entrant new entry comp_id: %d, comp_level: %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s", entries_address[i].comp_id(), entries_address[i].comp_level(), entries_address[i].decompile(), entries_address[i].id(), (entries_address[i].has_clinit_barriers() ? ", has clinit barriers" : ""));
+        log_info(aot, codecache, exit)("Not entrant new entry comp_id: %d, comp_level: %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s", entries_address[i].comp_id(), entries_address[i].comp_level(), entries_address[i].decompile(), entries_address[i].id(), (entries_address[i].has_clinit_barriers() ? ", has clinit barriers" : ""));
         if (entries_address[i].for_preload()) {
           // Skip not entrant preload code:
           // we can't pre-load code which may have failing dependencies.
@@ -1212,8 +1212,8 @@ bool SCCache::finish_write() {
         entries_address[i].set_offset(current - start); // New offset
         entries_address[i].update_method_for_writing();
         current += size;
-        uint n = write_bytes(&(entries_address[i]), sizeof(SCCEntry));
-        if (n != sizeof(SCCEntry)) {
+        uint n = write_bytes(&(entries_address[i]), sizeof(AOTCodeEntry));
+        if (n != sizeof(AOTCodeEntry)) {
           FREE_C_HEAP_ARRAY(char, buffer);
           FREE_C_HEAP_ARRAY(uint, search);
           return false;
@@ -1225,7 +1225,7 @@ bool SCCache::finish_write() {
     }
 
     if (entries_count == 0) {
-      log_info(scc, exit)("No entires written to AOT Code Cache");
+      log_info(aot, codecache, exit)("No entires written to AOT Code Cache");
       FREE_C_HEAP_ARRAY(char, buffer);
       FREE_C_HEAP_ARRAY(uint, search);
       return true; // Nothing to write
@@ -1242,7 +1242,7 @@ bool SCCache::finish_write() {
     if (preload_entries_size > 0) {
       copy_bytes((const char*)preload_entries, (address)current, preload_entries_size);
       current += preload_entries_size;
-      log_info(scc, exit)("Wrote %d preload entries to AOT Code Cache", preload_entries_cnt);
+      log_info(aot, codecache, exit)("Wrote %d preload entries to AOT Code Cache", preload_entries_cnt);
     }
     if (preload_entries != nullptr) {
       FREE_C_HEAP_ARRAY(uint, preload_entries);
@@ -1257,7 +1257,7 @@ bool SCCache::finish_write() {
     current += search_size;
 
     // Write entries
-    entries_size = entries_count * sizeof(SCCEntry); // New size
+    entries_size = entries_count * sizeof(AOTCodeEntry); // New size
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
     current += entries_size;
 
@@ -1267,27 +1267,27 @@ bool SCCache::finish_write() {
     assert(size <= total_size, "%d > %d", size , total_size);
 
     // Finalize header
-    SCCHeader* header = (SCCHeader*)start;
+    AOTCodeCache::Header* header = (AOTCodeCache::Header*)start;
     header->init(size,
                  (uint)strings_count, strings_offset,
                  entries_count, new_entries_offset,
                  preload_entries_cnt, preload_entries_offset,
                  _use_meta_ptrs);
-    log_info(scc, init)("Wrote SCCache header to AOT Code Cache");
-    log_info(scc, exit)("Wrote %d bytes of data to AOT Code Cache", size);
+    log_info(aot, codecache, init)("Wrote AOTCodeCache header to AOT Code Cache");
+    log_info(aot, codecache, exit)("Wrote %d bytes of data to AOT Code Cache", size);
 
     _cached_code_directory->set_aot_code_data(size, start);
   }
   return true;
 }
 
-bool SCCache::load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) {
+bool AOTCodeCache::load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) {
   assert(start == cgen->assembler()->pc(), "wrong buffer");
-  SCCache* cache = open_for_read();
+  AOTCodeCache* cache = open_for_read();
   if (cache == nullptr) {
     return false;
   }
-  SCCEntry* entry = cache->find_entry(SCCEntry::Stub, (uint)id);
+  AOTCodeEntry* entry = cache->find_entry(AOTCodeEntry::Stub, (uint)id);
   if (entry == nullptr) {
     return false;
   }
@@ -1297,27 +1297,27 @@ bool SCCache::load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* n
   uint name_size   = entry->name_size(); // Includes '/0'
   const char* saved_name = cache->addr(name_offset);
   if (strncmp(name, saved_name, (name_size - 1)) != 0) {
-    log_warning(scc)("Saved stub's name '%s' is different from '%s' for id:%d", saved_name, name, (int)id);
+    log_warning(aot, codecache)("Saved stub's name '%s' is different from '%s' for id:%d", saved_name, name, (int)id);
     cache->set_failed();
     exit_vm_on_load_failure();
     return false;
   }
-  log_info(scc,stubs)("Reading stub '%s' id:%d from AOT Code Cache", name, (int)id);
+  log_info(aot, codecache,stubs)("Reading stub '%s' id:%d from AOT Code Cache", name, (int)id);
   // Read code
   uint code_offset = entry->code_offset() + entry_position;
   uint code_size   = entry->code_size();
   copy_bytes(cache->addr(code_offset), start, code_size);
   cgen->assembler()->code_section()->set_end(start + code_size);
-  log_info(scc,stubs)("Read stub '%s' id:%d from AOT Code Cache", name, (int)id);
+  log_info(aot, codecache,stubs)("Read stub '%s' id:%d from AOT Code Cache", name, (int)id);
   return true;
 }
 
-bool SCCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) {
-  SCCache* cache = open_for_write();
+bool AOTCodeCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) {
+  AOTCodeCache* cache = open_for_write();
   if (cache == nullptr) {
     return false;
   }
-  log_info(scc, stubs)("Writing stub '%s' id:%d to AOT Code Cache", name, (int)id);
+  log_info(aot, codecache, stubs)("Writing stub '%s' id:%d to AOT Code Cache", name, (int)id);
   if (!cache->align_write()) {
     return false;
   }
@@ -1358,14 +1358,14 @@ bool SCCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* 
     return false;
   }
   uint entry_size = cache->_write_position - entry_position;
-  SCCEntry* entry = new(cache) SCCEntry(entry_position, entry_size, name_offset, name_size,
+  AOTCodeEntry* entry = new(cache) AOTCodeEntry(entry_position, entry_size, name_offset, name_size,
                                         code_offset, code_size, 0, 0,
-                                        SCCEntry::Stub, (uint32_t)id);
-  log_info(scc, stubs)("Wrote stub '%s' id:%d to AOT Code Cache", name, (int)id);
+                                        AOTCodeEntry::Stub, (uint32_t)id);
+  log_info(aot, codecache, stubs)("Wrote stub '%s' id:%d to AOT Code Cache", name, (int)id);
   return true;
 }
 
-Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
+Klass* AOTCodeReader::read_klass(const methodHandle& comp_method, bool shared) {
   uint code_offset = read_position();
   uint state = *(uint*)addr(code_offset);
   uint init_state = (state  & 1);
@@ -1379,21 +1379,21 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
     if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
       // Something changed in CDS
       set_lookup_failed();
-      log_info(scc)("Lookup failed for shared klass: " INTPTR_FORMAT " is not in CDS ", p2i((address)k));
+      log_info(aot, codecache)("Lookup failed for shared klass: " INTPTR_FORMAT " is not in CDS ", p2i((address)k));
       return nullptr;
     }
     assert(k->is_klass(), "sanity");
     ResourceMark rm;
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_loaded()) {
       set_lookup_failed();
-      log_info(scc)("%d '%s' (L%d): Lookup failed for klass %s: not loaded",
+      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for klass %s: not loaded",
                        compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
       return nullptr;
     } else
     // Allow not initialized klass which was uninitialized during code caching or for preload
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1) && !_preload) {
       set_lookup_failed();
-      log_info(scc)("%d '%s' (L%d): Lookup failed for klass %s: not initialized",
+      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for klass %s: not initialized",
                        compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
       return nullptr;
     }
@@ -1405,13 +1405,13 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
 //      guarantee(JavaThread::current()->pending_exception() == nullptr, "");
       if (ak == nullptr) {
         set_lookup_failed();
-        log_info(scc)("%d (L%d): %d-dimension array klass lookup failed: %s",
+        log_info(aot, codecache)("%d (L%d): %d-dimension array klass lookup failed: %s",
                          compile_id(), comp_level(), array_dim, k->external_name());
       }
-      log_info(scc)("%d (L%d): Klass lookup: %s (object array)", compile_id(), comp_level(), k->external_name());
+      log_info(aot, codecache)("%d (L%d): Klass lookup: %s (object array)", compile_id(), comp_level(), k->external_name());
       return ak;
     } else {
-      log_info(scc)("%d (L%d): Shared klass lookup: %s",
+      log_info(aot, codecache)("%d (L%d): Shared klass lookup: %s",
                     compile_id(), comp_level(), k->external_name());
       return k;
     }
@@ -1424,7 +1424,7 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
   TempNewSymbol klass_sym = SymbolTable::probe(&(dest[0]), name_length);
   if (klass_sym == nullptr) {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Probe failed for class %s",
+    log_info(aot, codecache)("%d (L%d): Probe failed for class %s",
                      compile_id(), comp_level(), &(dest[0]));
     return nullptr;
   }
@@ -1442,19 +1442,19 @@ Klass* SCCReader::read_klass(const methodHandle& comp_method, bool shared) {
     // Allow not initialized klass which was uninitialized during code caching
     if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1)) {
       set_lookup_failed();
-      log_info(scc)("%d (L%d): Lookup failed for klass %s: not initialized", compile_id(), comp_level(), &(dest[0]));
+      log_info(aot, codecache)("%d (L%d): Lookup failed for klass %s: not initialized", compile_id(), comp_level(), &(dest[0]));
       return nullptr;
     }
-    log_info(scc)("%d (L%d): Klass lookup %s", compile_id(), comp_level(), k->external_name());
+    log_info(aot, codecache)("%d (L%d): Klass lookup %s", compile_id(), comp_level(), k->external_name());
   } else {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Lookup failed for class %s", compile_id(), comp_level(), &(dest[0]));
+    log_info(aot, codecache)("%d (L%d): Lookup failed for class %s", compile_id(), comp_level(), &(dest[0]));
     return nullptr;
   }
   return k;
 }
 
-Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
+Method* AOTCodeReader::read_method(const methodHandle& comp_method, bool shared) {
   uint code_offset = read_position();
   if (_cache->use_meta_ptrs() && shared) {
     uint method_offset = *(uint*)addr(code_offset);
@@ -1464,7 +1464,7 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
     if (!MetaspaceShared::is_in_shared_metaspace((address)m)) {
       // Something changed in CDS
       set_lookup_failed();
-      log_info(scc)("Lookup failed for shared method: " INTPTR_FORMAT " is not in CDS ", p2i((address)m));
+      log_info(aot, codecache)("Lookup failed for shared method: " INTPTR_FORMAT " is not in CDS ", p2i((address)m));
       return nullptr;
     }
     assert(m->is_method(), "sanity");
@@ -1472,26 +1472,26 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
     Klass* k = m->method_holder();
     if (!k->is_instance_klass()) {
       set_lookup_failed();
-      log_info(scc)("%d '%s' (L%d): Lookup failed for holder %s: not instance klass",
+      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for holder %s: not instance klass",
                     compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
       return nullptr;
     } else if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
       set_lookup_failed();
-      log_info(scc)("%d '%s' (L%d): Lookup failed for holder %s: not in CDS",
+      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for holder %s: not in CDS",
                     compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_loaded()) {
       set_lookup_failed();
-      log_info(scc)("%d '%s' (L%d): Lookup failed for holder %s: not loaded",
+      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for holder %s: not loaded",
                     compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_linked()) {
       set_lookup_failed();
-      log_info(scc)("%d '%s' (L%d): Lookup failed for holder %s: not linked%s",
+      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for holder %s: not linked%s",
                     compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name(), (_preload ? " for code preload" : ""));
       return nullptr;
     }
-    log_info(scc)("%d (L%d): Shared method lookup: %s",
+    log_info(aot, codecache)("%d (L%d): Shared method lookup: %s",
                   compile_id(), comp_level(), m->name_and_sig_as_C_string());
     return m;
   }
@@ -1508,7 +1508,7 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
   TempNewSymbol klass_sym = SymbolTable::probe(&(dest[0]), holder_length);
   if (klass_sym == nullptr) {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Probe failed for class %s", compile_id(), comp_level(), &(dest[0]));
+    log_info(aot, codecache)("%d (L%d): Probe failed for class %s", compile_id(), comp_level(), &(dest[0]));
     return nullptr;
   }
   // Use class loader of compiled method.
@@ -1524,19 +1524,19 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
   if (k != nullptr) {
     if (!k->is_instance_klass()) {
       set_lookup_failed();
-      log_info(scc)("%d (L%d): Lookup failed for holder %s: not instance klass",
+      log_info(aot, codecache)("%d (L%d): Lookup failed for holder %s: not instance klass",
                        compile_id(), comp_level(), &(dest[0]));
       return nullptr;
     } else if (!InstanceKlass::cast(k)->is_linked()) {
       set_lookup_failed();
-      log_info(scc)("%d (L%d): Lookup failed for holder %s: not linked",
+      log_info(aot, codecache)("%d (L%d): Lookup failed for holder %s: not linked",
                        compile_id(), comp_level(), &(dest[0]));
       return nullptr;
     }
-    log_info(scc)("%d (L%d): Holder lookup: %s", compile_id(), comp_level(), k->external_name());
+    log_info(aot, codecache)("%d (L%d): Holder lookup: %s", compile_id(), comp_level(), k->external_name());
   } else {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Lookup failed for holder %s",
+    log_info(aot, codecache)("%d (L%d): Lookup failed for holder %s",
                   compile_id(), comp_level(), &(dest[0]));
     return nullptr;
   }
@@ -1545,30 +1545,30 @@ Method* SCCReader::read_method(const methodHandle& comp_method, bool shared) {
   TempNewSymbol sign_sym = SymbolTable::probe(&(dest[pos]), signat_length);
   if (name_sym == nullptr) {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Probe failed for method name %s",
+    log_info(aot, codecache)("%d (L%d): Probe failed for method name %s",
                      compile_id(), comp_level(), &(dest[holder_length + 1]));
     return nullptr;
   }
   if (sign_sym == nullptr) {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Probe failed for method signature %s",
+    log_info(aot, codecache)("%d (L%d): Probe failed for method signature %s",
                      compile_id(), comp_level(), &(dest[pos]));
     return nullptr;
   }
   Method* m = InstanceKlass::cast(k)->find_method(name_sym, sign_sym);
   if (m != nullptr) {
     ResourceMark rm;
-    log_info(scc)("%d (L%d): Method lookup: %s", compile_id(), comp_level(), m->name_and_sig_as_C_string());
+    log_info(aot, codecache)("%d (L%d): Method lookup: %s", compile_id(), comp_level(), m->name_and_sig_as_C_string());
   } else {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Lookup failed for method %s::%s%s",
+    log_info(aot, codecache)("%d (L%d): Lookup failed for method %s::%s%s",
                      compile_id(), comp_level(), &(dest[0]), &(dest[holder_length + 1]), &(dest[pos]));
     return nullptr;
   }
   return m;
 }
 
-bool SCCache::write_klass(Klass* klass) {
+bool AOTCodeCache::write_klass(Klass* klass) {
   bool can_use_meta_ptrs = _use_meta_ptrs;
   uint array_dim = 0;
   if (klass->is_objArray_klass()) {
@@ -1613,7 +1613,7 @@ bool SCCache::write_klass(Klass* klass) {
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(scc)("%d (L%d): Wrote shared klass: %s%s%s @ 0x%08x", compile_id(), comp_level(), klass->external_name(),
+    log_info(aot, codecache)("%d (L%d): Wrote shared klass: %s%s%s @ 0x%08x", compile_id(), comp_level(), klass->external_name(),
                   (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
                   (array_dim > 0 ? " (object array)" : ""),
                   klass_offset);
@@ -1626,7 +1626,7 @@ bool SCCache::write_klass(Klass* klass) {
     return false;
   }
   _for_preload = false;
-  log_info(scc,cds)("%d (L%d): Not shared klass: %s", compile_id(), comp_level(), klass->external_name());
+  log_info(aot, codecache,cds)("%d (L%d): Not shared klass: %s", compile_id(), comp_level(), klass->external_name());
   if (klass->is_hidden()) { // Skip such nmethod
     set_lookup_failed();
     return false;
@@ -1647,7 +1647,7 @@ bool SCCache::write_klass(Klass* klass) {
   char* dest = NEW_RESOURCE_ARRAY(char, total_length);
   name->as_C_string(dest, total_length);
   dest[total_length - 1] = '\0';
-  LogTarget(Info, scc, loader) log;
+  LogTarget(Info, aot, codecache, loader) log;
   if (log.is_enabled()) {
     LogStream ls(log);
     oop loader = klass->class_loader();
@@ -1674,14 +1674,14 @@ bool SCCache::write_klass(Klass* klass) {
   if (n != (uint)total_length) {
     return false;
   }
-  log_info(scc)("%d (L%d): Wrote klass: %s%s%s",
+  log_info(aot, codecache)("%d (L%d): Wrote klass: %s%s%s",
                 compile_id(), comp_level(),
                 dest, (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
                 (array_dim > 0 ? " (object array)" : ""));
   return true;
 }
 
-bool SCCache::write_method(Method* method) {
+bool AOTCodeCache::write_method(Method* method) {
   bool can_use_meta_ptrs = _use_meta_ptrs;
   Klass* klass = method->method_holder();
   if (klass->is_instance_klass()) {
@@ -1714,7 +1714,7 @@ bool SCCache::write_method(Method* method) {
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(scc)("%d (L%d): Wrote shared method: %s @ 0x%08x", compile_id(), comp_level(), method->name_and_sig_as_C_string(), method_offset);
+    log_info(aot, codecache)("%d (L%d): Wrote shared method: %s @ 0x%08x", compile_id(), comp_level(), method->name_and_sig_as_C_string(), method_offset);
     return true;
   }
   // Bailout if code has clinit barriers:
@@ -1724,7 +1724,7 @@ bool SCCache::write_method(Method* method) {
     return false;
   }
   _for_preload = false;
-  log_info(scc,cds)("%d (L%d): Not shared method: %s", compile_id(), comp_level(), method->name_and_sig_as_C_string());
+  log_info(aot, codecache,cds)("%d (L%d): Not shared method: %s", compile_id(), comp_level(), method->name_and_sig_as_C_string());
   if (method->is_hidden()) { // Skip such nmethod
     set_lookup_failed();
     return false;
@@ -1753,7 +1753,7 @@ bool SCCache::write_method(Method* method) {
   signat->as_C_string(&(dest[pos]), (total_length - pos));
   dest[total_length - 1] = '\0';
 
-  LogTarget(Info, scc, loader) log;
+  LogTarget(Info, aot, codecache, loader) log;
   if (log.is_enabled()) {
     LogStream ls(log);
     oop loader = klass->class_loader();
@@ -1791,12 +1791,12 @@ bool SCCache::write_method(Method* method) {
   }
   dest[holder_length] = ' ';
   dest[holder_length + 1 + name_length] = ' ';
-  log_info(scc)("%d (L%d): Wrote method: %s", compile_id(), comp_level(), dest);
+  log_info(aot, codecache)("%d (L%d): Wrote method: %s", compile_id(), comp_level(), dest);
   return true;
 }
 
 // Repair the pc relative information in the code after load
-bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
+bool AOTCodeReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
                                  OopRecorder* oop_recorder, ciMethod* target) {
   bool success = true;
   for (int i = 0; i < (int)CodeBuffer::SECT_LIMIT; i++) {
@@ -1826,7 +1826,7 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
     uint* reloc_data = (uint*)addr(code_offset);
     code_offset += data_size;
     set_read_position(code_offset);
-    LogStreamHandle(Info, scc, reloc) log;
+    LogStreamHandle(Info, aot, codecache, reloc) log;
     if (log.is_enabled()) {
       log.print_cr("======== read code section %d relocations [%d]:", i, reloc_count);
     }
@@ -1949,20 +1949,20 @@ bool SCCReader::read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer,
   return success;
 }
 
-bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code_offset) {
+bool AOTCodeReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code_offset) {
   assert(code_offset == align_up(code_offset, DATA_ALIGNMENT), "%d not aligned to %d", code_offset, DATA_ALIGNMENT);
-  SCCodeSection* scc_cs = (SCCodeSection*)addr(code_offset);
+  AOTCodeSection* aot_cs = (AOTCodeSection*)addr(code_offset);
   for (int i = 0; i < (int)CodeBuffer::SECT_LIMIT; i++) {
     CodeSection* cs = buffer->code_section(i);
     // Read original section size and address.
-    uint orig_size = scc_cs[i]._size;
-    log_debug(scc)("======== read code section %d [%d]:", i, orig_size);
+    uint orig_size = aot_cs[i]._size;
+    log_debug(aot, codecache)("======== read code section %d [%d]:", i, orig_size);
     uint orig_size_align = align_up(orig_size, DATA_ALIGNMENT);
     if (i != (int)CodeBuffer::SECT_INSTS) {
       buffer->initialize_section_size(cs, orig_size_align);
     }
     if (orig_size_align > (uint)cs->capacity()) { // Will not fit
-      log_info(scc)("%d (L%d): original code section %d size %d > current capacity %d",
+      log_info(aot, codecache)("%d (L%d): original code section %d size %d > current capacity %d",
                        compile_id(), comp_level(), i, orig_size, cs->capacity());
       return false;
     }
@@ -1970,7 +1970,7 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
       assert(cs->size() == 0, "should match");
       continue;  // skip trivial section
     }
-    address orig_start = scc_cs[i]._origin_address;
+    address orig_start = aot_cs[i]._origin_address;
 
     // Populate fake original buffer (no code allocation in CodeCache).
     // It is used for relocations to calculate sections addesses delta.
@@ -1980,43 +1980,43 @@ bool SCCReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code
 
     // Load code to new buffer.
     address code_start = cs->start();
-    copy_bytes(addr(scc_cs[i]._offset + code_offset), code_start, orig_size_align);
+    copy_bytes(addr(aot_cs[i]._offset + code_offset), code_start, orig_size_align);
     cs->set_end(code_start + orig_size);
   }
 
   return true;
 }
 
-bool SCCache::load_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
+bool AOTCodeCache::load_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
 #ifdef ASSERT
-  LogStreamHandle(Debug, scc, stubs) log;
+  LogStreamHandle(Debug, aot, codecache, stubs) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
     buffer->print_on(&log);
   }
 #endif
-  SCCache* cache = open_for_read();
+  AOTCodeCache* cache = open_for_read();
   if (cache == nullptr) {
     return false;
   }
-  log_info(scc, stubs)("Looking up adapter %s (0x%x) in AOT Code Cache", name, id);
-  SCCEntry* entry = cache->find_entry(SCCEntry::Adapter, id);
+  log_info(aot, codecache, stubs)("Looking up adapter %s (0x%x) in AOT Code Cache", name, id);
+  AOTCodeEntry* entry = cache->find_entry(AOTCodeEntry::Adapter, id);
   if (entry == nullptr) {
     return false;
   }
-  SCCReader reader(cache, entry, nullptr);
+  AOTCodeReader reader(cache, entry, nullptr);
   return reader.compile_adapter(buffer, name, offsets);
 }
-bool SCCReader::compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]) {
+bool AOTCodeReader::compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]) {
   uint entry_position = _entry->offset();
   // Read name
   uint name_offset = entry_position + _entry->name_offset();
   uint name_size = _entry->name_size(); // Includes '/0'
   const char* stored_name = addr(name_offset);
-  log_info(scc, stubs)("%d (L%d): Reading adapter '%s' from AOT Code Cache",
+  log_info(aot, codecache, stubs)("%d (L%d): Reading adapter '%s' from AOT Code Cache",
                        compile_id(), comp_level(), name);
   if (strncmp(stored_name, name, (name_size - 1)) != 0) {
-    log_warning(scc)("%d (L%d): Saved adapter's name '%s' is different from '%s'",
+    log_warning(aot, codecache)("%d (L%d): Saved adapter's name '%s' is different from '%s'",
                      compile_id(), comp_level(), stored_name, name);
     // n.b. this is not fatal -- we have just seen a hash id clash
     // so no need to call cache->set_failed()
@@ -2043,14 +2043,14 @@ bool SCCReader::compile_adapter(CodeBuffer* buffer, const char* name, uint32_t o
   for (int i = 0; i < offsets_count; i++) {
     uint32_t arg = *(uint32_t*)addr(offset);
     offset += sizeof(uint32_t);
-    log_debug(scc, stubs)("%d (L%d): Reading adapter '%s'  offsets[%d] == 0x%x from AOT Code Cache",
+    log_debug(aot, codecache, stubs)("%d (L%d): Reading adapter '%s'  offsets[%d] == 0x%x from AOT Code Cache",
                          compile_id(), comp_level(), stored_name, i, arg);
     offsets[i] = arg;
   }
-  log_debug(scc, stubs)("%d (L%d): Read adapter '%s' with '%d' args from AOT Code Cache",
+  log_debug(aot, codecache, stubs)("%d (L%d): Read adapter '%s' with '%d' args from AOT Code Cache",
                        compile_id(), comp_level(), stored_name, offsets_count);
 #ifdef ASSERT
-  LogStreamHandle(Debug, scc, stubs) log;
+  LogStreamHandle(Debug, aot, codecache, stubs) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
     buffer->print_on(&log);
@@ -2058,31 +2058,31 @@ bool SCCReader::compile_adapter(CodeBuffer* buffer, const char* name, uint32_t o
   }
 #endif
   // mark entry as loaded
-  ((SCCEntry *)_entry)->set_loaded();
+  ((AOTCodeEntry *)_entry)->set_loaded();
   return true;
 }
 
-bool SCCache::load_exception_blob(CodeBuffer* buffer, int* pc_offset) {
+bool AOTCodeCache::load_exception_blob(CodeBuffer* buffer, int* pc_offset) {
 #ifdef ASSERT
-  LogStreamHandle(Debug, scc, nmethod) log;
+  LogStreamHandle(Debug, aot, codecache, nmethod) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
     buffer->print_on(&log);
   }
 #endif
-  SCCache* cache = open_for_read();
+  AOTCodeCache* cache = open_for_read();
   if (cache == nullptr) {
     return false;
   }
-  SCCEntry* entry = cache->find_entry(SCCEntry::Blob, 999);
+  AOTCodeEntry* entry = cache->find_entry(AOTCodeEntry::Blob, 999);
   if (entry == nullptr) {
     return false;
   }
-  SCCReader reader(cache, entry, nullptr);
+  AOTCodeReader reader(cache, entry, nullptr);
   return reader.compile_blob(buffer, pc_offset);
 }
 
-bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
+bool AOTCodeReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
   uint entry_position = _entry->offset();
 
   // Read pc_offset
@@ -2093,13 +2093,13 @@ bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
   uint name_size = _entry->name_size(); // Includes '/0'
   const char* name = addr(name_offset);
 
-  log_info(scc, stubs)("%d (L%d): Reading blob '%s' with pc_offset %d from AOT Code Cache",
+  log_info(aot, codecache, stubs)("%d (L%d): Reading blob '%s' with pc_offset %d from AOT Code Cache",
                        compile_id(), comp_level(), name, *pc_offset);
 
   if (strncmp(buffer->name(), name, (name_size - 1)) != 0) {
-    log_warning(scc)("%d (L%d): Saved blob's name '%s' is different from '%s'",
-                     compile_id(), comp_level(), name, buffer->name());
-    ((SCCache*)_cache)->set_failed();
+    log_warning(aot, codecache)("%d (L%d): Saved blob's name '%s' is different from '%s'",
+                                compile_id(), comp_level(), name, buffer->name());
+    ((AOTCodeCache*)_cache)->set_failed();
     exit_vm_on_load_failure();
     return false;
   }
@@ -2120,10 +2120,10 @@ bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
     return false;
   }
 
-  log_info(scc, stubs)("%d (L%d): Read blob '%s' from AOT Code Cache",
+  log_info(aot, codecache, stubs)("%d (L%d): Read blob '%s' from AOT Code Cache",
                        compile_id(), comp_level(), name);
 #ifdef ASSERT
-  LogStreamHandle(Debug, scc, nmethod) log;
+  LogStreamHandle(Debug, aot, codecache, nmethod) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
     buffer->print_on(&log);
@@ -2133,7 +2133,7 @@ bool SCCReader::compile_blob(CodeBuffer* buffer, int* pc_offset) {
   return true;
 }
 
-bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
+bool AOTCodeCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
   uint all_reloc_count = 0;
   for (int i = 0; i < (int)CodeBuffer::SECT_LIMIT; i++) {
     CodeSection* cs = buffer->code_section(i);
@@ -2168,7 +2168,7 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
       success = false;
       break;
     }
-    LogStreamHandle(Info, scc, reloc) log;
+    LogStreamHandle(Info, aot, codecache, reloc) log;
     if (log.is_enabled()) {
       log.print_cr("======== write code section %d relocations [%d]:", i, reloc_count);
     }
@@ -2305,15 +2305,15 @@ bool SCCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
   return success;
 }
 
-bool SCCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
+bool AOTCodeCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
   assert(CDSConfig::is_dumping_adapters(), "must be");
-  SCCache* cache = open_for_write();
+  AOTCodeCache* cache = open_for_write();
   if (cache == nullptr) {
     return false;
   }
-  log_info(scc, stubs)("Writing adapter '%s' (0x%x) to AOT Code Cache", name, id);
+  log_info(aot, codecache, stubs)("Writing adapter '%s' (0x%x) to AOT Code Cache", name, id);
 #ifdef ASSERT
-  LogStreamHandle(Debug, scc, stubs) log;
+  LogStreamHandle(Debug, aot, codecache, stubs) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
     buffer->print_on(&log);
@@ -2356,42 +2356,42 @@ bool SCCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, u
   }
   for (int i = 0; i < 4; i++) {
     uint32_t arg = offsets[i];
-    log_debug(scc, stubs)("Writing adapter '%s' (0x%x) offsets[%d] == 0x%x to AOT Code Cache", name, id, i, arg);
+    log_debug(aot, codecache, stubs)("Writing adapter '%s' (0x%x) offsets[%d] == 0x%x to AOT Code Cache", name, id, i, arg);
     n = cache->write_bytes(&arg, sizeof(uint32_t));
     if (n != sizeof(uint32_t)) {
       return false;
     }
   }
   uint entry_size = cache->_write_position - entry_position;
-  SCCEntry* entry = new (cache) SCCEntry(entry_position, entry_size, name_offset, name_size,
+  AOTCodeEntry* entry = new (cache) AOTCodeEntry(entry_position, entry_size, name_offset, name_size,
                                          code_offset, code_size, reloc_offset, reloc_size,
-                                         SCCEntry::Adapter, id);
-  log_info(scc, stubs)("Wrote adapter '%s' (0x%x) to AOT Code Cache", name, id);
+                                         AOTCodeEntry::Adapter, id);
+  log_info(aot, codecache, stubs)("Wrote adapter '%s' (0x%x) to AOT Code Cache", name, id);
   return true;
 }
 
-bool SCCache::write_code(CodeBuffer* buffer, uint& code_size) {
+bool AOTCodeCache::write_code(CodeBuffer* buffer, uint& code_size) {
   assert(_write_position == align_up(_write_position, DATA_ALIGNMENT), "%d not aligned to %d", _write_position, DATA_ALIGNMENT);
   //assert(buffer->blob() != nullptr, "sanity");
   uint code_offset = _write_position;
   uint cb_total_size = (uint)buffer->total_content_size();
   // Write information about Code sections first.
-  SCCodeSection scc_cs[CodeBuffer::SECT_LIMIT];
-  uint scc_cs_size = (uint)(sizeof(SCCodeSection) * CodeBuffer::SECT_LIMIT);
-  uint offset = align_up(scc_cs_size, DATA_ALIGNMENT);
+  AOTCodeSection aot_cs[CodeBuffer::SECT_LIMIT];
+  uint aot_cs_size = (uint)(sizeof(AOTCodeSection) * CodeBuffer::SECT_LIMIT);
+  uint offset = align_up(aot_cs_size, DATA_ALIGNMENT);
   uint total_size = 0;
   for (int i = 0; i < (int)CodeBuffer::SECT_LIMIT; i++) {
     const CodeSection* cs = buffer->code_section(i);
     assert(cs->mark() == nullptr, "CodeSection::_mark is not implemented");
     uint cs_size = (uint)cs->size();
-    scc_cs[i]._size = cs_size;
-    scc_cs[i]._origin_address = (cs_size == 0) ? nullptr : cs->start();
-    scc_cs[i]._offset = (cs_size == 0) ? 0 : (offset + total_size);
+    aot_cs[i]._size = cs_size;
+    aot_cs[i]._origin_address = (cs_size == 0) ? nullptr : cs->start();
+    aot_cs[i]._offset = (cs_size == 0) ? 0 : (offset + total_size);
     assert(cs->mark() == nullptr, "CodeSection::_mark is not implemented");
     total_size += align_up(cs_size, DATA_ALIGNMENT);
   }
-  uint n = write_bytes(scc_cs, scc_cs_size);
-  if (n != scc_cs_size) {
+  uint n = write_bytes(aot_cs, aot_cs_size);
+  if (n != aot_cs_size) {
     return false;
   }
   if (!align_write()) {
@@ -2404,7 +2404,7 @@ bool SCCache::write_code(CodeBuffer* buffer, uint& code_size) {
     if (cs_size == 0) {
       continue;  // skip trivial section
     }
-    assert((_write_position - code_offset) == scc_cs[i]._offset, "%d != %d", _write_position, scc_cs[i]._offset);
+    assert((_write_position - code_offset) == aot_cs[i]._offset, "%d != %d", _write_position, aot_cs[i]._offset);
     // Write code
     n = write_bytes(cs->start(), cs_size);
     if (n != cs_size) {
@@ -2419,15 +2419,15 @@ bool SCCache::write_code(CodeBuffer* buffer, uint& code_size) {
   return true;
 }
 
-bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
-  SCCache* cache = open_for_write();
+bool AOTCodeCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
+  AOTCodeCache* cache = open_for_write();
   if (cache == nullptr) {
     return false;
   }
-  log_info(scc, stubs)("Writing blob '%s' to AOT Code Cache", buffer->name());
+  log_info(aot, codecache, stubs)("Writing blob '%s' to AOT Code Cache", buffer->name());
 
 #ifdef ASSERT
-  LogStreamHandle(Debug, scc, nmethod) log;
+  LogStreamHandle(Debug, aot, codecache, nmethod) log;
   if (log.is_enabled()) {
     FlagSetting fs(PrintRelocations, true);
     buffer->print_on(&log);
@@ -2473,21 +2473,21 @@ bool SCCache::store_exception_blob(CodeBuffer* buffer, int pc_offset) {
   }
 
   uint entry_size = cache->_write_position - entry_position;
-  SCCEntry* entry = new(cache) SCCEntry(entry_position, entry_size, name_offset, name_size,
+  AOTCodeEntry* entry = new(cache) AOTCodeEntry(entry_position, entry_size, name_offset, name_size,
                                         code_offset, code_size, reloc_offset, reloc_size,
-                                        SCCEntry::Blob, (uint32_t)999);
-  log_info(scc, stubs)("Wrote stub '%s' to AOT Code Cache", name);
+                                        AOTCodeEntry::Blob, (uint32_t)999);
+  log_info(aot, codecache, stubs)("Wrote stub '%s' to AOT Code Cache", name);
   return true;
 }
 
-DebugInformationRecorder* SCCReader::read_debug_info(OopRecorder* oop_recorder) {
+DebugInformationRecorder* AOTCodeReader::read_debug_info(OopRecorder* oop_recorder) {
   uint code_offset = align_up(read_position(), DATA_ALIGNMENT);
   int data_size  = *(int*)addr(code_offset);
   code_offset   += sizeof(int);
   int pcs_length = *(int*)addr(code_offset);
   code_offset   += sizeof(int);
 
-  log_debug(scc)("======== read DebugInfo [%d, %d]:", data_size, pcs_length);
+  log_debug(aot, codecache)("======== read DebugInfo [%d, %d]:", data_size, pcs_length);
 
   // Aligned initial sizes
   int data_size_align  = align_up(data_size, DATA_ALIGNMENT);
@@ -2506,7 +2506,7 @@ DebugInformationRecorder* SCCReader::read_debug_info(OopRecorder* oop_recorder) 
   return recorder;
 }
 
-bool SCCache::write_debug_info(DebugInformationRecorder* recorder) {
+bool AOTCodeCache::write_debug_info(DebugInformationRecorder* recorder) {
   if (!align_write()) {
     return false;
   }
@@ -2533,12 +2533,12 @@ bool SCCache::write_debug_info(DebugInformationRecorder* recorder) {
   return true;
 }
 
-OopMapSet* SCCReader::read_oop_maps() {
+OopMapSet* AOTCodeReader::read_oop_maps() {
   uint code_offset = read_position();
   int om_count = *(int*)addr(code_offset);
   code_offset += sizeof(int);
 
-  log_debug(scc)("======== read oop maps [%d]:", om_count);
+  log_debug(aot, codecache)("======== read oop maps [%d]:", om_count);
 
   OopMapSet* oop_maps = new OopMapSet(om_count);
   for (int i = 0; i < (int)om_count; i++) {
@@ -2568,7 +2568,7 @@ OopMapSet* SCCReader::read_oop_maps() {
   return oop_maps;
 }
 
-bool SCCache::write_oop_maps(OopMapSet* oop_maps) {
+bool AOTCodeCache::write_oop_maps(OopMapSet* oop_maps) {
   uint om_count = oop_maps->size();
   uint n = write_bytes(&om_count, sizeof(int));
   if (n != sizeof(int)) {
@@ -2593,7 +2593,7 @@ bool SCCache::write_oop_maps(OopMapSet* oop_maps) {
   return true;
 }
 
-oop SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method) {
+oop AOTCodeReader::read_oop(JavaThread* thread, const methodHandle& comp_method) {
   uint code_offset = read_position();
   oop obj = nullptr;
   DataKind kind = *(DataKind*)addr(code_offset);
@@ -2611,7 +2611,7 @@ oop SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method) {
     obj = k->java_mirror();
     if (obj == nullptr) {
       set_lookup_failed();
-      log_info(scc)("Lookup failed for java_mirror of klass %s", k->external_name());
+      log_info(aot, codecache)("Lookup failed for java_mirror of klass %s", k->external_name());
       return nullptr;
     }
   } else if (kind == DataKind::Primitive) {
@@ -2621,7 +2621,7 @@ oop SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method) {
     set_read_position(code_offset);
     BasicType bt = (BasicType)t;
     obj = java_lang_Class::primitive_mirror(bt);
-    log_info(scc)("%d (L%d): Read primitive type klass: %s", compile_id(), comp_level(), type2name(bt));
+    log_info(aot, codecache)("%d (L%d): Read primitive type klass: %s", compile_id(), comp_level(), type2name(bt));
   } else if (kind == DataKind::String_Shared) {
     code_offset = read_position();
     int k = *(int*)addr(code_offset);
@@ -2638,18 +2638,18 @@ oop SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method) {
     obj = StringTable::intern(&(dest[0]), thread);
     if (obj == nullptr) {
       set_lookup_failed();
-      log_info(scc)("%d (L%d): Lookup failed for String %s",
+      log_info(aot, codecache)("%d (L%d): Lookup failed for String %s",
                        compile_id(), comp_level(), &(dest[0]));
       return nullptr;
     }
     assert(java_lang_String::is_instance(obj), "must be string");
-    log_info(scc)("%d (L%d): Read String: %s", compile_id(), comp_level(), dest);
+    log_info(aot, codecache)("%d (L%d): Read String: %s", compile_id(), comp_level(), dest);
   } else if (kind == DataKind::SysLoader) {
     obj = SystemDictionary::java_system_loader();
-    log_info(scc)("%d (L%d): Read java_system_loader", compile_id(), comp_level());
+    log_info(aot, codecache)("%d (L%d): Read java_system_loader", compile_id(), comp_level());
   } else if (kind == DataKind::PlaLoader) {
     obj = SystemDictionary::java_platform_loader();
-    log_info(scc)("%d (L%d): Read java_platform_loader", compile_id(), comp_level());
+    log_info(aot, codecache)("%d (L%d): Read java_platform_loader", compile_id(), comp_level());
   } else if (kind == DataKind::MH_Oop_Shared) {
     code_offset = read_position();
     int k = *(int*)addr(code_offset);
@@ -2658,19 +2658,19 @@ oop SCCReader::read_oop(JavaThread* thread, const methodHandle& comp_method) {
     obj = CDSAccess::get_archived_object(k);
   } else {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Unknown oop's kind: %d",
+    log_info(aot, codecache)("%d (L%d): Unknown oop's kind: %d",
                      compile_id(), comp_level(), (int)kind);
     return nullptr;
   }
   return obj;
 }
 
-bool SCCReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
+bool AOTCodeReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
   uint code_offset = read_position();
   int oop_count = *(int*)addr(code_offset);
   code_offset += sizeof(int);
   set_read_position(code_offset);
-  log_debug(scc)("======== read oops [%d]:", oop_count);
+  log_debug(aot, codecache)("======== read oops [%d]:", oop_count);
   if (oop_count == 0) {
     return true;
   }
@@ -2688,7 +2688,7 @@ bool SCCReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
       } else {
         oop_recorder->allocate_oop_index(jo);
       }
-      LogStreamHandle(Debug, scc, oops) log;
+      LogStreamHandle(Debug, aot, codecache, oops) log;
       if (log.is_enabled()) {
         log.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
         if (jo == (jobject)Universe::non_oop_word()) {
@@ -2705,7 +2705,7 @@ bool SCCReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
   return true;
 }
 
-Metadata* SCCReader::read_metadata(const methodHandle& comp_method) {
+Metadata* AOTCodeReader::read_metadata(const methodHandle& comp_method) {
   uint code_offset = read_position();
   Metadata* m = nullptr;
   DataKind kind = *(DataKind*)addr(code_offset);
@@ -2731,25 +2731,25 @@ Metadata* SCCReader::read_metadata(const methodHandle& comp_method) {
       m = method->get_method_counters(Thread::current());
       if (m == nullptr) {
         set_lookup_failed();
-        log_info(scc)("%d (L%d): Failed to get MethodCounters", compile_id(), comp_level());
+        log_info(aot, codecache)("%d (L%d): Failed to get MethodCounters", compile_id(), comp_level());
       } else {
-        log_info(scc)("%d (L%d): Read MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
+        log_info(aot, codecache)("%d (L%d): Read MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
       }
     }
   } else {
     set_lookup_failed();
-    log_info(scc)("%d (L%d): Unknown metadata's kind: %d", compile_id(), comp_level(), (int)kind);
+    log_info(aot, codecache)("%d (L%d): Unknown metadata's kind: %d", compile_id(), comp_level(), (int)kind);
   }
   return m;
 }
 
-bool SCCReader::read_metadata(OopRecorder* oop_recorder, ciMethod* target) {
+bool AOTCodeReader::read_metadata(OopRecorder* oop_recorder, ciMethod* target) {
   uint code_offset = read_position();
   int metadata_count = *(int*)addr(code_offset);
   code_offset += sizeof(int);
   set_read_position(code_offset);
 
-  log_debug(scc)("======== read metadata [%d]:", metadata_count);
+  log_debug(aot, codecache)("======== read metadata [%d]:", metadata_count);
 
   if (metadata_count == 0) {
     return true;
@@ -2768,7 +2768,7 @@ bool SCCReader::read_metadata(OopRecorder* oop_recorder, ciMethod* target) {
       } else {
         oop_recorder->allocate_metadata_index(m);
       }
-      LogTarget(Debug, scc, metadata) log;
+      LogTarget(Debug, aot, codecache, metadata) log;
       if (log.is_enabled()) {
         LogStream ls(log);
         ls.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
@@ -2786,12 +2786,12 @@ bool SCCReader::read_metadata(OopRecorder* oop_recorder, ciMethod* target) {
   return true;
 }
 
-bool SCCache::write_oop(jobject& jo) {
+bool AOTCodeCache::write_oop(jobject& jo) {
   oop obj = JNIHandles::resolve(jo);
   return write_oop(obj);
 }
 
-bool SCCache::write_oop(oop obj) {
+bool AOTCodeCache::write_oop(oop obj) {
   DataKind kind;
   uint n = 0;
   if (obj == nullptr) {
@@ -2818,7 +2818,7 @@ bool SCCache::write_oop(oop obj) {
       if (n != sizeof(int)) {
         return false;
       }
-      log_info(scc)("%d (L%d): Write primitive type klass: %s", compile_id(), comp_level(), type2name((BasicType)bt));
+      log_info(aot, codecache)("%d (L%d): Write primitive type klass: %s", compile_id(), comp_level(), type2name((BasicType)bt));
     } else {
       Klass* klass = java_lang_Class::as_Klass(obj);
       if (!write_klass(klass)) {
@@ -2857,16 +2857,16 @@ bool SCCache::write_oop(oop obj) {
     if (n != (uint)length) {
       return false;
     }
-    log_info(scc)("%d (L%d): Write String: %s", compile_id(), comp_level(), string);
+    log_info(aot, codecache)("%d (L%d): Write String: %s", compile_id(), comp_level(), string);
   } else if (java_lang_Module::is_instance(obj)) {
     fatal("Module object unimplemented");
   } else if (java_lang_ClassLoader::is_instance(obj)) {
     if (obj == SystemDictionary::java_system_loader()) {
       kind = DataKind::SysLoader;
-      log_info(scc)("%d (L%d): Write ClassLoader: java_system_loader", compile_id(), comp_level());
+      log_info(aot, codecache)("%d (L%d): Write ClassLoader: java_system_loader", compile_id(), comp_level());
     } else if (obj == SystemDictionary::java_platform_loader()) {
       kind = DataKind::PlaLoader;
-      log_info(scc)("%d (L%d): Write ClassLoader: java_platform_loader", compile_id(), comp_level());
+      log_info(aot, codecache)("%d (L%d): Write ClassLoader: java_platform_loader", compile_id(), comp_level());
     } else {
       fatal("ClassLoader object unimplemented");
       return false;
@@ -2891,24 +2891,24 @@ bool SCCache::write_oop(oop obj) {
     }
     // Unhandled oop - bailout
     set_lookup_failed();
-    log_info(scc, nmethod)("%d (L%d): Unhandled obj: " PTR_FORMAT " : %s",
+    log_info(aot, codecache, nmethod)("%d (L%d): Unhandled obj: " PTR_FORMAT " : %s",
                               compile_id(), comp_level(), p2i(obj), obj->klass()->external_name());
     return false;
   }
   return true;
 }
 
-bool SCCache::write_oops(OopRecorder* oop_recorder) {
+bool AOTCodeCache::write_oops(OopRecorder* oop_recorder) {
   int oop_count = oop_recorder->oop_count();
   uint n = write_bytes(&oop_count, sizeof(int));
   if (n != sizeof(int)) {
     return false;
   }
-  log_debug(scc)("======== write oops [%d]:", oop_count);
+  log_debug(aot, codecache)("======== write oops [%d]:", oop_count);
 
   for (int i = 1; i < oop_count; i++) { // skip first virtual nullptr
     jobject jo = oop_recorder->oop_at(i);
-    LogStreamHandle(Info, scc, oops) log;
+    LogStreamHandle(Info, aot, codecache, oops) log;
     if (log.is_enabled()) {
       log.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
       if (jo == (jobject)Universe::non_oop_word()) {
@@ -2927,7 +2927,7 @@ bool SCCache::write_oops(OopRecorder* oop_recorder) {
   return true;
 }
 
-bool SCCache::write_metadata(Metadata* m) {
+bool AOTCodeCache::write_metadata(Metadata* m) {
   uint n = 0;
   if (m == nullptr) {
     DataKind kind = DataKind::Null;
@@ -2958,7 +2958,7 @@ bool SCCache::write_metadata(Metadata* m) {
     if (!write_method(((MethodCounters*)m)->method())) {
       return false;
     }
-    log_info(scc)("%d (L%d): Write MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
+    log_info(aot, codecache)("%d (L%d): Write MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
   } else { // Not supported
     fatal("metadata : " INTPTR_FORMAT " unimplemented", p2i(m));
     return false;
@@ -2966,18 +2966,18 @@ bool SCCache::write_metadata(Metadata* m) {
   return true;
 }
 
-bool SCCache::write_metadata(OopRecorder* oop_recorder) {
+bool AOTCodeCache::write_metadata(OopRecorder* oop_recorder) {
   int metadata_count = oop_recorder->metadata_count();
   uint n = write_bytes(&metadata_count, sizeof(int));
   if (n != sizeof(int)) {
     return false;
   }
 
-  log_debug(scc)("======== write metadata [%d]:", metadata_count);
+  log_debug(aot, codecache)("======== write metadata [%d]:", metadata_count);
 
   for (int i = 1; i < metadata_count; i++) { // skip first virtual nullptr
     Metadata* m = oop_recorder->metadata_at(i);
-    LogStreamHandle(Debug, scc, metadata) log;
+    LogStreamHandle(Debug, aot, codecache, metadata) log;
     if (log.is_enabled()) {
       log.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
       if (m == (Metadata*)Universe::non_oop_word()) {
@@ -2996,11 +2996,11 @@ bool SCCache::write_metadata(OopRecorder* oop_recorder) {
   return true;
 }
 
-bool SCCReader::read_dependencies(Dependencies* dependencies) {
+bool AOTCodeReader::read_dependencies(Dependencies* dependencies) {
   uint code_offset = read_position();
   int dependencies_size = *(int*)addr(code_offset);
 
-  log_debug(scc)("======== read dependencies [%d]:", dependencies_size);
+  log_debug(aot, codecache)("======== read dependencies [%d]:", dependencies_size);
 
   code_offset += sizeof(int);
   code_offset = align_up(code_offset, DATA_ALIGNMENT);
@@ -3012,19 +3012,19 @@ bool SCCReader::read_dependencies(Dependencies* dependencies) {
   return true;
 }
 
-bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) {
+bool AOTCodeCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) {
   assert(entry_bci == InvocationEntryBci, "unexpected entry_bci=%d", entry_bci);
   TraceTime t1("SC total load time", &_t_totalLoad, enable_timers(), false);
   CompileTask* task = env->task();
   task->mark_aot_load_start(os::elapsed_counter());
-  SCCEntry* entry = task->scc_entry();
+  AOTCodeEntry* entry = task->aot_code_entry();
   bool preload = task->preload();
   assert(entry != nullptr, "sanity");
-  SCCache* cache = open_for_read();
+  AOTCodeCache* cache = open_for_read();
   if (cache == nullptr) {
     return false;
   }
-  if (log_is_enabled(Info, scc, nmethod)) {
+  if (log_is_enabled(Info, aot, codecache, nmethod)) {
     uint decomp = (target->method_data() == nullptr) ? 0 : target->method_data()->decompile_count();
     VM_ENTRY_MARK;
     ResourceMark rm;
@@ -3032,7 +3032,7 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
     const char* target_name = method->name_and_sig_as_C_string();
     uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
     bool clinit_brs = entry->has_clinit_barriers();
-    log_info(scc, nmethod)("%d (L%d): %s nmethod '%s' (decomp: %d, hash: " UINT32_FORMAT_X_0 "%s%s)",
+    log_info(aot, codecache, nmethod)("%d (L%d): %s nmethod '%s' (decomp: %d, hash: " UINT32_FORMAT_X_0 "%s%s)",
                            task->compile_id(), task->comp_level(), (preload ? "Preloading" : "Reading"),
                            target_name, decomp, hash, (clinit_brs ? ", has clinit barriers" : ""),
                            (entry->ignore_decompile() ? ", ignore_decomp" : ""));
@@ -3043,7 +3043,7 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
     return false;
   }
 
-  SCCReader reader(cache, entry, task);
+  AOTCodeReader reader(cache, entry, task);
   bool success = reader.compile_nmethod(env, target, compiler);
   if (success) {
     task->set_num_inlined_bytecodes(entry->num_inlined_bytecodes());
@@ -3054,7 +3054,7 @@ bool SCCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abstract
   return success;
 }
 
-SCCReader::SCCReader(SCCache* cache, SCCEntry* entry, CompileTask* task) {
+AOTCodeReader::AOTCodeReader(AOTCodeCache* cache, AOTCodeEntry* entry, CompileTask* task) {
   _cache = cache;
   _entry   = entry;
   _load_buffer = cache->cache_buffer();
@@ -3071,7 +3071,7 @@ SCCReader::SCCReader(SCCache* cache, SCCEntry* entry, CompileTask* task) {
   _lookup_failed = false;
 }
 
-bool SCCReader::read_oop_metadata_list(JavaThread* thread, ciMethod* target, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder) {
+bool AOTCodeReader::read_oop_metadata_list(JavaThread* thread, ciMethod* target, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder) {
   methodHandle comp_method(JavaThread::current(), target->get_Method());
   JavaThread* current = JavaThread::current();
   uint offset = read_position();
@@ -3093,7 +3093,7 @@ bool SCCReader::read_oop_metadata_list(JavaThread* thread, ciMethod* target, Gro
         oop_recorder->allocate_oop_index(jo);
       }
     }
-    LogStreamHandle(Debug, scc, oops) log;
+    LogStreamHandle(Debug, aot, codecache, oops) log;
     if (log.is_enabled()) {
       log.print("%d: " INTPTR_FORMAT " ", i, p2i(obj));
       if (obj == Universe::non_oop_word()) {
@@ -3124,7 +3124,7 @@ bool SCCReader::read_oop_metadata_list(JavaThread* thread, ciMethod* target, Gro
         oop_recorder->allocate_metadata_index(m);
       }
     }
-    LogTarget(Debug, scc, metadata) log;
+    LogTarget(Debug, aot, codecache, metadata) log;
     if (log.is_enabled()) {
       LogStream ls(log);
       ls.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
@@ -3141,7 +3141,7 @@ bool SCCReader::read_oop_metadata_list(JavaThread* thread, ciMethod* target, Gro
   return true;
 }
 
-ImmutableOopMapSet* SCCReader::read_oop_map_set() {
+ImmutableOopMapSet* AOTCodeReader::read_oop_map_set() {
   uint offset = read_position();
   int size = *(int *)addr(offset);
   offset += sizeof(int);
@@ -3151,13 +3151,13 @@ ImmutableOopMapSet* SCCReader::read_oop_map_set() {
   return oopmaps;
 }
 
-bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler) {
+bool AOTCodeReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler) {
   CompileTask* task = env->task();
-  SCCEntry *scc_entry = (SCCEntry*)_entry;
+  AOTCodeEntry *aot_code_entry = (AOTCodeEntry*)_entry;
   nmethod* nm = nullptr;
 
-  uint entry_position = scc_entry->offset();
-  uint archived_nm_offset = entry_position + scc_entry->code_offset();
+  uint entry_position = aot_code_entry->offset();
+  uint archived_nm_offset = entry_position + aot_code_entry->code_offset();
   nmethod* archived_nm = (nmethod*)addr(archived_nm_offset);
   set_read_position(archived_nm_offset + archived_nm->size());
 
@@ -3246,13 +3246,13 @@ bool SCCReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* 
                            this);
   bool success = task->is_success();
   if (success) {
-    scc_entry->set_loaded();
+    aot_code_entry->set_loaded();
   }
   return success;
 }
 
-void SCCReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) {
-  LogStreamHandle(Info, scc, reloc) log;
+void AOTCodeReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) {
+  LogStreamHandle(Info, aot, codecache, reloc) log;
   uint buffer_offset = read_position();
   int count = *(int*)addr(buffer_offset);
   buffer_offset += sizeof(int);
@@ -3335,12 +3335,12 @@ void SCCReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, 
       }
       case relocInfo::internal_word_type: {
         internal_word_Relocation* r = (internal_word_Relocation*)iter.reloc();
-        r->fix_relocation_after_aot_load(scc_entry()->dumptime_content_start_addr(), nm->content_begin());
+        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), nm->content_begin());
         break;
       }
       case relocInfo::section_word_type: {
         section_word_Relocation* r = (section_word_Relocation*)iter.reloc();
-        r->fix_relocation_after_aot_load(scc_entry()->dumptime_content_start_addr(), nm->content_begin());
+        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), nm->content_begin());
         break;
       }
       case relocInfo::poll_type:
@@ -3363,7 +3363,7 @@ void SCCReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, 
   assert(j == count, "must be");
 }
 
-SCCEntry* SCCache::store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) {
+AOTCodeEntry* AOTCodeCache::store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) {
   if (!CDSConfig::is_dumping_cached_code()) {
     return nullptr; // The metadata and heap in the CDS image haven't been finalized yet.
   }
@@ -3382,19 +3382,19 @@ SCCEntry* SCCache::store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool f
   assert(comp_level == CompLevel_simple || comp_level == CompLevel_limited_profile || comp_level == CompLevel_full_optimization, "must be");
 
   TraceTime t1("SC total store time", &_t_totalStore, enable_timers(), false);
-  SCCache* cache = open_for_write();
+  AOTCodeCache* cache = open_for_write();
   if (cache == nullptr) {
     return nullptr; // Cache file is closed
   }
-  SCCEntry* entry = nullptr;
+  AOTCodeEntry* entry = nullptr;
   entry = cache->write_nmethod(nm, for_preload);
   if (entry == nullptr) {
-    log_info(scc, nmethod)("%d (L%d): nmethod store attempt failed", nm->compile_id(), comp_level);
+    log_info(aot, codecache, nmethod)("%d (L%d): nmethod store attempt failed", nm->compile_id(), comp_level);
   }
   return entry;
 }
 
-bool SCCache::write_oops(nmethod* nm) {
+bool AOTCodeCache::write_oops(nmethod* nm) {
   int count = nm->oops_count()-1;
   if (!write_bytes(&count, sizeof(int))) {
     return false;
@@ -3407,7 +3407,7 @@ bool SCCache::write_oops(nmethod* nm) {
   return true;
 }
 
-bool SCCache::write_metadata(nmethod* nm) {
+bool AOTCodeCache::write_metadata(nmethod* nm) {
   int count = nm->metadata_count()-1;
   if (!write_bytes(&count, sizeof(int))) {
     return false;
@@ -3420,7 +3420,7 @@ bool SCCache::write_metadata(nmethod* nm) {
   return true;
 }
 
-bool SCCache::write_oop_map_set(nmethod* nm) {
+bool AOTCodeCache::write_oop_map_set(nmethod* nm) {
   ImmutableOopMapSet* oopmaps = nm->oop_maps();
   int oopmaps_size = oopmaps->nr_of_bytes();
   if (!write_bytes(&oopmaps_size, sizeof(int))) {
@@ -3433,7 +3433,7 @@ bool SCCache::write_oop_map_set(nmethod* nm) {
   return true;
 }
 
-SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
+AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   assert(!nm->has_clinit_barriers() || _gen_preload_code, "sanity");
   uint comp_id = nm->compile_id();
   uint comp_level = nm->comp_level();
@@ -3444,12 +3444,12 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
   if (!builtin_loader) {
     ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip method '%s' loaded by custom class loader %s", comp_id, (int)comp_level, method->name_and_sig_as_C_string(), holder->class_loader_data()->loader_name());
+    log_info(aot, codecache, nmethod)("%d (L%d): Skip method '%s' loaded by custom class loader %s", comp_id, (int)comp_level, method->name_and_sig_as_C_string(), holder->class_loader_data()->loader_name());
     return nullptr;
   }
   if (for_preload && !(method_in_cds && klass_in_cds)) {
     ResourceMark rm;
-    log_info(scc, nmethod)("%d (L%d): Skip method '%s' for preload: not in CDS", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
+    log_info(aot, codecache, nmethod)("%d (L%d): Skip method '%s' for preload: not in CDS", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
     return nullptr;
   }
   assert(!for_preload || method_in_cds, "sanity");
@@ -3480,12 +3480,12 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   {
     ResourceMark rm;
     const char* name = method->name_and_sig_as_C_string();
-    log_info(scc, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s%s) to AOT Code Cache",
+    log_info(aot, codecache, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s%s) to AOT Code Cache",
                            comp_id, (int)comp_level, name, comp_level, decomp,
                            (ignore_decompile ? ", ignore_decomp" : ""),
                            (nm->has_clinit_barriers() ? ", has clinit barriers" : ""));
 
-    LogStreamHandle(Info, scc, loader) log;
+    LogStreamHandle(Info, aot, codecache, loader) log;
     if (log.is_enabled()) {
       oop loader = holder->class_loader();
       oop domain = holder->protection_domain();
@@ -3531,7 +3531,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   }
   uint count = 0;
   bool result = nm->asm_remarks().iterate([&] (uint offset, const char* str) -> bool {
-    log_info(scc, nmethod)("asm remark offset=%d, str=%s", offset, str);
+    log_info(aot, codecache, nmethod)("asm remark offset=%d, str=%s", offset, str);
     n = write_bytes(&offset, sizeof(uint));
     if (n != sizeof(uint)) {
       return false;
@@ -3555,7 +3555,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   }
   count = 0;
   result = nm->dbg_strings().iterate([&] (const char* str) -> bool {
-    log_info(scc, nmethod)("dbg string=%s", str);
+    log_info(aot, codecache, nmethod)("dbg string=%s", str);
     n = write_bytes(str, (uint)strlen(str) + 1);
     if (n != strlen(str) + 1) {
       return false;
@@ -3620,9 +3620,9 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   }
 
   uint entry_size = _write_position - entry_position;
-  SCCEntry* entry = new (this) SCCEntry(entry_position, entry_size, name_offset, name_size,
+  AOTCodeEntry* entry = new (this) AOTCodeEntry(entry_position, entry_size, name_offset, name_size,
                                         archived_nm_offset, 0, 0, 0,
-                                        SCCEntry::Code, hash, nm->content_begin(), comp_level, comp_id, decomp,
+                                        AOTCodeEntry::Code, hash, nm->content_begin(), comp_level, comp_id, decomp,
                                         nm->has_clinit_barriers(), for_preload, ignore_decompile);
   if (method_in_cds) {
     entry->set_method(method);
@@ -3636,7 +3636,7 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   {
     ResourceMark rm;
     const char* name = nm->method()->name_and_sig_as_C_string();
-    log_info(scc, nmethod)("%d (L%d): Wrote nmethod '%s'%s to AOT Code Cache",
+    log_info(aot, codecache, nmethod)("%d (L%d): Wrote nmethod '%s'%s to AOT Code Cache",
                            comp_id, (int)comp_level, name, (for_preload ? " (for preload)" : ""));
   }
   if (VerifyCachedCode) {
@@ -3645,8 +3645,8 @@ SCCEntry* SCCache::write_nmethod(nmethod* nm, bool for_preload) {
   return entry;
 }
 
-bool SCCache::write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
-  LogStreamHandle(Info, scc, reloc) log;
+bool AOTCodeCache::write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+  LogStreamHandle(Info, aot, codecache, reloc) log;
   GrowableArray<uint> reloc_data;
   // Collect additional data
   RelocIterator iter(nm);
@@ -3758,7 +3758,7 @@ bool SCCache::write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm
   return true; //success;
 }
 
-bool SCCache::write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
+bool AOTCodeCache::write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
   int count = oop_list.length();
   if (!write_bytes(&count, sizeof(int))) {
     return false;
@@ -3791,8 +3791,8 @@ static void print_helper1(outputStream* st, const char* name, int count) {
   }
 }
 
-void SCCache::print_statistics_on(outputStream* st) {
-  SCCache* cache = open_for_read();
+void AOTCodeCache::print_statistics_on(outputStream* st) {
+  AOTCodeCache* cache = open_for_read();
   if (cache != nullptr) {
     ReadingMark rdmk;
     if (rdmk.failed()) {
@@ -3802,23 +3802,23 @@ void SCCache::print_statistics_on(outputStream* st) {
 
     uint count = cache->_load_header->entries_count();
     uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
-    SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
+    AOTCodeEntry* load_entries = (AOTCodeEntry*)(search_entries + 2 * count);
 
     AOTCodeStats stats;
     for (uint i = 0; i < count; i++) {
       stats.collect_all_stats(&load_entries[i]);
     }
 
-    for (uint kind = SCCEntry::None; kind < SCCEntry::Kind_count; kind++) {
+    for (uint kind = AOTCodeEntry::None; kind < AOTCodeEntry::Kind_count; kind++) {
       if (stats.entry_count(kind) > 0) {
-        st->print("  %s:", sccentry_kind_name[kind]);
+        st->print("  %s:", aot_code_entry_kind_name[kind]);
         print_helper1(st, "total", stats.entry_count(kind));
         print_helper1(st, "loaded", stats.entry_loaded_count(kind));
         print_helper1(st, "invalidated", stats.entry_invalidated_count(kind));
         print_helper1(st, "failed", stats.entry_load_failed_count(kind));
         st->cr();
       }
-      if (kind == SCCEntry::Code) {
+      if (kind == AOTCodeEntry::Code) {
         for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
           if (stats.nmethod_count(lvl) > 0) {
             st->print("    SC T%d", lvl);
@@ -3839,8 +3839,8 @@ void SCCache::print_statistics_on(outputStream* st) {
   }
 }
 
-void SCCache::print_on(outputStream* st) {
-  SCCache* cache = open_for_read();
+void AOTCodeCache::print_on(outputStream* st) {
+  AOTCodeCache* cache = open_for_read();
   if (cache != nullptr) {
     ReadingMark rdmk;
     if (rdmk.failed()) {
@@ -3850,11 +3850,11 @@ void SCCache::print_on(outputStream* st) {
 
     uint count = cache->_load_header->entries_count();
     uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
-    SCCEntry* load_entries = (SCCEntry*)(search_entries + 2 * count);
+    AOTCodeEntry* load_entries = (AOTCodeEntry*)(search_entries + 2 * count);
 
     for (uint i = 0; i < count; i++) {
       int index = search_entries[2*i + 1];
-      SCCEntry* entry = &(load_entries[index]);
+      AOTCodeEntry* entry = &(load_entries[index]);
 
       st->print_cr("%4u: %4u: K%u L%u offset=%u decompile=%u size=%u code_size=%u%s%s%s%s",
                 i, index, entry->kind(), entry->comp_level(), entry->offset(),
@@ -3864,7 +3864,7 @@ void SCCache::print_on(outputStream* st) {
                 entry->is_loaded()           ? " loaded"              : "",
                 entry->not_entrant()         ? " not_entrant"         : "");
       st->print_raw("         ");
-      SCCReader reader(cache, entry, nullptr);
+      AOTCodeReader reader(cache, entry, nullptr);
       reader.print_on(st);
     }
   } else {
@@ -3872,10 +3872,10 @@ void SCCache::print_on(outputStream* st) {
   }
 }
 
-void SCCache::print_unused_entries_on(outputStream* st) {
-  LogStreamHandle(Info, scc, init) info;
+void AOTCodeCache::print_unused_entries_on(outputStream* st) {
+  LogStreamHandle(Info, aot, codecache, init) info;
   if (info.is_enabled()) {
-    SCCache::iterate([&](SCCEntry* entry) {
+    AOTCodeCache::iterate([&](AOTCodeEntry* entry) {
       if (entry->is_code() && !entry->is_loaded()) {
         MethodTrainingData* mtd = MethodTrainingData::find(methodHandle(Thread::current(), entry->method()));
         if (mtd != nullptr) {
@@ -3893,7 +3893,7 @@ void SCCache::print_unused_entries_on(outputStream* st) {
                     } else if ((uint)nm->comp_level() >= entry->comp_level()) {
                       return; // already online compiled and superseded by a more optimal method
                     }
-                    info.print("SCC entry not loaded: ");
+                    info.print("AOT Code Cache entry not loaded: ");
                     ctd->print_on(&info);
                     info.cr();
                   }
@@ -3903,7 +3903,7 @@ void SCCache::print_unused_entries_on(outputStream* st) {
               // not yet initialized
             }
           } else {
-            info.print("SCC entry doesn't have a holder: ");
+            info.print("AOT Code Cache entry doesn't have a holder: ");
             mtd->print_on(&info);
             info.cr();
           }
@@ -3913,7 +3913,7 @@ void SCCache::print_unused_entries_on(outputStream* st) {
   }
 }
 
-void SCCReader::print_on(outputStream* st) {
+void AOTCodeReader::print_on(outputStream* st) {
   uint entry_position = _entry->offset();
   set_read_position(entry_position);
 
@@ -3947,7 +3947,7 @@ void SCCReader::print_on(outputStream* st) {
 #define _C1_blobs_base (_blobs_base + _blobs_max)
 #define _C2_blobs_base (_C1_blobs_base + _C1_blobs_max)
 #if (_C2_blobs_base >= _all_max)
-#error SCAddress table ranges need adjusting
+#error AOTCodeAddressTable ranges need adjusting
 #endif
 #define _c_str_base _all_max
 
@@ -3958,7 +3958,7 @@ void SCCReader::print_on(outputStream* st) {
   }
 
 static bool initializing_extrs = false;
-void SCAddressTable::init_extrs() {
+void AOTCodeAddressTable::init_extrs() {
   if (_extrs_complete || initializing_extrs) return; // Done already
   initializing_extrs = true;
   _extrs_addr = NEW_C_HEAP_ARRAY(address, _extrs_max, mtCode);
@@ -4081,22 +4081,22 @@ void SCAddressTable::init_extrs() {
   }
 
   _extrs_complete = true;
-  log_info(scc,init)("External addresses recorded");
+  log_info(aot, codecache,init)("External addresses recorded");
 }
 
 static bool initializing_early_stubs = false;
-void SCAddressTable::init_early_stubs() {
+void AOTCodeAddressTable::init_early_stubs() {
   if (_complete || initializing_early_stubs) return; // Done already
   initializing_early_stubs = true;
   _stubs_addr = NEW_C_HEAP_ARRAY(address, _stubs_max, mtCode);
   _stubs_length = 0;
   SET_ADDRESS(_stubs, StubRoutines::forward_exception_entry());
   _early_stubs_complete = true;
-  log_info(scc,init)("early stubs recorded");
+  log_info(aot, codecache,init)("early stubs recorded");
 }
 
 static bool initializing_shared_blobs = false;
-void SCAddressTable::init_shared_blobs() {
+void AOTCodeAddressTable::init_shared_blobs() {
   if (_complete || initializing_shared_blobs) return; // Done already
   initializing_shared_blobs = true;
   _blobs_addr = NEW_C_HEAP_ARRAY(address, _all_blobs_max, mtCode);
@@ -4123,11 +4123,11 @@ void SCAddressTable::init_shared_blobs() {
 #endif
 
   assert(_blobs_length <= _blobs_max, "increase _blobs_max to %d", _blobs_length);
-  log_info(scc,init)("Early shared blobs recorded");
+  log_info(aot, codecache,init)("Early shared blobs recorded");
 }
 
 static bool initializing_stubs = false;
-void SCAddressTable::init_stubs() {
+void AOTCodeAddressTable::init_stubs() {
   if (_complete || initializing_stubs) return; // Done already
   initializing_stubs = true;
   // final blobs
@@ -4140,7 +4140,7 @@ void SCAddressTable::init_stubs() {
   assert(_blobs_length <= _blobs_max, "increase _blobs_max to %d", _blobs_length);
 
   _shared_blobs_complete = true;
-  log_info(scc,init)("All shared blobs recorded");
+  log_info(aot, codecache,init)("All shared blobs recorded");
 
   // Stubs
   SET_ADDRESS(_stubs, StubRoutines::method_entry_barrier());
@@ -4305,10 +4305,10 @@ void SCAddressTable::init_stubs() {
 #endif
 
   _complete = true;
-  log_info(scc,init)("Stubs recorded");
+  log_info(aot, codecache,init)("Stubs recorded");
 }
 
-void SCAddressTable::init_opto() {
+void AOTCodeAddressTable::init_opto() {
 #ifdef COMPILER2
   // OptoRuntime Blobs
   SET_ADDRESS(_C2_blobs, OptoRuntime::uncommon_trap_blob()->entry_point());
@@ -4339,20 +4339,20 @@ void SCAddressTable::init_opto() {
 
   assert(_C2_blobs_length <= _C2_blobs_max, "increase _C2_blobs_max to %d", _C2_blobs_length);
   _opto_complete = true;
-  log_info(scc,init)("OptoRuntime Blobs recorded");
+  log_info(aot, codecache,init)("OptoRuntime Blobs recorded");
 }
 
-void SCAddressTable::init_c1() {
+void AOTCodeAddressTable::init_c1() {
 #ifdef COMPILER1
   // Runtime1 Blobs
   for (int i = 0; i < (int)(C1StubId::NUM_STUBIDS); i++) {
     C1StubId id = (C1StubId)i;
     if (Runtime1::blob_for(id) == nullptr) {
-      log_info(scc, init)("C1 blob %s is missing", Runtime1::name_for(id));
+      log_info(aot, codecache, init)("C1 blob %s is missing", Runtime1::name_for(id));
       continue;
     }
     if (Runtime1::entry_for(id) == nullptr) {
-      log_info(scc, init)("C1 blob %s is missing entry", Runtime1::name_for(id));
+      log_info(aot, codecache, init)("C1 blob %s is missing entry", Runtime1::name_for(id));
       continue;
     }
     address entry = Runtime1::entry_for(id);
@@ -4390,12 +4390,12 @@ void SCAddressTable::init_c1() {
 
   assert(_C1_blobs_length <= _C1_blobs_max, "increase _C1_blobs_max to %d", _C1_blobs_length);
   _c1_complete = true;
-  log_info(scc,init)("Runtime1 Blobs recorded");
+  log_info(aot, codecache,init)("Runtime1 Blobs recorded");
 }
 
 #undef SET_ADDRESS
 
-SCAddressTable::~SCAddressTable() {
+AOTCodeAddressTable::~AOTCodeAddressTable() {
   if (_extrs_addr != nullptr) {
     FREE_C_HEAP_ARRAY(address, _extrs_addr);
   }
@@ -4420,7 +4420,7 @@ static int _C_strings_len[MAX_STR_COUNT] = {0};
 static int _C_strings_hash[MAX_STR_COUNT] = {0};
 static int _C_strings_used = 0;
 
-void SCCache::load_strings() {
+void AOTCodeCache::load_strings() {
   uint strings_count  = _load_header->strings_count();
   if (strings_count == 0) {
     return;
@@ -4450,10 +4450,10 @@ void SCCache::load_strings() {
   assert((uint)(p - _C_strings_buf) <= strings_size, "(" INTPTR_FORMAT " - " INTPTR_FORMAT ") = %d > %d ", p2i(p), p2i(_C_strings_buf), (uint)(p - _C_strings_buf), strings_size);
   _C_strings_count = strings_count;
   _C_strings_used  = strings_count;
-  log_info(scc, init)("Load %d C strings at offset %d from AOT Code Cache", _C_strings_count, strings_offset);
+  log_info(aot, codecache, init)("Load %d C strings at offset %d from AOT Code Cache", _C_strings_count, strings_offset);
 }
 
-int SCCache::store_strings() {
+int AOTCodeCache::store_strings() {
   uint offset = _write_position;
   uint length = 0;
   if (_C_strings_used > 0) {
@@ -4481,18 +4481,18 @@ int SCCache::store_strings() {
         return -1;
       }
     }
-    log_info(scc, exit)("Wrote %d C strings of total length %d at offset %d to AOT Code Cache",
+    log_info(aot, codecache, exit)("Wrote %d C strings of total length %d at offset %d to AOT Code Cache",
                         _C_strings_used, length, offset);
   }
   return _C_strings_used;
 }
 
-void SCCache::add_new_C_string(const char* str) {
+void AOTCodeCache::add_new_C_string(const char* str) {
   assert(for_write(), "only when storing code");
   _table->add_C_string(str);
 }
 
-void SCAddressTable::add_C_string(const char* str) {
+void AOTCodeAddressTable::add_C_string(const char* str) {
   if (str != nullptr && _extrs_complete) {
     // Check previous strings address
     for (int i = 0; i < _C_strings_count; i++) {
@@ -4502,20 +4502,20 @@ void SCAddressTable::add_C_string(const char* str) {
     }
     // Add new one
     if (_C_strings_count < MAX_STR_COUNT) {
-      log_trace(scc)("add_C_string: [%d] " INTPTR_FORMAT " %s", _C_strings_count, p2i(str), str);
+      log_trace(aot, codecache)("add_C_string: [%d] " INTPTR_FORMAT " %s", _C_strings_count, p2i(str), str);
       _C_strings_id[_C_strings_count] = -1; // Init
       _C_strings[_C_strings_count++] = str;
     } else {
       if (Thread::current()->is_Compiler_thread()) {
         CompileTask* task = ciEnv::current()->task();
-        log_info(scc)("%d (L%d): Number of C strings > max %d %s",
+        log_info(aot, codecache)("%d (L%d): Number of C strings > max %d %s",
                       task->compile_id(), task->comp_level(), MAX_STR_COUNT, str);
       }
     }
   }
 }
 
-int SCAddressTable::id_for_C_string(address str) {
+int AOTCodeAddressTable::id_for_C_string(address str) {
   for (int i = 0; i < _C_strings_count; i++) {
     if (_C_strings[i] == (const char*)str) { // found
       int id = _C_strings_id[i];
@@ -4544,7 +4544,7 @@ int SCAddressTable::id_for_C_string(address str) {
   return -1;
 }
 
-address SCAddressTable::address_for_C_string(int idx) {
+address AOTCodeAddressTable::address_for_C_string(int idx) {
   assert(idx < _C_strings_count, "sanity");
   return (address)_C_strings[idx];
 }
@@ -4558,9 +4558,9 @@ int search_address(address addr, address* table, uint length) {
   return -1;
 }
 
-address SCAddressTable::address_for_id(int idx) {
+address AOTCodeAddressTable::address_for_id(int idx) {
   if (!_extrs_complete) {
-    fatal("SCA extrs table is not complete");
+    fatal("AOT Code Cache VM runtime addresses table is not complete");
   }
   if (idx == -1) {
     return (address)-1;
@@ -4571,7 +4571,7 @@ address SCAddressTable::address_for_id(int idx) {
     return (address)os::init + idx;
   }
   if (idx < 0) {
-    fatal("Incorrect id %d for SCA table", id);
+    fatal("Incorrect id %d for AOT Code Cache addresses table", id);
   }
   // no need to compare unsigned id against 0
   if (/* id >= _extrs_base && */ id < _extrs_length) {
@@ -4592,17 +4592,17 @@ address SCAddressTable::address_for_id(int idx) {
   if (id >= _c_str_base && id < (_c_str_base + (uint)_C_strings_count)) {
     return address_for_C_string(id - _c_str_base);
   }
-  fatal("Incorrect id %d for SCA table", id);
+  fatal("Incorrect id %d for AOT Code Cache addresses table", id);
   return nullptr;
 }
 
-int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer* buffer) {
+int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer* buffer) {
+  if (!_extrs_complete) {
+    fatal("AOT Code Cache VM runtime addresses table is not complete");
+  }
   int id = -1;
   if (addr == (address)-1) { // Static call stub has jump to itself
     return id;
-  }
-  if (!_extrs_complete) {
-    fatal("SCA table is not complete");
   }
   // Seach for C string
   id = id_for_C_string(addr);
@@ -4618,7 +4618,7 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
         desc = StubCodeDesc::desc_for(addr + frame::pc_return_offset);
       }
       const char* sub_name = (desc != nullptr) ? desc->name() : "<unknown>";
-      fatal("Address " INTPTR_FORMAT " for Stub:%s is missing in SCA table", p2i(addr), sub_name);
+      fatal("Address " INTPTR_FORMAT " for Stub:%s is missing in AOT Code Cache addresses table", p2i(addr), sub_name);
     } else {
       return _stubs_base + id;
     }
@@ -4639,7 +4639,7 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
         id = search_address(addr, _C2_blobs_addr, _C2_blobs_length);
       }
       if (id < 0) {
-        fatal("Address " INTPTR_FORMAT " for Blob:%s is missing in SCA table", p2i(addr), cb->name());
+        fatal("Address " INTPTR_FORMAT " for Blob:%s is missing in AOT Code Cache addresses table", p2i(addr), cb->name());
       } else {
         return id_base + id;
       }
@@ -4662,12 +4662,12 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
               compile_id = task->compile_id();
               comp_level = task->comp_level();
             }
-            log_info(scc)("%d (L%d): Address " INTPTR_FORMAT " (offset %d) for runtime target '%s' is missing in SCA table",
+            log_info(aot, codecache)("%d (L%d): Address " INTPTR_FORMAT " (offset %d) for runtime target '%s' is missing in AOT Code Cache addresses table",
                           compile_id, comp_level, p2i(addr), dist, (const char*)addr);
             assert(dist > (uint)(_all_max + MAX_STR_COUNT), "change encoding of distance");
             return dist;
           }
-          fatal("Address " INTPTR_FORMAT " for runtime target '%s+%d' is missing in SCA table", p2i(addr), func_name, offset);
+          fatal("Address " INTPTR_FORMAT " for runtime target '%s+%d' is missing in AOT Code Cache addresses table", p2i(addr), func_name, offset);
         } else {
           os::print_location(tty, p2i(addr), true);
           reloc.print_current_on(tty);
@@ -4675,7 +4675,7 @@ int SCAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer
           buffer->print_on(tty);
           buffer->decode();
 #endif // !PRODUCT
-          fatal("Address " INTPTR_FORMAT " for <unknown> is missing in SCA table", p2i(addr));
+          fatal("Address " INTPTR_FORMAT " for <unknown> is missing in AOT Code Cache addresses table", p2i(addr));
         }
       } else {
         return _extrs_base + id;
@@ -4716,7 +4716,7 @@ address AOTRuntimeConstants::_field_addresses_list[] = {
 };
 
 
-void SCCache::wait_for_no_nmethod_readers() {
+void AOTCodeCache::wait_for_no_nmethod_readers() {
   while (true) {
     int cur = Atomic::load(&_nmethod_readers);
     int upd = -(cur + 1);
@@ -4733,7 +4733,7 @@ void SCCache::wait_for_no_nmethod_readers() {
   }
 }
 
-SCCache::ReadingMark::ReadingMark() {
+AOTCodeCache::ReadingMark::ReadingMark() {
   while (true) {
     int cur = Atomic::load(&_nmethod_readers);
     if (cur < 0) {
@@ -4749,7 +4749,7 @@ SCCache::ReadingMark::ReadingMark() {
   }
 }
 
-SCCache::ReadingMark::~ReadingMark() {
+AOTCodeCache::ReadingMark::~ReadingMark() {
   if (_failed) {
     return;
   }

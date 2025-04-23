@@ -23,7 +23,7 @@
  */
 
 #include "classfile/vmClasses.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "runtime/handles.inline.hpp"
@@ -102,7 +102,7 @@ bool C2Compiler::init_c2_runtime() {
   HandleMark handle_mark(thread);
   bool success = OptoRuntime::generate(thread->env());
   if (success) {
-    SCCache::init_opto_table();
+    AOTCodeCache::init_opto_table();
   }
   return success;
 }
@@ -127,21 +127,21 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   assert(is_initialized(), "Compiler thread must be initialized");
   CompilationMemoryStatisticMark cmsm(directive);
   CompileTask* task = env->task();
-  if (install_code && task->is_scc()) {
-    bool success = SCCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
+  if (install_code && task->is_aot()) {
+    bool success = AOTCodeCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
     if (success) {
       assert(task->is_success(), "sanity");
       return;
     }
     if (!task->preload()) { // Do not mark entry if pre-loading failed - it can pass normal load
-      SCCache::invalidate(task->scc_entry()); // mark sca_entry as not entrant
+      AOTCodeCache::invalidate(task->aot_code_entry()); // mark sca_entry as not entrant
     }
-    if (SCCache::is_code_load_thread_on()) {
+    if (AOTCodeCache::is_code_load_thread_on()) {
       env->record_failure("Failed to load cached code");
       // Bail out if failed to load cached code in SC thread
       return;
     }
-    task->clear_scc();
+    task->clear_aot();
   }
 
   bool subsume_loads = SubsumeLoads;
@@ -152,7 +152,7 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool do_locks_coarsening = EliminateLocks;
   bool do_superword = UseSuperWord;
   bool for_preload = (task->compile_reason() != CompileTask::Reason_Precompile) && // non-preload version is requested
-                     SCCache::gen_preload_code(target, entry_bci);
+                     AOTCodeCache::gen_preload_code(target, entry_bci);
   if (task->compile_reason() == CompileTask::Reason_PrecompileForPreload) {
     assert(for_preload, "required");
   }

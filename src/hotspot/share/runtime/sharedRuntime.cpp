@@ -30,7 +30,7 @@
 #include "classfile/stringTable.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/nmethod.inline.hpp"
@@ -2845,7 +2845,7 @@ bool AdapterHandlerLibrary::lookup_aot_cache(AdapterHandlerEntry* handler, CodeB
   const char* name = AdapterHandlerLibrary::name(handler->fingerprint());
   const uint32_t id = AdapterHandlerLibrary::id(handler->fingerprint());
   uint32_t offsets[4];
-  if (SCCache::load_adapter(buffer, id, name, offsets)) {
+  if (AOTCodeCache::load_adapter(buffer, id, name, offsets)) {
     address i2c_entry = buffer->insts_begin();
     assert(offsets[0] == 0, "sanity check");
     handler->set_entry_points(i2c_entry, i2c_entry + offsets[1], i2c_entry + offsets[2], i2c_entry + offsets[3]);
@@ -2909,7 +2909,7 @@ bool AdapterHandlerLibrary::generate_adapter_code(AdapterBlob*& adapter_blob,
     offsets[1] = handler->get_c2i_entry() - handler->get_i2c_entry();
     offsets[2] = handler->get_c2i_unverified_entry() - handler->get_i2c_entry();
     offsets[3] = handler->get_c2i_no_clinit_check_entry() - handler->get_i2c_entry();
-    SCCache::store_adapter(&buffer, id, name, offsets);
+    AOTCodeCache::store_adapter(&buffer, id, name, offsets);
   }
 #ifdef ASSERT
   if (VerifyAdapterSharing) {

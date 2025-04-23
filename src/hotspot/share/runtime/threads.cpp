@@ -38,7 +38,7 @@
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"
@@ -862,7 +862,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   if (PrecompileCode) {
     Precompiler::compile_cached_code(CHECK_JNI_ERR);
     if (PrecompileOnlyAndExit) {
-      SCCache::close();
+      AOTCodeCache::close();
       log_vm_init_stats();
       vm_direct_exit(0, "Code precompiation is over");
     }
@@ -871,7 +871,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
 #if defined(COMPILER2)
   // Pre-load cached compiled methods
-  SCCache::preload_code(CHECK_JNI_ERR);
+  AOTCodeCache::preload_code(CHECK_JNI_ERR);
 #endif
 
   if (NativeHeapTrimmer::enabled()) {

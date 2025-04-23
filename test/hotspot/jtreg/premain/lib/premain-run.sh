@@ -92,10 +92,10 @@ do_test "(STEP 3 of 5) Run with $APP-static.jsa and dump profile in $APP-dynamic
 
 do_test "(STEP 4 of 5) Run with $APP-dynamic.jsa and generate AOT code" \
     $JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+StoreCachedCode \
-        -Xlog:scc*=warning:file=$APP-store-sc.log::filesize=0 \
+        -Xlog:aot+codecache*=warning:file=$APP-store-sc.log::filesize=0 \
         -XX:CachedCodeFile=$APP-dynamic.jsa-sc -XX:CachedCodeMaxSize=100M $CMDLINE
 
 do_test "(STEP 5 of 5) Final production run: with $APP-dynamic.jsa and load AOT code" \
     $JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+LoadCachedCode \
-        -Xlog:scc*=warning:file=$APP-load-sc.log::filesize=0 \
+        -Xlog:aot+codecache*=warning:file=$APP-load-sc.log::filesize=0 \
         -XX:CachedCodeFile=$APP-dynamic.jsa-sc $CMDLINE

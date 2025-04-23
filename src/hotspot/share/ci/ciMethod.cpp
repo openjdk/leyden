@@ -1233,7 +1233,7 @@ int ciMethod::inline_instructions_size() {
   if (_inline_instructions_size == -1) {
     GUARDED_VM_ENTRY(
       nmethod* code = get_Method()->code();
-      if (code != nullptr && !code->is_scc() && (code->comp_level() == CompLevel_full_optimization)) {
+      if (code != nullptr && !code->is_aot() && (code->comp_level() == CompLevel_full_optimization)) {
         int isize = code->insts_end() - code->verified_entry_point() - code->skipped_instructions_size();
         _inline_instructions_size = isize > 0 ? isize : 0;
       } else {

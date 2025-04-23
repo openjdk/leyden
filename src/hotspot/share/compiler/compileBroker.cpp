@@ -28,10 +28,10 @@
 #include "classfile/symbolTable.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "code/codeHeapState.hpp"
 #include "code/dependencyContext.hpp"
-#include "code/SCCache.hpp"
 #include "compiler/compilationLog.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compilationPolicy.hpp"
@@ -205,8 +205,8 @@ uint CompileBroker::_sum_nmethod_code_size          = 0;
 jlong CompileBroker::_peak_compilation_time        = 0;
 
 CompilerStatistics CompileBroker::_stats_per_level[CompLevel_full_optimization];
-CompilerStatistics CompileBroker::_scc_stats;
-CompilerStatistics CompileBroker::_scc_stats_per_level[CompLevel_full_optimization + 1];
+CompilerStatistics CompileBroker::_aot_stats;
+CompilerStatistics CompileBroker::_aot_stats_per_level[CompLevel_full_optimization + 1];
 
 CompileQueue* CompileBroker::_c3_compile_queue     = nullptr;
 CompileQueue* CompileBroker::_c2_compile_queue     = nullptr;
@@ -632,9 +632,9 @@ void CompileQueue::mark_on_stack() {
 }
 
 
-CompileQueue* CompileBroker::compile_queue(int comp_level, bool is_scc) {
-  if (is_c2_compile(comp_level)) return ((is_scc  && (_sc_count > 0)) ? _sc2_compile_queue : _c2_compile_queue);
-  if (is_c1_compile(comp_level)) return ((is_scc && (_sc_count > 0)) ? _sc1_compile_queue : _c1_compile_queue);
+CompileQueue* CompileBroker::compile_queue(int comp_level, bool is_aot) {
+  if (is_c2_compile(comp_level)) return ((is_aot  && (_sc_count > 0)) ? _sc2_compile_queue : _c2_compile_queue);
+  if (is_c1_compile(comp_level)) return ((is_aot && (_sc_count > 0)) ? _sc1_compile_queue : _c1_compile_queue);
   return nullptr;
 }
 
@@ -764,7 +764,7 @@ void CompileBroker::compilation_init(JavaThread* THREAD) {
 #endif // COMPILER1
       }
 #ifdef COMPILER2
-      if (SCCache::is_on() && (_c3_count > 0)) {
+      if (AOTCodeCache::is_on() && (_c3_count > 0)) {
         _compilers[2] = new C2Compiler();
       }
 #endif
@@ -902,7 +902,7 @@ void CompileBroker::compilation_init(JavaThread* THREAD) {
                                           CHECK);
   }
 
-  log_info(scc, init)("CompileBroker is initialized");
+  log_info(aot, codecache, init)("CompileBroker is initialized");
   _initialized = true;
 }
 
@@ -1433,8 +1433,8 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     method->get_method_counters(thread);
   }
 
-  SCCEntry* scc_entry = find_scc_entry(method, osr_bci, comp_level, compile_reason, requires_online_compilation);
-  bool is_scc = (scc_entry != nullptr);
+  AOTCodeEntry* aot_code_entry = find_aot_code_entry(method, osr_bci, comp_level, compile_reason, requires_online_compilation);
+  bool is_aot = (aot_code_entry != nullptr);
 
   // Outputs from the following MutexLocker block:
   CompileTask* task = nullptr;
@@ -1446,7 +1446,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     queue = _c3_compile_queue; // JVMCI compiler's methods compilation
   } else
 #endif
-  queue = compile_queue(comp_level, is_scc);
+  queue = compile_queue(comp_level, is_aot);
 
   // Acquire our lock.
   {
@@ -1552,10 +1552,10 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     task = create_compile_task(queue,
                                compile_id, method,
                                osr_bci, comp_level,
-                               hot_method, hot_count, scc_entry, compile_reason,
+                               hot_method, hot_count, aot_code_entry, compile_reason,
                                requires_online_compilation, blocking);
 
-    if (task->is_scc() && (_sc_count > 0)) {
+    if (task->is_aot() && (_sc_count > 0)) {
       // Put it on SC queue
       queue = is_c1_compile(comp_level) ? _sc1_compile_queue : _sc2_compile_queue;
     }
@@ -1573,20 +1573,20 @@ void CompileBroker::compile_method_base(const methodHandle& method,
   }
 }
 
-SCCEntry* CompileBroker::find_scc_entry(const methodHandle& method, int osr_bci, int comp_level,
+AOTCodeEntry* CompileBroker::find_aot_code_entry(const methodHandle& method, int osr_bci, int comp_level,
                                         CompileTask::CompileReason compile_reason,
                                         bool requires_online_compilation) {
-  SCCEntry* scc_entry = nullptr;
-  if (osr_bci == InvocationEntryBci && !requires_online_compilation && SCCache::is_on_for_read()) {
+  AOTCodeEntry* aot_code_entry = nullptr;
+  if (osr_bci == InvocationEntryBci && !requires_online_compilation && AOTCodeCache::is_on_for_read()) {
     // Check for cached code.
     if (compile_reason == CompileTask::Reason_Preload) {
-      scc_entry = method->scc_entry();
-      assert(scc_entry != nullptr && scc_entry->for_preload(), "sanity");
+      aot_code_entry = method->aot_code_entry();
+      assert(aot_code_entry != nullptr && aot_code_entry->for_preload(), "sanity");
     } else {
-      scc_entry = SCCache::find_code_entry(method, comp_level);
+      aot_code_entry = AOTCodeCache::find_code_entry(method, comp_level);
     }
   }
-  return scc_entry;
+  return aot_code_entry;
 }
 
 nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
@@ -1775,7 +1775,7 @@ bool CompileBroker::compilation_is_complete(Method*                    method,
       if (result == nullptr) {
         return false;
       }
-      if (online_only && result->is_scc()) {
+      if (online_only && result->is_aot()) {
         return false;
       }
       bool same_level = (comp_level == result->comp_level());
@@ -1897,13 +1897,13 @@ CompileTask* CompileBroker::create_compile_task(CompileQueue*       queue,
                                                 int                 comp_level,
                                                 const methodHandle& hot_method,
                                                 int                 hot_count,
-                                                SCCEntry*           scc_entry,
+                                                AOTCodeEntry*       aot_code_entry,
                                                 CompileTask::CompileReason compile_reason,
                                                 bool                requires_online_compilation,
                                                 bool                blocking) {
   CompileTask* new_task = CompileTask::allocate();
   new_task->initialize(compile_id, method, osr_bci, comp_level,
-                       hot_method, hot_count, scc_entry, compile_reason, queue,
+                       hot_method, hot_count, aot_code_entry, compile_reason, queue,
                        requires_online_compilation, blocking);
   return new_task;
 }
@@ -2674,7 +2674,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   if (PrintCompilation && PrintCompilation2) {
     tty->print("%7d ", (int) tty->time_stamp().milliseconds());  // print timestamp
     tty->print("%4d ", compile_id);    // print compilation number
-    tty->print("%s ", (is_osr ? "%" : (task->is_scc() ? "A" : " ")));
+    tty->print("%s ", (is_osr ? "%" : (task->is_aot() ? "A" : " ")));
     if (task->is_success()) {
       tty->print("size: %d(%d) ", task->nm_total_size(), task->nm_insts_size());
     }
@@ -2849,9 +2849,9 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
     if (CITime || log_is_enabled(Info, init)) {
       CompilerStatistics* stats = nullptr;
-      if (task->is_scc()) {
+      if (task->is_aot()) {
         int level = task->preload() ? CompLevel_full_optimization : (comp_level - 1);
-        stats = &_scc_stats_per_level[level];
+        stats = &_aot_stats_per_level[level];
       } else {
         stats = &_stats_per_level[comp_level-1];
       }
@@ -2868,9 +2868,9 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
     if (CITime || log_is_enabled(Info, init)) {
       CompilerStatistics* stats = nullptr;
-      if (task->is_scc()) {
+      if (task->is_aot()) {
         int level = task->preload() ? CompLevel_full_optimization : (comp_level - 1);
-        stats = &_scc_stats_per_level[level];
+        stats = &_aot_stats_per_level[level];
       } else {
         stats = &_stats_per_level[comp_level-1];
       }
@@ -2889,12 +2889,12 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
       }
 
       // Collect statistic per compilation level
-      if (task->is_scc()) {
-        _scc_stats._standard.update(time, bytes_compiled);
-        _scc_stats._nmethods_size += task->nm_total_size();
-        _scc_stats._nmethods_code_size += task->nm_insts_size();
+      if (task->is_aot()) {
+        _aot_stats._standard.update(time, bytes_compiled);
+        _aot_stats._nmethods_size += task->nm_total_size();
+        _aot_stats._nmethods_code_size += task->nm_insts_size();
         int level = task->preload() ? CompLevel_full_optimization : (comp_level - 1);
-        CompilerStatistics* stats = &_scc_stats_per_level[level];
+        CompilerStatistics* stats = &_aot_stats_per_level[level];
         stats->_standard.update(time, bytes_compiled);
         stats->_nmethods_size += task->nm_total_size();
         stats->_nmethods_code_size += task->nm_insts_size();
@@ -2913,7 +2913,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
       // Collect statistic per compiler
       AbstractCompiler* comp = task->compiler();
-      if (comp && !task->is_scc()) {
+      if (comp && !task->is_aot()) {
         CompilerStatistics* stats = comp->stats();
         if (is_osr) {
           stats->_osr.update(time, bytes_compiled);
@@ -2922,7 +2922,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
         }
         stats->_nmethods_size += task->nm_total_size();
         stats->_nmethods_code_size += task->nm_insts_size();
-      } else if (!task->is_scc()) { // if (!comp)
+      } else if (!task->is_aot()) { // if (!comp)
         assert(false, "Compiler object must exist");
       }
     }
@@ -2990,12 +2990,12 @@ void CompileBroker::log_not_entrant(nmethod* nm) {
   if (CITime || log_is_enabled(Info, init)) {
     CompilerStatistics* stats = nullptr;
     int level = nm->comp_level();
-    if (nm->is_scc()) {
+    if (nm->is_aot()) {
       if (nm->preloaded()) {
         assert(level == CompLevel_full_optimization, "%d", level);
         level = CompLevel_full_optimization + 1;
       }
-      stats = &_scc_stats_per_level[level - 1];
+      stats = &_aot_stats_per_level[level - 1];
     } else {
       stats = &_stats_per_level[level - 1];
     }
@@ -3060,7 +3060,7 @@ static void print_queue_info(outputStream* st, CompileQueue* queue) {
       uint counts[] = {0, 0, 0, 0, 0}; // T1 ... T5
       for (CompileTask* task = queue->first(); task != nullptr; task = task->next()) {
         int tier = task->comp_level();
-        if (task->is_scc() && task->preload()) {
+        if (task->is_aot() && task->preload()) {
           assert(tier == CompLevel_full_optimization, "%d", tier);
           tier = CompLevel_full_optimization + 1;
         }
@@ -3106,7 +3106,7 @@ void CompileBroker::print_statistics_on(outputStream* st) {
   if (LoadCachedCode || StoreCachedCode) {
     for (int tier = CompLevel_simple; tier <= CompilationPolicy::highest_compile_level() + 1; tier++) {
       if (tier != CompLevel_full_profile) {
-        print_tier_helper(st, "SC T", tier, &_scc_stats_per_level[tier - 1]);
+        print_tier_helper(st, "SC T", tier, &_aot_stats_per_level[tier - 1]);
       }
     }
     st->cr();
@@ -3133,8 +3133,8 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
         print_times(comp->name(), comp->stats());
       }
     }
-    if (_scc_stats._standard._count > 0) {
-      print_times("SC", &_scc_stats);
+    if (_aot_stats._standard._count > 0) {
+      print_times("SC", &_aot_stats);
     }
     if (aggregate) {
       tty->cr();
@@ -3149,7 +3149,7 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
       print_times(tier_name, stats);
     }
     for (int tier = CompLevel_simple; tier <= CompilationPolicy::highest_compile_level() + 1; tier++) {
-      CompilerStatistics* stats = &_scc_stats_per_level[tier-1];
+      CompilerStatistics* stats = &_aot_stats_per_level[tier-1];
       if (stats->_standard._bytes > 0) {
         os::snprintf_checked(tier_name, sizeof(tier_name), "SC T%d", tier);
         print_times(tier_name, stats);
@@ -3198,7 +3198,7 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
 
   if (StoreCachedCode || LoadCachedCode) { // Check flags because SC cache could be closed already
     tty->cr();
-    SCCache::print_timers_on(tty);
+    AOTCodeCache::print_timers_on(tty);
   }
   AbstractCompiler *comp = compiler(CompLevel_simple);
   if (comp != nullptr) {

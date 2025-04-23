@@ -25,7 +25,7 @@
 #ifdef COMPILER2
 #include "asm/macroAssembler.hpp"
 #include "asm/macroAssembler.inline.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/vmreg.hpp"
 #include "interpreter/interpreter.hpp"
 #include "opto/runtime.hpp"
@@ -270,7 +270,7 @@ ExceptionBlob* OptoRuntime::generate_exception_blob() {
   CodeBuffer buffer(name, 2048, 1024);
 
   int pc_offset = 0;
-  if (SCCache::load_exception_blob(&buffer, &pc_offset)) {
+  if (AOTCodeCache::load_exception_blob(&buffer, &pc_offset)) {
     OopMapSet* oop_maps = new OopMapSet();
     oop_maps->add_gc_map(pc_offset, new OopMap(SimpleRuntimeFrame::framesize, 0));
 
@@ -367,7 +367,7 @@ ExceptionBlob* OptoRuntime::generate_exception_blob() {
   // Make sure all code is generated
   masm->flush();
 
-  SCCache::store_exception_blob(&buffer, pc_offset);
+  AOTCodeCache::store_exception_blob(&buffer, pc_offset);
   // Set exception blob
   return ExceptionBlob::create(&buffer, oop_maps, SimpleRuntimeFrame::framesize >> 1);
 }
