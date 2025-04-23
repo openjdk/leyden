@@ -93,7 +93,7 @@ public class AOTFlags {
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTCache=" + aotCacheFile,
             "-Xlog:cds",
-            "-Xlog:scc*",
+            "-Xlog:aot+codecache*",
             "-cp", appJar, helloClass);
         out = CDSTestUtils.executeAndLog(pb, "prod");
         out.shouldContain("Using AOT-linked classes: true (static archive: has aot-linked classes)");
@@ -165,7 +165,7 @@ public class AOTFlags {
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTCache=" + aotCacheFile,
             "-Xlog:cds",
-            "-Xlog:scc*",
+            "-Xlog:aot+codecache*",
             "-cp", appJar, helloClass);
         out = CDSTestUtils.executeAndLog(pb, "prod");
         out.shouldContain("Using AOT-linked classes: false (static archive: no aot-linked classes)");

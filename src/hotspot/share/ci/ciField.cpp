@@ -28,7 +28,7 @@
 #include "ci/ciUtilities.inline.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/vmClasses.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "oops/klass.inline.hpp"
@@ -315,7 +315,7 @@ ciConstant ciField::constant_value() {
   if (FoldStableValues && is_stable() && _constant_value.is_null_or_zero()) {
     return ciConstant();
   }
-  if (!SCCache::allow_const_field(_constant_value)) {
+  if (!AOTCodeCache::allow_const_field(_constant_value)) {
     return ciConstant();
   }
   return _constant_value;
@@ -331,7 +331,7 @@ ciConstant ciField::constant_value_of(ciObject* object) {
   if (FoldStableValues && is_stable() && field_value.is_null_or_zero()) {
     return ciConstant();
   }
-  if (!SCCache::allow_const_field(field_value)) {
+  if (!AOTCodeCache::allow_const_field(field_value)) {
     return ciConstant();
   }
   return field_value;

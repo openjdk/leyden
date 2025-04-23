@@ -65,7 +65,7 @@ public:
   static void finish_loading_javabase_classes(TRAPS) NOT_CDS_RETURN;
   static void exit_on_exception(JavaThread* current);
   static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;
-  static bool class_preloading_finished();
+  static bool class_preloading_finished() NOT_CDS_RETURN_(true);
   static void print_counters_on(outputStream* st) NOT_CDS_RETURN;
   static bool is_pending_aot_linked_class(Klass* k) NOT_CDS_RETURN_(false);
 };

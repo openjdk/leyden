@@ -80,7 +80,7 @@ bool RecompilationPolicy::recompilation_step(int step, TRAPS) {
         continue;
       }
 
-      if (!AOTForceRecompilation && !(nm->is_scc() && nm->comp_level() == CompLevel_full_optimization)) {
+      if (!AOTForceRecompilation && !(nm->is_aot() && nm->comp_level() == CompLevel_full_optimization)) {
         // If it's already online-compiled at level 4, mark it as done.
         if (nm->comp_level() == CompLevel_full_optimization) {
           RecompilationSchedule::set_status_at(i, true);

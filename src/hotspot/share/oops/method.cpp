@@ -1326,7 +1326,7 @@ void Method::link_method(const methodHandle& h_method, TRAPS) {
   if (_preload_code != nullptr) {
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     set_code(h_method, _preload_code);
-    assert(((nmethod*)_preload_code)->scc_entry() == _scc_entry, "sanity");
+    assert(((nmethod*)_preload_code)->aot_code_entry() == _aot_code_entry, "sanity");
   }
 }
 

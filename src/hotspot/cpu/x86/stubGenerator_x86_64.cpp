@@ -25,7 +25,7 @@
 #include "asm/macroAssembler.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/vmIntrinsics.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/oopMap.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetAssembler.hpp"
@@ -3160,7 +3160,7 @@ address StubGenerator::generate_multiplyToLen() {
   StubCodeMark mark(this, stub_id);
   address start = __ pc();
 
-  if (SCCache::load_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", start)) {
+  if (AOTCodeCache::load_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", start)) {
     return start;
   }
 
@@ -3200,7 +3200,7 @@ address StubGenerator::generate_multiplyToLen() {
   __ leave(); // required for proper stackwalking of RuntimeStub frame
   __ ret(0);
 
-  SCCache::store_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", start);
+  AOTCodeCache::store_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", start);
   return start;
 }
 
@@ -3274,7 +3274,7 @@ address StubGenerator::generate_squareToLen() {
   StubCodeMark mark(this, stub_id);
   address start = __ pc();
 
-  if (SCCache::load_stub(this, vmIntrinsics::_squareToLen, "squareToLen", start)) {
+  if (AOTCodeCache::load_stub(this, vmIntrinsics::_squareToLen, "squareToLen", start)) {
     return start;
   }
 
@@ -3305,7 +3305,7 @@ address StubGenerator::generate_squareToLen() {
   __ leave(); // required for proper stackwalking of RuntimeStub frame
   __ ret(0);
 
-  SCCache::store_stub(this, vmIntrinsics::_squareToLen, "squareToLen", start);
+  AOTCodeCache::store_stub(this, vmIntrinsics::_squareToLen, "squareToLen", start);
   return start;
 }
 
@@ -3405,7 +3405,7 @@ address StubGenerator::generate_mulAdd() {
   StubCodeMark mark(this, stub_id);
   address start = __ pc();
 
-  if (SCCache::load_stub(this, vmIntrinsics::_mulAdd, "mulAdd", start)) {
+  if (AOTCodeCache::load_stub(this, vmIntrinsics::_mulAdd, "mulAdd", start)) {
     return start;
   }
 
@@ -3442,7 +3442,7 @@ address StubGenerator::generate_mulAdd() {
   __ leave(); // required for proper stackwalking of RuntimeStub frame
   __ ret(0);
 
-  SCCache::store_stub(this, vmIntrinsics::_mulAdd, "mulAdd", start);
+  AOTCodeCache::store_stub(this, vmIntrinsics::_mulAdd, "mulAdd", start);
   return start;
 }
 

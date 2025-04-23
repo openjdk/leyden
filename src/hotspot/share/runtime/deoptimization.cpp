@@ -2863,7 +2863,7 @@ void Deoptimization::gather_statistics(nmethod* nm, DeoptReason reason, DeoptAct
 
   update(_deoptimization_hist[0][reason][1+action], bc);
 
-  uint lvl = nm->comp_level() + (nm->is_scc() ? 4 : 0) + (nm->preloaded() ? 1 : 0);
+  uint lvl = nm->comp_level() + (nm->is_aot() ? 4 : 0) + (nm->preloaded() ? 1 : 0);
   _deoptimization_hist[lvl][Reason_none][0][0] += 1;  // total
   _deoptimization_hist[lvl][reason][0][0]      += 1;  // per-reason total
   update(_deoptimization_hist[lvl][reason][1+action], bc);
@@ -2951,10 +2951,10 @@ void Deoptimization::print_statistics_on(outputStream* st) {
   print_statistics_on("Tier3", 3, st);
   print_statistics_on("Tier4", 4, st);
 
-  print_statistics_on("SC Tier1", 5, st);
-  print_statistics_on("SC Tier2", 6, st);
-  print_statistics_on("SC Tier4", 8, st);
-  print_statistics_on("SC Tier5 (preloaded)", 9, st);
+  print_statistics_on("AOT Code Tier1", 5, st);
+  print_statistics_on("AOT Code Tier2", 6, st);
+  print_statistics_on("AOT Code Tier4", 8, st);
+  print_statistics_on("AOT Code Tier5 (preloaded)", 9, st);
 }
 
 #define DO_COUNTERS(macro) \

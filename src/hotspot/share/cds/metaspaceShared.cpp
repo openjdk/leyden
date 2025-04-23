@@ -60,8 +60,8 @@
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
-#include "code/SCCache.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/precompiler.hpp"
 #include "gc/shared/gcVMOperations.hpp"
@@ -1098,8 +1098,8 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       {
         builder.start_cc_region();
         Precompiler::compile_cached_code(&builder, CHECK);
-        // Write the contents to cached code region and close SCCache before packing the region
-        SCCache::close();
+        // Write the contents to cached code region and close AOTCodeCache before packing the region
+        AOTCodeCache::close();
         builder.end_cc_region();
       }
       CDSConfig::disable_dumping_cached_code();
@@ -2100,7 +2100,7 @@ void MetaspaceShared::initialize_shared_spaces() {
   static_mapinfo->patch_heap_embedded_pointers();
   ArchiveHeapLoader::finish_initialization();
   Universe::load_archived_object_instances();
-  SCCache::initialize();
+  AOTCodeCache::initialize();
 
   // Close the mapinfo file
   static_mapinfo->close();
@@ -2155,7 +2155,7 @@ void MetaspaceShared::initialize_shared_spaces() {
 
     if (LoadCachedCode) {
       tty->print_cr("\n\nCached Code");
-      SCCache::print_on(tty);
+      AOTCodeCache::print_on(tty);
     }
 
     // collect shared symbols and strings

@@ -113,7 +113,7 @@ enum class OptoStubId :int {
 
 class OptoRuntime : public AllStatic {
   friend class Matcher;  // allow access to stub names
-  friend class SCAddressTable;
+  friend class AOTCodeAddressTable;
  private:
   // declare opto stub address/blob holder static fields
 #define C2_BLOB_FIELD_DECLARE(name, type) \

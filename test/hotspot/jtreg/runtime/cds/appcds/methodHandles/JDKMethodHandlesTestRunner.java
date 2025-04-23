@@ -91,7 +91,7 @@ public class JDKMethodHandlesTestRunner {
                 public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {
                     out.shouldHaveExitValue(0);
                     if (runMode.isProductionRun()) {
-                        out.shouldMatch(".class.load. test.java.lang.invoke." + testClassName +
+                        out.shouldMatch(".class.load.* test.java.lang.invoke." + testClassName +
                                         "[$][$]Lambda.*/0x.*source:.*shared.*objects.*file");
                     }
                 }

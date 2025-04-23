@@ -182,11 +182,11 @@ public:
 
   BufferSizingData* buffer_sizing_data()        { return &_buf_sizes; }
 
-  // SCCache::write_nmethod bails when nmethod buffer is expanded.
+  // AOTCodeCache::write_nmethod bails when nmethod buffer is expanded.
   // Large methods would routinely expand the buffer, making themselves
-  // ineligible for SCCache stores. In order to minimize this effect,
-  // we default to larger default sizes. We do this only when SCC dumping
-  // is active, to avoid impact on default configuration.
+  // ineligible for AOTCodeCache stores. In order to minimize this effect,
+  // we default to larger default sizes. We do this only when AOTCodeCache
+  // dumping is active, to avoid impact on default configuration.
   //
   // Additionally, GC barrier stubs expand up to MAX_inst_size in mainline,
   // which also forced resizes often. Current code replaces it with
@@ -196,7 +196,7 @@ public:
   // The old enum is renamed, so direct misuse in new code from mainline would
   // be caught as build failure.
   //
-  // TODO: Revert this back to mainline once SCCache is fixed.
+  // TODO: Revert this back to mainline once AOTCodeCache is fixed.
   enum ScratchBufferBlob {
     mainline_MAX_inst_size = 2048,
     MAX_locs_size       = 128, // number of relocInfo elements

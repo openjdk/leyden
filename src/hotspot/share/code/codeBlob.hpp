@@ -26,7 +26,7 @@
 #define SHARE_CODE_CODEBLOB_HPP
 
 #include "asm/codeBuffer.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compilerDefinitions.hpp"
 #include "compiler/oopMap.hpp"
 #include "runtime/javaFrameAnchor.hpp"
@@ -157,7 +157,7 @@ protected:
 public:
 
   ~CodeBlob() {
-    assert(_oop_maps == nullptr || SCCache::is_address_in_aot_cache((address)_oop_maps), "Not flushed");
+    assert(_oop_maps == nullptr || AOTCodeCache::is_address_in_aot_cache((address)_oop_maps), "Not flushed");
   }
 
   // Returns the space needed for CodeBlob
