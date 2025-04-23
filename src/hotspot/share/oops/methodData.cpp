@@ -326,6 +326,8 @@ static bool is_excluded(Klass* k) {
   if (SafepointSynchronize::is_at_safepoint() && CDSConfig::is_dumping_archive()) {
     if (k->is_instance_klass() && InstanceKlass::cast(k)->is_loaded() == false) {
       return true;
+    } else if (CDSConfig::is_dumping_dynamic_archive() && k->is_shared()) {
+      return false;
     } else {
       return SystemDictionaryShared::should_be_excluded(k);
     }
