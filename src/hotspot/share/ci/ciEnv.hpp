@@ -39,8 +39,8 @@
 
 class CompileTask;
 class OopMapSet;
-class SCCEntry;
-class SCCReader;
+class AOTCodeEntry;
+class AOTCodeReader;
 
 // ciEnv
 //
@@ -296,8 +296,8 @@ private:
 
   // Helper rountimes to factor out common code used by routines that register a method
   // i.e. register_aot_method() and register_method()
-  bool is_compilation_valid(JavaThread* thread, ciMethod* target, bool preload, bool install_code, CodeBuffer* code_buffer, SCCEntry* scc_entry);
-  void make_code_usable(JavaThread* thread, ciMethod* target, bool preload, int entry_bci, SCCEntry* scc_entry, nmethod* nm);
+  bool is_compilation_valid(JavaThread* thread, ciMethod* target, bool preload, bool install_code, CodeBuffer* code_buffer, AOTCodeEntry* aot_code_entry);
+  void make_code_usable(JavaThread* thread, ciMethod* target, bool preload, int entry_bci, AOTCodeEntry* aot_code_entry, nmethod* nm);
 
 public:
   enum {
@@ -387,7 +387,7 @@ public:
                            AsmRemarks& asm_remarks,
                            DbgStrings& dbg_strings,
 #endif /* PRODUCT */
-                           SCCReader* scc_reader);
+                           AOTCodeReader* aot_code_reader);
 
   // Register the result of a compilation.
   void register_method(ciMethod*                 target,
@@ -408,7 +408,7 @@ public:
                        bool                      has_scoped_access,
                        int                       immediate_oops_patched,
                        bool                      install_code,
-                       SCCEntry*                 entry = nullptr);
+                       AOTCodeEntry*             entry = nullptr);
 
   // Access to certain well known ciObjects.
 #define VM_CLASS_FUNC(name, ignore_s) \
@@ -499,11 +499,11 @@ public:
   void metadata_do(MetadataClosure* f) { _factory->metadata_do(f); }
 
 private:
-  SCCEntry* _scc_clinit_barriers_entry;
+  AOTCodeEntry* _aot_clinit_barriers_entry;
 
 public:
-  void  set_scc_clinit_barriers_entry(SCCEntry* entry) { _scc_clinit_barriers_entry = entry; }
-  SCCEntry* scc_clinit_barriers_entry()          const { return _scc_clinit_barriers_entry; }
+  void  set_aot_clinit_barriers_entry(AOTCodeEntry* entry) { _aot_clinit_barriers_entry = entry; }
+  AOTCodeEntry* aot_clinit_barriers_entry()          const { return _aot_clinit_barriers_entry; }
 
   // Replay support
 private:

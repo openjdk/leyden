@@ -45,8 +45,8 @@ class JvmtiThreadState;
 class MetadataClosure;
 class NativeCallWrapper;
 class OopIterateClosure;
-class SCCReader;
-class SCCEntry;
+class AOTCodeReader;
+class AOTCodeEntry;
 class ScopeDesc;
 class xmlStream;
 
@@ -263,7 +263,7 @@ class nmethod : public CodeBlob {
   CompLevel    _comp_level;            // compilation level (s1)
   CompilerType _compiler_type;         // which compiler made this nmethod (u1)
 
-  SCCEntry* _scc_entry;
+  AOTCodeEntry* _aot_code_entry;
 
   bool _used; // has this nmethod ever been invoked?
 
@@ -337,7 +337,7 @@ class nmethod : public CodeBlob {
           ImplicitExceptionTable* nul_chk_table,
           AbstractCompiler* compiler,
           CompLevel comp_level
-          , SCCEntry* scc_entry
+          , AOTCodeEntry* aot_code_entry
 #if INCLUDE_JVMCI
           , char* speculations = nullptr,
           int speculations_len = 0,
@@ -496,7 +496,7 @@ class nmethod : public CodeBlob {
                             AsmRemarks& asm_remarks,
                             DbgStrings& dbg_strings,
 #endif /* PRODUCT */
-                            SCCReader* scc_reader);
+                            AOTCodeReader* aot_code_reader);
 
 public:
   // create nmethod using archived nmethod from AOT code cache
@@ -515,7 +515,7 @@ public:
                               AsmRemarks& asm_remarks,
                               DbgStrings& dbg_strings,
 #endif /* PRODUCT */
-                              SCCReader* scc_reader);
+                              AOTCodeReader* aot_code_reader);
 
   // create nmethod with entry_bci
   static nmethod* new_nmethod(const methodHandle& method,
@@ -532,7 +532,7 @@ public:
                               ImplicitExceptionTable* nul_chk_table,
                               AbstractCompiler* compiler,
                               CompLevel comp_level
-                              , SCCEntry* scc_entry
+                              , AOTCodeEntry* aot_code_entry
 #if INCLUDE_JVMCI
                               , char* speculations = nullptr,
                               int speculations_len = 0,
@@ -960,9 +960,9 @@ public:
 
   int orig_pc_offset() { return _orig_pc_offset; }
 
-  SCCEntry* scc_entry() const { return _scc_entry; }
-  bool is_scc() const { return scc_entry() != nullptr; }
-  void set_scc_entry(SCCEntry* entry) { _scc_entry = entry; }
+  AOTCodeEntry* aot_code_entry() const { return _aot_code_entry; }
+  bool is_aot() const { return aot_code_entry() != nullptr; }
+  void set_aot_code_entry(AOTCodeEntry* entry) { _aot_code_entry = entry; }
 
   bool     used() const { return _used; }
   void set_used()       { _used = true; }

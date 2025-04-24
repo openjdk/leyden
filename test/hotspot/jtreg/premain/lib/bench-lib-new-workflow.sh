@@ -56,7 +56,7 @@
 #
 #     LEYDEN_CALLER_OPTS
 #       extra args to be added to Leyden JVM runs
-#       e.g. LEYDEN_CALLER_OPTS='-Xlog:scc=error'
+#       e.g. LEYDEN_CALLER_OPTS='-Xlog:aot+codecache=error'
 #     TASKSET
 #       allows pinning of perf runs to specific processors
 #       e.g. setting TASKSET='taskest 0xff0' will execute

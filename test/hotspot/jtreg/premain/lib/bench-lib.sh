@@ -233,7 +233,7 @@ function dump_one_jvm () {
         echo "(Premain  4 of 5) Run with $APPID-dynamic.jsa and generate AOT code"
         rm -f $APPID-store-sc.log
         (set -x; $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+StoreCachedCode \
-                       -Xlog:scc*=warning:file=$APPID-store-sc.log::filesize=0 \
+                       -Xlog:aot+codecache*=warning:file=$APPID-store-sc.log::filesize=0 \
                        -XX:CachedCodeFile=$APPID-dynamic.jsa-sc -XX:CachedCodeMaxSize=100M $CMDLINE) || exit 1
 
     fi
@@ -266,7 +266,7 @@ function exec_one_jvm () {
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_td.$2)
         (set -x;
          perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+LoadCachedCode \
-              -XX:CachedCodeFile=$APPID-dynamic.jsa-sc -Xlog:scc=error \
+              -XX:CachedCodeFile=$APPID-dynamic.jsa-sc -Xlog:aot+codecache=error \
               $CMDLINE 2> logs/${1}_aot.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_aot.$2)

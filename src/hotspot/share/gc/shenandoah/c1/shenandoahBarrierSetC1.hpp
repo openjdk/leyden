@@ -190,10 +190,10 @@ public:
 #endif // PRODUCT
 };
 
-class SCAddressTable;
+class AOTCodeAddressTable;
 
 class ShenandoahBarrierSetC1 : public BarrierSetC1 {
-  friend class SCAddressTable;
+  friend class AOTCodeAddressTable;
 private:
   CodeBlob* _pre_barrier_c1_runtime_code_blob;
   CodeBlob* _load_reference_barrier_strong_rt_code_blob;

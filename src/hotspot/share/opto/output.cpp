@@ -23,10 +23,10 @@
  */
 
 #include "asm/assembler.inline.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/debugInfo.hpp"
 #include "code/debugInfoRec.hpp"
-#include "code/SCCache.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDirectives.hpp"
 #include "compiler/disassembler.hpp"
@@ -3674,7 +3674,7 @@ void PhaseOutput::print_statistics() {
 #endif
 
 int PhaseOutput::max_inst_size() {
-  if (SCCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_write()) {
     // See the comment in output.hpp.
     return 16384;
   } else {

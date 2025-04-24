@@ -36,7 +36,7 @@
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "code/codeCache.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
@@ -211,11 +211,11 @@ void log_vm_init_stats() {
       log.cr();
     }
 
-    if (SCCache::is_on_for_read()) {
+    if (AOTCodeCache::is_on_for_read()) {
       log.print_cr("Startup Code Cache: ");
-      SCCache::print_statistics_on(&log);
+      AOTCodeCache::print_statistics_on(&log);
       log.cr();
-      SCCache::print_timers_on(&log);
+      AOTCodeCache::print_timers_on(&log);
     }
 
     VMThread::print_counters_on(&log);
@@ -548,7 +548,7 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 #endif
 
-  SCCache::close(); // Write final data and close archive
+  AOTCodeCache::close(); // Write final data and close archive
 
   // Hang forever on exit if we're reporting an error.
   if (ShowMessageBoxOnError && VMError::is_error_reported()) {

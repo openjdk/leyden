@@ -27,8 +27,8 @@
 #define CPU_AARCH64_MACROASSEMBLER_AARCH64_HPP
 
 #include "asm/assembler.inline.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/vmreg.hpp"
-#include "code/SCCache.hpp"
 #include "metaprogramming/enableIf.hpp"
 #include "oops/compressedOops.hpp"
 #include "oops/compressedKlass.hpp"
@@ -1316,7 +1316,7 @@ public:
 
   // Check if branches to the non nmethod section require a far jump
   static bool codestub_branch_needs_far_jump() {
-    if (SCCache::is_on_for_write()) {
+    if (AOTCodeCache::is_on_for_write()) {
       // To calculate far_codestub_branch_size correctly.
       return true;
     }

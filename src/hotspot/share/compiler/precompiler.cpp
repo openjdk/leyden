@@ -26,7 +26,7 @@
 #include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/runTimeClassInfo.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "compiler/precompiler.hpp"
@@ -163,7 +163,7 @@ public:
           Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
           log.print(" -> %p", requested_m);
         }
-        log.print("] [%d] (%s)", SCCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
+        log.print("] [%d] (%s)", AOTCodeCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
       }
     }
 

@@ -672,7 +672,7 @@ class RelocIterator : public StackObj {
 
 class Relocation {
   friend class RelocIterator;
-  friend class SCCReader;
+  friend class AOTCodeReader;
 
  private:
   // When a relocation has been created by a RelocIterator,

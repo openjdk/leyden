@@ -217,7 +217,7 @@ int main(int argc, char *argv[])
   AD.addInclude(AD._CPP_file, "code/compiledIC.hpp");
   AD.addInclude(AD._CPP_file, "code/nativeInst.hpp");
   AD.addInclude(AD._CPP_file, "code/vmreg.inline.hpp");
-  AD.addInclude(AD._CPP_file, "code/SCCache.hpp");
+  AD.addInclude(AD._CPP_file, "code/aotCodeCache.hpp");
   AD.addInclude(AD._CPP_file, "gc/shared/collectedHeap.inline.hpp");
   AD.addInclude(AD._CPP_file, "oops/compressedOops.hpp");
   AD.addInclude(AD._CPP_file, "oops/markWord.hpp");
@@ -258,7 +258,7 @@ int main(int argc, char *argv[])
   AD.addInclude(AD._CPP_PEEPHOLE_file, "adfiles", get_basename(AD._HPP_file._name));
   AD.addInclude(AD._CPP_PIPELINE_file, "adfiles", get_basename(AD._HPP_file._name));
   AD.addInclude(AD._DFA_file, "adfiles", get_basename(AD._HPP_file._name));
-  AD.addInclude(AD._DFA_file, "code/SCCache.hpp");
+  AD.addInclude(AD._DFA_file, "code/aotCodeCache.hpp");
   AD.addInclude(AD._DFA_file, "oops/compressedOops.hpp");
   AD.addInclude(AD._DFA_file, "opto/cfgnode.hpp");  // Use PROB_MAX in predicate.
   AD.addInclude(AD._DFA_file, "opto/intrinsicnode.hpp");

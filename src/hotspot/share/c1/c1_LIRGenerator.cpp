@@ -33,7 +33,7 @@
 #include "ci/ciInstance.hpp"
 #include "ci/ciObjArray.hpp"
 #include "ci/ciUtilities.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/compilerOracle.hpp"
 #include "gc/shared/barrierSet.hpp"
@@ -3193,13 +3193,13 @@ void LIRGenerator::increment_event_counter_impl(CodeEmitInfo* info,
       bailout("method counters allocation failed");
       return;
     }
-if (SCCache::is_on()) {
-    counter_holder = new_register(T_METADATA);
-    __ metadata2reg(counters_adr, counter_holder);
-} else {
-    counter_holder = new_pointer_register();
-    __ move(LIR_OprFact::intptrConst(counters_adr), counter_holder);
-}
+    if (AOTCodeCache::is_on()) {
+      counter_holder = new_register(T_METADATA);
+      __ metadata2reg(counters_adr, counter_holder);
+    } else {
+      counter_holder = new_pointer_register();
+      __ move(LIR_OprFact::intptrConst(counters_adr), counter_holder);
+    }
     offset = in_bytes(backedge ? MethodCounters::backedge_counter_offset() :
                                  MethodCounters::invocation_counter_offset());
   } else if (level == CompLevel_full_profile) {

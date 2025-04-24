@@ -71,7 +71,7 @@ while true; do
         shift
     elif [[ $1 = "-lsc" ]]; then
         # Log shared code
-        EXTRA_ARGS="$EXTRA_ARGS -Xlog:scc -Xlog:scc,nmethod"
+        EXTRA_ARGS="$EXTRA_ARGS -Xlog:aot+codecache -Xlog:aot+codecache+nmethod"
         shift
     elif [[ $1 = "-r" ]]; then
         # Limit the run to a single test case
@@ -428,7 +428,7 @@ for i in $TESTS; do
     fi
 
     #----------------------------------------------------------------------
-    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:scc*=warning:file=javac.scc-store.log::filesize=0 \
+    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:aot+codecache*=warning:file=javac.aot-store.log::filesize=0 \
         -XX:SharedArchiveFile=$JSA2 $X2 -XX:+StoreCachedCode -XX:CachedCodeFile=${JSA2}-sc -XX:CachedCodeMaxSize=100M \
         -cp JavacBench.jar JavacBench $LOOPS"
     test-info "${STEP4}Run with $JSA2 and generate AOT code" &&
@@ -439,7 +439,7 @@ for i in $TESTS; do
     fi
 
     #----------------------------------------------------------------------
-    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:scc*=warning:file=javac.scc-load.log::filesize=0 \
+    CMD="$JVM_AND_ARGS $EXTRA_ARGS -Xlog:aot+codecache*=warning:file=javac.aot-load.log::filesize=0 \
         -XX:SharedArchiveFile=$JSA2 $X2 -XX:+LoadCachedCode -XX:CachedCodeFile=${JSA2}-sc \
         -cp JavacBench.jar JavacBench $LOOPS"
     test-info "${STEP5}Final production run: with $JSA2 and load AOT code" &&

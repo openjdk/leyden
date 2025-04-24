@@ -25,7 +25,7 @@
 #include "c1/c1_LIRGenerator.hpp"
 #include "c1/c1_CodeStubs.hpp"
 #if INCLUDE_CDS
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #endif
 #include "gc/g1/c1/g1BarrierSetC1.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
@@ -171,7 +171,7 @@ void G1BarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Opr new_v
     __ move(addr, xor_res);
     __ logical_xor(xor_res, new_val, xor_res);
 #if INCLUDE_CDS
-    if (SCCache::is_on_for_write()) {
+    if (AOTCodeCache::is_on_for_write()) {
       __ move(grain_shift_addr, grain_shift_reg);
       __ move(xor_res, xor_shift_res);
       __ move(grain_shift_indirect, grain_shift);
@@ -191,7 +191,7 @@ void G1BarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Opr new_v
   } else {
     __ logical_xor(addr, new_val, xor_res);
 #if INCLUDE_CDS
-    if (SCCache::is_on_for_write()) {
+    if (AOTCodeCache::is_on_for_write()) {
       __ move(grain_shift_addr, grain_shift_reg);
       __ move(grain_shift_indirect, grain_shift);
       __ unsigned_shift_right(xor_res,
