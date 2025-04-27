@@ -255,7 +255,7 @@ public class AOTFlags {
         out.shouldContain("Hello World");
         out.shouldContain("AOTConfiguration recorded: " + aotConfigFile);
         out.shouldContain("AOTCache creation is complete: hello.aot");
-        out.shouldMatch("Picked up JAVA_TOOL_OPTIONS: .*-Dsome.option=foo' '-Xshare:off' '");
+        out.shouldContain("Picked up AOT_TOOL_OPTIONS: -Dsome.option='foo -Xshare:off '");
 
         // -XX:-AOTClassLinking should take effect in the assembly process.
         out.shouldMatch("aot-linked =[ ]+0,");

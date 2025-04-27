@@ -1198,15 +1198,6 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
     append_args(&args, "-XX:AOTMode=create", CHECK_0);
   }
 
-  GrowableArray<const char*> aot_tool_options;
-  jint code;
-  if ((code = Arguments::parse_aot_tool_options_environment_variable(&aot_tool_options)) != JNI_OK) {
-    THROW_MSG_0(vmSymbols::java_lang_InternalError(), err_msg("failed to parse AOT_TOOL_OPTIONS: %d", code));
-  }
-  for (int i = 0; i < aot_tool_options.length(); i++) {
-    append_args(&args, aot_tool_options.at(i), CHECK_0);
-  }
-
   Symbol* klass_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$ProcessLauncher");
   Klass* k = SystemDictionary::resolve_or_fail(klass_name, true, CHECK_0);
   Symbol* methodName = SymbolTable::new_symbol("execWithJavaToolOptions");

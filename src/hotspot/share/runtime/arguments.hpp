@@ -306,6 +306,11 @@ class Arguments : AllStatic {
   static jint parse_options_environment_variable(const char* name, ScopedVMInitArgs* vm_args);
   static jint parse_java_tool_options_environment_variable(ScopedVMInitArgs* vm_args);
   static jint parse_java_options_environment_variable(ScopedVMInitArgs* vm_args);
+  static jint parse_aot_tool_options_environment_variable(const JavaVMInitArgs *vm_options_args,
+                                                          const JavaVMInitArgs *java_tool_options_args,
+                                                          const JavaVMInitArgs *cmd_line_args,
+                                                          const JavaVMInitArgs *java_options_args,
+                                                          ScopedVMInitArgs* aot_tool_options_args);
   static jint parse_vm_options_file(const char* file_name, ScopedVMInitArgs* vm_args);
   static jint parse_options_buffer(const char* name, char* buffer, const size_t buf_len, ScopedVMInitArgs* vm_args);
   static jint parse_xss(const JavaVMOption* option, const char* tail, intx* out_ThreadStackSize);
@@ -323,10 +328,11 @@ class Arguments : AllStatic {
 
   static bool handle_deprecated_print_gc_flags();
 
-  static jint parse_vm_init_args(const JavaVMInitArgs *vm_options_args,
-                                 const JavaVMInitArgs *java_tool_options_args,
-                                 const JavaVMInitArgs *java_options_args,
-                                 const JavaVMInitArgs *cmd_line_args);
+  static jint parse_vm_init_args(const JavaVMInitArgs* vm_options_args,
+                                 const JavaVMInitArgs* java_tool_options_args,
+                                 const JavaVMInitArgs* cmd_line_args,
+                                 const JavaVMInitArgs* java_options_args,
+                                 const JavaVMInitArgs* aot_tool_options_args);
   static jint parse_each_vm_init_arg(const JavaVMInitArgs* args, JVMFlagOrigin origin);
   static jint finalize_vm_init_args();
   static bool is_bad_option(const JavaVMOption* option, jboolean ignore, const char* option_type);
@@ -417,10 +423,6 @@ class Arguments : AllStatic {
   static const char* jvm_args()            { return build_resource_string(_jvm_args_array, _num_jvm_args); }
   static void print_jvm_flags_on(outputStream* st);
   static void print_jvm_args_on(outputStream* st);
-
-  // Parse the environment variable AOT_TOOL_OPTIONS and store the individual "initial"
-  // arguments in the GrowableArray. Each string is resource allocated
-  static jint parse_aot_tool_options_environment_variable(GrowableArray<const char*>* options);
 
   // -Dkey=value flags
   static SystemProperty*  system_properties()   { return _system_properties; }
