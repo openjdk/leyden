@@ -491,6 +491,19 @@ void Threads::initialize_jsr292_core_classes(TRAPS) {
   }
 }
 
+// One-shot PeriodicTask subclass for reading the release file
+class ReadReleaseFileTask : public PeriodicTask {
+ public:
+  ReadReleaseFileTask() : PeriodicTask(100) {}
+
+  virtual void task() {
+    os::read_image_release_file();
+
+    // Reclaim our storage and disenroll ourself.
+    delete this;
+  }
+};
+
 jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   extern void JDK_Version_init();
 
@@ -653,6 +666,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   if (xtty != nullptr)
     xtty->elem("vm_main_thread thread='%zu'",
                (uintx) main_thread->osthread()->thread_id());
+
+  // Have the WatcherThread read the release file in the background.
+  ReadReleaseFileTask* read_task = new ReadReleaseFileTask();
+  read_task->enroll();
 
   // Create WatcherThread as soon as we can since we need it in case
   // of hangs during error reporting.

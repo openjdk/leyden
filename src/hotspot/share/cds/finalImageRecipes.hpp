@@ -84,7 +84,6 @@ class FinalImageRecipes {
                         _reflect_klasses(nullptr), _reflect_flags(nullptr),
                         _dynamic_proxy_classes(nullptr) {}
 
-
   void* operator new(size_t size) throw();
 
   // Called when dumping preimage

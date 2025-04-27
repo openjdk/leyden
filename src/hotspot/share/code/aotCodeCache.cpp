@@ -4672,8 +4672,10 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
           os::print_location(tty, p2i(addr), true);
           reloc.print_current_on(tty);
 #ifndef PRODUCT
-          buffer->print_on(tty);
-          buffer->decode();
+          if (buffer != nullptr) {
+            buffer->print_on(tty);
+            buffer->decode();
+          }
 #endif // !PRODUCT
           fatal("Address " INTPTR_FORMAT " for <unknown> is missing in AOT Code Cache addresses table", p2i(addr));
         }

@@ -25,7 +25,7 @@
 /*
  * @test id=static
  * @requires vm.cds.write.archived.java.heap
- * @library /test/jdk/lib/testlibrary /test/lib
+ * @library /test/lib
  * @build StringConcatStress
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar StringConcatStressApp
  * @run driver StringConcatStress STATIC
@@ -33,20 +33,13 @@
 
 /*
  * @test id=aot
- * @requires vm.cds.write.archived.java.heap
- * @library /test/jdk/lib/testlibrary /test/lib
+ * @requires vm.cds.supports.aot.class.linking
+ * @comment work around JDK-8345635
+ * @requires !vm.jvmci.enabled
+ * @library /test/lib
  * @build StringConcatStress
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar StringConcatStressApp
  * @run driver StringConcatStress AOT
- */
-
-/*
- * @test id=leyden
- * @requires vm.cds.write.archived.java.heap
- * @library /test/jdk/lib/testlibrary /test/lib
- * @build StringConcatStress
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar StringConcatStressApp
- * @run driver StringConcatStress LEYDEN
  */
 
 import jdk.test.lib.cds.CDSAppTester;

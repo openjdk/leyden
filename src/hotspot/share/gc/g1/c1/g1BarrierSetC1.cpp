@@ -22,11 +22,9 @@
  *
  */
 
-#include "c1/c1_LIRGenerator.hpp"
 #include "c1/c1_CodeStubs.hpp"
-#if INCLUDE_CDS
 #include "code/aotCodeCache.hpp"
-#endif
+#include "c1/c1_LIRGenerator.hpp"
 #include "gc/g1/c1/g1BarrierSetC1.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"

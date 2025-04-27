@@ -113,7 +113,7 @@ abstract public class CDSAppTester {
     }
 
     public enum RunMode {
-        TRAINING,       // -XX:DumpLoadedClassList OR {-XX:AOTMode=create -XX:AOTConfiguration}
+        TRAINING,       // -XX:DumpLoadedClassList OR {-XX:AOTMode=record -XX:AOTConfiguration}
         TRAINING0,      // LEYDEN only
         TRAINING1,      // LEYDEN only (assembly phase, app logic not executed)
         DUMP_STATIC,    // -Xshare:dump
