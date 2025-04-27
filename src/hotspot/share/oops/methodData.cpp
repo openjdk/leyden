@@ -1431,7 +1431,7 @@ void MethodData::init() {
 }
 
 bool MethodData::is_mature() const {
-  return CompilationPolicy::is_mature((MethodData*)this);
+  return CompilationPolicy::is_mature(const_cast<MethodData*>(this));
 }
 
 // Translate a bci to its corresponding data index (di).
@@ -2001,7 +2001,7 @@ void MethodData::restore_unshareable_info(TRAPS) {
   //_extra_data_lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
 }
 #endif // INCLUDE_CDS
-       
+
 #ifdef ASSERT
 void MethodData::check_extra_data_locked() const {
     // Cast const away, just to be able to verify the lock

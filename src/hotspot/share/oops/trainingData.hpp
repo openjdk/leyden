@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -717,7 +717,6 @@ class MethodTrainingData : public TrainingData {
   CompileTrainingData* _last_toplevel_compiles[CompLevel_count - 1];
   int _highest_top_level;
   int _level_mask;  // bit-set of all possible levels
-  bool _was_inlined;
   bool _was_toplevel;
   // metadata snapshots of final state:
   MethodCounters* _final_counters;
@@ -732,7 +731,7 @@ class MethodTrainingData : public TrainingData {
     }
     _highest_top_level = CompLevel_none;
     _level_mask = 0;
-    _was_inlined = _was_toplevel = false;
+    _was_toplevel = false;
   }
 
   static int level_mask(int level) {
@@ -749,7 +748,6 @@ class MethodTrainingData : public TrainingData {
   bool has_holder()           const { return _holder != nullptr; }
   Method* holder()            const { return _holder; }
   bool only_inlined()         const { return !_was_toplevel; }
-  bool never_inlined()        const { return !_was_inlined; }
   bool saw_level(CompLevel l) const { return (_level_mask & level_mask(l)) != 0; }
   int highest_level()         const { return highest_level(_level_mask); }
   int highest_top_level()     const { return _highest_top_level; }
@@ -772,9 +770,7 @@ class MethodTrainingData : public TrainingData {
   }
 
   void notice_compilation(int level, bool inlined = false) {
-    if (inlined) {
-      _was_inlined = true;
-    } else {
+    if (!inlined) {
       _was_toplevel = true;
     }
     _level_mask |= level_mask(level);
