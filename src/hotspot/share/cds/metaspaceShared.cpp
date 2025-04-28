@@ -1028,13 +1028,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   link_shared_classes(CHECK);
   log_info(cds)("Rewriting and linking classes: done");
 
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    assert(!AOTRecordTraining, "must be");
-    if (CDSConfig::is_dumping_aot_linked_classes()) {
-      AOTRecordTraining = true;
-    }
-  }
-
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
 
   if (CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
@@ -1082,7 +1075,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   ArchiveHeapInfo* heap_info = op.heap_info();
 
   if (CDSConfig::is_dumping_final_static_archive()) {
-    AOTRecordTraining = false;
     if (StoreCachedCode) {
       if (log_is_enabled(Info, cds, jit)) {
         CDSAccess::test_heap_access_api();

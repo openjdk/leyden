@@ -45,40 +45,45 @@ void RecompilationSchedule::initialize() {
 }
 
 void RecompilationSchedule::prepare(TRAPS) {
-  if (!TrainingData::need_data()) {
-    return;
-  }
-#if INCLUDE_CDS
-  auto nmethods = MethodProfiler::sampled_nmethods();
-  GrowableArray<MethodTrainingData*> dyn_schedule;
-  for (auto it = nmethods->begin(); it != nmethods->end(); ++it) {
-    nmethod* nm = *it;
-    if (AOTRecordOnlyTopCompilations && nm->method_profiling_count() == 0) {
-      break;
+  if (TrainingData::assembling_data() && _schedule != nullptr) {
+    ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
+    _schedule_for_dumping = MetadataFactory::new_array<MethodTrainingData*>(loader_data, _schedule->length(), CHECK);
+    for (int i = 0; i < _schedule->length(); i++) {
+      _schedule_for_dumping->at_put(i, _schedule->at(i));
     }
-    if (nm->method() != nullptr) {
-      MethodTrainingData* mtd = nm->method()->training_data_or_null();
-      if (mtd != nullptr) {
-        dyn_schedule.append(mtd);
+  }
+  if (TrainingData::need_data()) {
+#if INCLUDE_CDS
+    auto nmethods = MethodProfiler::sampled_nmethods();
+    GrowableArray<MethodTrainingData*> dyn_schedule;
+    for (auto it = nmethods->begin(); it != nmethods->end(); ++it) {
+      nmethod* nm = *it;
+      if (AOTRecordOnlyTopCompilations && nm->method_profiling_count() == 0) {
+        break;
+      }
+      if (nm->method() != nullptr) {
+        MethodTrainingData* mtd = nm->method()->training_data_or_null();
+        if (mtd != nullptr) {
+          dyn_schedule.append(mtd);
+        }
       }
     }
-  }
-  delete nmethods;
-  ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  _schedule_for_dumping = MetadataFactory::new_array<MethodTrainingData*>(loader_data, dyn_schedule.length(), CHECK);
-  int i = 0;
-  for (auto it = dyn_schedule.begin(); it != dyn_schedule.end(); ++it) {
-    _schedule_for_dumping->at_put(i++, *it);
-  }
+    delete nmethods;
+    ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
+    _schedule_for_dumping = MetadataFactory::new_array<MethodTrainingData*>(loader_data, dyn_schedule.length(), CHECK);
+    int i = 0;
+    for (auto it = dyn_schedule.begin(); it != dyn_schedule.end(); ++it) {
+      _schedule_for_dumping->at_put(i++, *it);
+    }
 #endif
+  }
 }
 
 #if INCLUDE_CDS
 void RecompilationSchedule::iterate_roots(MetaspaceClosure* it) {
-  if (!TrainingData::need_data()) {
-    return;
+  if (_schedule_for_dumping != nullptr) {
+    it->push(&_schedule_for_dumping);
   }
-  it->push(&_schedule_for_dumping);
 }
 
 void RecompilationSchedule::cleanup() {
