@@ -64,6 +64,7 @@
 #include "runtime/handles.inline.hpp"
 #include "runtime/java.hpp"
 #include "runtime/jniHandles.inline.hpp"
+#include "runtime/mutexLocker.hpp"
 #include "runtime/os.inline.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stubCodeGenerator.hpp"
@@ -379,10 +380,11 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
   return nullptr;
 }
 
-void AOTCodeCache::add_C_string(const char* str) {
-  if (is_on_for_write()) {
-    _cache->add_new_C_string(str);
+const char* AOTCodeCache::add_C_string(const char* str) {
+  if (is_on_for_write() && str != nullptr) {
+    return _cache->_table->add_C_string(str);
   }
+  return str;
 }
 
 bool AOTCodeCache::allow_const_field(ciConstant& value) {
@@ -3555,7 +3557,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   }
   count = 0;
   result = nm->dbg_strings().iterate([&] (const char* str) -> bool {
-    log_info(aot, codecache, nmethod)("dbg string=%s", str);
+    log_info(aot, codecache, nmethod)("dbg string[" INTPTR_FORMAT "]=%s", p2i(str), str);
     n = write_bytes(str, (uint)strlen(str) + 1);
     if (n != strlen(str) + 1) {
       return false;
@@ -3687,12 +3689,12 @@ bool AOTCodeCache::write_nmethod_loadtime_relocations(JavaThread* thread, nmetho
         if (dest == r->addr()) { // possible call via trampoline on Aarch64
           dest = (address)-1;    // do nothing in this case when loading this relocation
         }
-        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr, nm));
         break;
       }
       case relocInfo::trampoline_stub_type: {
         address dest = ((trampoline_stub_Relocation*)iter.reloc())->destination();
-        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr, nm));
         break;
       }
       case relocInfo::static_stub_type:
@@ -3704,7 +3706,7 @@ bool AOTCodeCache::write_nmethod_loadtime_relocations(JavaThread* thread, nmetho
         if (dest == r->addr()) { // possible call via trampoline on Aarch64
           dest = (address)-1;    // do nothing in this case when loading this relocation
         }
-        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr));
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr, nm));
         break;
       }
       case relocInfo::runtime_call_w_cp_type:
@@ -3713,7 +3715,7 @@ bool AOTCodeCache::write_nmethod_loadtime_relocations(JavaThread* thread, nmetho
       case relocInfo::external_word_type: {
         // Record offset of runtime target
         address target = ((external_word_Relocation*)iter.reloc())->target();
-        reloc_data.at_put(idx, _table->id_for_address(target, iter, nullptr));
+        reloc_data.at_put(idx, _table->id_for_address(target, iter, nullptr, nm));
         break;
       }
       case relocInfo::internal_word_type:
@@ -4416,8 +4418,6 @@ static const char* _C_strings[MAX_STR_COUNT] = {nullptr};
 static int _C_strings_count = 0;
 static int _C_strings_s[MAX_STR_COUNT] = {0};
 static int _C_strings_id[MAX_STR_COUNT] = {0};
-static int _C_strings_len[MAX_STR_COUNT] = {0};
-static int _C_strings_hash[MAX_STR_COUNT] = {0};
 static int _C_strings_used = 0;
 
 void AOTCodeCache::load_strings() {
@@ -4426,25 +4426,21 @@ void AOTCodeCache::load_strings() {
     return;
   }
   uint strings_offset = _load_header->strings_offset();
-  uint strings_size   = _load_header->entries_offset() - strings_offset;
-  uint data_size = (uint)(strings_count * sizeof(uint));
-  uint* sizes = (uint*)addr(strings_offset);
-  uint* hashs = (uint*)addr(strings_offset + data_size);
-  strings_size -= 2 * data_size;
+  uint* string_lengths = (uint*)addr(strings_offset);
+  strings_offset += (strings_count * sizeof(uint));
+  uint strings_size = _load_header->entries_offset() - strings_offset;
   // We have to keep cached strings longer than _cache buffer
   // because they are refernced from compiled code which may
   // still be executed on VM exit after _cache is freed.
   char* p = NEW_C_HEAP_ARRAY(char, strings_size+1, mtCode);
-  memcpy(p, addr(strings_offset + 2 * data_size), strings_size);
+  memcpy(p, addr(strings_offset), strings_size);
   _C_strings_buf = p;
   assert(strings_count <= MAX_STR_COUNT, "sanity");
   for (uint i = 0; i < strings_count; i++) {
     _C_strings[i] = p;
-    uint len = sizes[i];
+    uint len = string_lengths[i];
     _C_strings_s[i] = i;
     _C_strings_id[i] = i;
-    _C_strings_len[i] = len;
-    _C_strings_hash[i] = hashs[i];
     p += len;
   }
   assert((uint)(p - _C_strings_buf) <= strings_size, "(" INTPTR_FORMAT " - " INTPTR_FORMAT ") = %d > %d ", p2i(p), p2i(_C_strings_buf), (uint)(p - _C_strings_buf), strings_size);
@@ -4454,68 +4450,61 @@ void AOTCodeCache::load_strings() {
 }
 
 int AOTCodeCache::store_strings() {
-  uint offset = _write_position;
-  uint length = 0;
   if (_C_strings_used > 0) {
-    // Write sizes first
+    uint offset = _write_position;
+    uint length = 0;
+    uint* lengths = (uint *)reserve_bytes(sizeof(uint) * _C_strings_used);
+    if (lengths == nullptr) {
+      return -1;
+    }
     for (int i = 0; i < _C_strings_used; i++) {
-      uint len = _C_strings_len[i] + 1; // Include 0
+      const char* str = _C_strings[_C_strings_s[i]];
+      uint len = (uint)strlen(str) + 1;
       length += len;
-      assert(len < 1000, "big string: %s", _C_strings[i]);
-      uint n = write_bytes(&len, sizeof(uint));
-      if (n != sizeof(uint)) {
-        return -1;
-      }
-    }
-    // Write hashs
-    for (int i = 0; i < _C_strings_used; i++) {
-      uint n = write_bytes(&(_C_strings_hash[i]), sizeof(uint));
-      if (n != sizeof(uint)) {
-        return -1;
-      }
-    }
-    for (int i = 0; i < _C_strings_used; i++) {
-      uint len = _C_strings_len[i] + 1; // Include 0
-      uint n = write_bytes(_C_strings[_C_strings_s[i]], len);
+      assert(len < 1000, "big string: %s", str);
+      lengths[i] = len;
+      uint n = write_bytes(str, len);
       if (n != len) {
         return -1;
       }
     }
-    log_info(aot, codecache, exit)("Wrote %d C strings of total length %d at offset %d to AOT Code Cache",
-                        _C_strings_used, length, offset);
+    log_debug(aot, codecache, exit)("  Wrote %d C strings of total length %d at offset %d to AOT Code Cache",
+                                   _C_strings_used, length, offset);
   }
   return _C_strings_used;
 }
 
-void AOTCodeCache::add_new_C_string(const char* str) {
-  assert(for_write(), "only when storing code");
-  _table->add_C_string(str);
-}
-
-void AOTCodeAddressTable::add_C_string(const char* str) {
-  if (str != nullptr && _extrs_complete) {
+const char* AOTCodeAddressTable::add_C_string(const char* str) {
+  if (_extrs_complete) {
+    LogStreamHandle(Trace, aot, codecache, stringtable) log; // ctor outside lock
+    MutexLocker ml(AOTCodeCStrings_lock, Mutex::_no_safepoint_check_flag);
     // Check previous strings address
     for (int i = 0; i < _C_strings_count; i++) {
       if (_C_strings[i] == str) {
-        return; // Found existing one
+        return str; // Found existing one
+      } else if (strcmp(_C_strings[i], str) == 0) {
+        return _C_strings[i];
       }
     }
     // Add new one
     if (_C_strings_count < MAX_STR_COUNT) {
-      log_trace(aot, codecache)("add_C_string: [%d] " INTPTR_FORMAT " %s", _C_strings_count, p2i(str), str);
       _C_strings_id[_C_strings_count] = -1; // Init
       _C_strings[_C_strings_count++] = str;
-    } else {
-      if (Thread::current()->is_Compiler_thread()) {
-        CompileTask* task = ciEnv::current()->task();
-        log_info(aot, codecache)("%d (L%d): Number of C strings > max %d %s",
-                      task->compile_id(), task->comp_level(), MAX_STR_COUNT, str);
+      if (log.is_enabled()) {
+        log.print_cr("add_C_string: [%d] " INTPTR_FORMAT " '%s'", _C_strings_count, p2i(str), str);
       }
+    } else {
+      fatal("Number of C strings > MAX_STR_COUNT");
     }
   }
+  return str;
 }
 
 int AOTCodeAddressTable::id_for_C_string(address str) {
+  if (str == nullptr) {
+    return -1;
+  }
+  MutexLocker ml(AOTCodeCStrings_lock, Mutex::_no_safepoint_check_flag);
   for (int i = 0; i < _C_strings_count; i++) {
     if (_C_strings[i] == (const char*)str) { // found
       int id = _C_strings_id[i];
@@ -4523,21 +4512,10 @@ int AOTCodeAddressTable::id_for_C_string(address str) {
         assert(id < _C_strings_used, "%d >= %d", id , _C_strings_used);
         return id; // Found recorded
       }
-      // Search for the same string content
-      int len = (int)strlen((const char*)str);
-      int hash = java_lang_String::hash_code((const jbyte*)str, len);
-      for (int j = 0; j < _C_strings_used; j++) {
-        if ((_C_strings_len[j] == len) && (_C_strings_hash[j] == hash)) {
-          _C_strings_id[i] = j; // Found match
-          return j;
-        }
-      }
       // Not found in recorded, add new
       id = _C_strings_used++;
       _C_strings_s[id] = i;
       _C_strings_id[i] = id;
-      _C_strings_len[id] = len;
-      _C_strings_hash[id] = hash;
       return id;
     }
   }
@@ -4596,7 +4574,7 @@ address AOTCodeAddressTable::address_for_id(int idx) {
   return nullptr;
 }
 
-int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer* buffer) {
+int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer* buffer, CodeBlob* blob) {
   if (!_extrs_complete) {
     fatal("AOT Code Cache VM runtime addresses table is not complete");
   }
@@ -4676,8 +4654,12 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
             buffer->print_on(tty);
             buffer->decode();
           }
+          if (blob != nullptr) {
+            blob->print_on(tty);
+            blob->print_code_on(tty);
+          }
 #endif // !PRODUCT
-          fatal("Address " INTPTR_FORMAT " for <unknown> is missing in AOT Code Cache addresses table", p2i(addr));
+          fatal("Address " INTPTR_FORMAT " for <unknown>/('%s') is missing in AOT Code Cache addresses table", p2i(addr), (const char*)addr);
         }
       } else {
         return _extrs_base + id;

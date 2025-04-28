@@ -45,6 +45,7 @@ class ciConstant;
 class ciEnv;
 class ciMethod;
 class CodeBuffer;
+class CodeBlob;
 class CodeOffsets;
 class CompileTask;
 class DebugInformationRecorder;
@@ -248,10 +249,10 @@ public:
   void init_stubs();
   void init_opto();
   void init_c1();
-  void add_C_string(const char* str);
+  const char* add_C_string(const char* str);
   int  id_for_C_string(address str);
   address address_for_C_string(int idx);
-  int  id_for_address(address addr, RelocIterator iter, CodeBuffer* buffer);
+  int  id_for_address(address addr, RelocIterator iter, CodeBuffer* buffer, CodeBlob* blob = nullptr);
   address address_for_id(int id);
   bool opto_complete() const { return _opto_complete; }
   bool c1_complete() const { return _c1_complete; }
@@ -519,8 +520,6 @@ public:
   bool use_meta_ptrs()    const { return _use_meta_ptrs; }
   bool gen_preload_code() const { return _gen_preload_code; }
 
-  void add_new_C_string(const char* str);
-
   AOTCodeEntry* add_entry() {
     _store_entries_cnt++;
     _store_entries -= 1;
@@ -630,7 +629,7 @@ public:
     }
   }
 
-  static void add_C_string(const char* str) NOT_CDS_RETURN;
+  static const char* add_C_string(const char* str) NOT_CDS_RETURN_(str);
 
   static void print_on(outputStream* st) NOT_CDS_RETURN;
   static void print_statistics_on(outputStream* st) NOT_CDS_RETURN;
