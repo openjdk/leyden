@@ -341,15 +341,26 @@ static bool is_excluded(Klass* k) {
   return false;
 }
 
+static bool is_not_yet_initialized(Klass* k) {
+  if (k->is_instance_klass()) {
+    return InstanceKlass::cast(k)->is_not_initialized();
+  }
+  if (k->is_objArray_klass()) {
+    return is_not_yet_initialized(ObjArrayKlass::cast(k)->bottom_klass());
+  }
+  // All other klass types should be always initialized.
+  return false;
+}
+
 void TypeStackSlotEntries::clean_weak_klass_links(bool always_clean) {
   for (int i = 0; i < _number_of_entries; i++) {
     intptr_t p = type(i);
     Klass* k = (Klass*)klass_part(p);
     if (k != nullptr) {
-      if (!always_clean && k->is_instance_klass() && InstanceKlass::cast(k)->is_not_initialized()) {
+      if (!always_clean && is_not_yet_initialized(k)) {
         continue; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
       }
-      if (always_clean || k->class_loader_data() == nullptr || !k->is_loader_alive() || is_excluded(k)) {
+      if (always_clean || !k->is_loader_alive() || is_excluded(k)) {
         set_type(i, with_status((Klass*)nullptr, p));
       }
     }
@@ -367,10 +378,10 @@ void ReturnTypeEntry::clean_weak_klass_links(bool always_clean) {
   intptr_t p = type();
   Klass* k = (Klass*)klass_part(p);
   if (k != nullptr) {
-    if (!always_clean && k->is_instance_klass() && InstanceKlass::cast(k)->is_not_initialized()) {
+    if (!always_clean && is_not_yet_initialized(k)) {
       return; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
     }
-    if (always_clean || k->class_loader_data() == nullptr || !k->is_loader_alive() || is_excluded(k)) {
+    if (always_clean || !k->is_loader_alive() || is_excluded(k)) {
       set_type(with_status((Klass*)nullptr, p));
     }
   }
@@ -457,10 +468,10 @@ void ReceiverTypeData::clean_weak_klass_links(bool always_clean) {
     for (uint row = 0; row < row_limit(); row++) {
     Klass* p = receiver(row);
     if (p != nullptr) {
-      if (!always_clean && p->is_instance_klass() && InstanceKlass::cast(p)->is_not_initialized()) {
+      if (!always_clean && is_not_yet_initialized(p)) {
         continue; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
       }
-      if (always_clean || p->class_loader_data() == nullptr || !p->is_loader_alive() || is_excluded(p)) {
+      if (always_clean || !p->is_loader_alive() || is_excluded(p)) {
         clear_row(row);
       }
     }
@@ -1842,7 +1853,7 @@ class CleanExtraDataKlassClosure : public CleanExtraDataClosure {
 public:
   CleanExtraDataKlassClosure(bool always_clean) : _always_clean(always_clean) {}
   bool is_live(Method* m) {
-    if (!_always_clean && m->method_holder()->is_instance_klass() && InstanceKlass::cast(m->method_holder())->is_not_initialized()) {
+    if (!_always_clean && is_not_yet_initialized(m->method_holder())) {
       return true; // TODO: treat as unloaded instead?
     }
     return !(_always_clean) && m->method_holder()->is_loader_alive();
