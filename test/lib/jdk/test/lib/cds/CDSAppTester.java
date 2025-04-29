@@ -75,19 +75,19 @@ abstract public class CDSAppTester {
 
         this.name = name;
         classListFile = name() + ".classlist";
-        classListFileLog = logFileName(classListFile);;
+        classListFileLog = logFileName(classListFile);
         aotConfigurationFile = name() + ".aotconfig";
-        aotConfigurationFileLog = logFileName(aotConfigurationFile);;
+        aotConfigurationFileLog = logFileName(aotConfigurationFile);
         staticArchiveFile = name() + ".static.jsa";
-        staticArchiveFileLog = logFileName(staticArchiveFile);;
+        staticArchiveFileLog = logFileName(staticArchiveFile);
         aotCacheFile = name() + ".aot";
         aotCacheFileLog = logFileName(aotCacheFile);;
         dynamicArchiveFile = name() + ".dynamic.jsa";
-        dynamicArchiveFileLog = logFileName(dynamicArchiveFile);;
+        dynamicArchiveFileLog = logFileName(dynamicArchiveFile);
         cdsFile = name() + ".cds";
-        cdsFileLog = logFileName(cdsFile);;
+        cdsFileLog = logFileName(cdsFile);
         cdsFilePreImage = cdsFile + ".preimage";
-        cdsFilePreImageLog = logFileName(cdsFilePreImage);;
+        cdsFilePreImageLog = logFileName(cdsFilePreImage);
         tempBaseArchiveFile = name() + ".temp-base.jsa";
     }
 
