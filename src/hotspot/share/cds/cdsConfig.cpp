@@ -747,7 +747,7 @@ void CDSConfig::setup_compiler_args() {
     FLAG_SET_ERGO(LoadCachedCode, false);
   } else if (is_dumping_final_static_archive() && can_dump_profile_and_compiled_code) {
     // JEP 483 workflow -- assembly
-    FLAG_SET_ERGO(AOTRecordTraining, false); // This will be updated inside MetaspaceShared::preload_and_dump()
+    FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
     FLAG_SET_ERGO(LoadCachedCode, false);
