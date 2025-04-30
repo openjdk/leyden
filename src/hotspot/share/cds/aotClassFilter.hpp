@@ -27,6 +27,7 @@
 
 #include "memory/allStatic.hpp"
 #include "utilities/debug.hpp"
+#include "utilities/globalDefinitions.hpp"
 
 class InstanceKlass;
 class Thread;
