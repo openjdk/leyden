@@ -34,7 +34,6 @@
  */
 
 import java.io.File;
-import java.util.Map;
 import jdk.test.lib.cds.CDSTestUtils;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
@@ -238,28 +237,16 @@ public class AOTFlags {
         out.shouldContain("AOTCache creation is complete: hello.aot");
         out.shouldHaveExitValue(0);
 
-        //----------------------------------------------------------------------
-        printTestCase("AOT_TOOL_OPTIONS (JEP-JDK-8354330");
-
+        // Quoating of space characters in child JVM process
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
-            "-XX:AOTMode=record",
             "-XX:AOTCacheOutput=" + aotCacheFile,
-            "-XX:AOTConfiguration=" + aotConfigFile,
+            "-Dmy.prop=My string -Xshare:off here", // -Xshare:off should not be treated as a single VM opt for the child JVM
             "-Xlog:cds=debug",
             "-cp", appJar, helloClass);
-        Map<String, String> env = pb.environment();
-        // The "-Xshare:off" below should be treated as part of a property value and not
-        // a VM option by itself
-        env.put("AOT_TOOL_OPTIONS", "-Dsome.option='foo -Xshare:off ' -Xmx512m -XX:-AOTClassLinking");
         out = CDSTestUtils.executeAndLog(pb, "ontstep-train");
         out.shouldContain("Hello World");
-        out.shouldContain("AOTConfiguration recorded: " + aotConfigFile);
         out.shouldContain("AOTCache creation is complete: hello.aot");
-        out.shouldContain("Picked up AOT_TOOL_OPTIONS: -Dsome.option='foo -Xshare:off '");
-
-        // -XX:-AOTClassLinking should take effect in the assembly process.
-        out.shouldMatch("aot-linked =[ ]+0,");
-        out.shouldNotMatch("aot-linked =[ ]+[1-9]");
+        out.shouldMatch("Picked up JAVA_TOOL_OPTIONS:.* -Dmy.prop=My' 'string' '-Xshare:off' 'here");
         out.shouldHaveExitValue(0);
     }
 

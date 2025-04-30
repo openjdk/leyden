@@ -4278,6 +4278,9 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_float_sign_flip());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_double_sign_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_double_sign_flip());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_int());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_short());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_long());
   // The iota indices are ordered by type B/S/I/L/F/D, and the offset between two types is 64.
   // See C2_MacroAssembler::load_iota_indices().
   for (int i = 0; i < 6; i++) {
@@ -4414,7 +4417,8 @@ AOTCodeAddressTable::~AOTCodeAddressTable() {
 #else
 #define MAX_STR_COUNT 500
 #endif
-static const char* _C_strings[MAX_STR_COUNT] = {nullptr};
+static const char* _C_strings_in[MAX_STR_COUNT] = {nullptr}; // Incoming strings
+static const char* _C_strings[MAX_STR_COUNT]    = {nullptr}; // Our duplicates
 static int _C_strings_count = 0;
 static int _C_strings_s[MAX_STR_COUNT] = {0};
 static int _C_strings_id[MAX_STR_COUNT] = {0};
@@ -4480,19 +4484,24 @@ const char* AOTCodeAddressTable::add_C_string(const char* str) {
     MutexLocker ml(AOTCodeCStrings_lock, Mutex::_no_safepoint_check_flag);
     // Check previous strings address
     for (int i = 0; i < _C_strings_count; i++) {
-      if (_C_strings[i] == str) {
-        return str; // Found existing one
+      if (_C_strings_in[i] == str) {
+        return _C_strings[i]; // Found previous one - return our duplicate
       } else if (strcmp(_C_strings[i], str) == 0) {
         return _C_strings[i];
       }
     }
     // Add new one
     if (_C_strings_count < MAX_STR_COUNT) {
+      // Passed in string can be freed and used space become inaccessible.
+      // Keep original address but duplicate string for future compare.
       _C_strings_id[_C_strings_count] = -1; // Init
-      _C_strings[_C_strings_count++] = str;
+      _C_strings_in[_C_strings_count] = str;
+      const char* dup = os::strdup(str);
+      _C_strings[_C_strings_count++] = dup;
       if (log.is_enabled()) {
-        log.print_cr("add_C_string: [%d] " INTPTR_FORMAT " '%s'", _C_strings_count, p2i(str), str);
+        log.print_cr("add_C_string: [%d] " INTPTR_FORMAT " '%s'", _C_strings_count, p2i(dup), dup);
       }
+      return dup;
     } else {
       fatal("Number of C strings > MAX_STR_COUNT");
     }
@@ -4647,7 +4656,6 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
           }
           fatal("Address " INTPTR_FORMAT " for runtime target '%s+%d' is missing in AOT Code Cache addresses table", p2i(addr), func_name, offset);
         } else {
-          os::print_location(tty, p2i(addr), true);
           reloc.print_current_on(tty);
 #ifndef PRODUCT
           if (buffer != nullptr) {
@@ -4659,6 +4667,7 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
             blob->print_code_on(tty);
           }
 #endif // !PRODUCT
+          os::find(addr, tty);
           fatal("Address " INTPTR_FORMAT " for <unknown>/('%s') is missing in AOT Code Cache addresses table", p2i(addr), (const char*)addr);
         }
       } else {

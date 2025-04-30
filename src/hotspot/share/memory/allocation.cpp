@@ -87,7 +87,7 @@ void* MetaspaceObj::operator new(size_t size, ClassLoaderData* loader_data,
 }
 
 
-// Work-around -- see JDK-8331086
+// This is used for allocating training data. We are allocating training data in many cases where a GC cannot be triggered.
 void* MetaspaceObj::operator new(size_t size, MemTag flags) throw() {
   void* p = AllocateHeap(size, flags, CALLER_PC);
   memset(p, 0, size);

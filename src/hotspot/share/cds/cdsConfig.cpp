@@ -1111,11 +1111,6 @@ bool CDSConfig::is_dumping_aot_linked_classes() {
 }
 
 bool CDSConfig::is_using_aot_linked_classes() {
-  if (is_dumping_final_static_archive()) {
-    // We assume that the final image is being dumped with the exact same module graph as the training run,
-    // so all aot-linked classes can be loaded.
-    return _has_aot_linked_classes;
-  }
   // Make sure we have the exact same module graph as in the assembly phase, or else
   // some aot-linked classes may not be visible so cannot be loaded.
   return is_using_full_module_graph() && _has_aot_linked_classes;
