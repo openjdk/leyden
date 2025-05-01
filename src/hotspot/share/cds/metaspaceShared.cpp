@@ -990,10 +990,8 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     if (Atomic::cmpxchg(&_preimage_static_archive_dumped, 0, 1) != 0) {
       return;
     }
+    _preimage_static_archive_recording_duration = os::javaTimeMillis();
   }
-
-  // recording length
-  _preimage_static_archive_recording_duration = os::javaTimeMillis();
 
   if (CDSConfig::is_dumping_classic_static_archive()) {
     // We are running with -Xshare:dump

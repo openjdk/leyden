@@ -50,7 +50,7 @@ import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
 import java.lang.management.ManagementFactory;
-import java.lang.management.AOTMXBean;
+import jdk.management.AOTMXBean;
 
 public class EndTrainingWithAOTMXBean {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
@@ -74,7 +74,8 @@ public class EndTrainingWithAOTMXBean {
 
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
-                "-Xlog:cds+class=debug"
+                "-Xlog:cds+class=debug",
+                "--add-modules=java.management"
             };
         }
 
@@ -129,7 +130,7 @@ public class EndTrainingWithAOTMXBean {
 class MyTestApp {
     public static void main(String args[]) throws Exception {
         System.out.println("Hello Leyden " + args[0]);
-        var aotBean = ManagementFactory.getAOTMXBean();
+        var aotBean = ManagementFactory.getPlatformMXBean(AOTMXBean.class);
         if (aotBean == null) {
             System.out.println("AOTMXBean is not available");
             return;

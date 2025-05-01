@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,32 +22,23 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
+package com.sun.management.internal;
 
- package sun.management;
+import javax.management.ObjectName;
+import jdk.management.AOTMXBean;
+import sun.management.Util;
+import sun.management.VMManagement;
 
- import java.io.IOException;
- import java.lang.management.AOTMXBean;
- import java.lang.management.ManagementFactory;
-
- import java.util.List;
- import java.util.HashMap;
- import java.util.Map;
- import java.util.Set;
- import java.util.Properties;
- import javax.management.ObjectName;
-
- /**
+/**
   * Implementation class for the AOT subsystem.
-  * Standard and committed hotspot-specific metrics if any.
   *
   * ManagementFactory.getRuntimeMXBean() returns an instance
   * of this class.
   */
- class AOTImpl implements AOTMXBean {
+public class AOTImpl implements AOTMXBean {
 
-     private final VMManagement jvm;
-
-     /**
+    private final VMManagement jvm;
+    /**
       * Constructor of AOTImpl class.
       */
      AOTImpl(VMManagement vm) {
@@ -71,6 +62,7 @@
      }
 
      public ObjectName getObjectName() {
-         return Util.newObjectName(ManagementFactory.AOT_MXBEAN_NAME);
+         return Util.newObjectName("jdk.management:type=AOT");
      }
- }
+}
+
