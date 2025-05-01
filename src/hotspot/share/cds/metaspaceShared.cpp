@@ -98,6 +98,7 @@
 #include "runtime/vmOperations.hpp"
 #include "runtime/vmThread.hpp"
 #include "sanitizers/leak.hpp"
+#include "services/management.hpp"
 #include "utilities/align.hpp"
 #include "utilities/bitMap.inline.hpp"
 #include "utilities/defaultStream.hpp"
@@ -977,8 +978,8 @@ bool MetaspaceShared::is_recording_preimage_static_archive() {
 jlong MetaspaceShared::get_preimage_static_archive_recording_duration() {
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     if (_preimage_static_archive_recording_duration == 0) {
-      // The recording has not yet finished so return the current java time.
-      return os::javaTimeMillis();
+      // The recording has not yet finished so return the current elapsed time.
+      return Management::ticks_to_ms(os::elapsed_counter());
     }
     return _preimage_static_archive_recording_duration;
   }
@@ -990,7 +991,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     if (Atomic::cmpxchg(&_preimage_static_archive_dumped, 0, 1) != 0) {
       return;
     }
-    _preimage_static_archive_recording_duration = os::javaTimeMillis();
+    _preimage_static_archive_recording_duration = Management::ticks_to_ms(os::elapsed_counter());
   }
 
   if (CDSConfig::is_dumping_classic_static_archive()) {
