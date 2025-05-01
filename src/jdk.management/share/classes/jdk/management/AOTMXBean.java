@@ -24,8 +24,8 @@
  */
 package jdk.management;
 
-import jdk.management.ManagementFactory;
-import jdk.management.PlatformManagedObject;
+import java.lang.management.ManagementFactory;
+import java.lang.management.PlatformManagedObject;
 import java.util.concurrent.ForkJoinPool;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;

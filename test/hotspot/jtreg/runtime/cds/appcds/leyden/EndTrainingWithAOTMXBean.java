@@ -40,7 +40,7 @@
  * @comment work around JDK-8345635
  * @requires !vm.jvmci.enabled
  * @library /test/jdk/lib/testlibrary /test/lib
- * @modules java.management
+ * @modules jdk.management
  * @build EndTrainingWithAOTMXBean
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
  * @run driver EndTrainingWithAOTMXBean LEYDEN
@@ -75,7 +75,7 @@ public class EndTrainingWithAOTMXBean {
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
                 "-Xlog:cds+class=debug",
-                "--add-modules=java.management"
+                "--add-modules=jdk.management"
             };
         }
 
