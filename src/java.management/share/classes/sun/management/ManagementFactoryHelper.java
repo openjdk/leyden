@@ -73,20 +73,12 @@ public class ManagementFactoryHelper {
     }
 
     static final String LOGGING_MXBEAN_NAME = "java.util.logging:type=Logging";
-    private static AOTImpl             aotMBean = null;
     private static ClassLoadingImpl    classMBean = null;
     private static MemoryImpl          memoryMBean = null;
     private static ThreadImpl          threadMBean = null;
     private static RuntimeImpl         runtimeMBean = null;
     private static CompilationImpl     compileMBean = null;
     private static BaseOperatingSystemImpl osMBean = null;
-
-    public static synchronized AOTMXBean getAOTMXBean() {
-        if (aotMBean == null) {
-            aotMBean = new AOTImpl(jvm);
-        }
-        return aotMBean;
-    }
 
     public static synchronized ClassLoadingMXBean getClassLoadingMXBean() {
         if (classMBean == null) {

@@ -52,36 +52,6 @@ class DefaultPlatformMBeanProvider extends PlatformMBeanProvider {
     private List<PlatformComponent<?>> init() {
         ArrayList<PlatformComponent<?>> initMBeanList = new ArrayList<>();
         /**
-        * AOT system of the Java virtual machine.
-        */
-        initMBeanList.add(new PlatformComponent<AOTMXBean>() {
-            private final Set<String> aotInterfaceNames =
-                    Collections.singleton("java.lang.management.AOTMXBean");
-
-            @Override
-            public Set<Class<? extends AOTMXBean>> mbeanInterfaces() {
-                return Collections.singleton(AOTMXBean.class);
-            }
-
-            @Override
-            public Set<String> mbeanInterfaceNames() {
-                return aotInterfaceNames;
-            }
-
-            @Override
-            public String getObjectNamePattern() {
-                return ManagementFactory.AOT_MXBEAN_NAME;
-            }
-
-            @Override
-            public Map<String, AOTMXBean> nameToMBeanMap() {
-                return Collections.singletonMap(
-                        ManagementFactory.AOT_MXBEAN_NAME,
-                        ManagementFactoryHelper.getAOTMXBean());
-            }
-        });
-
-        /**
          * Class loading system of the Java virtual machine.
          */
         initMBeanList.add(new PlatformComponent<ClassLoadingMXBean>() {

@@ -39,6 +39,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.management.DynamicMBean;
+import jdk.management.AOTMXBean;
 import jdk.management.VirtualThreadSchedulerMXBean;
 import sun.management.ManagementFactoryHelper;
 import sun.management.spi.PlatformMBeanProvider;
@@ -156,6 +157,41 @@ public final class PlatformMBeanProviderImpl extends PlatformMBeanProvider {
                 return Collections.singletonMap(
                         ManagementFactory.THREAD_MXBEAN_NAME,
                         threadMBean);
+            }
+        });
+
+        /**
+        * AOTMXBean.
+        */
+        initMBeanList.add(new PlatformComponent<AOTMXBean>() {
+            private final Set<Class<? extends AOTMXBean>> mbeanInterfaces =
+                    Set.of(AOTMXBean.class);
+            private final Set<String> mbeanInterfaceNames =
+                    Set.of(AOTMXBean.class.getName());
+            private AOTMXBean impl;
+
+            @Override
+            public Set<Class<? extends AOTMXBean>> mbeanInterfaces() {
+                return mbeanInterfaces;
+            }
+
+            @Override
+            public Set<String> mbeanInterfaceNames() {
+                return mbeanInterfaceNames;
+            }
+
+            @Override
+            public String getObjectNamePattern() {
+                return "jdk.management:type=AOT";
+            }
+
+            @Override
+            public Map<String, AOTMXBean> nameToMBeanMap() {
+                AOTMXBean impl = this.impl;
+                if (impl == null) {
+                    this.impl = impl = new AOTImpl(ManagementFactoryHelper.getVMManagement());
+                }
+                return Map.of("jdk.management:type=AOT", impl);
             }
         });
 
