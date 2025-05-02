@@ -1458,7 +1458,7 @@ bool AOTCodeCache::load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const ch
 bool AOTCodeCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) {
   if (!is_dumping_stub()) {
     return false;
-  } 
+  }
   AOTCodeCache* cache = open_for_write();
   if (cache == nullptr) {
     return false;
@@ -2136,7 +2136,7 @@ bool AOTCodeReader::read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint 
 bool AOTCodeCache::load_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
   if (!is_using_adapter()) {
     return false;
-  } 
+  }
 #ifdef ASSERT
   LogStreamHandle(Debug, aot, codecache, stubs) log;
   if (log.is_enabled()) {
@@ -2214,10 +2214,10 @@ bool AOTCodeReader::compile_adapter(CodeBuffer* buffer, const char* name, uint32
 bool AOTCodeCache::load_exception_blob(CodeBuffer* buffer, int* pc_offset) {
   if (!is_using_stub()) {
     return false;
-  }     
+  }
   AOTCodeCache* cache = open_for_read();
   if (cache == nullptr) {
-    return false; 
+    return false;
   }
 #ifdef ASSERT
   LogStreamHandle(Debug, aot, codecache, nmethod) log;
@@ -2460,7 +2460,7 @@ bool AOTCodeCache::write_relocations(CodeBuffer* buffer, uint& all_reloc_size) {
 bool AOTCodeCache::store_adapter(CodeBuffer* buffer, uint32_t id, const char* name, uint32_t offsets[4]) {
   if (!is_dumping_adapter()) {
     return false;
-  } 
+  }
   AOTCodeCache* cache = open_for_write();
   if (cache == nullptr) {
     return false;
