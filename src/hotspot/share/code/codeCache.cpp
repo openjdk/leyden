@@ -22,7 +22,7 @@
  *
  */
 
-#include "cds/cdsAccess.hpp"
+#include "cds/aotCacheAccess.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/codeHeapState.hpp"
@@ -321,7 +321,7 @@ void CodeCache::initialize_heaps() {
   FLAG_SET_ERGO(NonProfiledCodeHeapSize, non_profiled.size);
   FLAG_SET_ERGO(ReservedCodeCacheSize, cache_size);
 
-  const size_t cds_code_size = align_up(CDSAccess::get_cached_code_size(), min_size);
+  const size_t cds_code_size = align_up(AOTCacheAccess::get_aot_code_region_size(), min_size);
   cache_size += cds_code_size;
 
   ReservedSpace rs = reserve_heap_memory(cache_size, ps);
@@ -355,8 +355,8 @@ void CodeCache::initialize_heaps() {
   }
 }
 
-void* CodeCache::map_cached_code() {
-  if (_cds_code_space.size() > 0 && CDSAccess::map_cached_code(_cds_code_space)) {
+void* CodeCache::map_aot_code() {
+  if (_cds_code_space.size() > 0 && AOTCacheAccess::map_aot_code(_cds_code_space)) {
     return _cds_code_space.base();
   } else {
     return nullptr;

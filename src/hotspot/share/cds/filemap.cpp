@@ -1290,7 +1290,7 @@ char* FileMapInfo::map_bitmap_region() {
   return bitmap_base;
 }
 
-bool FileMapInfo::map_cached_code_region(ReservedSpace rs) {
+bool FileMapInfo::map_aot_code_region(ReservedSpace rs) {
   FileMapRegion* r = region_at(MetaspaceShared::cc);
   assert(r->used() > 0 && r->used_aligned() == rs.size(), "must be");
 

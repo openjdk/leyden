@@ -399,12 +399,6 @@
           "Use C2 as 3rd compiler when other high-optimizing compiler "     \
           "is used")                                                        \
                                                                             \
-  product(bool, StoreCachedCode, false,                                     \
-          "Store cached compiled code")                                     \
-                                                                            \
-  product(bool, LoadCachedCode, false,                                      \
-          "Load cached compiled code")                                      \
-                                                                            \
   product(uint, DisableCachedCode, 0,                                       \
           "Disable cached code on some compilation levels "                 \
           "(T1=1; T2=2; T4=4; T5/preload=8")                                \
@@ -429,9 +423,6 @@
                                                                             \
   product(uint, SCLoadStop, max_jint,                                       \
           "The id of the last cached code to load")                         \
-                                                                            \
-  product(uint, CachedCodeMaxSize, 10*M,                                    \
-          "Buffer size in bytes for code caching")                          \
                                                                             \
   product(bool, VerifyCachedCode, false, DIAGNOSTIC,                        \
           "Load compiled code but not publish")                             \

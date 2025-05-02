@@ -22,13 +22,13 @@
  *
  */
 
+#include "cds/aotCacheAccess.hpp"
 #include "cds/aotClassInitializer.hpp"
 #include "cds/aotClassLinker.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotLinkedClassTable.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
-#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/heapShared.hpp"
@@ -118,7 +118,7 @@ void AOTLinkedClassBulkLoader::load_non_javabase_classes(JavaThread* current) {
   }
 
   if (log_is_enabled(Info, cds, jit)) {
-    CDSAccess::test_heap_access_api();
+    AOTCacheAccess::test_heap_access_api();
   }
 
 

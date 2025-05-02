@@ -23,7 +23,6 @@
  */
 
 #include "cds/archiveBuilder.hpp"
-#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "code/aotCodeCache.hpp"
@@ -219,7 +218,7 @@ void Precompiler::compile_cached_code(TRAPS) {
 
 // New workflow only
 void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
-  assert(CDSConfig::is_dumping_final_static_archive() && StoreCachedCode, "sanity");
+  assert(AOTCodeCache::is_dumping_code(), "sanity");
   if (TrainingData::have_data()) {
     ResourceMark rm;
 

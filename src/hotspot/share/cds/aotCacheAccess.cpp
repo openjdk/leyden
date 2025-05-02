@@ -22,8 +22,8 @@
  *
  */
 
+#include "cds/aotCacheAccess.hpp"
 #include "cds/archiveBuilder.hpp"
-#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
@@ -36,9 +36,9 @@
 #include "memory/virtualspace.hpp"
 #include "oops/instanceKlass.hpp"
 
-size_t _cached_code_size = 0;
+size_t _aot_code_region_size = 0;
 
-bool CDSAccess::can_generate_cached_code(address addr) {
+bool AOTCacheAccess::can_generate_aot_code(address addr) {
   if (CDSConfig::is_dumping_final_static_archive()) {
     return ArchiveBuilder::is_active() && ArchiveBuilder::current()->has_been_archived(addr);
   } else {
@@ -47,7 +47,7 @@ bool CDSAccess::can_generate_cached_code(address addr) {
   }
 }
 
-bool CDSAccess::can_generate_cached_code(InstanceKlass* ik) {
+bool AOTCacheAccess::can_generate_aot_code(InstanceKlass* ik) {
   if (CDSConfig::is_dumping_final_static_archive()) {
     if (!ArchiveBuilder::is_active()) {
       return false;
@@ -67,7 +67,7 @@ bool CDSAccess::can_generate_cached_code(InstanceKlass* ik) {
   }
 }
 
-uint CDSAccess::delta_from_shared_address_base(address addr) {
+uint AOTCacheAccess::delta_from_shared_address_base(address addr) {
   if (CDSConfig::is_dumping_final_static_archive()) {
     assert(ArchiveBuilder::is_active(), "must be");
     ArchiveBuilder* builder = ArchiveBuilder::current();
@@ -79,7 +79,7 @@ uint CDSAccess::delta_from_shared_address_base(address addr) {
   }
 }
 
-Method* CDSAccess::method_in_cached_code(Method* m) {
+Method* AOTCacheAccess::method_in_aot_code(Method* m) {
   if (CDSConfig::is_dumping_final_static_archive()) {
     assert(ArchiveBuilder::is_active(), "must be");
     ArchiveBuilder* builder = ArchiveBuilder::current();
@@ -91,11 +91,11 @@ Method* CDSAccess::method_in_cached_code(Method* m) {
 }
 
 #if INCLUDE_CDS_JAVA_HEAP
-int CDSAccess::get_archived_object_permanent_index(oop obj) {
+int AOTCacheAccess::get_archived_object_permanent_index(oop obj) {
   return HeapShared::get_archived_object_permanent_index(obj);
 }
 
-oop CDSAccess::get_archived_object(int permanent_index) {
+oop AOTCacheAccess::get_archived_object(int permanent_index) {
   oop o = HeapShared::get_archived_object(permanent_index);
   assert(oopDesc::is_oop_or_null(o), "sanity");
   return o;
@@ -107,16 +107,16 @@ static void test_cds_heap_access_api_for_object(oop obj) {
   obj->print_on(&log);
   log.cr();
 
-  int n = CDSAccess::get_archived_object_permanent_index(obj); // call this when -XX:+StoreCachedCode
+  int n = AOTCacheAccess::get_archived_object_permanent_index(obj); // call this when AOTCodeCaching is on
   if (n < 0) {
     log.print_cr("*** This object is not in CDS archive");
   } else {
-    log.print_cr("CDSAccess::get_archived_object_permanent_index(s) = %d", n);
-    oop archived_obj = CDSAccess::get_archived_object(n); // call this when -XX:+LoadCachedCode
+    log.print_cr("AOTCacheAccess::get_archived_object_permanent_index(s) = %d", n);
+    oop archived_obj = AOTCacheAccess::get_archived_object(n); // call this when AOTCodeCaching is on
     if (archived_obj == obj || archived_obj == HeapShared::orig_to_scratch_object(obj)) {
-      log.print_cr("CDSAccess::get_archived_object(%d) returns the same object, as expected", n);
+      log.print_cr("AOTCacheAccess::get_archived_object(%d) returns the same object, as expected", n);
     } else {
-      log.print_cr("Error!!! CDSAccess::get_archived_object(%d) returns an unexpected object", n);
+      log.print_cr("Error!!! AOTCacheAccess::get_archived_object(%d) returns an unexpected object", n);
       if (archived_obj == nullptr) {
         log.print_cr("--> null");
       } else {
@@ -127,10 +127,10 @@ static void test_cds_heap_access_api_for_object(oop obj) {
   }
 }
 
-// TEMP: examples for using the CDSAccess::get_archived_object_permanent_index() and CDSAccess::get_archived_object()
+// TEMP: examples for using the AOTCacheAccess::get_archived_object_permanent_index() and AOTCacheAccess::get_archived_object()
 // APIs for the AOT compiler.
 
-void CDSAccess::test_heap_access_api() {
+void AOTCacheAccess::test_heap_access_api() {
   ResourceMark rm;
   const char* tests[] = {
     "",
@@ -157,31 +157,31 @@ void CDSAccess::test_heap_access_api() {
 #endif // INCLUDE_CDS_JAVA_HEAP
 
 // new workflow only
-void* CDSAccess::allocate_from_code_cache(size_t size) {
+void* AOTCacheAccess::allocate_from_code_cache(size_t size) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
   return (void*)ArchiveBuilder::cc_region_alloc(size);
 }
 
-size_t CDSAccess::get_cached_code_size() {
-  return _cached_code_size;
+size_t AOTCacheAccess::get_aot_code_region_size() {
+  return _aot_code_region_size;
 }
 
-void CDSAccess::set_cached_code_size(size_t sz) {
-  _cached_code_size = sz;
+void AOTCacheAccess::set_aot_code_region_size(size_t sz) {
+  _aot_code_region_size = sz;
 }
 
-bool CDSAccess::is_cached_code_region_empty() {
+bool AOTCacheAccess::is_aot_code_region_empty() {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
   return ArchiveBuilder::current()->cc_region()->is_empty();
 }
 
-bool CDSAccess::map_cached_code(ReservedSpace rs) {
+bool AOTCacheAccess::map_aot_code(ReservedSpace rs) {
   FileMapInfo* static_mapinfo = FileMapInfo::current_info();
   assert(UseSharedSpaces && static_mapinfo != nullptr, "must be");
-  return static_mapinfo->map_cached_code_region(rs);
+  return static_mapinfo->map_aot_code_region(rs);
 }
 
-void CDSAccess::set_pointer(address* ptr, address value) {
+void AOTCacheAccess::set_pointer(address* ptr, address value) {
   ArchiveBuilder* builder = ArchiveBuilder::current();
   if (value != nullptr && !builder->is_in_buffer_space(value)) {
     value = builder->get_buffered_addr(value);

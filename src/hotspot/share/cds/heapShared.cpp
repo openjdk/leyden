@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/aotCacheAccess.hpp"
 #include "cds/aotArtifactFinder.hpp"
 #include "cds/aotClassInitializer.hpp"
 #include "cds/aotClassLocation.hpp"
@@ -29,7 +30,6 @@
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveUtils.hpp"
-#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEnumKlass.hpp"
 #include "cds/cdsHeapVerifier.hpp"
@@ -304,7 +304,7 @@ oop HeapShared::orig_to_scratch_object(oop orig_obj) {
 // to Strings and MH oops.
 //
 // At runtime, these oops are stored in _runtime_permanent_oops (which keeps them alive forever)
-// and are accssed vis CDSAccess::get_archived_object(int).
+// and are accssed vis AOTCacheAccess::get_archived_object(int).
 struct PermanentOopInfo {
   int _index;       // Gets assigned only if HeapShared::get_archived_object_permanent_index() has been called on the object
   int _heap_offset; // Offset of the object from the bottom of the archived heap.
@@ -387,7 +387,7 @@ void CachedCodeDirectoryInternal::dumptime_init_internal() {
     return;
   }
 
-  int* table = (int*)CDSAccess::allocate_from_code_cache(count * sizeof(int));
+  int* table = (int*)AOTCacheAccess::allocate_from_code_cache(count * sizeof(int));
   for (int i = 0; i < count; i++) {
     table[count] = -1;
   }
@@ -407,7 +407,7 @@ void CachedCodeDirectoryInternal::dumptime_init_internal() {
   log_info(cds)("Dumped %d permanent oops", count);
 
   _permanent_oop_count = count;
-  CDSAccess::set_pointer(&_permanent_oop_offsets, table);
+  AOTCacheAccess::set_pointer(&_permanent_oop_offsets, table);
 }
 
 // This is called during the bootstrap of the production run, before any GC can happen.

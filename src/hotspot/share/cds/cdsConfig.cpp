@@ -32,6 +32,7 @@
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/moduleEntry.hpp"
 #include "classfile/systemDictionaryShared.hpp"
+#include "code/aotCodeCache.hpp"
 #include "include/jvm_io.h"
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"
@@ -642,14 +643,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     if (CDSConfig::is_dumping_archive()) {
       FLAG_SET_ERGO(AOTRecordTraining, false);
       FLAG_SET_ERGO(AOTReplayTraining, false);
-      FLAG_SET_ERGO(StoreCachedCode, false);
-      FLAG_SET_ERGO(LoadCachedCode, false);
+      AOTCodeCache::disable_caching();
     }
-  }
-
-  if (StoreCachedCode) {
-    log_info(cds)("ArchiveAdapters is enabled");
-    FLAG_SET_ERGO_IF_DEFAULT(ArchiveAdapters, true);
   }
 
 #ifdef _WINDOWS
@@ -743,21 +738,18 @@ void CDSConfig::setup_compiler_args() {
     // JEP 483 workflow -- training
     FLAG_SET_ERGO_IF_DEFAULT(AOTRecordTraining, true);
     FLAG_SET_ERGO(AOTReplayTraining, false);
-    FLAG_SET_ERGO(StoreCachedCode, false);
-    FLAG_SET_ERGO(LoadCachedCode, false);
+    AOTCodeCache::disable_caching();
   } else if (is_dumping_final_static_archive() && can_dump_profile_and_compiled_code) {
     // JEP 483 workflow -- assembly
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
-    FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
-    FLAG_SET_ERGO(LoadCachedCode, false);
-    disable_dumping_cached_code(); // Cannot dump cached code until metadata and heap are dumped.
+    AOTCodeCache::enable_caching();
+    disable_dumping_aot_code(); // Cannot dump cached code until metadata and heap are dumped.
   } else if (is_using_archive() && new_aot_flags_used()) {
     // JEP 483 workflow -- production
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
-    FLAG_SET_ERGO(StoreCachedCode, false);
-    FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
+    AOTCodeCache::enable_caching();
 
     if (UseSharedSpaces && FLAG_IS_DEFAULT(AOTMode)) {
       log_info(cds)("Enabled -XX:AOTMode=on by default for troubleshooting Leyden prototype");
@@ -766,8 +758,7 @@ void CDSConfig::setup_compiler_args() {
   } else {
     FLAG_SET_ERGO(AOTReplayTraining, false);
     FLAG_SET_ERGO(AOTRecordTraining, false);
-    FLAG_SET_ERGO(StoreCachedCode, false);
-    FLAG_SET_ERGO(LoadCachedCode, false);
+    AOTCodeCache::disable_caching();
   }
 }
 
@@ -805,7 +796,7 @@ bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
     if (os::file_exists(CacheDataStore) /* && TODO: Need to check if CDS file is valid*/) {
       // The CacheDataStore is already up to date. Use it. Also turn on cached code by default.
       FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
-      FLAG_SET_ERGO_IF_DEFAULT(LoadCachedCode, true);
+      AOTCodeCache::enable_caching();
 
       // Leyden temp: make sure the user knows if CDS archive somehow fails to load.
       if (UseSharedSpaces && !xshare_auto_cmd_line) {
@@ -846,10 +837,10 @@ bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
 
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     // Settings for AOT
-    FLAG_SET_ERGO_IF_DEFAULT(StoreCachedCode, true);
-    if (StoreCachedCode) {
+    AOTCodeCache::enable_caching(); // Update default settings
+    if (AOTCodeCache::is_caching_enabled()) {
       // Cannot dump cached code until metadata and heap are dumped.
-      disable_dumping_cached_code();
+      disable_dumping_aot_code();
     }
     _is_dumping_static_archive = true;
     _is_dumping_final_static_archive = true;
@@ -1178,22 +1169,22 @@ bool CDSConfig::is_dumping_method_handles() {
 
 // This is allowed by default. We disable it only in the final image dump before the
 // metadata and heap are dumped.
-static bool _is_dumping_cached_code = true;
+static bool _is_dumping_aot_code = true;
 
-bool CDSConfig::is_dumping_cached_code() {
-  return _is_dumping_cached_code;
+bool CDSConfig::is_dumping_aot_code() {
+  return _is_dumping_aot_code;
 }
 
-void CDSConfig::disable_dumping_cached_code() {
-  _is_dumping_cached_code = false;
+void CDSConfig::disable_dumping_aot_code() {
+  _is_dumping_aot_code = false;
 }
 
-void CDSConfig::enable_dumping_cached_code() {
-  _is_dumping_cached_code = true;
+void CDSConfig::enable_dumping_aot_code() {
+  _is_dumping_aot_code = true;
 }
 
 bool CDSConfig::is_dumping_adapters() {
-  return (ArchiveAdapters && is_dumping_final_static_archive());
+  return (AOTAdapterCaching && is_dumping_final_static_archive());
 }
 
 bool CDSConfig::is_experimental_leyden_workflow() {

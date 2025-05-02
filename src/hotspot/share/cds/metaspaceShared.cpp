@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/aotCacheAccess.hpp"
 #include "cds/aotClassInitializer.hpp"
 #include "cds/aotArtifactFinder.hpp"
 #include "cds/aotClassInitializer.hpp"
@@ -33,7 +34,6 @@
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveHeapWriter.hpp"
 #include "cds/cds_globals.hpp"
-#include "cds/cdsAccess.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsProtectionDomain.hpp"
 #include "cds/classListParser.hpp"
@@ -1075,9 +1075,9 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   ArchiveHeapInfo* heap_info = op.heap_info();
 
   if (CDSConfig::is_dumping_final_static_archive()) {
-    if (StoreCachedCode) {
+    if (AOTCodeCache::is_caching_enabled()) {
       if (log_is_enabled(Info, cds, jit)) {
-        CDSAccess::test_heap_access_api();
+        AOTCacheAccess::test_heap_access_api();
       }
 
       // We have just created the final image. Let's run the AOT compiler
@@ -1086,7 +1086,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
         TrainingData::print_archived_training_data_on(tty);
       }
 
-      CDSConfig::enable_dumping_cached_code();
+      CDSConfig::enable_dumping_aot_code();
       {
         builder.start_cc_region();
         Precompiler::compile_cached_code(&builder, CHECK);
@@ -1094,7 +1094,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
         AOTCodeCache::close();
         builder.end_cc_region();
       }
-      CDSConfig::disable_dumping_cached_code();
+      CDSConfig::disable_dumping_aot_code();
     }
   }
 
@@ -1519,7 +1519,7 @@ void MetaspaceShared::open_static_archive() {
     delete(mapinfo);
   } else {
     FileMapRegion* r = mapinfo->region_at(MetaspaceShared::cc);
-    CDSAccess::set_cached_code_size(r->used_aligned());
+    AOTCacheAccess::set_aot_code_region_size(r->used_aligned());
   }
 }
 
@@ -2136,7 +2136,7 @@ void MetaspaceShared::initialize_shared_spaces() {
     }
     TrainingData::print_archived_training_data_on(tty);
 
-    if (LoadCachedCode) {
+    if (AOTCodeCache::is_dumping_code()) {
       tty->print_cr("\n\nCached Code");
       AOTCodeCache::print_on(tty);
     }
