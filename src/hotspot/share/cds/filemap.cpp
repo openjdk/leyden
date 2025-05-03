@@ -1345,7 +1345,7 @@ public:
     _code_delta = code_mapped_base - code_requested_base;
     _metadata_delta = metadata_delta;
   }
-  
+
   bool do_bit(size_t offset) {
     address* p = _patch_base + offset;
     address requested_ptr = *p;
@@ -1988,16 +1988,16 @@ bool FileMapHeader::validate() {
       return false;
     }
     if (_type_profile_width != TypeProfileWidth) {
-      log_info(cds)("The %s's TypeProfileWidth setting (%ld)"
-                    " does not equal the current TypeProfileWidth setting (%ld).", file_type,
-                    _type_profile_width, TypeProfileWidth);
+      log_info(cds)("The %s's TypeProfileWidth setting (%d)"
+                    " does not equal the current TypeProfileWidth setting (%d).", file_type,
+                    (int)_type_profile_width, (int)TypeProfileWidth);
       return false;
 
     }
     if (_bci_profile_width != BciProfileWidth) {
-      log_info(cds)("The %s's BciProfileWidth setting (%ld)"
-                    " does not equal the current BciProfileWidth setting (%ld).", file_type,
-                    _bci_profile_width, BciProfileWidth);
+      log_info(cds)("The %s's BciProfileWidth setting (%d)"
+                    " does not equal the current BciProfileWidth setting (%d).", file_type,
+                    (int)_bci_profile_width, (int)BciProfileWidth);
       return false;
     }
     if (_profile_traps != ProfileTraps) {
