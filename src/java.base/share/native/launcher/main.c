@@ -36,6 +36,13 @@
 
 #include <limits.h>
 
+// Windows doesn't have PATH_MAX. It's MAX_PATH instead.
+#ifdef _WIN32
+#ifndef PATH_MAX
+#define PATH_MAX MAX_PATH
+#endif
+#endif
+
 static jboolean read_u8(FILE *f, jboolean is_little_endian, unsigned long long* res) {
     unsigned char* v = (unsigned char*)res;
     if (is_little_endian) {
@@ -122,7 +129,7 @@ static jboolean get_hermetic_jdk_arg(char* arg) {
             if (read_u8(execfile, little_endian, &jimage_offset)) {
                 fclose(execfile);
 
-                jimage_len = end_pos - jimage_offset;
+                jimage_len = (long)(end_pos - jimage_offset);
                 sprintf(arg, "-XX:UseHermeticJDK=%s,%lld,%ld",
                         execname, jimage_offset, jimage_len);
                 return JNI_TRUE;
