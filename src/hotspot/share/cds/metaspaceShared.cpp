@@ -2136,7 +2136,7 @@ void MetaspaceShared::initialize_shared_spaces() {
     }
     TrainingData::print_archived_training_data_on(tty);
 
-    if (AOTCodeCache::is_dumping_code()) {
+    if (AOTCodeCache::is_on_for_read()) {
       tty->print_cr("\n\nCached Code");
       AOTCodeCache::print_on(tty);
     }
