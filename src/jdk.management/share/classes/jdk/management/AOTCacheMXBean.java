@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -33,19 +33,19 @@ import javax.management.ObjectName;
 /**
  * Management interface for the JDK's AOT system.
  *
- * <p> {@code AOTMXBean} supports inspection of the current AOT mode, as well as monitoring
+ * <p> {@code AOTCacheMXBean} supports inspection of the current AOT mode, as well as monitoring
  * the current recording length. It also supports dynamically ending the current recording.
  *
  * <p> The management interface is registered with the platform {@link MBeanServer
  * MBeanServer}. The {@link ObjectName ObjectName} that uniquely identifies the management
- * interface within the {@code MBeanServer} is: "jdk.management:type=AOT".
+ * interface within the {@code MBeanServer} is: "jdk.management:type=AOTCache".
  *
  * <p> Direct access to the MXBean interface can be obtained with
  * {@link ManagementFactory#getPlatformMXBean(Class)}.
  *
- * @since 24
+ * @since 25
  */
-public interface AOTMXBean extends PlatformManagedObject {
+public interface AOTCacheMXBean extends PlatformManagedObject {
      /**
       * Returns the string representing the current AOT mode of
       * operation.
@@ -69,7 +69,7 @@ public interface AOTMXBean extends PlatformManagedObject {
       public long getRecordingDuration();
 
       /**
-       * If a recording is in progress, then stops the recording.
+       * If a recording is in progress, then ends the recording.
        *
        * @return {@code true} if a recording was stopped; {@code false} otherwise.
        */

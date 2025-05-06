@@ -29,9 +29,9 @@
  * @requires !vm.jvmci.enabled
  * @library /test/jdk/lib/testlibrary /test/lib
  * @modules java.management
- * @build EndTrainingWithAOTMXBean
+ * @build EndTrainingWithAOTCacheMXBean
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
- * @run driver EndTrainingWithAOTMXBean AOT
+ * @run driver EndTrainingWithAOTCacheMXBean AOT
  */
 
 /*
@@ -41,18 +41,18 @@
  * @requires !vm.jvmci.enabled
  * @library /test/jdk/lib/testlibrary /test/lib
  * @modules jdk.management
- * @build EndTrainingWithAOTMXBean
+ * @build EndTrainingWithAOTCacheMXBean
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
- * @run driver EndTrainingWithAOTMXBean LEYDEN
+ * @run driver EndTrainingWithAOTCacheMXBean LEYDEN
  */
 
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
 import java.lang.management.ManagementFactory;
-import jdk.management.AOTMXBean;
+import jdk.management.AOTCacheMXBean;
 
-public class EndTrainingWithAOTMXBean {
+public class EndTrainingWithAOTCacheMXBean {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
     static final String mainClass = "MyTestApp";
 
@@ -130,9 +130,9 @@ public class EndTrainingWithAOTMXBean {
 class MyTestApp {
     public static void main(String args[]) throws Exception {
         System.out.println("Hello Leyden " + args[0]);
-        var aotBean = ManagementFactory.getPlatformMXBean(AOTMXBean.class);
+        var aotBean = ManagementFactory.getPlatformMXBean(AOTCacheMXBean.class);
         if (aotBean == null) {
-            System.out.println("AOTMXBean is not available");
+            System.out.println("AOTCacheMXBean is not available");
             return;
         }
         ShouldBeCached.dummy();

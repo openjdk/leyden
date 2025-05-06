@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,23 +25,23 @@
 package com.sun.management.internal;
 
 import javax.management.ObjectName;
-import jdk.management.AOTMXBean;
+import jdk.management.AOTCacheMXBean;
 import sun.management.Util;
 import sun.management.VMManagement;
 
 /**
-  * Implementation class for the AOT subsystem.
+  * Implementation class for the AOT Cache subsystem.
   *
   * ManagementFactory.getRuntimeMXBean() returns an instance
   * of this class.
   */
-public class AOTImpl implements AOTMXBean {
+public class AOTCacheImpl implements AOTCacheMXBean {
 
     private final VMManagement jvm;
     /**
-      * Constructor of AOTImpl class.
+      * Constructor of AOTCacheImpl class.
       */
-     AOTImpl(VMManagement vm) {
+      AOTCacheImpl(VMManagement vm) {
          this.jvm = vm;
      }
 
@@ -62,7 +62,7 @@ public class AOTImpl implements AOTMXBean {
      }
 
      public ObjectName getObjectName() {
-         return Util.newObjectName("jdk.management:type=AOT");
+         return Util.newObjectName("jdk.management:type=AOTCache");
      }
 }
 
