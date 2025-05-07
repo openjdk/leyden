@@ -578,7 +578,7 @@ void CompilationPolicy::print_event(EventType type, Method* m, Method* im, int b
 
 void CompilationPolicy::initialize() {
   if (!CompilerConfig::is_interpreter_only()) {
-    if (StoreCachedCode) {
+    if (AOTCodeCache::is_dumping_code()) {
       // Assembly phase runs C1 and C2 compilation in separate phases,
       // and can use all the CPU threads it can reach. Adjust the common
       // options before policy starts overwriting them. There is a block
@@ -658,7 +658,7 @@ void CompilationPolicy::initialize() {
         set_c2_count(MAX2(count - c1_count(), 1));
       }
     }
-    if (StoreCachedCode) {
+    if (AOTCodeCache::is_dumping_code()) {
       set_c1_count(count);
       set_c2_count(count);
       count *= 2; // satisfy the assert below

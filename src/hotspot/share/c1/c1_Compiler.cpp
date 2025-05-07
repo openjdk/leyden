@@ -262,7 +262,7 @@ void Compiler::compile_method(ciEnv* env, ciMethod* method, int entry_bci, bool 
       return;
     }
     AOTCodeCache::invalidate(task->aot_code_entry()); // mark aot_code_entry as not entrant
-    if (AOTCodeCache::is_code_load_thread_on() && !StoreCachedCode) {
+    if (AOTCodeCache::is_code_load_thread_on() && !AOTCodeCache::is_dumping_code()) {
       // Bail out if failed to load AOT code in AOT Code Caching thread
       // unless the code is updating.
       env->record_failure("Failed to load AOT code");
