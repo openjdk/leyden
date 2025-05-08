@@ -30,6 +30,7 @@
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
+#include "cds/aotReferenceObjSupport.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/archiveHeapWriter.hpp"
@@ -1037,6 +1038,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 #if INCLUDE_CDS_JAVA_HEAP
   if (CDSConfig::is_dumping_heap()) {
     ArchiveHeapWriter::init();
+
     if (CDSConfig::is_dumping_full_module_graph()) {
       ClassLoaderDataShared::ensure_module_entry_tables_exist();
       HeapShared::reset_archived_object_states(CHECK);
@@ -1045,6 +1047,9 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     if (ArchiveLoaderLookupCache) {
       SystemDictionaryShared::create_loader_positive_lookup_cache(CHECK);
     }
+
+    AOTReferenceObjSupport::initialize(CHECK);
+    AOTReferenceObjSupport::stabilize_cached_reference_objects(CHECK);
 
     if (CDSConfig::is_initing_classes_at_dump_time()) {
       // java.lang.Class::reflectionFactory cannot be archived yet. We set this field
@@ -1652,7 +1657,7 @@ MapArchiveResult MetaspaceShared::map_archives(FileMapInfo* static_mapinfo, File
         if (prot_zone_size > 0) {
           assert(prot_zone_size >= os::vm_allocation_granularity(), "must be"); // not just page size!
           char* p = os::attempt_reserve_memory_at(mapped_base_address, prot_zone_size,
-                                                  false, MemTag::mtClassShared);
+                                                  mtClassShared);
           assert(p == mapped_base_address || p == nullptr, "must be");
           if (p == nullptr) {
             log_debug(cds)("Failed to re-reserve protection zone");
@@ -1844,7 +1849,8 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
     archive_space_rs = MemoryReserver::reserve((char*)base_address,
                                                archive_space_size,
                                                archive_space_alignment,
-                                               os::vm_page_size());
+                                               os::vm_page_size(),
+                                               mtNone);
     if (archive_space_rs.is_reserved()) {
       assert(base_address == nullptr ||
              (address)archive_space_rs.base() == base_address, "Sanity");
@@ -1912,11 +1918,13 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
       archive_space_rs = MemoryReserver::reserve((char*)base_address,
                                                  archive_space_size,
                                                  archive_space_alignment,
-                                                 os::vm_page_size());
+                                                 os::vm_page_size(),
+                                                 mtNone);
       class_space_rs   = MemoryReserver::reserve((char*)ccs_base,
                                                  class_space_size,
                                                  class_space_alignment,
-                                                 os::vm_page_size());
+                                                 os::vm_page_size(),
+                                                 mtNone);
     }
     if (!archive_space_rs.is_reserved() || !class_space_rs.is_reserved()) {
       release_reserved_spaces(total_space_rs, archive_space_rs, class_space_rs);
@@ -1929,7 +1937,8 @@ char* MetaspaceShared::reserve_address_space_for_archives(FileMapInfo* static_ma
       total_space_rs = MemoryReserver::reserve((char*) base_address,
                                                total_range_size,
                                                base_address_alignment,
-                                               os::vm_page_size());
+                                               os::vm_page_size(),
+                                               mtNone);
     } else {
       // We did not manage to reserve at the preferred address, or were instructed to relocate. In that
       // case we reserve wherever possible, but the start address needs to be encodable as narrow Klass

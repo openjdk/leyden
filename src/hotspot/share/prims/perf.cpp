@@ -105,7 +105,7 @@ JVM_ENTRY(jobject, Perf_CreateLong(JNIEnv *env, jobject perf, jstring name,
   char* name_utf = nullptr;
 
   if (units <= 0 || units > PerfData::U_Last) {
-    debug_only(warning("unexpected units argument, units = %d", units));
+    DEBUG_ONLY(warning("unexpected units argument, units = %d", units));
     THROW_NULL(vmSymbols::java_lang_IllegalArgumentException());
   }
 
@@ -144,7 +144,7 @@ JVM_ENTRY(jobject, Perf_CreateLong(JNIEnv *env, jobject perf, jstring name,
     break;
 
   default: /* Illegal Argument */
-    debug_only(warning("unexpected variability value: %d", variability));
+    DEBUG_ONLY(warning("unexpected variability value: %d", variability));
     THROW_NULL(vmSymbols::java_lang_IllegalArgumentException());
     break;
   }
@@ -173,14 +173,14 @@ JVM_ENTRY(jobject, Perf_CreateByteArray(JNIEnv *env, jobject perf,
   // check for valid variability classification
   if (variability != PerfData::V_Constant &&
       variability != PerfData::V_Variable) {
-    debug_only(warning("unexpected variability value: %d", variability));
+    DEBUG_ONLY(warning("unexpected variability value: %d", variability));
     THROW_NULL(vmSymbols::java_lang_IllegalArgumentException());
   }
 
   // check for valid units
   if (units != PerfData::U_String) {
     // only String based ByteArray objects are currently supported
-    debug_only(warning("unexpected units value: %d", variability));
+    DEBUG_ONLY(warning("unexpected units value: %d", variability));
     THROW_NULL(vmSymbols::java_lang_IllegalArgumentException());
   }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1380,5 +1380,11 @@ s.writeObject(this.parameterArray());
         MethodType mt = ((MethodType[])wrapAlt)[0];
         wrapAlt = null;
         return mt;
+    }
+
+    // This is called from C code, at the very end of Java code execution
+    // during the AOT cache assembly phase.
+    private static void assemblySetup() {
+        internTable.prepareForAOTCache();
     }
 }
