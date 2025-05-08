@@ -100,6 +100,7 @@
 #include "runtime/vmOperations.hpp"
 #include "runtime/vmThread.hpp"
 #include "sanitizers/leak.hpp"
+#include "services/management.hpp"
 #include "utilities/align.hpp"
 #include "utilities/bitMap.inline.hpp"
 #include "utilities/defaultStream.hpp"
@@ -119,6 +120,7 @@ char* MetaspaceShared::_requested_base_address;
 Array<Method*>* MetaspaceShared::_archived_method_handle_intrinsics = nullptr;
 bool MetaspaceShared::_use_optimized_module_handling = true;
 int volatile MetaspaceShared::_preimage_static_archive_dumped = 0;
+jlong MetaspaceShared::_preimage_static_archive_recording_duration = 0;
 
 // The CDS archive is divided into the following regions:
 //     rw  - read-write metadata
@@ -970,11 +972,23 @@ bool MetaspaceShared::is_recording_preimage_static_archive() {
   return false;
 }
 
+jlong MetaspaceShared::get_preimage_static_archive_recording_duration() {
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    if (_preimage_static_archive_recording_duration == 0) {
+      // The recording has not yet finished so return the current elapsed time.
+      return Management::ticks_to_ms(os::elapsed_counter());
+    }
+    return _preimage_static_archive_recording_duration;
+  }
+  return 0;
+}
+
 void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS) {
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     if (Atomic::cmpxchg(&_preimage_static_archive_dumped, 0, 1) != 0) {
       return;
     }
+    _preimage_static_archive_recording_duration = Management::ticks_to_ms(os::elapsed_counter());
   }
 
   if (CDSConfig::is_dumping_classic_static_archive()) {

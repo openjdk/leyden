@@ -39,6 +39,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.management.DynamicMBean;
+import jdk.management.AOTCacheMXBean;
 import jdk.management.VirtualThreadSchedulerMXBean;
 import sun.management.ManagementFactoryHelper;
 import sun.management.spi.PlatformMBeanProvider;
@@ -156,6 +157,41 @@ public final class PlatformMBeanProviderImpl extends PlatformMBeanProvider {
                 return Collections.singletonMap(
                         ManagementFactory.THREAD_MXBEAN_NAME,
                         threadMBean);
+            }
+        });
+
+        /**
+        * AOTCacheMXBean.
+        */
+        initMBeanList.add(new PlatformComponent<AOTCacheMXBean>() {
+            private final Set<Class<? extends AOTCacheMXBean>> mbeanInterfaces =
+                    Set.of(AOTCacheMXBean.class);
+            private final Set<String> mbeanInterfaceNames =
+                    Set.of(AOTCacheMXBean.class.getName());
+            private AOTCacheMXBean impl;
+
+            @Override
+            public Set<Class<? extends AOTCacheMXBean>> mbeanInterfaces() {
+                return mbeanInterfaces;
+            }
+
+            @Override
+            public Set<String> mbeanInterfaceNames() {
+                return mbeanInterfaceNames;
+            }
+
+            @Override
+            public String getObjectNamePattern() {
+                return "jdk.management:type=AOTCache";
+            }
+
+            @Override
+            public Map<String, AOTCacheMXBean> nameToMBeanMap() {
+                AOTCacheMXBean impl = this.impl;
+                if (impl == null) {
+                    this.impl = impl = new AOTCacheImpl(ManagementFactoryHelper.getVMManagement());
+                }
+                return Map.of("jdk.management:type=AOTCache", impl);
             }
         });
 
