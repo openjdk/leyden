@@ -156,10 +156,9 @@ void AOTCacheAccess::test_heap_access_api() {
 
 #endif // INCLUDE_CDS_JAVA_HEAP
 
-// new workflow only
-void* AOTCacheAccess::allocate_from_code_cache(size_t size) {
+void* AOTCacheAccess::allocate_aot_code_region(size_t size) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-  return (void*)ArchiveBuilder::cc_region_alloc(size);
+  return (void*)ArchiveBuilder::ac_region_alloc(size);
 }
 
 size_t AOTCacheAccess::get_aot_code_region_size() {
@@ -170,15 +169,15 @@ void AOTCacheAccess::set_aot_code_region_size(size_t sz) {
   _aot_code_region_size = sz;
 }
 
-bool AOTCacheAccess::is_aot_code_region_empty() {
-  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-  return ArchiveBuilder::current()->cc_region()->is_empty();
-}
-
-bool AOTCacheAccess::map_aot_code(ReservedSpace rs) {
+bool AOTCacheAccess::map_aot_code_region(ReservedSpace rs) {
   FileMapInfo* static_mapinfo = FileMapInfo::current_info();
   assert(UseSharedSpaces && static_mapinfo != nullptr, "must be");
   return static_mapinfo->map_aot_code_region(rs);
+}
+
+bool AOTCacheAccess::is_aot_code_region_empty() {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+  return ArchiveBuilder::current()->ac_region()->is_empty();
 }
 
 void AOTCacheAccess::set_pointer(address* ptr, address value) {

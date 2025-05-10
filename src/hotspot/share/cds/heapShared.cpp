@@ -388,7 +388,7 @@ void CachedCodeDirectoryInternal::dumptime_init_internal() {
     return;
   }
 
-  int* table = (int*)AOTCacheAccess::allocate_from_code_cache(count * sizeof(int));
+  int* table = (int*)AOTCacheAccess::allocate_aot_code_region(count * sizeof(int));
   for (int i = 0; i < count; i++) {
     table[count] = -1;
   }

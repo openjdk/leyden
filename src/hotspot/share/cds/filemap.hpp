@@ -452,7 +452,7 @@ public:
   void  init_heap_region_relocation();
   MapArchiveResult map_region(int i, intx addr_delta, char* mapped_base_address, ReservedSpace rs);
   bool  relocate_pointers_in_core_regions(intx addr_delta);
-  void  relocate_pointers_in_cached_code_region();
+  void  relocate_pointers_in_aot_code_region();
   static MemRegion _mapped_heap_memregion;
 
 public:

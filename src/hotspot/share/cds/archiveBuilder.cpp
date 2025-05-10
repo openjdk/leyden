@@ -182,11 +182,11 @@ ArchiveBuilder::ArchiveBuilder() :
   _pz_region("pz", MAX_SHARED_DELTA), // protection zone -- used only during dumping; does NOT exist in cds archive.
   _rw_region("rw", MAX_SHARED_DELTA),
   _ro_region("ro", MAX_SHARED_DELTA),
-  _cc_region("cc", MAX_SHARED_DELTA),
+  _ac_region("ac", MAX_SHARED_DELTA),
   _ptrmap(mtClassShared),
   _rw_ptrmap(mtClassShared),
   _ro_ptrmap(mtClassShared),
-  _cc_ptrmap(mtClassShared),
+  _ac_ptrmap(mtClassShared),
   _rw_src_objs(),
   _ro_src_objs(),
   _src_obj_table(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE),
@@ -330,7 +330,7 @@ void ArchiveBuilder::sort_klasses() {
 }
 
 address ArchiveBuilder::reserve_buffer() {
-  // AOTCodeCache::max_aot_code_size() accounts for cached code region.
+  // AOTCodeCache::max_aot_code_size() accounts for aot code region.
   size_t buffer_size = LP64_ONLY(CompressedClassSpaceSize) NOT_LP64(256 * M) + AOTCodeCache::max_aot_code_size();
   ReservedSpace rs = MemoryReserver::reserve(buffer_size,
                                              MetaspaceShared::core_region_alignment(),
@@ -566,7 +566,7 @@ ArchiveBuilder::FollowMode ArchiveBuilder::get_follow_mode(MetaspaceClosure::Ref
              ref->msotype() == MetaspaceObj::CompileTrainingDataType) {
       return (TrainingData::need_data() || TrainingData::assembling_data()) ? make_a_copy : set_to_null;
   } else if (ref->msotype() == MetaspaceObj::AdapterHandlerEntryType) {
-    if (CDSConfig::is_dumping_adapters()) {
+    if (AOTCodeCache::is_dumping_adapters()) {
       AdapterHandlerEntry* entry = (AdapterHandlerEntry*)ref->obj();
       return AdapterHandlerLibrary::is_abstract_method_adapter(entry) ? set_to_null : make_a_copy;
     } else {
@@ -1037,13 +1037,13 @@ uintx ArchiveBuilder::any_to_offset(address p) const {
   return buffer_to_offset(p);
 }
 
-void ArchiveBuilder::start_cc_region() {
+void ArchiveBuilder::start_ac_region() {
   ro_region()->pack();
-  start_dump_region(&_cc_region);
+  start_dump_region(&_ac_region);
 }
 
-void ArchiveBuilder::end_cc_region() {
-  _cc_region.pack();
+void ArchiveBuilder::end_ac_region() {
+  _ac_region.pack();
 }
 
 address ArchiveBuilder::offset_to_buffered_address(u4 offset) const {
@@ -1612,15 +1612,15 @@ void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, ArchiveHeapInfo* heap_i
 
   write_region(mapinfo, MetaspaceShared::rw, &_rw_region, /*read_only=*/false,/*allow_exec=*/false);
   write_region(mapinfo, MetaspaceShared::ro, &_ro_region, /*read_only=*/true, /*allow_exec=*/false);
-  write_region(mapinfo, MetaspaceShared::cc, &_cc_region, /*read_only=*/false,/*allow_exec=*/false);
+  write_region(mapinfo, MetaspaceShared::ac, &_ac_region, /*read_only=*/false,/*allow_exec=*/false);
 
   // Split pointer map into read-write and read-only bitmaps
-  ArchivePtrMarker::initialize_rw_ro_cc_maps(&_rw_ptrmap, &_ro_ptrmap, &_cc_ptrmap);
+  ArchivePtrMarker::initialize_rw_ro_ac_maps(&_rw_ptrmap, &_ro_ptrmap, &_ac_ptrmap);
 
   size_t bitmap_size_in_bytes;
   char* bitmap = mapinfo->write_bitmap_region(ArchivePtrMarker::rw_ptrmap(),
                                               ArchivePtrMarker::ro_ptrmap(),
-                                              ArchivePtrMarker::cc_ptrmap(),
+                                              ArchivePtrMarker::ac_ptrmap(),
                                               heap_info,
                                               bitmap_size_in_bytes);
 
@@ -1674,7 +1674,7 @@ void ArchiveBuilder::print_region_stats(FileMapInfo *mapinfo, ArchiveHeapInfo* h
 
   _rw_region.print(total_reserved);
   _ro_region.print(total_reserved);
-  _cc_region.print(total_reserved);
+  _ac_region.print(total_reserved);
 
   print_bitmap_region_stats(bitmap_used, total_reserved);
 

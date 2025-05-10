@@ -744,7 +744,7 @@ void CDSConfig::setup_compiler_args() {
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     AOTCodeCache::enable_caching();
-    disable_dumping_aot_code(); // Cannot dump cached code until metadata and heap are dumped.
+    disable_dumping_aot_code(); // Cannot dump aot code until metadata and heap are dumped.
   } else if (is_using_archive() && new_aot_flags_used()) {
     // JEP 483 workflow -- production
     FLAG_SET_ERGO(AOTRecordTraining, false);
@@ -794,7 +794,7 @@ bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
 
   if (CDSPreimage == nullptr) {
     if (os::file_exists(CacheDataStore) /* && TODO: Need to check if CDS file is valid*/) {
-      // The CacheDataStore is already up to date. Use it. Also turn on cached code by default.
+      // The CacheDataStore is already up to date. Use it. Also turn on aot code by default.
       FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
       AOTCodeCache::enable_caching();
 
@@ -839,7 +839,7 @@ bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
     // Settings for AOT
     AOTCodeCache::enable_caching(); // Update default settings
     if (AOTCodeCache::is_caching_enabled()) {
-      // Cannot dump cached code until metadata and heap are dumped.
+      // Cannot dump aot code until metadata and heap are dumped.
       disable_dumping_aot_code();
     }
     _is_dumping_static_archive = true;
@@ -1167,8 +1167,11 @@ bool CDSConfig::is_dumping_method_handles() {
 
 #endif // INCLUDE_CDS_JAVA_HEAP
 
-// This is allowed by default. We disable it only in the final image dump before the
-// metadata and heap are dumped.
+// AOT code generation and its archiving is disabled by default.
+// We enable it only in the final image dump after the metadata and heap are dumped.
+// This affects only JITed code because it may have embedded oops and metadata pointers
+// which AOT code encodes as offsets in final CDS archive regions.
+
 static bool _is_dumping_aot_code = true;
 
 bool CDSConfig::is_dumping_aot_code() {
@@ -1181,10 +1184,6 @@ void CDSConfig::disable_dumping_aot_code() {
 
 void CDSConfig::enable_dumping_aot_code() {
   _is_dumping_aot_code = true;
-}
-
-bool CDSConfig::is_dumping_adapters() {
-  return (AOTAdapterCaching && is_dumping_final_static_archive());
 }
 
 bool CDSConfig::is_experimental_leyden_workflow() {

@@ -1316,7 +1316,7 @@ public:
 
   // Check if branches to the non nmethod section require a far jump
   static bool codestub_branch_needs_far_jump() {
-    if (AOTCodeCache::is_on_for_write()) {
+    if (AOTCodeCache::is_on_for_dump()) {
       // To calculate far_codestub_branch_size correctly.
       return true;
     }

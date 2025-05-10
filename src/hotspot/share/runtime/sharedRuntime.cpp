@@ -2539,9 +2539,9 @@ AdapterHandlerEntry* AdapterHandlerLibrary::lookup(AdapterFingerPrint* fp) {
 #if INCLUDE_CDS
   // if we are building the archive then the archived adapter table is
   // not valid and we need to use the ones added to the runtime table
-  if (!CDSConfig::is_dumping_adapters()) {
+  if (!AOTCodeCache::is_dumping_adapters()) {
     // Search archived table first. It is read-only table so can be searched without lock
-    entry = _archived_adapter_handler_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
+    entry = _aot_adapter_handler_table.lookup(fp, fp->compute_hash(), 0 /* unused */);
     if (entry != nullptr) {
 #ifndef PRODUCT
       if (fp->is_compact()) {
@@ -2593,7 +2593,7 @@ AdapterHandlerEntry* AdapterHandlerLibrary::_obj_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_int_arg_handler = nullptr;
 AdapterHandlerEntry* AdapterHandlerLibrary::_obj_obj_arg_handler = nullptr;
 #if INCLUDE_CDS
-ArchivedAdapterTable AdapterHandlerLibrary::_archived_adapter_handler_table;
+ArchivedAdapterTable AdapterHandlerLibrary::_aot_adapter_handler_table;
 #endif // INCLUDE_CDS
 const int AdapterHandlerLibrary_size = 16*K;
 BufferBlob* AdapterHandlerLibrary::_buffer = nullptr;
@@ -2900,7 +2900,7 @@ bool AdapterHandlerLibrary::generate_adapter_code(AdapterBlob*& adapter_blob,
                                          sig_bt,
                                          regs,
                                          handler);
-  if (CDSConfig::is_dumping_adapters()) {
+  if (AOTCodeCache::is_dumping_adapters()) {
     // try to save generated code
     const char* name = AdapterHandlerLibrary::name(handler->fingerprint());
     const uint32_t id = AdapterHandlerLibrary::id(handler->fingerprint());
@@ -3026,11 +3026,11 @@ void AdapterHandlerLibrary::archive_adapter_table() {
   CompactHashtableWriter writer(_adapter_handler_table->number_of_entries(), &stats);
   CopyAdapterTableToArchive copy(&writer);
   _adapter_handler_table->iterate(&copy);
-  writer.dump(&_archived_adapter_handler_table, "archived adapter table");
+  writer.dump(&_aot_adapter_handler_table, "archived adapter table");
 }
 
 void AdapterHandlerLibrary::serialize_shared_table_header(SerializeClosure* soc) {
-  _archived_adapter_handler_table.serialize_header(soc);
+  _aot_adapter_handler_table.serialize_header(soc);
 }
 #endif // INCLUDE_CDS
 
@@ -3426,7 +3426,7 @@ bool AdapterHandlerLibrary::contains(const CodeBlob* b) {
   auto findblob_archived_table = [&] (AdapterHandlerEntry* handler) {
     return (found = (b == CodeCache::find_blob(handler->get_i2c_entry())));
   };
-  _archived_adapter_handler_table.iterate(findblob_archived_table);
+  _aot_adapter_handler_table.iterate(findblob_archived_table);
 #endif // INCLUDE_CDS
   if (!found) {
     auto findblob_runtime_table = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {
@@ -3461,7 +3461,7 @@ void AdapterHandlerLibrary::print_handler_on(outputStream* st, const CodeBlob* b
 
     }
   };
-  _archived_adapter_handler_table.iterate(findblob_archived_table);
+  _aot_adapter_handler_table.iterate(findblob_archived_table);
 #endif // INCLUDE_CDS
   if (!found) {
     auto findblob_runtime_table = [&] (AdapterFingerPrint* key, AdapterHandlerEntry* a) {

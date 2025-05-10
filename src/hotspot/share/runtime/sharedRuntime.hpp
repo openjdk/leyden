@@ -778,7 +778,7 @@ class AdapterHandlerLibrary: public AllStatic {
   static AdapterHandlerEntry* _obj_int_arg_handler;
   static AdapterHandlerEntry* _obj_obj_arg_handler;
 #if INCLUDE_CDS
-  static ArchivedAdapterTable _archived_adapter_handler_table;
+  static ArchivedAdapterTable _aot_adapter_handler_table;
 #endif // INCLUDE_CDS
   static BufferBlob* buffer_blob();
   static void initialize();

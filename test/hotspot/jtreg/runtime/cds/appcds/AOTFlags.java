@@ -53,9 +53,9 @@ public class AOTFlags {
     static void positiveTests() throws Exception {
         String hasTrainingDataPattern = "MethodTrainingData *= *[1-9]";
         String noTrainingDataPattern = "MethodTrainingData *= *0";
-        String hasCachedCodePattern = "Shared file region .cc. .: *[1-9]";
-        String noCachedCodePattern = "Shared file region .cc. .: *0";
-        String hasMappedCachedCodePattern = "Mapped [0-9]+ bytes at address 0x[0-9a-f]+ from AOT Code Cache";
+        String hasAOTCodePattern = "Shared file region .ac. .: *[1-9]";
+        String noAOTCodePattern = "Shared file region .ac. .: *0";
+        String hasMappedAOTCodePattern = "Mapped [0-9]+ bytes at address 0x[0-9a-f]+ from AOT Code Cache";
 
         //----------------------------------------------------------------------
         printTestCase("Training Run");
@@ -69,7 +69,7 @@ public class AOTFlags {
         out.shouldContain("Hello World");
         out.shouldContain("AOTConfiguration recorded: " + aotConfigFile);
         out.shouldMatch(hasTrainingDataPattern);
-        out.shouldMatch(noCachedCodePattern);
+        out.shouldMatch(noAOTCodePattern);
         out.shouldHaveExitValue(0);
 
         //----------------------------------------------------------------------
@@ -84,7 +84,7 @@ public class AOTFlags {
         out.shouldContain("Dumping shared data to file:");
         out.shouldMatch("cds.*hello[.]aot");
         out.shouldMatch(hasTrainingDataPattern);
-        out.shouldMatch(hasCachedCodePattern);
+        out.shouldMatch(hasAOTCodePattern);
         out.shouldHaveExitValue(0);
 
         //----------------------------------------------------------------------
@@ -98,7 +98,7 @@ public class AOTFlags {
         out.shouldContain("Using AOT-linked classes: true (static archive: has aot-linked classes)");
         out.shouldContain("Opened AOT cache hello.aot.");
         out.shouldContain("Hello World");
-        out.shouldMatch(hasMappedCachedCodePattern);
+        out.shouldMatch(hasMappedAOTCodePattern);
         out.shouldHaveExitValue(0);
 
         //----------------------------------------------------------------------
@@ -156,7 +156,7 @@ public class AOTFlags {
         out.shouldContain("Dumping shared data to file:");
         out.shouldMatch("cds.*hello[.]aot");
         out.shouldMatch(noTrainingDataPattern);
-        out.shouldMatch(noCachedCodePattern);
+        out.shouldMatch(noAOTCodePattern);
         out.shouldHaveExitValue(0);
 
         //----------------------------------------------------------------------
@@ -170,7 +170,7 @@ public class AOTFlags {
         out.shouldContain("Using AOT-linked classes: false (static archive: no aot-linked classes)");
         out.shouldContain("Opened AOT cache hello.aot.");
         out.shouldContain("Hello World");
-        out.shouldNotMatch(hasMappedCachedCodePattern);
+        out.shouldNotMatch(hasMappedAOTCodePattern);
         out.shouldHaveExitValue(0);
 
         //----------------------------------------------------------------------

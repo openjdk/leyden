@@ -356,7 +356,7 @@ void CodeCache::initialize_heaps() {
 }
 
 void* CodeCache::map_aot_code() {
-  if (_cds_code_space.size() > 0 && AOTCacheAccess::map_aot_code(_cds_code_space)) {
+  if (_cds_code_space.size() > 0 && AOTCacheAccess::map_aot_code_region(_cds_code_space)) {
     return _cds_code_space.base();
   } else {
     return nullptr;

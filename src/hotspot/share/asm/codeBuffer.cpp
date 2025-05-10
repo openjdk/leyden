@@ -1076,9 +1076,9 @@ void CodeBuffer::decode() {
 void CodeSection::print_on(outputStream* st, const char* name) {
   csize_t locs_size = locs_end() - locs_start();
   st->print_cr(" %7s.code = " PTR_FORMAT " : " PTR_FORMAT " : " PTR_FORMAT " (%d of %d)",
-               name, p2i(start()), p2i(end()), p2i(limit()), size(), capacity());
+                name, p2i(start()), p2i(end()), p2i(limit()), size(), capacity());
   st->print_cr(" %7s.locs = " PTR_FORMAT " : " PTR_FORMAT " : " PTR_FORMAT " (%d of %d) point=%d",
-               name, p2i(locs_start()), p2i(locs_end()), p2i(locs_limit()), locs_size, locs_capacity(), locs_point_off());
+                name, p2i(locs_start()), p2i(locs_end()), p2i(locs_limit()), locs_size, locs_capacity(), locs_point_off());
   if (PrintRelocations && (locs_size != 0)) {
     RelocIterator iter(this);
     iter.print_on(st);
@@ -1086,13 +1086,6 @@ void CodeSection::print_on(outputStream* st, const char* name) {
 }
 
 void CodeBuffer::print_on(outputStream* st) {
-#if 0
-  if (this == nullptr) { // gcc complains 'nonnull' argument 'this' compared to nullptr
-    st->print_cr("null CodeBuffer pointer");
-    return;
-  }
-#endif
-
   st->print_cr("CodeBuffer:%s", name());
   for (int n = 0; n < (int)SECT_LIMIT; n++) {
     // print each section

@@ -169,7 +169,7 @@ void G1BarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Opr new_v
     __ move(addr, xor_res);
     __ logical_xor(xor_res, new_val, xor_res);
 #if INCLUDE_CDS
-    if (AOTCodeCache::is_on_for_write()) {
+    if (AOTCodeCache::is_on_for_dump()) {
       __ move(grain_shift_addr, grain_shift_reg);
       __ move(xor_res, xor_shift_res);
       __ move(grain_shift_indirect, grain_shift);
@@ -189,7 +189,7 @@ void G1BarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Opr new_v
   } else {
     __ logical_xor(addr, new_val, xor_res);
 #if INCLUDE_CDS
-    if (AOTCodeCache::is_on_for_write()) {
+    if (AOTCodeCache::is_on_for_dump()) {
       __ move(grain_shift_addr, grain_shift_reg);
       __ move(grain_shift_indirect, grain_shift);
       __ unsigned_shift_right(xor_res,

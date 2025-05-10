@@ -429,22 +429,22 @@ class Config {
 
 // Continue with AOTCodeCache class definition.
 private:
-  Header*     _load_header;
-  char*       _load_buffer;    // Aligned buffer for loading cached code
-  char*       _store_buffer;   // Aligned buffer for storing cached code
-  char*       _C_store_buffer; // Original unaligned buffer
+  Header* _load_header;
+  char*   _load_buffer;    // Aligned buffer for loading cached code
+  char*   _store_buffer;   // Aligned buffer for storing cached code
+  char*   _C_store_buffer; // Original unaligned buffer
 
-  uint        _write_position; // Position in _store_buffer
-  uint        _load_size;      // Used when reading cache
-  uint        _store_size;     // Used when writing cache
-  bool _for_read;              // Open for read
-  bool _for_write;             // Open for write
-  bool _use_meta_ptrs;         // Store metadata pointers
-  bool _for_preload;           // Code for preload
-  bool _gen_preload_code;      // Generate pre-loading code
-  bool _has_clinit_barriers;   // Code with clinit barriers
-  bool _closing;               // Closing cache file
-  bool _failed;                // Failed read/write to/from cache (cache is broken?)
+  uint   _write_position;  // Position in _store_buffer
+  uint   _load_size;       // Used when reading cache
+  uint   _store_size;      // Used when writing cache
+  bool   _for_use;         // AOT cache is open for using AOT code
+  bool   _for_dump;        // AOT cache is open for dumping AOT code
+  bool   _use_meta_ptrs;   // Store metadata pointers
+  bool   _for_preload;      // Code for preload
+  bool   _gen_preload_code; // Generate pre-loading code
+  bool   _has_clinit_barriers;   // Code with clinit barriers
+  bool   _closing;          // Closing cache file
+  bool   _failed;           // Failed read/write to/from cache (cache is broken?)
 
   AOTCodeAddressTable* _table;
 
@@ -459,8 +459,8 @@ private:
   uint compile_id() const { return _compile_id; }
   uint comp_level() const { return _comp_level; }
 
-  static AOTCodeCache* open_for_read();
-  static AOTCodeCache* open_for_write();
+  static AOTCodeCache* open_for_use();
+  static AOTCodeCache* open_for_dump();
 
   bool set_write_position(uint pos);
   bool align_write();
@@ -524,8 +524,8 @@ public:
   static void init_c1_table() NOT_CDS_RETURN;
   address address_for_id(int id) const { return _table->address_for_id(id); }
 
-  bool for_read()  const { return _for_read  && !_failed; }
-  bool for_write() const { return _for_write && !_failed; }
+  bool for_use()  const { return _for_use  && !_failed; }
+  bool for_dump() const { return _for_dump && !_failed; }
 
   bool closing()          const { return _closing; }
   bool use_meta_ptrs()    const { return _use_meta_ptrs; }
@@ -583,7 +583,7 @@ public:
   static AOTCodeEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
 
   static uint store_entries_cnt() {
-    if (is_on_for_write()) {
+    if (is_on_for_dump()) {
       return cache()->_store_entries_cnt;
     }
     return -1;
@@ -596,7 +596,7 @@ private:
 
   static bool open_cache(bool is_dumping, bool is_using);
   static bool verify_vm_config() {
-    if (is_on_for_read()) {
+    if (is_on_for_use()) {
       return _cache->_load_header->verify_vm_config();
     }
     return true;
@@ -609,14 +609,14 @@ public:
   static bool is_on() CDS_ONLY({ return _cache != nullptr && !_cache->closing(); }) NOT_CDS_RETURN_(false);
   static bool is_C3_on() NOT_CDS_RETURN_(false);
   static bool is_code_load_thread_on() NOT_CDS_RETURN_(false);
-  static bool is_on_for_read()  CDS_ONLY({ return is_on() && _cache->for_read(); }) NOT_CDS_RETURN_(false);
-  static bool is_on_for_write() CDS_ONLY({ return is_on() && _cache->for_write(); }) NOT_CDS_RETURN_(false);
+  static bool is_on_for_use()  CDS_ONLY({ return is_on() && _cache->for_use(); }) NOT_CDS_RETURN_(false);
+  static bool is_on_for_dump() CDS_ONLY({ return is_on() && _cache->for_dump(); }) NOT_CDS_RETURN_(false);
   static bool is_dumping_code() NOT_CDS_RETURN_(false);
   static bool is_dumping_stub() NOT_CDS_RETURN_(false);
-  static bool is_dumping_adapter() NOT_CDS_RETURN_(false);
+  static bool is_dumping_adapters() NOT_CDS_RETURN_(false);
   static bool is_using_code() NOT_CDS_RETURN_(false);
   static bool is_using_stub() NOT_CDS_RETURN_(false);
-  static bool is_using_adapter() NOT_CDS_RETURN_(false);
+  static bool is_using_adapters() NOT_CDS_RETURN_(false);
   static void enable_caching() NOT_CDS_RETURN;
   static void disable_caching() NOT_CDS_RETURN;
   static bool is_caching_enabled() NOT_CDS_RETURN_(false);
@@ -631,7 +631,7 @@ public:
 
   template<typename Function>
   static void iterate(Function function) { // lambda enabled API
-    AOTCodeCache* cache = open_for_read();
+    AOTCodeCache* cache = open_for_use();
     if (cache != nullptr) {
       ReadingMark rdmk;
       if (rdmk.failed()) {

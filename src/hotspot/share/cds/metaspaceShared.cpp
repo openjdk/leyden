@@ -645,7 +645,7 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables(AOTClassLocationConfig*&
   // Write lambform lines into archive
   LambdaFormInvokers::dump_static_archive_invokers();
 
-  if (CDSConfig::is_dumping_adapters()) {
+  if (AOTCodeCache::is_dumping_adapters()) {
     AdapterHandlerLibrary::archive_adapter_table();
   }
 
@@ -1107,11 +1107,11 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
       CDSConfig::enable_dumping_aot_code();
       {
-        builder.start_cc_region();
+        builder.start_ac_region();
         Precompiler::compile_cached_code(&builder, CHECK);
-        // Write the contents to cached code region and close AOTCodeCache before packing the region
+        // Write the contents to aot code region and close AOTCodeCache before packing the region
         AOTCodeCache::close();
-        builder.end_cc_region();
+        builder.end_ac_region();
       }
       CDSConfig::disable_dumping_aot_code();
     }
@@ -1537,7 +1537,7 @@ void MetaspaceShared::open_static_archive() {
   if (!mapinfo->open_as_input()) {
     delete(mapinfo);
   } else {
-    FileMapRegion* r = mapinfo->region_at(MetaspaceShared::cc);
+    FileMapRegion* r = mapinfo->region_at(MetaspaceShared::ac);
     AOTCacheAccess::set_aot_code_region_size(r->used_aligned());
   }
 }
@@ -2159,8 +2159,8 @@ void MetaspaceShared::initialize_shared_spaces() {
     }
     TrainingData::print_archived_training_data_on(tty);
 
-    if (AOTCodeCache::is_on_for_read()) {
-      tty->print_cr("\n\nCached Code");
+    if (AOTCodeCache::is_on_for_use()) {
+      tty->print_cr("\n\nAOT Code");
       AOTCodeCache::print_on(tty);
     }
 

@@ -71,7 +71,7 @@ class MetaspaceShared : AllStatic {
     ro = 1,  // read-only shared space
     bm = 2,  // relocation bitmaps (freed after file mapping is finished)
     hp = 3,  // heap region
-    cc = 4,  // cached code
+    ac = 4,  // aot code
     num_core_region = 2,       // rw and ro
     n_regions = 5              // total number of regions
   };

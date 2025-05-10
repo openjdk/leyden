@@ -533,7 +533,7 @@ void LIR_Assembler::const2reg(LIR_Opr src, LIR_Opr dest, LIR_PatchCode patch_cod
 
     case T_LONG: {
       assert(patch_code == lir_patch_none, "no patching handled here");
-      if (AOTCodeCache::is_on_for_write()) {
+      if (AOTCodeCache::is_on_for_dump()) {
         // AOTCodeCache needs relocation info for card table base
         address b = c->as_pointer();
         if (is_card_table_address(b)) {

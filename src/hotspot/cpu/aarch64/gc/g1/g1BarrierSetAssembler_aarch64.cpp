@@ -214,7 +214,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   // AOT code needs to load the barrier grain shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
-  if (AOTCodeCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_dump()) {
     address grain_shift_address = (address)AOTRuntimeConstants::grain_shift_address();
     __ eor(tmp1, store_addr, new_val);
     __ lea(tmp2, ExternalAddress(grain_shift_address));
@@ -239,7 +239,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   // AOT code needs to load the barrier card shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
-  if (AOTCodeCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_dump()) {
     address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
     __ lea(tmp2, ExternalAddress(card_shift_address));
     __ ldrb(tmp2, tmp2);

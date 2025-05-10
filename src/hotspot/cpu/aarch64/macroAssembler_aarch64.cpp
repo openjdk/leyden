@@ -696,7 +696,7 @@ void MacroAssembler::set_last_Java_frame(Register last_java_sp,
 }
 
 static inline bool target_needs_far_branch(address addr) {
-  if (AOTCodeCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_dump()) {
     return true;
   }
   // codecache size <= 128M
@@ -883,7 +883,7 @@ void MacroAssembler::call_VM_helper(Register oop_result, address entry_point, in
 
 // Check the entry target is always reachable from any branch.
 static bool is_always_within_branch_range(Address entry) {
-  if (AOTCodeCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_dump()) {
     return false;
   }
   const address target = entry.target();
@@ -3362,7 +3362,7 @@ void MacroAssembler::subw(Register Rd, Register Rn, RegisterOrConstant decrement
 void MacroAssembler::reinit_heapbase()
 {
   if (UseCompressedOops) {
-    if (Universe::is_fully_initialized() && !AOTCodeCache::is_on_for_write()) {
+    if (Universe::is_fully_initialized() && !AOTCodeCache::is_on_for_dump()) {
       mov(rheapbase, CompressedOops::base());
     } else {
       lea(rheapbase, ExternalAddress(CompressedOops::base_addr()));
@@ -5731,7 +5731,7 @@ void MacroAssembler::load_byte_map_base(Register reg) {
   // Strictly speaking the byte_map_base isn't an address at all, and it might
   // even be negative. It is thus materialised as a constant.
 #if INCLUDE_CDS
-  if (AOTCodeCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_dump()) {
     // AOT code needs relocation info for card table base
     lea(reg, ExternalAddress(reinterpret_cast<address>(byte_map_base)));
   } else {
@@ -5745,7 +5745,7 @@ void MacroAssembler::load_byte_map_base(Register reg) {
 void MacroAssembler::load_aotrc_address(Register reg, address a) {
 #if INCLUDE_CDS
   assert(AOTRuntimeConstants::contains(a), "address out of range for data area");
-  if (AOTCodeCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_dump()) {
     // all aotrc field addresses should be registered in the AOTCodeCache address table
     lea(reg, ExternalAddress(a));
   } else {

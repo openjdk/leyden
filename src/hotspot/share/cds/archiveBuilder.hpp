@@ -221,7 +221,7 @@ private:
 
   DumpRegion _rw_region;
   DumpRegion _ro_region;
-  DumpRegion _cc_region;
+  DumpRegion _ac_region; // AOT code
 
   // Combined bitmap to track pointers in both RW and RO regions. This is updated
   // as objects are copied into RW and RO.
@@ -230,7 +230,7 @@ private:
   // _ptrmap is split into these two bitmaps which are written into the archive.
   CHeapBitMap _rw_ptrmap;   // marks pointers in the RW region
   CHeapBitMap _ro_ptrmap;   // marks pointers in the RO region
-  CHeapBitMap _cc_ptrmap;   // marks pointers in the CC region
+  CHeapBitMap _ac_ptrmap;   // marks pointers in the CC region
 
   SourceObjList _rw_src_objs;                 // objs to put in rw region
   SourceObjList _ro_src_objs;                 // objs to put in ro region
@@ -386,10 +386,10 @@ public:
   DumpRegion* pz_region() { return &_pz_region; }
   DumpRegion* rw_region() { return &_rw_region; }
   DumpRegion* ro_region() { return &_ro_region; }
-  DumpRegion* cc_region() { return &_cc_region; }
+  DumpRegion* ac_region() { return &_ac_region; }
 
-  void start_cc_region();
-  void end_cc_region();
+  void start_ac_region();
+  void end_ac_region();
 
   static char* rw_region_alloc(size_t num_bytes) {
     return current()->rw_region()->allocate(num_bytes);
@@ -397,8 +397,8 @@ public:
   static char* ro_region_alloc(size_t num_bytes) {
     return current()->ro_region()->allocate(num_bytes);
   }
-  static char* cc_region_alloc(size_t num_bytes) {
-    return current()->cc_region()->allocate(num_bytes);
+  static char* ac_region_alloc(size_t num_bytes) {
+    return current()->ac_region()->allocate(num_bytes);
   }
 
   template <typename T>

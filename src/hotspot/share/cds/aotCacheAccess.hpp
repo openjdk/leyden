@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -56,13 +56,14 @@ public:
 
   static void test_heap_access_api() NOT_CDS_JAVA_HEAP_RETURN;
 
-  static void* allocate_from_code_cache(size_t size) NOT_CDS_RETURN_(nullptr);
+  static void* allocate_aot_code_region(size_t size) NOT_CDS_RETURN_(nullptr);
 
   static size_t get_aot_code_region_size() NOT_CDS_RETURN_(0);
   static void set_aot_code_region_size(size_t sz) NOT_CDS_RETURN;
 
+  static bool map_aot_code_region(ReservedSpace rs) NOT_CDS_RETURN_(false);
+
   static bool is_aot_code_region_empty() NOT_CDS_RETURN_(true);
-  static bool map_aot_code(ReservedSpace rs) NOT_CDS_RETURN_(false);
 
   template <typename T>
   static void set_pointer(T** ptr, T* value) {

@@ -9732,7 +9732,7 @@ void MacroAssembler::restore_legacy_gprs() {
 void MacroAssembler::load_aotrc_address(Register reg, address a) {
 #if INCLUDE_CDS
   assert(AOTRuntimeConstants::contains(a), "address out of range for data area");
-  if (AOTCodeCache::is_on_for_write()) {
+  if (AOTCodeCache::is_on_for_dump()) {
     // all aotrc field addresses should be registered in the AOTCodeCache address table
     lea(reg, ExternalAddress(a));
   } else {
