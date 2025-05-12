@@ -281,61 +281,6 @@ enum class DataKind: int {
   MH_Oop_Shared = 11
 };
 
-// Concurent AOT code reader
-class AOTCodeReader {
-private:
-  const AOTCodeCache* _cache;
-  const AOTCodeEntry* _entry;
-  const char*         _load_buffer; // Loaded cached code buffer
-  uint  _read_position;             // Position in _load_buffer
-  uint  read_position() const { return _read_position; }
-  void  set_read_position(uint pos);
-  const char* addr(uint offset) const { return _load_buffer + offset; }
-
-  uint _compile_id;
-  uint _comp_level;
-  uint compile_id() const { return _compile_id; }
-  uint comp_level() const { return _comp_level; }
-
-  bool _preload;             // Preloading code before method execution
-  bool _lookup_failed;       // Failed to lookup for info (skip only this code load)
-  void set_lookup_failed()     { _lookup_failed = true; }
-  void clear_lookup_failed()   { _lookup_failed = false; }
-  bool lookup_failed()   const { return _lookup_failed; }
-
-public:
-  AOTCodeReader(AOTCodeCache* cache, AOTCodeEntry* entry, CompileTask* task);
-
-  AOTCodeEntry* aot_code_entry() { return (AOTCodeEntry*)_entry; }
-
-  // convenience method to convert offset in AOTCodeEntry data to its address
-  bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
-  bool compile_blob(CodeBuffer* buffer, int* pc_offset);
-
-  bool compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]);
-
-  Klass* read_klass(const methodHandle& comp_method, bool shared);
-  Method* read_method(const methodHandle& comp_method, bool shared);
-
-  bool read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code_offset);
-  bool read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer, OopRecorder* oop_recorder, ciMethod* target);
-  DebugInformationRecorder* read_debug_info(OopRecorder* oop_recorder);
-  OopMapSet* read_oop_maps();
-  bool read_dependencies(Dependencies* dependencies);
-
-  oop read_oop(JavaThread* thread, const methodHandle& comp_method);
-  Metadata* read_metadata(const methodHandle& comp_method);
-  bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
-  bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
-
-  bool read_oop_metadata_list(JavaThread* thread, ciMethod* target, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
-  void apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) NOT_CDS_RETURN;
-
-  ImmutableOopMapSet* read_oop_map_set();
-
-  void print_on(outputStream* st);
-};
-
 class AOTCodeCache : public CHeapObj<mtCode> {
 
 // Classes used to describe AOT code cache.
@@ -657,6 +602,60 @@ public:
   static void print_statistics_on(outputStream* st) NOT_CDS_RETURN;
   static void print_timers_on(outputStream* st) NOT_CDS_RETURN;
   static void print_unused_entries_on(outputStream* st) NOT_CDS_RETURN;
+};
+
+// Concurent AOT code reader
+class AOTCodeReader {
+private:
+  const AOTCodeCache* _cache;
+  const AOTCodeEntry* _entry;
+  const char*         _load_buffer; // Loaded cached code buffer
+  uint  _read_position;             // Position in _load_buffer
+  uint  read_position() const { return _read_position; }
+  void  set_read_position(uint pos);
+  const char* addr(uint offset) const { return _load_buffer + offset; }
+
+  uint _compile_id;
+  uint _comp_level;
+  uint compile_id() const { return _compile_id; }
+  uint comp_level() const { return _comp_level; }
+
+  bool _preload;             // Preloading code before method execution
+  bool _lookup_failed;       // Failed to lookup for info (skip only this code load)
+  void set_lookup_failed()     { _lookup_failed = true; }
+  void clear_lookup_failed()   { _lookup_failed = false; }
+  bool lookup_failed()   const { return _lookup_failed; }
+
+public:
+  AOTCodeReader(AOTCodeCache* cache, AOTCodeEntry* entry, CompileTask* task);
+
+  AOTCodeEntry* aot_code_entry() { return (AOTCodeEntry*)_entry; }
+
+  // convenience method to convert offset in AOTCodeEntry data to its address
+  bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
+  bool compile_blob(CodeBuffer* buffer, int* pc_offset);
+
+  bool compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]);
+
+  Klass* read_klass(const methodHandle& comp_method, bool shared);
+  Method* read_method(const methodHandle& comp_method, bool shared);
+
+  bool read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code_offset);
+  bool read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer, OopRecorder* oop_recorder, ciMethod* target);
+  DebugInformationRecorder* read_debug_info(OopRecorder* oop_recorder);
+  OopMapSet* read_oop_maps();
+
+  oop read_oop(JavaThread* thread, const methodHandle& comp_method);
+  Metadata* read_metadata(const methodHandle& comp_method);
+  bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
+  bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
+
+  bool read_oop_metadata_list(JavaThread* thread, ciMethod* target, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
+  void apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) NOT_CDS_RETURN;
+
+  ImmutableOopMapSet* read_oop_map_set();
+
+  void print_on(outputStream* st);
 };
 
 // +1 for preload code
