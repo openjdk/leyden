@@ -266,26 +266,22 @@ ExceptionBlob* OptoRuntime::generate_exception_blob() {
 
   assert(SimpleRuntimeFrame::framesize % 4 == 0, "sp not 16-byte aligned");
 
+  const char* name = OptoRuntime::stub_name(OptoStubId::exception_id);
+  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::Blob, (uint)OptoStubId::exception_id, name);
+  if (blob != nullptr) {
+    return blob->as_exception_blob();
+  }
+
   // Allocate space for the code
   ResourceMark rm;
   // Setup code generation tools
-  const char* name = OptoRuntime::stub_name(OptoStubId::exception_id);
   CodeBuffer buffer(name, 2048, 1024);
   if (buffer.blob() == nullptr) {
     return nullptr;
   }
-
-  int pc_offset = 0;
-  if (AOTCodeCache::load_exception_blob(&buffer, &pc_offset)) {
-    OopMapSet* oop_maps = new OopMapSet();
-    oop_maps->add_gc_map(pc_offset, new OopMap(SimpleRuntimeFrame::framesize, 0));
-
-    // Set exception blob
-    _exception_blob =  ExceptionBlob::create(&buffer, oop_maps, SimpleRuntimeFrame::framesize >> 1);
-    return _exception_blob;
-  }
-
   MacroAssembler* masm = new MacroAssembler(&buffer);
+
+
   address start = __ pc();
 
   // Exception pc is 'return address' for stack walker
@@ -331,8 +327,7 @@ ExceptionBlob* OptoRuntime::generate_exception_blob() {
 
   OopMapSet* oop_maps = new OopMapSet();
 
-  pc_offset = the_pc - start;
-  oop_maps->add_gc_map(pc_offset, new OopMap(SimpleRuntimeFrame::framesize, 0));
+  oop_maps->add_gc_map(the_pc - start, new OopMap(SimpleRuntimeFrame::framesize, 0));
 
   __ reset_last_Java_frame(false);
 
@@ -373,8 +368,9 @@ ExceptionBlob* OptoRuntime::generate_exception_blob() {
   // Make sure all code is generated
   masm->flush();
 
-  AOTCodeCache::store_exception_blob(&buffer, pc_offset);
   // Set exception blob
-  return ExceptionBlob::create(&buffer, oop_maps, SimpleRuntimeFrame::framesize >> 1);
+  ExceptionBlob* ex_blob = ExceptionBlob::create(&buffer, oop_maps, SimpleRuntimeFrame::framesize >> 1);
+  AOTCodeCache::store_code_blob(*ex_blob, AOTCodeEntry::Blob, (uint)OptoStubId::exception_id, name);
+  return ex_blob;
 }
 #endif // COMPILER2
