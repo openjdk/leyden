@@ -837,7 +837,7 @@ bool FileMapRegion::check_region_crc(char* base) const {
 
 static const char* region_name(int region_index) {
   static const char* names[] = {
-    "rw", "ro", "bm", "hp", "ac",
+    "rw", "ro", "bm", "hp", "ac"
   };
   const int num_regions = sizeof(names)/sizeof(names[0]);
   assert(0 <= region_index && region_index < num_regions, "sanity");
@@ -925,7 +925,7 @@ void FileMapInfo::write_region(int region, char* base, size_t size,
                    region_name(region), region, size, p2i(requested_base), _file_offset, crc);
   } else {
     log_info(cds)("Shared file region (%s) %d: %8zu"
-                  " bytes", region_name(region), region, size);
+                   " bytes", region_name(region), region, size);
   }
 
   r->init(region, mapping_offset, size, read_only, allow_exec, crc);

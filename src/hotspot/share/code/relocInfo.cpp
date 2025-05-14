@@ -180,6 +180,26 @@ RelocIterator::RelocIterator(CodeSection* cs, address begin, address limit) {
   set_limits(begin, limit);
 }
 
+RelocIterator::RelocIterator(CodeBlob* cb) {
+  initialize_misc();
+  if (cb->is_nmethod()) {
+    _code = cb->as_nmethod();
+  } else {
+    _code = nullptr;
+  }
+  _current = cb->relocation_begin() - 1;
+  _end = cb->relocation_end();
+  _addr = cb->content_begin();
+
+  _section_start[CodeBuffer::SECT_CONSTS] = cb->content_begin();
+  _section_start[CodeBuffer::SECT_INSTS] = cb->code_begin();
+
+  _section_end[CodeBuffer::SECT_CONSTS] = cb->code_begin();
+  _section_start[CodeBuffer::SECT_INSTS] = cb->code_end();
+  assert(!has_current(), "just checking");
+  set_limits(nullptr, nullptr);
+}
+
 bool RelocIterator::addr_in_const() const {
   const int n = CodeBuffer::SECT_CONSTS;
   if (_section_start[n] == nullptr) {
@@ -825,7 +845,7 @@ void RelocIterator::print_current_on(outputStream* st) {
     return;
   }
   st->print("relocInfo@" INTPTR_FORMAT " [type=%d(%s) addr=" INTPTR_FORMAT " offset=%d",
-            p2i(_current), type(), relocInfo::type_name(type()), p2i(_addr), _current->addr_offset());
+             p2i(_current), type(), relocInfo::type_name((relocInfo::relocType) type()), p2i(_addr), _current->addr_offset());
   if (current()->format() != 0)
     st->print(" format=%d", current()->format());
   if (datalen() == 1) {
@@ -937,7 +957,7 @@ void RelocIterator::print_current_on(outputStream* st) {
     {
       virtual_call_Relocation* r = (virtual_call_Relocation*) reloc();
       st->print(" | [destination=" INTPTR_FORMAT " cached_value=" INTPTR_FORMAT " metadata=" INTPTR_FORMAT "]",
-                p2i(r->destination()), p2i(r->cached_value()), p2i(r->method_value()));
+                 p2i(r->destination()), p2i(r->cached_value()), p2i(r->method_value()));
       CodeBlob* cb = CodeCache::find_blob(r->destination());
       if (cb != nullptr) {
         st->print(" Blob::%s", cb->name());

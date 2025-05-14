@@ -30,6 +30,7 @@
 #include "code/vmreg.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "memory/allStatic.hpp"
+#include "memory/metaspaceClosure.hpp"
 #include "memory/resourceArea.hpp"
 #include "runtime/stubDeclarations.hpp"
 #include "utilities/macros.hpp"
@@ -682,6 +683,9 @@ class SharedRuntime: AllStatic {
 class AdapterHandlerEntry : public MetaspaceObj {
   friend class AdapterHandlerLibrary;
 
+ public:
+  static const int ENTRIES_COUNT = 4;
+
  private:
   AdapterFingerPrint* _fingerprint;
   address _i2c_entry;
@@ -690,6 +694,8 @@ class AdapterHandlerEntry : public MetaspaceObj {
   address _c2i_no_clinit_check_entry;
   bool    _linked;
 
+  static const char *_entry_names[];
+
 #ifdef ASSERT
   // Captures code and signature used to generate this adapter when
   // verifying adapter equivalence.
@@ -697,30 +703,33 @@ class AdapterHandlerEntry : public MetaspaceObj {
   int            _saved_code_length;
 #endif
 
-  AdapterHandlerEntry(AdapterFingerPrint* fingerprint, address i2c_entry, address c2i_entry,
-                      address c2i_unverified_entry,
-                      address c2i_no_clinit_check_entry) :
+  AdapterHandlerEntry(AdapterFingerPrint* fingerprint) :
     _fingerprint(fingerprint),
-    _i2c_entry(i2c_entry),
-    _c2i_entry(c2i_entry),
-    _c2i_unverified_entry(c2i_unverified_entry),
-    _c2i_no_clinit_check_entry(c2i_no_clinit_check_entry),
+    _i2c_entry(nullptr),
+    _c2i_entry(nullptr),
+    _c2i_unverified_entry(nullptr),
+    _c2i_no_clinit_check_entry(nullptr),
     _linked(false)
 #ifdef ASSERT
-    , _saved_code_length(0)
+    , _saved_code(nullptr),
+    _saved_code_length(0)
 #endif
   { }
 
   ~AdapterHandlerEntry();
 
+  // Allocate on CHeap instead of metaspace (see JDK-8331086).
+  // Dummy argument is used to avoid C++ warning about using
+  // deleted opearator MetaspaceObj::delete().
+  void* operator new(size_t size, size_t dummy) throw() {
+    void* p = AllocateHeap(size, mtCode);
+    memset(p, 0, size);
+    return p;
+  }
+
  public:
-  static AdapterHandlerEntry* allocate(AdapterFingerPrint* fingerprint,
-                                       address i2c_entry,
-                                       address c2i_entry,
-                                       address c2i_unverified_entry,
-                                       address c2i_no_clinit_check_entry)
-  {
-    return new (mtCode) AdapterHandlerEntry(fingerprint, i2c_entry, c2i_entry, c2i_unverified_entry, c2i_no_clinit_check_entry);
+  static AdapterHandlerEntry* allocate(AdapterFingerPrint* fingerprint) {
+    return new(0) AdapterHandlerEntry(fingerprint);
   }
 
   static void deallocate(AdapterHandlerEntry *handler) {
@@ -739,6 +748,11 @@ class AdapterHandlerEntry : public MetaspaceObj {
   address get_c2i_entry()                  const { return _c2i_entry; }
   address get_c2i_unverified_entry()       const { return _c2i_unverified_entry; }
   address get_c2i_no_clinit_check_entry()  const { return _c2i_no_clinit_check_entry; }
+
+  static const char* entry_name(int i) {
+    assert(i >=0 && i < ENTRIES_COUNT, "entry id out of range");
+    return _entry_names[i];
+  }
 
   bool is_linked() const { return _linked; }
   address base_address();
@@ -760,7 +774,7 @@ class AdapterHandlerEntry : public MetaspaceObj {
   MetaspaceObj::Type type() const { return AdapterHandlerEntryType; }
 
   void remove_unshareable_info() NOT_CDS_RETURN;
-  void restore_unshareable_info(TRAPS) NOT_CDS_RETURN;
+  void link() NOT_CDS_RETURN;
 };
 
 #if INCLUDE_CDS
@@ -780,36 +794,35 @@ class AdapterHandlerLibrary: public AllStatic {
 #if INCLUDE_CDS
   static ArchivedAdapterTable _aot_adapter_handler_table;
 #endif // INCLUDE_CDS
+
   static BufferBlob* buffer_blob();
   static void initialize();
-  static AdapterHandlerEntry* create_simple_adapter(AdapterBlob*& new_adapter,
-                                                    int total_args_passed,
-                                                    BasicType* sig_bt);
   static AdapterHandlerEntry* get_simple_adapter(const methodHandle& method);
-  static bool lookup_aot_cache(AdapterHandlerEntry* handler, CodeBuffer* buffer);
+  static AdapterBlob* lookup_aot_cache(AdapterHandlerEntry* handler);
   static AdapterHandlerEntry* create_adapter(AdapterBlob*& new_adapter,
-                                             AdapterFingerPrint* fingerprint,
                                              int total_args_passed,
                                              BasicType* sig_bt,
-                                             bool is_transient);
+                                             bool is_transient = false);
+  static void create_abstract_method_handler();
+  static void lookup_simple_adapters() NOT_CDS_RETURN;
 #ifndef PRODUCT
-  static void print_adapter_handler_info(AdapterHandlerEntry* handler, AdapterBlob* adapter_blob);
+  static void print_adapter_handler_info(outputStream* st, AdapterHandlerEntry* handler, AdapterBlob* adapter_blob);
 #endif // PRODUCT
  public:
 
-  static AdapterHandlerEntry* new_entry(AdapterFingerPrint* fingerprint,
-                                        address i2c_entry = nullptr,
-                                        address c2i_entry = nullptr,
-                                        address c2i_unverified_entry = nullptr,
-                                        address c2i_no_clinit_check_entry = nullptr);
+  static AdapterHandlerEntry* new_entry(AdapterFingerPrint* fingerprint);
   static void create_native_wrapper(const methodHandle& method);
   static AdapterHandlerEntry* get_adapter(const methodHandle& method);
-  static AdapterHandlerEntry* lookup(AdapterFingerPrint* fp);
+  static AdapterHandlerEntry* lookup(int total_args_passed, BasicType* sig_bt);
   static bool generate_adapter_code(AdapterBlob*& adapter_blob,
                                     AdapterHandlerEntry* handler,
                                     int total_args_passed,
                                     BasicType* sig_bt,
                                     bool is_transient);
+
+#ifdef ASSERT
+  static void verify_adapter_sharing(int total_args_passed, BasicType* sig_bt, AdapterHandlerEntry* cached);
+#endif // ASSERT
 
   static void print_handler(const CodeBlob* b) { print_handler_on(tty, b); }
   static void print_handler_on(outputStream* st, const CodeBlob* b);
@@ -822,9 +835,10 @@ class AdapterHandlerLibrary: public AllStatic {
 
   static bool is_abstract_method_adapter(AdapterHandlerEntry* adapter);
 
-  static bool link_adapter_handler(AdapterHandlerEntry* handler, AdapterBlob*& adapter_blob) NOT_CDS_RETURN_(false);
-  static void archive_adapter_table() NOT_CDS_RETURN;
+  static AdapterBlob* link_aot_adapter_handler(AdapterHandlerEntry* handler) NOT_CDS_RETURN_(nullptr);
+  static void dump_aot_adapter_table() NOT_CDS_RETURN;
   static void serialize_shared_table_header(SerializeClosure* soc) NOT_CDS_RETURN;
+  static void link_aot_adapters() NOT_CDS_RETURN;
 };
 
 #endif // SHARE_RUNTIME_SHAREDRUNTIME_HPP

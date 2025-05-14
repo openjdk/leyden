@@ -107,6 +107,7 @@ private:
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
   uint   _decompile;   // Decompile count for this nmethod
+  bool   _has_oop_maps;
   bool   _has_clinit_barriers; // Generated code has class init checks
   bool   _for_preload; // Code can be used for preload
   bool   _loaded;      // Code was loaded
@@ -141,12 +142,12 @@ public:
     _reloc_size   = reloc_size;
 
     _dumptime_content_start_addr = dumptime_content_start_addr;
-
     _num_inlined_bytecodes = 0;
 
     _comp_level   = comp_level;
     _comp_id      = comp_id;
     _decompile    = decomp;
+    _has_oop_maps = false; // unused here
     _has_clinit_barriers = has_clinit_barriers;
     _for_preload  = for_preload;
     _loaded       = false;
@@ -154,6 +155,40 @@ public:
     _load_fail    = false;
     _ignore_decompile = ignore_decompile;
   }
+
+  AOTCodeEntry(Kind kind,         uint id,
+               uint offset,       uint size,
+               uint name_offset,  uint name_size,
+               uint blob_offset,  bool has_oop_maps,
+               address dumptime_content_start_addr) {
+    _next         = nullptr;
+    _method       = nullptr;
+    _kind         = kind;
+    _id           = id;
+    _offset       = offset;
+    _size         = size;
+    _name_offset  = name_offset;
+    _name_size    = name_size;
+    _code_offset  = blob_offset;
+    _code_size    = 0;
+    _reloc_offset = 0;
+    _reloc_size   = 0;
+
+    _dumptime_content_start_addr = dumptime_content_start_addr;
+    _num_inlined_bytecodes = 0;
+
+    _comp_level   = 0;
+    _comp_id      = 0;
+    _decompile    = 0;
+    _has_oop_maps = has_oop_maps;
+    _has_clinit_barriers = false;
+    _for_preload  = false;
+    _loaded       = false;
+    _not_entrant  = false;
+    _load_fail    = false;
+    _ignore_decompile = true;
+  }
+
   void* operator new(size_t x, AOTCodeCache* cache);
   // Delete is a NOP
   void operator delete( void *ptr ) {}
@@ -207,6 +242,10 @@ public:
   void set_load_fail()    { _load_fail = true; }
 
   void print(outputStream* st) const;
+  uint blob_offset()  const { return _code_offset; }
+  bool has_oop_maps() const { return _has_oop_maps; }
+
+  static bool is_valid_entry_kind(Kind kind) { return kind == Adapter || kind == Blob; }
 };
 
 // Addresses of stubs, blobs and runtime finctions called from compiled code.
@@ -285,7 +324,7 @@ class AOTCodeCache : public CHeapObj<mtCode> {
 
 // Classes used to describe AOT code cache.
 protected:
-class Config {
+  class Config {
     uint _compressedOopShift;
     uint _compressedKlassShift;
     uint _contendedPaddingWidth;
@@ -384,12 +423,15 @@ private:
   uint   _store_size;      // Used when writing cache
   bool   _for_use;         // AOT cache is open for using AOT code
   bool   _for_dump;        // AOT cache is open for dumping AOT code
+  bool   _closing;         // Closing cache file
+  bool   _failed;          // Failed read/write to/from cache (cache is broken?)
+  bool   _lookup_failed;   // Failed to lookup for info (skip only this code load)
+
+  bool   _for_preload;         // Code for preload
+  bool   _gen_preload_code;    // Generate pre-loading code
+  bool   _has_clinit_barriers; // Code with clinit barriers
+
   bool   _use_meta_ptrs;   // Store metadata pointers
-  bool   _for_preload;      // Code for preload
-  bool   _gen_preload_code; // Generate pre-loading code
-  bool   _has_clinit_barriers;   // Code with clinit barriers
-  bool   _closing;          // Closing cache file
-  bool   _failed;           // Failed read/write to/from cache (cache is broken?)
 
   AOTCodeAddressTable* _table;
 
@@ -409,19 +451,17 @@ private:
 
   bool set_write_position(uint pos);
   bool align_write();
+
+  address reserve_bytes(uint nbytes);
   uint write_bytes(const void* buffer, uint nbytes);
   const char* addr(uint offset) const { return _load_buffer + offset; }
-
   static AOTCodeAddressTable* addr_table() {
     return is_on() && (cache()->_table != nullptr) ? cache()->_table : nullptr;
   }
 
-  bool _lookup_failed;       // Failed to lookup for info (skip only this code load)
   void set_lookup_failed()     { _lookup_failed = true; }
   void clear_lookup_failed()   { _lookup_failed = false; }
   bool lookup_failed()   const { return _lookup_failed; }
-
-  address reserve_bytes(uint nbytes);
 
   AOTCodeEntry* write_nmethod(nmethod* nm, bool for_preload);
 
@@ -467,6 +507,7 @@ public:
   static void init_stubs_table() NOT_CDS_RETURN;
   static void init_opto_table() NOT_CDS_RETURN;
   static void init_c1_table() NOT_CDS_RETURN;
+
   address address_for_id(int id) const { return _table->address_for_id(id); }
 
   bool for_use()  const { return _for_use  && !_failed; }
@@ -498,10 +539,12 @@ public:
 
   bool write_code(CodeBuffer* buffer, uint& code_size);
   bool write_relocations(CodeBuffer* buffer, uint& reloc_size);
+  bool write_relocations(CodeBlob& code_blob);
   bool write_debug_info(DebugInformationRecorder* recorder);
   bool write_oop_maps(OopMapSet* oop_maps);
 
   bool write_oop_map_set(nmethod* nm);
+  bool write_oop_map_set(CodeBlob& cb);
   bool write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
   bool write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
 
@@ -521,8 +564,16 @@ public:
   static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset) NOT_CDS_RETURN_(false);
   static bool store_exception_blob(CodeBuffer* buffer, int pc_offset) NOT_CDS_RETURN_(false);
 
-  static bool load_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
-  static bool store_adapter(CodeBuffer* buffer, uint32_t id, const char* basic_sig, uint32_t offsets[4]) NOT_CDS_RETURN_(false);
+  static bool store_code_blob(CodeBlob& blob,
+                              AOTCodeEntry::Kind entry_kind,
+                              uint id, const char* name,
+                              int entry_offset_count,
+                              int* entry_offsets) NOT_CDS_RETURN_(false);
+
+  static CodeBlob* load_code_blob(AOTCodeEntry::Kind kind,
+                                  uint id, const char* name,
+                                  int entry_offset_count,
+                                  int* entry_offsets) NOT_CDS_RETURN_(nullptr);
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
   static AOTCodeEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
@@ -558,10 +609,10 @@ public:
   static bool is_on_for_dump() CDS_ONLY({ return is_on() && _cache->for_dump(); }) NOT_CDS_RETURN_(false);
   static bool is_dumping_code() NOT_CDS_RETURN_(false);
   static bool is_dumping_stub() NOT_CDS_RETURN_(false);
-  static bool is_dumping_adapters() NOT_CDS_RETURN_(false);
+  static bool is_dumping_adapter() NOT_CDS_RETURN_(false);
   static bool is_using_code() NOT_CDS_RETURN_(false);
   static bool is_using_stub() NOT_CDS_RETURN_(false);
-  static bool is_using_adapters() NOT_CDS_RETURN_(false);
+  static bool is_using_adapter() NOT_CDS_RETURN_(false);
   static void enable_caching() NOT_CDS_RETURN;
   static void disable_caching() NOT_CDS_RETURN;
   static bool is_caching_enabled() NOT_CDS_RETURN_(false);
@@ -635,7 +686,7 @@ public:
   bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
   bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
-  bool compile_adapter(CodeBuffer* buffer, const char* name, uint32_t offsets[4]);
+  CodeBlob* compile_code_blob(const char* name, int entry_offset_count, int* entry_offsets);
 
   Klass* read_klass(const methodHandle& comp_method, bool shared);
   Method* read_method(const methodHandle& comp_method, bool shared);
@@ -654,6 +705,8 @@ public:
   void apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) NOT_CDS_RETURN;
 
   ImmutableOopMapSet* read_oop_map_set();
+
+  void fix_relocations(CodeBlob* code_blob);
 
   void print_on(outputStream* st);
 };

@@ -468,7 +468,7 @@ void CDSConfig::check_aot_flags() {
   }
 
   // At least one AOT flag has been used
- _new_aot_flags_used = true;
+  _new_aot_flags_used = true;
 
   if (FLAG_IS_DEFAULT(AOTMode) || strcmp(AOTMode, "auto") == 0 || strcmp(AOTMode, "on") == 0) {
     check_aotmode_auto_or_on();
@@ -1172,7 +1172,7 @@ bool CDSConfig::is_dumping_method_handles() {
 // This affects only JITed code because it may have embedded oops and metadata pointers
 // which AOT code encodes as offsets in final CDS archive regions.
 
-static bool _is_dumping_aot_code = true;
+static bool _is_dumping_aot_code = false;
 
 bool CDSConfig::is_dumping_aot_code() {
   return _is_dumping_aot_code;
