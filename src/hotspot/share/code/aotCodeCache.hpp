@@ -537,13 +537,9 @@ public:
   bool write_klass(Klass* klass);
   bool write_method(Method* method);
 
-  bool write_code(CodeBuffer* buffer, uint& code_size);
-  bool write_relocations(CodeBuffer* buffer, uint& reloc_size);
   bool write_relocations(CodeBlob& code_blob);
   bool write_debug_info(DebugInformationRecorder* recorder);
-  bool write_oop_maps(OopMapSet* oop_maps);
 
-  bool write_oop_map_set(nmethod* nm);
   bool write_oop_map_set(CodeBlob& cb);
   bool write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
   bool write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
@@ -561,19 +557,16 @@ public:
   bool write_oops(nmethod* nm);
   bool write_metadata(nmethod* nm);
 
-  static bool load_exception_blob(CodeBuffer* buffer, int* pc_offset) NOT_CDS_RETURN_(false);
-  static bool store_exception_blob(CodeBuffer* buffer, int pc_offset) NOT_CDS_RETURN_(false);
-
   static bool store_code_blob(CodeBlob& blob,
                               AOTCodeEntry::Kind entry_kind,
                               uint id, const char* name,
-                              int entry_offset_count,
-                              int* entry_offsets) NOT_CDS_RETURN_(false);
+                              int entry_offset_count = 0,
+                              int* entry_offsets = nullptr) NOT_CDS_RETURN_(false);
 
   static CodeBlob* load_code_blob(AOTCodeEntry::Kind kind,
                                   uint id, const char* name,
-                                  int entry_offset_count,
-                                  int* entry_offsets) NOT_CDS_RETURN_(nullptr);
+                                  int entry_offset_count = 0,
+                                  int* entry_offsets = nullptr) NOT_CDS_RETURN_(nullptr);
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
   static AOTCodeEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
@@ -616,7 +609,6 @@ public:
   static void enable_caching() NOT_CDS_RETURN;
   static void disable_caching() NOT_CDS_RETURN;
   static bool is_caching_enabled() NOT_CDS_RETURN_(false);
-
 
   static bool gen_preload_code(ciMethod* m, int entry_bci) NOT_CDS_RETURN_(false);
   static bool allow_const_field(ciConstant& value) NOT_CDS_RETURN_(false);
@@ -691,10 +683,7 @@ public:
   Klass* read_klass(const methodHandle& comp_method, bool shared);
   Method* read_method(const methodHandle& comp_method, bool shared);
 
-  bool read_code(CodeBuffer* buffer, CodeBuffer* orig_buffer, uint code_offset);
-  bool read_relocations(CodeBuffer* buffer, CodeBuffer* orig_buffer, OopRecorder* oop_recorder, ciMethod* target);
   DebugInformationRecorder* read_debug_info(OopRecorder* oop_recorder);
-  OopMapSet* read_oop_maps();
 
   oop read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);

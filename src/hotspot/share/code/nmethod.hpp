@@ -551,10 +551,6 @@ public:
                                      OopMapSet* oop_maps,
                                      int exception_handler = -1);
 
-  void copy_to(address dest) {
-    memcpy(dest, this, size());
-  }
-
   Method* method       () const { return _method; }
   uint16_t entry_bci   () const { return _entry_bci; }
   bool is_native_method() const { return _method != nullptr && _method->is_native(); }
