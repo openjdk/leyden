@@ -691,7 +691,7 @@ public:
   bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
 
   bool read_oop_metadata_list(JavaThread* thread, ciMethod* target, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
-  void apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list);
+  void apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) NOT_CDS_RETURN;
 
   ImmutableOopMapSet* read_oop_map_set();
 
