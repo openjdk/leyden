@@ -48,7 +48,7 @@ public:
   }
   static bool can_generate_aot_code(InstanceKlass* ik) NOT_CDS_RETURN_(false);
 
-  static uint delta_from_shared_address_base(address addr);
+  static uint delta_from_base_address(address addr);
   static Method* method_in_aot_code(Method* m) NOT_CDS_RETURN_(nullptr);
 
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);

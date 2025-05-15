@@ -39,55 +39,39 @@
 size_t _aot_code_region_size = 0;
 
 bool AOTCacheAccess::can_generate_aot_code(address addr) {
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    return ArchiveBuilder::is_active() && ArchiveBuilder::current()->has_been_archived(addr);
-  } else {
-    // Old CDS+AOT workflow.
-    return MetaspaceShared::is_in_shared_metaspace(addr);
-  }
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+  return ArchiveBuilder::is_active() && ArchiveBuilder::current()->has_been_archived(addr);
 }
 
 bool AOTCacheAccess::can_generate_aot_code(InstanceKlass* ik) {
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    if (!ArchiveBuilder::is_active()) {
-      return false;
-    }
-    ArchiveBuilder* builder = ArchiveBuilder::current();
-    if (!builder->has_been_archived((address)ik)) {
-      return false;
-    }
-    InstanceKlass* buffered_ik = builder->get_buffered_addr(ik);
-    if (ik->is_shared_unregistered_class()) {
-      return false;
-    }
-    return true;
-  } else {
-    // Old CDS+AOT workflow.
-    return ik->is_shared() && !ik->is_shared_unregistered_class();
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+  if (!ArchiveBuilder::is_active()) {
+    return false;
   }
+  ArchiveBuilder* builder = ArchiveBuilder::current();
+  if (!builder->has_been_archived((address)ik)) {
+    return false;
+  }
+  InstanceKlass* buffered_ik = builder->get_buffered_addr(ik);
+  if (ik->is_shared_unregistered_class()) {
+    return false;
+  }
+  return true;
 }
 
-uint AOTCacheAccess::delta_from_shared_address_base(address addr) {
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    assert(ArchiveBuilder::is_active(), "must be");
-    ArchiveBuilder* builder = ArchiveBuilder::current();
-    address requested_addr = builder->to_requested(builder->get_buffered_addr(addr));
-    return (uint)pointer_delta(requested_addr, (address)SharedBaseAddress, 1);
-  } else {
-    // Old CDS+AOT workflow.
-    return (uint)pointer_delta(addr, (address)SharedBaseAddress, 1);
-  }
+uint AOTCacheAccess::delta_from_base_address(address addr) {
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+  assert(ArchiveBuilder::is_active(), "must be");
+  ArchiveBuilder* builder = ArchiveBuilder::current();
+  address requested_addr = builder->to_requested(builder->get_buffered_addr(addr));
+  return (uint)pointer_delta(requested_addr, (address)MetaspaceShared::requested_base_address(), 1);
 }
 
 Method* AOTCacheAccess::method_in_aot_code(Method* m) {
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    assert(ArchiveBuilder::is_active(), "must be");
-    ArchiveBuilder* builder = ArchiveBuilder::current();
-    return builder->to_requested(builder->get_buffered_addr(m));
-  } else {
-    // Old CDS+AOT workflow.
-    return m;
-  }
+  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
+  assert(ArchiveBuilder::is_active(), "must be");
+  ArchiveBuilder* builder = ArchiveBuilder::current();
+  return builder->to_requested(builder->get_buffered_addr(m));
 }
 
 #if INCLUDE_CDS_JAVA_HEAP
