@@ -503,7 +503,8 @@ static ReservedSpace establish_noaccess_prefix(const ReservedSpace& reserved, si
   assert(reserved.alignment() >= os::vm_page_size(), "must be at least page size big");
   assert(reserved.is_reserved(), "should only be called on a reserved memory area");
 
-  if (reserved.end() > (char *)OopEncodingHeapMax) {
+  if (reserved.end() > (char *)OopEncodingHeapMax || UseCompatibleCompressedOops) {
+    assert((reserved.base() != nullptr), "sanity");
     if (true
         WIN64_ONLY(&& !UseLargePages)
         AIX_ONLY(&& (os::Aix::supports_64K_mmap_pages() || os::vm_page_size() == 4*K))) {
@@ -553,18 +554,16 @@ ReservedHeapSpace HeapReserver::Instance::reserve_compressed_oops_heap(const siz
 
   bool unscaled  = false;
   bool zerobased = false;
-  bool heapbased = UseCompatibleCompressedOops;
-  if (!heapbased) { // heap base is not enforced
+  if (!UseCompatibleCompressedOops) { // heap base is not enforced
     unscaled  = (heap_end_address <= (char*)UnscaledOopHeapMax);
     zerobased = (heap_end_address <= (char*)OopEncodingHeapMax);
-    heapbased = !zerobased;
   }
-  size_t noaccess_prefix = heapbased ? noaccess_prefix_size : 0;
+  size_t noaccess_prefix = !zerobased ? noaccess_prefix_size : 0;
 
   ReservedSpace reserved{};
 
   // Attempt to alloc at user-given address.
-  if (!FLAG_IS_DEFAULT(HeapBaseMinAddress)) {
+  if (!FLAG_IS_DEFAULT(HeapBaseMinAddress) || UseCompatibleCompressedOops) {
     reserved = try_reserve_memory(size + noaccess_prefix, alignment, page_size, aligned_heap_base_min_address);
     if (reserved.base() != aligned_heap_base_min_address) { // Enforce this exact address.
       release(reserved);
