@@ -4088,6 +4088,16 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
   if (addr == (address)-1) { // Static call stub has jump to itself
     return id;
   }
+  // Check card_table_base address first since it can point to any address
+  BarrierSet* bs = BarrierSet::barrier_set();
+  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
+    if (addr == ci_card_table_address_as<address>()) {
+      id = search_address(addr, _extrs_addr, _extrs_length);
+      assert(id > 0 && _extrs_addr[id - _extrs_base] == addr, "sanity");
+      return id;
+    }
+  }
+
   // Seach for C string
   id = id_for_C_string(addr);
   if (id >= 0) {

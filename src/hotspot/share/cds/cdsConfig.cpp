@@ -120,6 +120,26 @@ void CDSConfig::ergo_initialize() {
   if (!is_dumping_heap()) {
     _is_dumping_full_module_graph = false;
   }
+
+#ifdef _LP64
+  //
+  // By default, when using AOTClassLinking, use the CompressedOops::HeapBasedNarrowOop
+  // mode so that AOT code can be always work regardless of runtime heap range.
+  //
+  // If you are *absolutely sure* that the CompressedOops::mode() will be the same
+  // between training and production runs (e.g., if you specify -Xmx128m for
+  // both training and production runs, and you know the OS will always reserve
+  // the heap under 4GB), you can explicitly disable this with:
+  //     java -XX:+UnlockDiagnosticVMOptions -XX:-UseCompatibleCompressedOops ...
+  // However, this is risky and there's a chance that the production run will be slower
+  // than expected because it is unable to load the AOT code cache.
+  //
+  if (UseCompressedOops && AOTCodeCache::is_caching_enabled()) {
+    FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true);
+  } else if (!FLAG_IS_DEFAULT(UseCompatibleCompressedOops)) {
+    FLAG_SET_ERGO(UseCompatibleCompressedOops, false);
+  }
+#endif // _LP64
 }
 
 const char* CDSConfig::default_archive_path() {
@@ -765,22 +785,6 @@ void CDSConfig::setup_compiler_args() {
 // Ergo set-up of various flags used by the experimental workflow that uses -XX:CacheDataStore. This workflow
 // is deprecated and will be removed from Leyden.
 bool CDSConfig::setup_experimental_leyden_workflow(bool xshare_auto_cmd_line) {
-  // Leyden temp work-around:
-  //
-  // By default, when using CacheDataStore, use the HeapBasedNarrowOop mode so that
-  // AOT code can be always work regardless of runtime heap range.
-  //
-  // If you are *absolutely sure* that the CompressedOops::mode() will be the same
-  // between training and production runs (e.g., if you specify -Xmx128m
-  // for both training and production runs, and you know the OS will always reserve
-  // the heap under 4GB), you can explicitly disable this with:
-  //     java -XX:-UseCompatibleCompressedOops -XX:CacheDataStore=...
-  // However, this is risky and there's a chance that the production run will be slower
-  // because it is unable to load the AOT code cache.
-#ifdef _LP64
-  // FLAG_SET_ERGO_IF_DEFAULT(UseCompatibleCompressedOops, true); // FIXME @iklam - merge with mainline - UseCompatibleCompressedOops
-#endif
-
   if (FLAG_IS_DEFAULT(AOTClassLinking)) {
     FLAG_SET_ERGO(AOTClassLinking, true);
   }

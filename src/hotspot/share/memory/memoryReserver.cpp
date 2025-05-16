@@ -549,8 +549,17 @@ ReservedHeapSpace HeapReserver::Instance::reserve_compressed_oops_heap(const siz
   const size_t attach_point_alignment = lcm(alignment, os_attach_point_alignment);
 
   char* aligned_heap_base_min_address = align_up((char*)HeapBaseMinAddress, alignment);
-  size_t noaccess_prefix = ((aligned_heap_base_min_address + size) > (char*)OopEncodingHeapMax) ?
-    noaccess_prefix_size : 0;
+  char* heap_end_address = aligned_heap_base_min_address + size;
+
+  bool unscaled  = false;
+  bool zerobased = false;
+  bool heapbased = UseCompatibleCompressedOops;
+  if (!heapbased) { // heap base is not enforced
+    unscaled  = (heap_end_address <= (char*)UnscaledOopHeapMax);
+    zerobased = (heap_end_address <= (char*)OopEncodingHeapMax);
+    heapbased = !zerobased;
+  }
+  size_t noaccess_prefix = heapbased ? noaccess_prefix_size : 0;
 
   ReservedSpace reserved{};
 
@@ -577,7 +586,7 @@ ReservedHeapSpace HeapReserver::Instance::reserve_compressed_oops_heap(const siz
 
     // Attempt to allocate so that we can run without base and scale (32-Bit unscaled compressed oops).
     // Give it several tries from top of range to bottom.
-    if (aligned_heap_base_min_address + size <= (char *)UnscaledOopHeapMax) {
+    if (unscaled) {
 
       // Calc address range within we try to attach (range of possible start addresses).
       char* const highest_start = align_down((char *)UnscaledOopHeapMax - size, attach_point_alignment);
@@ -590,9 +599,9 @@ ReservedHeapSpace HeapReserver::Instance::reserve_compressed_oops_heap(const siz
     char *zerobased_max = (char *)OopEncodingHeapMax;
 
     // Give it several tries from top of range to bottom.
-    if (aligned_heap_base_min_address + size <= zerobased_max && // Zerobased theoretical possible.
-        ((!reserved.is_reserved()) ||                            // No previous try succeeded.
-         (reserved.end() > zerobased_max))) {                    // Unscaled delivered an arbitrary address.
+    if (zerobased &&                          // Zerobased theoretical possible.
+        ((!reserved.is_reserved()) ||         // No previous try succeeded.
+         (reserved.end() > zerobased_max))) { // Unscaled delivered an arbitrary address.
 
       // Release previous reservation
       release(reserved);
@@ -658,6 +667,7 @@ ReservedHeapSpace HeapReserver::Instance::reserve_compressed_oops_heap(const siz
     }
 
     // We reserved heap memory without a noaccess prefix.
+    assert(!UseCompatibleCompressedOops, "noaccess prefix is missing");
     return ReservedHeapSpace(reserved, 0 /* noaccess_prefix */);
   }
 
