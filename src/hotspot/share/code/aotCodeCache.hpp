@@ -91,6 +91,7 @@ public:
 private:
   AOTCodeEntry* _next;
   Method*       _method;
+  uint   _method_offset;
   Kind   _kind;
   uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or name's hash for nmethod
 
@@ -204,6 +205,7 @@ public:
   Method*   method()  const { return _method; }
   void set_method(Method* method) { _method = method; }
   void update_method_for_writing();
+  uint method_offset() const { return _method_offset; }
 
   Kind kind()         const { return _kind; }
   uint id()           const { return _id; }

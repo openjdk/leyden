@@ -1050,7 +1050,8 @@ void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
 
 void AOTCodeEntry::update_method_for_writing() {
   if (_method != nullptr) {
-    _method = AOTCacheAccess::method_in_aot_code(_method);
+    _method_offset = AOTCacheAccess::delta_from_base_address((address)_method);
+    _method = nullptr;
   }
 }
 
@@ -1900,16 +1901,6 @@ bool AOTCodeReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompil
 
   const char* name = addr(entry_position + aot_code_entry->name_offset());
 
-  log_info(aot, codecache, nmethod)("%d (L%d): Read nmethod '%s' from AOT Code Cache", compile_id(), comp_level(), name);
-#ifdef ASSERT
-  LogStreamHandle(Debug, aot, codecache, nmethod) log;
-  if (log.is_enabled()) {
-    FlagSetting fs(PrintRelocations, true);
-    archived_nm->print_on(&log);
-    archived_nm->decode2(&log);
-  }
-#endif
-
   if (VerifyCachedCode) {
     return false;
   }
@@ -1932,7 +1923,18 @@ bool AOTCodeReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompil
   bool success = task->is_success();
   if (success) {
     aot_code_entry->set_loaded();
+    log_info(aot, codecache, nmethod)("%d (L%d): Read nmethod '%s' from AOT Code Cache", compile_id(), comp_level(), name);
+#ifdef ASSERT
+    LogStreamHandle(Debug, aot, codecache, nmethod) log;
+    if (log.is_enabled()) {
+      nmethod* nm = target->get_Method()->code();
+      FlagSetting fs(PrintRelocations, true);
+      nm->print_on(&log);
+      nm->decode2(&log);
+    }
+#endif
   }
+
   return success;
 }
 
@@ -1993,6 +1995,8 @@ void AOTCodeCache::preload_startup_code(TRAPS) {
       if (entry->not_entrant()) {
         continue;
       }
+      Method* m = AOTCacheAccess::convert_offset_to_method(entry->method_offset());
+      entry->set_method(m);
       methodHandle mh(THREAD, entry->method());
       assert((mh.not_null() && MetaspaceShared::is_in_shared_metaspace((address)mh())), "sanity");
       if (skip_preload(mh)) {
@@ -2642,7 +2646,7 @@ bool AOTCodeCache::write_method(Method* method) {
     if (n != sizeof(int)) {
       return false;
     }
-    uint method_offset = AOTCacheAccess::delta_from_shared_address_base((address)method);
+    uint method_offset = AOTCacheAccess::delta_from_base_address((address)method);
     n = write_bytes(&method_offset, sizeof(uint));
     if (n != sizeof(uint)) {
       return false;
@@ -2734,7 +2738,7 @@ Method* AOTCodeReader::read_method(const methodHandle& comp_method, bool shared)
     uint method_offset = *(uint*)addr(code_offset);
     code_offset += sizeof(uint);
     set_read_position(code_offset);
-    Method* m = (Method*)((address)SharedBaseAddress + method_offset);
+    Method* m = AOTCacheAccess::convert_offset_to_method(method_offset);
     if (!MetaspaceShared::is_in_shared_metaspace((address)m)) {
       // Something changed in CDS
       set_lookup_failed();
@@ -2882,7 +2886,7 @@ bool AOTCodeCache::write_klass(Klass* klass) {
     if (n != sizeof(int)) {
       return false;
     }
-    uint klass_offset = AOTCacheAccess::delta_from_shared_address_base((address)klass);
+    uint klass_offset = AOTCacheAccess::delta_from_base_address((address)klass);
     n = write_bytes(&klass_offset, sizeof(uint));
     if (n != sizeof(uint)) {
       return false;
@@ -2965,7 +2969,7 @@ Klass* AOTCodeReader::read_klass(const methodHandle& comp_method, bool shared) {
     uint klass_offset = *(uint*)addr(code_offset);
     code_offset += sizeof(uint);
     set_read_position(code_offset);
-    Klass* k = (Klass*)((address)SharedBaseAddress + klass_offset);
+    Klass* k = AOTCacheAccess::convert_offset_to_klass(klass_offset);
     if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
       // Something changed in CDS
       set_lookup_failed();
@@ -3450,7 +3454,9 @@ void AOTCodeAddressTable::init_extrs() {
   SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method);
   SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method_abstract);
   SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method_ic_miss);
-
+#if defined(AARCH64) && !defined(ZERO)
+  SET_ADDRESS(_extrs, JavaThread::aarch64_get_thread_helper);
+#endif
 #ifdef COMPILER2
   SET_ADDRESS(_extrs, OptoRuntime::handle_exception_C);
 #endif
@@ -3460,6 +3466,7 @@ void AOTCodeAddressTable::init_extrs() {
 #endif
 
   SET_ADDRESS(_extrs, CompressedOops::base_addr());
+  SET_ADDRESS(_extrs, CompressedKlassPointers::base_addr());
 
 #if INCLUDE_G1GC
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_post_entry);
