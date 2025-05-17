@@ -49,7 +49,18 @@ public:
   static bool can_generate_aot_code(InstanceKlass* ik) NOT_CDS_RETURN_(false);
 
   static uint delta_from_base_address(address addr);
-  static Method* method_in_aot_code(Method* m) NOT_CDS_RETURN_(nullptr);
+
+  static Klass* convert_offset_to_klass(uint offset_from_base_addr) {
+    Metadata* metadata = (Metadata*)((address)SharedBaseAddress + offset_from_base_addr);
+    assert(metadata->is_klass(), "sanity check");
+    return (Klass*)metadata;
+  }
+
+  static Method* convert_offset_to_method(uint offset_from_base_addr) {
+    Metadata* metadata = (Metadata*)((address)SharedBaseAddress + offset_from_base_addr);
+    assert(metadata->is_method(), "sanity check");
+    return (Method*)metadata;
+  }
 
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);

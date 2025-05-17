@@ -67,13 +67,6 @@ uint AOTCacheAccess::delta_from_base_address(address addr) {
   return (uint)pointer_delta(requested_addr, (address)MetaspaceShared::requested_base_address(), 1);
 }
 
-Method* AOTCacheAccess::method_in_aot_code(Method* m) {
-  assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-  assert(ArchiveBuilder::is_active(), "must be");
-  ArchiveBuilder* builder = ArchiveBuilder::current();
-  return builder->to_requested(builder->get_buffered_addr(m));
-}
-
 #if INCLUDE_CDS_JAVA_HEAP
 int AOTCacheAccess::get_archived_object_permanent_index(oop obj) {
   return HeapShared::get_archived_object_permanent_index(obj);

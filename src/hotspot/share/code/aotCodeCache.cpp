@@ -1995,7 +1995,7 @@ void AOTCodeCache::preload_startup_code(TRAPS) {
       if (entry->not_entrant()) {
         continue;
       }
-      Method* m = (Method*)((address)SharedBaseAddress + entry->method_offset());
+      Method* m = AOTCacheAccess::convert_offset_to_method(entry->method_offset());
       entry->set_method(m);
       methodHandle mh(THREAD, entry->method());
       assert((mh.not_null() && MetaspaceShared::is_in_shared_metaspace((address)mh())), "sanity");
@@ -2738,7 +2738,7 @@ Method* AOTCodeReader::read_method(const methodHandle& comp_method, bool shared)
     uint method_offset = *(uint*)addr(code_offset);
     code_offset += sizeof(uint);
     set_read_position(code_offset);
-    Method* m = (Method*)((address)SharedBaseAddress + method_offset);
+    Method* m = AOTCacheAccess::convert_offset_to_method(method_offset);
     if (!MetaspaceShared::is_in_shared_metaspace((address)m)) {
       // Something changed in CDS
       set_lookup_failed();
@@ -2969,7 +2969,7 @@ Klass* AOTCodeReader::read_klass(const methodHandle& comp_method, bool shared) {
     uint klass_offset = *(uint*)addr(code_offset);
     code_offset += sizeof(uint);
     set_read_position(code_offset);
-    Klass* k = (Klass*)((address)SharedBaseAddress + klass_offset);
+    Klass* k = AOTCacheAccess::convert_offset_to_klass(klass_offset);
     if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
       // Something changed in CDS
       set_lookup_failed();
