@@ -233,8 +233,3 @@ runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#aot 8350619 generic-all
 runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#dynamic 8350619 generic-all
 runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#leyden 8350619 generic-all
 runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#static 8350619 generic-all
-
-runtime/cds/appcds/ArchiveRelocationTest.java 8340474 generic-all
-runtime/cds/appcds/dynamicArchive/DynamicArchiveRelocationTest.java 8340474 generic-all
-
-
