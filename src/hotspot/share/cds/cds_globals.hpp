@@ -91,8 +91,7 @@
   product(ccstr, ExtraSharedClassListFile, nullptr,                         \
           "Extra classlist for building the CDS archive file")              \
                                                                             \
-  /*FIXME - AOT code has direct pointers to metadata that's not relocated*/ \
-  product(int, ArchiveRelocationMode, 0, DIAGNOSTIC,                        \
+  product(int, ArchiveRelocationMode, 1, DIAGNOSTIC,                        \
            "(0) first map at preferred address, and if "                    \
            "unsuccessful, map at alternative address; "                     \
            "(1) always map at alternative address (default); "              \
