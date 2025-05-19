@@ -163,7 +163,7 @@ static-launcher: $(java)
 # dynamically linked JDK image.
 
 # All these files/dirs should be copied as-is
-JDK_IMAGE_COPY_FILES := $(addprefix $(JDK_IMAGE_DIR)/, conf demo include jmods \
+JDK_IMAGE_COPY_FILES := $(addprefix $(JDK_IMAGE_DIR)/, conf demo include \
     legal man/man1/java.1 release README)
 
 # We need to copy some files from lib, but not the dynamic libraries themselves
@@ -207,7 +207,15 @@ $(eval $(call SetupCopyFiles, copy-static-launcher-debuginfo, \
 
 TARGETS += $(copy-static-launcher-debuginfo)
 
-static-jdk-image: $(copy-from-jdk-image) $(copy-static-launcher) $(copy-static-launcher-debuginfo)
+$(eval $(call SetupCopyFiles, copy-static-jmods, \
+    SRC := $(IMAGES_OUTPUTDIR)/static-jmods, \
+    DEST := $(STATIC_JDK_IMAGE_DIR)/jmods, \
+    FILES := $(call FindFiles, $(IMAGES_OUTPUTDIR)/static-jmods), \
+))
+
+TARGETS += $(copy-static-jmods)
+
+static-jdk-image: $(copy-from-jdk-image) $(copy-static-launcher) $(copy-static-launcher-debuginfo) $(copy-static-jmods)
 
 TARGETS += static-jdk-image
 
