@@ -5404,7 +5404,11 @@ void  MacroAssembler::decode_heap_oop_not_null(Register dst, Register src) {
 void MacroAssembler::encode_klass_not_null(Register r, Register tmp) {
   assert_different_registers(r, tmp);
   if (CompressedKlassPointers::base() != nullptr) {
-    mov64(tmp, (int64_t)CompressedKlassPointers::base());
+    if (AOTCodeCache::is_on_for_dump()) {
+      movptr(tmp, ExternalAddress(CompressedKlassPointers::base_addr()));
+    } else {
+      mov64(tmp, (int64_t)CompressedKlassPointers::base());
+    }
     subq(r, tmp);
   }
   if (CompressedKlassPointers::shift() != 0) {
@@ -5415,7 +5419,12 @@ void MacroAssembler::encode_klass_not_null(Register r, Register tmp) {
 void MacroAssembler::encode_and_move_klass_not_null(Register dst, Register src) {
   assert_different_registers(src, dst);
   if (CompressedKlassPointers::base() != nullptr) {
-    mov64(dst, -(int64_t)CompressedKlassPointers::base());
+    if (AOTCodeCache::is_on_for_dump()) {
+      movptr(dst, ExternalAddress(CompressedKlassPointers::base_addr()));
+      negl(dst);
+    } else {
+      mov64(dst, -(int64_t)CompressedKlassPointers::base());
+    }
     addq(dst, src);
   } else {
     movptr(dst, src);
@@ -5436,7 +5445,11 @@ void  MacroAssembler::decode_klass_not_null(Register r, Register tmp) {
     shlq(r, CompressedKlassPointers::shift());
   }
   if (CompressedKlassPointers::base() != nullptr) {
-    mov64(tmp, (int64_t)CompressedKlassPointers::base());
+    if (AOTCodeCache::is_on_for_dump()) {
+      movptr(tmp, ExternalAddress(CompressedKlassPointers::base_addr()));
+    } else {
+      mov64(tmp, (int64_t)CompressedKlassPointers::base());
+    }
     addq(r, tmp);
   }
 }
@@ -5457,7 +5470,11 @@ void  MacroAssembler::decode_and_move_klass_not_null(Register dst, Register src)
   } else {
     if (CompressedKlassPointers::shift() <= Address::times_8) {
       if (CompressedKlassPointers::base() != nullptr) {
-        mov64(dst, (int64_t)CompressedKlassPointers::base());
+        if (AOTCodeCache::is_on_for_dump()) {
+          movptr(dst, ExternalAddress(CompressedKlassPointers::base_addr()));
+        } else {
+          mov64(dst, (int64_t)CompressedKlassPointers::base());
+        }
       } else {
         xorq(dst, dst);
       }
