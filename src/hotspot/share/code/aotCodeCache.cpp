@@ -1521,7 +1521,7 @@ CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_co
     return nullptr;
   }
 
-  fix_relocations(code_blob);
+  fix_relocations(code_blob, nullptr, nullptr);
 
   // Read entries offsets
   offset = read_position();
@@ -2193,29 +2193,30 @@ bool AOTCodeCache::write_relocations(CodeBlob& code_blob) {
   return true;
 }
 
-void AOTCodeReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list) {
-  LogStreamHandle(Info, aot, codecache, reloc) log;
-  uint buffer_offset = read_position();
-  int count = *(int*)addr(buffer_offset);
-  buffer_offset += sizeof(int);
+void AOTCodeReader::fix_relocations(CodeBlob* code_blob, GrowableArray<Handle>* oop_list, GrowableArray<Metadata*>* metadata_list) {
+  LogStreamHandle(Trace, aot, reloc) log;
+  uint offset = read_position();
+  int count = *(int*)addr(offset);
+  offset += sizeof(int);
   if (log.is_enabled()) {
     log.print_cr("======== extra relocations count=%d", count);
   }
-  uint* reloc_data = (uint*)addr(buffer_offset);
-  buffer_offset += (count * sizeof(uint));
-  set_read_position(buffer_offset);
+  uint* reloc_data = (uint*)addr(offset);
+  offset += (count * sizeof(uint));
+  set_read_position(offset);
 
-  RelocIterator iter(nm);
+  RelocIterator iter(code_blob);
   int j = 0;
-
   while (iter.next()) {
     switch (iter.type()) {
       case relocInfo::none:
         break;
       case relocInfo::oop_type: {
+        assert(code_blob->is_nmethod(), "sanity check");
         oop_Relocation* r = (oop_Relocation*)iter.reloc();
         if (r->oop_is_immediate()) {
-          Handle h = oop_list.at(reloc_data[j]);
+          assert(oop_list != nullptr, "sanity check");
+          Handle h = oop_list->at(reloc_data[j]);
           r->set_value(cast_from_oop<address>(h()));
         } else {
           r->fix_oop_relocation();
@@ -2223,14 +2224,16 @@ void AOTCodeReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_li
         break;
       }
       case relocInfo::metadata_type: {
+        assert(code_blob->is_nmethod(), "sanity check");
         metadata_Relocation* r = (metadata_Relocation*)iter.reloc();
         Metadata* m;
         if (r->metadata_is_immediate()) {
-          m = metadata_list.at(reloc_data[j]);
+          assert(metadata_list != nullptr, "sanity check");
+          m = metadata_list->at(reloc_data[j]);
         } else {
           // Get already updated value from nmethod.
           int index = r->metadata_index();
-          m = nm->metadata_at(index);
+          m = code_blob->as_nmethod()->metadata_at(index);
         }
         r->set_value((address)m);
         break;
@@ -2262,7 +2265,6 @@ void AOTCodeReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_li
       }
       case relocInfo::runtime_call_w_cp_type:
         fatal("runtime_call_w_cp_type unimplemented");
-        //address destination = iter.reloc()->value();
         break;
       case relocInfo::external_word_type: {
         address target = _cache->address_for_id(reloc_data[j]);
@@ -2277,12 +2279,12 @@ void AOTCodeReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_li
       }
       case relocInfo::internal_word_type: {
         internal_word_Relocation* r = (internal_word_Relocation*)iter.reloc();
-        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), nm->content_begin());
+        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), code_blob->content_begin());
         break;
       }
       case relocInfo::section_word_type: {
         section_word_Relocation* r = (section_word_Relocation*)iter.reloc();
-        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), nm->content_begin());
+        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), code_blob->content_begin());
         break;
       }
       case relocInfo::poll_type:
@@ -2292,70 +2294,6 @@ void AOTCodeReader::apply_relocations(nmethod* nm, GrowableArray<Handle> &oop_li
       case relocInfo::post_call_nop_type:
         break;
       case relocInfo::entry_guard_type:
-        break;
-      default:
-        fatal("relocation %d unimplemented", (int)iter.type());
-        break;
-    }
-    if (log.is_enabled()) {
-      iter.print_current_on(&log);
-    }
-    j++;
-  }
-  assert(j == count, "must be");
-}
-
-
-void AOTCodeReader::fix_relocations(CodeBlob* code_blob) {
-  LogStreamHandle(Trace, aot, reloc) log;
-  uint offset = read_position();
-  int count = *(int*)addr(offset);
-  offset += sizeof(int);
-  if (log.is_enabled()) {
-    log.print_cr("======== extra relocations count=%d", count);
-  }
-  uint* reloc_data = (uint*)addr(offset);
-  offset += (count * sizeof(uint));
-  set_read_position(offset);
-
-  RelocIterator iter(code_blob);
-  int j = 0;
-  while (iter.next()) {
-    switch (iter.type()) {
-      case relocInfo::none:
-        break;
-      case relocInfo::runtime_call_type: {
-        address dest = _cache->address_for_id(reloc_data[j]);
-        if (dest != (address)-1) {
-          ((CallRelocation*)iter.reloc())->set_destination(dest);
-        }
-        break;
-      }
-      case relocInfo::runtime_call_w_cp_type:
-        fatal("runtime_call_w_cp_type unimplemented");
-        break;
-      case relocInfo::external_word_type: {
-        address target = _cache->address_for_id(reloc_data[j]);
-        // Add external address to global table
-        int index = ExternalsRecorder::find_index(target);
-        // Update index in relocation
-        Relocation::add_jint(iter.data(), index);
-        external_word_Relocation* reloc = (external_word_Relocation*)iter.reloc();
-        assert(reloc->target() == target, "sanity");
-        reloc->set_value(target); // Patch address in the code
-        break;
-      }
-      case relocInfo::internal_word_type: {
-        internal_word_Relocation* r = (internal_word_Relocation*)iter.reloc();
-        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), code_blob->content_begin());
-        break;
-      }
-      case relocInfo::section_word_type: {
-        section_word_Relocation* r = (section_word_Relocation*)iter.reloc();
-        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), code_blob->content_begin());
-        break;
-      }
-      case relocInfo::post_call_nop_type:
         break;
       default:
         fatal("relocation %d unimplemented", (int)iter.type());
@@ -4605,7 +4543,7 @@ AOTCodeStats AOTCodeStats::add_aot_code_stats(AOTCodeStats stats1, AOTCodeStats 
 }
 
 void AOTCodeCache::log_stats_on_exit() {
-  LogStreamHandle(Info, aot, codecache, exit) log;
+  LogStreamHandle(Debug, aot, codecache, exit) log;
   if (log.is_enabled()) {
     AOTCodeStats prev_stats;
     AOTCodeStats current_stats;

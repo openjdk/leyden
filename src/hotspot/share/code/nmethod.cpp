@@ -1283,7 +1283,7 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   copy_values(&oop_list);
   copy_values(&metadata_list);
 
-  aot_code_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
+  aot_code_reader->fix_relocations(this, &reloc_imm_oop_list, &reloc_imm_metadata_list);
 
 #ifndef PRODUCT
   AsmRemarks::init(asm_remarks());
