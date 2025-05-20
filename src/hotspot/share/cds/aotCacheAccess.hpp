@@ -48,8 +48,36 @@ public:
   }
   static bool can_generate_aot_code(InstanceKlass* ik) NOT_CDS_RETURN_(false);
 
-  static uint delta_from_shared_address_base(address addr);
-  static Method* method_in_aot_code(Method* m) NOT_CDS_RETURN_(nullptr);
+  /*
+   * Used during an assembly run to compute the offset of the metadata object in the AOT Cache.
+   * The input argument is the "source" address of a metadata object (Method/Klass) loaded by the assembly JVM.
+   * Computation of the offset requires mapping the supplied metadata object to its "requested" address
+   * and subtracting that address from the requested base address.
+   * See ArchiveBuilder.hpp for definition of "source" and "requested" address.
+   */
+  static uint delta_from_base_address(address addr);
+
+  /*
+   * Used during a production run to materialize a pointer to a Klass located in a loaded AOT Cache.
+   * The offset argument identifies a delta from the AOT Cache's currently mapped base address to the start of the Klass object.
+   * The offset is normally obtained by reading a value embedded in some other AOT-ed entry, like an AOT compiled code.
+   */
+  static Klass* convert_offset_to_klass(uint offset_from_base_addr) {
+    Metadata* metadata = (Metadata*)((address)SharedBaseAddress + offset_from_base_addr);
+    assert(metadata->is_klass(), "sanity check");
+    return (Klass*)metadata;
+  }
+
+  /*
+   * Used during a production run to materialize a pointer to a Method located in a loaded AOT Cache.
+   * The offset argument identifies a delta from the AOT Cache's currently mapped base address to the start of the Method object.
+   * The offset is normally obtained by reading a value embedded in some other AOT-ed entry, like an AOT compiled code.
+   */
+  static Method* convert_offset_to_method(uint offset_from_base_addr) {
+    Metadata* metadata = (Metadata*)((address)SharedBaseAddress + offset_from_base_addr);
+    assert(metadata->is_method(), "sanity check");
+    return (Method*)metadata;
+  }
 
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
