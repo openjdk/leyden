@@ -484,21 +484,21 @@ class nmethod : public CodeBlob {
 
   void record_nmethod_dependency();
 
-  void restore_from_archive(nmethod* archived_nm,
-                            const methodHandle& method,
-                            int compile_id,
-                            address reloc_data,
-                            GrowableArray<Handle>& oop_list,
-                            GrowableArray<Metadata*>& metadata_list,
-                            ImmutableOopMapSet* oop_maps,
-                            address immutable_data,
-                            GrowableArray<Handle>& reloc_imm_oop_list,
-                            GrowableArray<Metadata*>& reloc_imm_metadata_list,
+  nmethod* restore(address code_cache_buffer,
+                   const methodHandle& method,
+                   int compile_id,
+                   address reloc_data,
+                   GrowableArray<Handle>& oop_list,
+                   GrowableArray<Metadata*>& metadata_list,
+                   ImmutableOopMapSet* oop_maps,
+                   address immutable_data,
+                   GrowableArray<Handle>& reloc_imm_oop_list,
+                   GrowableArray<Metadata*>& reloc_imm_metadata_list,
 #ifndef PRODUCT
-                            AsmRemarks& asm_remarks,
-                            DbgStrings& dbg_strings,
+                   AsmRemarks& asm_remarks,
+                   DbgStrings& dbg_strings,
 #endif /* PRODUCT */
-                            AOTCodeReader* aot_code_reader);
+                   AOTCodeReader* aot_code_reader);
 
 public:
   // create nmethod using archived nmethod from AOT code cache
@@ -1058,7 +1058,7 @@ public:
   void make_deoptimized();
   void finalize_relocations();
 
-  void prepare_for_archiving();
+  void prepare_for_archiving_impl();
 
   class Vptr : public CodeBlob::Vptr {
     void print_on(const CodeBlob* instance, outputStream* st) const override {
@@ -1068,6 +1068,9 @@ public:
     void print_value_on(const CodeBlob* instance, outputStream* st) const override {
       instance->as_nmethod()->print_value_on_impl(st);
     }
+    void prepare_for_archiving(CodeBlob* instance) const {
+      ((nmethod*)instance)->prepare_for_archiving_impl();
+    };
   };
 
   static const Vptr _vpntr;

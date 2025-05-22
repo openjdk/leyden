@@ -1598,8 +1598,8 @@ bool AOTCodeCache::store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const c
   }
   uint entry_size = cache->_write_position - entry_position;
   AOTCodeEntry* entry = new(cache) AOTCodeEntry(entry_position, entry_size, name_offset, name_size,
-                                        code_offset, code_size, 0, 0,
-                                        AOTCodeEntry::Stub, (uint32_t)id);
+                                                code_offset, code_size,
+                                                AOTCodeEntry::Stub, (uint32_t)id);
   log_info(aot, codecache, stubs)("Wrote stub '%s' id:%d to AOT Code Cache", name, (int)id);
   return true;
 }
@@ -1673,6 +1673,8 @@ AOTCodeEntry* AOTCodeCache::store_nmethod(nmethod* nm, AbstractCompiler* compile
 }
 
 AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
+  AOTCodeCache* cache = open_for_dump();
+  assert(cache != nullptr, "sanity check");
   assert(!nm->has_clinit_barriers() || _gen_preload_code, "sanity");
   uint comp_id = nm->compile_id();
   uint comp_level = nm->comp_level();
@@ -1752,14 +1754,17 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
     }
     hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
   }
-  uint archived_nm_offset = _write_position - entry_position;
-  nmethod* archived_nm = (nmethod*)reserve_bytes(nm->size());
-  if (archived_nm == nullptr) {
+
+  // Write CodeBlob
+  if (!cache->align_write()) {
     return nullptr;
   }
-  nm->copy_to((address)archived_nm);
-
-  archived_nm->prepare_for_archiving();
+  uint blob_offset = cache->_write_position - entry_position;
+  address archive_buffer = cache->reserve_bytes(nm->size());
+  if (archive_buffer == nullptr) {
+    return nullptr;
+  }
+  CodeBlob::archive_blob(nm, archive_buffer);
 
 #ifndef PRODUCT
   // Write asm remarks
@@ -1829,8 +1834,12 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
     return nullptr;
   }
 
-  if (!write_oop_map_set(*nm)) {
-    return nullptr;
+  bool has_oop_maps = false;
+  if (nm->oop_maps() != nullptr) {
+    if (!cache->write_oop_map_set(*nm)) {
+      return nullptr;
+    }
+    has_oop_maps = true;
   }
 
   uint immutable_data_size = nm->immutable_data_size();
@@ -1858,10 +1867,12 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   }
 
   uint entry_size = _write_position - entry_position;
-  AOTCodeEntry* entry = new (this) AOTCodeEntry(entry_position, entry_size, name_offset, name_size,
-                                        archived_nm_offset, 0, 0, 0,
-                                        AOTCodeEntry::Code, hash, nm->content_begin(), comp_level, comp_id, decomp,
-                                        nm->has_clinit_barriers(), for_preload, ignore_decompile);
+  AOTCodeEntry* entry = new (this) AOTCodeEntry(AOTCodeEntry::Code, hash,
+                                                entry_position, entry_size,
+                                                name_offset, name_size,
+                                                blob_offset, has_oop_maps,
+                                                nm->content_begin(), comp_level, comp_id, decomp,
+                                                nm->has_clinit_barriers(), for_preload, ignore_decompile);
   if (method_in_cds) {
     entry->set_method(method);
   }

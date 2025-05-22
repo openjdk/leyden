@@ -181,12 +181,12 @@ RelocIterator::RelocIterator(CodeSection* cs, address begin, address limit) {
 }
 
 RelocIterator::RelocIterator(CodeBlob* cb) {
-  initialize_misc();
   if (cb->is_nmethod()) {
-    _code = cb->as_nmethod();
-  } else {
-    _code = nullptr;
+    initialize(cb->as_nmethod(), nullptr, nullptr);
+    return;
   }
+  initialize_misc();
+  _code = nullptr;
   _current = cb->relocation_begin() - 1;
   _end = cb->relocation_end();
   _addr = cb->content_begin();

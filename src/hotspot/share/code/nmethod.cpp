@@ -1249,60 +1249,51 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   return nm;
 }
 
-void nmethod::restore_from_archive(nmethod* archived_nm,
-                                   const methodHandle& method,
-                                   int compile_id,
-                                   address reloc_data,
-                                   GrowableArray<Handle>& oop_list,
-                                   GrowableArray<Metadata*>& metadata_list,
-                                   ImmutableOopMapSet* oop_maps,
-                                   address immutable_data,
-                                   GrowableArray<Handle>& reloc_imm_oop_list,
-                                   GrowableArray<Metadata*>& reloc_imm_metadata_list,
+nmethod* nmethod::restore(address code_cache_buffer,
+                          const methodHandle& method,
+                          int compile_id,
+                          address reloc_data,
+                          GrowableArray<Handle>& oop_list,
+                          GrowableArray<Metadata*>& metadata_list,
+                          ImmutableOopMapSet* oop_maps,
+                          address immutable_data,
+                          GrowableArray<Handle>& reloc_imm_oop_list,
+                          GrowableArray<Metadata*>& reloc_imm_metadata_list,
 #ifndef PRODUCT
-                                   AsmRemarks& archived_asm_remarks,
-                                   DbgStrings& archived_dbg_strings,
+                          AsmRemarks& archived_asm_remarks,
+                          DbgStrings& archived_dbg_strings,
 #endif /* PRODUCT */
-                                   AOTCodeReader* aot_code_reader)
+                          AOTCodeReader* aot_code_reader)
 {
-  archived_nm->copy_to((address)this);
-  set_name("nmethod");
-  set_method(method());
+  CodeBlob::restore(code_cache_buffer, "nmethod", reloc_data, oop_maps);
+  nmethod* nm = (nmethod*)code_cache_buffer;
+  nm->set_method(method());
+  nm->_compile_id = compile_id;
+  nm->set_immutable_data(immutable_data);
+  nm->copy_values(&oop_list);
+  nm->copy_values(&metadata_list);
 
-  _compile_id = compile_id;
-  // allocate _mutable_data before copying relocation data because relocation data is now stored as part of mutable data area
-  if (archived_nm->mutable_data_size() > 0) {
-    _mutable_data = (address)os::malloc(archived_nm->mutable_data_size(), mtCode);
-    if (_mutable_data == nullptr) {
-      vm_exit_out_of_memory(archived_nm->mutable_data_size(), OOM_MALLOC_ERROR, "codebuffer: no space for mutable data");
-    }
-  }
-  memcpy((address)relocation_begin(), reloc_data, archived_nm->relocation_size());
-  set_oop_maps(oop_maps);
-  set_immutable_data(immutable_data);
-  copy_values(&oop_list);
-  copy_values(&metadata_list);
-
-  aot_code_reader->fix_relocations(this, &reloc_imm_oop_list, &reloc_imm_metadata_list);
+  aot_code_reader->fix_relocations(nm, &reloc_imm_oop_list, &reloc_imm_metadata_list);
 
 #ifndef PRODUCT
-  AsmRemarks::init(asm_remarks());
-  use_remarks(archived_asm_remarks);
+  AsmRemarks::init(nm->asm_remarks());
+  nm->use_remarks(archived_asm_remarks);
   archived_asm_remarks.clear();
-  DbgStrings::init(dbg_strings());
-  use_strings(archived_dbg_strings);
+  DbgStrings::init(nm->dbg_strings());
+  nm->use_strings(archived_dbg_strings);
   archived_dbg_strings.clear();
 #endif /* PRODUCT */
 
   // Flush the code block
-  ICache::invalidate_range(code_begin(), code_size());
+  ICache::invalidate_range(nm->code_begin(), nm->code_size());
 
   // Create cache after PcDesc data is copied - it will be used to initialize cache
-  _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
+  nm->_pc_desc_container = new PcDescContainer(nm->scopes_pcs_begin());
 
-  set_aot_code_entry(aot_code_reader->aot_code_entry());
+  nm->set_aot_code_entry(aot_code_reader->aot_code_entry());
 
-  post_init();
+  nm->post_init();
+  return nm;
 }
 
 nmethod* nmethod::new_nmethod(nmethod* archived_nm,
@@ -1327,21 +1318,21 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
   // create nmethod
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    nm = (nmethod *)CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(archived_nm->comp_level()));
-    if (nm != nullptr) {
-      nm->restore_from_archive(archived_nm,
-                               method,
-                               compile_id,
-                               reloc_data,
-                               oop_list,
-                               metadata_list,
-                               oop_maps,
-                               immutable_data,
-                               reloc_imm_oop_list,
-                               reloc_imm_metadata_list,
-                               NOT_PRODUCT_ARG(asm_remarks)
-                               NOT_PRODUCT_ARG(dbg_strings)
-                               aot_code_reader);
+    address code_cache_buffer = (address)CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(archived_nm->comp_level()));
+    if (code_cache_buffer != nullptr) {
+      nm = archived_nm->restore(code_cache_buffer,
+                                method,
+                                compile_id,
+                                reloc_data,
+                                oop_list,
+                                metadata_list,
+                                oop_maps,
+                                immutable_data,
+                                reloc_imm_oop_list,
+                                reloc_imm_metadata_list,
+                                NOT_PRODUCT_ARG(asm_remarks)
+                                NOT_PRODUCT_ARG(dbg_strings)
+                                aot_code_reader);
       nm->record_nmethod_dependency();
       NOT_PRODUCT(note_java_nmethod(nm));
     }
@@ -4273,8 +4264,8 @@ const char* nmethod::jvmci_name() {
 }
 #endif
 
-void nmethod::prepare_for_archiving() {
-  CodeBlob::prepare_for_archiving();
+void nmethod::prepare_for_archiving_impl() {
+  CodeBlob::prepare_for_archiving_impl();
   _deoptimization_generation = 0;
   _gc_epoch = 0;
   _method_profiling_count = 0;
