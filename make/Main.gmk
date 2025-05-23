@@ -468,7 +468,7 @@ $(eval $(call SetupTarget, static-launcher, \
 $(eval $(call SetupTarget, static-jdk-image, \
     MAKEFILE := StaticLibs, \
     TARGET := static-jdk-image, \
-    DEPS := static-exploded-image jdk-image, \
+    DEPS := static-jmods static-exploded-image jdk-image, \
 ))
 
 $(eval $(call SetupTarget, static-libs-image, \
