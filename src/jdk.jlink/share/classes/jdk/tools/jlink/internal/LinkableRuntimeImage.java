@@ -49,6 +49,8 @@ public class LinkableRuntimeImage {
     private static final String UPGRADEABLE_FILES_PATTERN = "jdk/tools/jlink/internal/runtimelink/upgrade_files_%s.conf";
     private static final Module JDK_JLINK_MOD = LinkableRuntimeImage.class.getModule();
 
+    public static final String STATIC_LAUNCHER_EXECUTABLE = "/java.base/bin/static-launcher-executable";
+
     /**
      * In order to be able to show whether or not a runtime is capable of
      * linking from it in {@code jlink --help} we need to look for the delta
