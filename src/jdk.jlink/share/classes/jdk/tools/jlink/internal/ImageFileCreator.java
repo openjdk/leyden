@@ -26,6 +26,7 @@ package jdk.tools.jlink.internal;
 
 import static jdk.tools.jlink.internal.LinkableRuntimeImage.DIFF_PATTERN;
 import static jdk.tools.jlink.internal.LinkableRuntimeImage.RESPATH_PATTERN;
+import static jdk.tools.jlink.internal.LinkableRuntimeImage.STATIC_LAUNCHER_EXECUTABLE;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
@@ -307,7 +308,7 @@ public final class ImageFileCreator {
                 paths.add(path);
                 offset[0] += onFileSize;
               } else if (res.type().equals(ResourcePoolEntry.Type.NATIVE_CMD)) {
-                if ("/java.base/bin/static-java".equals(res.path())) {
+                if (STATIC_LAUNCHER_EXECUTABLE.equals(res.path())) {
                   executable.add(res);
                 }
               }

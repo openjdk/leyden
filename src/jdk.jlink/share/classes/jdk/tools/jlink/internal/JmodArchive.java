@@ -138,6 +138,8 @@ public class JmodArchive implements Archive {
                 return EntryType.MAN_PAGE;
             case NATIVE_LIBS:
                 return EntryType.NATIVE_LIB;
+            case STATIC_LIBS:
+                return EntryType.NATIVE_LIB;
             case NATIVE_CMDS:
                 return EntryType.NATIVE_CMD;
             default:
