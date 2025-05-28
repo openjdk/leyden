@@ -102,7 +102,7 @@ bool C2Compiler::init_c2_runtime() {
   HandleMark handle_mark(thread);
   bool success = OptoRuntime::generate(thread->env());
   if (success) {
-    AOTCodeCache::init_opto_table();
+    AOTCodeCache::init_c2_table();
   }
   return success;
 }

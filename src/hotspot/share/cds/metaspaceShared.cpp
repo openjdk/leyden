@@ -1099,7 +1099,9 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       CDSConfig::enable_dumping_aot_code();
       {
         builder.start_ac_region();
-        Precompiler::compile_cached_code(&builder, CHECK);
+        if (AOTCodeCache::is_dumping_code()) {
+          Precompiler::compile_cached_code(&builder, CHECK);
+        }
         // Write the contents to aot code region and close AOTCodeCache before packing the region
         AOTCodeCache::close();
         builder.end_ac_region();

@@ -23,6 +23,7 @@
  */
 
 #include "asm/codeBuffer.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/oopRecorder.inline.hpp"
 #include "compiler/disassembler.hpp"
@@ -1094,6 +1095,11 @@ void CodeBuffer::print_on(outputStream* st) {
   }
 }
 
+CHeapString::~CHeapString() {
+  os::free((void*)_string);
+  _string = nullptr;
+}
+
 // ----- AsmRemarks ------------------------------------------------------------
 //
 // Acting as interface to reference counted mapping [offset -> remark], where
@@ -1125,14 +1131,13 @@ bool AsmRemarks::is_empty() const {
 }
 
 void AsmRemarks::share(const AsmRemarks &src) {
-  precond(is_empty());
+  precond(_remarks == nullptr || is_empty());
   clear();
   _remarks = src._remarks->reuse();
 }
 
 void AsmRemarks::clear() {
-  assert(_remarks != nullptr, "sanity check");
-  if (_remarks->clear() == 0) {
+  if (_remarks != nullptr && _remarks->clear() == 0) {
     delete _remarks;
   }
   _remarks = nullptr;
@@ -1185,14 +1190,13 @@ bool DbgStrings::is_empty() const {
 }
 
 void DbgStrings::share(const DbgStrings &src) {
-  precond(is_empty());
+  precond(_strings == nullptr || is_empty());
   clear();
   _strings = src._strings->reuse();
 }
 
 void DbgStrings::clear() {
-  assert(_strings != nullptr, "sanity check");
-  if (_strings->clear() == 0) {
+  if (_strings != nullptr && _strings->clear() == 0) {
     delete _strings;
   }
   _strings = nullptr;

@@ -386,6 +386,9 @@ static const char* find_any_unsupported_module_option() {
     }
     sp = sp->next();
   }
+  if (FLAG_IS_DEFAULT(AOTCache) && AOTStubCaching) {
+    log_debug(aot,codecache,init)("AOTCache is not specified - AOTStubCaching is ignored");
+  }
 
   return nullptr; // not found
 }

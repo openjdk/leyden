@@ -459,7 +459,7 @@ abstract public class CDSAppTester {
         return executeAndCheck(cmdLine, runMode, cdsFile, cdsFileLog);
     }
 
-    private OutputAnalyzer productionRun() throws Exception {
+    public OutputAnalyzer productionRun() throws Exception {
         return productionRun(null, null);
     }
 
@@ -540,6 +540,13 @@ abstract public class CDSAppTester {
         this.workflow = Workflow.DYNAMIC;
         dumpDynamicArchive();
         productionRun();
+    }
+
+    // See JEP 483; stop at the assembly run; do not execute production run
+    public void runAOTAssemblyWorkflow() throws Exception {
+        this.workflow = Workflow.AOT;
+        recordAOTConfiguration();
+        createAOTCache();
     }
 
     // See JEP 483

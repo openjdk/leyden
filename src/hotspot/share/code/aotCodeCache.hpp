@@ -34,7 +34,7 @@
 /*
  * AOT Code Cache collects code from Code Cache and corresponding metadata
  * during application training run.
- * In following "production" runs this code and data can me loaded into
+ * In following "production" runs this code and data can be loaded into
  * Code Cache skipping its generation.
  * Additionaly special compiled code "preload" is generated with class initialization
  * barriers which can be called on first Java method invocation.
@@ -42,6 +42,7 @@
 
 class AbstractCompiler;
 class AOTCodeCache;
+class AsmRemarks;
 class ciConstant;
 class ciEnv;
 class ciMethod;
@@ -49,6 +50,7 @@ class CodeBuffer;
 class CodeBlob;
 class CodeOffsets;
 class CompileTask;
+class DbgStrings;
 class DebugInformationRecorder;
 class Dependencies;
 class ExceptionTable;
@@ -75,10 +77,12 @@ enum class vmIntrinsicID : int;
   Fn(None) \
   Fn(Adapter) \
   Fn(Stub) \
-  Fn(Blob) \
+  Fn(SharedBlob) \
+  Fn(C1Blob) \
+  Fn(C2Blob) \
   Fn(Code) \
 
-// Code Cache's entry contain information from CodeBuffer
+// Descriptor of AOT Code Cache's entry
 class AOTCodeEntry {
 public:
   enum Kind : s1 {
@@ -94,7 +98,6 @@ private:
   uint   _method_offset;
   Kind   _kind;
   uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or name's hash for nmethod
-
   uint   _offset;      // Offset to entry
   uint   _size;        // Entry size
   uint   _name_offset; // Method's or intrinsic name
@@ -116,7 +119,7 @@ private:
   bool   _load_fail;   // Failed to load due to some klass state
   bool   _ignore_decompile; // ignore decompile counter if compilation is done
                             // during "assembly" phase without running application
-  address _dumptime_content_start_addr;
+  address _dumptime_content_start_addr; // CodeBlob::content_begin() at dump time; used for applying relocations
 public:
   AOTCodeEntry(uint offset, uint size, uint name_offset, uint name_size,
            uint code_offset, uint code_size,
@@ -194,12 +197,7 @@ public:
   // Delete is a NOP
   void operator delete( void *ptr ) {}
 
-  bool is_adapter() { return _kind == Adapter; }
-  bool is_stub() { return _kind == Stub; }
-  bool is_blob() { return _kind == Blob; }
-  bool is_code() { return _kind == Code; }
-
-  AOTCodeEntry* next()    const { return _next; }
+  AOTCodeEntry* next()        const { return _next; }
   void set_next(AOTCodeEntry* next) { _next = next; }
 
   Method*   method()  const { return _method; }
@@ -221,7 +219,14 @@ public:
   uint reloc_offset() const { return _reloc_offset; }
   uint reloc_size()   const { return _reloc_size; }
 
+  uint blob_offset()  const { return _code_offset; }
+  bool has_oop_maps() const { return _has_oop_maps; }
   address dumptime_content_start_addr() const { return _dumptime_content_start_addr; }
+
+  static bool is_valid_entry_kind(Kind kind) { return kind > None && kind < Kind_count; }
+  static bool is_blob(Kind kind) { return kind == SharedBlob || kind == C1Blob || kind == C2Blob; }
+  static bool is_adapter(Kind kind) { return kind == Adapter; }
+  bool is_code()  { return _kind == Code; }
 
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
   void set_inlined_bytecodes(int bytes) { _num_inlined_bytecodes = bytes; }
@@ -244,10 +249,6 @@ public:
   void set_load_fail()    { _load_fail = true; }
 
   void print(outputStream* st) const;
-  uint blob_offset()  const { return _code_offset; }
-  bool has_oop_maps() const { return _has_oop_maps; }
-
-  static bool is_valid_entry_kind(Kind kind) { return kind == Adapter || kind == Blob; }
 };
 
 // Addresses of stubs, blobs and runtime finctions called from compiled code.
@@ -255,47 +256,56 @@ class AOTCodeAddressTable : public CHeapObj<mtCode> {
 private:
   address* _extrs_addr;
   address* _stubs_addr;
-  address* _blobs_addr;
+  address* _shared_blobs_addr;
   address* _C1_blobs_addr;
   address* _C2_blobs_addr;
   uint     _extrs_length;
   uint     _stubs_length;
-  uint     _blobs_length;
+  uint     _shared_blobs_length;
   uint     _C1_blobs_length;
   uint     _C2_blobs_length;
 
   bool _extrs_complete;
   bool _early_stubs_complete;
   bool _shared_blobs_complete;
-  bool _complete;
-  bool _opto_complete;
+  bool _early_c1_complete;
   bool _c1_complete;
+  bool _c2_complete;
+  bool _complete;
 
 public:
-  AOTCodeAddressTable() {
-    _extrs_addr = nullptr;
-    _stubs_addr = nullptr;
-    _blobs_addr = nullptr;
-    _extrs_complete = false;
-    _early_stubs_complete = false;
-    _shared_blobs_complete = false;
-    _complete = false;
-    _opto_complete = false;
-    _c1_complete = false;
-  }
+  AOTCodeAddressTable() :
+    _extrs_addr(nullptr),
+    _shared_blobs_addr(nullptr),
+    _C1_blobs_addr(nullptr),
+    _C2_blobs_addr(nullptr),
+    _extrs_length(0),
+    _stubs_length(0),
+    _shared_blobs_length(0),
+    _C1_blobs_length(0),
+    _C2_blobs_length(0),
+    _extrs_complete(false),
+    _early_stubs_complete(false),
+    _shared_blobs_complete(false),
+    _early_c1_complete(false),
+    _c1_complete(false),
+    _c2_complete(false),
+    _complete(false)
+  { }
   ~AOTCodeAddressTable();
   void init_extrs();
   void init_early_stubs();
   void init_shared_blobs();
   void init_stubs();
-  void init_opto();
+  void init_early_c1();
   void init_c1();
+  void init_c2();
   const char* add_C_string(const char* str);
   int  id_for_C_string(address str);
   address address_for_C_string(int idx);
   int  id_for_address(address addr, RelocIterator iter, CodeBuffer* buffer, CodeBlob* blob = nullptr);
   address address_for_id(int id);
-  bool opto_complete() const { return _opto_complete; }
+  bool c2_complete() const { return _c2_complete; }
   bool c1_complete() const { return _c1_complete; }
 };
 
@@ -327,6 +337,7 @@ class AOTCodeCache : public CHeapObj<mtCode> {
 // Classes used to describe AOT code cache.
 protected:
   class Config {
+    address _compressedOopBase;
     uint _compressedOopShift;
     uint _compressedKlassShift;
     uint _contendedPaddingWidth;
@@ -359,25 +370,28 @@ protected:
     enum {
       AOT_CODE_VERSION = 1
     };
-    uint _version;           // AOT code version (should match when reading code cache)
-    uint _cache_size;        // cache size in bytes
-    uint _strings_count;     // number of recorded C strings
-    uint _strings_offset;    // offset to recorded C strings
-    uint _entries_count;     // number of recorded entries in cache
-    uint _entries_offset;    // offset of AOTCodeEntry array describing entries
-    uint _preload_entries_count; // entries for pre-loading code
-    uint _preload_entries_offset;
-    uint _adapters_count;
-    uint _blobs_count;
-    uint _stubs_count;
+    uint   _version;         // AOT code version (should match when reading code cache)
+    uint   _cache_size;      // cache size in bytes
+    uint   _strings_count;   // number of recorded C strings
+    uint   _strings_offset;  // offset to recorded C strings
+    uint   _entries_count;   // number of recorded entries
+    uint   _entries_offset;  // offset of AOTCodeEntry array describing entries
+    uint   _preload_entries_count; // entries for pre-loading code
+    uint   _preload_entries_offset;
+    uint   _adapters_count;
+    uint   _shared_blobs_count;
+    uint   _C1_blobs_count;
+    uint   _C2_blobs_count;
+    uint   _stubs_count;
     Config _config;
 
   public:
     void init(uint cache_size,
-              uint strings_count, uint strings_offset,
-              uint entries_count, uint entries_offset,
+              uint strings_count,  uint strings_offset,
+              uint entries_count,  uint entries_offset,
               uint preload_entries_count, uint preload_entries_offset,
-              uint adapters_count, uint blobs_count, uint stubs_count,
+              uint adapters_count, uint shared_blobs_count,
+              uint C1_blobs_count, uint C2_blobs_count, uint stubs_count,
               bool use_meta_ptrs) {
       _version        = AOT_CODE_VERSION;
       _cache_size     = cache_size;
@@ -388,7 +402,9 @@ protected:
       _preload_entries_count  = preload_entries_count;
       _preload_entries_offset = preload_entries_offset;
       _adapters_count = adapters_count;
-      _blobs_count    = blobs_count;
+      _shared_blobs_count = shared_blobs_count;
+      _C1_blobs_count = C1_blobs_count;
+      _C2_blobs_count = C2_blobs_count;
       _stubs_count    = stubs_count;
 
       _config.record(use_meta_ptrs);
@@ -402,9 +418,16 @@ protected:
     uint preload_entries_count()  const { return _preload_entries_count; }
     uint preload_entries_offset() const { return _preload_entries_offset; }
     uint adapters_count() const { return _adapters_count; }
-    uint blobs_count()    const { return _blobs_count; }
+    uint shared_blobs_count()    const { return _shared_blobs_count; }
+    uint C1_blobs_count() const { return _C1_blobs_count; }
+    uint C2_blobs_count() const { return _C2_blobs_count; }
     uint stubs_count()    const { return _stubs_count; }
-    uint nmethods_count() const { return _entries_count - _stubs_count - _blobs_count - _adapters_count; }
+    uint nmethods_count() const { return _entries_count
+                                       - _stubs_count
+                                       - _shared_blobs_count
+                                       - _C1_blobs_count
+                                       - _C2_blobs_count
+                                       - _adapters_count; }
     bool has_meta_ptrs()  const { return _config.has_meta_ptrs(); }
 
     bool verify_config(uint load_size)  const;
@@ -437,10 +460,10 @@ private:
 
   AOTCodeAddressTable* _table;
 
-  AOTCodeEntry* _load_entries;     // Used when reading cache
-  uint*         _search_entries;   // sorted by ID table [id, index]
-  AOTCodeEntry* _store_entries;    // Used when writing cache
-  const char*   _C_strings_buf;    // Loaded buffer for _C_strings[] table
+  AOTCodeEntry* _load_entries;   // Used when reading cache
+  uint*         _search_entries; // sorted by ID table [id, index]
+  AOTCodeEntry* _store_entries;  // Used when writing cache
+  const char*   _C_strings_buf;  // Loaded buffer for _C_strings[] table
   uint          _store_entries_cnt;
 
   uint _compile_id;
@@ -507,9 +530,11 @@ public:
   static void init_early_stubs_table() NOT_CDS_RETURN;
   static void init_shared_blobs_table() NOT_CDS_RETURN;
   static void init_stubs_table() NOT_CDS_RETURN;
-  static void init_opto_table() NOT_CDS_RETURN;
+  static void init_early_c1_table() NOT_CDS_RETURN;
   static void init_c1_table() NOT_CDS_RETURN;
+  static void init_c2_table() NOT_CDS_RETURN;
 
+  address address_for_C_string(int idx) const { return _table->address_for_C_string(idx); }
   address address_for_id(int id) const { return _table->address_for_id(id); }
 
   bool for_use()  const { return _for_use  && !_failed; }
@@ -558,6 +583,11 @@ public:
   bool write_metadata(OopRecorder* oop_recorder);
   bool write_oops(nmethod* nm);
   bool write_metadata(nmethod* nm);
+
+#ifndef PRODUCT
+  bool write_asm_remarks(CodeBlob& cb);
+  bool write_dbg_strings(CodeBlob& cb);
+#endif // PRODUCT
 
   static bool store_code_blob(CodeBlob& blob,
                               AOTCodeEntry::Kind entry_kind,
@@ -652,10 +682,10 @@ public:
 // Concurent AOT code reader
 class AOTCodeReader {
 private:
-  const AOTCodeCache* _cache;
-  const AOTCodeEntry* _entry;
-  const char*         _load_buffer; // Loaded cached code buffer
-  uint  _read_position;             // Position in _load_buffer
+  const AOTCodeCache*  _cache;
+  const AOTCodeEntry*  _entry;
+  const char*          _load_buffer; // Loaded cached code buffer
+  uint  _read_position;              // Position in _load_buffer
   uint  read_position() const { return _read_position; }
   void  set_read_position(uint pos);
   const char* addr(uint offset) const { return _load_buffer + offset; }
@@ -698,6 +728,10 @@ public:
   ImmutableOopMapSet* read_oop_map_set();
 
   void fix_relocations(CodeBlob* code_blob);
+#ifndef PRODUCT
+  void read_asm_remarks(AsmRemarks& asm_remarks);
+  void read_dbg_strings(DbgStrings& dbg_strings);
+#endif // PRODUCT
 
   void print_on(outputStream* st);
 };
