@@ -224,7 +224,7 @@ bool AOTCodeCache::allow_const_field(ciConstant& value) {
 void AOTCodeCache::initialize() {
 #if defined(ZERO) || !(defined(AMD64) || defined(AARCH64))
   log_info(aot, codecache, init)("AOT Code Cache is not supported on this platform.");
-  AOTAdapterCaching = false;
+  disable_caching();
   return;
 #else
   if (FLAG_IS_DEFAULT(AOTCache)) {
