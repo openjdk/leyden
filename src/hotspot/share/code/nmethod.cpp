@@ -1286,10 +1286,8 @@ void nmethod::restore_from_archive(nmethod* archived_nm,
   aot_code_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
 
 #ifndef PRODUCT
-  AsmRemarks::init(asm_remarks());
   use_remarks(archived_asm_remarks);
   archived_asm_remarks.clear();
-  DbgStrings::init(dbg_strings());
   use_strings(archived_dbg_strings);
   archived_dbg_strings.clear();
 #endif /* PRODUCT */

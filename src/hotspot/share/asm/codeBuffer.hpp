@@ -292,18 +292,19 @@ class CodeSection {
 
 #ifndef PRODUCT
 
+// ----- CHeapString -----------------------------------------------------------
+
 class CHeapString : public CHeapObj<mtCode> {
  public:
   CHeapString(const char* str) : _string(os::strdup(str)) {}
- ~CHeapString() {
-    os::free((void*)_string);
-    _string = nullptr;
-  }
+ ~CHeapString(); 
   const char* string() const { return _string; }
 
  private:
   const char* _string;
 };
+
+// ----- AsmRemarkCollection ---------------------------------------------------
 
 class AsmRemarkCollection : public CHeapObj<mtCode> {
  public:
@@ -362,35 +363,7 @@ class AsmRemarkCollection : public CHeapObj<mtCode> {
   mutable Cell* _next;
 };
 
-// The assumption made here is that most code remarks (or comments) added to
-// the generated assembly code are unique, i.e. there is very little gain in
-// trying to share the strings between the different offsets tracked in a
-// buffer (or blob).
-
-class AsmRemarks {
- public:
-  AsmRemarks();
- ~AsmRemarks();
-
-  static void init(AsmRemarks& asm_remarks);
-
-  const char* insert(uint offset, const char* remstr);
-
-  bool is_empty() const;
-
-  void share(const AsmRemarks &src);
-  void clear();
-  uint print(uint offset, outputStream* strm = tty) const;
-
-  // For testing purposes only.
-  const AsmRemarkCollection* ref() const { return _remarks; }
-
-  template<typename Function>
-  bool iterate(Function function) const { return _remarks->iterate(function); }
-
-private:
-  AsmRemarkCollection* _remarks;
-};
+// ----- DbgStringCollection ---------------------------------------------------
 
 class DbgStringCollection : public CHeapObj<mtCode> {
  public:
@@ -441,6 +414,36 @@ class DbgStringCollection : public CHeapObj<mtCode> {
   };
   uint  _ref_cnt;
   Cell* _strings;
+};
+
+// The assumption made here is that most code remarks (or comments) added to
+// the generated assembly code are unique, i.e. there is very little gain in
+// trying to share the strings between the different offsets tracked in a
+// buffer (or blob).
+
+class AsmRemarks {
+ public:
+  AsmRemarks();
+ ~AsmRemarks();
+
+  static void init(AsmRemarks& asm_remarks);
+
+  const char* insert(uint offset, const char* remstr);
+
+  bool is_empty() const;
+
+  void share(const AsmRemarks &src);
+  void clear();
+  uint print(uint offset, outputStream* strm = tty) const;
+
+  // For testing purposes only.
+  const AsmRemarkCollection* ref() const { return _remarks; }
+
+  template<typename Function>
+  bool iterate(Function function) const { return _remarks->iterate(function); }
+
+private:
+  AsmRemarkCollection* _remarks;
 };
 
 // The assumption made here is that the number of debug strings (with a fixed

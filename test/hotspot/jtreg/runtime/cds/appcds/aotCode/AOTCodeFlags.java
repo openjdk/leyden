@@ -47,14 +47,42 @@ public class AOTCodeFlags {
     public static int flag_sign = 0;
     public static void main(String... args) throws Exception {
         Tester t = new Tester();
-        for (int i = 0; i < 2; i++) {
-            flag_sign = i;
+        for (int mode = 0; mode < 8; mode++) {
+            t.setTestMode(mode);
             t.run(new String[] {"AOT"});
         }
     }
     static class Tester extends CDSAppTester {
+        private int testMode;
+
         public Tester() {
-            super("AOTCodeFlags" + flag_sign);
+            super("AOTCodeFlags");
+            testMode = 0;
+        }
+
+        boolean isAdapterCachingOn() {
+            return (testMode & 0x1) != 0;
+        }
+
+        boolean isStubCachingOn() {
+            return (testMode & 0x2) != 0;
+        }
+
+        boolean isNmethodCachingOn() {
+            return (testMode & 0x3) != 0;
+        }
+
+        public void setTestMode(int mode) {
+            testMode = mode;
+        }
+
+        public List<String> getVMArgsForTestMode() {
+            List<String> list = new ArrayList<String>();
+            list.add("-XX:+UnlockDiagnosticVMOptions");
+            list.add(isAdapterCachingOn() ? "-XX:+AOTAdapterCaching" : "-XX:-AOTAdapterCaching");
+            list.add(isStubCachingOn() ? "-XX:+AOTStubCaching" : "-XX:-AOTStubCaching");
+            list.add(isNmethodCachingOn() ? "-XX:+AOTCodeCaching" : "-XX:-AOTCodeCaching");
+            return list;
         }
 
         @Override
@@ -66,15 +94,12 @@ public class AOTCodeFlags {
         public String[] vmArgs(RunMode runMode) {
             switch (runMode) {
             case RunMode.ASSEMBLY:
-            case RunMode.PRODUCTION:
-                return new String[] {
-                    "-XX:+UnlockDiagnosticVMOptions",
-                    "-XX:" + (flag_sign == 0 ? "-" : "+") + "AOTAdapterCaching",
-                    "-XX:" + (flag_sign == 0 ? "-" : "+") + "AOTStubCaching",
-                    "-XX:" + (flag_sign == 0 ? "-" : "+") + "AOTCodeCaching",
-                    "-Xlog:aot+codecache+init=debug",
-                    "-Xlog:aot+codecache+exit=debug",
-                };
+            case RunMode.PRODUCTION: {
+                    List<String> args = getVMArgsForTestMode();
+                    args.addAll(List.of("-Xlog:aot+codecache+init=debug",
+                                        "-Xlog:aot+codecache+exit=debug"));
+                    return args.toArray(new String[0]);
+                }
             }
             return new String[] {};
         }
@@ -88,23 +113,74 @@ public class AOTCodeFlags {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {
-            if (flag_sign == 0) {
+            if (!isAdapterCachingOn() && !isStubCachingOn() && !isNmethodCachingOn()) { // this is equivalent to completely disable AOT code cache
                 switch (runMode) {
                 case RunMode.ASSEMBLY:
                 case RunMode.PRODUCTION:
-                    out.shouldNotContain("AOT code cache size: ");
+                    out.shouldNotMatch("Adapters:\\s+total");
+                    out.shouldNotMatch("Shared Blobs:\\s+total");
+                    out.shouldNotMatch("C1 Blobs:\\s+total");
+                    out.shouldNotMatch("C2 Blobs:\\s+total");
+                    out.shouldNotMatch("Nmethods:\\s+total");
                     break;
                 }
-
             } else {
-                switch (runMode) {
-                case RunMode.ASSEMBLY:
-                case RunMode.PRODUCTION:
-                    out.shouldContain("AOT code cache size: ");
-                    break;
+                if (isAdapterCachingOn()) {
+                    switch (runMode) {
+                    case RunMode.ASSEMBLY:
+                    case RunMode.PRODUCTION:
+                        // AOTAdapterCaching is on, non-zero adapters should be stored/loaded
+                        out.shouldMatch("Adapters:\\s+total=[1-9][0-9]+");
+                        break;
+                    }
+                } else {
+                    switch (runMode) {
+                    case RunMode.ASSEMBLY:
+                    case RunMode.PRODUCTION:
+                        // AOTAdapterCaching is off, no adapters should be stored/loaded
+                        out.shouldMatch("Adapters:\\s+total=0");
+                        break;
+                    }
+                }
+                if (isStubCachingOn()) {
+                    switch (runMode) {
+                    case RunMode.ASSEMBLY:
+                    case RunMode.PRODUCTION:
+                        // AOTStubCaching is on, non-zero stubs should be stored/loaded
+                        out.shouldMatch("Shared Blobs:\\s+total=[1-9][0-9]+");
+                        out.shouldMatch("C1 Blobs:\\s+total=[1-9][0-9]+");
+                        out.shouldMatch("C2 Blobs:\\s+total=[1-9][0-9]+");
+                        break;
+                    }
+                } else {
+                    switch (runMode) {
+                    case RunMode.ASSEMBLY:
+                    case RunMode.PRODUCTION:
+                        // AOTStubCaching is off, no stubs should be stored/loaded
+                        out.shouldMatch("Shared Blobs:\\s+total=0");
+                        out.shouldMatch("C1 Blobs:\\s+total=0");
+                        out.shouldMatch("C2 Blobs:\\s+total=0");
+                        break;
+                    }
+                }
+                if (isNmethodCachingOn()) {
+                    switch (runMode) {
+                    case RunMode.ASSEMBLY:
+                    case RunMode.PRODUCTION:
+                        // AOTCodeCaching is on, non-zero nmethods should be stored/loaded
+                        out.shouldMatch("Nmethods:\\s+total=[1-9][0-9]+");
+                        break;
+                    }
+                } else {
+                    switch (runMode) {
+                    case RunMode.ASSEMBLY:
+                    case RunMode.PRODUCTION:
+                        // AOTCodeCaching is off, no nmethod should be stored/loaded
+                        out.shouldMatch("Nmethods:\\s+total=0");
+                        break;
+                    }
                 }
             }
         }
-
     }
 }

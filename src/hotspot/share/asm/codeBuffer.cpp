@@ -1094,6 +1094,11 @@ void CodeBuffer::print_on(outputStream* st) {
   }
 }
 
+CHeapString::~CHeapString() {
+  os::free((void*)_string);
+  _string = nullptr;
+}
+
 // ----- AsmRemarks ------------------------------------------------------------
 //
 // Acting as interface to reference counted mapping [offset -> remark], where
@@ -1108,11 +1113,7 @@ AsmRemarks::~AsmRemarks() {
   if (_remarks != nullptr) {
     clear();
   }
-  assert(_remarks == nullptr, "Must 'clear()' before deleting!");
-}
-
-void AsmRemarks::init(AsmRemarks& asm_remarks) {
-  asm_remarks._remarks = new AsmRemarkCollection();
+  assert(_remarks == nullptr, "must be");
 }
 
 const char* AsmRemarks::insert(uint offset, const char* remstr) {
@@ -1125,14 +1126,13 @@ bool AsmRemarks::is_empty() const {
 }
 
 void AsmRemarks::share(const AsmRemarks &src) {
-  precond(is_empty());
+  precond(_remarks == nullptr || is_empty());
   clear();
   _remarks = src._remarks->reuse();
 }
 
 void AsmRemarks::clear() {
-  assert(_remarks != nullptr, "sanity check");
-  if (_remarks->clear() == 0) {
+  if (_remarks != nullptr && _remarks->clear() == 0) {
     delete _remarks;
   }
   _remarks = nullptr;
@@ -1168,11 +1168,7 @@ DbgStrings::~DbgStrings() {
   if (_strings != nullptr) {
     clear();
   }
-  assert(_strings == nullptr, "Must 'clear()' before deleting!");
-}
-
-void DbgStrings::init(DbgStrings& dbg_strings) {
-  dbg_strings._strings = new DbgStringCollection();
+  assert(_strings == nullptr, "must be");
 }
 
 const char* DbgStrings::insert(const char* dbgstr) {
@@ -1185,14 +1181,13 @@ bool DbgStrings::is_empty() const {
 }
 
 void DbgStrings::share(const DbgStrings &src) {
-  precond(is_empty());
+  precond(_strings == nullptr || is_empty());
   clear();
   _strings = src._strings->reuse();
 }
 
 void DbgStrings::clear() {
-  assert(_strings != nullptr, "sanity check");
-  if (_strings->clear() == 0) {
+  if (_strings != nullptr && _strings->clear() == 0) {
     delete _strings;
   }
   _strings = nullptr;

@@ -473,6 +473,13 @@ void CDSConfig::check_aot_flags() {
   CHECK_SINGLE_PATH(AOTCacheOutput);
   CHECK_SINGLE_PATH(AOTConfiguration);
 
+  if (FLAG_IS_DEFAULT(AOTCache) && AOTAdapterCaching) {
+    log_debug(aot,codecache,init)("AOTCache is not specified - AOTAdapterCaching is ignored");
+  }
+  if (FLAG_IS_DEFAULT(AOTCache) && AOTStubCaching) {
+    log_debug(aot,codecache,init)("AOTCache is not specified - AOTStubCaching is ignored");
+  }
+
   if (FLAG_IS_DEFAULT(AOTCache) &&
       FLAG_IS_DEFAULT(AOTMode)) {
     bool has_cache_output = !FLAG_IS_DEFAULT(AOTCacheOutput);
