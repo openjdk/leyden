@@ -71,6 +71,7 @@
 #include "runtime/stubRoutines.hpp"
 #include "runtime/timerTrace.hpp"
 #include "runtime/threadIdentifier.hpp"
+#include "utilities/copy.hpp"
 #include "utilities/ostream.hpp"
 #include "utilities/spinYield.hpp"
 #ifdef COMPILER1

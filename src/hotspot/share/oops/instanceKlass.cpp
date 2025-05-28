@@ -862,6 +862,12 @@ void InstanceKlass::initialize_with_aot_initialized_mirror(TRAPS) {
     return;
   }
 
+  if (is_runtime_setup_required()) {
+    // Need to take the slow path, which will call the runtimeSetup() function instead
+    // of <clinit>
+    initialize(CHECK);
+    return;
+  }
   if (log_is_enabled(Info, cds, init)) {
     ResourceMark rm;
     log_info(cds, init)("%s (aot-inited)", external_name());
