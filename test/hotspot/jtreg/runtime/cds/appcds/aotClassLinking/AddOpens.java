@@ -66,7 +66,7 @@ public class AddOpens {
     private static String addOpensArg = "java.base/java.lang=" + TEST_MODULE1;
     private static String addOpensAllUnnamed = "java.base/java.lang=ALL-UNNAMED";
     private static String extraOpts[][] =
-        {{"-Xlog:cds", "-Xlog:cds"},
+        {{"-Xlog:aot,cds"},
          {"--add-opens", addOpensArg}};
     private static String expectedOutput[] =
         { "[class,load] com.simple.Main source: shared objects file",
@@ -120,7 +120,7 @@ public class AddOpens {
         @Override
         public String[] vmArgs(RunMode runMode) {
             if (runMode == RunMode.DUMP_STATIC) {
-                return new String[] { "-Xlog:cds" };
+                return new String[] { "-Xlog:aot,cds" };
             } else {
                 return new String[] {
                     "--add-opens", addOpensArg, "-Xlog:class+load=trace",

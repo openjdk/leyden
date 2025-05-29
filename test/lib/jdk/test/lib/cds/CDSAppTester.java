@@ -275,8 +275,8 @@ abstract public class CDSAppTester {
                                                    "-XX:AOTConfiguration=" + aotConfigurationFile,
                                                    logToFile(aotConfigurationFileLog,
                                                              "class+load=debug",
-                                                             "cds=debug",
-                                                             "cds+class=debug"));
+                                                             "aot=debug",
+                                                             "aot+class=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         return executeAndCheck(cmdLine, runMode, aotConfigurationFile, aotConfigurationFileLog);
@@ -289,8 +289,8 @@ abstract public class CDSAppTester {
                                                    "-XX:AOTCacheOutput=" + aotCacheFile,
                                                    logToFile(aotCacheFileLog,
                                                              "class+load=debug",
-                                                             "cds=debug",
-                                                             "cds+class=debug"));
+                                                             "aot=debug",
+                                                             "aot+class=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         OutputAnalyzer out =  executeAndCheck(cmdLine, runMode, aotCacheFile, aotCacheFileLog);
@@ -331,16 +331,16 @@ abstract public class CDSAppTester {
     private OutputAnalyzer createAOTCache() throws Exception {
         RunMode runMode = RunMode.ASSEMBLY;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
-                                                   "-Xlog:cds",
-                                                   "-Xlog:cds+heap=error",
+                                                   "-Xlog:aot",
+                                                   "-Xlog:aot+heap=error",
                                                    "-XX:AOTMode=create",
                                                    "-XX:AOTConfiguration=" + aotConfigurationFile,
                                                    "-XX:AOTCache=" + aotCacheFile,
                                                    logToFile(aotCacheFileLog,
-                                                             "cds=debug",
-                                                             "cds+class=debug",
-                                                             "cds+heap=warning",
-                                                             "cds+resolve=debug"));
+                                                             "aot=debug",
+                                                             "aot+class=debug",
+                                                             "aot+heap=warning",
+                                                             "aot+resolve=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         return executeAndCheck(cmdLine, runMode, aotCacheFile, aotCacheFileLog);
@@ -380,6 +380,7 @@ abstract public class CDSAppTester {
         if (isDynamicWorkflow()) {
           // "classic" dynamic archive
           cmdLine = StringArrayUtils.concat(vmArgs(runMode),
+                                            "-Xlog:aot",
                                             "-Xlog:cds",
                                             "-XX:ArchiveClassesAtExit=" + dynamicArchiveFile,
                                             logToFile(dynamicArchiveFileLog,
@@ -474,7 +475,7 @@ abstract public class CDSAppTester {
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:VerifyArchivedFields=2", // make sure archived heap objects are good.
-                                                   logToFile(productionRunLog(), "cds"));
+                                                   logToFile(productionRunLog(), "aot", "cds"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
 
         if (isStaticWorkflow()) {

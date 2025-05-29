@@ -25,6 +25,7 @@
 #include "cds/aotClassLinker.hpp"
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
+#include "cds/aotLogging.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
@@ -238,7 +239,7 @@ void AOTConstantPoolResolver::preresolve_class_cp_entries(JavaThread* current, I
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION; // just ignore
       } else {
-        log_trace(cds, resolve)("Resolved class  [%3d] %s -> %s", cp_index, ik->external_name(),
+        log_trace(aot, resolve)("Resolved class  [%3d] %s -> %s", cp_index, ik->external_name(),
                                 resolved_klass->external_name());
       }
     }
@@ -346,12 +347,12 @@ void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m
     ShouldNotReachHere();
   }
 
-  if (log_is_enabled(Trace, cds, resolve)) {
+  if (log_is_enabled(Trace, aot, resolve)) {
     ResourceMark rm(THREAD);
     bool resolved = cp->is_resolved(raw_index, bc);
     Symbol* name = cp->name_ref_at(raw_index, bc);
     Symbol* signature = cp->signature_ref_at(raw_index, bc);
-    log_trace(cds, resolve)("%s %s [%3d] %s -> %s.%s:%s%s",
+    log_trace(aot, resolve)("%s %s [%3d] %s -> %s.%s:%s%s",
                             (resolved ? "Resolved" : "Failed to resolve"),
                             Bytecodes::name(bc), cp_index, ik->external_name(),
                             resolved_klass->external_name(),
@@ -380,9 +381,9 @@ void AOTConstantPoolResolver::preresolve_indy_cp_entries(JavaThread* current, In
           CLEAR_PENDING_EXCEPTION; // just ignore
         }
       }
-      if (log_is_enabled(Trace, cds, resolve)) {
+      if (log_is_enabled(Trace, aot, resolve)) {
         ResourceMark rm(THREAD);
-        log_trace(cds, resolve)("%s indy   [%3d] %s",
+        log_trace(aot, resolve)("%s indy   [%3d] %s",
                                 rie->is_resolved() ? "Resolved" : "Failed to resolve",
                                 cp_index, ik->external_name());
       }
@@ -404,9 +405,9 @@ bool AOTConstantPoolResolver::check_methodtype_signature(ConstantPool* cp, Symbo
       }
 
       if (SystemDictionaryShared::should_be_excluded(k)) {
-        if (log_is_enabled(Warning, cds, resolve)) {
+        if (log_is_enabled(Warning, aot, resolve)) {
           ResourceMark rm;
-          log_warning(cds, resolve)("Cannot aot-resolve Lambda proxy because %s is excluded", k->external_name());
+          log_warning(aot, resolve)("Cannot aot-resolve Lambda proxy because %s is excluded", k->external_name());
         }
         return false;
       }
@@ -437,9 +438,9 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_signature(ConstantPool* c
   // as <clinit> can have side effects ==> exclude such cases.
   InstanceKlass* intf = InstanceKlass::cast(k);
   bool exclude = intf->interface_needs_clinit_execution_as_super();
-  if (log_is_enabled(Debug, cds, resolve)) {
+  if (log_is_enabled(Debug, aot, resolve)) {
     ResourceMark rm;
-    log_debug(cds, resolve)("%s aot-resolve Lambda proxy of interface type %s",
+    log_debug(aot, resolve)("%s aot-resolve Lambda proxy of interface type %s",
                             exclude ? "Cannot" : "Can", k->external_name());
   }
   return !exclude;
@@ -453,9 +454,9 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_methodtype_arg(ConstantPo
   }
 
   Symbol* sig = cp->method_type_signature_at(mt_index);
-  if (log_is_enabled(Debug, cds, resolve)) {
+  if (log_is_enabled(Debug, aot, resolve)) {
     ResourceMark rm;
-    log_debug(cds, resolve)("Checking MethodType for LambdaMetafactory BSM arg %d: %s", arg_i, sig->as_C_string());
+    log_debug(aot, resolve)("Checking MethodType for LambdaMetafactory BSM arg %d: %s", arg_i, sig->as_C_string());
   }
 
   return check_methodtype_signature(cp, sig);
@@ -469,9 +470,9 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_methodhandle_arg(Constant
   }
 
   Symbol* sig = cp->method_handle_signature_ref_at(mh_index);
-  if (log_is_enabled(Debug, cds, resolve)) {
+  if (log_is_enabled(Debug, aot, resolve)) {
     ResourceMark rm;
-    log_debug(cds, resolve)("Checking MethodType of MethodHandle for LambdaMetafactory BSM arg %d: %s", arg_i, sig->as_C_string());
+    log_debug(aot, resolve)("Checking MethodType of MethodHandle for LambdaMetafactory BSM arg %d: %s", arg_i, sig->as_C_string());
   }
   return check_methodtype_signature(cp, sig);
 }
@@ -506,9 +507,9 @@ bool AOTConstantPoolResolver::is_indy_resolution_deterministic(ConstantPool* cp,
                              "[Ljava/lang/Object;"
                             ")Ljava/lang/invoke/CallSite;")) {
     Symbol* factory_type_sig = cp->uncached_signature_ref_at(cp_index);
-    if (log_is_enabled(Debug, cds, resolve)) {
+    if (log_is_enabled(Debug, aot, resolve)) {
       ResourceMark rm;
-      log_debug(cds, resolve)("Checking StringConcatFactory callsite signature [%d]: %s", cp_index, factory_type_sig->as_C_string());
+      log_debug(aot, resolve)("Checking StringConcatFactory callsite signature [%d]: %s", cp_index, factory_type_sig->as_C_string());
     }
 
     Klass* k;
@@ -558,9 +559,9 @@ bool AOTConstantPoolResolver::is_indy_resolution_deterministic(ConstantPool* cp,
      *                                {@code interfaceMethodType}.
      */
     Symbol* factory_type_sig = cp->uncached_signature_ref_at(cp_index);
-    if (log_is_enabled(Debug, cds, resolve)) {
+    if (log_is_enabled(Debug, aot, resolve)) {
       ResourceMark rm;
-      log_debug(cds, resolve)("Checking lambda callsite signature [%d]: %s", cp_index, factory_type_sig->as_C_string());
+      log_debug(aot, resolve)("Checking lambda callsite signature [%d]: %s", cp_index, factory_type_sig->as_C_string());
     }
 
     if (!check_lambda_metafactory_signature(cp, factory_type_sig)) {
@@ -616,12 +617,12 @@ int AOTConstantPoolResolver::class_reflection_data_flags(InstanceKlass* ik, TRAP
                           vmSymbols::void_int_signature(),
                           &args, CHECK_0);
   int flags = result.get_jint();
-  log_info(cds)("Encode ReflectionData: %s (flags=0x%x)", ik->external_name(), flags);
+  aot_log_info(aot)("Encode ReflectionData: %s (flags=0x%x)", ik->external_name(), flags);
   return flags;
 }
 
 void AOTConstantPoolResolver::generate_reflection_data(JavaThread* current, InstanceKlass* ik, int rd_flags) {
-  log_info(cds)("Generate ReflectionData: %s (flags=" INT32_FORMAT_X ")", ik->external_name(), rd_flags);
+  aot_log_info(aot)("Generate ReflectionData: %s (flags=" INT32_FORMAT_X ")", ik->external_name(), rd_flags);
   JavaThread* THREAD = current; // for exception macros
   JavaCallArguments args(Handle(THREAD, ik->java_mirror()));
   args.push_int(rd_flags);
@@ -635,8 +636,8 @@ void AOTConstantPoolResolver::generate_reflection_data(JavaThread* current, Inst
     Handle exc_handle(THREAD, PENDING_EXCEPTION);
     CLEAR_PENDING_EXCEPTION;
 
-    log_warning(cds)("Exception during Class::generateReflectionData() call for %s", ik->external_name());
-    LogStreamHandle(Debug, cds) log;
+    log_warning(aot)("Exception during Class::generateReflectionData() call for %s", ik->external_name());
+    LogStreamHandle(Debug, aot) log;
     if (log.is_enabled()) {
       java_lang_Throwable::print_stack_trace(exc_handle, &log);
     }

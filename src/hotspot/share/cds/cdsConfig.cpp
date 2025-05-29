@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/aotLogging.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cds_globals.hpp"
@@ -275,7 +276,7 @@ void CDSConfig::ergo_init_classic_archive_paths() {
               warning("-XX:+AutoCreateSharedArchive is unsupported when base CDS archive is not loaded. Run with -Xlog:cds for more info.");
               AutoCreateSharedArchive = false;
             }
-            log_error(cds)("Not a valid archive (%s)", SharedArchiveFile);
+            aot_log_error(aot)("Not a valid %s (%s)", type_of_archive_being_loaded(), SharedArchiveFile);
             Arguments::no_shared_spaces("invalid archive");
           }
         } else if (base_archive_path == nullptr) {
@@ -331,7 +332,7 @@ void CDSConfig::check_internal_module_property(const char* key, const char* valu
       bad_module_prop_key   = os::strdup(key);
       bad_module_prop_value = os::strdup(value);
     }
-    log_info(cds)("optimized module handling/full module graph: disabled due to incompatible property: %s=%s", key, value);
+    aot_log_info(aot)("optimized module handling: disabled due to incompatible property: %s=%s", key, value);
   }
 }
 
@@ -346,7 +347,7 @@ void CDSConfig::check_incompatible_property(const char* key, const char* value) 
     if (strcmp(key, property) == 0) {
       stop_dumping_full_module_graph();
       stop_using_full_module_graph();
-      log_info(cds)("full module graph: disabled due to incompatible property: %s=%s", key, value);
+      aot_log_info(aot)("full module graph: disabled due to incompatible property: %s=%s", key, value);
       break;
     }
   }
@@ -421,9 +422,9 @@ bool CDSConfig::has_unsupported_runtime_module_options() {
       warning("CDS is disabled when the %s option is specified.", option);
     } else {
       if (new_aot_flags_used()) {
-        log_warning(cds)("AOT cache is disabled when the %s option is specified.", option);
+        aot_log_warning(aot)("AOT cache is disabled when the %s option is specified.", option);
       } else {
-        log_info(cds)("CDS is disabled when the %s option is specified.", option);
+        aot_log_info(aot)("CDS is disabled when the %s option is specified.", option);
       }
     }
     return true;
@@ -494,8 +495,12 @@ void CDSConfig::check_aot_flags() {
     log_debug(aot,codecache,init)("AOTCache is not specified - AOTStubCaching is ignored");
   }
 
-  // At least one AOT flag has been used
-  _new_aot_flags_used = true;
+  if (FLAG_IS_DEFAULT(AOTCache) && FLAG_IS_DEFAULT(AOTConfiguration) && FLAG_IS_DEFAULT(AOTMode)) {
+    // AOTCache/AOTConfiguration/AOTMode not used -> using the "classic CDS" workflow.
+    return;
+  } else {
+    _new_aot_flags_used = true;
+  }
 
   if (FLAG_IS_DEFAULT(AOTMode) || strcmp(AOTMode, "auto") == 0 || strcmp(AOTMode, "on") == 0) {
     check_aotmode_auto_or_on();
@@ -704,7 +709,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     } else if (Arguments::mode() == Arguments::_comp) {
       // -Xcomp may use excessive CPU for the test tiers. Also, -Xshare:dump runs a small and fixed set of
       // Java code, so there's not much benefit in running -Xcomp.
-      log_info(cds)("reduced -Xcomp to -Xmixed for static dumping");
+      aot_log_info(aot)("reduced -Xcomp to -Xmixed for static dumping");
       Arguments::set_mode_flags(Arguments::_mixed);
     }
 
@@ -729,11 +734,11 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
 
   if (AutoCreateSharedArchive) {
     if (SharedArchiveFile == nullptr) {
-      log_warning(cds)("-XX:+AutoCreateSharedArchive requires -XX:SharedArchiveFile");
+      aot_log_warning(aot)("-XX:+AutoCreateSharedArchive requires -XX:SharedArchiveFile");
       return false;
     }
     if (ArchiveClassesAtExit != nullptr) {
-      log_warning(cds)("-XX:+AutoCreateSharedArchive does not work with ArchiveClassesAtExit");
+      aot_log_warning(aot)("-XX:+AutoCreateSharedArchive does not work with ArchiveClassesAtExit");
       return false;
     }
   }
@@ -749,7 +754,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     // Always verify non-system classes during CDS dump
     if (!BytecodeVerificationRemote) {
       BytecodeVerificationRemote = true;
-      log_info(cds)("All non-system classes will be verified (-Xverify:remote) during CDS dump time.");
+      aot_log_info(aot)("All non-system classes will be verified (-Xverify:remote) during CDS dump time.");
     }
   }
 
@@ -887,11 +892,11 @@ void CDSConfig::prepare_for_dumping() {
 
 #define __THEMSG " is unsupported when base CDS archive is not loaded. Run with -Xlog:cds for more info."
     if (RecordDynamicDumpInfo) {
-      log_error(cds)("-XX:+RecordDynamicDumpInfo%s", __THEMSG);
+      aot_log_error(aot)("-XX:+RecordDynamicDumpInfo%s", __THEMSG);
       MetaspaceShared::unrecoverable_loading_error();
     } else {
       assert(ArchiveClassesAtExit != nullptr, "sanity");
-      log_warning(cds)("-XX:ArchiveClassesAtExit" __THEMSG);
+      aot_log_warning(aot)("-XX:ArchiveClassesAtExit" __THEMSG);
     }
 #undef __THEMSG
     disable_dumping_dynamic_archive();
@@ -1056,7 +1061,7 @@ void CDSConfig::log_reasons_for_not_dumping_heap() {
   }
 
   assert(reason != nullptr, "sanity");
-  log_info(cds)("Archived java heap is not supported: %s", reason);
+  aot_log_info(aot)("Archived java heap is not supported: %s", reason);
 }
 
 // This is *Legacy* optimization for lambdas before JEP 483. May be removed in the future.
@@ -1106,7 +1111,7 @@ void CDSConfig::stop_dumping_full_module_graph(const char* reason) {
   if (_is_dumping_full_module_graph) {
     _is_dumping_full_module_graph = false;
     if (reason != nullptr) {
-      log_info(cds)("full module graph cannot be dumped: %s", reason);
+      aot_log_info(aot)("full module graph cannot be dumped: %s", reason);
     }
   }
 }
@@ -1116,7 +1121,7 @@ void CDSConfig::stop_using_full_module_graph(const char* reason) {
   if (_is_using_full_module_graph) {
     _is_using_full_module_graph = false;
     if (reason != nullptr) {
-      log_info(cds)("full module graph cannot be loaded: %s", reason);
+      aot_log_info(aot)("full module graph cannot be loaded: %s", reason);
     }
   }
 }

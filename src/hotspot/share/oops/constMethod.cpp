@@ -417,7 +417,7 @@ void ConstMethod::copy_annotations_from(ClassLoaderData* loader_data, ConstMetho
 }
 
 void ConstMethod::metaspace_pointers_do(MetaspaceClosure* it) {
-  log_trace(cds)("Iter(ConstMethod): %p", this);
+  log_trace(aot)("Iter(ConstMethod): %p", this);
 
   if (constants()->pool_holder() != nullptr && !method()->method_holder()->is_rewritten()) {
     // holder is null for MH intrinsic methods
