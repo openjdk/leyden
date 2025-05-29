@@ -132,7 +132,7 @@ public:
 
       assert(!HAS_PENDING_EXCEPTION, "");
       CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level,
-                                    methodHandle(), 0,
+                                    0,
                                     true /*requires_online_comp*/,
                                     _for_preload ? CompileTask::Reason_PrecompileForPreload : CompileTask::Reason_Precompile,
                                     THREAD);

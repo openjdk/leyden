@@ -73,7 +73,6 @@
 #include "runtime/signature.hpp"
 #include "runtime/stackWatermarkSet.hpp"
 #include "runtime/synchronizer.hpp"
-#include "runtime/threadCritical.hpp"
 #include "runtime/threadWXSetters.inline.hpp"
 #include "runtime/vframe.hpp"
 #include "runtime/vframeArray.hpp"
@@ -2048,7 +2047,7 @@ static const TypeFunc* make_rethrow_Type() {
 void OptoRuntime::deoptimize_caller_frame(JavaThread *thread, bool doit) {
   // Deoptimize the caller before continuing, as the compiled
   // exception handler table may not be valid.
-  if (!StressCompiledExceptionHandlers && doit) {
+  if (DeoptimizeOnAllocationException && doit) {
     deoptimize_caller_frame(thread);
   }
 }

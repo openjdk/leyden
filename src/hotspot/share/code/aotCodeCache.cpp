@@ -255,6 +255,21 @@ void AOTCodeCache::initialize() {
     disable_caching();
     return; // AOTCache must be specified to dump and use AOT code
   }
+
+  // Disable stubs caching until JDK-8357398 is fixed.
+  FLAG_SET_ERGO(AOTStubCaching, false);
+
+  if (VerifyOops) {
+    // Disable AOT stubs caching when VerifyOops flag is on.
+    // Verify oops code generated a lot of C strings which overflow
+    // AOT C string table (which has fixed size).
+    // AOT C string table will be reworked later to handle such cases.
+    //
+    // Note: AOT adapters are not affected - they don't have oop operations.
+    log_info(aot, codecache, init)("AOT Stubs Caching is not supported with VerifyOops.");
+    FLAG_SET_ERGO(AOTStubCaching, false);
+  }
+
   bool is_dumping = false;
   bool is_using   = false;
   if (CDSConfig::is_dumping_final_static_archive() && CDSConfig::is_dumping_aot_linked_classes()) {
@@ -1322,6 +1337,7 @@ bool AOTCodeCache::finish_write() {
                  adapters_count, shared_blobs_count,
                  C1_blobs_count, C2_blobs_count,
                  stubs_count, _use_meta_ptrs);
+
     log_info(aot, codecache, exit)("Wrote %d AOT code entries to AOT Code Cache", entries_count);
 
     _aot_code_directory->set_aot_code_data(size, start);
@@ -2112,7 +2128,7 @@ void AOTCodeCache::preload_startup_code(TRAPS) {
         continue; // Keep old entry to avoid issues
       }
       mh->set_aot_code_entry(entry);
-      CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0, false, CompileTask::Reason_Preload, CHECK);
+      CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, 0, false, CompileTask::Reason_Preload, CHECK);
     }
   }
 }
@@ -3838,7 +3854,7 @@ void AOTCodeAddressTable::init_early_stubs() {
   }
 
   _early_stubs_complete = true;
-  log_info(aot, codecache,init)("early stubs recorded");
+  log_info(aot, codecache, init)("early stubs recorded");
 }
 
 static bool initializing_shared_blobs = false;

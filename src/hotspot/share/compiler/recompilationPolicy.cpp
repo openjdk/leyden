@@ -100,7 +100,7 @@ bool RecompilationPolicy::recompilation_step(int step, TRAPS) {
         if (PrintTieredEvents) {
           CompilationPolicy::print_event(CompilationPolicy::FORCE_RECOMPILE, m(), m(), InvocationEntryBci, next_level);
         }
-        CompileBroker::compile_method(m, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0,
+        CompileBroker::compile_method(m, InvocationEntryBci, CompLevel_full_optimization, 0,
                                       true /*requires_online_compilation*/, CompileTask::Reason_MustBeCompiled, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION;

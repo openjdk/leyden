@@ -25,13 +25,8 @@
 /**
  * @test
  * @summary Sanity test of combinations of the AOT Code Caching diagnostic flags
- * @requires vm.cds
- * @requires vm.cds.supports.aot.class.linking
- * @requires vm.flavor != "zero"
- * @requires os.arch=="amd64" | os.arch=="x86_64" | os.arch=="aarch64"
+ * @requires vm.cds.supports.aot.code.caching
  * @requires vm.flagless
- * @comment work around JDK-8345635
- * @requires !vm.jvmci.enabled
  * @library /test/lib /test/setup_aot
  * @build AOTCodeFlags JavacBenchApp
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar
@@ -52,6 +47,7 @@ public class AOTCodeFlags {
     public static void main(String... args) throws Exception {
         Tester t = new Tester();
         for (int mode = 0; mode < 4; mode++) {
+            if (mode == 2) continue; // Skip stubs until JDK-8357398 is fixed
             t.setTestMode(mode);
             t.run(new String[] {"AOT"});
         }

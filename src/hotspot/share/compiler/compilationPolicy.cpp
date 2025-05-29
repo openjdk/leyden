@@ -117,7 +117,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
       if (PrintTieredEvents) {
         print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, next_level);
       }
-      CompileBroker::compile_method(m, InvocationEntryBci, next_level, methodHandle(), 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
+      CompileBroker::compile_method(m, InvocationEntryBci, next_level, 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION;
       }
@@ -152,7 +152,7 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
     if (PrintTieredEvents) {
       print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, level);
     }
-    CompileBroker::compile_method(m, InvocationEntryBci, level, methodHandle(), 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
+    CompileBroker::compile_method(m, InvocationEntryBci, level, 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
   }
 }
 
@@ -1011,7 +1011,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
         }
       }
     }
-    CompileBroker::compile_method(mh, bci, level, mh, hot_count, requires_online_compilation, CompileTask::Reason_Tiered, THREAD);
+    CompileBroker::compile_method(mh, bci, level, hot_count, requires_online_compilation, CompileTask::Reason_Tiered, THREAD);
   }
 }
 

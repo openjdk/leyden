@@ -477,7 +477,6 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
   // save methods from RedefineClasses across safepoint
   // across compile queue lock below.
   methodHandle save_method;
-  methodHandle save_hot_method;
 
   MonitorLocker locker(_lock);
   transfer_pending();
@@ -556,7 +555,6 @@ CompileTask* CompileQueue::get(CompilerThread* thread) {
     // the compilation queue, which is walked during RedefineClasses.
     Thread* thread = Thread::current();
     save_method = methodHandle(thread, task->method());
-    save_hot_method = methodHandle(thread, task->hot_method());
 
     remove(task);
   }
@@ -1364,7 +1362,6 @@ void CompileBroker::mark_on_stack() {
 void CompileBroker::compile_method_base(const methodHandle& method,
                                         int osr_bci,
                                         int comp_level,
-                                        const methodHandle& hot_method,
                                         int hot_count,
                                         CompileTask::CompileReason compile_reason,
                                         bool requires_online_compilation,
@@ -1386,13 +1383,8 @@ void CompileBroker::compile_method_base(const methodHandle& method,
       tty->print(" osr_bci: %d", osr_bci);
     }
     tty->print(" level: %d comment: %s count: %d", comp_level, CompileTask::reason_name(compile_reason), hot_count);
-    if (!hot_method.is_null()) {
-      tty->print(" hot: ");
-      if (hot_method() != method()) {
-          hot_method->print_short_name(tty);
-      } else {
-        tty->print("yes");
-      }
+    if (hot_count > 0) {
+      tty->print(" hot: yes");
     }
     tty->cr();
   }
@@ -1552,7 +1544,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     task = create_compile_task(queue,
                                compile_id, method,
                                osr_bci, comp_level,
-                               hot_method, hot_count, aot_code_entry, compile_reason,
+                               hot_count, aot_code_entry, compile_reason,
                                requires_online_compilation, blocking);
 
     if (task->is_aot() && (_ac_count > 0)) {
@@ -1591,7 +1583,7 @@ AOTCodeEntry* CompileBroker::find_aot_code_entry(const methodHandle& method, int
 
 nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
                                        int comp_level,
-                                       const methodHandle& hot_method, int hot_count,
+                                       int hot_count,
                                        bool requires_online_compilation,
                                        CompileTask::CompileReason compile_reason,
                                        TRAPS) {
@@ -1619,14 +1611,14 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
 
   DirectiveSet* directive = DirectivesStack::getMatchingDirective(method, comp);
   // CompileBroker::compile_method can trap and can have pending async exception.
-  nmethod* nm = CompileBroker::compile_method(method, osr_bci, comp_level, hot_method, hot_count, requires_online_compilation, compile_reason, directive, THREAD);
+  nmethod* nm = CompileBroker::compile_method(method, osr_bci, comp_level, hot_count, requires_online_compilation, compile_reason, directive, THREAD);
   DirectivesStack::release(directive);
   return nm;
 }
 
 nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
                                          int comp_level,
-                                         const methodHandle& hot_method, int hot_count,
+                                         int hot_count,
                                          bool requires_online_compilation,
                                          CompileTask::CompileReason compile_reason,
                                          DirectiveSet* directive,
@@ -1734,7 +1726,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     bool is_blocking = ReplayCompiles                                             ||
                        !directive->BackgroundCompilationOption                    ||
                        (PreloadBlocking && (compile_reason == CompileTask::Reason_Preload));
-    compile_method_base(method, osr_bci, comp_level, hot_method, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
+    compile_method_base(method, osr_bci, comp_level, hot_count, compile_reason, requires_online_compilation, is_blocking, THREAD);
   }
 
   // return requested nmethod
@@ -1895,7 +1887,6 @@ CompileTask* CompileBroker::create_compile_task(CompileQueue*       queue,
                                                 const methodHandle& method,
                                                 int                 osr_bci,
                                                 int                 comp_level,
-                                                const methodHandle& hot_method,
                                                 int                 hot_count,
                                                 AOTCodeEntry*       aot_code_entry,
                                                 CompileTask::CompileReason compile_reason,
@@ -1903,7 +1894,7 @@ CompileTask* CompileBroker::create_compile_task(CompileQueue*       queue,
                                                 bool                blocking) {
   CompileTask* new_task = CompileTask::allocate();
   new_task->initialize(compile_id, method, osr_bci, comp_level,
-                       hot_method, hot_count, aot_code_entry, compile_reason, queue,
+                       hot_count, aot_code_entry, compile_reason, queue,
                        requires_online_compilation, blocking);
   return new_task;
 }

@@ -129,8 +129,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
   jlong                _time_finished; // time when compilation finished
   jlong                _aot_load_start;
   jlong                _aot_load_finish;
-  Method*              _hot_method;   // which method actually triggered this task
-  jobject              _hot_method_holder;
   int                  _hot_count;    // information about its invocation counter
   CompileReason        _compile_reason;      // more info about the task
   const char*          _failure_reason;
@@ -147,7 +145,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   }
 
   void initialize(int compile_id, const methodHandle& method, int osr_bci, int comp_level,
-                  const methodHandle& hot_method, int hot_count, AOTCodeEntry* aot_code_entry,
+                  int hot_count, AOTCodeEntry* aot_code_entry,
                   CompileTask::CompileReason compile_reason,
                   CompileQueue* compile_queue,
                   bool requires_online_compilation, bool is_blocking);
@@ -158,7 +156,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
 
   int          compile_id() const                   { return _compile_id; }
   Method*      method() const                       { return _method; }
-  Method*      hot_method() const                   { return _hot_method; }
   int          osr_bci() const                      { return _osr_bci; }
   bool         is_complete() const                  { return _is_complete; }
   bool         is_blocking() const                  { return _is_blocking; }
