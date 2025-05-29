@@ -218,7 +218,6 @@ public:
   uint code_offset()  const { return _code_offset; }
   uint code_size()    const { return _code_size; }
 
-  uint blob_offset()  const { return _code_offset; }
   bool has_oop_maps() const { return _has_oop_maps; }
   address dumptime_content_start_addr() const { return _dumptime_content_start_addr; }
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }

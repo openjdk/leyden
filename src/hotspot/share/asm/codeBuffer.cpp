@@ -1114,11 +1114,7 @@ AsmRemarks::~AsmRemarks() {
   if (_remarks != nullptr) {
     clear();
   }
-  assert(_remarks == nullptr, "Must 'clear()' before deleting!");
-}
-
-void AsmRemarks::init(AsmRemarks& asm_remarks) {
-  asm_remarks._remarks = new AsmRemarkCollection();
+  assert(_remarks == nullptr, "must be");
 }
 
 const char* AsmRemarks::insert(uint offset, const char* remstr) {
@@ -1173,11 +1169,7 @@ DbgStrings::~DbgStrings() {
   if (_strings != nullptr) {
     clear();
   }
-  assert(_strings == nullptr, "Must 'clear()' before deleting!");
-}
-
-void DbgStrings::init(DbgStrings& dbg_strings) {
-  dbg_strings._strings = new DbgStringCollection();
+  assert(_strings == nullptr, "must be");
 }
 
 const char* DbgStrings::insert(const char* dbgstr) {

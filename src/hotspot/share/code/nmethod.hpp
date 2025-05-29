@@ -1068,7 +1068,7 @@ public:
     void print_value_on(const CodeBlob* instance, outputStream* st) const override {
       instance->as_nmethod()->print_value_on_impl(st);
     }
-    void prepare_for_archiving(CodeBlob* instance) const {
+    void prepare_for_archiving(CodeBlob* instance) const override {
       ((nmethod*)instance)->prepare_for_archiving_impl();
     };
   };
