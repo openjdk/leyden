@@ -77,6 +77,9 @@
 #include "utilities/checkedCast.hpp"
 #include "utilities/copy.hpp"
 #include "utilities/events.hpp"
+#if INCLUDE_JFR
+#include "jfr/jfr.inline.hpp"
+#endif
 
 // Helper class to access current interpreter state
 class LastFrameAccessor : public StackObj {
@@ -1335,6 +1338,7 @@ JRT_END
 
 JRT_LEAF_PROF(void, InterpreterRuntime, at_unwind, InterpreterRuntime::at_unwind(JavaThread* current))
   assert(current == JavaThread::current(), "pre-condition");
+  JFR_ONLY(Jfr::check_and_process_sample_request(current);)
   // This function is called by the interpreter when the return poll found a reason
   // to call the VM. The reason could be that we are returning into a not yet safe
   // to access frame. We handle that below.

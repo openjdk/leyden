@@ -30,7 +30,6 @@
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/mutex.hpp"
 #include "runtime/perfData.hpp"
-#include "runtime/thread.hpp"
 
 class Thread;
 
@@ -147,7 +146,6 @@ extern Mutex*   FinalImageRecipes_lock;          // Protecting the tables used b
 extern Mutex*   JfrStacktrace_lock;              // used to guard access to the JFR stacktrace table
 extern Monitor* JfrMsg_lock;                     // protects JFR messaging
 extern Mutex*   JfrBuffer_lock;                  // protects JFR buffer operations
-extern Monitor* JfrThreadSampler_lock;           // used to suspend/resume JFR thread sampler
 #endif
 
 extern Mutex*   Metaspace_lock;                  // protects Metaspace virtualspace and chunk expansions
@@ -212,39 +210,9 @@ private:
 
 public:
 
-  MutexLockerImpl(Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag) :
-    _mutex(mutex), _prof(ProfileVMLocks && Thread::current_or_null() != nullptr && Thread::current()->profile_vm_locks()) {
+  MutexLockerImpl(Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag);
 
-    bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
-    if (_mutex != nullptr) {
-      if (_prof) { _before.start(); } // before
-
-      if (no_safepoint_check) {
-        _mutex->lock_without_safepoint_check();
-      } else {
-        _mutex->lock();
-      }
-
-      if (_prof) { _before.stop(); _after.start(); } // after
-    }
-  }
-
-  MutexLockerImpl(Thread* thread, Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag) :
-    _mutex(mutex), _prof(thread->profile_vm_locks()) {
-
-    if (_prof) { _before.start(); } // before
-
-    bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
-    if (_mutex != nullptr) {
-      if (no_safepoint_check) {
-        _mutex->lock_without_safepoint_check(thread);
-      } else {
-        _mutex->lock(thread);
-      }
-    }
-
-    if (_prof) { _before.stop(); _after.start(); } // after
-  }
+  MutexLockerImpl(Thread* thread, Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag);
 
   ~MutexLockerImpl() {
     if (_mutex != nullptr) {
