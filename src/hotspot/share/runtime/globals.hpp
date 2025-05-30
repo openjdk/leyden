@@ -133,7 +133,7 @@ const size_t minimumSymbolTableSize = 1024;
           "Always use HeapBasedNarrowOop mode, so that AOT code can be "    \
           "always work regardless of runtime heap range")                   \
                                                                             \
-  product(bool, UseCompactObjectHeaders, false, EXPERIMENTAL,               \
+  product(bool, UseCompactObjectHeaders, false,                             \
           "Use compact 64-bit object headers in 64-bit VM")                 \
                                                                             \
   product(int, ObjectAlignmentInBytes, 8,                                   \

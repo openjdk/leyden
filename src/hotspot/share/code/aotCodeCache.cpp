@@ -1466,7 +1466,8 @@ CodeBlob* AOTCodeCache::load_code_blob(AOTCodeEntry::Kind entry_kind, uint id, c
   AOTCodeReader reader(cache, entry, nullptr);
   CodeBlob* blob = reader.compile_code_blob(name, entry_offset_count, entry_offsets);
 
-  log_debug(aot, codecache, stubs)("Read blob '%s' (id=%u, kind=%s) from AOT Code Cache", name, id, aot_code_entry_kind_name[entry_kind]);
+  log_debug(aot, codecache, stubs)("%sRead blob '%s' (id=%u, kind=%s) from AOT Code Cache",
+                                   (blob == nullptr? "Failed to " : ""), name, id, aot_code_entry_kind_name[entry_kind]);
   return blob;
 }
 
@@ -1481,8 +1482,7 @@ CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_co
   if (strncmp(stored_name, name, (name_size - 1)) != 0) {
     log_warning(aot, codecache, stubs)("Saved blob's name '%s' is different from the expected name '%s'",
                                        stored_name, name);
-    ((AOTCodeCache*)_cache)->set_failed();
-    report_load_failure();
+    set_lookup_failed(); // Skip this blob
     return nullptr;
     return nullptr;
   }
@@ -1679,7 +1679,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   Method* method = nm->method();
   bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)method);
   InstanceKlass* holder = method->method_holder();
-  bool klass_in_cds = holder->is_shared() && !holder->is_shared_unregistered_class();
+  bool klass_in_cds = holder->is_shared() && !holder->defined_by_other_loaders();
   bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
   if (!builtin_loader) {
     ResourceMark rm;

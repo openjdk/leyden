@@ -221,6 +221,7 @@ public:
   static bool is_dumping_aot_code()                          NOT_CDS_RETURN_(false);
   static void disable_dumping_aot_code()                     NOT_CDS_RETURN;
   static void enable_dumping_aot_code()                      NOT_CDS_RETURN;
+  static bool is_dumping_adapters()                          NOT_CDS_RETURN_(false);
 
   // Are we using the (to be deprecated) -XX:CacheDataStore workflow?
   static bool is_experimental_leyden_workflow()              NOT_CDS_RETURN_(false);

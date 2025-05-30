@@ -53,7 +53,7 @@ bool AOTCacheAccess::can_generate_aot_code(InstanceKlass* ik) {
     return false;
   }
   InstanceKlass* buffered_ik = builder->get_buffered_addr(ik);
-  if (ik->is_shared_unregistered_class()) {
+  if (ik->defined_by_other_loaders()) {
     return false;
   }
   return true;

@@ -728,11 +728,11 @@ void AOTConstantPoolResolver::define_dynamic_proxy_class(Handle loader, Handle p
   oop mirror = result.get_oop();
   assert(mirror != nullptr, "class must have been generated if not OOM");
   InstanceKlass* ik = InstanceKlass::cast(java_lang_Class::as_Klass(mirror));
-  if (ik->is_shared_boot_class() || ik->is_shared_platform_class()) {
+  if (ik->defined_by_boot_loader() || ik->defined_by_platform_loader()) {
     assert(ik->module()->is_named(), "dynamic proxies defined in unnamed modules for boot/platform loaders not supported");
     ik->set_shared_classpath_index(0);
   } else {
-    assert(ik->is_shared_app_class(), "must be");
+    assert(ik->defined_by_app_loader(), "must be");
     ik->set_shared_classpath_index(AOTClassLocationConfig::dumptime()->app_cp_start_index());
   }
 
