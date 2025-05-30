@@ -85,7 +85,6 @@ void* MetaspaceObj::operator new(size_t size, ClassLoaderData* loader_data,
   return Metaspace::allocate(loader_data, word_size, type, /*use_class_space*/ false);
 }
 
-
 // This is used for allocating training data. We are allocating training data in many cases where a GC cannot be triggered.
 void* MetaspaceObj::operator new(size_t size, MemTag flags) throw() {
   void* p = AllocateHeap(size, flags, CALLER_PC);

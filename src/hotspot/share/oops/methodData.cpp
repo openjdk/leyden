@@ -1290,9 +1290,12 @@ MethodData::MethodData(const methodHandle& method)
     initialize();
 }
 
+#if INCLUDE_CDS
 MethodData::MethodData() {
+  // Used by cppVtables.cpp only
   assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
 }
+#endif
 
 // Reinitialize the storage of an existing MDO at a safepoint.  Doing it this way will ensure it's
 // not being accessed while the contents are being rewritten.

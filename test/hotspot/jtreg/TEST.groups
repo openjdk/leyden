@@ -416,6 +416,7 @@ hotspot_appcds_dynamic = \
  -runtime/cds/appcds/aotCache \
  -runtime/cds/appcds/aotClassLinking \
  -runtime/cds/appcds/aotCode \
+ -runtime/cds/appcds/aotProfile \
  -runtime/cds/appcds/applications \
  -runtime/cds/appcds/cacheObject \
  -runtime/cds/appcds/complexURI \
@@ -522,6 +523,7 @@ hotspot_aot_classlinking = \
  -runtime/cds/appcds/aotCache \
  -runtime/cds/appcds/aotClassLinking \
  -runtime/cds/appcds/aotCode \
+ -runtime/cds/appcds/aotProfile \
  -runtime/cds/appcds/BadBSM.java \
  -runtime/cds/appcds/cacheObject/ArchivedIntegerCacheTest.java \
  -runtime/cds/appcds/cacheObject/ArchivedModuleCompareTest.java \
@@ -599,6 +601,7 @@ hotspot_metaspace = \
 tier1_runtime_appcds = \
   runtime/cds/appcds/aotCache/HelloAOTCache.java \
   runtime/cds/appcds/aotCode \
+  runtime/cds/appcds/aotProfile \
   runtime/cds/appcds/HelloTest.java
 
 tier1_runtime_appcds_exclude = \

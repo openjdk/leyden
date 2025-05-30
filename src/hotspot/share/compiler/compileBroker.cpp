@@ -372,9 +372,9 @@ void CompileQueue::add(CompileTask* task) {
   }
 
   if (TrainingData::need_data() && !CDSConfig::is_dumping_final_static_archive()) {
-    CompileTrainingData* td = CompileTrainingData::make(task);
-    if (td != nullptr) {
-      task->set_training_data(td);
+    CompileTrainingData* ctd = CompileTrainingData::make(task);
+    if (ctd != nullptr) {
+      task->set_training_data(ctd);
     }
   }
 

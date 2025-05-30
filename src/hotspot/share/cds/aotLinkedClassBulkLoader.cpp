@@ -121,7 +121,6 @@ void AOTLinkedClassBulkLoader::load_non_javabase_classes(JavaThread* current) {
     AOTCacheAccess::test_heap_access_api();
   }
 
-
   _app_completed = true;
   Atomic::release_store(&_all_completed, true);
 }

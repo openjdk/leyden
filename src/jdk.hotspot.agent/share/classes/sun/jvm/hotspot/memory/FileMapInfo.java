@@ -118,6 +118,7 @@ public class FileMapInfo {
   private static void populateMetadataTypeArray(TypeDataBase db) {
     metadataTypeArray = new Type[11];
     // The order needs to match up with CPP_VTABLE_TYPES_DO in src/hotspot/share/cds/cppVtables.cpp
+
     metadataTypeArray[0] = db.lookupType("ConstantPool");
     metadataTypeArray[1] = db.lookupType("InstanceKlass");
     metadataTypeArray[2] = db.lookupType("InstanceClassLoaderKlass");

@@ -666,9 +666,9 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     if (CDSPreimage != nullptr) {
       vm_exit_during_initialization("CDSPreimage must be specified only when CacheDataStore is specified");
     }
-
-    setup_compiler_args();
   }
+
+  setup_compiler_args();
 
   if (AOTClassLinking) {
     // If AOTClassLinking is specified, enable all these optimizations by default.
@@ -799,7 +799,7 @@ void CDSConfig::setup_compiler_args() {
     AOTCodeCache::enable_caching();
 
     if (UseSharedSpaces && FLAG_IS_DEFAULT(AOTMode)) {
-      log_info(cds)("Enabled -XX:AOTMode=on by default for troubleshooting Leyden prototype");
+      log_info(aot)("Enabled -XX:AOTMode=on by default for troubleshooting Leyden prototype");
       RequireSharedSpaces = true;
     }
   } else {

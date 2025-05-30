@@ -2722,6 +2722,8 @@ void InstanceKlass::remove_unshareable_info() {
   }
   _misc_flags.set_has_init_deps_processed(false);
 
+  _misc_flags.set_has_init_deps_processed(false);
+
   Klass::remove_unshareable_info();
 
   if (SystemDictionaryShared::has_class_failed_verification(this)) {

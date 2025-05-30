@@ -37,6 +37,7 @@
 // which ensures that for each oop, at most one ciObject is created.
 // This invariant allows efficient implementation of ciObject.
 class ciObjectFactory : public ArenaObj {
+  friend class VMStructs;
   friend class ciEnv;
 
 private:

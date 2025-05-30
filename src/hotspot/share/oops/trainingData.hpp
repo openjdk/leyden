@@ -33,6 +33,7 @@
 #include "memory/allocation.hpp"
 #include "memory/metaspaceClosure.hpp"
 #include "oops/instanceKlass.hpp"
+#include "oops/method.hpp"
 #include "runtime/handles.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "utilities/count_leading_zeros.hpp"
