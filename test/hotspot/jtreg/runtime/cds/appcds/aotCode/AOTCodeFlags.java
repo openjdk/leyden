@@ -53,7 +53,7 @@ public class AOTCodeFlags {
         for (int mode = 0; mode < 4; mode++) {
             if (mode == 2) continue; // Skip stubs until JDK-8357398 is fixed
             t.setTestMode(mode);
-            t.run(new String[] {"AOT"});
+            t.run(new String[] {"AOT", "--two-step-training"});
         }
     }
     static class Tester extends CDSAppTester {

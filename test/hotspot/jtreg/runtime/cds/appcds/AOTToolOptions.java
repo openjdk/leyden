@@ -24,7 +24,7 @@
 
 /*
  * @test
- * @summary AOT_TOOL_OPTIONS environment variable
+ * @summary JDK_AOT_VM_OPTIONS environment variable
  * @requires vm.cds
  * @requires vm.flagless
  * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds/test-classes
@@ -49,7 +49,7 @@ public class AOTToolOptions {
 
     public static void main(String[] args) throws Exception {
         //----------------------------------------------------------------------
-        printTestCase("AOT_TOOL_OPTIONS (one-command training)");
+        printTestCase("JDK_AOT_VM_OPTIONS (one-command training)");
 
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTMode=record",
@@ -58,15 +58,15 @@ public class AOTToolOptions {
             "-cp", appJar, helloClass);
         // The "-Xshare:off" below should be treated as part of a property value and not
         // a VM option by itself
-        pb.environment().put("AOT_TOOL_OPTIONS", "-Dsome.option='foo -Xshare:off ' -Xmx512m -XX:-AOTClassLinking");
+        pb.environment().put("JDK_AOT_VM_OPTIONS", "-Dsome.option='foo -Xshare:off ' -Xmx512m -XX:-AOTClassLinking");
         OutputAnalyzer out = CDSTestUtils.executeAndLog(pb, "ontstep-train");
         out.shouldContain("Hello World");
         out.shouldContain("AOTCache creation is complete: hello.aot");
-        out.shouldContain("Picked up AOT_TOOL_OPTIONS: -Dsome.option='foo -Xshare:off '");
+        out.shouldContain("Picked up JDK_AOT_VM_OPTIONS: -Dsome.option='foo -Xshare:off '");
         checkAOTClassLinkingDisabled(out);
 
         //----------------------------------------------------------------------
-        printTestCase("AOT_TOOL_OPTIONS (two-command training)");
+        printTestCase("JDK_AOT_VM_OPTIONS (two-command training)");
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTMode=record",
             "-XX:AOTConfiguration=" + aotConfigFile,
@@ -85,13 +85,13 @@ public class AOTToolOptions {
             "-XX:AOTCache=" + aotCacheFile,
             "-Xlog:aot",
             "-cp", appJar);
-        pb.environment().put("AOT_TOOL_OPTIONS", "-XX:-AOTClassLinking");
+        pb.environment().put("JDK_AOT_VM_OPTIONS", "-XX:-AOTClassLinking");
         out = CDSTestUtils.executeAndLog(pb, "asm");
-        out.shouldContain("Picked up AOT_TOOL_OPTIONS:");
+        out.shouldContain("Picked up JDK_AOT_VM_OPTIONS:");
         checkAOTClassLinkingDisabled(out);
 
         //----------------------------------------------------------------------
-        printTestCase("AOT_TOOL_OPTIONS (with AOTMode specified in -XX:VMOptionsFile)");
+        printTestCase("JDK_AOT_VM_OPTIONS (with AOTMode specified in -XX:VMOptionsFile)");
         String optionsFile = "opts.txt";
         Files.writeString(Path.of(optionsFile), "-XX:AOTMode=create");
 
@@ -101,13 +101,13 @@ public class AOTToolOptions {
             "-XX:AOTCache=" + aotCacheFile,
             "-Xlog:aot",
             "-cp", appJar);
-        pb.environment().put("AOT_TOOL_OPTIONS", "-XX:-AOTClassLinking");
+        pb.environment().put("JDK_AOT_VM_OPTIONS", "-XX:-AOTClassLinking");
         out = CDSTestUtils.executeAndLog(pb, "asm");
-        out.shouldContain("Picked up AOT_TOOL_OPTIONS:");
+        out.shouldContain("Picked up JDK_AOT_VM_OPTIONS:");
         checkAOTClassLinkingDisabled(out);
 
         //----------------------------------------------------------------------
-        printTestCase("Using -XX:VMOptionsFile inside AOT_TOOL_OPTIONS)");
+        printTestCase("Using -XX:VMOptionsFile inside JDK_AOT_VM_OPTIONS)");
         Files.writeString(Path.of(optionsFile), "-XX:-AOTClassLinking");
 
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
@@ -116,9 +116,9 @@ public class AOTToolOptions {
             "-XX:AOTCache=" + aotCacheFile,
             "-Xlog:aot",
             "-cp", appJar);
-        pb.environment().put("AOT_TOOL_OPTIONS", "-XX:VMOptionsFile="  + optionsFile);
+        pb.environment().put("JDK_AOT_VM_OPTIONS", "-XX:VMOptionsFile="  + optionsFile);
         out = CDSTestUtils.executeAndLog(pb, "asm");
-        out.shouldContain("Picked up AOT_TOOL_OPTIONS:");
+        out.shouldContain("Picked up JDK_AOT_VM_OPTIONS:");
         checkAOTClassLinkingDisabled(out);
     }
 

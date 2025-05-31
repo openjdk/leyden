@@ -1120,7 +1120,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
     } else {
       tty->print_cr("%s AOTConfiguration recorded: %s",
                     CDSConfig::has_temp_aot_config_file() ? "Temporary" : "", AOTConfiguration);
-      if (CDSConfig::is_one_step_training()) {
+      if (CDSConfig::is_single_command_training()) {
         fork_and_dump_final_static_archive(CHECK);
       }
     }
@@ -1180,12 +1180,19 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
   // Pass all arguments. These include those from JAVA_TOOL_OPTIONS and _JAVA_OPTIONS.
   for (int i = 0; i < Arguments::num_jvm_args(); i++) {
     const char* arg = Arguments::jvm_args_array()[i];
-    if (strncmp("-XX:AOTMode", arg, 11) == 0) {
-      // Filter it out. We will set AOTMode=create below.
+    if (strstr(arg, "-XX:AOTCacheOutput=") == arg || // arg starts with ...
+        strstr(arg, "-XX:AOTConfiguration=") == arg ||
+        strstr(arg, "-XX:AOTMode=") == arg) {
+      // Filter these out. They wiill be set below.
     } else {
       append_args(&args, arg, CHECK_0);
     }
   }
+
+  // Note: because we are running in AOTMode=record, JDK_AOT_VM_OPTIONS have not been
+  // parsed, so they are not in Arguments::jvm_args_array. If JDK_AOT_VM_OPTIONS is in
+  // the environment, it will be inherited and parsed by the child JVM process
+  // in Arguments::parse_java_tool_options_environment_variable().
 
   // We don't pass Arguments::jvm_flags_array(), as those will be added by
   // the child process when it loads .hotspotrc
@@ -1196,13 +1203,29 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
     ss.print_raw(CDSPreimage);
     append_args(&args, ss.freeze(), CHECK_0);
   } else {
-    if (CDSConfig::has_temp_aot_config_file()) {
-      stringStream ss;
-      ss.print("-XX:AOTConfiguration=");
-      ss.print_raw(AOTConfiguration);
-      append_args(&args, ss.freeze(), CHECK_0);
-    }
-    append_args(&args, "-XX:AOTMode=create", CHECK_0);
+
+   precond(strcmp(AOTMode, "record") == 0);
+
+   {
+    // If AOTCacheOutput contains %p, it should have been already substituted with the
+    // pid of the training process.
+    stringStream ss;
+    ss.print("-XX:AOTCacheOutput=");
+    ss.print_raw(AOTCacheOutput);
+    append_args(&args, ss.freeze(), CHECK_0);
+   }
+   {
+    // If AOTCacheConfiguration contains %p, it should have been already substituted with the
+    // pid of the training process.
+    // If AOTCacheConfiguration was not explicitly specified, it should have been assigned a
+    // temporary file name.
+    stringStream ss;
+    ss.print("-XX:AOTConfiguration=");
+    ss.print_raw(AOTConfiguration);
+    append_args(&args, ss.freeze(), CHECK_0);
+   }
+
+   append_args(&args, "-XX:AOTMode=create", CHECK_0);
   }
 
   Symbol* klass_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$ProcessLauncher");
@@ -1325,7 +1348,7 @@ void MetaspaceShared::fork_and_dump_final_static_archive(TRAPS) {
   tty->print_cr("Launching child process %s to assemble AOT cache %s using configuration %s", cmd, AOTCacheOutput, AOTConfiguration);
   int status = exec_jvm_with_java_tool_options(cmd, CHECK);
   if (status != 0) {
-    log_error(cds)("Child process failed; status = %d", status);
+    log_error(aot)("Child process failed; status = %d", status);
     // We leave the temp config file for debugging
   } else if (CDSConfig::has_temp_aot_config_file()) {
     const char* tmp_config = AOTConfiguration;
@@ -1333,7 +1356,7 @@ void MetaspaceShared::fork_and_dump_final_static_archive(TRAPS) {
     WINDOWS_ONLY(chmod(tmp_config, _S_IREAD | _S_IWRITE));
     status = remove(tmp_config);
     if (status != 0) {
-      log_error(cds)("Failed to remove temporary AOT configuration file %s", tmp_config);
+      log_error(aot)("Failed to remove temporary AOT configuration file %s", tmp_config);
     } else {
       tty->print_cr("Removed temporary AOT configuration file %s", tmp_config);
     }
