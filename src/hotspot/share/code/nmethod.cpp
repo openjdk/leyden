@@ -1277,9 +1277,7 @@ nmethod* nmethod::restore(address code_cache_buffer,
 
 #ifndef PRODUCT
   nm->use_remarks(archived_asm_remarks);
-  archived_asm_remarks.clear();
   nm->use_strings(archived_dbg_strings);
-  archived_dbg_strings.clear();
 #endif /* PRODUCT */
 
   // Flush the code block

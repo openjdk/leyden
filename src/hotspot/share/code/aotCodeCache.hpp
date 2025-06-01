@@ -46,7 +46,6 @@ class AsmRemarks;
 class ciConstant;
 class ciEnv;
 class ciMethod;
-class CodeBuffer;
 class CodeBlob;
 class CodeOffsets;
 class CompileTask;
@@ -300,7 +299,7 @@ public:
   const char* add_C_string(const char* str);
   int  id_for_C_string(address str);
   address address_for_C_string(int idx);
-  int  id_for_address(address addr, RelocIterator iter, CodeBuffer* buffer, CodeBlob* blob = nullptr);
+  int  id_for_address(address addr, RelocIterator iter, CodeBlob* blob);
   address address_for_id(int id);
   bool c2_complete() const { return _c2_complete; }
   bool c1_complete() const { return _c1_complete; }
@@ -561,23 +560,17 @@ public:
   bool write_klass(Klass* klass);
   bool write_method(Method* method);
 
-  bool write_relocations(CodeBlob& code_blob);
-  bool write_debug_info(DebugInformationRecorder* recorder);
+  bool write_relocations(CodeBlob& code_blob, GrowableArray<Handle>* oop_list = nullptr, GrowableArray<Metadata*>* metadata_list = nullptr);
 
   bool write_oop_map_set(CodeBlob& cb);
   bool write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
-  bool write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
 
   jobject read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
-  bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
-  bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
 
   bool write_oop(jobject& jo);
   bool write_oop(oop obj);
-  bool write_oops(OopRecorder* oop_recorder);
   bool write_metadata(Metadata* m);
-  bool write_metadata(OopRecorder* oop_recorder);
   bool write_oops(nmethod* nm);
   bool write_metadata(nmethod* nm);
 
@@ -705,14 +698,11 @@ public:
 
   // convenience method to convert offset in AOTCodeEntry data to its address
   bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
-  bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
   CodeBlob* compile_code_blob(const char* name, int entry_offset_count, int* entry_offsets);
 
   Klass* read_klass(const methodHandle& comp_method, bool shared);
   Method* read_method(const methodHandle& comp_method, bool shared);
-
-  DebugInformationRecorder* read_debug_info(OopRecorder* oop_recorder);
 
   oop read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
@@ -724,7 +714,7 @@ public:
 
   ImmutableOopMapSet* read_oop_map_set();
 
-  void fix_relocations(CodeBlob* code_blob, GrowableArray<Handle>* oop_list, GrowableArray<Metadata*>* metadata_list) NOT_CDS_RETURN;
+  void fix_relocations(CodeBlob* code_blob, GrowableArray<Handle>* oop_list = nullptr, GrowableArray<Metadata*>* metadata_list = nullptr) NOT_CDS_RETURN;
 #ifndef PRODUCT
   void read_asm_remarks(AsmRemarks& asm_remarks);
   void read_dbg_strings(DbgStrings& dbg_strings);

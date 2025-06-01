@@ -24,7 +24,6 @@
 
 
 #include "asm/macroAssembler.hpp"
-#include "asm/codeBuffer.hpp"
 #include "cds/aotCacheAccess.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
@@ -1521,7 +1520,7 @@ CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_co
     return nullptr;
   }
 
-  fix_relocations(code_blob, nullptr, nullptr);
+  fix_relocations(code_blob);
 
   // Read entries offsets
   offset = read_position();
@@ -1862,7 +1861,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
     return nullptr;
   }
 
-  if (!write_nmethod_loadtime_relocations(thread, nm, oop_list, metadata_list)) {
+  if (!write_relocations(*nm, &oop_list, &metadata_list)) {
     return nullptr;
   }
 
@@ -2146,7 +2145,7 @@ void AOTCodeCache::preload_startup_code(TRAPS) {
 
 // ------------ process code and data --------------
 
-bool AOTCodeCache::write_relocations(CodeBlob& code_blob) {
+bool AOTCodeCache::write_relocations(CodeBlob& code_blob, GrowableArray<Handle>* oop_list, GrowableArray<Metadata*>* metadata_list) {
   GrowableArray<uint> reloc_data;
   RelocIterator iter(&code_blob);
   LogStreamHandle(Trace, aot, codecache, reloc) log;
@@ -2154,6 +2153,47 @@ bool AOTCodeCache::write_relocations(CodeBlob& code_blob) {
     int idx = reloc_data.append(0); // default value
     switch (iter.type()) {
       case relocInfo::none:
+      break;
+      case relocInfo::oop_type: {
+        oop_Relocation* r = (oop_Relocation*)iter.reloc();
+        if (r->oop_is_immediate()) {
+          assert(oop_list != nullptr, "sanity check");
+          // store index of oop in the reloc immediate oop list
+          Handle h(JavaThread::current(), r->oop_value());
+          int oop_idx = oop_list->find(h);
+          assert(oop_idx != -1, "sanity check");
+          reloc_data.at_put(idx, (uint)oop_idx);
+        }
+        break;
+      }
+      case relocInfo::metadata_type: {
+        metadata_Relocation* r = (metadata_Relocation*)iter.reloc();
+        if (r->metadata_is_immediate()) {
+          assert(metadata_list != nullptr, "sanity check");
+          // store index of metadata in the reloc immediate metadata list
+          int metadata_idx = metadata_list->find(r->metadata_value());
+          assert(metadata_idx != -1, "sanity check");
+          reloc_data.at_put(idx, (uint)metadata_idx);
+        }
+        break;
+      }
+      case relocInfo::virtual_call_type:  // Fall through. They all call resolve_*_call blobs.
+      case relocInfo::opt_virtual_call_type:
+      case relocInfo::static_call_type: {
+        CallRelocation* r = (CallRelocation*)iter.reloc();
+        address dest = r->destination();
+        if (dest == r->addr()) { // possible call via trampoline on Aarch64
+          dest = (address)-1;    // do nothing in this case when loading this relocation
+        }
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, &code_blob));
+        break;
+      }
+      case relocInfo::trampoline_stub_type: {
+        address dest = ((trampoline_stub_Relocation*)iter.reloc())->destination();
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, &code_blob));
+        break;
+      }
+      case relocInfo::static_stub_type:
         break;
       case relocInfo::runtime_call_type: {
         // Record offset of runtime destination
@@ -2162,7 +2202,7 @@ bool AOTCodeCache::write_relocations(CodeBlob& code_blob) {
         if (dest == r->addr()) { // possible call via trampoline on Aarch64
           dest = (address)-1;    // do nothing in this case when loading this relocation
         }
-        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr, &code_blob));
+        reloc_data.at_put(idx, _table->id_for_address(dest, iter, &code_blob));
         break;
       }
       case relocInfo::runtime_call_w_cp_type:
@@ -2171,14 +2211,20 @@ bool AOTCodeCache::write_relocations(CodeBlob& code_blob) {
       case relocInfo::external_word_type: {
         // Record offset of runtime target
         address target = ((external_word_Relocation*)iter.reloc())->target();
-        reloc_data.at_put(idx, _table->id_for_address(target, iter, nullptr, &code_blob));
+        reloc_data.at_put(idx, _table->id_for_address(target, iter, &code_blob));
         break;
       }
       case relocInfo::internal_word_type:
         break;
       case relocInfo::section_word_type:
         break;
+      case relocInfo::poll_type:
+        break;
+      case relocInfo::poll_return_type:
+        break;
       case relocInfo::post_call_nop_type:
+        break;
+      case relocInfo::entry_guard_type:
         break;
       default:
         fatal("relocation %d unimplemented", (int)iter.type());
@@ -2318,119 +2364,6 @@ void AOTCodeReader::fix_relocations(CodeBlob* code_blob, GrowableArray<Handle>* 
   assert(j == count, "sanity");
 }
 
-bool AOTCodeCache::write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
-  LogStreamHandle(Info, aot, codecache, reloc) log;
-  GrowableArray<uint> reloc_data;
-  // Collect additional data
-  RelocIterator iter(nm);
-  bool has_immediate = false;
-  while (iter.next()) {
-    int idx = reloc_data.append(0); // default value
-    switch (iter.type()) {
-      case relocInfo::none:
-      break;
-      case relocInfo::oop_type: {
-        oop_Relocation* r = (oop_Relocation*)iter.reloc();
-        if (r->oop_is_immediate()) {
-          // store index of oop in the reloc immediate oop list
-          Handle h(thread, r->oop_value());
-          int oop_idx = oop_list.find(h);
-          assert(oop_idx != -1, "sanity check");
-          reloc_data.at_put(idx, (uint)oop_idx);
-          has_immediate = true;
-        }
-        break;
-      }
-      case relocInfo::metadata_type: {
-        metadata_Relocation* r = (metadata_Relocation*)iter.reloc();
-        if (r->metadata_is_immediate()) {
-          // store index of metadata in the reloc immediate metadata list
-          int metadata_idx = metadata_list.find(r->metadata_value());
-          assert(metadata_idx != -1, "sanity check");
-          reloc_data.at_put(idx, (uint)metadata_idx);
-          has_immediate = true;
-        }
-        break;
-      }
-      case relocInfo::virtual_call_type:  // Fall through. They all call resolve_*_call blobs.
-      case relocInfo::opt_virtual_call_type:
-      case relocInfo::static_call_type: {
-        CallRelocation* r = (CallRelocation*)iter.reloc();
-        address dest = r->destination();
-        if (dest == r->addr()) { // possible call via trampoline on Aarch64
-          dest = (address)-1;    // do nothing in this case when loading this relocation
-        }
-        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr, nm));
-        break;
-      }
-      case relocInfo::trampoline_stub_type: {
-        address dest = ((trampoline_stub_Relocation*)iter.reloc())->destination();
-        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr, nm));
-        break;
-      }
-      case relocInfo::static_stub_type:
-        break;
-      case relocInfo::runtime_call_type: {
-        // Record offset of runtime destination
-        CallRelocation* r = (CallRelocation*)iter.reloc();
-        address dest = r->destination();
-        if (dest == r->addr()) { // possible call via trampoline on Aarch64
-          dest = (address)-1;    // do nothing in this case when loading this relocation
-        }
-        reloc_data.at_put(idx, _table->id_for_address(dest, iter, nullptr, nm));
-        break;
-      }
-      case relocInfo::runtime_call_w_cp_type:
-        fatal("runtime_call_w_cp_type unimplemented");
-        break;
-      case relocInfo::external_word_type: {
-        // Record offset of runtime target
-        address target = ((external_word_Relocation*)iter.reloc())->target();
-        reloc_data.at_put(idx, _table->id_for_address(target, iter, nullptr, nm));
-        break;
-      }
-      case relocInfo::internal_word_type:
-        break;
-      case relocInfo::section_word_type:
-        break;
-      case relocInfo::poll_type:
-        break;
-      case relocInfo::poll_return_type:
-        break;
-      case relocInfo::post_call_nop_type:
-        break;
-      case relocInfo::entry_guard_type:
-        break;
-      default:
-        fatal("relocation %d unimplemented", (int)iter.type());
-        break;
-    }
-    if (log.is_enabled()) {
-      iter.print_current_on(&log);
-    }
-  }
-
-  // Write additional relocation data: uint per relocation
-  // Write the count first
-  int count = reloc_data.length();
-  write_bytes(&count, sizeof(int));
-  uint data_size = count * sizeof(uint);
-  for (GrowableArrayIterator<uint> iter = reloc_data.begin();
-       iter != reloc_data.end(); ++iter) {
-    uint value = *iter;
-    int n = write_bytes(&value, sizeof(uint));
-    if (n != sizeof(uint)) {
-      return false;
-      break;
-    }
-  }
-
-  if (!align_write()) {
-    return false;
-  }
-  return true; //success;
-}
-
 bool AOTCodeCache::write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list) {
   int count = oop_list.length();
   if (!write_bytes(&count, sizeof(int))) {
@@ -2458,59 +2391,6 @@ bool AOTCodeCache::write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_lis
   return true;
 }
 
-bool AOTCodeCache::write_debug_info(DebugInformationRecorder* recorder) {
-  if (!align_write()) {
-    return false;
-  }
-  // Don't call data_size() and pcs_size(). They will freeze OopRecorder.
-  int data_size = recorder->stream()->position(); // In bytes
-  uint n = write_bytes(&data_size, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  int pcs_length = recorder->pcs_length(); // In bytes
-  n = write_bytes(&pcs_length, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  n = write_bytes(recorder->stream()->buffer(), data_size);
-  if (n != (uint)data_size) {
-    return false;
-  }
-  uint pcs_size = pcs_length * sizeof(PcDesc);
-  n = write_bytes(recorder->pcs(), pcs_size);
-  if (n != pcs_size) {
-    return false;
-  }
-  return true;
-}
-
-DebugInformationRecorder* AOTCodeReader::read_debug_info(OopRecorder* oop_recorder) {
-  uint code_offset = align_up(read_position(), DATA_ALIGNMENT);
-  int data_size  = *(int*)addr(code_offset);
-  code_offset   += sizeof(int);
-  int pcs_length = *(int*)addr(code_offset);
-  code_offset   += sizeof(int);
-
-  log_debug(aot, codecache)("======== read DebugInfo [%d, %d]:", data_size, pcs_length);
-
-  // Aligned initial sizes
-  int data_size_align  = align_up(data_size, DATA_ALIGNMENT);
-  int pcs_length_align = pcs_length + 1;
-  assert(sizeof(PcDesc) > DATA_ALIGNMENT, "sanity");
-  DebugInformationRecorder* recorder = new DebugInformationRecorder(oop_recorder, data_size_align, pcs_length);
-
-  copy_bytes(addr(code_offset), recorder->stream()->buffer(), data_size_align);
-  recorder->stream()->set_position(data_size);
-  code_offset += data_size;
-
-  uint pcs_size = pcs_length * sizeof(PcDesc);
-  copy_bytes(addr(code_offset), (address)recorder->pcs(), pcs_size);
-  code_offset += pcs_size;
-  set_read_position(code_offset);
-  return recorder;
-}
-
 bool AOTCodeCache::write_metadata(nmethod* nm) {
   int count = nm->metadata_count()-1;
   if (!write_bytes(&count, sizeof(int))) {
@@ -2518,36 +2398,6 @@ bool AOTCodeCache::write_metadata(nmethod* nm) {
   }
   for (Metadata** p = nm->metadata_begin(); p < nm->metadata_end(); p++) {
     if (!write_metadata(*p)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool AOTCodeCache::write_metadata(OopRecorder* oop_recorder) {
-  int metadata_count = oop_recorder->metadata_count();
-  uint n = write_bytes(&metadata_count, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-
-  log_debug(aot, codecache)("======== write metadata [%d]:", metadata_count);
-
-  for (int i = 1; i < metadata_count; i++) { // skip first virtual nullptr
-    Metadata* m = oop_recorder->metadata_at(i);
-    LogStreamHandle(Debug, aot, codecache, metadata) log;
-    if (log.is_enabled()) {
-      log.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
-      if (m == (Metadata*)Universe::non_oop_word()) {
-        log.print("non-metadata word");
-      } else if (m == nullptr) {
-        log.print("nullptr-oop");
-      } else {
-        Metadata::print_value_on_maybe_null(&log, m);
-      }
-      log.cr();
-    }
-    if (!write_metadata(m)) {
       return false;
     }
   }
@@ -2589,49 +2439,6 @@ bool AOTCodeCache::write_metadata(Metadata* m) {
   } else { // Not supported
     fatal("metadata : " INTPTR_FORMAT " unimplemented", p2i(m));
     return false;
-  }
-  return true;
-}
-
-bool AOTCodeReader::read_metadata(OopRecorder* oop_recorder, ciMethod* target) {
-  uint code_offset = read_position();
-  int metadata_count = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  set_read_position(code_offset);
-
-  log_debug(aot, codecache)("======== read metadata [%d]:", metadata_count);
-
-  if (metadata_count == 0) {
-    return true;
-  }
-  {
-    VM_ENTRY_MARK;
-    methodHandle comp_method(THREAD, target->get_Method());
-
-    for (int i = 1; i < metadata_count; i++) {
-      Metadata* m = read_metadata(comp_method);
-      if (lookup_failed()) {
-        return false;
-      }
-      if (oop_recorder->is_real(m)) {
-        oop_recorder->find_index(m);
-      } else {
-        oop_recorder->allocate_metadata_index(m);
-      }
-      LogTarget(Debug, aot, codecache, metadata) log;
-      if (log.is_enabled()) {
-        LogStream ls(log);
-        ls.print("%d: " INTPTR_FORMAT " ", i, p2i(m));
-        if (m == (Metadata*)Universe::non_oop_word()) {
-          ls.print("non-metadata word");
-        } else if (m == nullptr) {
-          ls.print("nullptr-oop");
-        } else {
-          Metadata::print_value_on_maybe_null(&ls, m);
-        }
-        ls.cr();
-      }
-    }
   }
   return true;
 }
@@ -3104,35 +2911,6 @@ Klass* AOTCodeReader::read_klass(const methodHandle& comp_method, bool shared) {
   return k;
 }
 
-bool AOTCodeCache::write_oops(OopRecorder* oop_recorder) {
-  int oop_count = oop_recorder->oop_count();
-  uint n = write_bytes(&oop_count, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  log_debug(aot, codecache)("======== write oops [%d]:", oop_count);
-
-  for (int i = 1; i < oop_count; i++) { // skip first virtual nullptr
-    jobject jo = oop_recorder->oop_at(i);
-    LogStreamHandle(Info, aot, codecache, oops) log;
-    if (log.is_enabled()) {
-      log.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
-      if (jo == (jobject)Universe::non_oop_word()) {
-        log.print("non-oop word");
-      } else if (jo == nullptr) {
-        log.print("nullptr-oop");
-      } else {
-        JNIHandles::resolve(jo)->print_value_on(&log);
-      }
-      log.cr();
-    }
-    if (!write_oop(jo)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool AOTCodeCache::write_oop(jobject& jo) {
   oop obj = JNIHandles::resolve(jo);
   return write_oop(obj);
@@ -3241,46 +3019,6 @@ bool AOTCodeCache::write_oop(oop obj) {
     log_info(aot, codecache, nmethod)("%d (L%d): Unhandled obj: " PTR_FORMAT " : %s",
                               compile_id(), comp_level(), p2i(obj), obj->klass()->external_name());
     return false;
-  }
-  return true;
-}
-
-bool AOTCodeReader::read_oops(OopRecorder* oop_recorder, ciMethod* target) {
-  uint code_offset = read_position();
-  int oop_count = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  set_read_position(code_offset);
-  log_debug(aot, codecache)("======== read oops [%d]:", oop_count);
-  if (oop_count == 0) {
-    return true;
-  }
-  {
-    VM_ENTRY_MARK;
-    methodHandle comp_method(THREAD, target->get_Method());
-    for (int i = 1; i < oop_count; i++) {
-      oop obj = read_oop(THREAD, comp_method);
-      if (lookup_failed()) {
-        return false;
-      }
-      jobject jo = JNIHandles::make_local(THREAD, obj);
-      if (oop_recorder->is_real(jo)) {
-        oop_recorder->find_index(jo);
-      } else {
-        oop_recorder->allocate_oop_index(jo);
-      }
-      LogStreamHandle(Debug, aot, codecache, oops) log;
-      if (log.is_enabled()) {
-        log.print("%d: " INTPTR_FORMAT " ", i, p2i(jo));
-        if (jo == (jobject)Universe::non_oop_word()) {
-          log.print("non-oop word");
-        } else if (jo == nullptr) {
-          log.print("nullptr-oop");
-        } else {
-          JNIHandles::resolve(jo)->print_value_on(&log);
-        }
-        log.cr();
-      }
-    }
   }
   return true;
 }
@@ -3556,17 +3294,18 @@ void AOTCodeReader::read_dbg_strings(DbgStrings& dbg_strings) {
 //      [_c_str_base, _c_str_base + _c_str_max -1],
 #define _extrs_max 140
 #define _stubs_max 140
-#define _all_blobs_max 100
 #define _shared_blobs_max 25
+#define _C1_blobs_max 50
 #define _C2_blobs_max 25
-#define _C1_blobs_max (_all_blobs_max - _shared_blobs_max - _C2_blobs_max)
-#define _all_max 380
+#define _blobs_max (_shared_blobs_max+_C1_blobs_max+_C2_blobs_max)
+#define _all_max (_extrs_max+_stubs_max+_blobs_max)
 
 #define _extrs_base 0
 #define _stubs_base (_extrs_base + _extrs_max)
 #define _shared_blobs_base (_stubs_base + _stubs_max)
 #define _C1_blobs_base (_shared_blobs_base + _shared_blobs_max)
 #define _C2_blobs_base (_C1_blobs_base + _C1_blobs_max)
+#define _blobs_end  (_shared_blobs_base + _blobs_max)
 #if (_C2_blobs_base >= _all_max)
 #error AOTCodeAddressTable ranges need adjusting
 #endif
@@ -3581,11 +3320,13 @@ static bool initializing_extrs = false;
 
 void AOTCodeAddressTable::init_extrs() {
   if (_extrs_complete || initializing_extrs) return; // Done already
+
+  assert(_blobs_end <= _all_max, "AOTCodeAddress table ranges need adjusting");
+
   initializing_extrs = true;
   _extrs_addr = NEW_C_HEAP_ARRAY(address, _extrs_max, mtCode);
 
   _extrs_length = 0;
-  _stubs_length = 0;
 
   // Record addresses of VM runtime methods
   SET_ADDRESS(_extrs, SharedRuntime::fixup_callers_callsite);
@@ -3803,7 +3544,7 @@ void AOTCodeAddressTable::init_early_stubs() {
   }
 
   _early_stubs_complete = true;
-  log_info(aot, codecache, init)("early stubs recorded");
+  log_info(aot, codecache, init)("Early stubs recorded");
 }
 
 static bool initializing_shared_blobs = false;
@@ -3811,19 +3552,17 @@ static bool initializing_shared_blobs = false;
 void AOTCodeAddressTable::init_shared_blobs() {
   if (_complete || initializing_shared_blobs) return; // Done already
   initializing_shared_blobs = true;
-  address* blobs_addr = NEW_C_HEAP_ARRAY(address, _all_blobs_max, mtCode);
-
-  // Divide _shared_blobs_addr array to chunks because they could be initialized in parrallel
+  address* blobs_addr = NEW_C_HEAP_ARRAY(address, _blobs_max, mtCode);
   _shared_blobs_addr = blobs_addr;
   _C1_blobs_addr = _shared_blobs_addr + _shared_blobs_max;// C1 blobs addresses stored after shared blobs
   _C2_blobs_addr = _C1_blobs_addr + _C1_blobs_max; // C2 blobs addresses stored after C1 blobs
 
-  _shared_blobs_length = 0;       // for shared blobs
+  _shared_blobs_length = 0;
   _C1_blobs_length = 0;
   _C2_blobs_length = 0;
 
   // clear the address table
-  memset(blobs_addr, 0, sizeof(address)* _all_blobs_max);
+  memset(blobs_addr, 0, sizeof(address)* _blobs_max);
 
   // Record addresses of generated code blobs
   SET_ADDRESS(_shared_blobs, SharedRuntime::get_handle_wrong_method_stub());
@@ -3847,9 +3586,15 @@ void AOTCodeAddressTable::init_shared_blobs() {
     SET_ADDRESS(_shared_blobs, SharedRuntime::deopt_blob()->implicit_exception_uncommon_trap());
   }
 #endif
+  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_AbstractMethodError_entry());
+  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_IncompatibleClassChangeError_entry());
+  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_NullPointerException_at_call_entry());
+  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_StackOverflowError_entry());
+  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_delayed_StackOverflowError_entry());
 
   assert(_shared_blobs_length <= _shared_blobs_max, "increase _shared_blobs_max to %d", _shared_blobs_length);
-  log_info(aot, codecache,init)("Early shared blobs recorded");
+  _shared_blobs_complete = true;
+  log_info(aot, codecache,init)("All shared blobs recorded");
 }
 
 static bool initializing_stubs = false;
@@ -3857,17 +3602,6 @@ void AOTCodeAddressTable::init_stubs() {
   if (_complete || initializing_stubs) return; // Done already
   assert(_early_stubs_complete, "early stubs whould be initialized");
   initializing_stubs = true;
-  // final blobs
-  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_AbstractMethodError_entry());
-  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_IncompatibleClassChangeError_entry());
-  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_NullPointerException_at_call_entry());
-  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_StackOverflowError_entry());
-  SET_ADDRESS(_shared_blobs, SharedRuntime::throw_delayed_StackOverflowError_entry());
-
-  assert(_shared_blobs_length <= _all_blobs_max, "increase _all_blobs_max to %d", _shared_blobs_length);
-
-  _shared_blobs_complete = true;
-  log_info(aot, codecache,init)("All shared blobs recorded");
 
   // Stubs
   SET_ADDRESS(_stubs, StubRoutines::method_entry_barrier());
@@ -4337,7 +4071,7 @@ address AOTCodeAddressTable::address_for_id(int idx) {
   return nullptr;
 }
 
-int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBuffer* buffer, CodeBlob* blob) {
+int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeBlob* blob) {
   if (!_extrs_complete) {
     fatal("AOT Code Cache VM runtime addresses table is not complete");
   }
@@ -4425,10 +4159,6 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
         } else {
           reloc.print_current_on(tty);
 #ifndef PRODUCT
-          if (buffer != nullptr) {
-            buffer->print_on(tty);
-            buffer->decode();
-          }
           if (blob != nullptr) {
             blob->print_on(tty);
             blob->print_code_on(tty);
@@ -4456,7 +4186,6 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
 #undef _blobs_base
 #undef _C1_blobs_base
 #undef _C2_blobs_base
-#undef _c_str_base
 
 void AOTRuntimeConstants::initialize_from_runtime() {
   BarrierSet* bs = BarrierSet::barrier_set();
