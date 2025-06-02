@@ -85,7 +85,6 @@ public:
   T* pop(Monitor* lock, TRAPS) {
     MonitorLocker locker(THREAD, lock);
     while(is_empty_unlocked() && !CompileBroker::is_compilation_disabled_forever()) {
-      locker.notify_all(); // notify that queue is empty
       locker.wait();
     }
     T* value = pop_unlocked();
