@@ -3822,7 +3822,6 @@ jint Arguments::apply_ergo() {
     warning("UseSecondarySupersTable is not supported");
     FLAG_SET_DEFAULT(UseSecondarySupersTable, false);
   }
-  UseSecondarySupersTable = false; // FIXME: Disabled for Leyden. Neet to fix AOTCodeAddressTable::id_for_address()
   if (!UseSecondarySupersTable) {
     FLAG_SET_DEFAULT(StressSecondarySupers, false);
     FLAG_SET_DEFAULT(VerifySecondarySupers, false);
