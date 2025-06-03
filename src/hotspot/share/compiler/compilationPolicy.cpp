@@ -185,7 +185,10 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
 void CompilationPolicy::flush_replay_training_at_init(TRAPS) {
    MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
    while (!_training_replay_queue.is_empty_unlocked()) {
-     locker.wait(); // let the replay training thread drain the queue
+     // Let the replay training thread drain the queue.
+     // We need to re-check the queue periodically, since draining
+     // threads do not notify us about queue going empty.
+     locker.wait(100);
    }
 }
 
