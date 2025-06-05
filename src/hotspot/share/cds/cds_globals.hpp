@@ -144,11 +144,11 @@
   product(bool, AOTPrintTrainingInfo, false, DIAGNOSTIC,                    \
           "Print additional information about training")                    \
                                                                             \
-  product(bool, AOTCompileEagerly, false, DIAGNOSTIC,                       \
-          "Compile methods as soon as possible")                            \
-                                                                            \
   product(bool, AOTVerifyTrainingData, trueInDebug, DIAGNOSTIC,             \
           "Verify archived training data")                                  \
+                                                                            \
+  product(bool, AOTCompileEagerly, true, DIAGNOSTIC,                        \
+          "Compile methods as soon as possible")                            \
                                                                             \
   product(bool, AOTRecordOptCompilationOrder, false,                        \
           "Record c2/jvmci nmethod temperature to guide compilation order.")\
