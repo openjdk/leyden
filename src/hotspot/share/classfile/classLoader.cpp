@@ -365,8 +365,6 @@ u1* ClassPathZipEntry::open_entry(JavaThread* current, const char* name, jint* f
     }
     size++;
   }
-
-  // ZIP_ReadEntry also frees zentry
   buffer = NEW_RESOURCE_ARRAY(u1, size);
   if (!ZipLibrary::read_entry(_zip, entry, buffer, filename)) {
     return nullptr;

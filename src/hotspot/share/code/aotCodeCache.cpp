@@ -889,7 +889,6 @@ address AOTCodeCache::reserve_bytes(uint nbytes) {
   if (new_position >= (uint)((char*)_store_entries - _store_buffer)) {
     log_warning(aot,codecache)("Failed to ensure %d bytes at offset %d in AOT Code Cache. Increase AOTCodeMaxSize.",
                                nbytes, _write_position);
-
     set_failed();
     report_store_failure();
     return nullptr;
@@ -1483,7 +1482,6 @@ CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_co
     log_warning(aot, codecache, stubs)("Saved blob's name '%s' is different from the expected name '%s'",
                                        stored_name, name);
     set_lookup_failed(); // Skip this blob
-    return nullptr;
     return nullptr;
   }
 
@@ -4210,7 +4208,6 @@ AOTCodeAddressTable::~AOTCodeAddressTable() {
 #else
 #define MAX_STR_COUNT 500
 #endif
-
 #define _c_str_max  MAX_STR_COUNT
 static const int _c_str_base = _all_max;
 

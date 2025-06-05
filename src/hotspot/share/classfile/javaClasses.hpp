@@ -689,7 +689,7 @@ class java_lang_Throwable: AllStatic {
 
   static oop create_exception_instance(Symbol* class_name, TRAPS);
 
-    // Printing
+  // Printing
   static void print(oop throwable, outputStream* st);
   static void print_stack_trace(Handle throwable, outputStream* st);
   static void java_printStackTrace(Handle throwable, TRAPS);

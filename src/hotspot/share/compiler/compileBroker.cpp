@@ -2213,7 +2213,6 @@ void CompileBroker::compiler_thread_loop() {
     RecompilationPolicy::recompilation_step(AOTRecompilationWorkUnitSize, thread);
 
     CompileTask* task = queue->get(thread);
-
     if (task == nullptr) {
       if (UseDynamicNumberOfCompilerThreads) {
         // Access compiler_count under lock to enforce consistency.

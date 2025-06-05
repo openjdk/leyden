@@ -157,6 +157,7 @@ void RelocIterator::initialize(nmethod* nm, address begin, address limit) {
   set_limits(begin, limit);
 }
 
+
 RelocIterator::RelocIterator(CodeSection* cs, address begin, address limit) {
   initialize_misc();
   assert(((cs->locs_start() != nullptr) && (cs->locs_end() != nullptr)), "valid start and end pointer");
@@ -504,6 +505,7 @@ void external_word_Relocation::pack_data_to(CodeSection* dest) {
   dest->set_locs_end((relocInfo*) p);
 }
 
+
 void external_word_Relocation::unpack_data() {
   int index = unpack_1_int();
   _target = ExternalsRecorder::at(index);
@@ -840,7 +842,6 @@ const char* relocInfo::type_name(relocInfo::relocType t) {
     return "UNKNOWN RELOC TYPE";
   }
 }
-
 
 void RelocIterator::print_current_on(outputStream* st) {
   if (!has_current()) {

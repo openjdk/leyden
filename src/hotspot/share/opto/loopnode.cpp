@@ -4374,17 +4374,16 @@ static void log_loop_tree_helper(IdealLoopTree* root, IdealLoopTree* loop, Compi
     }
   } else if (loop != nullptr) {
     Node* head = loop->_head;
-    log->begin_head("loop");
-    log->print(" idx='%d' ", head->_idx);
-    if (loop->_irreducible) log->print("irreducible='1' ");
+    log->begin_head("loop idx='%d'", head->_idx);
+    if (loop->_irreducible) log->print(" irreducible='1'");
     if (head->is_Loop()) {
-      if (head->as_Loop()->is_inner_loop())        log->print("inner_loop='1' ");
-      if (head->as_Loop()->is_partial_peel_loop()) log->print("partial_peel_loop='1' ");
+      if (head->as_Loop()->is_inner_loop())        log->print(" inner_loop='1'");
+      if (head->as_Loop()->is_partial_peel_loop()) log->print(" partial_peel_loop='1'");
     } else if (head->is_CountedLoop()) {
       CountedLoopNode* cl = head->as_CountedLoop();
-      if (cl->is_pre_loop())  log->print("pre_loop='%d' ",  cl->main_idx());
-      if (cl->is_main_loop()) log->print("main_loop='%d' ", cl->_idx);
-      if (cl->is_post_loop()) log->print("post_loop='%d' ", cl->main_idx());
+      if (cl->is_pre_loop())  log->print(" pre_loop='%d'",  cl->main_idx());
+      if (cl->is_main_loop()) log->print(" main_loop='%d'", cl->_idx);
+      if (cl->is_post_loop()) log->print(" post_loop='%d'", cl->main_idx());
     }
     log->end_head();
     log_loop_tree_helper(root, loop->_child, log);

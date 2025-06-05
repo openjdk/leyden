@@ -1676,6 +1676,8 @@ ArrayKlass* InstanceKlass::array_klass_or_null() {
   return array_klass_or_null(1);
 }
 
+static int call_class_initializer_counter = 0;   // for debugging
+
 Method* InstanceKlass::class_initializer() const {
   Method* clinit = find_method(
       vmSymbols::class_initializer_name(), vmSymbols::void_method_signature());
@@ -1763,7 +1765,6 @@ void InstanceKlass::call_class_initializer(TRAPS) {
                 THREAD->name());
   }
 #else
-  static int call_class_initializer_counter = 0;   // for debugging
   LogTarget(Info, class, init) lt;
   if (lt.is_enabled()) {
     ResourceMark rm(THREAD);
