@@ -222,8 +222,8 @@ CompileTrainingData* CompileTrainingData::make(CompileTask* task) {
         last_ctd = ctd;
       }
     } else {
-       last_ctd = ctd;
-       mtd->notice_toplevel_compilation(level);
+      last_ctd = ctd;
+      mtd->notice_toplevel_compilation(level);
     }
   }
   return ctd;

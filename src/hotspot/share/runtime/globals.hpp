@@ -2045,6 +2045,7 @@ const int ObjectAlignmentInBytes = 8;
           "Use an extra lock during Thread start and exit to alleviate"     \
           "contention on Threads_lock.")                                    \
 
+
 // end of RUNTIME_FLAGS
 
 DECLARE_FLAGS(LP64_RUNTIME_FLAGS)
