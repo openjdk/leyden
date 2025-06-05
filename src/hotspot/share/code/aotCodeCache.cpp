@@ -230,7 +230,12 @@ bool AOTCodeCache::is_C3_on() {
 }
 
 bool AOTCodeCache::is_code_load_thread_on() {
-  return UseCodeLoadThread && is_using_code();
+  // We cannot trust AOTCodeCache status here, due to bootstrapping circularity.
+  // Compilation policy init runs before AOT cache is fully initialized, so the
+  // normal AOT cache status check would always fail.
+  // See: https://bugs.openjdk.org/browse/JDK-8358690
+  // return UseCodeLoadThread && is_using_code();
+  return UseCodeLoadThread && AOTCodeCaching && CDSConfig::is_using_archive();
 }
 
 bool AOTCodeCache::allow_const_field(ciConstant& value) {

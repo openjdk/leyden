@@ -663,13 +663,7 @@ void CompilationPolicy::initialize() {
       set_c2_count(count);
       count *= 2; // satisfy the assert below
     }
-    // We cannot trust AOTCodeCache status here, due to bootstrapping circularity.
-    // Compilation policy init runs before AOT cache is fully initialized, so the
-    // normal AOT cache status check would always fail.
-    // See: https://bugs.openjdk.org/browse/JDK-8358690
-    //
-    // if (AOTCodeCache::is_code_load_thread_on()) {
-    if (AOTCodeCaching && UseCodeLoadThread && CDSConfig::is_using_archive()) {
+    if (AOTCodeCache::is_code_load_thread_on()) {
       set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
     }
     assert(count == c1_count() + c2_count(), "inconsistent compiler thread count");
