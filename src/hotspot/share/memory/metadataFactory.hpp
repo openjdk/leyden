@@ -48,7 +48,6 @@ class MetadataFactory : AllStatic {
     return array;
   }
 
-  // Work-around -- see JDK-8331086.
   // This API should be used for TrainingData only.
   template <typename T>
   static Array<T>* new_array_from_c_heap(int length, MemTag flags) {

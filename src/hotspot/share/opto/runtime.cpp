@@ -103,7 +103,6 @@ C2_STUBS_DO(C2_BLOB_FIELD_DEFINE, C2_STUB_FIELD_DEFINE, C2_JVMTI_STUB_FIELD_DEFI
 #undef C2_STUB_FIELD_DEFINE
 #undef C2_JVMTI_STUB_FIELD_DEFINE
 
-
 #define C2_BLOB_NAME_DEFINE(name, type)  "C2 Runtime " # name "_blob",
 #define C2_STUB_NAME_DEFINE(name, f, t, r)  "C2 Runtime " # name,
 #define C2_JVMTI_STUB_NAME_DEFINE(name)  "C2 Runtime " # name,

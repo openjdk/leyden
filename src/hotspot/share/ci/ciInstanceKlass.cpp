@@ -68,7 +68,7 @@ ciInstanceKlass::ciInstanceKlass(Klass* k) :
   _flags = ciFlags(access_flags);
   _has_finalizer = ik->has_finalizer();
   _has_subklass = flags().is_final() ? subklass_false : subklass_unknown;
-  _init_state = compute_init_state(ik); // _init_state
+  _init_state = compute_init_state(ik);
   _has_nonstatic_fields = ik->has_nonstatic_fields();
   _has_nonstatic_concrete_methods = ik->has_nonstatic_concrete_methods();
   _is_hidden = ik->is_hidden();

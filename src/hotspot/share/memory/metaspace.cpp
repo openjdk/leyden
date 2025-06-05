@@ -911,7 +911,6 @@ MetaWord* Metaspace::allocate(ClassLoaderData* loader_data, size_t word_size,
     assert(false, "Should not allocate with exception pending");
     return nullptr;  // caller does a CHECK_NULL too
   }
-  //leyden/premain: temporarily disabled due to JDK-8327737
   assert(!THREAD->owns_locks(), "allocating metaspace while holding mutex");
 
   MetaWord* result = allocate(loader_data, word_size, type, use_class_space);

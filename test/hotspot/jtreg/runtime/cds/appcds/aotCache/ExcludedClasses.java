@@ -113,7 +113,7 @@ class TestApp {
         // In new workflow, classes from custom loaders are passed from the preimage
         // to the final image. See ClassPrelinker::record_unregistered_klasses().
         custInstance = initFromCustomLoader();
-        custArrayInstance = java.lang.reflect.Array.newInstance(custInstance.getClass(), 0);
+        custArrayInstance = Array.newInstance(custInstance.getClass(), 0);
         System.out.println(custArrayInstance);
         System.out.println("Counter = " + Foo.hotSpot());
     }

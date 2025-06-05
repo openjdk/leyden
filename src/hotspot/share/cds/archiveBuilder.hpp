@@ -388,9 +388,6 @@ public:
   DumpRegion* ro_region() { return &_ro_region; }
   DumpRegion* ac_region() { return &_ac_region; }
 
-  void start_ac_region();
-  void end_ac_region();
-
   static char* rw_region_alloc(size_t num_bytes) {
     return current()->rw_region()->allocate(num_bytes);
   }
@@ -400,6 +397,9 @@ public:
   static char* ac_region_alloc(size_t num_bytes) {
     return current()->ac_region()->allocate(num_bytes);
   }
+
+  void start_ac_region();
+  void end_ac_region();
 
   template <typename T>
   static Array<T>* new_ro_array(int length) {
