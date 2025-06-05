@@ -144,7 +144,7 @@
   product(bool, AOTPrintTrainingInfo, false, DIAGNOSTIC,                    \
           "Print additional information about training")                    \
                                                                             \
-  product(bool, AOTCompileEagerly, false, DIAGNOSTIC,                       \
+  product(bool, AOTCompileEagerly, true, DIAGNOSTIC,                        \
           "Compile methods as soon as possible")                            \
                                                                             \
   product(bool, AOTVerifyTrainingData, trueInDebug, DIAGNOSTIC,             \
