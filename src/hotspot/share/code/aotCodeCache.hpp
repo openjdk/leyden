@@ -103,9 +103,8 @@ private:
   uint   _name_size;
   uint   _num_inlined_bytecodes;
 
-  uint   _blob_offset; // Start of archived blob in the cache
-  uint   _code_offset; // Start of code for an entry of type "Stub"
-  uint   _code_size;   // Size of code for an entry of type "Stub"
+  uint   _code_offset; // Start of code in cache
+  uint   _code_size;   // Total size of all code sections
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
@@ -134,7 +133,6 @@ public:
     _size         = size;
     _name_offset  = name_offset;
     _name_size    = name_size;
-    _blob_offset  = code_offset; // unused
     _code_offset  = code_offset;
     _code_size    = code_size;
 
@@ -170,8 +168,7 @@ public:
     _size         = size;
     _name_offset  = name_offset;
     _name_size    = name_size;
-    _blob_offset  = blob_offset;
-    _code_offset  = blob_offset; // unused
+    _code_offset  = blob_offset;
     _code_size    = 0; // unused
 
     _dumptime_content_start_addr = dumptime_content_start_addr;
@@ -190,6 +187,7 @@ public:
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
+    _ignore_decompile = true;
   }
 
   void* operator new(size_t x, AOTCodeCache* cache);
@@ -213,7 +211,6 @@ public:
   uint size()         const { return _size; }
   uint name_offset()  const { return _name_offset; }
   uint name_size()    const { return _name_size; }
-  uint blob_offset()  const { return _blob_offset; }
   uint code_offset()  const { return _code_offset; }
   uint code_size()    const { return _code_size; }
 

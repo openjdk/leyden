@@ -1487,7 +1487,7 @@ CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_co
   }
 
   // Read archived code blob
-  uint offset = entry_position + _entry->blob_offset();
+  uint offset = entry_position + _entry->code_offset();
   CodeBlob* archived_blob = (CodeBlob*)addr(offset);
   offset += archived_blob->size();
 
