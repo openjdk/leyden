@@ -2005,7 +2005,7 @@ bool AOTCodeReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompil
                            this);
   bool success = task->is_success();
   if (success) {
-    nmethod* nm = target->get_Method()->code();
+    nmethod* nm = task->preload() ? target->get_Method()->preload_code() : target->get_Method()->code();
 #ifndef PRODUCT
     // Read asm remarks
     nm->asm_remarks().init();

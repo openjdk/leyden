@@ -393,6 +393,9 @@ public:
   void set_preload_code(nmethod* code) {
     _preload_code = code;
   }
+  nmethod* preload_code() const {
+    return _preload_code;
+  }
   void set_aot_code_entry(AOTCodeEntry* entry) {
     _aot_code_entry = entry;
   }
