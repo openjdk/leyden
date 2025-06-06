@@ -700,6 +700,7 @@ void AOTCodeCache::Config::record(bool use_meta_ptrs) {
   _compressedOopShift    = CompressedOops::shift();
   _compressedOopBase     = CompressedOops::base();
   _compressedKlassShift  = CompressedKlassPointers::shift();
+  _compressedKlassBase   = CompressedKlassPointers::base();
   _contendedPaddingWidth = ContendedPaddingWidth;
   _objectAlignment       = ObjectAlignmentInBytes;
   _gc                    = (uint)Universe::heap()->kind();
@@ -765,6 +766,11 @@ bool AOTCodeCache::Config::verify() const {
   if (_objectAlignment != (uint)ObjectAlignmentInBytes) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with ObjectAlignmentInBytes = %d vs current %d", _objectAlignment, ObjectAlignmentInBytes);
     return false;
+  }
+
+  if ((_compressedKlassBase == nullptr || CompressedKlassPointers::base() == nullptr) && (_compressedKlassBase != CompressedKlassPointers::base())) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: incompatible CompressedKlassPointers::base(): %p vs current %p", _compressedKlassBase, CompressedKlassPointers::base());
+    AOTStubCaching = false;
   }
 
   // This should be the last check as it only disables AOTStubCaching
