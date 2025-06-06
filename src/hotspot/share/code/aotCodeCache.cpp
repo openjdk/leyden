@@ -770,13 +770,13 @@ bool AOTCodeCache::Config::verify() const {
 
   if ((_compressedKlassBase == nullptr || CompressedKlassPointers::base() == nullptr) && (_compressedKlassBase != CompressedKlassPointers::base())) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: incompatible CompressedKlassPointers::base(): %p vs current %p", _compressedKlassBase, CompressedKlassPointers::base());
-    AOTStubCaching = false;
+    return false;
   }
 
   // This should be the last check as it only disables AOTStubCaching
   if ((_compressedOopBase == nullptr || CompressedOops::base() == nullptr) && (_compressedOopBase != CompressedOops::base())) {
     log_debug(aot, codecache, init)("AOTStubCaching is disabled: incompatible CompressedOops::base(): %p vs current %p", _compressedOopBase, CompressedOops::base());
-    AOTStubCaching = false;
+    return false;
   }
 
   return true;
