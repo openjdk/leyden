@@ -2960,6 +2960,7 @@ jint Arguments::finalize_vm_init_args() {
     return JNI_ERR;
   }
 
+
 #ifndef CAN_SHOW_REGISTERS_ON_ASSERT
   UNSUPPORTED_OPTION(ShowRegistersOnAssert);
 #endif // CAN_SHOW_REGISTERS_ON_ASSERT
@@ -3822,7 +3823,6 @@ jint Arguments::apply_ergo() {
     warning("UseSecondarySupersTable is not supported");
     FLAG_SET_DEFAULT(UseSecondarySupersTable, false);
   }
-  UseSecondarySupersTable = false; // FIXME: Disabled for Leyden. Neet to fix AOTCodeAddressTable::id_for_address()
   if (!UseSecondarySupersTable) {
     FLAG_SET_DEFAULT(StressSecondarySupers, false);
     FLAG_SET_DEFAULT(VerifySecondarySupers, false);

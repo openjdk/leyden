@@ -1037,8 +1037,6 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
   log_info(aot)("Rewriting and linking classes: done");
   TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
 
-  TrainingData::init_dumptime_table(CHECK); // captures TrainingDataSetLocker
-
   if (CDSConfig::is_dumping_regenerated_lambdaform_invokers()) {
     LambdaFormInvokers::regenerate_holder_classes(CHECK);
   }
@@ -2201,7 +2199,6 @@ void MetaspaceShared::initialize_shared_spaces() {
       tty->print_cr("Dynamic archive version %d", dynamic_mapinfo->version());
       SystemDictionaryShared::print_shared_archive(tty, false/*dynamic*/);
     }
-    TrainingData::print_archived_training_data_on(tty);
 
     TrainingData::print_archived_training_data_on(tty);
 

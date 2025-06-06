@@ -230,7 +230,12 @@ bool AOTCodeCache::is_C3_on() {
 }
 
 bool AOTCodeCache::is_code_load_thread_on() {
-  return UseCodeLoadThread && is_using_code();
+  // We cannot trust AOTCodeCache status here, due to bootstrapping circularity.
+  // Compilation policy init runs before AOT cache is fully initialized, so the
+  // normal AOT cache status check would always fail.
+  // See: https://bugs.openjdk.org/browse/JDK-8358690
+  // return UseCodeLoadThread && is_using_code();
+  return UseCodeLoadThread && AOTCodeCaching && CDSConfig::is_using_archive();
 }
 
 bool AOTCodeCache::allow_const_field(ciConstant& value) {
@@ -889,7 +894,6 @@ address AOTCodeCache::reserve_bytes(uint nbytes) {
   if (new_position >= (uint)((char*)_store_entries - _store_buffer)) {
     log_warning(aot,codecache)("Failed to ensure %d bytes at offset %d in AOT Code Cache. Increase AOTCodeMaxSize.",
                                nbytes, _write_position);
-
     set_failed();
     report_store_failure();
     return nullptr;
@@ -1483,7 +1487,6 @@ CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_co
     log_warning(aot, codecache, stubs)("Saved blob's name '%s' is different from the expected name '%s'",
                                        stored_name, name);
     set_lookup_failed(); // Skip this blob
-    return nullptr;
     return nullptr;
   }
 
@@ -3606,12 +3609,12 @@ void AOTCodeReader::read_dbg_strings(DbgStrings& dbg_strings) {
 //      ...
 //      [_c_str_base, _c_str_base + _c_str_max -1],
 #define _extrs_max 140
-#define _stubs_max 140
+#define _stubs_max 210
 #define _all_blobs_max 100
 #define _shared_blobs_max 25
 #define _C2_blobs_max 25
 #define _C1_blobs_max (_all_blobs_max - _shared_blobs_max - _C2_blobs_max)
-#define _all_max 380
+#define _all_max 450
 
 #define _extrs_base 0
 #define _stubs_base (_extrs_base + _extrs_max)
@@ -4033,6 +4036,11 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::f2hf_adr());
   SET_ADDRESS(_stubs, StubRoutines::hf2f_adr());
 
+  for (int slot = 0; slot < Klass::SECONDARY_SUPERS_TABLE_SIZE; slot++) {
+    SET_ADDRESS(_stubs, StubRoutines::lookup_secondary_supers_table_stub(slot));
+  }
+  SET_ADDRESS(_stubs, StubRoutines::lookup_secondary_supers_table_slow_path_stub());
+
 #if defined(AMD64) && !defined(ZERO)
   SET_ADDRESS(_stubs, StubRoutines::x86::d2i_fixup());
   SET_ADDRESS(_stubs, StubRoutines::x86::f2i_fixup());
@@ -4205,7 +4213,6 @@ AOTCodeAddressTable::~AOTCodeAddressTable() {
 #else
 #define MAX_STR_COUNT 500
 #endif
-
 #define _c_str_max  MAX_STR_COUNT
 static const int _c_str_base = _all_max;
 

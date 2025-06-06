@@ -148,6 +148,7 @@ const char* constantTag::internal_name() const {
     case JVM_CONSTANT_StringIndex :
       return "Unresolved String Index";
     default:
+      ShouldNotReachHere();
       return "Illegal";
   }
 }

@@ -746,6 +746,11 @@ void ArchiveBuilder::mark_and_relocate_to_buffered_addr(address* ptr_location) {
   ArchivePtrMarker::mark_pointer(ptr_location);
 }
 
+bool ArchiveBuilder::has_been_archived(address src_addr) const {
+  SourceObjInfo* p = _src_obj_table.get(src_addr);
+  return (p != nullptr);
+}
+
 bool ArchiveBuilder::has_been_buffered(address src_addr) const {
   if (RegeneratedClasses::has_been_regenerated(src_addr) ||
       _src_obj_table.get(src_addr) == nullptr ||
@@ -762,11 +767,6 @@ address ArchiveBuilder::get_buffered_addr(address src_addr) const {
          p2i(src_addr));
 
   return p->buffered_addr();
-}
-
-bool ArchiveBuilder::has_been_archived(address src_addr) const {
-  SourceObjInfo* p = _src_obj_table.get(src_addr);
-  return (p != nullptr);
 }
 
 address ArchiveBuilder::get_source_addr(address buffered_addr) const {
@@ -1034,6 +1034,13 @@ uintx ArchiveBuilder::any_to_offset(address p) const {
   return buffer_to_offset(p);
 }
 
+address ArchiveBuilder::offset_to_buffered_address(u4 offset) const {
+  address requested_addr = _requested_static_archive_bottom + offset;
+  address buffered_addr = requested_addr - _buffer_to_requested_delta;
+  assert(is_in_buffer_space(buffered_addr), "bad offset");
+  return buffered_addr;
+}
+
 void ArchiveBuilder::start_ac_region() {
   ro_region()->pack();
   start_dump_region(&_ac_region);
@@ -1041,13 +1048,6 @@ void ArchiveBuilder::start_ac_region() {
 
 void ArchiveBuilder::end_ac_region() {
   _ac_region.pack();
-}
-
-address ArchiveBuilder::offset_to_buffered_address(u4 offset) const {
-  address requested_addr = _requested_static_archive_bottom + offset;
-  address buffered_addr = requested_addr - _buffer_to_requested_delta;
-  assert(is_in_buffer_space(buffered_addr), "bad offset");
-  return buffered_addr;
 }
 
 #if INCLUDE_CDS_JAVA_HEAP
@@ -1162,7 +1162,6 @@ void ArchiveBuilder::relocate_to_requested() {
   if (!ro_region()->is_packed()) {
     ro_region()->pack();
   }
-
   size_t my_archive_size = buffer_top() - buffer_bottom();
 
   if (CDSConfig::is_dumping_static_archive()) {

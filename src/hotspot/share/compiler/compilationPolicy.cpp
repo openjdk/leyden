@@ -86,7 +86,7 @@ bool CompilationPolicy::must_be_compiled(const methodHandle& m, int comp_level) 
   if (m->has_compiled_code()) return false;       // already compiled
   if (!can_be_compiled(m, comp_level)) return false;
 
-  return !UseInterpreter ||                                                                        // must compile all methods
+  return !UseInterpreter ||                                              // must compile all methods
          (AlwaysCompileLoopMethods && m->has_loops() && CompileBroker::should_compile_new_jobs()); // eagerly compile loop methods
 }
 
@@ -677,8 +677,6 @@ void CompilationPolicy::initialize() {
 }
 
 
-
-
 #ifdef ASSERT
 bool CompilationPolicy::verify_level(CompLevel level) {
   if (TieredCompilation && level > TieredStopAtLevel) {
@@ -880,6 +878,7 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       print_event(UPDATE_IN_QUEUE, max_method, max_method, max_task->osr_bci(), (CompLevel)max_task->comp_level());
     }
   }
+
   return max_task;
 }
 
@@ -1151,7 +1150,6 @@ bool CompilationPolicy::should_create_mdo(const methodHandle& method, CompLevel 
   if (is_old(method)) {
     return true;
   }
-
   int i = method->invocation_count();
   int b = method->backedge_count();
   double k = Tier0ProfilingStartPercentage / 100.0;

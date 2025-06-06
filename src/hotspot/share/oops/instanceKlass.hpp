@@ -1082,7 +1082,7 @@ private:
   bool link_class_impl                           (TRAPS);
   bool verify_code                               (TRAPS);
   void initialize_impl                           (TRAPS);
-  void initialize_super_interfaces(TRAPS);
+  void initialize_super_interfaces               (TRAPS);
 
   void add_initialization_error(JavaThread* current, Handle exception);
   oop get_initialization_error(JavaThread* current);
@@ -1120,7 +1120,6 @@ public:
   bool can_be_verified_at_dumptime() const;
   void compute_has_loops_flag_for_methods();
 #endif
-
   bool     has_init_deps_processed() const { return _misc_flags.has_init_deps_processed(); }
   void set_has_init_deps_processed() {
     assert(is_initialized(), "");
