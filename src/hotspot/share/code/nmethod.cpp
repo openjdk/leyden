@@ -1261,10 +1261,6 @@ nmethod* nmethod::restore(address code_cache_buffer,
                           address immutable_data,
                           GrowableArray<Handle>& reloc_imm_oop_list,
                           GrowableArray<Metadata*>& reloc_imm_metadata_list,
-#ifndef PRODUCT
-                          AsmRemarks& archived_asm_remarks,
-                          DbgStrings& archived_dbg_strings,
-#endif /* PRODUCT */
                           AOTCodeReader* aot_code_reader)
 {
   CodeBlob::restore(code_cache_buffer, "nmethod", reloc_data, oop_maps);
@@ -1276,11 +1272,6 @@ nmethod* nmethod::restore(address code_cache_buffer,
   nm->copy_values(&metadata_list);
 
   aot_code_reader->fix_relocations(nm, &reloc_imm_oop_list, &reloc_imm_metadata_list);
-
-#ifndef PRODUCT
-  nm->use_remarks(archived_asm_remarks);
-  nm->use_strings(archived_dbg_strings);
-#endif /* PRODUCT */
 
   // Flush the code block
   ICache::invalidate_range(nm->code_begin(), nm->code_size());
@@ -1305,10 +1296,6 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                               address immutable_data,
                               GrowableArray<Handle>& reloc_imm_oop_list,
                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
-#ifndef PRODUCT
-                              AsmRemarks& asm_remarks,
-                              DbgStrings& dbg_strings,
-#endif /* PRODUCT */
                               AOTCodeReader* aot_code_reader)
 {
   nmethod* nm = nullptr;
@@ -1328,8 +1315,6 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                                 immutable_data,
                                 reloc_imm_oop_list,
                                 reloc_imm_metadata_list,
-                                NOT_PRODUCT_ARG(asm_remarks)
-                                NOT_PRODUCT_ARG(dbg_strings)
                                 aot_code_reader);
       nm->record_nmethod_dependency();
       NOT_PRODUCT(note_java_nmethod(nm));

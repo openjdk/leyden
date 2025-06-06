@@ -1503,25 +1503,21 @@ CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_co
     oop_maps = read_oop_map_set();
   }
 
-#ifndef PRODUCT
-  AsmRemarks asm_remarks;
-  read_asm_remarks(asm_remarks);
-  DbgStrings dbg_strings;
-  read_dbg_strings(dbg_strings);
-#endif // PRODUCT
-
   CodeBlob* code_blob = CodeBlob::create(archived_blob,
                                          stored_name,
                                          reloc_data,
                                          oop_maps
-#ifndef PRODUCT
-                                         , asm_remarks
-                                         , dbg_strings
-#endif
                                         );
   if (code_blob == nullptr) { // no space left in CodeCache
     return nullptr;
   }
+
+#ifndef PRODUCT
+  code_blob->asm_remarks().init();
+  read_asm_remarks(code_blob->asm_remarks());
+  code_blob->dbg_strings().init();
+  read_dbg_strings(code_blob->dbg_strings());
+#endif // PRODUCT
 
   fix_relocations(code_blob);
 
@@ -1768,52 +1764,6 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   }
   CodeBlob::archive_blob(nm, archive_buffer);
 
-#ifndef PRODUCT
-  // Write asm remarks
-  uint* count_ptr = (uint *)reserve_bytes(sizeof(uint));
-  if (count_ptr == nullptr) {
-    return nullptr;
-  }
-  uint count = 0;
-  bool result = nm->asm_remarks().iterate([&] (uint offset, const char* str) -> bool {
-    log_info(aot, codecache, nmethod)("asm remark offset=%d, str=%s", offset, str);
-    n = write_bytes(&offset, sizeof(uint));
-    if (n != sizeof(uint)) {
-      return false;
-    }
-    n = write_bytes(str, (uint)strlen(str) + 1);
-    if (n != strlen(str) + 1) {
-      return false;
-    }
-    count += 1;
-    return true;
-  });
-  if (!result) {
-    return nullptr;
-  }
-  *count_ptr = count;
-
-  // Write dbg strings
-  count_ptr = (uint *)reserve_bytes(sizeof(uint));
-  if (count_ptr == nullptr) {
-    return nullptr;
-  }
-  count = 0;
-  result = nm->dbg_strings().iterate([&] (const char* str) -> bool {
-    log_info(aot, codecache, nmethod)("dbg string[" INTPTR_FORMAT "]=%s", p2i(str), str);
-    n = write_bytes(str, (uint)strlen(str) + 1);
-    if (n != strlen(str) + 1) {
-      return false;
-    }
-    count += 1;
-    return true;
-  });
-  if (!result) {
-    return nullptr;
-  }
-  *count_ptr = count;
-#endif /* PRODUCT */
-
   uint reloc_data_size = nm->relocation_size();
   n = write_bytes((address)nm->relocation_begin(), reloc_data_size);
   if (n != reloc_data_size) {
@@ -1867,6 +1817,52 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   if (!write_relocations(*nm, &oop_list, &metadata_list)) {
     return nullptr;
   }
+
+#ifndef PRODUCT
+  // Write asm remarks
+  uint* count_ptr = (uint *)reserve_bytes(sizeof(uint));
+  if (count_ptr == nullptr) {
+    return nullptr;
+  }
+  uint count = 0;
+  bool result = nm->asm_remarks().iterate([&] (uint offset, const char* str) -> bool {
+    log_info(aot, codecache, nmethod)("asm remark offset=%d, str=%s", offset, str);
+    n = write_bytes(&offset, sizeof(uint));
+    if (n != sizeof(uint)) {
+      return false;
+    }
+    n = write_bytes(str, (uint)strlen(str) + 1);
+    if (n != strlen(str) + 1) {
+      return false;
+    }
+    count += 1;
+    return true;
+  });
+  if (!result) {
+    return nullptr;
+  }
+  *count_ptr = count;
+
+  // Write dbg strings
+  count_ptr = (uint *)reserve_bytes(sizeof(uint));
+  if (count_ptr == nullptr) {
+    return nullptr;
+  }
+  count = 0;
+  result = nm->dbg_strings().iterate([&] (const char* str) -> bool {
+    log_info(aot, codecache, nmethod)("dbg string[" INTPTR_FORMAT "]=%s", p2i(str), str);
+    n = write_bytes(str, (uint)strlen(str) + 1);
+    if (n != strlen(str) + 1) {
+      return false;
+    }
+    count += 1;
+    return true;
+  });
+  if (!result) {
+    return nullptr;
+  }
+  *count_ptr = count;
+#endif /* PRODUCT */
 
   uint entry_size = _write_position - entry_position;
   AOTCodeEntry* entry = new (this) AOTCodeEntry(AOTCodeEntry::Code, hash,
@@ -1956,33 +1952,6 @@ bool AOTCodeReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompil
 
   uint offset;
 
-#ifndef PRODUCT
-  // Read asm remarks
-  offset = read_position();
-  uint count = *(uint *)addr(offset);
-  offset += sizeof(uint);
-  AsmRemarks asm_remarks;
-  for (uint i = 0; i < count; i++) {
-    uint remark_offset = *(uint *)addr(offset);
-    offset += sizeof(uint);
-    const char* remark = (const char*)addr(offset);
-    offset += (uint)strlen(remark)+1;
-    asm_remarks.insert(remark_offset, remark);
-  }
-  set_read_position(offset);
-
-  // Read dbg strings
-  count = *(uint *)addr(offset);
-  offset += sizeof(uint);
-  DbgStrings dbg_strings;
-  for (uint i = 0; i < count; i++) {
-    const char* str = (const char*)addr(offset);
-    offset += (uint)strlen(str)+1;
-    dbg_strings.insert(str);
-  }
-  set_read_position(offset);
-#endif /* PRODUCT */
-
   offset = read_position();
   address reloc_data = (address)addr(offset);
   offset += archived_nm->relocation_size();
@@ -2033,11 +2002,37 @@ bool AOTCodeReader::compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompil
                            immutable_data,
                            reloc_immediate_oop_list,
                            reloc_immediate_metadata_list,
-                           NOT_PRODUCT_ARG(asm_remarks)
-                           NOT_PRODUCT_ARG(dbg_strings)
                            this);
   bool success = task->is_success();
   if (success) {
+    nmethod* nm = target->get_Method()->code();
+#ifndef PRODUCT
+    // Read asm remarks
+    nm->asm_remarks().init();
+    offset = read_position();
+    uint count = *(uint *)addr(offset);
+    offset += sizeof(uint);
+    for (uint i = 0; i < count; i++) {
+      uint remark_offset = *(uint *)addr(offset);
+      offset += sizeof(uint);
+      const char* remark = (const char*)addr(offset);
+      offset += (uint)strlen(remark)+1;
+      nm->asm_remarks().insert(remark_offset, remark);
+    }
+    set_read_position(offset);
+
+    // Read dbg strings
+    nm->dbg_strings().init();
+    count = *(uint *)addr(offset);
+    offset += sizeof(uint);
+    for (uint i = 0; i < count; i++) {
+      const char* str = (const char*)addr(offset);
+      offset += (uint)strlen(str)+1;
+      nm->dbg_strings().insert(str);
+    }
+    set_read_position(offset);
+#endif /* PRODUCT */
+
     aot_code_entry->set_loaded();
     log_info(aot, codecache, nmethod)("%d (L%d): Read nmethod '%s' from AOT Code Cache", compile_id(), comp_level(), name);
 #ifdef ASSERT
