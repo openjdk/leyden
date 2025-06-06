@@ -31,14 +31,12 @@
 // To reduce HotSpot build time, if you just need to declare a pointer to the
 // following types, include this file instead of perfData.hpp.
 
-class PerfLongSampleHelper;
 class PerfLongConstant;
 class PerfLongCounter;
 class PerfLongVariable;
 class PerfStringVariable;
 class PerfTickCounters;
 
-typedef PerfLongSampleHelper PerfSampleHelper;
 typedef PerfLongConstant PerfConstant;
 typedef PerfLongCounter PerfCounter;
 typedef PerfLongVariable PerfVariable;

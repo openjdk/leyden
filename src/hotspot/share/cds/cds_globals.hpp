@@ -120,8 +120,7 @@
           constraint(AOTCacheConstraintFunc, AtParse)                       \
                                                                             \
   product(ccstr, AOTCacheOutput, nullptr,                                   \
-          "Write AOT cache into this file (overrides AOTCache when "        \
-          "writing)")                                                       \
+          "Specifies the file name for writing the AOT cache")              \
                                                                             \
   product(bool, AOTInvokeDynamicLinking, false, DIAGNOSTIC,                 \
           "AOT-link JVM_CONSTANT_InvokeDynamic entries in cached "          \
@@ -145,11 +144,11 @@
   product(bool, AOTPrintTrainingInfo, false, DIAGNOSTIC,                    \
           "Print additional information about training")                    \
                                                                             \
-  product(bool, AOTCompileEagerly, true, DIAGNOSTIC,                        \
-          "Compile methods as soon as possible")                            \
-                                                                            \
   product(bool, AOTVerifyTrainingData, trueInDebug, DIAGNOSTIC,             \
           "Verify archived training data")                                  \
+                                                                            \
+  product(bool, AOTCompileEagerly, true, DIAGNOSTIC,                        \
+          "Compile methods as soon as possible")                            \
                                                                             \
   product(bool, AOTRecordOptCompilationOrder, false,                        \
           "Record c2/jvmci nmethod temperature to guide compilation order.")\
@@ -182,11 +181,11 @@
   product(bool, AOTCodeCaching, false, DIAGNOSTIC,                          \
           "Enable saving and restoring JIT comiled code in AOT cache")      \
                                                                             \
-  product(bool, AOTStubCaching, false, DIAGNOSTIC,                          \
-          "Enable saving and restoring stubs and code blobs in AOT cache")  \
-                                                                            \
   product(bool, AOTAdapterCaching, false, DIAGNOSTIC,                       \
           "Enable saving and restoring i2c2i adapters in AOT cache")        \
+                                                                            \
+  product(bool, AOTStubCaching, false, DIAGNOSTIC,                          \
+          "Enable saving and restoring stubs and code blobs in AOT cache")  \
                                                                             \
   product(uint, AOTCodeMaxSize, 512*M, DIAGNOSTIC,                          \
           "Buffer size in bytes for AOT code caching")                      \

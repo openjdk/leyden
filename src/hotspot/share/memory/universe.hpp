@@ -234,7 +234,7 @@ class Universe: AllStatic {
   static oop          class_cast_exception_instance();
   static oop          vm_exception()                  { return internal_error_instance(); }
 
-  static Array<Klass*>* the_array_interfaces_array()  { return _the_array_interfaces_array;   }
+  static Array<Klass*>* the_array_interfaces_array()  { return _the_array_interfaces_array; }
   static uintx        the_array_interfaces_bitmap()   { return _the_array_interfaces_bitmap; }
 
   static Method*      finalizer_register_method();

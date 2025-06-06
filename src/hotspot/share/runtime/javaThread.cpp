@@ -970,7 +970,7 @@ void JavaThread::exit(bool destroy_vm, ExitType exit_type) {
   _stack_overflow_state.remove_stack_guard_pages();
 
   if (UseTLAB) {
-    tlab().retire();
+    retire_tlab();
   }
 
   if (JvmtiEnv::environments_might_exist()) {
@@ -1049,7 +1049,7 @@ void JavaThread::cleanup_failed_attach_current_thread(bool is_daemon) {
   _stack_overflow_state.remove_stack_guard_pages();
 
   if (UseTLAB) {
-    tlab().retire();
+    retire_tlab();
   }
 
   Threads::remove(this, is_daemon);
@@ -1085,7 +1085,6 @@ void JavaThread::handle_special_runtime_exit_condition() {
     frame_anchor()->make_walkable();
     wait_for_object_deoptimization();
   }
-  JFR_ONLY(SUSPEND_THREAD_CONDITIONAL(this);)
 }
 
 
@@ -1803,7 +1802,7 @@ void JavaThread::print_stack_on(outputStream* st) {
 
       // Print out lock information
       if (JavaMonitorsInStackTrace) {
-        jvf->print_lock_info_on(st, count);
+        jvf->print_lock_info_on(st, false/*is_virtual*/, count);
       }
     } else {
       // Ignore non-Java frames
@@ -1845,7 +1844,7 @@ void JavaThread::print_vthread_stack_on(outputStream* st) {
 
       // Print out lock information
       if (JavaMonitorsInStackTrace) {
-        jvf->print_lock_info_on(st, count);
+        jvf->print_lock_info_on(st, true/*is_virtual*/, count);
       }
     } else {
       // Ignore non-Java frames

@@ -136,6 +136,7 @@ void Method::deallocate_contents(ClassLoaderData* loader_data) {
   clear_method_data();
   MetadataFactory::free_metadata(loader_data, method_counters());
   clear_method_counters();
+  set_adapter_entry(nullptr);
   // The nmethod will be gone when we get here.
   if (code() != nullptr) _code = nullptr;
 }
@@ -388,7 +389,7 @@ Symbol* Method::klass_name() const {
 }
 
 void Method::metaspace_pointers_do(MetaspaceClosure* it) {
-  LogStreamHandle(Trace, cds) lsh;
+  LogStreamHandle(Trace, aot) lsh;
   if (lsh.is_enabled()) {
     lsh.print("Iter(Method): %p ", this);
     print_external_name(&lsh);
@@ -414,8 +415,15 @@ void Method::metaspace_pointers_do(MetaspaceClosure* it) {
 
 void Method::remove_unshareable_info() {
   unlink_method();
-  if (AOTCodeCache::is_dumping_adapter() && _adapter != nullptr) {
+  if (method_data() != nullptr) {
+    method_data()->remove_unshareable_info();
+  }
+  if (method_counters() != nullptr) {
+    method_counters()->remove_unshareable_info();
+  }
+  if (CDSConfig::is_dumping_adapters() && _adapter != nullptr) {
     _adapter->remove_unshareable_info();
+    _adapter = nullptr;
   }
   if (method_data() != nullptr) {
     method_data()->remove_unshareable_info();
@@ -428,6 +436,12 @@ void Method::remove_unshareable_info() {
 
 void Method::restore_unshareable_info(TRAPS) {
   assert(is_method() && is_valid_method(this), "ensure C++ vtable is restored");
+  if (method_data() != nullptr) {
+    method_data()->restore_unshareable_info(CHECK);
+  }
+  if (method_counters() != nullptr) {
+    method_counters()->restore_unshareable_info(CHECK);
+  }
   if (_adapter != nullptr) {
     assert(_adapter->is_linked(), "must be");
     _from_compiled_entry = _adapter->get_c2i_entry();
@@ -1215,7 +1229,7 @@ void Method::unlink_code() {
 void Method::unlink_method() {
   assert(CDSConfig::is_dumping_archive(), "sanity");
   _code = nullptr;
-  if (!AOTCodeCache::is_dumping_adapter() || AdapterHandlerLibrary::is_abstract_method_adapter(_adapter)) {
+  if (!CDSConfig::is_dumping_adapters() || AdapterHandlerLibrary::is_abstract_method_adapter(_adapter)) {
     _adapter = nullptr;
   }
   _i2i_entry = nullptr;
@@ -1236,6 +1250,7 @@ void Method::unlink_method() {
   clear_is_not_c2_osr_compilable();
   clear_queued_for_compilation();
   set_pending_queue_processed(false);
+
   remove_unshareable_flags();
 }
 

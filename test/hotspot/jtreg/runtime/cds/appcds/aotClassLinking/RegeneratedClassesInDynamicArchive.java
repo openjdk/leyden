@@ -57,7 +57,7 @@ public class RegeneratedClassesInDynamicArchive {
         ProcessBuilder pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTMode=record",
             "-XX:AOTConfiguration=" + aotConfigFile,
-            "-Xlog:cds=debug",
+            "-Xlog:aot=debug",
             "-cp", appJar, appClass, "base");
 
         OutputAnalyzer out = CDSTestUtils.executeAndLog(pb, "train");
@@ -83,19 +83,19 @@ public class RegeneratedClassesInDynamicArchive {
             "-XX:AOTConfiguration=" + aotConfigFile,
             "-XX:AOTCache=" + aotCacheFile,
             "-XX:" + (aotClassLinkingForBaseArchive ? "+" : "-") + "AOTClassLinking",
-            "-Xlog:cds=debug,cds+class=debug",
+            "-Xlog:aot=debug,aot+class=debug",
             "-cp", appJar);
         out = CDSTestUtils.executeAndLog(pb, "asm");
-        out.shouldContain("Dumping shared data to file:");
-        out.shouldMatch("cds,class.* TestApp");
-        out.shouldNotMatch("cds,class.* CachedInDynamic");
+        out.shouldContain("AOTCache creation is complete");
+        out.shouldMatch("aot,class.* TestApp");
+        out.shouldNotMatch("aot,class.* CachedInDynamic");
         out.shouldHaveExitValue(0);
 
         //----------------------------------------------------------------------
         printTestCase("Production Run with AOTCache, to Generate " + dynamicArchive);
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTCache=" + aotCacheFile,
-            "-Xlog:cds=debug,cds+class=debug,class+load",
+            "-Xlog:aot=debug,aot+class=debug,class+load",
             "-XX:ArchiveClassesAtExit=" + dynamicArchive,
             "-cp", appJar, appClass, "top");
         out = CDSTestUtils.executeAndLog(pb, "prod");
@@ -115,7 +115,7 @@ public class RegeneratedClassesInDynamicArchive {
         printTestCase("Production Run with " + dynamicArchive);
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:SharedArchiveFile=" + dynamicArchive,
-            "-Xlog:cds,class+load",
+            "-Xlog:aot,class+load",
             "-cp", appJar, appClass, "top");
         out = CDSTestUtils.executeAndLog(pb, "prod");
         out.shouldContain(helloMsg);

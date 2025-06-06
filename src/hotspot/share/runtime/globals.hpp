@@ -133,7 +133,7 @@ const size_t minimumSymbolTableSize = 1024;
           "Always use HeapBasedNarrowOop mode, so that AOT code can be "    \
           "always work regardless of runtime heap range")                   \
                                                                             \
-  product(bool, UseCompactObjectHeaders, false, EXPERIMENTAL,               \
+  product(bool, UseCompactObjectHeaders, false,                             \
           "Use compact 64-bit object headers in 64-bit VM")                 \
                                                                             \
   product(int, ObjectAlignmentInBytes, 8,                                   \
@@ -332,6 +332,7 @@ const int ObjectAlignmentInBytes = 8;
                                                                             \
   product(bool, UseKyberIntrinsics, false, DIAGNOSTIC,                      \
           "Use intrinsics for the vectorized version of Kyber")             \
+                                                                            \
   product(bool, UseDilithiumIntrinsics, false, DIAGNOSTIC,                  \
           "Use intrinsics for the vectorized version of Dilithium")         \
                                                                             \
@@ -1747,11 +1748,6 @@ const int ObjectAlignmentInBytes = 8;
           "Save PerfData memory to the specified absolute pathname. "       \
           "The string %p in the file name (if present) "                    \
           "will be replaced by pid")                                        \
-                                                                            \
-  product(int, PerfDataSamplingInterval, 50,                                \
-          "Data sampling interval (in milliseconds)")                       \
-          range(PeriodicTask::min_interval, max_jint)                       \
-          constraint(PerfDataSamplingIntervalFunc, AfterErgo)               \
                                                                             \
   product(bool, PerfDisableSharedMem, false,                                \
           "Store performance data in standard memory")                      \

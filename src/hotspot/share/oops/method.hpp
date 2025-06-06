@@ -315,10 +315,9 @@ class Method : public Metadata {
                               TRAPS);
 
   // method data access
-  MethodData* method_data() const              {
+  MethodData* method_data() const {
     return _method_data;
   }
-
   void set_method_data(MethodData* data);
 
   MethodTrainingData* training_data_or_null() const;

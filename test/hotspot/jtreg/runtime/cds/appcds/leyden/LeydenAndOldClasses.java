@@ -65,7 +65,7 @@ public class LeydenAndOldClasses {
 
         @Override
         public String[] vmArgs(RunMode runMode) {
-            return new String[] {"-Xlog:cds+class=debug"};
+            return new String[] {"-Xlog:aot+class=debug", "-Xlog:cds+class=debug"};
         }
 
         @Override
@@ -82,7 +82,11 @@ public class LeydenAndOldClasses {
                 // !!! Leyden Repo Only !!!
                 // When AOTClassLinking is enabled, we can safely archive old classes. See comments around
                 // CDSConfig::preserve_all_dumptime_verification_states().
-                out.shouldMatch("cds,class.* = 0x.* app *OldClass aot-linked");
+                if (isAOTWorkflow()) {
+                    out.shouldMatch("aot,class.* = 0x.* app *OldClass aot-linked");
+                } else {
+                    out.shouldMatch("cds,class.* = 0x.* app *OldClass aot-linked");
+                }
             }
         }
     }

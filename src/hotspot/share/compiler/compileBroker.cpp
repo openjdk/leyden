@@ -372,9 +372,9 @@ void CompileQueue::add(CompileTask* task) {
   }
 
   if (TrainingData::need_data() && !CDSConfig::is_dumping_final_static_archive()) {
-    CompileTrainingData* td = CompileTrainingData::make(task);
-    if (td != nullptr) {
-      task->set_training_data(td);
+    CompileTrainingData* ctd = CompileTrainingData::make(task);
+    if (ctd != nullptr) {
+      task->set_training_data(ctd);
     }
   }
 
@@ -2213,7 +2213,6 @@ void CompileBroker::compiler_thread_loop() {
     RecompilationPolicy::recompilation_step(AOTRecompilationWorkUnitSize, thread);
 
     CompileTask* task = queue->get(thread);
-
     if (task == nullptr) {
       if (UseDynamicNumberOfCompilerThreads) {
         // Access compiler_count under lock to enforce consistency.

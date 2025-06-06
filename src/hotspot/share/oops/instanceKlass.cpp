@@ -868,9 +868,9 @@ void InstanceKlass::initialize_with_aot_initialized_mirror(TRAPS) {
     initialize(CHECK);
     return;
   }
-  if (log_is_enabled(Info, cds, init)) {
+  if (log_is_enabled(Info, aot, init)) {
     ResourceMark rm;
-    log_info(cds, init)("%s (aot-inited)", external_name());
+    log_info(aot, init)("%s (aot-inited)", external_name());
   }
 
   link_class(CHECK);
@@ -1676,6 +1676,8 @@ ArrayKlass* InstanceKlass::array_klass_or_null() {
   return array_klass_or_null(1);
 }
 
+static int call_class_initializer_counter = 0;   // for debugging
+
 Method* InstanceKlass::class_initializer() const {
   Method* clinit = find_method(
       vmSymbols::class_initializer_name(), vmSymbols::void_method_signature());
@@ -1763,7 +1765,6 @@ void InstanceKlass::call_class_initializer(TRAPS) {
                 THREAD->name());
   }
 #else
-  static int call_class_initializer_counter = 0;   // for debugging
   LogTarget(Info, class, init) lt;
   if (lt.is_enabled()) {
     ResourceMark rm(THREAD);
@@ -2642,9 +2643,9 @@ void InstanceKlass::clean_method_data() {
 void InstanceKlass::metaspace_pointers_do(MetaspaceClosure* it) {
   Klass::metaspace_pointers_do(it);
 
-  if (log_is_enabled(Trace, cds)) {
+  if (log_is_enabled(Trace, aot)) {
     ResourceMark rm;
-    log_trace(cds)("Iter(InstanceKlass): %p (%s)", this, external_name());
+    log_trace(aot)("Iter(InstanceKlass): %p (%s)", this, external_name());
   }
 
   it->push(&_annotations);
@@ -2720,6 +2721,8 @@ void InstanceKlass::remove_unshareable_info() {
     // Remember this so we can avoid walking the hierarchy at runtime.
     set_verified_at_dump_time();
   }
+  _misc_flags.set_has_init_deps_processed(false);
+
   _misc_flags.set_has_init_deps_processed(false);
 
   Klass::remove_unshareable_info();
@@ -2809,7 +2812,7 @@ void InstanceKlass::init_shared_package_entry() {
   _package_entry = nullptr;
 #else
   if (CDSConfig::is_dumping_full_module_graph()) {
-    if (is_shared_unregistered_class()) {
+    if (defined_by_other_loaders()) {
       _package_entry = nullptr;
     } else {
       _package_entry = PackageEntry::get_archived_entry(_package_entry);
@@ -2920,18 +2923,6 @@ bool InstanceKlass::can_be_verified_at_dumptime() const {
     }
   }
   return true;
-}
-
-int InstanceKlass::shared_class_loader_type() const {
-  if (is_shared_boot_class()) {
-    return ClassLoader::BOOT_LOADER;
-  } else if (is_shared_platform_class()) {
-    return ClassLoader::PLATFORM_LOADER;
-  } else if (is_shared_app_class()) {
-    return ClassLoader::APP_LOADER;
-  } else {
-    return ClassLoader::OTHER;
-  }
 }
 
 #endif // INCLUDE_CDS
@@ -3049,8 +3040,8 @@ void InstanceKlass::set_minor_version(u2 minor_version) { _constants->set_minor_
 u2 InstanceKlass::major_version() const                 { return _constants->major_version(); }
 void InstanceKlass::set_major_version(u2 major_version) { _constants->set_major_version(major_version); }
 
-InstanceKlass* InstanceKlass::get_klass_version(int version) {
-  for (InstanceKlass* ik = this; ik != nullptr; ik = ik->previous_versions()) {
+const InstanceKlass* InstanceKlass::get_klass_version(int version) const {
+  for (const InstanceKlass* ik = this; ik != nullptr; ik = ik->previous_versions()) {
     if (ik->constants()->version() == version) {
       return ik;
     }
@@ -4569,7 +4560,7 @@ void InstanceKlass::add_previous_version(InstanceKlass* scratch_class,
 
 #endif // INCLUDE_JVMTI
 
-Method* InstanceKlass::method_with_idnum(int idnum) {
+Method* InstanceKlass::method_with_idnum(int idnum) const {
   Method* m = nullptr;
   if (idnum < methods()->length()) {
     m = methods()->at(idnum);
@@ -4588,7 +4579,7 @@ Method* InstanceKlass::method_with_idnum(int idnum) {
 }
 
 
-Method* InstanceKlass::method_with_orig_idnum(int idnum) {
+Method* InstanceKlass::method_with_orig_idnum(int idnum) const {
   if (idnum >= methods()->length()) {
     return nullptr;
   }
@@ -4608,13 +4599,12 @@ Method* InstanceKlass::method_with_orig_idnum(int idnum) {
 }
 
 
-Method* InstanceKlass::method_with_orig_idnum(int idnum, int version) {
-  InstanceKlass* holder = get_klass_version(version);
+Method* InstanceKlass::method_with_orig_idnum(int idnum, int version) const {
+  const InstanceKlass* holder = get_klass_version(version);
   if (holder == nullptr) {
     return nullptr; // The version of klass is gone, no method is found
   }
-  Method* method = holder->method_with_orig_idnum(idnum);
-  return method;
+  return holder->method_with_orig_idnum(idnum);
 }
 
 #if INCLUDE_JVMTI

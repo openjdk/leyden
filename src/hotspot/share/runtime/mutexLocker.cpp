@@ -127,7 +127,6 @@ Mutex*   Verify_lock                  = nullptr;
 Mutex*   JfrStacktrace_lock           = nullptr;
 Monitor* JfrMsg_lock                  = nullptr;
 Mutex*   JfrBuffer_lock               = nullptr;
-Monitor* JfrThreadSampler_lock        = nullptr;
 #endif
 
 Mutex*   CodeHeapStateAnalytics_lock  = nullptr;
@@ -306,7 +305,6 @@ void mutex_init() {
   MUTEX_DEFN(JfrBuffer_lock                  , PaddedMutex  , event);
   MUTEX_DEFN(JfrMsg_lock                     , PaddedMonitor, event);
   MUTEX_DEFN(JfrStacktrace_lock              , PaddedMutex  , event);
-  MUTEX_DEFN(JfrThreadSampler_lock           , PaddedMonitor, nosafepoint);
 #endif
 
   MUTEX_DEFN(ContinuationRelativize_lock     , PaddedMonitor, nosafepoint-3);
@@ -398,6 +396,41 @@ static int _num_names = 0;
 PerfCounter** MutexLockerImpl::_perf_lock_count     = nullptr;
 PerfCounter** MutexLockerImpl::_perf_lock_wait_time = nullptr;
 PerfCounter** MutexLockerImpl::_perf_lock_hold_time = nullptr;
+
+MutexLockerImpl::MutexLockerImpl(Mutex* mutex, Mutex::SafepointCheckFlag flag) :
+  _mutex(mutex),
+  _prof(ProfileVMLocks && Thread::current_or_null() != nullptr && Thread::current()->profile_vm_locks()) {
+
+  bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
+  if (_mutex != nullptr) {
+    if (_prof) { _before.start(); } // before
+
+    if (no_safepoint_check) {
+      _mutex->lock_without_safepoint_check();
+    } else {
+      _mutex->lock();
+    }
+
+    if (_prof) { _before.stop(); _after.start(); } // after
+  }
+}
+
+MutexLockerImpl::MutexLockerImpl(Thread* thread, Mutex* mutex, Mutex::SafepointCheckFlag flag) :
+  _mutex(mutex), _prof(thread->profile_vm_locks()) {
+
+  if (_prof) { _before.start(); } // before
+
+  bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
+  if (_mutex != nullptr) {
+    if (no_safepoint_check) {
+      _mutex->lock_without_safepoint_check(thread);
+    } else {
+      _mutex->lock(thread);
+    }
+  }
+
+  if (_prof) { _before.stop(); _after.start(); } // after
+}
 
 void MutexLockerImpl::init_counters() {
   if (ProfileVMLocks && UsePerfData) {

@@ -180,7 +180,7 @@ define PrintFailureReports
 	          $(if $(filter all, $(LOG_REPORT)), \
 	            $(GREP) -v -e "^Note: including file:" <  $(logfile) || true ; \
 	          , \
-	            ($(GREP) -v -e "^Note: including file:" <  $(logfile) || true); \
+	            ($(GREP) -v -e "^Note: including file:" <  $(logfile) || true) | $(HEAD) -n 15 ; \
 	            if test `$(WC) -l < $(logfile)` -gt 15; then \
 	              $(ECHO) "   ... (rest of output omitted)" ; \
 	            fi ; \

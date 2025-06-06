@@ -75,6 +75,7 @@ public class EndTrainingOnMethodEntry {
         public String[] vmArgs(RunMode runMode) {
             String stop = count > 1 ? ("stopTrainingOnMeWithCount,count=" + count) : "stopTrainingOnMe";
             return new String[] {
+                "-Xlog:aot+class=debug",
                 "-Xlog:cds+class=debug",
                 "-XX:AOTEndTrainingOnMethodEntry=MyTestApp." + stop,
             };
@@ -95,8 +96,13 @@ public class EndTrainingOnMethodEntry {
                 out.shouldContain("ShouldNotBeCached.dummy()");
             }
             if (isDumping(runMode)) {
-                out.shouldMatch("cds,class.* ShouldBeCached");
-                out.shouldNotMatch("cds,class.* ShouldNotBeCached");
+                if (isAOTWorkflow()) {
+                    out.shouldMatch("aot,class.* ShouldBeCached");
+                    out.shouldNotMatch("aot,class.* ShouldNotBeCached");
+                } else {
+                    out.shouldMatch("cds,class.* ShouldBeCached");
+                    out.shouldNotMatch("cds,class.* ShouldNotBeCached");
+                }
             }
         }
     }

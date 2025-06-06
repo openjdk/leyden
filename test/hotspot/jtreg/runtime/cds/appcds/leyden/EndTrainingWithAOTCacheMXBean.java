@@ -75,6 +75,7 @@ public class EndTrainingWithAOTCacheMXBean {
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
                 "-Xlog:cds+class=debug",
+                "-Xlog:aot+class=debug",
                 "--add-modules=jdk.management"
             };
         }
@@ -120,8 +121,13 @@ public class EndTrainingWithAOTCacheMXBean {
                 out.shouldNotContain("Failed to stop recording");
             }
             if (isDumping(runMode)) {
-                out.shouldMatch("cds,class.* ShouldBeCached");
-                out.shouldNotMatch("cds,class.* ShouldNotBeCached");
+                if (isAOTWorkflow()) {
+                    out.shouldMatch("aot,class.* ShouldBeCached");
+                    out.shouldNotMatch("aot,class.* ShouldNotBeCached");
+                } else {
+                    out.shouldMatch("cds,class.* ShouldBeCached");
+                    out.shouldNotMatch("cds,class.* ShouldNotBeCached");
+                }
             }
         }
     }

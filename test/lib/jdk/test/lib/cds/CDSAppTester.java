@@ -36,10 +36,11 @@ import jtreg.SkippedException;
  * You can define the application by overridding the vmArgs(), classpath() and appCommandLine()
  * methods. Application-specific validation checks can be implemented with checkExecution().
  *
- * Note: to debug the new workflow, run jtreg with -vmoption:-DCDSAppTester.split.new.workflow=true
- * This will run the new workflow in two separate processes that you can rerun easily inside a debugger.
+ * The AOT workflow runs with one-step training by default. For debugging purposes, run
+ * jtreg with -vmoption:-DCDSAppTester.two.step.training=true. This will run -XX:AOTMode=record
+ * and -XX:AOTMode=record in two separate processes that you can rerun easily inside a debugger.
  * Also, the log files are easier to read.
-*/
+ */
 abstract public class CDSAppTester {
     private final String name;
     private final String classListFile;
@@ -201,12 +202,11 @@ abstract public class CDSAppTester {
     }
 
     private String logToFile(String logFile, String... logTags) {
-        StringBuilder sb = new StringBuilder("-Xlog:");
-        String prefix = "";
+        StringBuilder sb = new StringBuilder("-Xlog:arguments");
+        String prefix = ",";
         for (String tag : logTags) {
             sb.append(prefix);
             sb.append(tag);
-            prefix = ",";
         }
         sb.append(":file=" + logFile + "::filesize=0");
         return sb.toString();
@@ -275,8 +275,8 @@ abstract public class CDSAppTester {
                                                    "-XX:AOTConfiguration=" + aotConfigurationFile,
                                                    logToFile(aotConfigurationFileLog,
                                                              "class+load=debug",
-                                                             "cds=debug",
-                                                             "cds+class=debug"));
+                                                             "aot=debug",
+                                                             "aot+class=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         return executeAndCheck(cmdLine, runMode, aotConfigurationFile, aotConfigurationFileLog);
@@ -289,8 +289,8 @@ abstract public class CDSAppTester {
                                                    "-XX:AOTCacheOutput=" + aotCacheFile,
                                                    logToFile(aotCacheFileLog,
                                                              "class+load=debug",
-                                                             "cds=debug",
-                                                             "cds+class=debug"));
+                                                             "aot=debug",
+                                                             "aot+class=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         OutputAnalyzer out =  executeAndCheck(cmdLine, runMode, aotCacheFile, aotCacheFileLog);
@@ -331,16 +331,16 @@ abstract public class CDSAppTester {
     private OutputAnalyzer createAOTCache() throws Exception {
         RunMode runMode = RunMode.ASSEMBLY;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
-                                                   "-Xlog:cds",
-                                                   "-Xlog:cds+heap=error",
+                                                   "-Xlog:aot",
+                                                   "-Xlog:aot+heap=error",
                                                    "-XX:AOTMode=create",
                                                    "-XX:AOTConfiguration=" + aotConfigurationFile,
                                                    "-XX:AOTCache=" + aotCacheFile,
                                                    logToFile(aotCacheFileLog,
-                                                             "cds=debug",
-                                                             "cds+class=debug",
-                                                             "cds+heap=warning",
-                                                             "cds+resolve=debug"));
+                                                             "aot=debug",
+                                                             "aot+class=debug",
+                                                             "aot+heap=warning",
+                                                             "aot+resolve=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         return executeAndCheck(cmdLine, runMode, aotCacheFile, aotCacheFileLog);
@@ -380,6 +380,7 @@ abstract public class CDSAppTester {
         if (isDynamicWorkflow()) {
           // "classic" dynamic archive
           cmdLine = StringArrayUtils.concat(vmArgs(runMode),
+                                            "-Xlog:aot",
                                             "-Xlog:cds",
                                             "-XX:ArchiveClassesAtExit=" + dynamicArchiveFile,
                                             logToFile(dynamicArchiveFileLog,
@@ -474,7 +475,7 @@ abstract public class CDSAppTester {
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-XX:+UnlockDiagnosticVMOptions",
                                                    "-XX:VerifyArchivedFields=2", // make sure archived heap objects are good.
-                                                   logToFile(productionRunLog(), "cds"));
+                                                   logToFile(productionRunLog(), "aot", "cds"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
 
         if (isStaticWorkflow()) {
@@ -552,7 +553,25 @@ abstract public class CDSAppTester {
     // See JEP 483
     public void runAOTWorkflow(String... args) throws Exception {
         this.workflow = Workflow.AOT;
-        if (args.length > 1 && args[1].equals("--onestep-training")) {
+        boolean oneStepTraining = true; // by default use onestep trainning
+
+        if (System.getProperty("CDSAppTester.two.step.training") != null) {
+            oneStepTraining = false;
+        }
+
+        if (args.length > 1) {
+            // Tests such as test/hotspot/jtreg/runtime/cds/appcds/aotCache/SpecialCacheNames.java
+            // use --one-step-training or --two-step-training to force a certain training workflow.
+            if (args[1].equals("--one-step-training")) {
+                oneStepTraining = true;
+            } else if (args[1].equals("--two-step-training")) {
+                oneStepTraining = false;
+            } else {
+                throw new RuntimeException("Unknown option: " + args[1]);
+            }
+        }
+
+        if (oneStepTraining) {
             try {
                 inOneStepTraining = true;
                 createAOTCacheOneStep();

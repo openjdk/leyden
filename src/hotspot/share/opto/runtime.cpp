@@ -103,7 +103,6 @@ C2_STUBS_DO(C2_BLOB_FIELD_DEFINE, C2_STUB_FIELD_DEFINE, C2_JVMTI_STUB_FIELD_DEFI
 #undef C2_STUB_FIELD_DEFINE
 #undef C2_JVMTI_STUB_FIELD_DEFINE
 
-
 #define C2_BLOB_NAME_DEFINE(name, type)  "C2 Runtime " # name "_blob",
 #define C2_STUB_NAME_DEFINE(name, f, t, r)  "C2 Runtime " # name,
 #define C2_JVMTI_STUB_NAME_DEFINE(name)  "C2 Runtime " # name,
@@ -1484,6 +1483,7 @@ static const TypeFunc* make_kyberNttMult_Type() {
     const TypeTuple* range = TypeTuple::make(TypeFunc::Parms + 1, fields);
     return TypeFunc::make(domain, range);
 }
+
 // Kyber add 2 polynomials function
 static const TypeFunc* make_kyberAddPoly_2_Type() {
     int argcnt = 3;
@@ -1556,6 +1556,7 @@ static const TypeFunc* make_kyberBarrettReduce_Type() {
     const Type** fields = TypeTuple::fields(argcnt);
     int argp = TypeFunc::Parms;
     fields[argp++] = TypePtr::NOTNULL;      // coeffs
+
     assert(argp == TypeFunc::Parms + argcnt, "correct decoding");
     const TypeTuple* domain = TypeTuple::make(TypeFunc::Parms + argcnt, fields);
 

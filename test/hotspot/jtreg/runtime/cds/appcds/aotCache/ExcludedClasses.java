@@ -43,6 +43,7 @@
  */
 
 import java.io.File;
+import java.lang.reflect.Array;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -73,7 +74,7 @@ public class ExcludedClasses {
 
     static class Tester extends CDSAppTester {
         public Tester() {
-            super(mainClass);;
+            super(mainClass);
         }
 
         @Override
@@ -97,10 +98,7 @@ public class ExcludedClasses {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            switch (runMode) {
-            case RunMode.TRAINING:
-            case RunMode.TRAINING0:
-            case RunMode.DUMP_STATIC:
+            if (isDumping(runMode)) {
                 out.shouldNotMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.ShouldBeExcluded.f:I");
             }
         }
@@ -115,7 +113,7 @@ class TestApp {
         // In new workflow, classes from custom loaders are passed from the preimage
         // to the final image. See ClassPrelinker::record_unregistered_klasses().
         custInstance = initFromCustomLoader();
-        custArrayInstance = java.lang.reflect.Array.newInstance(custInstance.getClass(), 0);
+        custArrayInstance = Array.newInstance(custInstance.getClass(), 0);
         System.out.println(custArrayInstance);
         System.out.println("Counter = " + Foo.hotSpot());
     }
@@ -154,7 +152,7 @@ class TestApp {
         static Class c = ShouldBeExcluded.class;
 
         static Map mapProxy = (Map) Proxy.newProxyInstance(
-            Foo.class.getClassLoader(), 
+            Foo.class.getClassLoader(),
             new Class[] { Map.class },
             new MyInvocationHandler());
 
@@ -202,9 +200,7 @@ class TestApp {
         static void lambdaHotSpot() {
             long start = System.currentTimeMillis();
             while (System.currentTimeMillis() - start < 20) {
-                doit(() -> {
-                        counter ++;
-                    });
+                doit(() -> counter ++ );
             }
         }
 

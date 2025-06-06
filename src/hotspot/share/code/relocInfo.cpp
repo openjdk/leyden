@@ -157,6 +157,7 @@ void RelocIterator::initialize(nmethod* nm, address begin, address limit) {
   set_limits(begin, limit);
 }
 
+
 RelocIterator::RelocIterator(CodeSection* cs, address begin, address limit) {
   initialize_misc();
   assert(((cs->locs_start() != nullptr) && (cs->locs_end() != nullptr)), "valid start and end pointer");
@@ -188,14 +189,17 @@ RelocIterator::RelocIterator(CodeBlob* cb) {
   initialize_misc();
   _code = nullptr;
   _current = cb->relocation_begin() - 1;
-  _end = cb->relocation_end();
-  _addr = cb->content_begin();
+  _end     = cb->relocation_end();
+  _addr    = cb->content_begin();
 
   _section_start[CodeBuffer::SECT_CONSTS] = cb->content_begin();
-  _section_start[CodeBuffer::SECT_INSTS] = cb->code_begin();
+  _section_start[CodeBuffer::SECT_INSTS ] = cb->code_begin();
+  _section_start[CodeBuffer::SECT_STUBS ] = cb->code_end();
 
-  _section_end[CodeBuffer::SECT_CONSTS] = cb->code_begin();
-  _section_start[CodeBuffer::SECT_INSTS] = cb->code_end();
+  _section_end  [CodeBuffer::SECT_CONSTS] = cb->code_begin();
+  _section_end  [CodeBuffer::SECT_INSTS ] = cb->code_end();
+  _section_end  [CodeBuffer::SECT_STUBS ] = cb->code_end();
+
   assert(!has_current(), "just checking");
   set_limits(nullptr, nullptr);
 }
@@ -500,6 +504,7 @@ void external_word_Relocation::pack_data_to(CodeSection* dest) {
   p = add_jint(p, index);
   dest->set_locs_end((relocInfo*) p);
 }
+
 
 void external_word_Relocation::unpack_data() {
   int index = unpack_1_int();
@@ -837,7 +842,6 @@ const char* relocInfo::type_name(relocInfo::relocType t) {
     return "UNKNOWN RELOC TYPE";
   }
 }
-
 
 void RelocIterator::print_current_on(outputStream* st) {
   if (!has_current()) {

@@ -117,7 +117,7 @@ private:
   bool    _compressed_oops;                       // save the flag UseCompressedOops
   bool    _compressed_class_ptrs;                 // save the flag UseCompressedClassPointers
   int     _narrow_klass_pointer_bits;             // save number of bits in narrowKlass
-  int     _narrow_klass_shift;                    // save shift width used to pre-compute narrowKlass IDs in archived heap objectsa
+  int     _narrow_klass_shift;                    // save shift width used to pre-compute narrowKlass IDs in archived heap objects
   size_t  _cloned_vtables_offset;                 // The address of the first cloned vtable
   size_t  _early_serialized_data_offset;          // Data accessed using {ReadClosure,WriteClosure}::serialize()
   size_t  _serialized_data_offset;                // Data accessed using {ReadClosure,WriteClosure}::serialize()
@@ -153,9 +153,12 @@ private:
 
   // The following are parameters that affect MethodData layout.
   uint    _type_profile_level;
+  int     _type_profile_args_limit;
+  int     _type_profile_parms_limit;
   intx    _type_profile_width;
   intx    _bci_profile_width;
   bool    _profile_traps;
+  bool    _type_profile_casts;
   int     _spec_trap_limit_extra_entries;
 
   template <typename T> T from_mapped_offset(size_t offset) const {

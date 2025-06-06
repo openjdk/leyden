@@ -229,7 +229,12 @@ bool AOTCodeCache::is_C3_on() {
 }
 
 bool AOTCodeCache::is_code_load_thread_on() {
-  return UseCodeLoadThread && is_using_code();
+  // We cannot trust AOTCodeCache status here, due to bootstrapping circularity.
+  // Compilation policy init runs before AOT cache is fully initialized, so the
+  // normal AOT cache status check would always fail.
+  // See: https://bugs.openjdk.org/browse/JDK-8358690
+  // return UseCodeLoadThread && is_using_code();
+  return UseCodeLoadThread && AOTCodeCaching && CDSConfig::is_using_archive();
 }
 
 bool AOTCodeCache::allow_const_field(ciConstant& value) {
@@ -888,7 +893,6 @@ address AOTCodeCache::reserve_bytes(uint nbytes) {
   if (new_position >= (uint)((char*)_store_entries - _store_buffer)) {
     log_warning(aot,codecache)("Failed to ensure %d bytes at offset %d in AOT Code Cache. Increase AOTCodeMaxSize.",
                                nbytes, _write_position);
-
     set_failed();
     report_store_failure();
     return nullptr;
@@ -1465,7 +1469,8 @@ CodeBlob* AOTCodeCache::load_code_blob(AOTCodeEntry::Kind entry_kind, uint id, c
   AOTCodeReader reader(cache, entry, nullptr);
   CodeBlob* blob = reader.compile_code_blob(name, entry_offset_count, entry_offsets);
 
-  log_debug(aot, codecache, stubs)("Read blob '%s' (id=%u, kind=%s) from AOT Code Cache", name, id, aot_code_entry_kind_name[entry_kind]);
+  log_debug(aot, codecache, stubs)("%sRead blob '%s' (id=%u, kind=%s) from AOT Code Cache",
+                                   (blob == nullptr? "Failed to " : ""), name, id, aot_code_entry_kind_name[entry_kind]);
   return blob;
 }
 
@@ -1480,9 +1485,7 @@ CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_co
   if (strncmp(stored_name, name, (name_size - 1)) != 0) {
     log_warning(aot, codecache, stubs)("Saved blob's name '%s' is different from the expected name '%s'",
                                        stored_name, name);
-    ((AOTCodeCache*)_cache)->set_failed();
-    report_load_failure();
-    return nullptr;
+    set_lookup_failed(); // Skip this blob
     return nullptr;
   }
 
@@ -1680,7 +1683,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   Method* method = nm->method();
   bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)method);
   InstanceKlass* holder = method->method_holder();
-  bool klass_in_cds = holder->is_shared() && !holder->is_shared_unregistered_class();
+  bool klass_in_cds = holder->is_shared() && !holder->defined_by_other_loaders();
   bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
   if (!builtin_loader) {
     ResourceMark rm;
@@ -3293,7 +3296,7 @@ void AOTCodeReader::read_dbg_strings(DbgStrings& dbg_strings) {
 //      ...
 //      [_c_str_base, _c_str_base + _c_str_max -1],
 #define _extrs_max 140
-#define _stubs_max 140
+#define _stubs_max 210
 #define _shared_blobs_max 25
 #define _C1_blobs_max 50
 #define _C2_blobs_max 25
@@ -3716,6 +3719,11 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::f2hf_adr());
   SET_ADDRESS(_stubs, StubRoutines::hf2f_adr());
 
+  for (int slot = 0; slot < Klass::SECONDARY_SUPERS_TABLE_SIZE; slot++) {
+    SET_ADDRESS(_stubs, StubRoutines::lookup_secondary_supers_table_stub(slot));
+  }
+  SET_ADDRESS(_stubs, StubRoutines::lookup_secondary_supers_table_slow_path_stub());
+
 #if defined(AMD64) && !defined(ZERO)
   SET_ADDRESS(_stubs, StubRoutines::x86::d2i_fixup());
   SET_ADDRESS(_stubs, StubRoutines::x86::f2i_fixup());
@@ -3888,7 +3896,6 @@ AOTCodeAddressTable::~AOTCodeAddressTable() {
 #else
 #define MAX_STR_COUNT 500
 #endif
-
 #define _c_str_max  MAX_STR_COUNT
 static const int _c_str_base = _all_max;
 

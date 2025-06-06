@@ -2867,6 +2867,17 @@ void Assembler::mov(Register dst, Register src) {
   movq(dst, src);
 }
 
+void Assembler::movapd(XMMRegister dst, Address src) {
+  NOT_LP64(assert(VM_Version::supports_sse2(), ""));
+  InstructionMark im(this);
+  InstructionAttr attributes(AVX_128bit, /* rex_w */ VM_Version::supports_evex(), /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_rex_vex_w_reverted();
+  simd_prefix(dst, xnoreg, src, VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
+  emit_int8(0x28);
+  emit_operand(dst, src, 0);
+}
+
 void Assembler::movapd(XMMRegister dst, XMMRegister src) {
   int vector_len = VM_Version::supports_avx512novl() ? AVX_512bit : AVX_128bit;
   InstructionAttr attributes(vector_len, /* rex_w */ VM_Version::supports_evex(), /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
@@ -4589,7 +4600,7 @@ void Assembler::packuswb(XMMRegister dst, Address src) {
   assert((UseAVX > 0), "SSE mode requires address alignment 16 bytes");
   InstructionMark im(this);
   InstructionAttr attributes(AVX_128bit, /* rex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   simd_prefix(dst, dst, src, VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8(0x67);
   emit_operand(dst, src, 0);
@@ -4653,6 +4664,7 @@ void Assembler::vpermb(XMMRegister dst, XMMRegister nds, Address src, int vector
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* rex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F_38, &attributes);
   emit_int8((unsigned char)0x8D);
   emit_operand(dst, src, 0);
@@ -4683,6 +4695,7 @@ void Assembler::vpermd(XMMRegister dst, XMMRegister nds, Address src, int vector
   // VEX.NDS.256.66.0F38.W0 36 /r
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* rex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F_38, &attributes);
   emit_int8(0x36);
   emit_operand(dst, src, 0);
@@ -5392,7 +5405,7 @@ void Assembler::evpmovzxbd(XMMRegister dst, KRegister mask, Address src, int vec
   assert(dst != xnoreg, "sanity");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* rex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ false, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_HVM, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_QVM, /* input_size_in_bits */ EVEX_NObit);
   attributes.set_embedded_opmask_register_specifier(mask);
   attributes.set_is_evex_instruction();
   vex_prefix(src, 0, dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F_38, &attributes);
@@ -8070,6 +8083,14 @@ void Assembler::vandps(XMMRegister dst, XMMRegister nds, Address src, int vector
   emit_operand(dst, src, 0);
 }
 
+void Assembler::orpd(XMMRegister dst, XMMRegister src) {
+  NOT_LP64(assert(VM_Version::supports_sse2(), ""));
+  InstructionAttr attributes(AVX_128bit, /* rex_w */ !_legacy_mode_dq, /* legacy_mode */ _legacy_mode_dq, /* no_mask_reg */ true, /* uses_vl */ true);
+  attributes.set_rex_vex_w_reverted();
+  int encode = simd_prefix_and_encode(dst, dst, src, VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
+  emit_int16(0x56, (0xC0 | encode));
+}
+
 void Assembler::unpckhpd(XMMRegister dst, XMMRegister src) {
   InstructionAttr attributes(AVX_128bit, /* rex_w */ VM_Version::supports_evex(), /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
   attributes.set_rex_vex_w_reverted();
@@ -8191,6 +8212,7 @@ void Assembler::paddd(XMMRegister dst, XMMRegister src) {
 void Assembler::paddd(XMMRegister dst, Address src) {
   InstructionMark im(this);
   InstructionAttr attributes(AVX_128bit, /* rex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   simd_prefix(dst, dst, src, VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xFE);
   emit_operand(dst, src, 0);
@@ -8364,7 +8386,7 @@ void Assembler::vpaddsb(XMMRegister dst, XMMRegister nds, Address src, int vecto
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xEC);
   emit_operand(dst, src, 0);
@@ -8383,7 +8405,7 @@ void Assembler::vpaddsw(XMMRegister dst, XMMRegister nds, Address src, int vecto
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xED);
   emit_operand(dst, src, 0);
@@ -8402,7 +8424,7 @@ void Assembler::vpaddusb(XMMRegister dst, XMMRegister nds, Address src, int vect
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xDC);
   emit_operand(dst, src, 0);
@@ -8422,7 +8444,7 @@ void Assembler::vpaddusw(XMMRegister dst, XMMRegister nds, Address src, int vect
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xDD);
   emit_operand(dst, src, 0);
@@ -8442,7 +8464,7 @@ void Assembler::vpsubsb(XMMRegister dst, XMMRegister nds, Address src, int vecto
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xE8);
   emit_operand(dst, src, 0);
@@ -8461,7 +8483,7 @@ void Assembler::vpsubsw(XMMRegister dst, XMMRegister nds, Address src, int vecto
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xE9);
   emit_operand(dst, src, 0);
@@ -8480,7 +8502,7 @@ void Assembler::vpsubusb(XMMRegister dst, XMMRegister nds, Address src, int vect
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xD8);
   emit_operand(dst, src, 0);
@@ -8499,7 +8521,7 @@ void Assembler::vpsubusw(XMMRegister dst, XMMRegister nds, Address src, int vect
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xD9);
   emit_operand(dst, src, 0);
@@ -8867,7 +8889,7 @@ void Assembler::vpminub(XMMRegister dst, XMMRegister nds, Address src, int vecto
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xDA);
   emit_operand(dst, src, 0);
@@ -8890,7 +8912,7 @@ void Assembler::evpminub(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
     attributes.reset_is_clear_context();
@@ -8913,7 +8935,7 @@ void Assembler::vpminuw(XMMRegister dst, XMMRegister nds, Address src, int vecto
   assert(!needs_evex(dst, nds) || VM_Version::supports_avx512bw(), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F_38, &attributes);
   emit_int8((unsigned char)0x3A);
   emit_operand(dst, src, 0);
@@ -8936,7 +8958,7 @@ void Assembler::evpminuw(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
     attributes.reset_is_clear_context();
@@ -9036,7 +9058,7 @@ void Assembler::vpmaxub(XMMRegister dst, XMMRegister nds, Address src, int vecto
   assert(UseAVX > 0 && (vector_len == Assembler::AVX_512bit || (!needs_evex(dst, nds) || VM_Version::supports_avx512vl())), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F, &attributes);
   emit_int8((unsigned char)0xDE);
   emit_operand(dst, src, 0);
@@ -9059,7 +9081,7 @@ void Assembler::evpmaxub(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
     attributes.reset_is_clear_context();
@@ -9084,7 +9106,7 @@ void Assembler::vpmaxuw(XMMRegister dst, XMMRegister nds, Address src, int vecto
   assert(UseAVX > 0 && (vector_len == Assembler::AVX_512bit || (!needs_evex(dst, nds) || VM_Version::supports_avx512vl())), "");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ _legacy_mode_bw, /* no_mask_reg */ true, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_66, VEX_OPCODE_0F_38, &attributes);
   emit_int8((unsigned char)0x3E);
   emit_operand(dst, src, 0);
@@ -9107,7 +9129,7 @@ void Assembler::evpmaxuw(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
     attributes.reset_is_clear_context();
@@ -10552,7 +10574,7 @@ void Assembler::evpaddb(XMMRegister dst, KRegister mask, XMMRegister nds, Addres
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -10579,7 +10601,7 @@ void Assembler::evpaddw(XMMRegister dst, KRegister mask, XMMRegister nds, Addres
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -10722,7 +10744,7 @@ void Assembler::evpsubb(XMMRegister dst, KRegister mask, XMMRegister nds, Addres
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -10749,7 +10771,7 @@ void Assembler::evpsubw(XMMRegister dst, KRegister mask, XMMRegister nds, Addres
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -10892,7 +10914,7 @@ void Assembler::evpaddsb(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -10919,7 +10941,7 @@ void Assembler::evpaddsw(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -10946,7 +10968,7 @@ void Assembler::evpaddusb(XMMRegister dst, KRegister mask, XMMRegister nds, Addr
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -10973,7 +10995,7 @@ void Assembler::evpaddusw(XMMRegister dst, KRegister mask, XMMRegister nds, Addr
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11000,7 +11022,7 @@ void Assembler::evpsubsb(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11027,7 +11049,7 @@ void Assembler::evpsubsw(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11054,7 +11076,7 @@ void Assembler::evpsubusb(XMMRegister dst, KRegister mask, XMMRegister nds, Addr
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11082,7 +11104,7 @@ void Assembler::evpsubusw(XMMRegister dst, KRegister mask, XMMRegister nds, Addr
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11109,7 +11131,7 @@ void Assembler::evpmullw(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11375,7 +11397,6 @@ void Assembler::evdivsd(XMMRegister dst, XMMRegister nds, XMMRegister src, EvexR
 void Assembler::evpabsb(XMMRegister dst, KRegister mask, XMMRegister src, bool merge, int vector_len) {
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11390,7 +11411,7 @@ void Assembler::evpabsb(XMMRegister dst, KRegister mask, Address src, bool merge
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11404,7 +11425,6 @@ void Assembler::evpabsb(XMMRegister dst, KRegister mask, Address src, bool merge
 void Assembler::evpabsw(XMMRegister dst, KRegister mask, XMMRegister src, bool merge, int vector_len) {
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11419,7 +11439,7 @@ void Assembler::evpabsw(XMMRegister dst, KRegister mask, Address src, bool merge
   InstructionMark im(this);
   assert(VM_Version::supports_avx512bw() && (vector_len == AVX_512bit || VM_Version::supports_avx512vl()), "");
   InstructionAttr attributes(vector_len, /* vex_w */ false,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11539,7 +11559,7 @@ void Assembler::evpfma213pd(XMMRegister dst, KRegister mask, XMMRegister nds, Ad
   assert(VM_Version::supports_evex(), "");
   assert(vector_len == AVX_512bit || VM_Version::supports_avx512vl(), "");
   InstructionAttr attributes(vector_len, /* vex_w */ true,/* legacy_mode */ false, /* no_mask_reg */ false,/* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_32bit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV,/* input_size_in_bits */ EVEX_NObit);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
@@ -11568,6 +11588,7 @@ void Assembler::evpermb(XMMRegister dst, KRegister mask, XMMRegister nds, Addres
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -11594,6 +11615,7 @@ void Assembler::evpermw(XMMRegister dst, KRegister mask, XMMRegister nds, Addres
   InstructionAttr attributes(vector_len, /* vex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -11620,6 +11642,7 @@ void Assembler::evpermd(XMMRegister dst, KRegister mask, XMMRegister nds, Addres
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -11646,6 +11669,7 @@ void Assembler::evpermq(XMMRegister dst, KRegister mask, XMMRegister nds, Addres
   InstructionAttr attributes(vector_len, /* vex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -12014,6 +12038,7 @@ void Assembler::evpminsb(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -12039,6 +12064,7 @@ void Assembler::evpminsw(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
     attributes.reset_is_clear_context();
@@ -12068,6 +12094,7 @@ void Assembler::evpminsd(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -12096,6 +12123,7 @@ void Assembler::evpminsq(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionAttr attributes(vector_len, /* vex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -12123,6 +12151,7 @@ void Assembler::evpmaxsb(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -12149,6 +12178,7 @@ void Assembler::evpmaxsw(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -12177,6 +12207,7 @@ void Assembler::evpmaxsd(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
   attributes.set_embedded_opmask_register_specifier(mask);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   if (merge) {
     attributes.reset_is_clear_context();
   }
@@ -12204,6 +12235,7 @@ void Assembler::evpmaxsq(XMMRegister dst, KRegister mask, XMMRegister nds, Addre
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   attributes.set_embedded_opmask_register_specifier(mask);
   if (merge) {
     attributes.reset_is_clear_context();
@@ -12574,7 +12606,7 @@ void Assembler::evpgatherdq(XMMRegister dst, KRegister mask, Address src, int ve
   assert(mask != k0, "instruction will #UD if mask is in k0");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_32bit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_64bit);
   attributes.reset_is_clear_context();
   attributes.set_embedded_opmask_register_specifier(mask);
   attributes.set_is_evex_instruction();
@@ -12592,7 +12624,7 @@ void Assembler::evgatherdpd(XMMRegister dst, KRegister mask, Address src, int ve
   assert(mask != k0, "instruction will #UD if mask is in k0");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_32bit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_64bit);
   attributes.reset_is_clear_context();
   attributes.set_embedded_opmask_register_specifier(mask);
   attributes.set_is_evex_instruction();
@@ -12639,7 +12671,7 @@ void Assembler::evpscatterdq(Address dst, KRegister mask, XMMRegister src, int v
   assert(mask != k0, "instruction will #UD if mask is in k0");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_32bit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_64bit);
   attributes.reset_is_clear_context();
   attributes.set_embedded_opmask_register_specifier(mask);
   attributes.set_is_evex_instruction();
@@ -12667,7 +12699,7 @@ void Assembler::evscatterdpd(Address dst, KRegister mask, XMMRegister src, int v
   assert(mask != k0, "instruction will #UD if mask is in k0");
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ false, /* uses_vl */ true);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_32bit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_64bit);
   attributes.reset_is_clear_context();
   attributes.set_embedded_opmask_register_specifier(mask);
   attributes.set_is_evex_instruction();
@@ -14852,7 +14884,7 @@ void Assembler::cvtsi2sdq(XMMRegister dst, Register src) {
 void Assembler::cvtsi2sdq(XMMRegister dst, Address src) {
   InstructionMark im(this);
   InstructionAttr attributes(AVX_128bit, /* rex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ false);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_64bit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_32bit);
   simd_prefix(dst, dst, src, VEX_SIMD_F2, VEX_OPCODE_0F, &attributes);
   emit_int8(0x2A);
   emit_operand(dst, src, 0);
@@ -14861,7 +14893,7 @@ void Assembler::cvtsi2sdq(XMMRegister dst, Address src) {
 void Assembler::cvtsi2ssq(XMMRegister dst, Address src) {
   InstructionMark im(this);
   InstructionAttr attributes(AVX_128bit, /* rex_w */ true, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ false);
-  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_64bit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_T1S, /* input_size_in_bits */ EVEX_32bit);
   simd_prefix(dst, dst, src, VEX_SIMD_F3, VEX_OPCODE_0F, &attributes);
   emit_int8(0x2A);
   emit_operand(dst, src, 0);
@@ -16443,7 +16475,7 @@ void Assembler::evaddph(XMMRegister dst, XMMRegister nds, Address src, int vecto
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_NONE, VEX_OPCODE_MAP5, &attributes);
   emit_int8(0x58);
   emit_operand(dst, src, 0);
@@ -16464,7 +16496,7 @@ void Assembler::evsubph(XMMRegister dst, XMMRegister nds, Address src, int vecto
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_NONE, VEX_OPCODE_MAP5, &attributes);
   emit_int8(0x5C);
   emit_operand(dst, src, 0);
@@ -16485,7 +16517,7 @@ void Assembler::evmulph(XMMRegister dst, XMMRegister nds, Address src, int vecto
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_NONE, VEX_OPCODE_MAP5, &attributes);
   emit_int8(0x59);
   emit_operand(dst, src, 0);
@@ -16506,7 +16538,7 @@ void Assembler::evminph(XMMRegister dst, XMMRegister nds, Address src, int vecto
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_NONE, VEX_OPCODE_MAP5, &attributes);
   emit_int8(0x5D);
   emit_operand(dst, src, 0);
@@ -16527,7 +16559,7 @@ void Assembler::evmaxph(XMMRegister dst, XMMRegister nds, Address src, int vecto
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_NONE, VEX_OPCODE_MAP5, &attributes);
   emit_int8(0x5F);
   emit_operand(dst, src, 0);
@@ -16548,7 +16580,7 @@ void Assembler::evdivph(XMMRegister dst, XMMRegister nds, Address src, int vecto
   InstructionMark im(this);
   InstructionAttr attributes(vector_len, /* vex_w */ false, /* legacy_mode */ false, /* no_mask_reg */ true, /* uses_vl */ true);
   attributes.set_is_evex_instruction();
-  attributes.set_address_attributes(/* tuple_type */ EVEX_FVM, /* input_size_in_bits */ EVEX_NObit);
+  attributes.set_address_attributes(/* tuple_type */ EVEX_FV, /* input_size_in_bits */ EVEX_NObit);
   vex_prefix(src, nds->encoding(), dst->encoding(), VEX_SIMD_NONE, VEX_OPCODE_MAP5, &attributes);
   emit_int8(0x5E);
   emit_operand(dst, src, 0);
