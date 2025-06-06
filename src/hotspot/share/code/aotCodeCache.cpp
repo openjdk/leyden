@@ -4184,15 +4184,16 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
 
 #undef _extrs_max
 #undef _stubs_max
-#undef _all_blobs_max
-#undef _blobs_max
+#undef _shared_blobs_max
 #undef _C1_blobs_max
 #undef _C2_blobs_max
+#undef _blobs_max
 #undef _extrs_base
 #undef _stubs_base
-#undef _blobs_base
+#undef _shared_blobs_base
 #undef _C1_blobs_base
 #undef _C2_blobs_base
+#undef _blobs_end
 
 void AOTRuntimeConstants::initialize_from_runtime() {
   BarrierSet* bs = BarrierSet::barrier_set();
