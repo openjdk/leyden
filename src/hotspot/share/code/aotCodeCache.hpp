@@ -338,6 +338,7 @@ class AOTCodeCache : public CHeapObj<mtCode> {
 protected:
   class Config {
     address _compressedOopBase;
+    address _compressedKlassBase;
     uint _compressedOopShift;
     uint _compressedKlassShift;
     uint _contendedPaddingWidth;
