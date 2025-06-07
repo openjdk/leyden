@@ -572,8 +572,8 @@ public:
   bool write_metadata(nmethod* nm);
 
 #ifndef PRODUCT
-  bool write_asm_remarks(CodeBlob& cb);
-  bool write_dbg_strings(CodeBlob& cb);
+  bool write_asm_remarks(AsmRemarks& asm_remarks, bool use_string_table);
+  bool write_dbg_strings(DbgStrings& dbg_strings, bool use_string_table);
 #endif // PRODUCT
 
   static bool store_code_blob(CodeBlob& blob,
@@ -713,8 +713,8 @@ public:
 
   void fix_relocations(CodeBlob* code_blob, GrowableArray<Handle>* oop_list = nullptr, GrowableArray<Metadata*>* metadata_list = nullptr) NOT_CDS_RETURN;
 #ifndef PRODUCT
-  void read_asm_remarks(AsmRemarks& asm_remarks);
-  void read_dbg_strings(DbgStrings& dbg_strings);
+  void read_asm_remarks(AsmRemarks& asm_remarks, bool use_string_table);
+  void read_dbg_strings(DbgStrings& dbg_strings, bool use_string_table);
 #endif // PRODUCT
 
   void print_on(outputStream* st);

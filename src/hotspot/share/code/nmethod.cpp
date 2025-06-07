@@ -1273,6 +1273,13 @@ nmethod* nmethod::restore(address code_cache_buffer,
 
   aot_code_reader->fix_relocations(nm, &reloc_imm_oop_list, &reloc_imm_metadata_list);
 
+#ifndef PRODUCT
+  nm->asm_remarks().init();
+  aot_code_reader->read_asm_remarks(nm->asm_remarks(), /* use_string_table */ false);
+  nm->dbg_strings().init();
+  aot_code_reader->read_dbg_strings(nm->dbg_strings(), /* use_string_table */ false);
+#endif
+
   // Flush the code block
   ICache::invalidate_range(nm->code_begin(), nm->code_size());
 
