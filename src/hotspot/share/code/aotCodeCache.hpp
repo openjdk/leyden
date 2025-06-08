@@ -713,8 +713,8 @@ public:
 
   void fix_relocations(CodeBlob* code_blob, GrowableArray<Handle>* oop_list = nullptr, GrowableArray<Metadata*>* metadata_list = nullptr) NOT_CDS_RETURN;
 #ifndef PRODUCT
-  void read_asm_remarks(AsmRemarks& asm_remarks, bool use_string_table);
-  void read_dbg_strings(DbgStrings& dbg_strings, bool use_string_table);
+  void read_asm_remarks(AsmRemarks& asm_remarks, bool use_string_table) NOT_CDS_RETURN;
+  void read_dbg_strings(DbgStrings& dbg_strings, bool use_string_table) NOT_CDS_RETURN;
 #endif // PRODUCT
 
   void print_on(outputStream* st);
