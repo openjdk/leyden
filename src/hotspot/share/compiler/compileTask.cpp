@@ -43,21 +43,25 @@ int CompileTask::_active_tasks = 0;
  * Allocate a CompileTask, from the free list if possible.
  */
 CompileTask* CompileTask::allocate() {
-  MonitorLocker locker(CompileTaskAlloc_lock);
   CompileTask* task = nullptr;
 
-  if (_task_free_list != nullptr) {
-    task = _task_free_list;
-    _task_free_list = task->next();
-    task->set_next(nullptr);
-  } else {
-    task = new CompileTask();
-    task->set_next(nullptr);
-    task->set_is_free(true);
+  {
+    MutexLocker locker(CompileTaskAlloc_lock);
+    if (_task_free_list != nullptr) {
+      task = _task_free_list;
+      _task_free_list = task->next();
+      task->set_next(nullptr);
+    } else {
+      task = new CompileTask();
+      task->set_next(nullptr);
+      task->set_is_free(true);
+    }
+    assert(task->is_free(), "Task must be free.");
+    task->set_is_free(false);
   }
-  assert(task->is_free(), "Task must be free.");
-  task->set_is_free(false);
-  _active_tasks++;
+
+  // Once JDK-8357473 is here, move this to CompileTask::CompileTask
+  Atomic::add(&_active_tasks, 1);
   return task;
 }
 
@@ -65,33 +69,36 @@ CompileTask* CompileTask::allocate() {
 * Add a task to the free list.
 */
 void CompileTask::free(CompileTask* task) {
-  MonitorLocker locker(CompileTaskAlloc_lock);
-  if (!task->is_free()) {
-    assert(!task->lock()->is_locked(), "Should not be locked when freed");
-    if ((task->_method_holder != nullptr && JNIHandles::is_weak_global_handle(task->_method_holder))) {
-      JNIHandles::destroy_weak_global(task->_method_holder);
-    } else {
-      JNIHandles::destroy_global(task->_method_holder);
-    }
-    if (task->_failure_reason_on_C_heap && task->_failure_reason != nullptr) {
-      os::free((void*) task->_failure_reason);
-    }
-    task->_failure_reason = nullptr;
-    task->_failure_reason_on_C_heap = false;
+  {
+    MutexLocker locker(CompileTaskAlloc_lock);
+    if (!task->is_free()) {
+      if ((task->_method_holder != nullptr && JNIHandles::is_weak_global_handle(task->_method_holder))) {
+        JNIHandles::destroy_weak_global(task->_method_holder);
+      } else {
+        JNIHandles::destroy_global(task->_method_holder);
+      }
+      if (task->_failure_reason_on_C_heap && task->_failure_reason != nullptr) {
+        os::free((void*) task->_failure_reason);
+      }
+      task->_failure_reason = nullptr;
+      task->_failure_reason_on_C_heap = false;
 
-    task->set_is_free(true);
-    task->set_next(_task_free_list);
-    _task_free_list = task;
-    _active_tasks--;
-    if (_active_tasks == 0) {
-      locker.notify_all();
+      task->set_is_free(true);
+      task->set_next(_task_free_list);
+      _task_free_list = task;
     }
+  }
+
+  // Once JDK-8357473 is here, move this to CompileTask::~CompileTask
+  if (Atomic::sub(&_active_tasks, 1) == 0) {
+    MonitorLocker wait_ml(CompileTaskWait_lock);
+    wait_ml.notify_all();
   }
 }
 
 void CompileTask::wait_for_no_active_tasks() {
-  MonitorLocker locker(CompileTaskAlloc_lock);
-  while (_active_tasks > 0) {
+  MonitorLocker locker(CompileTaskWait_lock);
+  while (Atomic::load(&_active_tasks) > 0) {
     locker.wait();
   }
 }
@@ -106,8 +113,6 @@ void CompileTask::initialize(int compile_id,
                              CompileQueue* compile_queue,
                              bool requires_online_compilation,
                              bool is_blocking) {
-  assert(!_lock->is_locked(), "bad locking");
-
   Thread* thread = Thread::current();
   _compile_id = compile_id;
   _method = method();
