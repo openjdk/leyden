@@ -49,7 +49,7 @@ CompileLog::CompileLog(const char* file_name, FILE* fp, intx thread_id)
    strcpy((char*)_file, file_name);
 
   // link into the global list
-  { MonitorLocker locker(CompileTaskAlloc_lock);
+  { MutexLocker locker(CompileTaskAlloc_lock);
     _next = _first;
     _first = this;
   }

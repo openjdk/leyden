@@ -82,6 +82,7 @@ Mutex*   MarkStackChunkList_lock      = nullptr;
 Mutex*   MonitoringSupport_lock       = nullptr;
 Monitor* ConcurrentGCBreakpoints_lock = nullptr;
 Mutex*   Compile_lock                 = nullptr;
+Monitor* CompileTaskWait_lock         = nullptr;
 Monitor* MethodCompileQueue_lock      = nullptr;
 Monitor* MethodCompileQueueC1_lock    = nullptr;
 Monitor* MethodCompileQueueC2_lock    = nullptr;
@@ -90,7 +91,7 @@ Monitor* MethodCompileQueueSC1_lock   = nullptr;
 Monitor* MethodCompileQueueSC2_lock   = nullptr;
 Monitor* CompileThread_lock           = nullptr;
 Monitor* Compilation_lock             = nullptr;
-Monitor* CompileTaskAlloc_lock        = nullptr;
+Mutex*   CompileTaskAlloc_lock        = nullptr;
 Mutex*   CompileStatistics_lock       = nullptr;
 Mutex*   DirectivesStack_lock         = nullptr;
 Monitor* Terminator_lock              = nullptr;
@@ -363,7 +364,9 @@ void mutex_init() {
     MUTEX_DEFL(G1RareEvent_lock             , PaddedMutex  , Threads_lock, true);
   }
 
-  MUTEX_DEFL(CompileTaskAlloc_lock          , PaddedMonitor,  MethodCompileQueue_lock);
+  MUTEX_DEFL(CompileTaskAlloc_lock          , PaddedMutex,   MethodCompileQueue_lock);
+  MUTEX_DEFL(CompileTaskWait_lock           , PaddedMonitor, MethodCompileQueue_lock);
+
 #if INCLUDE_PARALLELGC
   if (UseParallelGC) {
     MUTEX_DEFL(PSOldGenExpand_lock          , PaddedMutex  , Heap_lock, true);

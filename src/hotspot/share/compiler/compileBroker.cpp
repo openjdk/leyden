@@ -250,12 +250,12 @@ CompileTaskWrapper::~CompileTaskWrapper() {
   if (task->is_blocking()) {
     bool free_task = false;
     {
-      MutexLocker notifier(thread, task->lock());
+      MutexLocker notifier(thread, CompileTaskWait_lock);
       task->mark_complete();
 #if INCLUDE_JVMCI
       if (comp->is_jvmci()) {
         if (!task->has_waiter()) {
-          // The waiting thread timed out and thus did not free the task.
+          // The waiting thread timed out and thus did not delete the task.
           free_task = true;
         }
         task->set_blocking_jvmci_compile_state(nullptr);
@@ -264,19 +264,19 @@ CompileTaskWrapper::~CompileTaskWrapper() {
       if (!free_task) {
         // Notify the waiting thread that the compilation has completed
         // so that it can free the task.
-        task->lock()->notify_all();
+        CompileTaskWait_lock->notify_all();
       }
     }
     if (free_task) {
-      // The task can only be freed once the task lock is released.
-      CompileTask::free(task);
+      // The task can only be deleted once the task lock is released.
+      delete task;
     }
   } else {
     task->mark_complete();
 
-    // By convention, the compiling thread is responsible for
-    // recycling a non-blocking CompileTask.
-    CompileTask::free(task);
+    // By convention, the compiling thread is responsible for deleting
+    // a non-blocking CompileTask.
+    delete task;
   }
 }
 
@@ -429,12 +429,12 @@ void CompileQueue::transfer_pending() {
 }
 
 /**
- * Empties compilation queue by putting all compilation tasks onto
- * a freelist. Furthermore, the method wakes up all threads that are
- * waiting on a compilation task to finish. This can happen if background
+ * Empties compilation queue by deleting all compilation tasks.
+ * Furthermore, the method wakes up all threads that are waiting
+ * on a compilation task to finish. This can happen if background
  * compilation is disabled.
  */
-void CompileQueue::free_all() {
+void CompileQueue::delete_all() {
   MutexLocker mu(_lock);
   transfer_pending();
 
@@ -446,21 +446,20 @@ void CompileQueue::free_all() {
     next = current->next();
     bool found_waiter = false;
     {
-      MutexLocker ct_lock(current->lock());
+      MutexLocker ct_lock(CompileTaskWait_lock);
       assert(current->waiting_for_completion_count() <= 1, "more than one thread are waiting for task");
       if (current->waiting_for_completion_count() > 0) {
         // If another thread waits for this task, we must wake them up
         // so they will stop waiting and free the task.
-        current->lock()->notify();
+        CompileTaskWait_lock->notify_all();
         found_waiter = true;
       }
     }
     if (!found_waiter) {
-      // If no one was waiting for this task, we need to free it ourselves. In this case, the task
-      // is also certainly unlocked, because, again, there is no waiter.
-      // Otherwise, by convention, it's the waiters responsibility to free the task.
-      // Put the task back on the freelist.
-      CompileTask::free(current);
+      // If no one was waiting for this task, we need to delete it ourselves.
+      // In this case, the task is also certainly unlocked, because, again, there is no waiter.
+      // Otherwise, by convention, it's the waiters responsibility to delete the task.
+      delete current;
     }
   }
   _first = nullptr;
@@ -1892,8 +1891,7 @@ CompileTask* CompileBroker::create_compile_task(CompileQueue*       queue,
                                                 CompileTask::CompileReason compile_reason,
                                                 bool                requires_online_compilation,
                                                 bool                blocking) {
-  CompileTask* new_task = CompileTask::allocate();
-  new_task->initialize(compile_id, method, osr_bci, comp_level,
+  CompileTask* new_task = new CompileTask(compile_id, method, osr_bci, comp_level,
                        hot_count, aot_code_entry, compile_reason, queue,
                        requires_online_compilation, blocking);
   return new_task;
@@ -1915,11 +1913,11 @@ static const int JVMCI_COMPILATION_PROGRESS_WAIT_ATTEMPTS = 10;
  * JVMCI_COMPILATION_PROGRESS_WAIT_TIMESLICE *
  * JVMCI_COMPILATION_PROGRESS_WAIT_ATTEMPTS.
  *
- * @return true if this thread needs to free/recycle the task
+ * @return true if this thread needs to delete the task
  */
 bool CompileBroker::wait_for_jvmci_completion(JVMCICompiler* jvmci, CompileTask* task, JavaThread* thread) {
   assert(UseJVMCICompiler, "sanity");
-  MonitorLocker ml(thread, task->lock());
+  MonitorLocker ml(thread, CompileTaskWait_lock);
   int progress_wait_attempts = 0;
   jint thread_jvmci_compilation_ticks = 0;
   jint global_jvmci_compilation_ticks = jvmci->global_compilation_ticks();
@@ -1987,7 +1985,7 @@ void CompileBroker::wait_for_completion(CompileTask* task) {
   } else
 #endif
   {
-    MonitorLocker ml(thread, task->lock());
+    MonitorLocker ml(thread, CompileTaskWait_lock);
     free_task = true;
     task->inc_waiting_for_completion();
     while (!task->is_complete() && !is_compilation_disabled_forever()) {
@@ -1998,19 +1996,19 @@ void CompileBroker::wait_for_completion(CompileTask* task) {
 
   if (free_task) {
     if (is_compilation_disabled_forever()) {
-      CompileTask::free(task);
+      delete task;
       return;
     }
 
     // It is harmless to check this status without the lock, because
-    // completion is a stable property (until the task object is recycled).
+    // completion is a stable property (until the task object is deleted).
     assert(task->is_complete(), "Compilation should have completed");
 
-    // By convention, the waiter is responsible for recycling a
+    // By convention, the waiter is responsible for deleting a
     // blocking CompileTask. Since there is only one waiter ever
     // waiting on a CompileTask, we know that no one else will
-    // be using this CompileTask; we can free it.
-    CompileTask::free(task);
+    // be using this CompileTask; we can delete it.
+    delete task;
   }
 }
 
@@ -2092,15 +2090,15 @@ void CompileBroker::shutdown_compiler_runtime(AbstractCompiler* comp, CompilerTh
 
     // Delete all queued compilation tasks to make compiler threads exit faster.
     if (_c1_compile_queue != nullptr) {
-      _c1_compile_queue->free_all();
+      _c1_compile_queue->delete_all();
     }
 
     if (_c2_compile_queue != nullptr) {
-      _c2_compile_queue->free_all();
+      _c2_compile_queue->delete_all();
     }
 
     if (_c3_compile_queue != nullptr) {
-      _c3_compile_queue->free_all();
+      _c3_compile_queue->delete_all();
     }
 
     // Set flags so that we continue execution with using interpreter only.

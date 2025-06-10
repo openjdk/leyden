@@ -29,6 +29,7 @@
 #include "code/nmethod.hpp"
 #include "compiler/compileLog.hpp"
 #include "memory/allocation.hpp"
+#include "runtime/mutexLocker.hpp"
 #include "utilities/xmlstream.hpp"
 
 class CompileQueue;
@@ -94,9 +95,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   }
 
  private:
-  static CompileTask*  _task_free_list;
   static int           _active_tasks;
-  Monitor*             _lock;
   int                  _compile_id;
   Method*              _method;
   jobject              _method_holder;
@@ -121,7 +120,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
   int                  _num_inlined_bytecodes;
   CompileTask*         _next;
   CompileTask*         _prev;
-  bool                 _is_free;
   // Fields used for logging why the compilation was initiated:
   jlong                _time_created; // time when task was created
   jlong                _time_queued;  // time when task was enqueued
@@ -139,19 +137,13 @@ class CompileTask : public CHeapObj<mtCompiler> {
   size_t               _arena_bytes;  // peak size of temporary memory during compilation (e.g. node arenas)
 
  public:
-  CompileTask() : _failure_reason(nullptr), _failure_reason_on_C_heap(false) {
-    // May hold MethodCompileQueue_lock
-    _lock = new Monitor(Mutex::safepoint-1, "CompileTask_lock");
-  }
-
-  void initialize(int compile_id, const methodHandle& method, int osr_bci, int comp_level,
+  CompileTask(int compile_id, const methodHandle& method, int osr_bci, int comp_level,
                   int hot_count, AOTCodeEntry* aot_code_entry,
                   CompileTask::CompileReason compile_reason,
                   CompileQueue* compile_queue,
                   bool requires_online_compilation, bool is_blocking);
+  ~CompileTask();
 
-  static CompileTask* allocate();
-  static void         free(CompileTask* task);
   static void         wait_for_no_active_tasks();
 
   int          compile_id() const                   { return _compile_id; }
@@ -208,22 +200,21 @@ class CompileTask : public CHeapObj<mtCompiler> {
     return reason_is_precompiled(compile_reason());
   }
 
-  Monitor*     lock() const                      { return _lock; }
   CompileQueue* compile_queue() const            { return _compile_queue; }
 
   // See how many threads are waiting for this task. Must have lock to read this.
   int waiting_for_completion_count() {
-    assert(_lock->owned_by_self(), "must have lock to use waiting_for_completion_count()");
+    assert(CompileTaskWait_lock->owned_by_self(), "must have lock to use waiting_for_completion_count()");
     return _waiting_count;
   }
   // Indicates that a thread is waiting for this task to complete. Must have lock to use this.
   void inc_waiting_for_completion() {
-    assert(_lock->owned_by_self(), "must have lock to use inc_waiting_for_completion()");
+    assert(CompileTaskWait_lock->owned_by_self(), "must have lock to use inc_waiting_for_completion()");
     _waiting_count++;
   }
   // Indicates that a thread stopped waiting for this task to complete. Must have lock to use this.
   void dec_waiting_for_completion() {
-    assert(_lock->owned_by_self(), "must have lock to use dec_waiting_for_completion()");
+    assert(CompileTaskWait_lock->owned_by_self(), "must have lock to use dec_waiting_for_completion()");
     assert(_waiting_count > 0, "waiting count is not positive");
     _waiting_count--;
   }
@@ -252,8 +243,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
   void         set_next(CompileTask* next)       { _next = next; }
   CompileTask* prev() const                      { return _prev; }
   void         set_prev(CompileTask* prev)       { _prev = prev; }
-  bool         is_free() const                   { return _is_free; }
-  void         set_is_free(bool val)             { _is_free = val; }
   bool         is_unloaded() const;
 
   CompileTrainingData* training_data() const      { return _training_data; }
