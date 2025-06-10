@@ -152,7 +152,7 @@ class CompileQueue : public CHeapObj<mtCompiler> {
 
   // Redefine Classes support
   void mark_on_stack();
-  void free_all();
+  void delete_all();
   void print_tty();
   void print(outputStream* st = tty);
 
