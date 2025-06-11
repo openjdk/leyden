@@ -42,7 +42,7 @@ import static java.nio.charset.StandardCharsets.ISO_8859_1;
 
 import jdk.internal.misc.JavaHome;
 
-public class MFontConfiguration extends FontConfiguration {
+public final class MFontConfiguration extends FontConfiguration {
 
     private static FontConfiguration fontConfig = null;
     private static PlatformLogger logger;
@@ -69,6 +69,7 @@ public class MFontConfiguration extends FontConfiguration {
     /* Needs to be kept in sync with updates in the languages used in
      * the fontconfig files.
      */
+    @Override
     protected void initReorderMap() {
         reorderMap = new HashMap<>();
 
@@ -87,6 +88,7 @@ public class MFontConfiguration extends FontConfiguration {
     /**
      * Sets the OS name and version from environment information.
      */
+    @Override
     protected void setOsNameAndVersion(){
         super.setOsNameAndVersion();
 
@@ -160,6 +162,7 @@ public class MFontConfiguration extends FontConfiguration {
 
     private static final String fontsDirPrefix = "$JRE_LIB_FONTS";
 
+    @Override
     protected String mapFileName(String fileName) {
         if (fileName != null && fileName.startsWith(fontsDirPrefix)) {
             Path p = SunFontManager.jreFontDirPath.resolve(
@@ -175,6 +178,7 @@ public class MFontConfiguration extends FontConfiguration {
     }
 
     // overrides FontConfiguration.getFallbackFamilyName
+    @Override
     public String getFallbackFamilyName(String fontName, String defaultFallback) {
         // maintain compatibility with old font.properties files, which
         // either had aliases for TimesRoman & Co. or defined mappings for them.
@@ -185,6 +189,7 @@ public class MFontConfiguration extends FontConfiguration {
         return defaultFallback;
     }
 
+    @Override
     protected String getEncoding(String awtFontName,
             String characterSubsetName) {
         // extract encoding field from XLFD
@@ -211,14 +216,17 @@ public class MFontConfiguration extends FontConfiguration {
         return encoding;
     }
 
+    @Override
     protected Charset getDefaultFontCharset(String fontName) {
         return ISO_8859_1;
     }
 
+    @Override
     protected String getFaceNameFromComponentFontName(String componentFontName) {
         return null;
     }
 
+    @Override
     protected String getFileNameFromComponentFontName(String componentFontName) {
         // for X11, component font name is XLFD
         // if we have a file name already, just use it; otherwise let's see
@@ -231,6 +239,7 @@ public class MFontConfiguration extends FontConfiguration {
         return ((X11FontManager) fontManager).getFileNameFromXLFD(componentFontName);
     }
 
+    @Override
     public HashSet<String> getAWTFontPathSet() {
         HashSet<String> fontDirs = new HashSet<String>();
         short[] scripts = getCoreScripts(0);
