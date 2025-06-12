@@ -144,6 +144,8 @@ CodeBuffer::~CodeBuffer() {
   if (_shared_trampoline_requests != nullptr) {
     delete _shared_trampoline_requests;
   }
+
+  NOT_PRODUCT(clear_strings());
 }
 
 void CodeBuffer::initialize_oop_recorder(OopRecorder* r) {
