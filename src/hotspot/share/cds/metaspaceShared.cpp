@@ -1101,6 +1101,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
       {
         builder.start_ac_region();
         if (AOTCodeCache::is_dumping_code()) {
+          DEBUG_ONLY(SystemDictionaryShared::NoClassLoadingMark nclm);
           Precompiler::compile_cached_code(&builder, CHECK);
         }
         // Write the contents to aot code region and close AOTCodeCache before packing the region

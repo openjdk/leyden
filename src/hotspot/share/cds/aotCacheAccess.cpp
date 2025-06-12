@@ -52,6 +52,12 @@ bool AOTCacheAccess::can_generate_aot_code(InstanceKlass* ik) {
   if (!builder->has_been_archived((address)ik)) {
     return false;
   }
+  {
+    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+    if (builder->is_excluded(ik)) {
+      return false;
+    }
+  }
   InstanceKlass* buffered_ik = builder->get_buffered_addr(ik);
   if (ik->defined_by_other_loaders()) {
     return false;

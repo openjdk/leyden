@@ -707,6 +707,10 @@ struct TestMultipleStaticAssertFormsInClassScope {
   STATIC_ASSERT(1 == 1);
 };
 
+
+extern "C" DEBUGEXPORT void dump_methods(InstanceKlass* k) {
+  k->methods()->print(tty);
+}
 #endif // !PRODUCT
 
 // Support for showing register content on asserts/guarantees.

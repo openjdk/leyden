@@ -284,7 +284,6 @@ private:
 
   void relocate_embedded_pointers(SourceObjList* src_objs);
 
-  bool is_excluded(Klass* k);
   void clean_up_src_obj_table();
 
 protected:
@@ -503,6 +502,8 @@ public:
   static Symbol* get_buffered_symbol(Symbol* src_symbol) {
     return (Symbol*)current()->get_buffered_addr((address)src_symbol);
   }
+
+  bool is_excluded(Klass* k);
 
   void print_stats();
   void report_out_of_space(const char* name, size_t needed_bytes);

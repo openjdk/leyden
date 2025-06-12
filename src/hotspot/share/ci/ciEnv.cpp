@@ -516,6 +516,17 @@ ciKlass* ciEnv::get_klass_by_name_impl(ciKlass* accessing_klass,
     }
   }
 
+  if (is_precompiled() && found_klass != nullptr) {
+    if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active()) {
+      MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+      assert(ArchiveBuilder::current()->has_been_archived((address) found_klass), "");
+      if (ArchiveBuilder::current()->is_excluded(found_klass)) {
+        log_trace(precompile)("%d: get_klass_by_name_impl: unloaded (excluded): %s", task()->compile_id(), found_klass->external_name());
+        found_klass = nullptr;
+      }
+    }
+  }
+
   if (found_klass != nullptr) {
     // Found it.  Build a CI handle.
     return get_klass(found_klass);
@@ -588,6 +599,18 @@ ciKlass* ciEnv::get_klass_by_index_impl(const constantPoolHandle& cpool,
   if (unloaded_klass != nullptr) {
     is_accessible = false;
     return unloaded_klass;
+  }
+
+  if (is_precompiled()) {
+    if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active()) {
+      MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+      assert(ArchiveBuilder::current()->has_been_archived((address) klass), "");
+      if (ArchiveBuilder::current()->is_excluded(klass)) {
+        log_trace(precompile)("%d: get_klass_by_index_impl: unloaded (excluded): %s", task()->compile_id(), klass->external_name());
+        is_accessible = false;
+        return get_unloaded_klass(accessor, name);
+      }
+    }
   }
 
   // It is known to be accessible, since it was found in the constant pool.
@@ -1889,7 +1912,10 @@ bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
       }
       if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active() &&
           ArchiveBuilder::current()->has_been_archived((address)ik)) {
-        return true; // class init barriers
+        MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+        if (!ArchiveBuilder::current()->is_excluded(ik)) {
+          return true; // class init barriers
+        }
       }
       return false;
     }
@@ -1910,7 +1936,8 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
     log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
     return ik->init_state(); // not yet initialized
   } else if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active()) {
-    if (!ArchiveBuilder::current()->has_been_archived((address)ik)) {
+    MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+    if (!ArchiveBuilder::current()->has_been_archived((address)ik) || ArchiveBuilder::current()->is_excluded(ik)) {
       fatal("New workflow: should not compile code for unarchived class: %s", ik->external_name());
     }
     guarantee(ik->is_loaded(), "");

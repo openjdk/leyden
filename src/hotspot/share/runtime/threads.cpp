@@ -825,8 +825,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   bool force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
 
   if (CDSConfig::is_using_aot_linked_classes()) {
-    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
     SystemDictionary::restore_archived_method_handle_intrinsics();
+    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
   }
 
   // Start string deduplication thread if requested.
