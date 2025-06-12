@@ -426,7 +426,7 @@ class AsmRemarks {
   AsmRemarks();
  ~AsmRemarks();
 
-  static void init(AsmRemarks& asm_remarks);
+  void init();
 
   const char* insert(uint offset, const char* remstr);
 
@@ -454,7 +454,7 @@ class DbgStrings {
   DbgStrings();
  ~DbgStrings();
 
-  static void init(DbgStrings& dbg_strings);
+  void init();
 
   const char* insert(const char* dbgstr);
 
