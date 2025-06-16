@@ -1106,7 +1106,8 @@ CHeapString::~CHeapString() {
 // offset is a byte offset into an instruction stream (CodeBuffer, CodeBlob or
 // other memory buffer) and remark is a string (comment).
 //
-AsmRemarks::AsmRemarks() : _remarks(new AsmRemarkCollection()) {
+AsmRemarks::AsmRemarks() {
+  init();
   assert(_remarks != nullptr, "Allocation failure!");
 }
 
@@ -1114,11 +1115,11 @@ AsmRemarks::~AsmRemarks() {
   if (_remarks != nullptr) {
     clear();
   }
-  assert(_remarks == nullptr, "Must 'clear()' before deleting!");
+  assert(_remarks == nullptr, "must be");
 }
 
-void AsmRemarks::init(AsmRemarks& asm_remarks) {
-  asm_remarks._remarks = new AsmRemarkCollection();
+void AsmRemarks::init() {
+  _remarks = new AsmRemarkCollection();
 }
 
 const char* AsmRemarks::insert(uint offset, const char* remstr) {
@@ -1166,6 +1167,7 @@ uint AsmRemarks::print(uint offset, outputStream* strm) const {
 // in the code generated, and thus requiring a fixed address.
 //
 DbgStrings::DbgStrings() : _strings(new DbgStringCollection()) {
+  init();
   assert(_strings != nullptr, "Allocation failure!");
 }
 
@@ -1173,11 +1175,11 @@ DbgStrings::~DbgStrings() {
   if (_strings != nullptr) {
     clear();
   }
-  assert(_strings == nullptr, "Must 'clear()' before deleting!");
+  assert(_strings == nullptr, "must be");
 }
 
-void DbgStrings::init(DbgStrings& dbg_strings) {
-  dbg_strings._strings = new DbgStringCollection();
+void DbgStrings::init() {
+  _strings = new DbgStringCollection();
 }
 
 const char* DbgStrings::insert(const char* dbgstr) {

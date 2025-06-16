@@ -46,7 +46,6 @@ class AsmRemarks;
 class ciConstant;
 class ciEnv;
 class ciMethod;
-class CodeBuffer;
 class CodeBlob;
 class CodeOffsets;
 class CompileTask;
@@ -102,11 +101,10 @@ private:
   uint   _size;        // Entry size
   uint   _name_offset; // Method's or intrinsic name
   uint   _name_size;
+  uint   _num_inlined_bytecodes;
+
   uint   _code_offset; // Start of code in cache
   uint   _code_size;   // Total size of all code sections
-  uint   _reloc_offset;// Relocations
-  uint   _reloc_size;  // Max size of relocations per code section
-  uint   _num_inlined_bytecodes;
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
@@ -120,51 +118,48 @@ private:
   bool   _ignore_decompile; // ignore decompile counter if compilation is done
                             // during "assembly" phase without running application
   address _dumptime_content_start_addr; // CodeBlob::content_begin() at dump time; used for applying relocations
+
 public:
+  // this constructor is used only by AOTCodeEntry::Stub
   AOTCodeEntry(uint offset, uint size, uint name_offset, uint name_size,
-           uint code_offset, uint code_size,
-           uint reloc_offset, uint reloc_size,
-           Kind kind, uint id,
-           address dumptime_content_start_addr = nullptr,
-           uint comp_level = 0,
-           uint comp_id = 0, uint decomp = 0,
-           bool has_clinit_barriers = false,
-           bool for_preload = false,
-           bool ignore_decompile = false) {
+               uint code_offset, uint code_size,
+               Kind kind, uint id) {
+    assert(kind == AOTCodeEntry::Stub, "sanity check");
     _next         = nullptr;
     _method       = nullptr;
     _kind         = kind;
     _id           = id;
-
     _offset       = offset;
     _size         = size;
     _name_offset  = name_offset;
     _name_size    = name_size;
     _code_offset  = code_offset;
     _code_size    = code_size;
-    _reloc_offset = reloc_offset;
-    _reloc_size   = reloc_size;
 
-    _dumptime_content_start_addr = dumptime_content_start_addr;
+    _dumptime_content_start_addr = nullptr;
     _num_inlined_bytecodes = 0;
-
-    _comp_level   = comp_level;
-    _comp_id      = comp_id;
-    _decompile    = decomp;
+    _comp_level   = 0;
+    _comp_id      = 0;
+    _decompile    = 0;
     _has_oop_maps = false; // unused here
-    _has_clinit_barriers = has_clinit_barriers;
-    _for_preload  = for_preload;
+    _has_clinit_barriers = false;
+    _for_preload  = false;
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
-    _ignore_decompile = ignore_decompile;
+    _ignore_decompile = true;
   }
 
   AOTCodeEntry(Kind kind,         uint id,
                uint offset,       uint size,
                uint name_offset,  uint name_size,
                uint blob_offset,  bool has_oop_maps,
-               address dumptime_content_start_addr) {
+               address dumptime_content_start_addr,
+               uint comp_level = 0,
+               uint comp_id = 0, uint decomp = 0,
+               bool has_clinit_barriers = false,
+               bool for_preload = false,
+               bool ignore_decompile = false) {
     _next         = nullptr;
     _method       = nullptr;
     _kind         = kind;
@@ -174,23 +169,25 @@ public:
     _name_offset  = name_offset;
     _name_size    = name_size;
     _code_offset  = blob_offset;
-    _code_size    = 0;
-    _reloc_offset = 0;
-    _reloc_size   = 0;
+    _code_size    = 0; // unused
 
     _dumptime_content_start_addr = dumptime_content_start_addr;
     _num_inlined_bytecodes = 0;
 
-    _comp_level   = 0;
-    _comp_id      = 0;
-    _decompile    = 0;
+    _comp_level   = comp_level;
+    _comp_id      = comp_id;
+    _decompile    = decomp;
     _has_oop_maps = has_oop_maps;
-    _has_clinit_barriers = false;
-    _for_preload  = false;
+    _has_clinit_barriers = has_clinit_barriers;
+    _for_preload  = for_preload;
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
-    _ignore_decompile = true;
+
+    _loaded       = false;
+    _not_entrant  = false;
+    _load_fail    = false;
+    _ignore_decompile = ignore_decompile;
   }
 
   void* operator new(size_t x, AOTCodeCache* cache);
@@ -216,18 +213,9 @@ public:
   uint name_size()    const { return _name_size; }
   uint code_offset()  const { return _code_offset; }
   uint code_size()    const { return _code_size; }
-  uint reloc_offset() const { return _reloc_offset; }
-  uint reloc_size()   const { return _reloc_size; }
 
-  uint blob_offset()  const { return _code_offset; }
   bool has_oop_maps() const { return _has_oop_maps; }
   address dumptime_content_start_addr() const { return _dumptime_content_start_addr; }
-
-  static bool is_valid_entry_kind(Kind kind) { return kind > None && kind < Kind_count; }
-  static bool is_blob(Kind kind) { return kind == SharedBlob || kind == C1Blob || kind == C2Blob; }
-  static bool is_adapter(Kind kind) { return kind == Adapter; }
-  bool is_code()  { return _kind == Code; }
-
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
   void set_inlined_bytecodes(int bytes) { _num_inlined_bytecodes = bytes; }
 
@@ -249,6 +237,11 @@ public:
   void set_load_fail()    { _load_fail = true; }
 
   void print(outputStream* st) const;
+
+  static bool is_valid_entry_kind(Kind kind) { return kind > None && kind < Kind_count; }
+  static bool is_blob(Kind kind) { return kind == SharedBlob || kind == C1Blob || kind == C2Blob; }
+  static bool is_adapter(Kind kind) { return kind == Adapter; }
+  bool is_code()  { return _kind == Code; }
 };
 
 // Addresses of stubs, blobs and runtime finctions called from compiled code.
@@ -303,7 +296,7 @@ public:
   const char* add_C_string(const char* str);
   int  id_for_C_string(address str);
   address address_for_C_string(int idx);
-  int  id_for_address(address addr, RelocIterator iter, CodeBuffer* buffer, CodeBlob* blob = nullptr);
+  int  id_for_address(address addr, RelocIterator iter, CodeBlob* blob);
   address address_for_id(int id);
   bool c2_complete() const { return _c2_complete; }
   bool c1_complete() const { return _c1_complete; }
@@ -565,29 +558,23 @@ public:
   bool write_klass(Klass* klass);
   bool write_method(Method* method);
 
-  bool write_relocations(CodeBlob& code_blob);
-  bool write_debug_info(DebugInformationRecorder* recorder);
+  bool write_relocations(CodeBlob& code_blob, GrowableArray<Handle>* oop_list = nullptr, GrowableArray<Metadata*>* metadata_list = nullptr);
 
   bool write_oop_map_set(CodeBlob& cb);
   bool write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
-  bool write_nmethod_loadtime_relocations(JavaThread* thread, nmethod* nm, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
 
   jobject read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
-  bool read_oops(OopRecorder* oop_recorder, ciMethod* target);
-  bool read_metadata(OopRecorder* oop_recorder, ciMethod* target);
 
   bool write_oop(jobject& jo);
   bool write_oop(oop obj);
-  bool write_oops(OopRecorder* oop_recorder);
   bool write_metadata(Metadata* m);
-  bool write_metadata(OopRecorder* oop_recorder);
   bool write_oops(nmethod* nm);
   bool write_metadata(nmethod* nm);
 
 #ifndef PRODUCT
-  bool write_asm_remarks(CodeBlob& cb);
-  bool write_dbg_strings(CodeBlob& cb);
+  bool write_asm_remarks(AsmRemarks& asm_remarks, bool use_string_table);
+  bool write_dbg_strings(DbgStrings& dbg_strings, bool use_string_table);
 #endif // PRODUCT
 
   static bool store_code_blob(CodeBlob& blob,
@@ -709,14 +696,11 @@ public:
 
   // convenience method to convert offset in AOTCodeEntry data to its address
   bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
-  bool compile_blob(CodeBuffer* buffer, int* pc_offset);
 
   CodeBlob* compile_code_blob(const char* name, int entry_offset_count, int* entry_offsets);
 
   Klass* read_klass(const methodHandle& comp_method, bool shared);
   Method* read_method(const methodHandle& comp_method, bool shared);
-
-  DebugInformationRecorder* read_debug_info(OopRecorder* oop_recorder);
 
   oop read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
@@ -728,10 +712,10 @@ public:
 
   ImmutableOopMapSet* read_oop_map_set();
 
-  void fix_relocations(CodeBlob* code_blob);
+  void fix_relocations(CodeBlob* code_blob, GrowableArray<Handle>* oop_list = nullptr, GrowableArray<Metadata*>* metadata_list = nullptr) NOT_CDS_RETURN;
 #ifndef PRODUCT
-  void read_asm_remarks(AsmRemarks& asm_remarks);
-  void read_dbg_strings(DbgStrings& dbg_strings);
+  void read_asm_remarks(AsmRemarks& asm_remarks, bool use_string_table) NOT_CDS_RETURN;
+  void read_dbg_strings(DbgStrings& dbg_strings, bool use_string_table) NOT_CDS_RETURN;
 #endif // PRODUCT
 
   void print_on(outputStream* st);
