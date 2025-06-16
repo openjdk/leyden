@@ -339,7 +339,6 @@ protected:
     uint _gc;
     enum Flags {
       none                     = 0,
-      metadataPointers         = 1,
       debugVM                  = 2,
       compressedOops           = 4,
       compressedClassPointers  = 8,
@@ -352,10 +351,8 @@ protected:
     uint _flags;
 
   public:
-    void record(bool use_meta_ptrs);
+    void record();
     bool verify() const;
-
-    bool has_meta_ptrs()  const { return (_flags & metadataPointers) != 0; }
   };
 
   class Header : public CHeapObj<mtCode> {
@@ -385,8 +382,7 @@ protected:
               uint entries_count,  uint entries_offset,
               uint preload_entries_count, uint preload_entries_offset,
               uint adapters_count, uint shared_blobs_count,
-              uint C1_blobs_count, uint C2_blobs_count, uint stubs_count,
-              bool use_meta_ptrs) {
+              uint C1_blobs_count, uint C2_blobs_count, uint stubs_count) {
       _version        = AOT_CODE_VERSION;
       _cache_size     = cache_size;
       _strings_count  = strings_count;
@@ -401,7 +397,7 @@ protected:
       _C2_blobs_count = C2_blobs_count;
       _stubs_count    = stubs_count;
 
-      _config.record(use_meta_ptrs);
+      _config.record();
     }
 
     uint cache_size()     const { return _cache_size; }
@@ -422,7 +418,6 @@ protected:
                                        - _C1_blobs_count
                                        - _C2_blobs_count
                                        - _adapters_count; }
-    bool has_meta_ptrs()  const { return _config.has_meta_ptrs(); }
 
     bool verify_config(uint load_size)  const;
     bool verify_vm_config() const { // Called after Universe initialized
@@ -449,8 +444,6 @@ private:
   bool   _for_preload;         // Code for preload
   bool   _gen_preload_code;    // Generate pre-loading code
   bool   _has_clinit_barriers; // Code with clinit barriers
-
-  bool   _use_meta_ptrs;   // Store metadata pointers
 
   AOTCodeAddressTable* _table;
 
@@ -535,7 +528,6 @@ public:
   bool for_dump() const { return _for_dump && !_failed; }
 
   bool closing()          const { return _closing; }
-  bool use_meta_ptrs()    const { return _use_meta_ptrs; }
   bool gen_preload_code() const { return _gen_preload_code; }
 
   AOTCodeEntry* add_entry() {

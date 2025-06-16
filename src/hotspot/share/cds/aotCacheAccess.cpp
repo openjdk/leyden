@@ -43,7 +43,7 @@ bool AOTCacheAccess::can_generate_aot_code(address addr) {
   return ArchiveBuilder::is_active() && ArchiveBuilder::current()->has_been_archived(addr);
 }
 
-bool AOTCacheAccess::can_generate_aot_code(InstanceKlass* ik) {
+bool AOTCacheAccess::can_generate_aot_code_for(InstanceKlass* ik) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
   if (!ArchiveBuilder::is_active()) {
     return false;

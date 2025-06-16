@@ -44,9 +44,10 @@ public:
     return can_generate_aot_code((address)m);
   }
   static bool can_generate_aot_code(Klass* k) {
+    assert(!k->is_instance_klass(), "other method should be called");
     return can_generate_aot_code((address)k);
   }
-  static bool can_generate_aot_code(InstanceKlass* ik) NOT_CDS_RETURN_(false);
+  static bool can_generate_aot_code_for(InstanceKlass* ik) NOT_CDS_RETURN_(false);
 
   /*
    * Used during an assembly run to compute the offset of the metadata object in the AOT Cache.

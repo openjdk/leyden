@@ -516,8 +516,6 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
   _compile_id(0),
   _comp_level(0)
 {
-  _use_meta_ptrs = UseSharedSpaces ? UseMetadataPointers : false;
-
   // Read header at the begining of cache
   if (_for_use) {
     // Read cache
@@ -555,16 +553,11 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
     log_debug(aot, codecache, init)("  Nmethods: total=%u", _load_header->nmethods_count());
     log_debug(aot, codecache, init)("  AOT code cache size: %u bytes", _load_header->cache_size());
 
-    if (_load_header->has_meta_ptrs()) {
-      assert(UseSharedSpaces, "should be verified already");
-      _use_meta_ptrs = true; // Regardless UseMetadataPointers
-      UseMetadataPointers = true;
-    }
     // Read strings
     load_strings();
   }
   if (_for_dump) {
-    _gen_preload_code = _use_meta_ptrs && (ClassInitBarrierMode > 0);
+    _gen_preload_code = (ClassInitBarrierMode > 0);
 
     _C_store_buffer = NEW_C_HEAP_ARRAY(char, max_aot_code_size() + DATA_ALIGNMENT, mtCode);
     _store_buffer = align_up(_C_store_buffer, DATA_ALIGNMENT);
@@ -667,11 +660,8 @@ AOTCodeCache::~AOTCodeCache() {
   }
 }
 
-void AOTCodeCache::Config::record(bool use_meta_ptrs) {
+void AOTCodeCache::Config::record() {
   _flags = 0;
-  if (use_meta_ptrs) {
-    _flags |= metadataPointers;
-  }
 #ifdef ASSERT
   _flags |= debugVM;
 #endif
@@ -1344,8 +1334,7 @@ bool AOTCodeCache::finish_write() {
                  entries_count, new_entries_offset,
                  preload_entries_cnt, preload_entries_offset,
                  adapters_count, shared_blobs_count,
-                 C1_blobs_count, C2_blobs_count,
-                 stubs_count, _use_meta_ptrs);
+                 C1_blobs_count, C2_blobs_count, stubs_count);
 
     log_info(aot, codecache, exit)("Wrote %d AOT code entries to AOT Code Cache", entries_count);
 
@@ -2420,28 +2409,8 @@ Metadata* AOTCodeReader::read_metadata(const methodHandle& comp_method) {
 }
 
 bool AOTCodeCache::write_method(Method* method) {
-  bool can_use_meta_ptrs = _use_meta_ptrs;
-  Klass* klass = method->method_holder();
-  if (klass->is_instance_klass()) {
-    InstanceKlass* ik = InstanceKlass::cast(klass);
-    ClassLoaderData* cld = ik->class_loader_data();
-    if (!cld->is_builtin_class_loader_data()) {
-      set_lookup_failed();
-      return false;
-    }
-    if (_for_preload && !AOTCacheAccess::can_generate_aot_code(ik)) {
-      _for_preload = false;
-      // Bailout if code has clinit barriers:
-      // method will be recompiled without them in any case
-      if (_has_clinit_barriers) {
-        set_lookup_failed();
-        return false;
-      }
-      can_use_meta_ptrs = false;
-    }
-  }
-  ResourceMark rm;
-  if (can_use_meta_ptrs && AOTCacheAccess::can_generate_aot_code(method)) {
+  ResourceMark rm; // To method's name printing
+  if (AOTCacheAccess::can_generate_aot_code(method)) {
     DataKind kind = DataKind::Method_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
@@ -2452,90 +2421,19 @@ bool AOTCodeCache::write_method(Method* method) {
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(aot, codecache)("%d (L%d): Wrote shared method: %s @ 0x%08x", compile_id(), comp_level(), method->name_and_sig_as_C_string(), method_offset);
+    log_info(aot, codecache, metadata)("%d (L%d): Wrote method: %s @ 0x%08x",
+             compile_id(), comp_level(), method->name_and_sig_as_C_string(), method_offset);
     return true;
   }
-  // Bailout if code has clinit barriers:
-  // method will be recompiled without them in any case
-  if (_for_preload && _has_clinit_barriers) {
-    set_lookup_failed();
-    return false;
-  }
-  _for_preload = false;
-  log_info(aot, codecache,cds)("%d (L%d): Not shared method: %s", compile_id(), comp_level(), method->name_and_sig_as_C_string());
-  if (method->is_hidden()) { // Skip such nmethod
-    set_lookup_failed();
-    return false;
-  }
-  DataKind kind = DataKind::Method;
-  uint n = write_bytes(&kind, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  Symbol* name   = method->name();
-  Symbol* holder = method->klass_name();
-  Symbol* signat = method->signature();
-  int name_length   = name->utf8_length();
-  int holder_length = holder->utf8_length();
-  int signat_length = signat->utf8_length();
-
-  // Write sizes and strings
-  int total_length = holder_length + 1 + name_length + 1 + signat_length + 1;
-  char* dest = NEW_RESOURCE_ARRAY(char, total_length);
-  holder->as_C_string(dest, total_length);
-  dest[holder_length] = '\0';
-  int pos = holder_length + 1;
-  name->as_C_string(&(dest[pos]), (total_length - pos));
-  pos += name_length;
-  dest[pos++] = '\0';
-  signat->as_C_string(&(dest[pos]), (total_length - pos));
-  dest[total_length - 1] = '\0';
-
-  LogTarget(Info, aot, codecache, loader) log;
-  if (log.is_enabled()) {
-    LogStream ls(log);
-    oop loader = klass->class_loader();
-    oop domain = klass->protection_domain();
-    ls.print("Holder %s loader: ", dest);
-    if (loader == nullptr) {
-      ls.print("nullptr");
-    } else {
-      loader->print_value_on(&ls);
-    }
-    ls.print(" domain: ");
-    if (domain == nullptr) {
-      ls.print("nullptr");
-    } else {
-      domain->print_value_on(&ls);
-    }
-    ls.cr();
-  }
-
-  n = write_bytes(&holder_length, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  n = write_bytes(&name_length, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  n = write_bytes(&signat_length, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  n = write_bytes(dest, total_length);
-  if (n != (uint)total_length) {
-    return false;
-  }
-  dest[holder_length] = ' ';
-  dest[holder_length + 1 + name_length] = ' ';
-  log_info(aot, codecache)("%d (L%d): Wrote method: %s", compile_id(), comp_level(), dest);
-  return true;
+  log_warning(aot, codecache, metadata)("%d (L%d): Method is not archived: %s",
+              compile_id(), comp_level(), method->name_and_sig_as_C_string());
+  set_lookup_failed();
+  return false;
 }
 
 Method* AOTCodeReader::read_method(const methodHandle& comp_method, bool shared) {
   uint code_offset = read_position();
-  if (_cache->use_meta_ptrs() && shared) {
+  if (shared) {
     uint method_offset = *(uint*)addr(code_offset);
     code_offset += sizeof(uint);
     set_read_position(code_offset);
@@ -2574,115 +2472,34 @@ Method* AOTCodeReader::read_method(const methodHandle& comp_method, bool shared)
                   compile_id(), comp_level(), m->name_and_sig_as_C_string());
     return m;
   }
-  int holder_length = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  int name_length = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  int signat_length = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-
-  const char* dest = addr(code_offset);
-  code_offset += holder_length + 1 + name_length + 1 + signat_length + 1;
-  set_read_position(code_offset);
-  TempNewSymbol klass_sym = SymbolTable::probe(&(dest[0]), holder_length);
-  if (klass_sym == nullptr) {
-    set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Probe failed for class %s", compile_id(), comp_level(), &(dest[0]));
-    return nullptr;
-  }
-  // Use class loader of compiled method.
-  Thread* thread = Thread::current();
-  Handle loader(thread, comp_method->method_holder()->class_loader());
-  Klass* k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, loader);
-  assert(!thread->has_pending_exception(), "should not throw");
-  if (k == nullptr && !loader.is_null()) {
-    // Try default loader and domain
-    k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, Handle());
-    assert(!thread->has_pending_exception(), "should not throw");
-  }
-  if (k != nullptr) {
-    if (!k->is_instance_klass()) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d (L%d): Lookup failed for holder %s: not instance klass",
-                       compile_id(), comp_level(), &(dest[0]));
-      return nullptr;
-    } else if (!InstanceKlass::cast(k)->is_linked()) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d (L%d): Lookup failed for holder %s: not linked",
-                       compile_id(), comp_level(), &(dest[0]));
-      return nullptr;
-    }
-    log_info(aot, codecache)("%d (L%d): Holder lookup: %s", compile_id(), comp_level(), k->external_name());
-  } else {
-    set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Lookup failed for holder %s",
-                  compile_id(), comp_level(), &(dest[0]));
-    return nullptr;
-  }
-  TempNewSymbol name_sym = SymbolTable::probe(&(dest[holder_length + 1]), name_length);
-  int pos = holder_length + 1 + name_length + 1;
-  TempNewSymbol sign_sym = SymbolTable::probe(&(dest[pos]), signat_length);
-  if (name_sym == nullptr) {
-    set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Probe failed for method name %s",
-                     compile_id(), comp_level(), &(dest[holder_length + 1]));
-    return nullptr;
-  }
-  if (sign_sym == nullptr) {
-    set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Probe failed for method signature %s",
-                     compile_id(), comp_level(), &(dest[pos]));
-    return nullptr;
-  }
-  Method* m = InstanceKlass::cast(k)->find_method(name_sym, sign_sym);
-  if (m != nullptr) {
-    ResourceMark rm;
-    log_info(aot, codecache)("%d (L%d): Method lookup: %s", compile_id(), comp_level(), m->name_and_sig_as_C_string());
-  } else {
-    set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Lookup failed for method %s::%s%s",
-                     compile_id(), comp_level(), &(dest[0]), &(dest[holder_length + 1]), &(dest[pos]));
-    return nullptr;
-  }
-  return m;
+  set_lookup_failed();
+  return nullptr;
 }
 
 bool AOTCodeCache::write_klass(Klass* klass) {
-  bool can_use_meta_ptrs = _use_meta_ptrs;
   uint array_dim = 0;
   if (klass->is_objArray_klass()) {
     array_dim = ObjArrayKlass::cast(klass)->dimension();
     klass     = ObjArrayKlass::cast(klass)->bottom_klass(); // overwrites klass
   }
   uint init_state = 0;
+  bool can_write = true;
   if (klass->is_instance_klass()) {
     InstanceKlass* ik = InstanceKlass::cast(klass);
-    ClassLoaderData* cld = ik->class_loader_data();
-    if (!cld->is_builtin_class_loader_data()) {
-      set_lookup_failed();
-      return false;
-    }
-    if (_for_preload && !AOTCacheAccess::can_generate_aot_code(ik)) {
-      _for_preload = false;
-      // Bailout if code has clinit barriers:
-      // method will be recompiled without them in any case
-      if (_has_clinit_barriers) {
-        set_lookup_failed();
-        return false;
-      }
-      can_use_meta_ptrs = false;
-    }
     init_state = (ik->is_initialized() ? 1 : 0);
+    can_write = AOTCacheAccess::can_generate_aot_code_for(ik);
+  } else {
+    can_write = AOTCacheAccess::can_generate_aot_code(klass);
   }
   ResourceMark rm;
   uint state = (array_dim << 1) | (init_state & 1);
-  if (can_use_meta_ptrs && AOTCacheAccess::can_generate_aot_code(klass)) {
+  if (can_write) {
     DataKind kind = DataKind::Klass_Shared;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
       return false;
     }
-    // Record state of instance klass initialization.
+    // Record state of instance klass initialization and array dimentions.
     n = write_bytes(&state, sizeof(int));
     if (n != sizeof(int)) {
       return false;
@@ -2692,72 +2509,18 @@ bool AOTCodeCache::write_klass(Klass* klass) {
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(aot, codecache)("%d (L%d): Wrote shared klass: %s%s%s @ 0x%08x", compile_id(), comp_level(), klass->external_name(),
-                  (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
-                  (array_dim > 0 ? " (object array)" : ""),
-                  klass_offset);
+    log_info(aot, codecache, metadata)("%d (L%d): Registered klass: %s%s%s @ 0x%08x",
+             compile_id(), comp_level(), klass->external_name(),
+             (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
+             (array_dim > 0 ? " (object array)" : ""), klass_offset);
     return true;
   }
-  // Bailout if code has clinit barriers:
-  // method will be recompiled without them in any case
-  if (_for_preload && _has_clinit_barriers) {
-    set_lookup_failed();
-    return false;
-  }
-  _for_preload = false;
-  log_info(aot, codecache,cds)("%d (L%d): Not shared klass: %s", compile_id(), comp_level(), klass->external_name());
-  if (klass->is_hidden()) { // Skip such nmethod
-    set_lookup_failed();
-    return false;
-  }
-  DataKind kind = DataKind::Klass;
-  uint n = write_bytes(&kind, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  // Record state of instance klass initialization.
-  n = write_bytes(&state, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  Symbol* name = klass->name();
-  int name_length = name->utf8_length();
-  int total_length = name_length + 1;
-  char* dest = NEW_RESOURCE_ARRAY(char, total_length);
-  name->as_C_string(dest, total_length);
-  dest[total_length - 1] = '\0';
-  LogTarget(Info, aot, codecache, loader) log;
-  if (log.is_enabled()) {
-    LogStream ls(log);
-    oop loader = klass->class_loader();
-    oop domain = klass->protection_domain();
-    ls.print("Class %s loader: ", dest);
-    if (loader == nullptr) {
-      ls.print("nullptr");
-    } else {
-      loader->print_value_on(&ls);
-    }
-    ls.print(" domain: ");
-    if (domain == nullptr) {
-      ls.print("nullptr");
-    } else {
-      domain->print_value_on(&ls);
-    }
-    ls.cr();
-  }
-  n = write_bytes(&name_length, sizeof(int));
-  if (n != sizeof(int)) {
-    return false;
-  }
-  n = write_bytes(dest, total_length);
-  if (n != (uint)total_length) {
-    return false;
-  }
-  log_info(aot, codecache)("%d (L%d): Wrote klass: %s%s%s",
-                compile_id(), comp_level(),
-                dest, (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
-                (array_dim > 0 ? " (object array)" : ""));
-  return true;
+  log_warning(aot, codecache, metadata)("%d (L%d): Klassis not archived: %s%s%s",
+              compile_id(), comp_level(), klass->external_name(),
+              (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
+              (array_dim > 0 ? " (object array)" : ""));
+  set_lookup_failed();
+  return false;
 }
 
 Klass* AOTCodeReader::read_klass(const methodHandle& comp_method, bool shared) {
@@ -2766,7 +2529,7 @@ Klass* AOTCodeReader::read_klass(const methodHandle& comp_method, bool shared) {
   uint init_state = (state  & 1);
   uint array_dim  = (state >> 1);
   code_offset += sizeof(int);
-  if (_cache->use_meta_ptrs() && shared) {
+  if (shared) {
     uint klass_offset = *(uint*)addr(code_offset);
     code_offset += sizeof(uint);
     set_read_position(code_offset);
@@ -2811,42 +2574,8 @@ Klass* AOTCodeReader::read_klass(const methodHandle& comp_method, bool shared) {
       return k;
     }
   }
-  int name_length = *(int*)addr(code_offset);
-  code_offset += sizeof(int);
-  const char* dest = addr(code_offset);
-  code_offset += name_length + 1;
-  set_read_position(code_offset);
-  TempNewSymbol klass_sym = SymbolTable::probe(&(dest[0]), name_length);
-  if (klass_sym == nullptr) {
-    set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Probe failed for class %s",
-                     compile_id(), comp_level(), &(dest[0]));
-    return nullptr;
-  }
-  // Use class loader of compiled method.
-  Thread* thread = Thread::current();
-  Handle loader(thread, comp_method->method_holder()->class_loader());
-  Klass* k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, loader);
-  assert(!thread->has_pending_exception(), "should not throw");
-  if (k == nullptr && !loader.is_null()) {
-    // Try default loader and domain
-    k = SystemDictionary::find_instance_or_array_klass(thread, klass_sym, Handle());
-    assert(!thread->has_pending_exception(), "should not throw");
-  }
-  if (k != nullptr) {
-    // Allow not initialized klass which was uninitialized during code caching
-    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1)) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d (L%d): Lookup failed for klass %s: not initialized", compile_id(), comp_level(), &(dest[0]));
-      return nullptr;
-    }
-    log_info(aot, codecache)("%d (L%d): Klass lookup %s", compile_id(), comp_level(), k->external_name());
-  } else {
-    set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Lookup failed for class %s", compile_id(), comp_level(), &(dest[0]));
-    return nullptr;
-  }
-  return k;
+  set_lookup_failed();
+  return nullptr;
 }
 
 bool AOTCodeCache::write_oop(jobject& jo) {

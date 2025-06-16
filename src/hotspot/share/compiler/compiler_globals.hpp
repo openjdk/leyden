@@ -412,9 +412,6 @@
   product(bool, StressClassInitBarriers, false, DIAGNOSTIC,                 \
           "Force slow path in class initialization barriers")               \
                                                                             \
-  product(bool, UseMetadataPointers, true,                                  \
-          "Store Metadata pointers in Relocation Info for cached code")     \
-                                                                            \
   product(bool, UseCodeLoadThread, true,                                    \
           "Use separate thread for cached code load")                       \
                                                                             \
