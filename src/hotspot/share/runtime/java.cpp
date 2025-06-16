@@ -554,8 +554,6 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 #endif
 
-  AOTCodeCache::close(); // Write final data and close archive
-
   // Hang forever on exit if we're reporting an error.
   if (ShowMessageBoxOnError && VMError::is_error_reported()) {
     os::infinite_sleep();

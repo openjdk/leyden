@@ -397,50 +397,6 @@ static void print_helper(nmethod* nm, outputStream* st) {
 
 void AOTCodeCache::close() {
   if (is_on()) {
-    if (AOTCodeCache::is_on_for_use()) {
-      LogStreamHandle(Info, init) log;
-      if (log.is_enabled()) {
-        log.print_cr("AOT Code Cache statistics (when closed): ");
-        AOTCodeCache::print_statistics_on(&log);
-        log.cr();
-        AOTCodeCache::print_timers_on(&log);
-
-        LogStreamHandle(Info, aot, codecache, init) log1;
-        if (log1.is_enabled()) {
-          AOTCodeCache::print_unused_entries_on(&log1);
-        }
-
-        LogStreamHandle(Info, aot, codecache) aot_info;
-        // need a lock to traverse the code cache
-        MutexLocker locker(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-        if (aot_info.is_enabled()) {
-          NMethodIterator iter(NMethodIterator::all);
-          while (iter.next()) {
-            nmethod* nm = iter.method();
-            if (nm->is_in_use() && !nm->is_native_method() && !nm->is_osr_method()) {
-              aot_info.print("%5d:%c%c%c%d:", nm->compile_id(),
-                             (nm->method()->is_shared() ? 'S' : ' '),
-                             (nm->is_aot() ? 'A' : ' '),
-                             (nm->preloaded() ? 'P' : ' '),
-                             nm->comp_level());
-              print_helper(nm, &aot_info);
-              aot_info.print(": ");
-              CompileTask::print(&aot_info, nm, nullptr, true /*short_form*/);
-
-              LogStreamHandle(Debug, aot, codecache) aot_debug;
-              if (aot_debug.is_enabled()) {
-                MethodTrainingData* mtd = MethodTrainingData::find(methodHandle(Thread::current(), nm->method()));
-                if (mtd != nullptr) {
-                  mtd->iterate_compiles([&](CompileTrainingData* ctd) {
-                    aot_debug.print("     CTD: "); ctd->print_on(&aot_debug); aot_debug.cr();
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-    }
     delete _cache; // Free memory
     _cache = nullptr;
   }
@@ -4069,6 +4025,38 @@ void AOTCodeCache::print_statistics_on(outputStream* st) {
               print_helper1(st, "has_clinit_barriers", stats.clinit_barriers_count());
             }
             st->cr();
+          }
+        }
+      }
+    }
+    LogStreamHandle(Debug, aot, codecache, init) log;
+    if (log.is_enabled()) {
+      AOTCodeCache::print_unused_entries_on(&log);
+    }
+    LogStreamHandle(Trace, aot, codecache) aot_info;
+    // need a lock to traverse the code cache
+    if (aot_info.is_enabled()) {
+      MutexLocker locker(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+      NMethodIterator iter(NMethodIterator::all);
+      while (iter.next()) {
+        nmethod* nm = iter.method();
+        if (nm->is_in_use() && !nm->is_native_method() && !nm->is_osr_method()) {
+          aot_info.print("%5d:%c%c%c%d:", nm->compile_id(),
+                         (nm->method()->is_shared() ? 'S' : ' '),
+                         (nm->is_aot() ? 'A' : ' '),
+                         (nm->preloaded() ? 'P' : ' '),
+                         nm->comp_level());
+          print_helper(nm, &aot_info);
+          aot_info.print(": ");
+          CompileTask::print(&aot_info, nm, nullptr, true /*short_form*/);
+          LogStreamHandle(Trace, aot, codecache) aot_debug;
+          if (aot_debug.is_enabled()) {
+            MethodTrainingData* mtd = MethodTrainingData::find(methodHandle(Thread::current(), nm->method()));
+            if (mtd != nullptr) {
+              mtd->iterate_compiles([&](CompileTrainingData* ctd) {
+                aot_debug.print("     CTD: "); ctd->print_on(&aot_debug); aot_debug.cr();
+              });
+            }
           }
         }
       }
