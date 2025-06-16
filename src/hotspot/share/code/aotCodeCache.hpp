@@ -187,7 +187,7 @@ public:
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
-    _ignore_decompile = true;
+    _ignore_decompile = ignore_decompile;
   }
 
   void* operator new(size_t x, AOTCodeCache* cache);
