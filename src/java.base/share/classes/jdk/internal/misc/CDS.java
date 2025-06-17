@@ -578,11 +578,4 @@ public class CDS {
             return process.waitFor();
         }
     }
-
-    /**
-     * This class is to ensure that the dynamic CDS archive contains at least one class, so we can avoid
-     * error handling for the degenerative case where the dynamic archive is completely empty (which doesn't
-     * happen for realistic applications).
-     */
-    private static class DummyForDynamicArchive {}
 }
