@@ -108,15 +108,12 @@ private:
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
-  uint   _decompile;   // Decompile count for this nmethod
   bool   _has_oop_maps;
   bool   _has_clinit_barriers; // Generated code has class init checks
   bool   _for_preload; // Code can be used for preload
   bool   _loaded;      // Code was loaded
   bool   _not_entrant; // Deoptimized
   bool   _load_fail;   // Failed to load due to some klass state
-  bool   _ignore_decompile; // ignore decompile counter if compilation is done
-                            // during "assembly" phase without running application
   address _dumptime_content_start_addr; // CodeBlob::content_begin() at dump time; used for applying relocations
 
 public:
@@ -140,14 +137,12 @@ public:
     _num_inlined_bytecodes = 0;
     _comp_level   = 0;
     _comp_id      = 0;
-    _decompile    = 0;
     _has_oop_maps = false; // unused here
     _has_clinit_barriers = false;
     _for_preload  = false;
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
-    _ignore_decompile = true;
   }
 
   AOTCodeEntry(Kind kind,         uint id,
@@ -156,10 +151,9 @@ public:
                uint blob_offset,  bool has_oop_maps,
                address dumptime_content_start_addr,
                uint comp_level = 0,
-               uint comp_id = 0, uint decomp = 0,
+               uint comp_id = 0,
                bool has_clinit_barriers = false,
-               bool for_preload = false,
-               bool ignore_decompile = false) {
+               bool for_preload = false) {
     _next         = nullptr;
     _method       = nullptr;
     _kind         = kind;
@@ -176,7 +170,6 @@ public:
 
     _comp_level   = comp_level;
     _comp_id      = comp_id;
-    _decompile    = decomp;
     _has_oop_maps = has_oop_maps;
     _has_clinit_barriers = has_clinit_barriers;
     _for_preload  = for_preload;
@@ -187,7 +180,6 @@ public:
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
-    _ignore_decompile = ignore_decompile;
   }
 
   void* operator new(size_t x, AOTCodeCache* cache);
@@ -222,12 +214,10 @@ public:
   uint comp_level()   const { return _comp_level; }
   uint comp_id()      const { return _comp_id; }
 
-  uint decompile()    const { return _decompile; }
   bool has_clinit_barriers() const { return _has_clinit_barriers; }
   bool for_preload()  const { return _for_preload; }
   bool is_loaded()    const { return _loaded; }
   void set_loaded()         { _loaded = true; }
-  bool ignore_decompile() const { return _ignore_decompile; }
 
   bool not_entrant()  const { return _not_entrant; }
   void set_not_entrant()    { _not_entrant = true; }
@@ -537,7 +527,7 @@ public:
   }
   void preload_startup_code(TRAPS);
 
-  AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0, uint decomp = 0);
+  AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
 
   bool finish_write();

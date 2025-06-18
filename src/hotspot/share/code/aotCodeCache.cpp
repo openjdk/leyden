@@ -381,9 +381,6 @@ static void print_helper(nmethod* nm, outputStream* st) {
       ResourceMark rm;
       stringStream ss;
       ss.print("A%s%d", (e->for_preload() ? "P" : ""), e->comp_level());
-      if (e->decompile() > 0) {
-        ss.print("+D%d", e->decompile());
-      }
       ss.print("[%s%s%s]",
                (e->is_loaded()   ? "L" : ""),
                (e->load_fail()   ? "F" : ""),
@@ -902,15 +899,12 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
   }
   TraceTime t1("Total time to find AOT code", &_t_totalFind, enable_timers(), false);
   if (is_on() && _cache->cache_buffer() != nullptr) {
-    MethodData* md = method->method_data();
-    uint decomp = (md == nullptr) ? 0 : md->decompile_count();
-
     ResourceMark rm;
     const char* target_name = method->name_and_sig_as_C_string();
     uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
-    AOTCodeEntry* entry = _cache->find_entry(AOTCodeEntry::Code, hash, comp_level, decomp);
+    AOTCodeEntry* entry = _cache->find_entry(AOTCodeEntry::Code, hash, comp_level);
     if (entry == nullptr) {
-      log_info(aot, codecache, nmethod)("Missing entry for '%s' (comp_level %d, decomp: %d, hash: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, decomp, hash);
+      log_info(aot, codecache, nmethod)("Missing entry for '%s' (comp_level %d, hash: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, hash);
 #ifdef ASSERT
     } else {
       uint name_offset = entry->offset() + entry->name_offset();
@@ -941,19 +935,18 @@ void* AOTCodeEntry::operator new(size_t x, AOTCodeCache* cache) {
   return (void*)(cache->add_entry());
 }
 
-static bool check_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level, uint decomp, AOTCodeEntry* entry) {
+static bool check_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level, AOTCodeEntry* entry) {
   if (entry->kind() == kind) {
     assert(entry->id() == id, "sanity");
     if (kind != AOTCodeEntry::Code || (!entry->not_entrant() && !entry->has_clinit_barriers() &&
-                                  (entry->comp_level() == comp_level) &&
-                                  (entry->ignore_decompile() || entry->decompile() == decomp))) {
+                                  (entry->comp_level() == comp_level))) {
       return true; // Found
     }
   }
   return false;
 }
 
-AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level, uint decomp) {
+AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level) {
   assert(_for_use, "sanity");
   uint count = _load_header->entries_count();
   if (_load_entries == nullptr) {
@@ -972,10 +965,10 @@ AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint co
     if (is == id) {
       int index = _search_entries[ix + 1];
       AOTCodeEntry* entry = &(_load_entries[index]);
-      if (check_entry(kind, id, comp_level, decomp, entry)) {
+      if (check_entry(kind, id, comp_level, entry)) {
         return entry; // Found
       }
-      // Leaner search around (could be the same nmethod with different decompile count)
+      // Leaner search around
       for (int i = mid - 1; i >= l; i--) { // search back
         ix = i * 2;
         is = _search_entries[ix];
@@ -984,7 +977,7 @@ AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint co
         }
         index = _search_entries[ix + 1];
         AOTCodeEntry* entry = &(_load_entries[index]);
-        if (check_entry(kind, id, comp_level, decomp, entry)) {
+        if (check_entry(kind, id, comp_level, entry)) {
           return entry; // Found
         }
       }
@@ -996,11 +989,11 @@ AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint co
         }
         index = _search_entries[ix + 1];
         AOTCodeEntry* entry = &(_load_entries[index]);
-        if (check_entry(kind, id, comp_level, decomp, entry)) {
+        if (check_entry(kind, id, comp_level, entry)) {
           return entry; // Found
         }
       }
-      break; // Not found match (different decompile count or not_entrant state).
+      break; // No match found
     } else if (is < id) {
       l = mid + 1;
     } else {
@@ -1050,10 +1043,9 @@ void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
     }
     uint level   = entry->comp_level();
     uint comp_id = entry->comp_id();
-    uint decomp  = entry->decompile();
     bool clinit_brs = entry->has_clinit_barriers();
-    log_info(aot, codecache, nmethod)("Invalidated entry for '%s' (comp_id %d, comp_level %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s)",
-                           name, comp_id, level, decomp, entry->id(), (clinit_brs ? ", has clinit barriers" : ""));
+    log_info(aot, codecache, nmethod)("Invalidated entry for '%s' (comp_id %d, comp_level %d, hash: " UINT32_FORMAT_X_0 "%s)",
+                                      name, comp_id, level, entry->id(), (clinit_brs ? ", has clinit barriers" : ""));
   }
   if (entry->next() != nullptr) {
     entry = entry->next();
@@ -1131,38 +1123,39 @@ bool AOTCodeCache::finish_write() {
     // Add old entries first
     if (_for_use && (_load_header != nullptr)) {
       for(uint i = 0; i < load_count; i++) {
-        if (_load_entries[i].load_fail()) {
+        AOTCodeEntry* entry = &(_load_entries[i]);
+        if (entry->load_fail()) {
           continue;
         }
-        if (_load_entries[i].not_entrant()) {
-          log_info(aot, codecache, exit)("Not entrant load entry id: %d, decomp: %d, hash: " UINT32_FORMAT_X_0, i, _load_entries[i].decompile(), _load_entries[i].id());
-          if (_load_entries[i].for_preload()) {
+        if (entry->not_entrant()) {
+          log_info(aot, codecache, exit)("Not entrant load entry id: %d, hash: " UINT32_FORMAT_X_0, i, entry->id());
+          if (entry->for_preload()) {
             // Skip not entrant preload code:
             // we can't pre-load code which may have failing dependencies.
             continue;
           }
-          _load_entries[i].set_entrant(); // Reset
-        } else if (_load_entries[i].for_preload() && _load_entries[i].method() != nullptr) {
+          entry->set_entrant(); // Reset
+        } else if (entry->for_preload() && entry->method() != nullptr) {
           // record entrant first version code for pre-loading
           preload_entries[preload_entries_cnt++] = entries_count;
         }
         {
-          uint size = align_up(_load_entries[i].size(), DATA_ALIGNMENT);
+          uint size = align_up(entry->size(), DATA_ALIGNMENT);
           if (size > max_size) {
             max_size = size;
           }
-          copy_bytes((_load_buffer + _load_entries[i].offset()), (address)current, size);
-          _load_entries[i].set_offset(current - start); // New offset
+          copy_bytes((_load_buffer + entry->offset()), (address)current, size);
+          entry->set_offset(current - start); // New offset
           current += size;
-          uint n = write_bytes(&(_load_entries[i]), sizeof(AOTCodeEntry));
+          uint n = write_bytes(entry, sizeof(AOTCodeEntry));
           if (n != sizeof(AOTCodeEntry)) {
             FREE_C_HEAP_ARRAY(uint, search);
             return false;
           }
-          search[entries_count*2 + 0] = _load_entries[i].id();
+          search[entries_count*2 + 0] = entry->id();
           search[entries_count*2 + 1] = entries_count;
           entries_count++;
-          AOTCodeEntry::Kind kind = _load_entries[i].kind();
+          AOTCodeEntry::Kind kind = entry->kind();
           if (kind == AOTCodeEntry::Adapter) {
             adapters_count++;
           } else if (kind == AOTCodeEntry::SharedBlob) {
@@ -1183,40 +1176,42 @@ bool AOTCodeCache::finish_write() {
     // AOTCodeEntry entries were allocated in reverse in store buffer.
     // Process them in reverse order to cache first code first.
     for (int i = store_count - 1; i >= 0; i--) {
-      if (entries_address[i].load_fail()) {
+      AOTCodeEntry* entry = &entries_address[i];
+      if (entry->load_fail()) {
         continue;
       }
-      if (entries_address[i].not_entrant()) {
-        log_info(aot, codecache, exit)("Not entrant new entry comp_id: %d, comp_level: %d, decomp: %d, hash: " UINT32_FORMAT_X_0 "%s", entries_address[i].comp_id(), entries_address[i].comp_level(), entries_address[i].decompile(), entries_address[i].id(), (entries_address[i].has_clinit_barriers() ? ", has clinit barriers" : ""));
-        if (entries_address[i].for_preload()) {
+      if (entry->not_entrant()) {
+        log_info(aot, codecache, exit)("Not entrant new entry comp_id: %d, comp_level: %d, hash: " UINT32_FORMAT_X_0 "%s",
+                                       entry->comp_id(), entry->comp_level(), entry->id(), (entry->has_clinit_barriers() ? ", has clinit barriers" : ""));
+        if (entry->for_preload()) {
           // Skip not entrant preload code:
           // we can't pre-load code which may have failing dependencies.
           continue;
         }
-        entries_address[i].set_entrant(); // Reset
-      } else if (entries_address[i].for_preload() && entries_address[i].method() != nullptr) {
+        entry->set_entrant(); // Reset
+      } else if (entry->for_preload() && entry->method() != nullptr) {
         // record entrant first version code for pre-loading
         preload_entries[preload_entries_cnt++] = entries_count;
       }
       {
-        entries_address[i].set_next(nullptr); // clear pointers before storing data
-        uint size = align_up(entries_address[i].size(), DATA_ALIGNMENT);
+        entry->set_next(nullptr); // clear pointers before storing data
+        uint size = align_up(entry->size(), DATA_ALIGNMENT);
         if (size > max_size) {
           max_size = size;
         }
-        copy_bytes((_store_buffer + entries_address[i].offset()), (address)current, size);
-        entries_address[i].set_offset(current - start); // New offset
-        entries_address[i].update_method_for_writing();
+        copy_bytes((_store_buffer + entry->offset()), (address)current, size);
+        entry->set_offset(current - start); // New offset
+        entry->update_method_for_writing();
         current += size;
-        uint n = write_bytes(&(entries_address[i]), sizeof(AOTCodeEntry));
+        uint n = write_bytes(entry, sizeof(AOTCodeEntry));
         if (n != sizeof(AOTCodeEntry)) {
           FREE_C_HEAP_ARRAY(uint, search);
           return false;
         }
-        search[entries_count*2 + 0] = entries_address[i].id();
+        search[entries_count*2 + 0] = entry->id();
         search[entries_count*2 + 1] = entries_count;
         entries_count++;
-        AOTCodeEntry::Kind kind = entries_address[i].kind();
+        AOTCodeEntry::Kind kind = entry->kind();
         if (kind == AOTCodeEntry::Adapter) {
           adapters_count++;
         } else if (kind == AOTCodeEntry::SharedBlob) {
@@ -1652,16 +1647,6 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
 
   uint entry_position = _write_position;
 
-  uint decomp = (method->method_data() == nullptr) ? 0 : method->method_data()->decompile_count();
-
-  // Is this one-step workflow assembly phase?
-  // In this phase compilation is done based on saved profiling data
-  // without application run. Ignore decompilation counters in such case.
-  // Also ignore it for C1 code because it is decompiled unconditionally
-  // when C2 generated code is published.
-  bool ignore_decompile = (comp_level == CompLevel_limited_profile) ||
-                          CDSConfig::is_dumping_final_static_archive();
-
   // Write name
   uint name_offset = 0;
   uint name_size   = 0;
@@ -1670,10 +1655,9 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   {
     ResourceMark rm;
     const char* name = method->name_and_sig_as_C_string();
-    log_info(aot, codecache, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, decomp: %d%s%s) to AOT Code Cache",
-                           comp_id, (int)comp_level, name, comp_level, decomp,
-                           (ignore_decompile ? ", ignore_decomp" : ""),
-                           (nm->has_clinit_barriers() ? ", has clinit barriers" : ""));
+    log_info(aot, codecache, nmethod)("%d (L%d): Writing nmethod '%s' (comp level: %d, %s) to AOT Code Cache",
+                                      comp_id, (int)comp_level, name, comp_level,
+                                      (nm->has_clinit_barriers() ? ", has clinit barriers" : ""));
 
     LogStreamHandle(Info, aot, codecache, loader) log;
     if (log.is_enabled()) {
@@ -1783,8 +1767,8 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
                                                 entry_position, entry_size,
                                                 name_offset, name_size,
                                                 blob_offset, has_oop_maps,
-                                                nm->content_begin(), comp_level, comp_id, decomp,
-                                                nm->has_clinit_barriers(), for_preload, ignore_decompile);
+                                                nm->content_begin(), comp_level, comp_id,
+                                                nm->has_clinit_barriers(), for_preload);
   if (method_in_cds) {
     entry->set_method(method);
   }
@@ -1822,17 +1806,15 @@ bool AOTCodeCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abs
   bool preload = task->preload();
   assert(entry != nullptr, "sanity");
   if (log_is_enabled(Info, aot, codecache, nmethod)) {
-    uint decomp = (target->method_data() == nullptr) ? 0 : target->method_data()->decompile_count();
     VM_ENTRY_MARK;
     ResourceMark rm;
     methodHandle method(THREAD, target->get_Method());
     const char* target_name = method->name_and_sig_as_C_string();
     uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
     bool clinit_brs = entry->has_clinit_barriers();
-    log_info(aot, codecache, nmethod)("%d (L%d): %s nmethod '%s' (decomp: %d, hash: " UINT32_FORMAT_X_0 "%s%s)",
-                           task->compile_id(), task->comp_level(), (preload ? "Preloading" : "Reading"),
-                           target_name, decomp, hash, (clinit_brs ? ", has clinit barriers" : ""),
-                           (entry->ignore_decompile() ? ", ignore_decomp" : ""));
+    log_info(aot, codecache, nmethod)("%d (L%d): %s nmethod '%s' (hash: " UINT32_FORMAT_X_0 "%s)",
+                                      task->compile_id(), task->comp_level(), (preload ? "Preloading" : "Reading"),
+                                      target_name, hash, (clinit_brs ? ", has clinit barriers" : ""));
   }
   ReadingMark rdmk;
   if (rdmk.failed()) {
@@ -4067,13 +4049,12 @@ void AOTCodeCache::print_statistics_on(outputStream* st) {
 }
 
 void AOTCodeEntry::print(outputStream* st) const {
-  st->print_cr(" AOT Code Cache entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, decompiled: %d, %s%s%s%s%s]",
-               p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id, _decompile,
+  st->print_cr(" AOT Code Cache entry " INTPTR_FORMAT " [kind: %d, id: " UINT32_FORMAT_X_0 ", offset: %d, size: %d, comp_level: %d, comp_id: %d, %s%s%s%s]",
+               p2i(this), (int)_kind, _id, _offset, _size, _comp_level, _comp_id,
                (_not_entrant? "not_entrant" : "entrant"),
                (_loaded ? ", loaded" : ""),
                (_has_clinit_barriers ? ", has_clinit_barriers" : ""),
-               (_for_preload ? ", for_preload" : ""),
-               (_ignore_decompile ? ", ignore_decomp" : ""));
+               (_for_preload ? ", for_preload" : ""));
 }
 
 void AOTCodeCache::print_on(outputStream* st) {
