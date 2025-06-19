@@ -148,6 +148,10 @@ CDSHeapVerifier::CDSHeapVerifier() : _archived_objs(0), _problems(0)
     ADD_EXCL("java/lang/Package$VersionInfo",             "NULL_VERSION_INFO");    // D
   }
 
+  if (CDSConfig::is_dumping_dynamic_proxies()) {
+    ADD_EXCL("java/lang/reflect/ProxyGenerator",          "CD_Object_array");      // D
+  }
+
   // These are used by BuiltinClassLoader::negativeLookupCache, etc but seem to be
   // OK. TODO - we should completely disable the caching unless ArchiveLoaderLookupCache
   // is enabled
@@ -165,7 +169,7 @@ CDSHeapVerifier::~CDSHeapVerifier() {
                          "an object points to a static field that "
                          "may hold a different value at runtime.", _archived_objs, _problems);
     log_error(aot, heap)("Please see cdsHeapVerifier.cpp and aotClassInitializer.cpp for details");
-    //MetaspaceShared::unrecoverable_writing_error(); // FIXME -- leyden+JEP483 merge
+    MetaspaceShared::unrecoverable_writing_error();
   }
 }
 
