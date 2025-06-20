@@ -1163,6 +1163,29 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
   }
 }
 
+void SystemDictionary::preload_class(ClassLoaderData* loader_data, InstanceKlass* ik, TRAPS) { // FIXME - rename
+  precond(!ik->is_loaded());
+  oop java_mirror = ik->archived_java_mirror();
+  precond(java_mirror != nullptr);
+  Handle pd(THREAD, java_lang_Class::protection_domain(java_mirror));
+  PackageEntry* pkg_entry = ik->package();
+  DEBUG_ONLY({
+      if (ik->name()->index_of_at(0, "/", 1)  >= 0) {
+        assert(pkg_entry != nullptr, "must have archived PackageEntry");
+      } else {
+        assert(pkg_entry != nullptr, "sanity");
+      }
+    });
+
+  ik->restore_unshareable_info(loader_data, pd, pkg_entry, CHECK);
+  load_shared_class_misc(ik, loader_data);
+  ik->add_to_hierarchy(THREAD);
+  if (!ik->is_hidden()) {
+    update_dictionary(THREAD, ik, loader_data);
+  }
+  assert(ik->is_loaded(), "Must be in at least loaded state");
+}
+
 #endif // INCLUDE_CDS
 
 InstanceKlass* SystemDictionary::load_instance_class_impl(Symbol* class_name, Handle class_loader, TRAPS) {

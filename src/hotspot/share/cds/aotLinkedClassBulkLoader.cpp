@@ -87,6 +87,52 @@ bool AOTLinkedClassBulkLoader::class_preloading_finished() {
   }
 }
 
+void AOTLinkedClassBulkLoader::preload_classes(TRAPS) {
+  // Currently we only support preloading of javabase classes
+  preload_classes_in_table(AOTLinkedClassTable::for_static_archive()->boot(), "boot", Handle(), THREAD);
+}
+
+void AOTLinkedClassBulkLoader::preload_classes_in_table(Array<InstanceKlass*>* classes,
+                                                        const char* category_name, Handle loader, TRAPS) {
+  ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(loader());
+
+  for (int i = 0; i < classes->length(); i++) {
+    if (UsePerfData) {
+      _perf_classes_preloaded->inc();
+    }
+    InstanceKlass* ik = classes->at(i);
+    if (log_is_enabled(Info, aot, load)) {
+      ResourceMark rm(THREAD);
+      log_info(aot, load)("%-5s %s%s", category_name, ik->external_name(),
+                            ik->is_hidden() ? " (hidden)" : "");
+    }
+
+    DEBUG_ONLY({
+        // The list should be sorted such that ik is placed after all of its supertypes.
+        precond(!ik->is_loaded());
+        if (ik->java_super() != nullptr) {
+          precond(ik->java_super()->is_loaded());
+        }
+        for (int i = 0; i < ik->local_interfaces()->length(); i++) {
+          precond(ik->local_interfaces()->at(i)->is_loaded());
+        }
+      });
+
+    SystemDictionary::preload_class(loader_data, ik, CHECK);
+    if (ik->is_hidden()) {
+      DEBUG_ONLY({
+        // Make sure we don't make this hidden class available by name, even if we don't
+        // use any special ClassLoaderData.
+        ResourceMark rm(THREAD);
+        assert(SystemDictionary::find_instance_klass(THREAD, ik->name(), loader) == nullptr,
+               "hidden classes cannot be accessible by name: %s", ik->external_name());
+      });
+    } else {
+      precond(SystemDictionary::find_instance_klass(THREAD, ik->name(), loader) == ik);
+    }
+  }
+}
+
 void AOTLinkedClassBulkLoader::load_javabase_classes(JavaThread* current) {
   assert(CDSConfig::is_using_aot_linked_classes(), "sanity");
   load_classes_in_loader(current, AOTLinkedClassCategory::BOOT1, nullptr); // only java.base classes
@@ -191,18 +237,18 @@ void AOTLinkedClassBulkLoader::load_table(AOTLinkedClassTable* table, AOTLinkedC
   const char* category_name = AOTClassLinker::class_category_name(class_category);
   switch (class_category) {
   case AOTLinkedClassCategory::BOOT1:
-    load_classes_impl(class_category, table->boot(), category_name, loader, CHECK);
+    load_classes_impl(table->boot(), category_name, loader, CHECK);
     break;
 
   case AOTLinkedClassCategory::BOOT2:
-    load_classes_impl(class_category, table->boot2(), category_name, loader, CHECK);
+    load_classes_impl(table->boot2(), category_name, loader, CHECK);
     break;
 
   case AOTLinkedClassCategory::PLATFORM:
     {
       initiate_loading(THREAD, category_name, loader, table->boot());
       initiate_loading(THREAD, category_name, loader, table->boot2());
-      load_classes_impl(class_category, table->platform(), category_name, loader, CHECK);
+      load_classes_impl(table->platform(), category_name, loader, CHECK);
     }
     break;
   case AOTLinkedClassCategory::APP:
@@ -210,7 +256,7 @@ void AOTLinkedClassBulkLoader::load_table(AOTLinkedClassTable* table, AOTLinkedC
       initiate_loading(THREAD, category_name, loader, table->boot());
       initiate_loading(THREAD, category_name, loader, table->boot2());
       initiate_loading(THREAD, category_name, loader, table->platform());
-      load_classes_impl(class_category, table->app(), category_name, loader, CHECK);
+      load_classes_impl(table->app(), category_name, loader, CHECK);
     }
     break;
   case AOTLinkedClassCategory::UNREGISTERED:
@@ -220,7 +266,7 @@ void AOTLinkedClassBulkLoader::load_table(AOTLinkedClassTable* table, AOTLinkedC
   }
 }
 
-void AOTLinkedClassBulkLoader::load_classes_impl(AOTLinkedClassCategory class_category, Array<InstanceKlass*>* classes,
+void AOTLinkedClassBulkLoader::load_classes_impl(Array<InstanceKlass*>* classes,
                                                  const char* category_name, Handle loader, TRAPS) {
   if (classes == nullptr) {
     return;
