@@ -1171,7 +1171,7 @@ bool ciMethod::can_be_compiled() {
 
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      env->comp_level() == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::class_preloading_finished()) {
+      env->comp_level() == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::has_finished_loading_classes()) {
     return false;
   }
 #endif

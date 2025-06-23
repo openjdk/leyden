@@ -96,9 +96,11 @@ public class RegeneratedClassesInDynamicArchive {
         pb = ProcessTools.createLimitedTestJavaProcessBuilder(
             "-XX:AOTCache=" + aotCacheFile,
             "-Xlog:aot=debug,aot+class=debug,class+load",
+            "-Xlog:aot+resolve=trace",
+            "-XX:+AOTClassLinking",
             "-XX:ArchiveClassesAtExit=" + dynamicArchive,
             "-cp", appJar, appClass, "top");
-        out = CDSTestUtils.executeAndLog(pb, "prod");
+        out = CDSTestUtils.executeAndLog(pb, "dyndump");
         if (aotClassLinkingForBaseArchive) {
             out.shouldContain(usingAOTClassesMsg);
             out.shouldNotContain(regenerateMsg);
@@ -143,17 +145,17 @@ class TestApp {
         System.out.println(greeting);  // hello, world
         if (args[0].equals("top")) {
             CachedInDynamic.func();
+            CachedInDynamic.func3();
+            CachedInDynamic.func2();
         }
     }
 }
 
 interface MyInterface {
     public Object doit(Object a, long b, Object c, int d, double e);
-
-
 }
 
-class CachedInDynamic {
+class CachedInDynamic extends TestApp {
     static void func() {
         System.out.println("CachedInDynamic.func(): start");
         MyInterface m = (a, b, c, d, e) -> {
@@ -161,5 +163,35 @@ class CachedInDynamic {
         };
         System.out.println(m.doit("Hello ", 1, " in ", 2, 0.0));
         System.out.println("CachedInDynamic.func(): done");
+    }
+    
+    TestApp[][] array2;
+
+    static TestApp[][] array3;
+
+    static void func2() {
+        // Create the TestApp[] array class in the dynamic archive
+        CachedInDynamic c = new CachedInDynamic();
+        c.array2 = new TestApp[1][1];
+        Module m0 = TestApp.class.getModule();
+        Module m1 = c.array2.getClass().getModule();
+        System.out.println(c.array2.getClass());
+        System.out.println(m0);
+        System.out.println(m1);
+        if (m0 != m1) {
+            throw new RuntimeException("Module of TestApp and TestApp[] classes do not match");
+        }
+    }
+
+    static void func3() {
+        array3 = new TestApp[1][1];
+        Module m0 = TestApp.class.getModule();
+        Module m1 = array3.getClass().getModule();
+        System.out.println(array3.getClass());
+        System.out.println(m0);
+        System.out.println(m1);
+        if (m0 != m1) {
+            throw new RuntimeException("Module of TestApp and TestApp[] classes do not match");
+        }
     }
 }

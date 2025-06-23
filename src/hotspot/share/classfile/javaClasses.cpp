@@ -1017,10 +1017,12 @@ void java_lang_Class::set_mirror_module_field(JavaThread* current, Klass* k, Han
       MutexLocker m1(current, Module_lock);
       // Keep list of classes needing java.base module fixup
       if (!ModuleEntryTable::javabase_defined()) {
-        assert(k->java_mirror() != nullptr, "Class's mirror is null");
-        k->class_loader_data()->inc_keep_alive_ref_count();
-        assert(fixup_module_field_list() != nullptr, "fixup_module_field_list not initialized");
-        fixup_module_field_list()->push(k);
+        if (!(CDSConfig::is_using_preloaded_classes() && MetaspaceShared::is_shared_static((void*)k))) {
+          assert(k->java_mirror() != nullptr, "Class's mirror is null");
+          k->class_loader_data()->inc_keep_alive_ref_count();
+          assert(fixup_module_field_list() != nullptr, "fixup_module_field_list not initialized");
+          fixup_module_field_list()->push(k);
+        }
       } else {
         javabase_was_defined = true;
       }
@@ -1045,9 +1047,11 @@ void java_lang_Class::set_mirror_module_field(JavaThread* current, Klass* k, Han
 
 // Statically allocate fixup lists because they always get created.
 void java_lang_Class::allocate_fixup_lists() {
-  GrowableArray<Klass*>* mirror_list =
-    new (mtClass) GrowableArray<Klass*>(40, mtClass);
-  set_fixup_mirror_list(mirror_list);
+  if (!CDSConfig::is_using_preloaded_classes()) {
+    GrowableArray<Klass*>* mirror_list =
+      new (mtClass) GrowableArray<Klass*>(40, mtClass);
+    set_fixup_mirror_list(mirror_list);
+  }
 
   GrowableArray<Klass*>* module_list =
     new (mtModule) GrowableArray<Klass*>(500, mtModule);
@@ -1152,6 +1156,7 @@ void java_lang_Class::create_mirror(Klass* k, Handle class_loader,
       }
     }
   } else {
+    assert(!CDSConfig::is_using_preloaded_classes(), "should not come here");
     assert(fixup_mirror_list() != nullptr, "fixup_mirror_list not initialized");
     fixup_mirror_list()->push(k);
   }
@@ -1197,7 +1202,7 @@ bool java_lang_Class::restore_archived_mirror(Klass *k,
                                               Handle protection_domain, TRAPS) {
   // Postpone restoring archived mirror until java.lang.Class is loaded. Please
   // see more details in vmClasses::resolve_all().
-  if (!vmClasses::Class_klass_loaded()) {
+  if (!vmClasses::Class_klass_loaded() && !CDSConfig::is_using_preloaded_classes()) {
     assert(fixup_mirror_list() != nullptr, "fixup_mirror_list not initialized");
     fixup_mirror_list()->push(k);
     return true;

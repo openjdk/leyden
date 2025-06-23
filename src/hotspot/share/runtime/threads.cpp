@@ -820,7 +820,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // loaded until phase 2 completes
   call_initPhase2(CHECK_JNI_ERR);
 
-  if (CDSConfig::is_using_aot_linked_classes() && !CDSConfig::is_dumping_final_static_archive()) {
+  if (CDSConfig::is_using_aot_linked_classes()) {
     AOTLinkedClassBulkLoader::load_non_javabase_classes(THREAD);
   }
 #ifndef PRODUCT
