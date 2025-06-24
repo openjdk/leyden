@@ -119,6 +119,8 @@ void AOTLinkedClassBulkLoader::preload_classes(TRAPS) {
 
   preload_classes_in_table(AOTLinkedClassTable::for_static_archive()->boot1(), "boot1", Handle(), THREAD);
   preload_classes_in_table(AOTLinkedClassTable::for_static_archive()->boot2(), "boot2", Handle(), THREAD);
+  preload_classes_in_table(AOTLinkedClassTable::for_static_archive()->platform(), "plat", h_platform_loader, THREAD);
+  preload_classes_in_table(AOTLinkedClassTable::for_static_archive()->app(), "app", h_system_loader, THREAD);
 
   log_info(aot, load)("Finished preloading classes");
 }
@@ -175,8 +177,14 @@ void AOTLinkedClassBulkLoader::restore_module_of_preloaded_classes() {
     restore_module(tak, "boot1", javabase_module_oop);
   }
 
+  JavaThread* current = JavaThread::current();
+  Handle h_platform_loader(current, SystemDictionary::java_platform_loader());
+  Handle h_system_loader(current, SystemDictionary::java_system_loader());
+
   restore_module_of_preloaded_classes_in_table(AOTLinkedClassTable::for_static_archive()->boot1(), "boot1", Handle());
   restore_module_of_preloaded_classes_in_table(AOTLinkedClassTable::for_static_archive()->boot2(), "boot2", Handle());
+  restore_module_of_preloaded_classes_in_table(AOTLinkedClassTable::for_static_archive()->platform(), "plat", h_platform_loader);
+  restore_module_of_preloaded_classes_in_table(AOTLinkedClassTable::for_static_archive()->app(), "app", h_system_loader);
 }
 
 void AOTLinkedClassBulkLoader::restore_module_of_preloaded_classes_in_table(Array<InstanceKlass*>* classes,

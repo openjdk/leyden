@@ -1036,6 +1036,8 @@ void java_lang_Class::set_mirror_module_field(JavaThread* current, Klass* k, Han
       Handle javabase_handle(current, javabase_entry->module());
       set_module(mirror(), javabase_handle());
     }
+  } else if (CDSConfig::is_using_preloaded_classes() && !Universe::is_module_initialized()) {
+    // Do nothing. The module will be set later by AOTLinkedClassBulkLoader::restore_module_of_preloaded_classes().
   } else {
     assert(Universe::is_module_initialized() ||
            (ModuleEntryTable::javabase_defined() &&
