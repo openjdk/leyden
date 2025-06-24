@@ -24,14 +24,14 @@
 
 /*
  * @test
- * @summary interation between static archive and dynamic archive related to
- *          regenerated lambda form invoker classes.
+ * @summary interaction between AOT cache (with +AOTClassLinking) and dynamic archive related to
+ *          (a) regenerated lambda form invoker classes, (b) java.lang.Module for array classes
  * @requires vm.cds
  * @requires vm.cds.supports.aot.class.linking
  * @library /test/lib
- * @build RegeneratedClassesInDynamicArchive
+ * @build DynamicArchiveOverAOTCache
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar TestApp CachedInDynamic MyInterface
- * @run driver RegeneratedClassesInDynamicArchive
+ * @run driver DynamicArchiveOverAOTCache
  */
 
 import java.util.List;
@@ -42,7 +42,7 @@ import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
 import jdk.test.lib.process.ProcessTools;
 
-public class RegeneratedClassesInDynamicArchive {
+public class DynamicArchiveOverAOTCache {
     static String appJar = ClassFileInstaller.getJarPath("app.jar");
     static String aotConfigFile = "app.aotconfig";
     static String aotCacheFile = "app.aot";
