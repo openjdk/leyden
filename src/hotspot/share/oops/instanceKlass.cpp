@@ -887,7 +887,6 @@ void InstanceKlass::initialize_with_aot_initialized_mirror(TRAPS) {
 
   set_init_thread(THREAD);
   set_initialization_state_and_notify(fully_initialized, CHECK);
-  AOTClassInitializer::call_runtime_setup(THREAD, this);
 }
 #endif
 
