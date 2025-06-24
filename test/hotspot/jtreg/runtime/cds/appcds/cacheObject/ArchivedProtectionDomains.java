@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -92,14 +92,7 @@ public class ArchivedProtectionDomains {
                 out.shouldMatch("Archiving ProtectionDomain .*app1.jar .* for jdk.internal.loader.ClassLoaders.AppClassLoader");
                 out.shouldMatch("Archiving ProtectionDomain .*app2.jar .* for jdk.internal.loader.ClassLoaders.AppClassLoader");
             } else if (runMode.isProductionRun()) {
-                out.shouldContain("Archived protection domain for ArchivedProtectionDomainsApp = found");
-                out.shouldContain("Archived protection domain for pkg3.Package3A = found");
-                out.shouldContain("Archived protection domain for com.sun.tools.javac.Main = found");
                 out.shouldContain(ArchivedProtectionDomainsApp.msg);
-
-                // This class should not be archived.
-                out.shouldNotContain("Archived protection domain for pkg3.Package3B = found");
-                out.shouldNotContain("Archived protection domain for pkg3.Package3B = none");
             }
         }
     }
@@ -109,16 +102,17 @@ class ArchivedProtectionDomainsApp {
     public static String msg = "ProtectionDomain for archived class equals to that of non-archived class";
     public static void main(String args[]) throws Exception {
         Class jc = Class.forName("com.sun.tools.javac.Main");
-        ProtectionDomain x = Package3A.class.getProtectionDomain();
+        ProtectionDomain x = Package3A.class.getProtectionDomain(); // This class is in the AOT cache
         if (args[0].equals("PRODUCTION")) {
-            ProtectionDomain y = Package3B.class.getProtectionDomain();
+            ProtectionDomain y = Package3B.class.getProtectionDomain(); // This class is not in the AOT cache
             System.out.println("ProtectionDomain for com.sun.tools.javac.Main: " + jc.getProtectionDomain());
             System.out.println("ProtectionDomain for archived class: " + x);
             System.out.println("ProtectionDomain for non-archived class: " + y);
             if (x == y) {
+                // Both classes should have the same pd (this is enforced by SecureClassLoader::pdcache)
                 System.out.println(msg);
             } else {
-                throw new RuntimeException("Unexpected for archived package");
+                throw new RuntimeException("ProtectionDomain should be the same for classes in the same package, whether they are archived or not");
             }
         }
     }

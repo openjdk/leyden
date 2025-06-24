@@ -1405,6 +1405,7 @@ bool MetaspaceShared::try_link_class(JavaThread* current, InstanceKlass* ik) {
 
 void VM_PopulateDumpSharedSpace::dump_java_heap_objects() {
   if (CDSConfig::is_dumping_heap()) {
+    AOTLinkedClassBulkLoader::init_archived_loader_indices();
     HeapShared::write_heap(&_heap_info);
   } else if (!CDSConfig::is_dumping_preimage_static_archive()) {
     CDSConfig::log_reasons_for_not_dumping_heap();
@@ -2160,7 +2161,9 @@ void MetaspaceShared::initialize_shared_spaces() {
     intptr_t* buffer = (intptr_t*)dynamic_mapinfo->serialized_data();
     ReadClosure rc(&buffer, (intptr_t)SharedBaseAddress);
     ArchiveBuilder::serialize_dynamic_archivable_items(&rc);
-    DynamicArchive::setup_array_klasses();
+    if (!CDSConfig::is_using_preloaded_classes()) {
+      DynamicArchive::setup_array_klasses();
+    }
     dynamic_mapinfo->close();
     dynamic_mapinfo->unmap_region(MetaspaceShared::bm);
   }

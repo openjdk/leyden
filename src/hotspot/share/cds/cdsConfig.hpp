@@ -42,6 +42,7 @@ class CDSConfig : public AllStatic {
   static bool _is_dumping_full_module_graph;
   static bool _is_using_full_module_graph;
   static bool _has_aot_linked_classes;
+  static bool _has_preloaded_classes;
   static bool _is_single_command_training;
   static bool _is_one_step_training;
   static bool _has_temp_aot_config_file;
@@ -176,6 +177,9 @@ public:
   static bool is_dumping_aot_linked_classes()                NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_using_aot_linked_classes()                  NOT_CDS_JAVA_HEAP_RETURN_(false);
   static void set_has_aot_linked_classes(bool has_aot_linked_classes) NOT_CDS_JAVA_HEAP_RETURN;
+
+  static bool is_using_preloaded_classes()                   NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static void set_has_preloaded_classes(bool has_preloaded_classes) NOT_CDS_JAVA_HEAP_RETURN;
 
   // archive_path
 

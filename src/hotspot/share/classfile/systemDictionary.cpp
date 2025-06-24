@@ -200,14 +200,19 @@ ClassLoaderData* SystemDictionary::register_loader(Handle class_loader, bool cre
 }
 
 void SystemDictionary::set_system_loader(ClassLoaderData *cld) {
-  assert(_java_system_loader.is_empty(), "already set!");
-  _java_system_loader = cld->class_loader_handle();
-
+  if (_java_system_loader.is_empty()) {
+    _java_system_loader = cld->class_loader_handle();
+  } else {
+    assert(_java_system_loader.resolve() == cld->class_loader(), "sanity");
+  }
 }
 
 void SystemDictionary::set_platform_loader(ClassLoaderData *cld) {
-  assert(_java_platform_loader.is_empty(), "already set!");
-  _java_platform_loader = cld->class_loader_handle();
+  if (_java_platform_loader.is_empty()) {
+    _java_platform_loader = cld->class_loader_handle();
+  } else {
+    assert(_java_platform_loader.resolve() == cld->class_loader(), "sanity");
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -1161,6 +1166,39 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
   if (CDSConfig::is_dumping_final_static_archive()) {
     SystemDictionaryShared::init_dumptime_info_from_preimage(ik);
   }
+}
+
+void SystemDictionary::preload_class(ClassLoaderData* loader_data, InstanceKlass* ik, TRAPS) {
+  precond(CDSConfig::is_using_preloaded_classes());
+  precond(MetaspaceShared::is_shared_static((void*)ik));
+  precond(!ik->is_loaded());
+
+  oop java_mirror = ik->archived_java_mirror();
+  precond(java_mirror != nullptr);
+
+  Handle pd(THREAD, java_lang_Class::protection_domain(java_mirror));
+  PackageEntry* pkg_entry = ik->package();
+  if (pkg_entry == nullptr) {
+    TempNewSymbol pkg_name = ClassLoader::package_from_class_name(ik->name());
+    if (pkg_name != nullptr) {
+      // Only packages of unnamed modules are not archived.
+      pkg_entry = loader_data->packages()->create_entry_if_absent(pkg_name, loader_data->unnamed_module());
+    }
+  } else {
+    precond(pkg_entry->module()->is_named());
+  }
+
+  ik->restore_unshareable_info(loader_data, pd, pkg_entry, CHECK);
+  load_shared_class_misc(ik, loader_data);
+  ik->add_to_hierarchy(THREAD);
+
+  if (!ik->is_hidden()) {
+    update_dictionary(THREAD, ik, loader_data);
+  }
+
+  // java_lang_Class::module(java_mirror) will be restored in
+  // AOTLinkedClassBulkLoader::restore_module_of_preloaded_classes
+  assert(ik->is_loaded(), "Must be in at least loaded state");
 }
 
 #endif // INCLUDE_CDS
