@@ -31,15 +31,6 @@
  * @run driver LeydenReflection AOT
  */
 
-/*
- * @test id=leyden
- * @requires vm.cds.write.archived.java.heap
- * @library /test/jdk/lib/testlibrary /test/lib
- * @build LeydenReflection
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar LeydenReflectionApp
- * @run driver LeydenReflection LEYDEN
- */
-
 import java.lang.reflect.Method;
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
@@ -77,7 +68,7 @@ public class LeydenReflection {
                 out.shouldContain("Hello Leyden Reflection " + runMode.name());
             }
 
-            if (runMode == RunMode.ASSEMBLY || (isLeydenWorkflow() && runMode == RunMode.TRAINING) || runMode == RunMode.TRAINING1) {
+            if (runMode == RunMode.ASSEMBLY) {
               out.shouldContain("Generate ReflectionData: LeydenReflectionApp");
               out.shouldContain("Generate ReflectionData: java.util.Random");
             }

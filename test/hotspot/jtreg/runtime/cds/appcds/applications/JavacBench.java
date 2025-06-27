@@ -49,15 +49,6 @@
  * @run driver JavacBench AOT
  */
 
-/*
- * @test id=leyden
- * @summary Run JavacBenchApp with Leyden workflow
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @library /test/lib /test/setup_aot
- * @run driver JavacBench LEYDEN
- */
-
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 
