@@ -649,6 +649,12 @@ void AOTCodeCache::Config::record() {
   _contendedPaddingWidth = ContendedPaddingWidth;
   _objectAlignment       = ObjectAlignmentInBytes;
   _gc                    = (uint)Universe::heap()->kind();
+  _cpu_features_size     = (uint)VM_Version::cpu_features_size();
+  void* cpu_features_buffer = (void*)(this+1);
+  VM_Version::store_cpu_features(cpu_features_buffer);
+  char cpu_features[4096];
+  VM_Version::get_supported_cpu_features_name(cpu_features, sizeof(cpu_features));
+  log_debug(aot, codecache, exit)("CPU features recorded in AOTCodeCache: %s", cpu_features);
 }
 
 bool AOTCodeCache::Config::verify() const {
@@ -715,6 +721,22 @@ bool AOTCodeCache::Config::verify() const {
 
   if ((_compressedKlassBase == nullptr || CompressedKlassPointers::base() == nullptr) && (_compressedKlassBase != CompressedKlassPointers::base())) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: incompatible CompressedKlassPointers::base(): %p vs current %p", _compressedKlassBase, CompressedKlassPointers::base());
+    return false;
+  }
+
+  assert(_cpu_features_size == (uint)VM_Version::cpu_features_size(), "must be");
+  char cpu_features[2048];
+  VM_Version::get_supported_cpu_features_name(cpu_features, sizeof(cpu_features));
+  log_debug(aot, codecache, init)("Available CPU features: %s", cpu_features);
+
+  void* cached_cpu_features_buffer = (void*)(this+1);
+  VM_Version::get_cpu_features_name(cached_cpu_features_buffer, cpu_features, sizeof(cpu_features));
+  log_debug(aot, codecache, init)("CPU features recorded in AOTCodeCache: %s", cpu_features);
+
+  if (!VM_Version::supports_features(cached_cpu_features_buffer)) {
+    char missing_features_name[2048];
+    VM_Version::get_missing_features_name(cached_cpu_features_buffer, missing_features_name, sizeof(missing_features_name));
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: required cpu features are missing: %s", missing_features_name);
     return false;
   }
 
@@ -1097,7 +1119,7 @@ bool AOTCodeCache::finish_write() {
     _aot_code_directory = CachedCodeDirectory::create();
     assert(_aot_code_directory != nullptr, "Sanity check");
 
-    uint header_size = (uint)align_up(sizeof(AOTCodeCache::Header),  DATA_ALIGNMENT);
+    uint header_size = (uint)align_up(AOTCodeCache::Header::size(),  DATA_ALIGNMENT);
     uint load_count = (_load_header != nullptr) ? _load_header->entries_count() : 0;
     uint code_count = store_count + load_count;
     uint search_count = code_count * 2;
@@ -3227,7 +3249,10 @@ void AOTCodeAddressTable::init_shared_blobs() {
   SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_safepoint_handler_blob()->entry_point());
   SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_return_handler_blob()->entry_point());
 #ifdef COMPILER2
-  SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
+  // polling_page_vectors_safepoint_handler_blob can be nullptr if AVX feature is not present or is disabled
+  if (SharedRuntime::polling_page_vectors_safepoint_handler_blob() != nullptr) {
+    SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
+  }
 #endif
 #if INCLUDE_JVMCI
   if (EnableJVMCI) {
