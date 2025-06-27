@@ -35,19 +35,6 @@
  * @run driver SpecialCacheNames AOT --one-step-training
  */
 
-/*
- * @test id=leyden
- * @summary Use special characters in the name of the cache file specified by -XX:CacheDataStore.
- *          Make sure these characters are passed to the child JVM process that assembles the cache.
- * @requires vm.cds.supports.aot.class.linking
- * @comment work around JDK-8345635
- * @requires !vm.jvmci.enabled
- * @library /test/lib
- * @build SpecialCacheNames
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp
- * @run driver SpecialCacheNames LEYDEN
- */
-
 import java.io.File;
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
@@ -72,7 +59,7 @@ public class SpecialCacheNames {
     }
 
     static void test(String name, String[] args) throws Exception {
-        String archiveName = name + (args[0].equals("LEYDEN") ? ".cds" : ".aot");
+        String archiveName = name + ".aot";
 
         System.out.println("============================= Testing with AOT cache name: {{" + archiveName + "}}");
         new Tester(name, archiveName).run(args);

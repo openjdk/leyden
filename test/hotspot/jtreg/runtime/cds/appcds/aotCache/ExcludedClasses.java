@@ -66,10 +66,6 @@ public class ExcludedClasses {
           Tester tester = new Tester();
           tester.run(new String[] {"AOT"} );
         }
-        {
-          Tester tester = new Tester();
-          tester.run(new String[] {"LEYDEN"} );
-        }
     }
 
     static class Tester extends CDSAppTester {

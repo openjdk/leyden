@@ -208,18 +208,6 @@
           "If set, only classes loaded from these JAR files will be "       \
           "stored in the AOTCache")                                         \
                                                                             \
-  product(ccstr, CacheDataStore, nullptr,                                   \
-          "If valid, use the specified file for SharedArchiveFile; "        \
-          "otherwise the specified file is generated at program exit")      \
-                                                                            \
-  product(ccstr, CDSPreimage, nullptr,                                      \
-          "(** internal use only **) -- used by a child JVM process to "    \
-          "create the CacheDataStore final image")                          \
-                                                                            \
-  product(bool, CDSManualFinalImage, false, DIAGNOSTIC,                     \
-          "(** internal use only **) -- if false, automatically launch a "  \
-          "child process to create the final image.")                       \
-                                                                            \
   product(bool, ArchiveDynamicProxies, false,                               \
           "Archive classes generated for java/lang/reflect/Proxy")          \
                                                                             \
