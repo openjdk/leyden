@@ -201,16 +201,6 @@ public class SpringPetClinic {
             String cmdLine[] = new String[] {
                 "org.springframework.samples.petclinic.PetClinicApplication"
             };
-/*
-            if (runMode == RunMode.PRODUCTION) {
-                // FIXME: bug JDK-8318393
-                cmdLine = StringArrayUtils.concat("-XX:-LoadCachedCode", cmdLine);
-            }
-
-            if (runMode.isProductionRun()) {
-                cmdLine = StringArrayUtils.concat("-Xlog:aot+codecache=error", cmdLine);
-            }
- */
             return cmdLine;
         }
 
