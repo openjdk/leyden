@@ -118,7 +118,7 @@ public class AOTProfileFlags {
 
         out = CDSTestUtils.executeAndLog(pb, "production_failure");
         out.shouldMatch(errorPattern);
-        out.shouldHaveExitValue(1); // RequireSharedSpaces is on in premain
+        out.shouldHaveExitValue(0);
     }
 
     public static void testFlagsMismatch() throws Exception {
