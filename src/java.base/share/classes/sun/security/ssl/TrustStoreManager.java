@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -417,10 +417,10 @@ final class TrustStoreManager {
                 // The descriptor.storeFile is null if the JDK default cacerts
                 // or jssecacerts is used when running in hermetic mode. In that
                 // case, load the default store from the hermetic modules image.
-                try (InputStream is = (descriptor.storeFile != null ?
+                try (BufferedInputStream bis = new BufferedInputStream(descriptor.storeFile != null ?
                             new FileInputStream(descriptor.storeFile) :
                             FilePaths.class.getResourceAsStream(descriptor.storeName))) {
-                    ks.load(is, password);
+                    ks.load(bis, password);
                 } catch (IOException ioe) {
                     // No file available, no KeyStore available.
                     if (SSLLogger.isOn && SSLLogger.isOn("trustmanager")) {
