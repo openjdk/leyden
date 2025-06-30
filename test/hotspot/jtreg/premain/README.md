@@ -17,6 +17,20 @@ It's a good demonstration of how we can improve start-up time of a complex appli
 (still under development) where you can generate all the Leyden artifacts with a single
 JVM invocation.
 
+## Benchmarking
+
+We use a small set of benchmarks to demonstrate the performance of the optimizations in the Leyden repo.
+
+| Benchmark  | Source |
+| ------------- | ------------- |
+|[helidon-quickstart-se](helidon-quickstart-se)|https://helidon.io/docs/v4/se/guides/quickstart|
+|[micronaut-first-app](micronaut-first-app)|https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
+|[quarkus-getting-started](quarkus-getting-started)|https://quarkus.io/guides/getting-started|
+|[spring-boot-getting-started](spring-boot-getting-started)|https://spring.io/guides/gs/spring-boot|
+|[spring-petclinic](spring-petclinic)|https://github.com/spring-projects/spring-petclinic|
+
+See [README.md in the repo root](../../../../README.md) for some sample benchmark results.
+
 ## Docs
 
 - [InvokeDynamic.md](InvokeDynamic.md) CDS optimizations for invokedynamic

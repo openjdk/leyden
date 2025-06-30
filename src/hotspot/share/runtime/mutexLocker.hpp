@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,11 +30,11 @@
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/mutex.hpp"
 #include "runtime/perfData.hpp"
-#include "runtime/thread.hpp"
+
+class Thread;
 
 // Mutexes used in the VM.
 
-extern Mutex*   Patching_lock;                   // a lock used to guard code patching of compiled code
 extern Mutex*   NMethodState_lock;               // a lock used to guard a compiled method state
 extern Monitor* SystemDictionary_lock;           // a lock on the system dictionary
 extern Mutex*   InvokeMethodTypeTable_lock;
@@ -43,16 +43,16 @@ extern Mutex*   SharedDictionary_lock;           // a lock on the CDS shared dic
 extern Monitor* ClassInitError_lock;             // a lock on the class initialization error table
 extern Mutex*   Module_lock;                     // a lock on module and package related data structures
 extern Mutex*   CompiledIC_lock;                 // a lock used to guard compiled IC patching and access
-extern Mutex*   InlineCacheBuffer_lock;          // a lock used to guard the InlineCacheBuffer
 extern Mutex*   VMStatistic_lock;                // a lock used to guard statistics count increment
 extern Mutex*   JmethodIdCreation_lock;          // a lock on creating JNI method identifiers
 extern Mutex*   JfieldIdCreation_lock;           // a lock on creating JNI static field identifiers
-extern Monitor* JNICritical_lock;                // a lock used while entering and exiting JNI critical regions, allows GC to sometimes get in
+extern Monitor* JNICritical_lock;                // a lock used while synchronizing with threads entering/leaving JNI critical regions
 extern Mutex*   JvmtiThreadState_lock;           // a lock on modification of JVMTI thread data
 extern Monitor* EscapeBarrier_lock;              // a lock to sync reallocating and relocking objects because of JVMTI access
 extern Monitor* JvmtiVTMSTransition_lock;        // a lock for Virtual Thread Mount State transition (VTMS transition) management
+extern Mutex*   JvmtiVThreadSuspend_lock;        // a lock for virtual threads suspension
 extern Monitor* Heap_lock;                       // a lock on the heap
-#ifdef INCLUDE_PARALLELGC
+#if INCLUDE_PARALLELGC
 extern Mutex*   PSOldGenExpand_lock;         // a lock on expanding the heap
 #endif
 extern Mutex*   AdapterHandlerLibrary_lock;      // a lock on the AdapterHandlerLibrary
@@ -65,6 +65,8 @@ extern Monitor* CodeCache_lock;                  // a lock on the CodeCache
 extern Mutex*   TouchedMethodLog_lock;           // a lock on allocation of LogExecutedMethods info
 extern Mutex*   RetData_lock;                    // a lock on installation of RetData inside method data
 extern Monitor* VMOperation_lock;                // a lock on queue of vm_operations waiting to execute
+extern Monitor* ThreadsLockThrottle_lock;        // used by Thread start/exit to reduce competition for Threads_lock,
+                                                 // so a VM thread calling a safepoint is prioritized
 extern Monitor* Threads_lock;                    // a lock on the Threads table of active Java threads
                                                  // (also used by Safepoints too to block threads creation/destruction)
 extern Mutex*   NonJavaThreadsList_lock;         // a lock on the NonJavaThreads list
@@ -91,6 +93,7 @@ extern Monitor* Compilation_lock;                // a lock used to pause compila
 extern Mutex*   TrainingData_lock;               // a lock used when accessing training records
 extern Monitor* TrainingReplayQueue_lock;        // a lock held when class are added/removed to the training replay queue
 extern Mutex*   CompileTaskAlloc_lock;           // a lock held when CompileTasks are allocated
+extern Monitor* CompileTaskWait_lock;            // a lock held when CompileTasks are waited/notified
 extern Mutex*   CompileStatistics_lock;          // a lock held when updating compilation statistics
 extern Mutex*   DirectivesStack_lock;            // a lock held when mutating the dirstack and ref counting directives
 extern Monitor* Terminator_lock;                 // a lock used to guard termination of the vm
@@ -125,24 +128,25 @@ extern Mutex*   SharedDecoder_lock;              // serializes access to the dec
 extern Mutex*   DCmdFactory_lock;                // serialize access to DCmdFactory information
 extern Mutex*   NMTQuery_lock;                   // serialize NMT Dcmd queries
 extern Mutex*   NMTCompilationCostHistory_lock;  // guards NMT compilation cost history
+extern Mutex*   NmtVirtualMemory_lock;           // guards NMT virtual memory updates
 #if INCLUDE_CDS
 #if INCLUDE_JVMTI
 extern Mutex*   CDSClassFileStream_lock;         // FileMapInfo::open_stream_for_jvmti
 #endif
 extern Mutex*   DumpTimeTable_lock;              // SystemDictionaryShared::_dumptime_table
-extern Mutex*   CDSLambda_lock;                  // SystemDictionaryShared::get_shared_lambda_proxy_class
+extern Mutex*   CDSLambda_lock;                  // LambdaProxyClassDictionary::find_lambda_proxy_class
 extern Mutex*   DumpRegion_lock;                 // Symbol::operator new(size_t sz, int len)
 extern Mutex*   ClassListFile_lock;              // ClassListWriter()
 extern Mutex*   UnregisteredClassesTable_lock;   // UnregisteredClassesTableTable
 extern Mutex*   LambdaFormInvokers_lock;         // Protecting LambdaFormInvokers::_lambdaform_lines
 extern Mutex*   ScratchObjects_lock;             // Protecting _scratch_xxx_table in heapShared.cpp
 extern Mutex*   ArchivedObjectTables_lock;       // Protecting the table used by HeapShared::get_archived_object_permanent_index()
+extern Mutex*   FinalImageRecipes_lock;          // Protecting the tables used by FinalImageRecipes.
 #endif // INCLUDE_CDS
 #if INCLUDE_JFR
 extern Mutex*   JfrStacktrace_lock;              // used to guard access to the JFR stacktrace table
 extern Monitor* JfrMsg_lock;                     // protects JFR messaging
 extern Mutex*   JfrBuffer_lock;                  // protects JFR buffer operations
-extern Monitor* JfrThreadSampler_lock;           // used to suspend/resume JFR thread sampler
 #endif
 
 extern Mutex*   Metaspace_lock;                  // protects Metaspace virtualspace and chunk expansions
@@ -152,6 +156,10 @@ extern Mutex*   ClassLoaderDataGraph_lock;       // protects CLDG list, needed f
 
 extern Mutex*   CodeHeapStateAnalytics_lock;     // lock print functions against concurrent analyze functions.
                                                  // Only used locally in PrintCodeCacheLayout processing.
+
+extern Mutex*   ExternalsRecorder_lock;          // used to guard access to the external addresses table
+
+extern Mutex*   AOTCodeCStrings_lock;            // used to guard access to the AOT code C strings table
 
 extern Monitor* ContinuationRelativize_lock;
 
@@ -178,11 +186,6 @@ extern Mutex*   tty_lock;                          // lock to synchronize output
 // order.  If their implementations change such that these assumptions
 // are violated, a whole lot of code will break.
 
-// Print all mutexes/monitors that are currently owned by a thread; called
-// by fatal error handler.
-void print_owned_locks_on_error(outputStream* st);
-void print_lock_ranks(outputStream* st);
-
 // for debugging: check that we're already owning this lock (or are at a safepoint / handshake)
 #ifdef ASSERT
 void assert_locked_or_safepoint(const Mutex* lock);
@@ -208,39 +211,9 @@ private:
 
 public:
 
-  MutexLockerImpl(Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag) :
-    _mutex(mutex), _prof(ProfileVMLocks && Thread::current_or_null() != nullptr && Thread::current()->profile_vm_locks()) {
+  MutexLockerImpl(Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag);
 
-    bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
-    if (_mutex != nullptr) {
-      if (_prof) { _before.start(); } // before
-
-      if (no_safepoint_check) {
-        _mutex->lock_without_safepoint_check();
-      } else {
-        _mutex->lock();
-      }
-
-      if (_prof) { _before.stop(); _after.start(); } // after
-    }
-  }
-
-  MutexLockerImpl(Thread* thread, Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag) :
-    _mutex(mutex), _prof(thread->profile_vm_locks()) {
-
-    if (_prof) { _before.start(); } // before
-
-    bool no_safepoint_check = flag == Mutex::_no_safepoint_check_flag;
-    if (_mutex != nullptr) {
-      if (no_safepoint_check) {
-        _mutex->lock_without_safepoint_check(thread);
-      } else {
-        _mutex->lock(thread);
-      }
-    }
-
-    if (_prof) { _before.stop(); _after.start(); } // after
-  }
+  MutexLockerImpl(Thread* thread, Mutex* mutex, Mutex::SafepointCheckFlag flag = Mutex::_safepoint_check_flag);
 
   ~MutexLockerImpl() {
     if (_mutex != nullptr) {

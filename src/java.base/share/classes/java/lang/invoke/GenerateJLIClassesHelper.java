@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,10 +25,11 @@
 
 package java.lang.invoke;
 
-import jdk.internal.org.objectweb.asm.ClassWriter;
-import jdk.internal.org.objectweb.asm.Opcodes;
 import sun.invoke.util.Wrapper;
 
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.attribute.SourceFileAttribute;
+import java.lang.constant.ClassDesc;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
@@ -38,10 +39,10 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 
+import static java.lang.classfile.ClassFile.*;
 import static java.lang.invoke.LambdaForm.BasicType.*;
-import static java.lang.invoke.MethodHandleStatics.CLASSFILE_VERSION;
-import static java.lang.invoke.MethodTypeForm.*;
 import static java.lang.invoke.LambdaForm.Kind.*;
+import static java.lang.invoke.MethodTypeForm.*;
 
 /**
  * Helper class to assist the GenerateJLIClassesPlugin to get access to
@@ -377,13 +378,7 @@ class GenerateJLIClassesHelper {
         ArrayList<String> names = new ArrayList<>();
         HashSet<String> dedupSet = new HashSet<>();
         for (LambdaForm.BasicType type : LambdaForm.BasicType.values()) {
-            LambdaForm zero = LambdaForm.zeroForm(type);
-            String name = zero.kind.defaultLambdaName
-                   + "_" + zero.returnType().basicTypeChar();
-            if (dedupSet.add(name)) {
-                names.add(name);
-                forms.add(zero);
-            }
+            String name;
 
             LambdaForm identity = LambdaForm.identityForm(type);
             name = identity.kind.defaultLambdaName
@@ -391,6 +386,16 @@ class GenerateJLIClassesHelper {
             if (dedupSet.add(name)) {
                 names.add(name);
                 forms.add(identity);
+            }
+
+            if (type != V_TYPE) {
+                LambdaForm constant = LambdaForm.constantForm(type);
+                name = constant.kind.defaultLambdaName
+                        + "_" + constant.returnType().basicTypeChar();
+                if (dedupSet.add(name)) {
+                    names.add(name);
+                    forms.add(constant);
+                }
             }
         }
         return generateCodeBytesForLFs(className,
@@ -425,24 +430,21 @@ class GenerateJLIClassesHelper {
             names.add(form.kind.defaultLambdaName);
         }
         for (Wrapper wrapper : Wrapper.values()) {
-            if (wrapper == Wrapper.VOID) {
-                continue;
-            }
+            int ftype = wrapper == Wrapper.VOID ? DirectMethodHandle.FT_CHECKED_REF : DirectMethodHandle.ftypeKind(wrapper.primitiveType());
             for (byte b = DirectMethodHandle.AF_GETFIELD; b < DirectMethodHandle.AF_LIMIT; b++) {
-                int ftype = DirectMethodHandle.ftypeKind(wrapper.primitiveType());
                 LambdaForm form = DirectMethodHandle
                         .makePreparedFieldLambdaForm(b, /*isVolatile*/false, ftype);
-                if (form.kind != LambdaForm.Kind.GENERIC) {
-                    forms.add(form);
-                    names.add(form.kind.defaultLambdaName);
-                }
+                if (form.kind == GENERIC)
+                    throw new InternalError(b + " non-volatile " + ftype);
+                forms.add(form);
+                names.add(form.kind.defaultLambdaName);
                 // volatile
                 form = DirectMethodHandle
                         .makePreparedFieldLambdaForm(b, /*isVolatile*/true, ftype);
-                if (form.kind != LambdaForm.Kind.GENERIC) {
-                    forms.add(form);
-                    names.add(form.kind.defaultLambdaName);
-                }
+                if (form.kind == GENERIC)
+                    throw new InternalError(b + " volatile " + ftype);
+                forms.add(form);
+                names.add(form.kind.defaultLambdaName);
             }
         }
         return generateCodeBytesForLFs(className,
@@ -557,19 +559,14 @@ class GenerateJLIClassesHelper {
      * a class with a specified name.
      */
     private static byte[] generateCodeBytesForLFs(String className, String[] names, LambdaForm[] forms) {
-        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS + ClassWriter.COMPUTE_FRAMES);
-        cw.visit(CLASSFILE_VERSION, Opcodes.ACC_PRIVATE + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
-                className, null, InvokerBytecodeGenerator.INVOKER_SUPER_NAME, null);
-        cw.visitSource(className.substring(className.lastIndexOf('/') + 1), null);
-
-        for (int i = 0; i < forms.length; i++) {
-            InvokerBytecodeGenerator g
-                = new InvokerBytecodeGenerator(className, names[i], forms[i], forms[i].methodType());
-            g.setClassWriter(cw);
-            g.addMethod();
-        }
-
-        return cw.toByteArray();
+        return ClassFile.of().build(ClassDesc.ofInternalName(className), clb -> {
+            clb.withFlags(ACC_PRIVATE | ACC_FINAL | ACC_SUPER)
+               .withSuperclass(InvokerBytecodeGenerator.INVOKER_SUPER_DESC)
+               .with(SourceFileAttribute.of(className.substring(className.lastIndexOf('/') + 1)));
+            for (int i = 0; i < forms.length; i++) {
+                new InvokerBytecodeGenerator(className, names[i], forms[i], forms[i].methodType()).addMethod(clb, false);
+            }
+        });
     }
 
     private static LambdaForm makeReinvokerFor(MethodType type) {

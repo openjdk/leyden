@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -35,8 +35,6 @@ import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Arrays;
 import java.util.Collections;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
 
 /**
  * Implementation of VMManagement interface that accesses the management
@@ -118,6 +116,12 @@ class VMManagementImpl implements VMManagement {
     public native boolean isThreadContentionMonitoringEnabled();
     public native boolean isThreadCpuTimeEnabled();
     public native boolean isThreadAllocatedMemoryEnabled();
+
+    // AOT Subsystem
+    public native String  getAOTMode();
+    public native boolean isAOTRecording();
+    public native long    getAOTRecordingDuration();
+    public native boolean endAOTRecording();
 
     // Class Loading Subsystem
     public int    getLoadedClassCount() {
@@ -202,15 +206,8 @@ class VMManagementImpl implements VMManagement {
     public native int getAvailableProcessors();
 
     // Compilation Subsystem
-    public String   getCompilerName() {
-        @SuppressWarnings("removal")
-        String name =  AccessController.doPrivileged(
-            new PrivilegedAction<>() {
-                public String run() {
-                    return System.getProperty("sun.management.compiler");
-                }
-            });
-        return name;
+    public String getCompilerName() {
+        return System.getProperty("sun.management.compiler");
     }
     public native long getTotalCompileTime();
 
@@ -255,8 +252,7 @@ class VMManagementImpl implements VMManagement {
         }
 
         // construct PerfInstrumentation object
-        @SuppressWarnings("removal")
-        Perf perf =  AccessController.doPrivileged(new Perf.GetPerfAction());
+        Perf perf = Perf.getPerf();
         try {
             ByteBuffer bb = perf.attach(0);
             if (bb.capacity() == 0) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2025, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2007, 2008, 2009, 2010, 2011 Red Hat, Inc.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -23,7 +23,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "asm/assembler.hpp"
 #include "interpreter/interpreter.hpp"
 #include "interpreter/interpreterRuntime.hpp"
@@ -54,6 +53,8 @@ void ZeroInterpreterGenerator::generate_all() {
     method_entry(java_lang_math_sin   );
     method_entry(java_lang_math_cos   );
     method_entry(java_lang_math_tan   );
+    method_entry(java_lang_math_tanh  );
+    method_entry(java_lang_math_cbrt  );
     method_entry(java_lang_math_abs   );
     method_entry(java_lang_math_sqrt  );
     method_entry(java_lang_math_sqrt_strict);
@@ -95,6 +96,8 @@ address ZeroInterpreterGenerator::generate_method_entry(
   case Interpreter::java_lang_math_sin     : // fall thru
   case Interpreter::java_lang_math_cos     : // fall thru
   case Interpreter::java_lang_math_tan     : // fall thru
+  case Interpreter::java_lang_math_tanh    : // fall thru
+  case Interpreter::java_lang_math_cbrt    : // fall thru
   case Interpreter::java_lang_math_abs     : // fall thru
   case Interpreter::java_lang_math_log     : // fall thru
   case Interpreter::java_lang_math_log10   : // fall thru
@@ -119,12 +122,12 @@ address ZeroInterpreterGenerator::generate_method_entry(
   if (native) {
     entry_point = Interpreter::entry_for_kind(synchronized ? Interpreter::native_synchronized : Interpreter::native);
     if (entry_point == nullptr) {
-      entry_point = generate_native_entry(synchronized);
+      entry_point = generate_native_entry(synchronized, false);
     }
   } else {
     entry_point = Interpreter::entry_for_kind(synchronized ? Interpreter::zerolocals_synchronized : Interpreter::zerolocals);
     if (entry_point == nullptr) {
-      entry_point = generate_normal_entry(synchronized);
+      entry_point = generate_normal_entry(synchronized, false);
     }
   }
 
@@ -174,10 +177,10 @@ address ZeroInterpreterGenerator::generate_Reference_get_entry(void) {
   return generate_entry((address) ZeroInterpreter::Reference_get_entry);
 }
 
-address ZeroInterpreterGenerator::generate_native_entry(bool synchronized) {
+address ZeroInterpreterGenerator::generate_native_entry(bool synchronized, bool runtime_upcalls) {
   return generate_entry((address) ZeroInterpreter::native_entry);
 }
 
-address ZeroInterpreterGenerator::generate_normal_entry(bool synchronized) {
+address ZeroInterpreterGenerator::generate_normal_entry(bool synchronized, bool runtime_upcalls) {
   return generate_entry((address) ZeroInterpreter::normal_entry);
 }

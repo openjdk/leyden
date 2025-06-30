@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,17 +22,17 @@
  *
  */
 
-#include "precompiled.hpp"
-#include "cds/classPreloader.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/scopeDesc.hpp"
-#include "code/SCCache.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/compilerOracle.hpp"
+#include "compiler/recompilationPolicy.hpp"
 #include "memory/resourceArea.hpp"
-#include "oops/methodData.hpp"
 #include "oops/method.inline.hpp"
+#include "oops/methodData.hpp"
 #include "oops/oop.inline.hpp"
 #include "oops/trainingData.hpp"
 #include "prims/jvmtiExport.hpp"
@@ -58,12 +58,10 @@ int64_t CompilationPolicy::_start_time = 0;
 int CompilationPolicy::_c1_count = 0;
 int CompilationPolicy::_c2_count = 0;
 int CompilationPolicy::_c3_count = 0;
-int CompilationPolicy::_sc_count = 0;
+int CompilationPolicy::_ac_count = 0;
 double CompilationPolicy::_increase_threshold_at_ratio = 0;
 
-CompilationPolicy::LoadAverage CompilationPolicy::_load_average;
 CompilationPolicy::TrainingReplayQueue CompilationPolicy::_training_replay_queue;
-volatile bool CompilationPolicy::_recompilation_done = false;
 
 void compilationPolicy_init() {
   CompilationPolicy::initialize();
@@ -78,85 +76,6 @@ int CompilationPolicy::compiler_count(CompLevel comp_level) {
   return 0;
 }
 
-void CompilationPolicy::sample_load_average() {
-  const int c2_queue_size = CompileBroker::queue_size(CompLevel_full_optimization);
-  _load_average.sample(c2_queue_size);
-}
-
-bool CompilationPolicy::have_recompilation_work() {
-  if (UseRecompilation && TrainingData::have_data() && TrainingData::have_recompilation_schedule() &&
-                          TrainingData::recompilation_schedule()->length() > 0 && !_recompilation_done) {
-    if (_load_average.value() <= RecompilationLoadAverageThreshold) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool CompilationPolicy::recompilation_step(int step, TRAPS) {
-  if (!have_recompilation_work() || os::elapsedTime() < DelayRecompilation) {
-    return false;
-  }
-
-  const int size = TrainingData::recompilation_schedule()->length();
-  int i = 0;
-  int count = 0;
-  bool repeat = false;
-  for (; i < size && count < step; i++) {
-    if (!TrainingData::recompilation_status()[i]) {
-      MethodTrainingData* mtd = TrainingData::recompilation_schedule()->at(i);
-      if (!mtd->has_holder()) {
-        Atomic::release_store(&TrainingData::recompilation_status()[i], true);
-        continue;
-      }
-      const Method* method = mtd->holder();
-      InstanceKlass* klass = method->method_holder();
-      if (klass->is_not_initialized()) {
-        repeat = true;
-        continue;
-      }
-      nmethod *nm = method->code();
-      if (nm == nullptr) {
-        repeat = true;
-        continue;
-      }
-
-      if (!ForceRecompilation && !(nm->is_scc() && nm->comp_level() == CompLevel_full_optimization)) {
-        // If it's already online-compiled at level 4, mark it as done.
-        if (nm->comp_level() == CompLevel_full_optimization) {
-          Atomic::store(&TrainingData::recompilation_status()[i], true);
-        } else {
-          repeat = true;
-        }
-        continue;
-      }
-      if (Atomic::cmpxchg(&TrainingData::recompilation_status()[i], false, true) == false) {
-        const methodHandle m(THREAD, const_cast<Method*>(method));
-        CompLevel next_level = CompLevel_full_optimization;
-
-        if (method->method_data() == nullptr) {
-          create_mdo(m, THREAD);
-        }
-
-        if (PrintTieredEvents) {
-          print_event(FORCE_RECOMPILE, m(), m(), InvocationEntryBci, next_level);
-        }
-        CompileBroker::compile_method(m, InvocationEntryBci, CompLevel_full_optimization, methodHandle(), 0,
-                                      true /*requires_online_compilation*/, CompileTask::Reason_MustBeCompiled, THREAD);
-        if (HAS_PENDING_EXCEPTION) {
-          CLEAR_PENDING_EXCEPTION;
-        }
-        count++;
-      }
-    }
-  }
-
-  if (i == size && !repeat) {
-    Atomic::release_store(&_recompilation_done, true);
-  }
-  return count > 0;
-}
-
 // Returns true if m must be compiled before executing it
 // This is intended to force compiles for methods (usually for
 // debugging) that would otherwise be interpreted for some reason.
@@ -167,7 +86,7 @@ bool CompilationPolicy::must_be_compiled(const methodHandle& m, int comp_level) 
   if (m->has_compiled_code()) return false;       // already compiled
   if (!can_be_compiled(m, comp_level)) return false;
 
-  return !UseInterpreter ||                                                                        // must compile all methods
+  return !UseInterpreter ||                                              // must compile all methods
          (AlwaysCompileLoopMethods && m->has_loops() && CompileBroker::should_compile_new_jobs()); // eagerly compile loop methods
 }
 
@@ -179,7 +98,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
     return;
   }
   if (!m->is_native() && MethodTrainingData::have_data()) {
-    MethodTrainingData* mtd = MethodTrainingData::find(m);
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
     if (mtd == nullptr) {
       return;              // there is no training data recorded for m
     }
@@ -198,7 +117,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
       if (PrintTieredEvents) {
         print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, next_level);
       }
-      CompileBroker::compile_method(m, InvocationEntryBci, next_level, methodHandle(), 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
+      CompileBroker::compile_method(m, InvocationEntryBci, next_level, 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION;
       }
@@ -233,7 +152,7 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
     if (PrintTieredEvents) {
       print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, level);
     }
-    CompileBroker::compile_method(m, InvocationEntryBci, level, methodHandle(), 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
+    CompileBroker::compile_method(m, InvocationEntryBci, level, 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
   }
 }
 
@@ -248,66 +167,32 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
       ktd->notice_fully_initialized(); // sets klass->has_init_deps_processed bit
       assert(klass->has_init_deps_processed(), "");
 
-      ktd->iterate_all_comp_deps([&](CompileTrainingData* ctd) {
-        if (ctd->init_deps_left() == 0) {
-          MethodTrainingData* mtd = ctd->method();
-          if (mtd->has_holder()) {
-            const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
-            CompilationPolicy::maybe_compile_early(mh, THREAD);
+      if (AOTCompileEagerly) {
+        ktd->iterate_comp_deps([&](CompileTrainingData* ctd) {
+          if (ctd->init_deps_left() == 0) {
+            MethodTrainingData* mtd = ctd->method();
+            if (mtd->has_holder()) {
+              const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
+              CompilationPolicy::maybe_compile_early(mh, THREAD);
+            }
           }
-        }
-      });
-    }
-    Array<Method*>* methods = klass->methods();
-    for (int i = 0; i < methods->length(); i++) {
-      const methodHandle mh(THREAD, methods->at(i));
-      CompilationPolicy::maybe_compile_early_after_init(mh, THREAD);
+        });
+      }
     }
   }
 }
 
-void CompilationPolicy::replay_training_at_init(bool is_on_shutdown, TRAPS) {
-  // Drain pending queue when no concurrent processing thread is present.
-  if (UseConcurrentTrainingReplay) {
-    if (VerifyTrainingData) {
-      MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
-      while (!_training_replay_queue.is_empty_unlocked()) {
-        locker.wait(); // let the replay training thread drain the queue
-      }
-    }
-  } else {
-    do {
-      InstanceKlass* pending = _training_replay_queue.try_pop(TrainingReplayQueue_lock, THREAD);
-      if (pending == nullptr) {
-        break; // drained the queue
-      }
-      if (is_on_shutdown) {
-        LogStreamHandle(Warning, training) log;
-        if (log.is_enabled()) {
-          ResourceMark rm;
-          log.print("pending training replay request: %s%s",
-                    pending->external_name(), (pending->has_preinitialized_mirror() ? " (preinitialized)" : ""));
-        }
-      }
-      replay_training_at_init_impl(pending, THREAD);
-    } while (true);
-  }
-
-  if (VerifyTrainingData) {
-    TrainingData::verify();
-  }
+void CompilationPolicy::flush_replay_training_at_init(TRAPS) {
+   MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
+   while (!_training_replay_queue.is_empty_unlocked()) {
+     locker.wait(); // let the replay training thread drain the queue
+   }
 }
 
 void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
   assert(klass->is_initialized(), "");
-  if (TrainingData::have_data() && klass->is_shared() &&
-      (CompileBroker::replay_initialized() || !klass->has_preinitialized_mirror())) { // ignore preloaded classes during early startup
-    if (UseConcurrentTrainingReplay || !CompileBroker::replay_initialized()) {
-      _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
-    } else {
-      replay_training_at_init_impl(klass, THREAD);
-    }
-    assert(!HAS_PENDING_EXCEPTION, "");
+  if (TrainingData::have_data() && klass->is_shared()) {
+    _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
   }
 }
 
@@ -323,11 +208,11 @@ void CompilationPolicyUtils::Queue<InstanceKlass>::print_on(outputStream* st) {
 }
 
 void CompilationPolicy::replay_training_at_init_loop(TRAPS) {
-  precond(UseConcurrentTrainingReplay);
-
-  while (!CompileBroker::is_compilation_disabled_forever() || VerifyTrainingData) {
+  while (!CompileBroker::is_compilation_disabled_forever() || AOTVerifyTrainingData) {
     InstanceKlass* ik = _training_replay_queue.pop(TrainingReplayQueue_lock, THREAD);
-    replay_training_at_init_impl(ik, THREAD);
+    if (ik != nullptr) {
+      replay_training_at_init_impl(ik, THREAD);
+    }
   }
 }
 
@@ -425,7 +310,7 @@ bool CompilationPolicy::force_comp_at_level_simple(const methodHandle& method) {
     if (UseJVMCICompiler) {
       AbstractCompiler* comp = CompileBroker::compiler(CompLevel_full_optimization);
       if (comp != nullptr && comp->is_jvmci() && ((JVMCICompiler*) comp)->force_comp_at_level_simple(method)) {
-        return !SCCache::is_C3_on();
+        return !AOTCodeCache::is_C3_on();
       }
     }
 #endif
@@ -648,7 +533,8 @@ void CompilationPolicy::print_event(EventType type, Method* m, Method* im, int b
   tty->print(" rate=");
   if (m->prev_time() == 0) tty->print("n/a");
   else tty->print("%f", m->rate());
-  tty->print(" load=%lf", _load_average.value());
+
+  RecompilationPolicy::print_load_average();
 
   tty->print(" k=%.2lf,%.2lf", threshold_scale(CompLevel_full_profile, Tier3LoadFeedback),
                                threshold_scale(CompLevel_full_optimization, Tier4LoadFeedback));
@@ -692,6 +578,18 @@ void CompilationPolicy::print_event(EventType type, Method* m, Method* im, int b
 
 void CompilationPolicy::initialize() {
   if (!CompilerConfig::is_interpreter_only()) {
+    if (AOTCodeCache::is_dumping_code()) {
+      // Assembly phase runs C1 and C2 compilation in separate phases,
+      // and can use all the CPU threads it can reach. Adjust the common
+      // options before policy starts overwriting them. There is a block
+      // at the very end that overrides final thread counts.
+      if (FLAG_IS_DEFAULT(UseDynamicNumberOfCompilerThreads)) {
+        FLAG_SET_ERGO(UseDynamicNumberOfCompilerThreads, false);
+      }
+      if (FLAG_IS_DEFAULT(CICompilerCount)) {
+        FLAG_SET_ERGO(CICompilerCount, MAX2(2, os::active_processor_count()));
+      }
+    }
     int count = CICompilerCount;
     bool c1_only = CompilerConfig::is_c1_only();
     bool c2_only = CompilerConfig::is_c2_or_jvmci_compiler_only();
@@ -749,7 +647,7 @@ void CompilationPolicy::initialize() {
         int c1_count = MAX2(count - libjvmci_count, 1);
         set_c2_count(libjvmci_count);
         set_c1_count(c1_count);
-      } else if (SCCache::is_C3_on()) {
+      } else if (AOTCodeCache::is_C3_on()) {
         set_c1_count(MAX2(count / 3, 1));
         set_c2_count(MAX2(count - c1_count(), 1));
         set_c3_count(1);
@@ -759,9 +657,14 @@ void CompilationPolicy::initialize() {
         set_c1_count(MAX2(count / 3, 1));
         set_c2_count(MAX2(count - c1_count(), 1));
       }
-      if (SCCache::is_code_load_thread_on()) {
-        set_sc_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
-      }
+    }
+    if (AOTCodeCache::is_dumping_code()) {
+      set_c1_count(count);
+      set_c2_count(count);
+      count *= 2; // satisfy the assert below
+    }
+    if (AOTCodeCache::is_code_load_thread_on()) {
+      set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
     }
     assert(count == c1_count() + c2_count(), "inconsistent compiler thread count");
     set_increase_threshold_at_ratio();
@@ -769,8 +672,6 @@ void CompilationPolicy::initialize() {
 
   set_start_time(nanos_to_millis(os::javaTimeNanos()));
 }
-
-
 
 
 #ifdef ASSERT
@@ -905,6 +806,16 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       task = next_task;
       continue;
     }
+    if (task->is_aot()) {
+      // AOTCodeCache tasks are on separate queue, and they should load fast. There is no need to walk
+      // the rest of the queue, just take the task and go.
+      return task;
+    }
+    if (task->is_blocking() && task->compile_reason() == CompileTask::Reason_Whitebox) {
+      // CTW tasks, submitted as blocking Whitebox requests, do not participate in rate
+      // selection and/or any level adjustments. Just return them in order.
+      return task;
+    }
     Method* method = task->method();
     methodHandle mh(THREAD, method);
     if (task->can_become_stale() && is_stale(t, TieredCompileTaskTimeout, mh) && !is_old(mh)) {
@@ -964,6 +875,7 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       print_event(UPDATE_IN_QUEUE, max_method, max_method, max_task->osr_bci(), (CompLevel)max_task->comp_level());
     }
   }
+
   return max_task;
 }
 
@@ -988,7 +900,7 @@ nmethod* CompilationPolicy::event(const methodHandle& method, const methodHandle
 
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      comp_level == CompLevel_full_optimization && !ClassPreloader::class_preloading_finished()) {
+      comp_level == CompLevel_full_optimization CDS_ONLY(&& !AOTLinkedClassBulkLoader::class_preloading_finished())) {
     return nullptr;
   }
 #endif
@@ -1072,7 +984,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
         nmethod* osr_nm = mh->lookup_osr_nmethod_for(bci, CompLevel_simple, false);
         if (osr_nm != nullptr && osr_nm->comp_level() > CompLevel_simple) {
           // Invalidate the existing OSR nmethod so that a compile at CompLevel_simple is permitted.
-          osr_nm->make_not_entrant();
+          osr_nm->make_not_entrant("OSR invalidation for compiling with C1");
         }
         compile(mh, bci, CompLevel_simple, THREAD);
       }
@@ -1090,7 +1002,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
     update_rate(nanos_to_millis(os::javaTimeNanos()), mh);
     bool requires_online_compilation = false;
     if (TrainingData::have_data()) {
-      MethodTrainingData* mtd = MethodTrainingData::find(mh);
+      MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
       if (mtd != nullptr) {
         CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
         if (ctd != nullptr) {
@@ -1098,7 +1010,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
         }
       }
     }
-    CompileBroker::compile_method(mh, bci, level, mh, hot_count, requires_online_compilation, CompileTask::Reason_Tiered, THREAD);
+    CompileBroker::compile_method(mh, bci, level, hot_count, requires_online_compilation, CompileTask::Reason_Tiered, THREAD);
   }
 }
 
@@ -1182,10 +1094,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  if (x->is_scc() && !y->is_scc()) {
-    // x has cached code
-    return true;
-  }
+  assert(!x->is_aot() && !y->is_aot(), "AOT code caching tasks are not expected here");
   if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }
@@ -1229,17 +1138,15 @@ bool CompilationPolicy::should_create_mdo(const methodHandle& method, CompLevel 
   }
 
   if (TrainingData::have_data()) {
-    MethodTrainingData* mtd = MethodTrainingData::find(method);
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(method);
     if (mtd != nullptr && mtd->saw_level(CompLevel_full_optimization)) {
       return true;
     }
-    return false;
   }
 
   if (is_old(method)) {
     return true;
   }
-
   int i = method->invocation_count();
   int b = method->backedge_count();
   double k = Tier0ProfilingStartPercentage / 100.0;
@@ -1459,32 +1366,29 @@ CompLevel CompilationPolicy::trained_transition(const methodHandle& method, Comp
 template<typename Predicate>
 CompLevel CompilationPolicy::common(const methodHandle& method, CompLevel cur_level, JavaThread* THREAD, bool disable_feedback) {
   CompLevel next_level = cur_level;
-  int i = method->invocation_count();
-  int b = method->backedge_count();
 
   if (force_comp_at_level_simple(method)) {
     next_level = CompLevel_simple;
-  } else {
-    if (MethodTrainingData::have_data()) {
-      MethodTrainingData* mtd = MethodTrainingData::find(method);
-      if (mtd == nullptr) {
-        // We haven't see compilations of this method in training. It's either very cold or the behavior changed.
-        // Feed it to the standard TF with no profiling delay.
-        next_level = standard_transition<Predicate>(method, cur_level, false /*delay_profiling*/, disable_feedback);
-      } else {
-        next_level = trained_transition(method, cur_level, mtd, THREAD);
-        if (cur_level == next_level) {
-          // trained_transtion() is going to return the same level if no startup/warmup optimizations apply.
-          // In order to catch possible pathologies due to behavior change we feed the event to the regular
-          // TF but with profiling delay.
-          next_level = standard_transition<Predicate>(method, cur_level, true /*delay_profiling*/, disable_feedback);
-        }
-      }
-    } else if (is_trivial(method) || method->is_native()) {
-      next_level = CompilationModeFlag::disable_intermediate() ? CompLevel_full_optimization : CompLevel_simple;
-    } else {
+  } else if (is_trivial(method) || method->is_native()) {
+    // We do not care if there is profiling data for these methods, throw them to compiler.
+    next_level = CompilationModeFlag::disable_intermediate() ? CompLevel_full_optimization : CompLevel_simple;
+  } else if (MethodTrainingData::have_data()) {
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(method);
+    if (mtd == nullptr) {
+      // We haven't see compilations of this method in training. It's either very cold or the behavior changed.
+      // Feed it to the standard TF with no profiling delay.
       next_level = standard_transition<Predicate>(method, cur_level, false /*delay_profiling*/, disable_feedback);
+    } else {
+      next_level = trained_transition(method, cur_level, mtd, THREAD);
+      if (cur_level == next_level) {
+        // trained_transtion() is going to return the same level if no startup/warmup optimizations apply.
+        // In order to catch possible pathologies due to behavior change we feed the event to the regular
+        // TF but with profiling delay.
+        next_level = standard_transition<Predicate>(method, cur_level, true /*delay_profiling*/, disable_feedback);
+      }
     }
+  } else {
+    next_level = standard_transition<Predicate>(method, cur_level, false /*delay_profiling*/, disable_feedback);
   }
   return (next_level != cur_level) ? limit_level(next_level) : next_level;
 }
@@ -1606,7 +1510,7 @@ CompLevel CompilationPolicy::call_event(const methodHandle& method, CompLevel cu
   }
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      next_level == CompLevel_full_optimization && !ClassPreloader::class_preloading_finished()) {
+      next_level == CompLevel_full_optimization CDS_ONLY(&& !AOTLinkedClassBulkLoader::class_preloading_finished())) {
     next_level = cur_level;
   }
 #endif
@@ -1689,7 +1593,7 @@ void CompilationPolicy::method_back_branch_event(const methodHandle& mh, const m
               int osr_bci = nm->is_osr_method() ? nm->osr_entry_bci() : InvocationEntryBci;
               print_event(MAKE_NOT_ENTRANT, mh(), mh(), osr_bci, level);
             }
-            nm->make_not_entrant();
+            nm->make_not_entrant("OSR invalidation, back branch");
           }
         }
         // Fix up next_level if necessary to avoid deopts

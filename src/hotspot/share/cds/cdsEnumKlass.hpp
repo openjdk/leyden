@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,7 +30,6 @@
 #include "utilities/exceptions.hpp"
 #include "utilities/macros.hpp"
 
-class fieldDescriptor;
 class InstanceKlass;
 class JavaFieldStream;
 class KlassSubGraphInfo;
@@ -44,11 +43,8 @@ public:
   static bool initialize_enum_klass(InstanceKlass* k, TRAPS) NOT_CDS_JAVA_HEAP_RETURN_(false);
 
 private:
-  static void archive_static_oop_field(int level, KlassSubGraphInfo* subgraph_info,
-                                       InstanceKlass* ik, oop mirror, fieldDescriptor& fd);
-  static void archive_static_primitive_field(int level, KlassSubGraphInfo* subgraph_info,
-                                             InstanceKlass* ik, oop mirror, fieldDescriptor& fd);
-  static bool can_archive_static_oop_field(InstanceKlass* enum_klass, oop obj);
+  static void archive_static_field(int level, KlassSubGraphInfo* subgraph_info,
+                                   InstanceKlass* ik, oop mirror, JavaFieldStream& fs);
 };
 
 #endif // SHARE_CDS_CDSENUMKLASS_HPP

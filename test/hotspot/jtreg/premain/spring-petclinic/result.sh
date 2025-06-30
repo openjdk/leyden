@@ -41,7 +41,7 @@ function count () {
 }
 
 # This tests overall improvements
-echo "Final run: {static + dynamic} archive, +ReplayTraining and +LoadCachedCode"
+echo "Final run: {static + dynamic} archive, +AOTReplayTraining and +LoadCachedCode"
 for i in old new; do
     nums=$(grep Booted data/time.$i.* | sed -e 's/.*in //g' -e 's/ms//g')
     nums="$nums $(for j in data/make.$i.*; do grep Booted $j | tail -1 | sed -e 's/.*in //g' -e 's/ms//g'; done)"

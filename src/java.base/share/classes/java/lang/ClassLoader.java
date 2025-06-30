@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2025, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2019, Azul Systems, Inc. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -33,10 +33,7 @@ import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
-import java.security.AccessController;
-import java.security.AccessControlContext;
 import java.security.CodeSource;
-import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import java.security.cert.Certificate;
 import java.util.ArrayList;
@@ -68,8 +65,6 @@ import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.CallerSensitiveAdapter;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.util.StaticProperty;
-import sun.reflect.misc.ReflectUtil;
-import sun.security.util.SecurityConstants;
 
 /**
  * A class loader is an object that is responsible for loading classes. The
@@ -93,9 +88,6 @@ import sun.security.util.SecurityConstants;
  * <p> Applications implement subclasses of {@code ClassLoader} in order to
  * extend the manner in which the Java virtual machine dynamically loads
  * classes.
- *
- * <p> Class loaders may typically be used by security managers to indicate
- * security domains.
  *
  * <p> In addition to loading classes, a class loader is also responsible for
  * locating resources. A resource is some data (a "{@code .class}" file,
@@ -224,7 +216,7 @@ import sun.security.util.SecurityConstants;
  * or a fully qualified name as defined by
  * <cite>The Java Language Specification</cite>.
  *
- * @jls 6.7 Fully Qualified Names
+ * @jls 6.7 Fully Qualified Names and Canonical Names
  * @jls 13.1 The Form of a Binary
  * @see      #resolveClass(Class)
  * @since 1.0
@@ -365,12 +357,6 @@ public abstract class ClassLoader {
         if (name != null && name.isEmpty()) {
             throw new IllegalArgumentException("name must be non-empty or null");
         }
-
-        @SuppressWarnings("removal")
-        SecurityManager security = System.getSecurityManager();
-        if (security != null) {
-            security.checkCreateClassLoader();
-        }
         return null;
     }
 
@@ -425,11 +411,6 @@ public abstract class ClassLoader {
      *
      * @throws IllegalArgumentException if the given name is empty.
      *
-     * @throws SecurityException
-     *         If a security manager exists and its
-     *         {@link SecurityManager#checkCreateClassLoader()}
-     *         method doesn't allow creation of a new class loader.
-     *
      * @since  9
      */
     @SuppressWarnings("this-escape")
@@ -441,21 +422,12 @@ public abstract class ClassLoader {
      * Creates a new class loader using the specified parent class loader for
      * delegation.
      *
-     * <p> If there is a security manager, its {@link
-     * SecurityManager#checkCreateClassLoader() checkCreateClassLoader} method
-     * is invoked.  This may result in a security exception.  </p>
-     *
      * @apiNote If the parent is specified as {@code null} (for the
      * bootstrap class loader) then there is no guarantee that all platform
      * classes are visible.
      *
      * @param  parent
      *         The parent class loader
-     *
-     * @throws SecurityException
-     *         If a security manager exists and its
-     *         {@code checkCreateClassLoader} method doesn't allow creation
-     *         of a new class loader.
      *
      * @since  1.2
      */
@@ -468,16 +440,6 @@ public abstract class ClassLoader {
      * Creates a new class loader using the {@code ClassLoader} returned by
      * the method {@link #getSystemClassLoader()
      * getSystemClassLoader()} as the parent class loader.
-     *
-     * <p> If there is a security manager, its {@link
-     * SecurityManager#checkCreateClassLoader()
-     * checkCreateClassLoader} method is invoked.  This may result in
-     * a security exception.  </p>
-     *
-     * @throws  SecurityException
-     *          If a security manager exists and its
-     *          {@code checkCreateClassLoader} method doesn't allow creation
-     *          of a new class loader.
      */
     @SuppressWarnings("this-escape")
     protected ClassLoader() {
@@ -689,30 +651,6 @@ public abstract class ClassLoader {
         return lock;
     }
 
-    // Invoked by the VM after loading class with this loader.
-    @SuppressWarnings("removal")
-    private void checkPackageAccess(Class<?> cls, ProtectionDomain pd) {
-        final SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            if (ReflectUtil.isNonPublicProxyClass(cls)) {
-                for (Class<?> intf: cls.getInterfaces()) {
-                    checkPackageAccess(intf, pd);
-                }
-                return;
-            }
-
-            final String packageName = cls.getPackageName();
-            if (!packageName.isEmpty()) {
-                AccessController.doPrivileged(new PrivilegedAction<>() {
-                    public Void run() {
-                        sm.checkPackageAccess(packageName);
-                        return null;
-                    }
-                }, new AccessControlContext(new ProtectionDomain[] {pd}));
-            }
-        }
-    }
-
     /**
      * Finds the class with the specified <a href="#binary-name">binary name</a>.
      * This method should be overridden by class loader implementations that
@@ -824,12 +762,10 @@ public abstract class ClassLoader {
      * Before the {@code Class} can be used it must be resolved.
      *
      * <p> This method assigns a default {@link java.security.ProtectionDomain
-     * ProtectionDomain} to the newly defined class.  The
-     * {@code ProtectionDomain} is effectively granted the same set of
-     * permissions returned when {@link
-     * java.security.Policy#getPermissions(java.security.CodeSource)
-     * Policy.getPolicy().getPermissions(new CodeSource(null, null))}
-     * is invoked.  The default protection domain is created on the first invocation
+     * ProtectionDomain} to the newly defined class. The
+     * {@code getPermissions} method of the {@code ProtectionDomain} always
+     * returns {@code null}.
+     * The default protection domain is created on the first invocation
      * of {@link #defineClass(String, byte[], int, int) defineClass},
      * and re-used on subsequent invocations.
      *
@@ -1343,8 +1279,7 @@ public abstract class ClassLoader {
      *         The resource name
      *
      * @return A URL to the resource; {@code null} if the resource could not be
-     *         found, a URL could not be constructed to locate the resource,
-     *         access to the resource is denied by the security manager, or
+     *         found, a URL could not be constructed to locate the resource, or
      *         there isn't a module of the given name defined to the class
      *         loader.
      *
@@ -1396,9 +1331,8 @@ public abstract class ClassLoader {
      *
      * @return  {@code URL} object for reading the resource; {@code null} if
      *          the resource could not be found, a {@code URL} could not be
-     *          constructed to locate the resource, the resource is in a package
-     *          that is not opened unconditionally, or access to the resource is
-     *          denied by the security manager.
+     *          constructed to locate the resource, or the resource is in a package
+     *          that is not opened unconditionally.
      *
      * @throws  NullPointerException If {@code name} is {@code null}
      *
@@ -1458,9 +1392,8 @@ public abstract class ClassLoader {
      * @return  An enumeration of {@link java.net.URL URL} objects for the
      *          resource. If no resources could be found, the enumeration will
      *          be empty. Resources for which a {@code URL} cannot be
-     *          constructed, are in a package that is not opened
-     *          unconditionally, or access to the resource is denied by the
-     *          security manager, are not returned in the enumeration.
+     *          constructed, or are in a package that is not opened
+     *          unconditionally, are not returned in the enumeration.
      *
      * @throws  IOException
      *          If I/O errors occur
@@ -1519,9 +1452,8 @@ public abstract class ClassLoader {
      *
      * @return  A stream of resource {@link java.net.URL URL} objects. If no
      *          resources could  be found, the stream will be empty. Resources
-     *          for which a {@code URL} cannot be constructed, are in a package
-     *          that is not opened unconditionally, or access to the resource
-     *          is denied by the security manager, will not be in the stream.
+     *          for which a {@code URL} cannot be constructed, or are in a package
+     *          that is not opened unconditionally, will not be in the stream.
      *
      * @throws  NullPointerException If {@code name} is {@code null}
      *
@@ -1559,9 +1491,8 @@ public abstract class ClassLoader {
      *
      * @return  {@code URL} object for reading the resource; {@code null} if
      *          the resource could not be found, a {@code URL} could not be
-     *          constructed to locate the resource, the resource is in a package
-     *          that is not opened unconditionally, or access to the resource is
-     *          denied by the security manager.
+     *          constructed to locate the resource, or the resource is in a package
+     *          that is not opened unconditionally.
      *
      * @since  1.2
      */
@@ -1590,8 +1521,7 @@ public abstract class ClassLoader {
      * @return  An enumeration of {@link java.net.URL URL} objects for
      *          the resource. If no resources could  be found, the enumeration
      *          will be empty. Resources for which a {@code URL} cannot be
-     *          constructed, are in a package that is not opened unconditionally,
-     *          or access to the resource is denied by the security manager,
+     *          constructed, or are in a package that is not opened unconditionally,
      *          are not returned in the enumeration.
      *
      * @throws  IOException
@@ -1677,9 +1607,8 @@ public abstract class ClassLoader {
      *
      * @return  A {@link java.net.URL URL} to the resource; {@code
      *          null} if the resource could not be found, a URL could not be
-     *          constructed to locate the resource, the resource is in a package
-     *          that is not opened unconditionally or access to the resource is
-     *          denied by the security manager.
+     *          constructed to locate the resource, or the resource is in a package
+     *          that is not opened unconditionally.
      *
      * @since  1.1
      */
@@ -1709,8 +1638,7 @@ public abstract class ClassLoader {
      * @return  An enumeration of {@link java.net.URL URL} objects for
      *          the resource. If no resources could  be found, the enumeration
      *          will be empty. Resources for which a {@code URL} cannot be
-     *          constructed, are in a package that is not opened unconditionally,
-     *          or access to the resource is denied by the security manager,
+     *          constructed, or are in a package that is not opened unconditionally,
      *          are not returned in the enumeration.
      *
      * @throws  IOException
@@ -1741,9 +1669,8 @@ public abstract class ClassLoader {
      *         The resource name
      *
      * @return  An input stream for reading the resource; {@code null} if the
-     *          resource could not be found, the resource is in a package that
-     *          is not opened unconditionally, or access to the resource is
-     *          denied by the security manager.
+     *          resource could not be found, or the resource is in a package that
+     *          is not opened unconditionally.
      *
      * @throws  NullPointerException If {@code name} is {@code null}
      *
@@ -1757,6 +1684,15 @@ public abstract class ClassLoader {
         } catch (IOException e) {
             return null;
         }
+    }
+
+    /**
+     * Called by VM for reading class bytes.
+     */
+    private byte[] getResourceAsByteArray(String name) throws IOException {
+        Objects.requireNonNull(name);
+        InputStream is = getResourceAsStream(name);
+        return is != null ? is.readAllBytes() : null;
     }
 
     /**
@@ -1775,9 +1711,8 @@ public abstract class ClassLoader {
      *         The resource name
      *
      * @return  An input stream for reading the resource; {@code null} if the
-     *          resource could not be found, the resource is in a package that
-     *          is not opened unconditionally, or access to the resource is
-     *          denied by the security manager.
+     *          resource could not be found, or the resource is in a package that
+     *          is not opened unconditionally.
      *
      * @since  1.1
      */
@@ -1801,26 +1736,9 @@ public abstract class ClassLoader {
      *
      * @return  The parent {@code ClassLoader}
      *
-     * @throws  SecurityException
-     *          If a security manager is present, and the caller's class loader
-     *          is not {@code null} and is not an ancestor of this class loader,
-     *          and the caller does not have the
-     *          {@link RuntimePermission}{@code ("getClassLoader")}
-     *
      * @since  1.2
      */
-    @CallerSensitive
     public final ClassLoader getParent() {
-        if (parent == null)
-            return null;
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            // Check access to the parent class loader
-            // If the caller's class loader is same as this class loader,
-            // permission check is performed.
-            checkClassLoaderPermission(parent, Reflection.getCallerClass());
-        }
         return parent;
     }
 
@@ -1846,24 +1764,10 @@ public abstract class ClassLoader {
      *
      * @return  The platform {@code ClassLoader}.
      *
-     * @throws  SecurityException
-     *          If a security manager is present, and the caller's class loader is
-     *          not {@code null}, and the caller's class loader is not the same
-     *          as or an ancestor of the platform class loader,
-     *          and the caller does not have the
-     *          {@link RuntimePermission}{@code ("getClassLoader")}
-     *
      * @since 9
      */
-    @CallerSensitive
     public static ClassLoader getPlatformClassLoader() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        ClassLoader loader = getBuiltinPlatformClassLoader();
-        if (sm != null) {
-            checkClassLoaderPermission(loader, Reflection.getCallerClass());
-        }
-        return loader;
+        return getBuiltinPlatformClassLoader();
     }
 
     /**
@@ -1921,12 +1825,6 @@ public abstract class ClassLoader {
      *
      * @return  The system {@code ClassLoader}
      *
-     * @throws  SecurityException
-     *          If a security manager is present, and the caller's class loader
-     *          is not {@code null} and is not the same as or an ancestor of the
-     *          system class loader, and the caller does not have the
-     *          {@link RuntimePermission}{@code ("getClassLoader")}
-     *
      * @throws  IllegalStateException
      *          If invoked recursively during the construction of the class
      *          loader specified by the "{@code java.system.class.loader}"
@@ -1940,7 +1838,6 @@ public abstract class ClassLoader {
      *          underlying cause of the error can be retrieved via the
      *          {@link Throwable#getCause()} method.
      */
-    @CallerSensitive
     public static ClassLoader getSystemClassLoader() {
         switch (VM.initLevel()) {
             case 0:
@@ -1953,13 +1850,8 @@ public abstract class ClassLoader {
                 throw new IllegalStateException(msg);
             default:
                 // system fully initialized
-                assert VM.isBooted() && scl != null;
-                @SuppressWarnings("removal")
-                SecurityManager sm = System.getSecurityManager();
-                if (sm != null) {
-                    checkClassLoaderPermission(scl, Reflection.getCallerClass());
-                }
-                return scl;
+                assert VM.isBooted() && Holder.scl != null;
+                return Holder.scl;
         }
     }
 
@@ -1984,20 +1876,18 @@ public abstract class ClassLoader {
         }
 
         // detect recursive initialization
-        if (scl != null) {
+        if (Holder.scl != null) {
             throw new IllegalStateException("recursive invocation");
         }
 
         ClassLoader builtinLoader = getBuiltinAppClassLoader();
-
-        // All are privileged frames.  No need to call doPrivileged.
         String cn = System.getProperty("java.system.class.loader");
         if (cn != null) {
             try {
                 // custom class loader is only supported to be loaded from unnamed module
                 Constructor<?> ctor = Class.forName(cn, false, builtinLoader)
                                            .getDeclaredConstructor(ClassLoader.class);
-                scl = (ClassLoader) ctor.newInstance(builtinLoader);
+                Holder.scl = (ClassLoader) ctor.newInstance(builtinLoader);
             } catch (Exception e) {
                 Throwable cause = e;
                 if (e instanceof InvocationTargetException) {
@@ -2012,39 +1902,9 @@ public abstract class ClassLoader {
                 throw new Error(cause.getMessage(), cause);
             }
         } else {
-            scl = builtinLoader;
+            Holder.scl = builtinLoader;
         }
-        return scl;
-    }
-
-    // Returns true if the specified class loader can be found in this class
-    // loader's delegation chain.
-    boolean isAncestor(ClassLoader cl) {
-        ClassLoader acl = this;
-        do {
-            acl = acl.parent;
-            if (cl == acl) {
-                return true;
-            }
-        } while (acl != null);
-        return false;
-    }
-
-    // Tests if class loader access requires "getClassLoader" permission
-    // check.  A class loader 'from' can access class loader 'to' if
-    // class loader 'from' is same as class loader 'to' or an ancestor
-    // of 'to'.  The class loader in a system domain can access
-    // any class loader.
-    private static boolean needsClassLoaderPermissionCheck(ClassLoader from,
-                                                           ClassLoader to)
-    {
-        if (from == to)
-            return false;
-
-        if (from == null)
-            return false;
-
-        return !to.isAncestor(from);
+        return Holder.scl;
     }
 
     // Returns the class's class loader, or null if none.
@@ -2057,26 +1917,13 @@ public abstract class ClassLoader {
         return caller.getClassLoader0();
     }
 
-    /*
-     * Checks RuntimePermission("getClassLoader") permission
-     * if caller's class loader is not null and caller's class loader
-     * is not the same as or an ancestor of the given cl argument.
-     */
-    static void checkClassLoaderPermission(ClassLoader cl, Class<?> caller) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            // caller can be null if the VM is requesting it
-            ClassLoader ccl = getClassLoader(caller);
-            if (needsClassLoaderPermissionCheck(ccl, cl)) {
-                sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
-            }
-        }
+    // Holder has the field(s) that need to be initialized during JVM bootstrap even if
+    // the outer is aot-initialized.
+    private static class Holder {
+        // The system class loader
+        // @GuardedBy("ClassLoader.class")
+        private static volatile ClassLoader scl;
     }
-
-    // The system class loader
-    // @GuardedBy("ClassLoader.class")
-    private static volatile ClassLoader scl;
 
     // -- Package --
 
@@ -2443,14 +2290,32 @@ public abstract class ClassLoader {
                 " in java.library.path: " + StaticProperty.javaLibraryPath());
     }
 
-    /*
+    /**
      * Invoked in the VM class linking code.
+     * @param loader the class loader used to look up the native library symbol
+     * @param clazz the class in which the native method is declared
+     * @param entryName the native method's mangled name (this is the name used for the native lookup)
+     * @param javaName the native method's declared name
      */
-    static long findNative(ClassLoader loader, String entryName) {
+    static long findNative(ClassLoader loader, Class<?> clazz, String entryName, String javaName) {
+        NativeLibraries nativeLibraries = nativeLibrariesFor(loader);
+        long addr = nativeLibraries.find(entryName);
+        if (addr != 0 && loader != null) {
+            Reflection.ensureNativeAccess(clazz, clazz, javaName, true);
+        }
+        return addr;
+    }
+
+    /*
+     * This is also called by SymbolLookup::loaderLookup. In that case, we need
+     * to avoid a restricted check, as that check has already been performed when
+     * obtaining the lookup.
+     */
+    static NativeLibraries nativeLibrariesFor(ClassLoader loader) {
         if (loader == null) {
-            return BootLoader.getNativeLibraries().find(entryName);
+            return BootLoader.getNativeLibraries();
         } else {
-            return loader.libraries.find(entryName);
+            return loader.libraries;
         }
     }
 
@@ -2705,57 +2570,54 @@ public abstract class ClassLoader {
      */
     private boolean trySetObjectField(String name, Object obj) {
         Unsafe unsafe = Unsafe.getUnsafe();
-        Class<?> k = ClassLoader.class;
-        long offset;
-        offset = unsafe.objectFieldOffset(k, name);
+        long offset = unsafe.objectFieldOffset(ClassLoader.class, name);
         return unsafe.compareAndSetReference(this, offset, null, obj);
     }
 
-    static final boolean DEBUG = System.getProperty("leyden.debug.archived.packages") != null;
+    private void reinitObjectField(String name, Object obj) {
+        Unsafe unsafe = Unsafe.getUnsafe();
+        long offset = unsafe.objectFieldOffset(ClassLoader.class, name);
+
+        // Extra safety: check the types
+        Object current = unsafe.getReference(this, offset);
+        if (current.getClass() != obj.getClass()) {
+            throw new IllegalStateException("Wrong field type");
+        }
+
+        unsafe.putReference(this, offset, obj);
+    }
 
     /**
-     * Called by the VM, during -Xshare:dump
+     * Called only by the VM, during -Xshare:dump.
+     *
+     * @implNote This is done while the JVM is running in single-threaded mode,
+     * and at the very end of Java bytecode execution. We know that no more classes
+     * will be loaded and none of the fields modified by this method will be used again.
      */
     private void resetArchivedStates() {
         if (parallelLockMap != null) {
-            parallelLockMap.clear();
+            reinitObjectField("parallelLockMap", new ConcurrentHashMap<>());
         }
 
-        if (DEBUG) {
-            System.out.println(this + ": packages = " + packages.size());
-            for (Map.Entry<String, NamedPackage> entry : packages.entrySet()) {
-                String key = entry.getKey();
-                NamedPackage value = entry.getValue();
-                System.out.print("Package ");
-                System.out.print(key);
-                System.out.print(" = ");
-                System.out.println(value instanceof Package ? "Package" : "NamedPackage");
+        if (CDS.isDumpingPackages()) {
+            if (System.getProperty("cds.debug.archived.packages") != null) {
+                for (Map.Entry<String, NamedPackage> entry : packages.entrySet()) {
+                    String key = entry.getKey();
+                    NamedPackage value = entry.getValue();
+                    System.out.println("Archiving " + 
+                                       (value instanceof Package ? "Package" : "NamedPackage") +
+                                       " \"" + key + "\" for " + this);
+                }
             }
-        }
-        if (DEBUG) {
-            System.out.println("package2certs = " + package2certs.size());
-            for (Map.Entry<String, Certificate[]> entry : package2certs.entrySet()) {
-                String key = entry.getKey();
-                Certificate[] value = entry.getValue();
-                System.out.print("Package ");
-                System.out.print(key);
-                System.out.print(" = ");
-                System.out.println(value.length);
-            }
-        }
-        if (!CDS.isDumpingPackages()) {
-            if (DEBUG) {
-                System.out.println("Reset packages/package2certs");
-            }
-            packages.clear();
-            package2certs.clear();
         } else {
-            if (DEBUG) {
-                System.out.println("Retained packages/package2certs");
-            }
+            reinitObjectField("packages", new ConcurrentHashMap<>());
         }
+
+        reinitObjectField("package2certs", new ConcurrentHashMap<>());
         classes.clear();
+        classes.trimToSize();
         classLoaderValueMap = null;
+        libraries.clear();
     }
 }
 

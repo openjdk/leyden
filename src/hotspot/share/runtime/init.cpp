@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,12 +22,11 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/gcHeapSummary.hpp"
@@ -62,6 +61,7 @@ void mutex_init();
 void universe_oopstorage_init();
 void perfMemory_init();
 void SuspendibleThreadSet_init();
+void ExternalsRecorder_init(); // After mutex_init() and before CodeCache_init
 
 // Initialization done by Java thread in init_globals()
 void management_init();
@@ -70,6 +70,7 @@ void classLoader_init1();
 void compilationPolicy_init();
 void codeCache_init();
 void VM_Version_init();
+void icache_init2();
 void initial_stubs_init();
 
 jint universe_init();           // depends on codeCache_init and initial_stubs_init
@@ -91,6 +92,14 @@ bool compilerOracle_init();
 bool compileBroker_init();
 void dependencyContext_init();
 void dependencies_init();
+
+// initialize upcalls before class loading
+bool runtimeUpcalls_open_registration();
+bool runtimeUpcallNop_register_upcalls();
+#if INCLUDE_CDS
+bool cdsEndTrainingUpcall_register_upcalls();
+#endif // INCLUDE_CDS
+void runtimeUpcalls_close_registration();
 
 // Initialization after compiler initialization
 bool universe_post_init();  // must happen after compiler_init
@@ -114,6 +123,7 @@ void vm_init_globals() {
   universe_oopstorage_init();
   perfMemory_init();
   SuspendibleThreadSet_init();
+  ExternalsRecorder_init(); // After mutex_init() and before CodeCache_init
 }
 
 
@@ -135,12 +145,15 @@ jint init_globals() {
   MetaspaceShared::open_static_archive();
   codeCache_init();
   VM_Version_init();              // depends on codeCache_init for emitting code
+  icache_init2();                 // depends on VM_Version for choosing the mechanism
+  // stub routines in initial blob are referenced by later generated code
   initial_stubs_init();
+  // stack overflow exception blob is referenced by the interpreter
+  SharedRuntime::generate_initial_stubs();
   jint status = universe_init();  // dependent on codeCache_init and
                                   // initial_stubs_init and metaspace_init.
   if (status != JNI_OK)
     return status;
-  SCCache::initialize();
 #ifdef LEAK_SANITIZER
   {
     // Register the Java heap with LSan.
@@ -148,21 +161,39 @@ jint init_globals() {
     LSAN_REGISTER_ROOT_REGION(summary.start(), summary.reserved_size());
   }
 #endif // LEAK_SANITIZER
-  SCCache::init2();        // depends on universe_init
+  AOTCodeCache::init2();     // depends on universe_init
   AsyncLogWriter::initialize();
   gc_barrier_stubs_init();   // depends on universe_init, must be before interpreter_init
   continuations_init();      // must precede continuation stub generation
   continuation_stubs_init(); // depends on continuations_init
+#if INCLUDE_JFR
+  SharedRuntime::generate_jfr_stubs();
+#endif
   interpreter_init_stub();   // before methods get loaded
   accessFlags_init();
   InterfaceSupport_init();
   VMRegImpl::set_regName();  // need this before generate_stubs (for printing oop maps).
   SharedRuntime::generate_stubs();
+  AOTCodeCache::init_shared_blobs_table();  // need this after generate_stubs
+  SharedRuntime::init_adapter_library(); // do this after AOTCodeCache::init_shared_blobs_table
   return JNI_OK;
 }
 
 jint init_globals2() {
   universe2_init();          // dependent on codeCache_init and initial_stubs_init
+
+  // initialize upcalls before class loading / initialization
+  runtimeUpcalls_open_registration();
+  if (!runtimeUpcallNop_register_upcalls()) {
+    return JNI_EINVAL;
+  }
+#if INCLUDE_CDS
+  if (!cdsEndTrainingUpcall_register_upcalls()) {
+    return JNI_EINVAL;
+  }
+#endif // INCLUDE_CDS
+  runtimeUpcalls_close_registration();
+
   javaClasses_init();        // must happen after vtable initialization, before referenceProcessor_init
   interpreter_init_code();   // after javaClasses_init and before any method gets linked
   referenceProcessor_init();
@@ -186,9 +217,14 @@ jint init_globals2() {
     JVMCI::initialize_globals();
   }
 #endif
-
+  // Initialize TrainingData only we're recording/replaying
   if (TrainingData::have_data() || TrainingData::need_data()) {
     TrainingData::initialize();
+  }
+
+  // Initialize TrainingData only we're recording/replaying
+  if (TrainingData::have_data() || TrainingData::need_data()) {
+   TrainingData::initialize();
   }
 
   if (!universe_post_init()) {
@@ -196,14 +232,14 @@ jint init_globals2() {
   }
   compiler_stubs_init(false /* in_compiler_thread */); // compiler's intrinsics stubs
   final_stubs_init();    // final StubRoutines stubs
+  AOTCodeCache::init_stubs_table();
   MethodHandles::generate_adapters();
-  SystemDictionary::restore_archived_method_handle_intrinsics();
 
   // All the flags that get adjusted by VM_Version_init and os::init_2
   // have been set so dump the flags now.
   if (PrintFlagsFinal || PrintFlagsRanges) {
     JVMFlag::printFlags(tty, false, PrintFlagsRanges);
-  } else if (RecordTraining && xtty != nullptr) {
+  } else if (AOTRecordTraining && xtty != nullptr) {
     JVMFlag::printFlags(xtty->log_only(), false, PrintFlagsRanges);
   }
 

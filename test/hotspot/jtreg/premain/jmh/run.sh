@@ -85,16 +85,16 @@ if false; then
 fi
 
 do_test "(STEP 3 of 5) Run with $APP-static.jsa and dump profile in $APP-dynamic.jsa (With Training Data Replay)" \
-    $JAVA -XX:SharedArchiveFile=$APP-static.jsa -XX:ArchiveClassesAtExit=$APP-dynamic.jsa -XX:+RecordTraining \
+    $JAVA -XX:SharedArchiveFile=$APP-static.jsa -XX:ArchiveClassesAtExit=$APP-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTRecordTraining \
         -Xlog:cds=debug,cds+class=debug:file=$APP-dynamic.dump.log \
         $CMDLINE
 
 do_test "(STEP 4 of 5) Run with $APP-dynamic.jsa and generate AOT code" \
-    $JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+StoreCachedCode \
-        -Xlog:scc*=warning:file=$APP-store-sc.log \
+    $JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+StoreCachedCode \
+        -Xlog:aot+codecache*=warning:file=$APP-store-sc.log \
         -XX:CachedCodeFile=$APP-dynamic.jsa-sc -XX:CachedCodeMaxSize=100M $CMDLINE
 
 do_test "(STEP 5 of 5) Final production run: with $APP-dynamic.jsa and load AOT code" \
-    $JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode \
-        -Xlog:scc*=warning:file=$APP-load-sc.log \
+    $JAVA -XX:SharedArchiveFile=$APP-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+LoadCachedCode \
+        -Xlog:aot+codecache*=warning:file=$APP-load-sc.log \
         -XX:CachedCodeFile=$APP-dynamic.jsa-sc $CMDLINE

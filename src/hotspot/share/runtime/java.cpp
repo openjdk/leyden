@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,11 +22,10 @@
  *
  */
 
-#include "precompiled.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPreloader.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/methodProfiler.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -37,7 +36,7 @@
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "code/codeCache.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
@@ -55,13 +54,14 @@
 #include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "nmt/memMapPrinter.hpp"
 #include "nmt/memTracker.hpp"
 #include "oops/constantPool.hpp"
 #include "oops/generateOopMap.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/instanceOop.hpp"
 #include "oops/klassVtable.hpp"
-#include "oops/method.hpp"
+#include "oops/method.inline.hpp"
 #include "oops/objArrayOop.hpp"
 #include "oops/oop.inline.hpp"
 #include "oops/symbol.hpp"
@@ -79,7 +79,6 @@
 #include "runtime/java.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/sharedRuntime.hpp"
-#include "runtime/statSampler.hpp"
 #include "runtime/stubRoutines.hpp"
 #include "runtime/task.hpp"
 #include "runtime/threads.hpp"
@@ -170,16 +169,13 @@ static void print_method_profiling_data() {
 
 void perf_jvm_print_on(outputStream* st);
 
-void log_vm_init_stats(bool use_tty) {
+void log_vm_init_stats() {
   LogStreamHandle(Info, init) log;
   if (log.is_enabled()) {
-    outputStream* out = use_tty ? tty : &log;
-    SharedRuntime::print_counters_on(out);
-    LogStreamHandle(Info, perf, class, link) log2;
-    outputStream* out2 = use_tty ? tty : &log2;
-    ClassLoader::print_counters(out2);
-    ClassPreloader::print_counters();
-    out->cr();
+    SharedRuntime::print_counters_on(&log);
+    ClassLoader::print_counters(&log);
+    AOTLinkedClassBulkLoader::print_counters_on(&log);
+    log.cr();
     // FIXME: intermittent crashes
 //    if (CountBytecodesPerThread) {
 //      log.print_cr("Thread info:");
@@ -199,53 +195,57 @@ void log_vm_init_stats(bool use_tty) {
 //      Threads::java_threads_do(&cl);
 //    }
 //    log.cr();
-    out->print_cr("Deoptimization events: ");
-    Deoptimization::print_statistics_on(out);
-    out->cr();
+    log.print_cr("Deoptimization events: ");
+    Deoptimization::print_statistics_on(&log);
+    log.cr();
 
-    out->print("Compilation statistics: ");
-    CompileBroker::print_statistics_on(out);
-    out->cr();
+    log.print("Compilation statistics: ");
+    CompileBroker::print_statistics_on(&log);
+    log.cr();
 
     {
       MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-      out->print("Code cache statistics: ");
-      CodeCache::print_nmethod_statistics_on(out);
-      out->cr();
+      log.print("Code cache statistics: ");
+      CodeCache::print_nmethod_statistics_on(&log);
+      log.cr();
     }
 
-    if (SCCache::is_on_for_read()) {
-      out->print_cr("Startup Code Cache: ");
-      SCCache::print_statistics_on(out);
-      out->cr();
-      SCCache::print_timers_on(out);
+    if (AOTCodeCache::is_on_for_use()) {
+      log.print_cr("Startup Code Cache: ");
+      AOTCodeCache::print_statistics_on(&log);
+      log.cr();
+      AOTCodeCache::print_timers_on(&log);
     }
 
-    VMThread::print_counters_on(out);
-    out->cr();
-    MutexLockerImpl::print_counters_on(out);
-    out->cr();
-    out->print("Runtime events for thread \"main\"");
+    VMThread::print_counters_on(&log);
+    log.cr();
+    MutexLockerImpl::print_counters_on(&log);
+    log.cr();
+    log.print("Runtime events for thread \"main\"");
     if (ProfileRuntimeCalls) {
-      out->print_cr(" (%d nested events):", ProfileVMCallContext::nested_runtime_calls_count());
+      log.print_cr(" (%d nested events):", ProfileVMCallContext::nested_runtime_calls_count());
 
-      Runtime1::print_counters_on(out);
-      OptoRuntime::print_counters_on(out);
-      InterpreterRuntime::print_counters_on(out);
-      Deoptimization::print_counters_on(out);
+      InterpreterRuntime::print_counters_on(&log);
+#ifdef COMPILER1
+      Runtime1::print_counters_on(&log);
+#endif
+#ifdef COMPILER2
+      OptoRuntime::print_counters_on(&log);
+      Deoptimization::print_counters_on(&log);
+#endif
     } else {
-      out->print_cr(": no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
+      log.print_cr(": no info (%s is disabled)", (UsePerfData ? "ProfileRuntimeCalls" : "UsePerfData"));
     }
-    out->cr();
-    perf_jvm_print_on(out);
-    out->cr();
-    MethodHandles::print_counters_on(out);
+    log.cr();
+    perf_jvm_print_on(&log);
+    log.cr();
+    MethodHandles::print_counters_on(&log);
   }
 }
 
 void print_bytecode_count() {
   if (CountBytecodes || TraceBytecodes || StopInterpreterAt) {
-    tty->print_cr("[BytecodeCounter::counter_value = %ld]", BytecodeCounter::counter_value());
+    tty->print_cr("[BytecodeCounter::counter_value = %zu]", BytecodeCounter::counter_value());
   }
 }
 
@@ -272,7 +272,7 @@ static void print_method_invocation_histogram() {
   collected_invoked_methods->sort(&compare_methods);
   //
   tty->cr();
-  tty->print_cr("Histogram Over Method Invocation Counters (cutoff = " INTX_FORMAT "):", MethodHistogramCutoff);
+  tty->print_cr("Histogram Over Method Invocation Counters (cutoff = %zd):", MethodHistogramCutoff);
   tty->cr();
   tty->print_cr("____Count_(I+C)____Method________________________Module_________________");
   uint64_t total        = 0,
@@ -317,6 +317,7 @@ static void print_method_invocation_histogram() {
   tty->print_cr("\t" UINT64_FORMAT_W(12) " (%4.1f%%)    |- accessor",    access_total,  100.0 * (double)access_total / total_div);
   tty->cr();
   SharedRuntime::print_call_statistics_on(tty);
+
 }
 
 #else
@@ -328,9 +329,11 @@ static void print_method_invocation_histogram() {}
 
 // General statistics printing (profiling ...)
 void print_statistics() {
-  if (ReplayTraining && PrintTrainingInfo) {
+#if INCLUDE_CDS
+  if (AOTReplayTraining && AOTPrintTrainingInfo) {
     TrainingData::print_archived_training_data_on(tty);
   }
+#endif
   if (CITime) {
     CompileBroker::print_times();
   }
@@ -424,6 +427,13 @@ void print_statistics() {
 
   print_bytecode_count();
 
+  if (PrintVMInfoAtExit) {
+    // Use an intermediate stream to prevent deadlocking on tty_lock
+    stringStream ss;
+    VMError::print_vm_info(&ss);
+    tty->print_raw(ss.base());
+  }
+
   if (PrintSystemDictionaryAtExit) {
     ResourceMark rm;
     MutexLocker mcld(ClassLoaderDataGraph_lock);
@@ -445,13 +455,19 @@ void print_statistics() {
     MetaspaceUtils::print_basic_report(tty, 0);
   }
 
-  if (CompilerOracle::should_print_final_memstat_report()) {
-    CompilationMemoryStatistic::print_all_by_size(tty, false, 0);
+  if (PrintCompilerMemoryStatisticsAtExit) {
+    CompilationMemoryStatistic::print_final_report(tty);
   }
 
   ThreadsSMRSupport::log_statistics();
 
-  log_vm_init_stats(true /* use_tty */);
+  log_vm_init_stats();
+
+  if (log_is_enabled(Info, perf, class, link)) {
+    LogStreamHandle(Info, perf, class, link) log;
+    log.print_cr("At VM exit:");
+    ClassLoader::print_counters(&log);
+  }
 }
 
 // Note: before_exit() can be executed only once, if more than one threads
@@ -511,20 +527,11 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 #endif
 
-  MethodProfiler::process_method_hotness();
-
 #if INCLUDE_CDS
-  ClassListWriter::write_resolved_constants();
-  ClassListWriter::write_reflection_data();
-  ClassListWriter::write_loader_negative_lookup_cache();
+  MethodProfiler::process_method_hotness();
   // Dynamic CDS dumping must happen whilst we can still reliably
   // run Java code.
-  if (CDSConfig::is_dumping_preimage_static_archive()) {
-    // Creating the hotspot.cds.preimage file
-    MetaspaceShared::preload_and_dump();
-  } else {
-    DynamicArchive::dump_at_exit(thread, ArchiveClassesAtExit);
-  }
+  DynamicArchive::dump_at_exit(thread);
   assert(!thread->has_pending_exception(), "must be");
 #endif
 
@@ -536,7 +543,16 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 #endif
 
-  SCCache::close(); // Write final data and close archive
+#if INCLUDE_CDS
+  ClassListWriter::write_resolved_constants();
+  ClassListWriter::write_reflection_data();
+  ClassListWriter::write_loader_negative_lookup_cache();
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    // Creating the hotspot.cds.preimage file
+    MetaspaceShared::preload_and_dump(thread);
+    assert(!thread->has_pending_exception(), "must be");
+  }
+#endif
 
   // Hang forever on exit if we're reporting an error.
   if (ShowMessageBoxOnError && VMError::is_error_reported()) {
@@ -555,19 +571,14 @@ void before_exit(JavaThread* thread, bool halt) {
   // PeriodicTasks to reduce the likelihood of races.
   WatcherThread::stop();
 
-  // shut down the StatSampler task
-  StatSampler::disengage();
-  StatSampler::destroy();
-
   NativeHeapTrimmer::cleanup();
 
   // Stop concurrent GC threads
   Universe::heap()->stop();
 
   // Print GC/heap related information.
-  Log(gc, heap, exit) log;
+  Log(gc, exit) log;
   if (log.is_info()) {
-    ResourceMark rm;
     LogStream ls_info(log.info());
     Universe::print_on(&ls_info);
     if (log.is_trace()) {
@@ -583,7 +594,10 @@ void before_exit(JavaThread* thread, bool halt) {
 
 #ifdef LINUX
   if (DumpPerfMapAtExit) {
-    CodeCache::write_perf_map();
+    CodeCache::write_perf_map(nullptr, tty);
+  }
+  if (PrintMemoryMapAtExit) {
+    MemMapPrinter::print_all_mappings(tty);
   }
 #endif
 
@@ -600,9 +614,10 @@ void before_exit(JavaThread* thread, bool halt) {
   // Note: we don't wait until it actually dies.
   os::terminate_signal_thread();
 
-  if (VerifyTrainingData) {
+  if (AOTVerifyTrainingData) {
     EXCEPTION_MARK;
-    CompilationPolicy::replay_training_at_init(true, THREAD); // implies TrainingData::verify()
+    CompilationPolicy::flush_replay_training_at_init(THREAD);
+    TrainingData::verify();
   }
 
   print_statistics();
@@ -616,7 +631,7 @@ void before_exit(JavaThread* thread, bool halt) {
   if (VerifyStringTableAtExit) {
     size_t fail_cnt = StringTable::verify_and_compare_entries();
     if (fail_cnt != 0) {
-      tty->print_cr("ERROR: fail_cnt=" SIZE_FORMAT, fail_cnt);
+      tty->print_cr("ERROR: fail_cnt=%zu", fail_cnt);
       guarantee(fail_cnt == 0, "unexpected StringTable verification failures");
     }
   }

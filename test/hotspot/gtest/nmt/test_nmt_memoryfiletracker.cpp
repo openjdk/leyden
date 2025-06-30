@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,32 +22,31 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "memory/allocation.hpp"
 #include "nmt/memTracker.hpp"
 #include "unittest.hpp"
 
-class MemoryFileTrackerTest : public testing::Test {
+class NMTMemoryFileTrackerTest : public testing::Test {
 public:
   size_t sz(int x) { return (size_t) x; }
   void basics() {
     MemoryFileTracker tracker(false);
     MemoryFileTracker::MemoryFile* file = tracker.make_file("test");
     tracker.allocate_memory(file, 0, 100, CALLER_PC, mtTest);
-    EXPECT_EQ(file->_summary.by_type(mtTest)->committed(), sz(100));
+    EXPECT_EQ(file->_summary.by_tag(mtTest)->committed(), sz(100));
     tracker.allocate_memory(file, 100, 100, CALLER_PC, mtTest);
-    EXPECT_EQ(file->_summary.by_type(mtTest)->committed(), sz(200));
+    EXPECT_EQ(file->_summary.by_tag(mtTest)->committed(), sz(200));
     tracker.allocate_memory(file, 200, 100, CALLER_PC, mtTest);
-    EXPECT_EQ(file->_summary.by_type(mtTest)->committed(), sz(300));
+    EXPECT_EQ(file->_summary.by_tag(mtTest)->committed(), sz(300));
     tracker.free_memory(file, 0, 300);
-    EXPECT_EQ(file->_summary.by_type(mtTest)->committed(), sz(0));
+    EXPECT_EQ(file->_summary.by_tag(mtTest)->committed(), sz(0));
     tracker.allocate_memory(file, 0, 100, CALLER_PC, mtTest);
-    EXPECT_EQ(file->_summary.by_type(mtTest)->committed(), sz(100));
+    EXPECT_EQ(file->_summary.by_tag(mtTest)->committed(), sz(100));
     tracker.free_memory(file, 50, 10);
-    EXPECT_EQ(file->_summary.by_type(mtTest)->committed(), sz(90));
+    EXPECT_EQ(file->_summary.by_tag(mtTest)->committed(), sz(90));
   };
 };
 
-TEST_VM_F(MemoryFileTrackerTest, Basics) {
+TEST_VM_F(NMTMemoryFileTrackerTest, Basics) {
   this->basics();
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -31,6 +31,7 @@ import sun.security.util.math.SmallValue;
 import sun.security.util.math.IntegerFieldModuloP;
 import java.math.BigInteger;
 import jdk.internal.vm.annotation.IntrinsicCandidate;
+import jdk.internal.vm.annotation.ForceInline;
 
 // Reference:
 // - [1] Shay Gueron and Vlad Krasnov "Fast Prime Field Elliptic Curve
@@ -103,8 +104,8 @@ public final class MontgomeryIntegerPolynomialP256 extends IntegerPolynomial
         setLimbsValuePositive(v, vLimbs);
 
         // Convert to Montgomery domain
-        int numAdds = mult(vLimbs, h, montLimbs);
-        return new ImmutableElement(montLimbs, numAdds);
+        mult(vLimbs, h, montLimbs);
+        return new ImmutableElement(montLimbs, 0);
     }
 
     @Override
@@ -112,24 +113,6 @@ public final class MontgomeryIntegerPolynomialP256 extends IntegerPolynomial
         // Explicitly here as reminder that SmallValue stays in residue domain
         // See multByInt below for how this is used
         return super.getSmallValue(value);
-    }
-
-    /*
-     * This function is used by IntegerPolynomial.setProduct(SmallValue v) to
-     * multiply by a small constant (i.e. (int) 1,2,3,4). Instead of doing a
-     * montgomery conversion followed by a montgomery multiplication, just use
-     * the spare top (64-BITS_PER_LIMB) bits to multiply by a constant. (See [1]
-     * Section 4 )
-     *
-     * Will return an unreduced value
-     */
-    @Override
-    protected int multByInt(long[] a, long b) {
-        assert (b < (1 << BITS_PER_LIMB));
-        for (int i = 0; i < a.length; i++) {
-            a[i] *= b;
-        }
-        return (int) (b - 1);
     }
 
     @Override
@@ -163,9 +146,10 @@ public final class MontgomeryIntegerPolynomialP256 extends IntegerPolynomial
     }
 
     @Override
-    protected int square(long[] a, long[] r) {
-        return mult(a, a, r);
+    protected void square(long[] a, long[] r) {
+        mult(a, a, r);
     }
+
 
     /**
      * Unrolled Word-by-Word Montgomery Multiplication r = a * b * 2^-260 (mod P)
@@ -174,8 +158,9 @@ public final class MontgomeryIntegerPolynomialP256 extends IntegerPolynomial
      * for a Montgomery Friendly modulus p". Note: Step 6. Skipped; Instead use
      * numAdds to reuse existing overflow logic.
      */
+    @Override
     @IntrinsicCandidate
-    protected int mult(long[] a, long[] b, long[] r) {
+    protected void mult(long[] a, long[] b, long[] r) {
         long aa0 = a[0];
         long aa1 = a[1];
         long aa2 = a[2];
@@ -407,6 +392,7 @@ public final class MontgomeryIntegerPolynomialP256 extends IntegerPolynomial
         dd4 += Math.unsignedMultiplyHigh(n, modulus[4]) << shift1 | (n4 >>> shift2);
         d4 += n4 & LIMB_MASK;
 
+        // Final carry propagate
         c5 += d1 + dd0 + (d0 >>> BITS_PER_LIMB);
         c6 += d2 + dd1 + (c5 >>> BITS_PER_LIMB);
         c7 += d3 + dd2 + (c6 >>> BITS_PER_LIMB);
@@ -418,7 +404,10 @@ public final class MontgomeryIntegerPolynomialP256 extends IntegerPolynomial
         c7 &= LIMB_MASK;
         c8 &= LIMB_MASK;
 
-        // At this point, the result could overflow by one modulus.
+        // At this point, the result {c5, c6, c7, c8, c9} could overflow by
+        // one modulus. Subtract one modulus (with carry propagation), into
+        // {c0, c1, c2, c3, c4}. Note that in this calculation, limbs are
+        // signed
         c0 = c5 - modulus[0];
         c1 = c6 - modulus[1] + (c0 >> BITS_PER_LIMB);
         c0 &= LIMB_MASK;
@@ -429,15 +418,17 @@ public final class MontgomeryIntegerPolynomialP256 extends IntegerPolynomial
         c4 = c9 - modulus[4] + (c3 >> BITS_PER_LIMB);
         c3 &= LIMB_MASK;
 
-        long mask = c4 >> BITS_PER_LIMB; // Signed shift!
-
+        // We now must select a result that is in range of [0,modulus). i.e.
+        // either {c0-4} or {c5-9}. Iff {c0-4} is negative, then {c5-9} contains
+        // the result. (After carry propagation) IF c4 is negative, {c0-4} is
+        // negative. Arithmetic shift by 64 bits generates a mask from c4 that
+        // can be used to select 'constant time' either {c0-4} or {c5-9}.
+        long mask = c4 >> 63;
         r[0] = ((c5 & mask) | (c0 & ~mask));
         r[1] = ((c6 & mask) | (c1 & ~mask));
         r[2] = ((c7 & mask) | (c2 & ~mask));
         r[3] = ((c8 & mask) | (c3 & ~mask));
         r[4] = ((c9 & mask) | (c4 & ~mask));
-
-        return 0;
     }
 
     @Override
@@ -516,8 +507,8 @@ public final class MontgomeryIntegerPolynomialP256 extends IntegerPolynomial
         super.encode(v, offset, length, highByte, vLimbs);
 
         // Convert to Montgomery domain
-        int numAdds = mult(vLimbs, h, montLimbs);
-        return new ImmutableElement(montLimbs, numAdds);
+        mult(vLimbs, h, montLimbs);
+        return new ImmutableElement(montLimbs, 0);
     }
 
     /*

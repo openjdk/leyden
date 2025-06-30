@@ -130,7 +130,7 @@ public class GithubMDChart {
                 height: 300
         ---
         xychart-beta
-            x-axis [$names]
+            x-axis "variant" [$names]
             y-axis "Elapsed time (ms, smaller is better)" 0 --> $maxtime
             bar [$geomeans]
         ```
@@ -144,7 +144,7 @@ public class GithubMDChart {
                 height: 300
         ---
         xychart-beta
-            x-axis [$names]
+            x-axis "variant" [$names]
             y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
             bar [$norms]
         ```

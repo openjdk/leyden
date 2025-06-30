@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -64,19 +64,24 @@
           range(2, 246)                                                     \
                                                                             \
   product(bool, AllowArchivingWithJavaAgent, false, DIAGNOSTIC,             \
-          "Allow Java agent to be run with CDS dumping")                    \
+          "Allow Java agent to be run with CDS dumping (not applicable"     \
+          " to AOT")                                                        \
                                                                             \
   develop(ccstr, ArchiveHeapTestClass, nullptr,                             \
           "For JVM internal testing only. The static field named "          \
           "\"archivedObjects\" of the specified class is stored in the "    \
           "CDS archive heap")                                               \
                                                                             \
+  develop(ccstr, AOTInitTestClass, nullptr,                                 \
+          "For JVM internal testing only. The specified class is stored "   \
+          "in the initialized state in the AOT cache ")                     \
+                                                                            \
   product(ccstr, DumpLoadedClassList, nullptr,                              \
           "Dump the names all loaded classes, that could be stored into "   \
           "the CDS archive, in the specified file")                         \
                                                                             \
   product(ccstr, SharedClassListFile, nullptr,                              \
-          "Override the default CDS class list")  \
+          "Override the default CDS class list")                            \
                                                                             \
   product(ccstr, SharedArchiveFile, nullptr,                                \
           "Override the default location of the CDS archive file")          \
@@ -87,8 +92,7 @@
   product(ccstr, ExtraSharedClassListFile, nullptr,                         \
           "Extra classlist for building the CDS archive file")              \
                                                                             \
-  /*FIXME - AOT code has direct pointers to metadata that's not relocated*/ \
-  product(int, ArchiveRelocationMode, 0, DIAGNOSTIC,                        \
+  product(int, ArchiveRelocationMode, 1, DIAGNOSTIC,                        \
            "(0) first map at preferred address, and if "                    \
            "unsuccessful, map at alternative address; "                     \
            "(1) always map at alternative address (default); "              \
@@ -96,7 +100,113 @@
            "do not map the archive")                                        \
            range(0, 2)                                                      \
                                                                             \
+  /*========== New "AOT" flags =========================================*/  \
+  /* The following 3 flags are aliases of -Xshare:dump,                 */  \
+  /* -XX:SharedArchiveFile=..., etc. See CDSConfig::check_flag_aliases()*/  \
+                                                                            \
+  product(ccstr, AOTMode, nullptr,                                          \
+          "Specifies how AOTCache should be created or used. Valid values " \
+          "are: off, record, create, auto, on; the default is auto")        \
+          constraint(AOTModeConstraintFunc, AtParse)                        \
+                                                                            \
+  product(ccstr, AOTConfiguration, nullptr,                                 \
+          "The configuration file written by -XX:AOTMode=record, and "      \
+          "loaded by -XX:AOTMode=create. This file contains profiling data "\
+          "for deciding what contents should be added to AOTCache. ")       \
+          constraint(AOTConfigurationConstraintFunc, AtParse)               \
+                                                                            \
+  product(ccstr, AOTCache, nullptr,                                         \
+          "Cache for improving start up and warm up")                       \
+          constraint(AOTCacheConstraintFunc, AtParse)                       \
+                                                                            \
+  product(ccstr, AOTCacheOutput, nullptr,                                   \
+          "Specifies the file name for writing the AOT cache")              \
+                                                                            \
+  product(bool, AOTInvokeDynamicLinking, false, DIAGNOSTIC,                 \
+          "AOT-link JVM_CONSTANT_InvokeDynamic entries in cached "          \
+          "ConstantPools")                                                  \
+                                                                            \
+  product(bool, AOTClassLinking, false,                                     \
+          "Load/link all archived classes for the boot/platform/app "       \
+          "loaders before application main")                                \
+                                                                            \
+  product(bool, AOTCacheParallelRelocation, true, DIAGNOSTIC,               \
+          "Use parallel relocation code to speed up startup.")              \
+                                                                            \
+  /* flags to control training and deployment modes  */                     \
+                                                                            \
+  product(bool, AOTRecordTraining, false, DIAGNOSTIC,                       \
+          "Request output of training data for improved deployment.")       \
+                                                                            \
+  product(bool, AOTReplayTraining, false, DIAGNOSTIC,                       \
+          "Read training data, if available, for use in this execution")    \
+                                                                            \
+  product(bool, AOTPrintTrainingInfo, false, DIAGNOSTIC,                    \
+          "Print additional information about training")                    \
+                                                                            \
+  product(bool, AOTVerifyTrainingData, trueInDebug, DIAGNOSTIC,             \
+          "Verify archived training data")                                  \
+                                                                            \
+  product(bool, AOTCompileEagerly, true, DIAGNOSTIC,                        \
+          "Compile methods as soon as possible")                            \
+                                                                            \
+  product(bool, AOTRecordOptCompilationOrder, false,                        \
+          "Record c2/jvmci nmethod temperature to guide compilation order.")\
+                                                                            \
+  product(bool, AOTRecordOnlyTopCompilations, false,                        \
+          "Record only top compilations (non-zero counts)")                 \
+                                                                            \
+  product(int, AOTRecordOptCompilationOrderInterval, 10,                    \
+          "Sampling interval for RecordOptCompilationOrder")                \
+                                                                            \
+   /* Recompilation flags */                                                \
+                                                                            \
+   product(int, AOTRecompilationLoadAverageThreshold, 5,                    \
+           "Queues load avergage after while recompilations are allowed")   \
+                                                                            \
+   product(int, AOTRecompilationWorkUnitSize, 5,                            \
+           "Queues load avergage after while recompilations are allowed")   \
+                                                                            \
+   product(bool, AOTRecompilation, false,                                   \
+           "Recompile methods for peak performance")                        \
+                                                                            \
+   product(bool, AOTForceRecompilation, false,                              \
+           "Testing mode for recompilation")                                \
+                                                                            \
+   product(double, AOTDelayRecompilation, 0.0,                              \
+           "Delay recompilation for given number of seconds")               \
+                                                                            \
+  /* AOT Code flags */                                                      \
+                                                                            \
+  product(bool, AOTCodeCaching, false, DIAGNOSTIC,                          \
+          "Enable saving and restoring JIT comiled code in AOT cache")      \
+                                                                            \
+  product(bool, AOTAdapterCaching, false, DIAGNOSTIC,                       \
+          "Enable saving and restoring i2c2i adapters in AOT cache")        \
+                                                                            \
+  product(bool, AOTStubCaching, false, DIAGNOSTIC,                          \
+          "Enable saving and restoring stubs and code blobs in AOT cache")  \
+                                                                            \
+  product(uint, AOTCodeMaxSize, 512*M, DIAGNOSTIC,                          \
+          "Buffer size in bytes for AOT code caching")                      \
+          range(1*M, max_jint)                                              \
+                                                                            \
+  product(bool, AbortVMOnAOTCodeFailure, false, DIAGNOSTIC,                 \
+          "Abort VM on the first occurrence of AOT code load or store "     \
+          "failure. By default VM will continue execute without AOT code.") \
+                                                                            \
+  develop(bool, TestAOTAdapterLinkFailure, false,                           \
+          "Test failure of adapter linking when loading from AOT cache.")   \
+                                                                            \
   /*========== New options added by Leyden =============================*/  \
+                                                                            \
+  product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \
+          "List of methods (pkg/class.name) to trigger end of AOT "         \
+          "training run.  Optional ',count=N' where N is > 0")              \
+                                                                            \
+  product(ccstr, CacheOnlyClassesIn, nullptr,                               \
+          "If set, only classes loaded from these JAR files will be "       \
+          "stored in the AOTCache")                                         \
                                                                             \
   product(ccstr, CacheDataStore, nullptr,                                   \
           "If valid, use the specified file for SharedArchiveFile; "        \
@@ -110,46 +220,24 @@
           "(** internal use only **) -- if false, automatically launch a "  \
           "child process to create the final image.")                       \
                                                                             \
-  /* To be renamed to CDSLoadedClasses */                                   \
-  product(bool, PreloadSharedClasses, false,                                \
-          "Load all shared classes for the boot/platform/app loaders "      \
-          "immediately at VM start-up")                                     \
-                                                                            \
-  product(bool, PrelinkSharedClasses, true,                                 \
-          "Link all shared classes for the boot/platform/app loaders "      \
-          "immediately at VM start-up")                                     \
-                                                                            \
   product(bool, ArchiveDynamicProxies, false,                               \
           "Archive classes generated for java/lang/reflect/Proxy")          \
                                                                             \
-  product(bool, ArchiveFieldReferences, true,                               \
-          "Archive resolved JVM_CONSTANT_Fieldref in ConstantPool")         \
-                                                                            \
-  product(bool, ArchiveInvokeDynamic, false,                                \
-          "Archive resolved JVM_CONSTANT_InvokeDynamic in ConstantPool")    \
-                                                                            \
   product(bool, ArchiveLoaderLookupCache, false,                            \
           "Archive app loader's positive and negative lookup cache")        \
-                                                                            \
-  product(bool, ArchiveMethodReferences, true,                              \
-          "Archive resolved JVM_CONSTANT_Methodref and "                    \
-          "JVM_CONSTANT_InterfaceMethodref in ConstantPool")                \
                                                                             \
   product(bool, ArchivePackages, false,                                     \
           "Archive the java.lang.ClassLoader::{packages,package2certs} "    \
           "tables")                                                         \
                                                                             \
+  product(bool, ArchiveProtectionDomains, false,                            \
+          "Archive the java.security.SecureClassLoader::pdcache table")     \
+                                                                            \
   product(bool, ArchiveReflectionData, false,                               \
           "Archive Class::reflectionData field")                            \
                                                                             \
-  product(bool, TempDisableAddJVMCIModule, false,                           \
-          "Do not add jdk.internal.vm.ci module even for -XX:+EnableJVMCI") \
-                                                                            \
-  product(bool, UsePermanentHeapObjects, false, DIAGNOSTIC,                 \
-          "Allow AOT code to access permanent archived heap objects")       \
-                                                                            \
-  product(bool, VerifyTrainingData, trueInDebug, DIAGNOSTIC,                \
-          "Verify archived training data")                                  \
+  product(bool, SkipArchiveHeapVerification, false,                         \
+          "Skip verification of CDS archive heap")                          \
 
 // end of CDS_FLAGS
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,14 +22,13 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "ci/ciField.hpp"
 #include "ci/ciInstanceKlass.hpp"
 #include "ci/ciSymbols.hpp"
 #include "ci/ciUtilities.inline.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/vmClasses.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "oops/klass.inline.hpp"
@@ -103,8 +102,6 @@ ciField::ciField(ciInstanceKlass* klass, int index, Bytecodes::Code bc) :
   } else {
     _type = ciType::make(field_type);
   }
-
-  _name = (ciSymbol*)ciEnv::current(THREAD)->get_symbol(name);
 
   // Get the field's declared holder.
   //
@@ -318,7 +315,7 @@ ciConstant ciField::constant_value() {
   if (FoldStableValues && is_stable() && _constant_value.is_null_or_zero()) {
     return ciConstant();
   }
-  if (!SCCache::allow_const_field(_constant_value)) {
+  if (!AOTCodeCache::allow_const_field(_constant_value)) {
     return ciConstant();
   }
   return _constant_value;
@@ -334,7 +331,7 @@ ciConstant ciField::constant_value_of(ciObject* object) {
   if (FoldStableValues && is_stable() && field_value.is_null_or_zero()) {
     return ciConstant();
   }
-  if (!SCCache::allow_const_field(field_value)) {
+  if (!AOTCodeCache::allow_const_field(field_value)) {
     return ciConstant();
   }
   return field_value;

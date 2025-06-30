@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,23 +22,22 @@
  *
  */
 
-#include "precompiled.hpp"
-#include "cds/classPreloader.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "ci/ciCallProfile.hpp"
 #include "ci/ciExceptionHandler.hpp"
 #include "ci/ciInstanceKlass.hpp"
 #include "ci/ciMethod.hpp"
 #include "ci/ciMethodBlocks.hpp"
 #include "ci/ciMethodData.hpp"
+#include "ci/ciReplay.hpp"
 #include "ci/ciStreams.hpp"
 #include "ci/ciSymbol.hpp"
-#include "ci/ciReplay.hpp"
 #include "ci/ciSymbols.hpp"
 #include "ci/ciUtilities.inline.hpp"
-#include "compiler/compileTask.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/compilerOracle.hpp"
+#include "compiler/compileTask.hpp"
 #include "compiler/methodLiveness.hpp"
 #include "interpreter/interpreter.hpp"
 #include "interpreter/linkResolver.hpp"
@@ -112,7 +111,8 @@ ciMethod::ciMethod(const methodHandle& h_m, ciInstanceKlass* holder) :
   ciEnv *env = CURRENT_ENV;
   if (env->jvmti_can_hotswap_or_post_breakpoint()) {
     // 6328518 check hotswap conditions under the right lock.
-    MutexLocker locker(Compile_lock);
+    bool should_take_Compile_lock = !Compile_lock->owned_by_self();
+    ConditionalMutexLocker locker(Compile_lock, should_take_Compile_lock, Mutex::_safepoint_check_flag);
     if (Dependencies::check_evol_method(h_m()) != nullptr) {
       _is_c1_compilable = false;
       _is_c2_compilable = false;
@@ -740,17 +740,10 @@ ciMethod* ciMethod::find_monomorphic_target(ciInstanceKlass* caller,
   {
     MutexLocker locker(Compile_lock);
     InstanceKlass* context = actual_recv->get_instanceKlass();
-    if (UseVtableBasedCHA) {
-      target = methodHandle(THREAD, Dependencies::find_unique_concrete_method(context,
-                                                                              root_m->get_Method(),
-                                                                              callee_holder->get_Klass(),
-                                                                              this->get_Method()));
-    } else {
-      if (root_m->is_abstract()) {
-        return nullptr; // not supported
-      }
-      target = methodHandle(THREAD, Dependencies::find_unique_concrete_method(context, root_m->get_Method()));
-    }
+    target = methodHandle(THREAD, Dependencies::find_unique_concrete_method(context,
+                                                                            root_m->get_Method(),
+                                                                            callee_holder->get_Klass(),
+                                                                            this->get_Method()));
     assert(target() == nullptr || !target()->is_abstract(), "not allowed");
     // %%% Should upgrade this ciMethod API to look for 1 or 2 concrete methods.
   }
@@ -770,6 +763,13 @@ ciMethod* ciMethod::find_monomorphic_target(ciInstanceKlass* caller,
   if (target() == nullptr) {
     return nullptr;
   }
+
+  // Redefinition support.
+  if (this->is_old() || root_m->is_old() || target->is_old()) {
+    guarantee(CURRENT_THREAD_ENV->jvmti_state_changed(), "old method not detected");
+    return nullptr;
+  }
+
   if (target() == root_m->get_Method()) {
     return root_m;
   }
@@ -847,6 +847,12 @@ ciMethod* ciMethod::resolve_invoke(ciKlass* caller, ciKlass* exact_receiver, boo
 
   ciMethod* result = this;
   if (m != get_Method()) {
+    // Redefinition support.
+    if (this->is_old() || m->is_old()) {
+      guarantee(CURRENT_THREAD_ENV->jvmti_state_changed(), "old method not detected");
+      return nullptr;
+    }
+
     result = CURRENT_THREAD_ENV->get_method(m);
   }
 
@@ -930,8 +936,14 @@ int ciMethod::scale_count(int count, float prof_factor) {
       method_life = counter_life;
     }
     if (counter_life > 0) {
-      count = (int)((double)count * prof_factor * method_life / counter_life + 0.5);
-      count = (count > 0) ? count : 1;
+      double count_d = (double)count * prof_factor * method_life / counter_life + 0.5;
+      if (count_d >= static_cast<double>(INT_MAX)) {
+        // Clamp in case of overflowing int range.
+        count = INT_MAX;
+      } else {
+        count = int(count_d);
+        count = (count > 0) ? count : 1;
+      }
     } else {
       count = 1;
     }
@@ -986,6 +998,14 @@ bool ciMethod::is_compiled_lambda_form() const {
 //
 bool ciMethod::is_object_initializer() const {
    return name() == ciSymbols::object_initializer_name();
+}
+
+// ------------------------------------------------------------------
+// ciMethod::is_scoped
+//
+// Return true for methods annotated with @Scoped
+bool ciMethod::is_scoped() const {
+   return get_Method()->is_scoped();
 }
 
 // ------------------------------------------------------------------
@@ -1049,7 +1069,7 @@ ciMethodData* ciMethod::method_data() {
     if (_method_data_recorded == nullptr) {
       VM_ENTRY_MARK;
       methodHandle h_m(thread, get_Method());
-      MethodTrainingData* mtd = TrainingData::lookup_for(h_m());
+      MethodTrainingData* mtd = MethodTrainingData::find(h_m);
       MethodData* mdo = (mtd != nullptr ? mtd->final_profile() : nullptr);
       DirectiveSet* directives = DirectivesStack::getMatchingDirective(h_m, CURRENT_ENV->task()->compiler());
       if (mdo == nullptr || directives->IgnoreRecordedProfileOption) {
@@ -1062,11 +1082,13 @@ ciMethodData* ciMethod::method_data() {
         }
         _method_data_recorded = CURRENT_ENV->get_empty_methodData();
       } else {
+#if INCLUDE_CDS
         if (mdo->extra_data_lock() == nullptr) {
           assert(!HAS_PENDING_EXCEPTION, "");
           mdo->restore_unshareable_info(thread);
           assert(!HAS_PENDING_EXCEPTION, "");
         }
+#endif
         _method_data_recorded = CURRENT_ENV->get_method_data(mdo);
         _method_data_recorded->load_data();
         {
@@ -1149,7 +1171,7 @@ bool ciMethod::can_be_compiled() {
 
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      env->comp_level() == CompLevel_full_optimization && !ClassPreloader::class_preloading_finished()) {
+      env->comp_level() == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::class_preloading_finished()) {
     return false;
   }
 #endif
@@ -1217,7 +1239,7 @@ int ciMethod::inline_instructions_size() {
   if (_inline_instructions_size == -1) {
     GUARDED_VM_ENTRY(
       nmethod* code = get_Method()->code();
-      if (code != nullptr && !code->is_scc() && (code->comp_level() == CompLevel_full_optimization)) {
+      if (code != nullptr && !code->is_aot() && (code->comp_level() == CompLevel_full_optimization)) {
         int isize = code->insts_end() - code->verified_entry_point() - code->skipped_instructions_size();
         _inline_instructions_size = isize > 0 ? isize : 0;
       } else {
@@ -1336,7 +1358,6 @@ bool ciMethod::has_jsrs       () const {         FETCH_FLAG_FROM_VM(has_jsrs);  
 bool ciMethod::is_getter      () const {         FETCH_FLAG_FROM_VM(is_getter); }
 bool ciMethod::is_setter      () const {         FETCH_FLAG_FROM_VM(is_setter); }
 bool ciMethod::is_accessor    () const {         FETCH_FLAG_FROM_VM(is_accessor); }
-bool ciMethod::is_initializer () const {         FETCH_FLAG_FROM_VM(is_initializer); }
 bool ciMethod::is_empty       () const {         FETCH_FLAG_FROM_VM(is_empty_method); }
 
 bool ciMethod::is_boxing_method() const {
@@ -1583,3 +1604,10 @@ bool ciMethod::is_consistent_info(ciMethod* declared_method, ciMethod* resolved_
 }
 
 // ------------------------------------------------------------------
+// ciMethod::is_old
+//
+// Return true for redefined methods
+bool ciMethod::is_old() const {
+  ASSERT_IN_VM;
+  return get_Method()->is_old();
+}

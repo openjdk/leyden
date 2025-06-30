@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -87,10 +87,10 @@ public:
 #endif // PRODUCT
 };
 
-class SCAddressTable;
+class AOTCodeAddressTable;
 
 class ZBarrierSetC1 : public BarrierSetC1 {
-  friend SCAddressTable;
+  friend AOTCodeAddressTable;
 private:
   address _load_barrier_on_oop_field_preloaded_runtime_stub;
   address _load_barrier_on_weak_oop_field_preloaded_runtime_stub;
@@ -115,7 +115,7 @@ protected:
 public:
   ZBarrierSetC1();
 
-  virtual void generate_c1_runtime_stubs(BufferBlob* blob);
+  virtual bool generate_c1_runtime_stubs(BufferBlob* blob);
 };
 
 #endif // SHARE_GC_Z_C1_ZBARRIERSETC1_HPP

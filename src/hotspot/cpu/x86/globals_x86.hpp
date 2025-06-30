@@ -61,29 +61,19 @@ define_pd_global(intx, InlineSmallCode,          1000);
 #define MIN_STACK_RED_PAGES DEFAULT_STACK_RED_PAGES
 #define MIN_STACK_RESERVED_PAGES (0)
 
-#ifdef _LP64
 // Java_java_net_SocketOutputStream_socketWrite0() uses a 64k buffer on the
-// stack if compiled for unix and LP64. To pass stack overflow tests we need
-// 20 shadow pages.
+// stack if compiled for unix. To pass stack overflow tests we need 20 shadow pages.
 #define DEFAULT_STACK_SHADOW_PAGES (NOT_WIN64(20) WIN64_ONLY(8) DEBUG_ONLY(+4))
 // For those clients that do not use write socket, we allow
 // the min range value to be below that of the default
 #define MIN_STACK_SHADOW_PAGES (NOT_WIN64(10) WIN64_ONLY(8) DEBUG_ONLY(+4))
-#else
-#define DEFAULT_STACK_SHADOW_PAGES (4 DEBUG_ONLY(+5))
-#define MIN_STACK_SHADOW_PAGES DEFAULT_STACK_SHADOW_PAGES
-#endif // _LP64
 
 define_pd_global(intx, StackYellowPages, DEFAULT_STACK_YELLOW_PAGES);
 define_pd_global(intx, StackRedPages, DEFAULT_STACK_RED_PAGES);
 define_pd_global(intx, StackShadowPages, DEFAULT_STACK_SHADOW_PAGES);
 define_pd_global(intx, StackReservedPages, DEFAULT_STACK_RESERVED_PAGES);
 
-#ifdef _LP64
 define_pd_global(bool, VMContinuations, true);
-#else
-define_pd_global(bool, VMContinuations, false);
-#endif
 
 define_pd_global(bool, RewriteBytecodes,     true);
 define_pd_global(bool, RewriteFrequentPairs, true);
@@ -114,7 +104,6 @@ define_pd_global(intx, InitArrayShortSize, 8*BytesPerLong);
   product(int, UseAVX, 3,                                                   \
           "Highest supported AVX instructions set on x86/x64")              \
           range(0, 3)                                                       \
-                                                                            \
                                                                             \
   product(bool, UseAPX, false, EXPERIMENTAL,                                \
           "Use Intel Advanced Performance Extensions")                      \
@@ -192,6 +181,14 @@ define_pd_global(intx, InitArrayShortSize, 8*BytesPerLong);
   product(bool, IntelJccErratumMitigation, true, DIAGNOSTIC,                \
              "Turn off JVM mitigations related to Intel micro code "        \
              "mitigations for the Intel JCC erratum")                       \
+                                                                            \
+  product(int, X86ICacheSync, -1, DIAGNOSTIC,                               \
+             "Select the X86 ICache sync mechanism: -1 = auto-select; "     \
+             "0 = none (dangerous); 1 = CLFLUSH loop; 2 = CLFLUSHOPT loop; "\
+             "3 = CLWB loop; 4 = single CPUID; 5 = single SERIALIZE. "      \
+             "Explicitly selected mechanism will fail at startup if "       \
+             "hardware does not support it.")                               \
+             range(-1, 5)                                                   \
                                                                             \
 // end of ARCH_FLAGS
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cppVtables.hpp"
 #include "cds/metaspaceShared.hpp"
@@ -32,6 +31,7 @@
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/vmClasses.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "code/debugInfoRec.hpp"
 #include "compiler/compilationPolicy.hpp"
@@ -136,6 +136,7 @@ void Method::deallocate_contents(ClassLoaderData* loader_data) {
   clear_method_data();
   MetadataFactory::free_metadata(loader_data, method_counters());
   clear_method_counters();
+  set_adapter_entry(nullptr);
   // The nmethod will be gone when we get here.
   if (code() != nullptr) _code = nullptr;
 }
@@ -324,7 +325,7 @@ void Method::mask_for(const methodHandle& this_mh, int bci, InterpreterOopMap* m
 }
 
 int Method::bci_from(address bcp) const {
-  if (is_native() && bcp == 0) {
+  if (is_native() && bcp == nullptr) {
     return 0;
   }
   // Do not have a ResourceMark here because AsyncGetCallTrace stack walking code
@@ -337,7 +338,8 @@ int Method::bci_from(address bcp) const {
 
 
 int Method::validate_bci(int bci) const {
-  return (bci == 0 || bci < code_size()) ? bci : -1;
+  // Called from the verifier, and should return -1 if not valid.
+  return ((is_native() && bci == 0) || (!is_native() && 0 <= bci && bci < code_size())) ? bci : -1;
 }
 
 // Return bci if it appears to be a valid bcp
@@ -347,7 +349,7 @@ int Method::validate_bci(int bci) const {
 int Method::validate_bci_from_bcp(address bcp) const {
   // keep bci as -1 if not a valid bci
   int bci = -1;
-  if (bcp == 0 || bcp == code_base()) {
+  if (bcp == nullptr || bcp == code_base()) {
     // code_size() may return 0 and we allow 0 here
     // the method may be native
     bci = 0;
@@ -387,7 +389,7 @@ Symbol* Method::klass_name() const {
 }
 
 void Method::metaspace_pointers_do(MetaspaceClosure* it) {
-  LogStreamHandle(Trace, cds) lsh;
+  LogStreamHandle(Trace, aot) lsh;
   if (lsh.is_enabled()) {
     lsh.print("Iter(Method): %p ", this);
     print_external_name(&lsh);
@@ -399,6 +401,7 @@ void Method::metaspace_pointers_do(MetaspaceClosure* it) {
   } else {
     it->push(&_constMethod);
   }
+  it->push(&_adapter);
   it->push(&_method_data);
   it->push(&_method_counters);
   NOT_PRODUCT(it->push(&_name);)
@@ -418,11 +421,31 @@ void Method::remove_unshareable_info() {
   if (method_counters() != nullptr) {
     method_counters()->remove_unshareable_info();
   }
+  if (CDSConfig::is_dumping_adapters() && _adapter != nullptr) {
+    _adapter->remove_unshareable_info();
+    _adapter = nullptr;
+  }
+  if (method_data() != nullptr) {
+    method_data()->remove_unshareable_info();
+  }
+  if (method_counters() != nullptr) {
+    method_counters()->remove_unshareable_info();
+  }
   JFR_ONLY(REMOVE_METHOD_ID(this);)
 }
 
 void Method::restore_unshareable_info(TRAPS) {
   assert(is_method() && is_valid_method(this), "ensure C++ vtable is restored");
+  if (method_data() != nullptr) {
+    method_data()->restore_unshareable_info(CHECK);
+  }
+  if (method_counters() != nullptr) {
+    method_counters()->restore_unshareable_info(CHECK);
+  }
+  if (_adapter != nullptr) {
+    assert(_adapter->is_linked(), "must be");
+    _from_compiled_entry = _adapter->get_c2i_entry();
+  }
   if (method_data() != nullptr) {
     method_data()->restore_unshareable_info(CHECK);
   }
@@ -453,7 +476,7 @@ void Method::set_itable_index(int index) {
     // itable index should be the same as the runtime index.
     assert(_vtable_index == itable_index_max - index,
            "archived itable index is different from runtime index");
-    return; // don’t write into the shared class
+    return; // don't write into the shared class
   } else {
     _vtable_index = itable_index_max - index;
   }
@@ -602,23 +625,26 @@ MethodTrainingData* Method::training_data_or_null() const {
   if (mcs == nullptr) {
     return nullptr;
   } else {
-    return mcs->method_training_data();
+    MethodTrainingData* mtd = mcs->method_training_data();
+    if (mtd == mcs->method_training_data_sentinel()) {
+      return nullptr;
+    }
+    return mtd;
   }
 }
 
-bool Method::init_training_data(MethodTrainingData* tdata) {
+bool Method::init_training_data(MethodTrainingData* td) {
   MethodCounters* mcs = method_counters();
   if (mcs == nullptr) {
     return false;
   } else {
-    return mcs->init_method_training_data(tdata);
+    return mcs->init_method_training_data(td);
   }
 }
 
 bool Method::install_training_method_data(const methodHandle& method) {
   MethodTrainingData* mtd = MethodTrainingData::find(method);
-  if (mtd != nullptr && mtd->has_holder() && mtd->final_profile() != nullptr &&
-      mtd->holder() == method() && mtd->final_profile()->method() == method()) { // FIXME
+  if (mtd != nullptr && mtd->final_profile() != nullptr) {
     Atomic::replace_if_null(&method->_method_data, mtd->final_profile());
     return true;
   }
@@ -651,19 +677,11 @@ void Method::build_profiling_method_data(const methodHandle& method, TRAPS) {
     return;
   }
 
-  /*
-  LogStreamHandle(Info, mdo) lsh;
-  if (lsh.is_enabled()) {
-    ResourceMark rm(THREAD);
-    lsh.print("build_profiling_method_data for ");
-    method->print_name(&lsh);
-    lsh.cr();
-  }
-  */
   if (ForceProfiling && TrainingData::need_data()) {
     MethodTrainingData* mtd = MethodTrainingData::make(method, false);
     guarantee(mtd != nullptr, "");
   }
+
   if (PrintMethodData) {
     ResourceMark rm(THREAD);
     tty->print("build_profiling_method_data for ");
@@ -915,10 +933,6 @@ bool Method::is_constant_getter() const {
           Bytecodes::is_return(java_code_at(last_index)));
 }
 
-bool Method::is_initializer() const {
-  return is_object_initializer() || is_static_initializer();
-}
-
 bool Method::has_valid_initializer_flags() const {
   return (is_static() ||
           method_holder()->major_version() < 51);
@@ -943,6 +957,11 @@ bool Method::needs_clinit_barrier() const {
 bool Method::code_has_clinit_barriers() const {
   nmethod* nm = code();
   return (nm != nullptr) && nm->has_clinit_barriers();
+}
+
+bool Method::is_object_wait0() const {
+  return klass_name() == vmSymbols::java_lang_Object()
+         && name() == vmSymbols::wait_name();
 }
 
 objArrayHandle Method::resolved_checked_exceptions_impl(Method* method, TRAPS) {
@@ -1000,8 +1019,7 @@ bool Method::is_klass_loaded_by_klass_index(int klass_index) const {
     Thread *thread = Thread::current();
     Symbol* klass_name = constants()->klass_name_at(klass_index);
     Handle loader(thread, method_holder()->class_loader());
-    Handle prot  (thread, method_holder()->protection_domain());
-    return SystemDictionary::find_instance_klass(thread, klass_name, loader, prot) != nullptr;
+    return SystemDictionary::find_instance_klass(thread, klass_name, loader) != nullptr;
   } else {
     return true;
   }
@@ -1044,7 +1062,7 @@ void Method::set_native_function(address function, bool post_event_flag) {
   // If so, we have to make it not_entrant.
   nmethod* nm = code(); // Put it into local variable to guard against concurrent updates
   if (nm != nullptr) {
-    nm->make_not_entrant();
+    nm->make_not_entrant("set native function");
   }
 }
 
@@ -1094,7 +1112,7 @@ void Method::print_made_not_compilable(int comp_level, bool is_osr, bool report,
   }
   if ((TraceDeoptimization || LogCompilation) && (xtty != nullptr)) {
     ttyLocker ttyl;
-    xtty->begin_elem("make_not_compilable thread='" UINTX_FORMAT "' osr='%d' level='%d'",
+    xtty->begin_elem("make_not_compilable thread='%zu' osr='%d' level='%d'",
                      os::current_thread_id(), is_osr, comp_level);
     if (reason != nullptr) {
       xtty->print(" reason=\'%s\'", reason);
@@ -1211,7 +1229,9 @@ void Method::unlink_code() {
 void Method::unlink_method() {
   assert(CDSConfig::is_dumping_archive(), "sanity");
   _code = nullptr;
-  _adapter = nullptr;
+  if (!CDSConfig::is_dumping_adapters() || AdapterHandlerLibrary::is_abstract_method_adapter(_adapter)) {
+    _adapter = nullptr;
+  }
   _i2i_entry = nullptr;
   _from_compiled_entry = nullptr;
   _from_interpreted_entry = nullptr;
@@ -1230,6 +1250,7 @@ void Method::unlink_method() {
   clear_is_not_c2_osr_compilable();
   clear_queued_for_compilation();
   set_pending_queue_processed(false);
+
   remove_unshareable_flags();
 }
 
@@ -1246,6 +1267,8 @@ void Method::remove_unshareable_flags() {
   set_is_not_c1_compilable(false);
   set_is_not_c2_osr_compilable(false);
   set_on_stack_flag(false);
+  set_has_upcall_on_method_entry(false);
+  set_has_upcall_on_method_exit(false);
 }
 #endif
 
@@ -1259,14 +1282,18 @@ void Method::link_method(const methodHandle& h_method, TRAPS) {
   // If the code cache is full, we may reenter this function for the
   // leftover methods that weren't linked.
   if (adapter() != nullptr) {
-    return;
+    if (adapter()->is_shared()) {
+      assert(adapter()->is_linked(), "Adapter is shared but not linked");
+    } else {
+      return;
+    }
   }
   assert( _code == nullptr, "nothing compiled yet" );
 
   // Setup interpreter entrypoint
   assert(this == h_method(), "wrong h_method()" );
 
-  assert(adapter() == nullptr, "init'd to null");
+  assert(adapter() == nullptr || adapter()->is_linked(), "init'd to null or restored from cache");
   address entry = Interpreter::entry_for_method(h_method);
   assert(entry != nullptr, "interpreter entry must be non-null");
   // Sets both _i2i_entry and _from_interpreted_entry
@@ -1287,7 +1314,10 @@ void Method::link_method(const methodHandle& h_method, TRAPS) {
   // called from the vtable.  We need adapters on such methods that get loaded
   // later.  Ditto for mega-morphic itable calls.  If this proves to be a
   // problem we'll make these lazily later.
-  (void) make_adapters(h_method, CHECK);
+  if (_adapter == nullptr) {
+    (void) make_adapters(h_method, CHECK);
+    assert(adapter()->is_linked(), "Adapter must have been linked");
+  }
 
   // ONLY USE the h_method now as make_adapter may have blocked
 
@@ -1307,7 +1337,7 @@ void Method::link_method(const methodHandle& h_method, TRAPS) {
   if (_preload_code != nullptr) {
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     set_code(h_method, _preload_code);
-    assert(((nmethod*)_preload_code)->scc_entry() == _scc_entry, "sanity");
+    assert(((nmethod*)_preload_code)->aot_code_entry() == _aot_code_entry, "sanity");
   }
 }
 
@@ -1342,7 +1372,7 @@ address Method::make_adapters(const methodHandle& mh, TRAPS) {
 // or adapter that it points to is still live and valid.
 // This function must not hit a safepoint!
 address Method::verified_code_entry() {
-  debug_only(NoSafepointVerifier nsv;)
+  DEBUG_ONLY(NoSafepointVerifier nsv;)
   assert(_from_compiled_entry != nullptr, "must be set");
   return _from_compiled_entry;
 }
@@ -1520,7 +1550,7 @@ methodHandle Method::make_method_handle_intrinsic(vmIntrinsics::ID iid,
   cp->set_is_for_method_handle_intrinsic();
 
   // decide on access bits:  public or not?
-  int flags_bits = (JVM_ACC_NATIVE | JVM_ACC_SYNTHETIC | JVM_ACC_FINAL);
+  u2 flags_bits = (JVM_ACC_NATIVE | JVM_ACC_SYNTHETIC | JVM_ACC_FINAL);
   bool must_be_static = MethodHandles::is_signature_polymorphic_static(iid);
   if (must_be_static)  flags_bits |= JVM_ACC_STATIC;
   assert((flags_bits & JVM_ACC_PUBLIC) == 0, "do not expose these methods");
@@ -1568,6 +1598,9 @@ methodHandle Method::make_method_handle_intrinsic(vmIntrinsics::ID iid,
 
 #if INCLUDE_CDS
 void Method::restore_archived_method_handle_intrinsic(methodHandle m, TRAPS) {
+  if (m->adapter() != nullptr) {
+    m->set_from_compiled_entry(m->adapter()->get_c2i_entry());
+  }
   m->link_method(m, CHECK);
 
   if (m->intrinsic_id() == vmIntrinsics::_linkToNative) {
@@ -1737,8 +1770,8 @@ void Method::init_intrinsic_id(vmSymbolID klass_id) {
       && sig_id == vmSymbolID::NO_SID) {
     return;
   }
-  jshort flags = access_flags().as_short();
 
+  u2 flags = access_flags().as_method_flags();
   vmIntrinsics::ID id = vmIntrinsics::find_id(klass_id, name_id, sig_id, flags);
   if (id != vmIntrinsics::_none) {
     set_intrinsic_id(id);
@@ -1830,7 +1863,7 @@ void Method::sort_methods(Array<Method*>* methods, bool set_idnums, method_compa
     }
     {
       NoSafepointVerifier nsv;
-      QuickSort::sort(methods->data(), length, func, /*idempotent=*/false);
+      QuickSort::sort(methods->data(), length, func);
     }
     // Reset method ordering
     if (set_idnums) {
@@ -2004,41 +2037,6 @@ void Method::clear_all_breakpoints() {
 }
 
 #endif // INCLUDE_JVMTI
-
-int Method::invocation_count() const {
-  MethodCounters* mcs = method_counters();
-  MethodData* mdo = method_data();
-  if (((mcs != nullptr) ? mcs->invocation_counter()->carry() : false) ||
-      ((mdo != nullptr) ? mdo->invocation_counter()->carry() : false)) {
-    return InvocationCounter::count_limit;
-  } else {
-    return ((mcs != nullptr) ? mcs->invocation_counter()->count() : 0) +
-           ((mdo != nullptr) ? mdo->invocation_counter()->count() : 0);
-  }
-}
-
-int Method::backedge_count() const {
-  MethodCounters* mcs = method_counters();
-  MethodData* mdo = method_data();
-  if (((mcs != nullptr) ? mcs->backedge_counter()->carry() : false) ||
-      ((mdo != nullptr) ? mdo->backedge_counter()->carry() : false)) {
-    return InvocationCounter::count_limit;
-  } else {
-    return ((mcs != nullptr) ? mcs->backedge_counter()->count() : 0) +
-           ((mdo != nullptr) ? mdo->backedge_counter()->count() : 0);
-  }
-}
-
-int Method::highest_comp_level() const {
-  const MethodCounters* mcs = method_counters();
-  nmethod* nm = code();
-  int level = (nm != nullptr) ? nm->comp_level() : CompLevel_none;
-  if (mcs != nullptr) {
-    return MAX2(mcs->highest_comp_level(), level);
-  } else {
-    return CompLevel_none;
-  }
-}
 
 int Method::highest_osr_comp_level() const {
   const MethodCounters* mcs = method_counters();
@@ -2387,7 +2385,7 @@ void Method::print_on(outputStream* st) const {
   st->print   (" - method holder:     "); method_holder()->print_value_on(st); st->cr();
   st->print   (" - constants:         " PTR_FORMAT " ", p2i(constants()));
   constants()->print_value_on(st); st->cr();
-  st->print   (" - access:            0x%x  ", access_flags().as_int()); access_flags().print_on(st); st->cr();
+  st->print   (" - access:            0x%x  ", access_flags().as_method_flags()); access_flags().print_on(st); st->cr();
   st->print   (" - flags:             0x%x  ", _flags.as_int()); _flags.print_on(st); st->cr();
   st->print   (" - name:              ");    name()->print_value_on(st); st->cr();
   st->print   (" - signature:         ");    signature()->print_value_on(st); st->cr();

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,7 +32,6 @@
 #include "oops/methodFlags.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/oop.hpp"
-#include "oops/typeArrayOop.hpp"
 #include "utilities/accessFlags.hpp"
 #include "utilities/align.hpp"
 #include "utilities/growableArray.hpp"
@@ -65,7 +64,7 @@ class ConstMethod;
 class InlineTableSizes;
 class nmethod;
 class InterpreterOopMap;
-class SCCEntry;
+class AOTCodeEntry;
 
 class Method : public Metadata {
  friend class VMStructs;
@@ -78,8 +77,8 @@ class Method : public Metadata {
   MethodData*       _method_data;
   MethodCounters*   _method_counters;
   AdapterHandlerEntry* _adapter;
-  AccessFlags       _access_flags;               // Access flags
   int               _vtable_index;               // vtable index of this method (see VtableIndexFlag)
+  AccessFlags       _access_flags;               // Access flags
   MethodFlags       _flags;
 
   u2                _intrinsic_id;               // vmSymbols::intrinsic_id (0 == _none)
@@ -104,8 +103,8 @@ class Method : public Metadata {
   nmethod* volatile _code;                   // Points to the corresponding piece of native code
   volatile address  _from_interpreted_entry; // Cache of _code ? _adapter->i2c_entry() : _i2i_entry
 
-  nmethod*  _preload_code;  // preloaded SCCache code
-  SCCEntry* _scc_entry;     // SCCache entry for pre-loading code
+  nmethod*  _preload_code;       // preloaded AOT code
+  AOTCodeEntry* _aot_code_entry; // AOT Code Cache entry for pre-loading code
 
   // Constructor
   Method(ConstMethod* xconst, AccessFlags access_flags, Symbol* name);
@@ -261,7 +260,7 @@ class Method : public Metadata {
   void set_deprecated_for_removal() { constMethod()->set_deprecated_for_removal(); }
   bool deprecated_for_removal() const { return constMethod()->deprecated_for_removal(); }
 
-  int highest_comp_level() const;
+  inline int highest_comp_level() const;
   void set_highest_comp_level(int level);
   int highest_osr_comp_level() const;
   void set_highest_osr_comp_level(int level);
@@ -316,14 +315,13 @@ class Method : public Metadata {
                               TRAPS);
 
   // method data access
-  MethodData* method_data() const              {
+  MethodData* method_data() const {
     return _method_data;
   }
-
   void set_method_data(MethodData* data);
 
   MethodTrainingData* training_data_or_null() const;
-  bool init_training_data(MethodTrainingData* tdata);
+  bool init_training_data(MethodTrainingData* td);
 
   // mark an exception handler as entered (used to prune dead catch blocks in C2)
   void set_exception_handler_entered(int handler_bci);
@@ -345,8 +343,8 @@ class Method : public Metadata {
   inline float rate() const;
   inline void set_rate(float rate);
 
-  int invocation_count() const;
-  int backedge_count() const;
+  inline int invocation_count() const;
+  inline int backedge_count() const;
 
   bool was_executed_more_than(int n);
   bool was_never_executed()                     { return !was_executed_more_than(0);  }
@@ -355,7 +353,7 @@ class Method : public Metadata {
   static bool install_training_method_data(const methodHandle& method);
   static MethodCounters* build_method_counters(Thread* current, Method* m);
 
-  int interpreter_invocation_count()            { return invocation_count();          }
+  inline int interpreter_invocation_count() const;
 
 #ifndef PRODUCT
   int64_t  compiled_invocation_count() const    { return _compiled_invocation_count;}
@@ -395,11 +393,14 @@ public:
   void set_preload_code(nmethod* code) {
     _preload_code = code;
   }
-  void set_scc_entry(SCCEntry* entry) {
-    _scc_entry = entry;
+  nmethod* preload_code() const {
+    return _preload_code;
   }
-  SCCEntry* scc_entry() const {
-    return _scc_entry;
+  void set_aot_code_entry(AOTCodeEntry* entry) {
+    _aot_code_entry = entry;
+  }
+  AOTCodeEntry* aot_code_entry() const {
+    return _aot_code_entry;
   }
 
   address get_i2c_entry();
@@ -597,9 +598,6 @@ public:
   // returns true if the method does nothing but return a constant of primitive type
   bool is_constant_getter() const;
 
-  // returns true if the method is an initializer (<init> or <clinit>).
-  bool is_initializer() const;
-
   // returns true if the method is static OR if the classfile version < 51
   bool has_valid_initializer_flags() const;
 
@@ -609,6 +607,9 @@ public:
 
   // returns true if the method name is <init>
   bool is_object_initializer() const;
+
+  // returns true if the method name is wait0
+  bool is_object_wait0() const;
 
   // compiled code support
   // NOTE: code() is inherently racy as deopt can be clearing code
@@ -770,6 +771,9 @@ public:
 
   bool changes_current_thread() const { return constMethod()->changes_current_thread(); }
   void set_changes_current_thread() { constMethod()->set_changes_current_thread(); }
+
+  bool jvmti_hide_events() const { return constMethod()->jvmti_hide_events(); }
+  void set_jvmti_hide_events() { constMethod()->set_jvmti_hide_events(); }
 
   bool jvmti_mount_transition() const { return constMethod()->jvmti_mount_transition(); }
   void set_jvmti_mount_transition() { constMethod()->set_jvmti_mount_transition(); }

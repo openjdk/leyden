@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -393,42 +393,11 @@
           "If compilation is stopped with an error, capture diagnostic "    \
           "information at the bailout point")                               \
                                                                             \
-  /* flags to control training and deployment modes  */                     \
-                                                                            \
-  product(bool, RecordTraining, false,                                      \
-          "Request output of training data for improved deployment.")       \
-                                                                            \
-  product(bool, ReplayTraining, false,                                      \
-          "Read training data, if available, for use in this execution")    \
-                                                                            \
-  product(bool, PrintTrainingInfo, false, DIAGNOSTIC,                       \
-          "Print additional information about training")                    \
-                                                                            \
-  product(ccstr, TrainingFile, nullptr,                                     \
-          "If training record or replay is enabled, store or load VM data " \
-          "to or from this file [default: ./hs_training_%p.log] "           \
-          "(_%p replaced with _pidNNN on output, empty string on input)")   \
-                                                                            \
-  product(bool, RecordOptCompilationOrder, false,                           \
-          "Record c2/jvmci nmethod temperature to guide compilation order.")\
-                                                                            \
-  product(bool, RecordOnlyTopCompilations, false,                           \
-          "Record only top compilations (non-zero counts)")                 \
-                                                                            \
-  product(int, RecordOptCompilationOrderInterval, 10,                       \
-          "Sampling interval for RecordOptCompilationOrder")                \
-                                                                            \
   /* Code Caching flags */                                                  \
                                                                             \
   product(bool, UseC2asC3, false,                                           \
           "Use C2 as 3rd compiler when other high-optimizing compiler "     \
           "is used")                                                        \
-                                                                            \
-  product(bool, StoreCachedCode, false,                                     \
-          "Store cached compiled code")                                     \
-                                                                            \
-  product(bool, LoadCachedCode, false,                                      \
-          "Load cached compiled code")                                      \
                                                                             \
   product(uint, DisableCachedCode, 0,                                       \
           "Disable cached code on some compilation levels "                 \
@@ -443,9 +412,6 @@
   product(bool, StressClassInitBarriers, false, DIAGNOSTIC,                 \
           "Force slow path in class initialization barriers")               \
                                                                             \
-  product(bool, UseMetadataPointers, true,                                  \
-          "Store Metadata pointers in Relocation Info for cached code")     \
-                                                                            \
   product(bool, UseCodeLoadThread, true,                                    \
           "Use separate thread for cached code load")                       \
                                                                             \
@@ -455,34 +421,8 @@
   product(uint, SCLoadStop, max_jint,                                       \
           "The id of the last cached code to load")                         \
                                                                             \
-  product(ccstr, CachedCodeFile, "code.jsa",                                \
-          "File with cached compiled code")                                 \
-                                                                            \
-  product(uint, CachedCodeMaxSize, 10*M,                                    \
-          "Buffer size in bytes for code caching")                          \
-                                                                            \
   product(bool, VerifyCachedCode, false, DIAGNOSTIC,                        \
           "Load compiled code but not publish")                             \
-                                                                            \
-  /* Recompilation flags */                                                 \
-                                                                            \
-  product(int, RecompilationLoadAverageThreshold, 5,                        \
-          "Queues load avergage after while recompilations are allowed")    \
-                                                                            \
-  product(int, RecompilationWorkUnitSize, 5,                                \
-          "Queues load avergage after while recompilations are allowed")    \
-                                                                            \
-  product(bool, UseRecompilation, false,                                    \
-          "Recompile methods for peak performance")                         \
-                                                                            \
-  product(bool, ForceRecompilation, false,                                  \
-          "Testing mode for recompilation")                                 \
-                                                                            \
-  product(double, DelayRecompilation, 0.0,                                  \
-          "Delay recompilation for given number of seconds")                \
-                                                                            \
-  product(bool, UseConcurrentTrainingReplay, true,                          \
-          "Replay training after class initialization in a separate thread")\
                                                                             \
   product(bool, UseGlobalCompileQueueLock, false,                           \
           "Use a global lock for all compilation queues")                   \
@@ -495,6 +435,18 @@
                                                                             \
   product(bool, PrecompileOnlyAndExit, false,                               \
           "Exit after precompilation step is over")                         \
+                                                                            \
+  product(bool, PreloadReduceTraps, true, DIAGNOSTIC,                       \
+          "Preload code should avoid traps as much as possible.")           \
+                                                                            \
+  product(bool, PreloadBlocking, false, DIAGNOSTIC,                         \
+          "Preload code is processed with blocking. Startup would not "     \
+          "proceed until all code preloaded code is done loading.")         \
+                                                                            \
+  product(bool, PreloadOnly, false, EXPERIMENTAL,                           \
+          "Use preload code exclusively. This effectively disables most of "\
+          "profiling and JIT compilation, running close to AOT-only mode.") \
+                                                                            \
 
 // end of COMPILER_FLAGS
 

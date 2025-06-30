@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "memory/allocation.inline.hpp"
 #include "opto/callnode.hpp"
 #include "opto/cfgnode.hpp"
@@ -31,7 +30,7 @@
 #include "opto/rootnode.hpp"
 #include "opto/subnode.hpp"
 #include "opto/type.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 
 //------------------------------Ideal------------------------------------------
 // Remove dead inputs
@@ -72,7 +71,7 @@ HaltNode::HaltNode(Node* ctrl, Node* frameptr, const char* halt_reason, bool rea
   init_req(TypeFunc::Memory,   top);
   init_req(TypeFunc::FramePtr, frameptr    );
   init_req(TypeFunc::ReturnAdr,top);
-  SCCache::add_C_string(halt_reason);
+  AOTCodeCache::add_C_string(halt_reason);
 }
 
 const Type *HaltNode::bottom_type() const { return Type::BOTTOM; }

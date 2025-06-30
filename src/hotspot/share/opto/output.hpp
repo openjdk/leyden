@@ -54,11 +54,6 @@ class PhaseCFG;
 #define DEBUG_ARG(x)
 #endif
 
-// Define the initial sizes for allocation of the resizable code buffer
-enum {
-  initial_const_capacity =   4 * 1024
-};
-
 class BufferSizingData {
 public:
   int _stub;
@@ -187,12 +182,31 @@ public:
 
   BufferSizingData* buffer_sizing_data()        { return &_buf_sizes; }
 
+  // AOTCodeCache::write_nmethod bails when nmethod buffer is expanded.
+  // Large methods would routinely expand the buffer, making themselves
+  // ineligible for AOTCodeCache stores. In order to minimize this effect,
+  // we default to larger default sizes. We do this only when AOTCodeCache
+  // dumping is active, to avoid impact on default configuration.
+  //
+  // Additionally, GC barrier stubs expand up to MAX_inst_size in mainline,
+  // which also forced resizes often. Current code replaces it with
+  // max_inst_gcstub_size, which equals to old MAX_inst_size, so GC stubs
+  // still fit nicely, and do not force the resizes too often.
+  //
+  // The old enum is renamed, so direct misuse in new code from mainline would
+  // be caught as build failure.
+  //
+  // TODO: Revert this back to mainline once AOTCodeCache is fixed.
   enum ScratchBufferBlob {
-    MAX_inst_size       = 2048,
+    mainline_MAX_inst_size = 2048,
     MAX_locs_size       = 128, // number of relocInfo elements
     MAX_const_size      = 128,
     MAX_stubs_size      = 128
   };
+
+  // Current uses of MAX_inst_size should be replaced with these getters:
+  static int max_inst_size();
+  static int max_inst_gcstub_size();
 
   int               frame_slots() const         { return _frame_slots; }
   int               frame_size_in_words() const; // frame_slots in units of the polymorphic 'words'
@@ -208,6 +222,9 @@ public:
 
   bool starts_bundle(const Node *n) const;
   bool contains_as_owner(GrowableArray<MonitorValue*> *monarray, ObjectValue *ov) const;
+  bool contains_as_scalarized_obj(JVMState* jvms, MachSafePointNode* sfn,
+                                  GrowableArray<ScopeValue*>* objs,
+                                  ObjectValue* ov) const;
 
   // Dump formatted assembly
 #if defined(SUPPORT_OPTO_ASSEMBLY)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,13 +22,12 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "ci/ciUtilities.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/nmethod.hpp"
 #include "code/relocInfo.hpp"
-#include "code/SCCache.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "oops/compressedOops.inline.hpp"
@@ -81,7 +80,7 @@ relocInfo* relocInfo::finish_prefix(short* prefix_limit) {
   assert(prefix_limit >= p, "must be a valid span of data");
   int plen = checked_cast<int>(prefix_limit - p);
   if (plen == 0) {
-    debug_only(_value = 0xFFFF);
+    DEBUG_ONLY(_value = 0xFFFF);
     return this;                         // no data: remove self completely
   }
   if (plen == 1 && fits_into_immediate(p[0])) {
@@ -119,6 +118,9 @@ void relocInfo::change_reloc_info_for_address(RelocIterator *itr, address pc, re
 // ----------------------------------------------------------------------------------------------------
 // Implementation of RelocIterator
 
+// A static dummy to serve as a safe pointer when there is no relocation info.
+static relocInfo dummy_relocInfo = relocInfo(relocInfo::none, 0);
+
 void RelocIterator::initialize(nmethod* nm, address begin, address limit) {
   initialize_misc();
 
@@ -130,8 +132,14 @@ void RelocIterator::initialize(nmethod* nm, address begin, address limit) {
   guarantee(nm != nullptr, "must be able to deduce nmethod from other arguments");
 
   _code    = nm;
-  _current = nm->relocation_begin() - 1;
-  _end     = nm->relocation_end();
+  if (nm->relocation_size() == 0) {
+    _current = &dummy_relocInfo - 1;
+    _end = &dummy_relocInfo;
+  } else {
+    assert(((nm->relocation_begin() != nullptr) && (nm->relocation_end() != nullptr)), "valid start and end pointer");
+    _current = nm->relocation_begin() - 1;
+    _end     = nm->relocation_end();
+  }
   _addr    = nm->content_begin();
 
   // Initialize code sections.
@@ -153,7 +161,7 @@ void RelocIterator::initialize(nmethod* nm, address begin, address limit) {
 RelocIterator::RelocIterator(CodeSection* cs, address begin, address limit) {
   initialize_misc();
   assert(((cs->locs_start() != nullptr) && (cs->locs_end() != nullptr)), "valid start and end pointer");
-  _current = cs->locs_start()-1;
+  _current = cs->locs_start() - 1;
   _end     = cs->locs_end();
   _addr    = cs->start();
   _code    = nullptr; // Not cb->blob();
@@ -171,6 +179,29 @@ RelocIterator::RelocIterator(CodeSection* cs, address begin, address limit) {
   assert(begin == nullptr || begin >= cs->start(), "in bounds");
   assert(limit == nullptr || limit <= cs->end(),   "in bounds");
   set_limits(begin, limit);
+}
+
+RelocIterator::RelocIterator(CodeBlob* cb) {
+  if (cb->is_nmethod()) {
+    initialize(cb->as_nmethod(), nullptr, nullptr);
+    return;
+  }
+  initialize_misc();
+  _code = nullptr;
+  _current = cb->relocation_begin() - 1;
+  _end     = cb->relocation_end();
+  _addr    = cb->content_begin();
+
+  _section_start[CodeBuffer::SECT_CONSTS] = cb->content_begin();
+  _section_start[CodeBuffer::SECT_INSTS ] = cb->code_begin();
+  _section_start[CodeBuffer::SECT_STUBS ] = cb->code_end();
+
+  _section_end  [CodeBuffer::SECT_CONSTS] = cb->code_begin();
+  _section_end  [CodeBuffer::SECT_INSTS ] = cb->code_end();
+  _section_end  [CodeBuffer::SECT_STUBS ] = cb->code_end();
+
+  assert(!has_current(), "just checking");
+  set_limits(nullptr, nullptr);
 }
 
 bool RelocIterator::addr_in_const() const {
@@ -339,7 +370,7 @@ address Relocation::old_addr_for(address newa,
 
 address Relocation::new_addr_for(address olda,
                                  const CodeBuffer* src, CodeBuffer* dest) {
-  debug_only(const CodeBuffer* src0 = src);
+  DEBUG_ONLY(const CodeBuffer* src0 = src);
   int sect = CodeBuffer::SECT_NONE;
   // Look for olda in the source buffer, and all previous incarnations
   // if the source buffer has been expanded.
@@ -377,6 +408,14 @@ void CallRelocation::fix_relocation_after_move(const CodeBuffer* src, CodeBuffer
   pd_set_call_destination(callee);
 }
 
+
+#ifdef USE_TRAMPOLINE_STUB_FIX_OWNER
+void trampoline_stub_Relocation::fix_relocation_after_move(const CodeBuffer* src, CodeBuffer* dest) {
+  // Finalize owner destination only for nmethods
+  if (dest->blob() != nullptr) return;
+  pd_fix_owner_after_move();
+}
+#endif
 
 //// pack/unpack methods
 
@@ -457,31 +496,19 @@ void trampoline_stub_Relocation::unpack_data() {
   _owner = address_from_scaled_offset(unpack_1_int(), base);
 }
 
-short* external_word_Relocation::pack_data_to(short* p) {
-#ifndef _LP64
-  return pack_1_int_to(p, (int32_t) (intptr_t)_target);
-#else
-  jlong t = (jlong) _target;
-  int32_t lo = low(t);
-  int32_t hi = high(t);
-  return pack_2_ints_to(p, lo, hi);
-#endif /* _LP64 */
-}
-
 void external_word_Relocation::pack_data_to(CodeSection* dest) {
   short* p = (short*) dest->locs_end();
-  dest->set_locs_end((relocInfo*)pack_data_to(p));
+  int index = ExternalsRecorder::find_index(_target);
+  // Use 4 bytes to store index to be able patch it when
+  // updating relocations in AOTCodeReader::read_relocations().
+  p = add_jint(p, index);
+  dest->set_locs_end((relocInfo*) p);
 }
 
+
 void external_word_Relocation::unpack_data() {
-#ifndef _LP64
-  _target = (address) (intptr_t)unpack_1_int();
-#else
-  jint lo, hi;
-  unpack_2_ints(lo, hi);
-  jlong t = jlong_from(hi, lo);;
-  _target = (address) t;
-#endif /* _LP64 */
+  int index = unpack_1_int();
+  _target = ExternalsRecorder::at(index);
 }
 
 
@@ -748,8 +775,8 @@ void external_word_Relocation::fix_relocation_after_move(const CodeBuffer* src, 
   // location, which means  there is nothing to fix here.  In either case, the
   // resulting target should be an "external" address.
 #ifdef ASSERT
-  if (SCCache::is_on()) {
-    // SCA needs relocation info for card table base which may point to CodeCache
+  if (AOTCodeCache::is_on()) {
+    // AOTCode needs relocation info for card table base which may point to CodeCache
     if (is_card_table_address(target())) {
       return;
     }
@@ -777,6 +804,14 @@ void internal_word_Relocation::fix_relocation_after_move(const CodeBuffer* src, 
   set_value(target);
 }
 
+void internal_word_Relocation::fix_relocation_after_aot_load(address orig_base_addr, address current_base_addr) {
+  address target = _target;
+  if (target == nullptr) {
+    target = this->target();
+    target = current_base_addr + (target - orig_base_addr);
+  }
+  set_value(target);
+}
 
 address internal_word_Relocation::target() {
   address target = _target;
@@ -808,14 +843,13 @@ const char* relocInfo::type_name(relocInfo::relocType t) {
   }
 }
 
-
 void RelocIterator::print_current_on(outputStream* st) {
   if (!has_current()) {
     st->print_cr("(no relocs)");
     return;
   }
   st->print("relocInfo@" INTPTR_FORMAT " [type=%d(%s) addr=" INTPTR_FORMAT " offset=%d",
-            p2i(_current), type(), relocInfo::type_name(type()), p2i(_addr), _current->addr_offset());
+             p2i(_current), type(), relocInfo::type_name((relocInfo::relocType) type()), p2i(_addr), _current->addr_offset());
   if (current()->format() != 0)
     st->print(" format=%d", current()->format());
   if (datalen() == 1) {
@@ -927,7 +961,7 @@ void RelocIterator::print_current_on(outputStream* st) {
     {
       virtual_call_Relocation* r = (virtual_call_Relocation*) reloc();
       st->print(" | [destination=" INTPTR_FORMAT " cached_value=" INTPTR_FORMAT " metadata=" INTPTR_FORMAT "]",
-                p2i(r->destination()), p2i(r->cached_value()), p2i(r->method_value()));
+                 p2i(r->destination()), p2i(r->cached_value()), p2i(r->method_value()));
       CodeBlob* cb = CodeCache::find_blob(r->destination());
       if (cb != nullptr) {
         st->print(" Blob::%s", cb->name());

@@ -130,7 +130,7 @@ check:
 	    echo JDK17_HOME should point to JDK 17; \
 	    exit 1; \
 	fi
-	@if ${PREMAIN_JAVA} -XX:+PrintFlagsFinal --version | grep -q ArchiveInvokeDynamic; then \
+	@if ${PREMAIN_JAVA} -XX:+PrintFlagsFinal --version | grep -q CDSManualFinalImage; then \
 	    true; \
 	else \
 	    echo PREMAIN_HOME should point to your build of https://github.com/openjdk/leyden/tree/premain; \
@@ -230,9 +230,9 @@ ${PC_STATIC_BL_JSA}: ${PC_BL_CLASSLIST}
 ${PC_STATIC_JSA}: ${PC_CLASSLIST}
 	rm -f ${PC_STATIC_JSA}.log
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${PC_CLASSLIST} $(HEAP_SIZE) -cp @${PC_APP_UNPACKED}/classpath \
-	    -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:+ArchiveDynamicProxies -XX:+ArchiveReflectionData \
-            -XX:+ArchiveLoaderLookupCache -Dleyden.debug.archived.packages=1 \
-	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:+ArchiveInvokeDynamic -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log
+	    -XX:+AOTClassLinking -XX:+ArchiveDynamicProxies -XX:+ArchiveReflectionData \
+            -XX:+ArchiveLoaderLookupCache -Dcds.debug.archived.packages=1 \
+	    -XX:SharedArchiveFile=${PC_STATIC_JSA} -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log
 	ls -l $@
 
 ${PC_DYNAMIC_BL_JSA}: ${PC_STATIC_BL_JSA}
@@ -257,7 +257,7 @@ ${PC_DYNAMIC_ST_JSA}: ${PC_STATIC_JSA}
 	rm -f ${PC_DYNAMIC_ST_JSA} ${PC_DYNAMIC_ST_JSA}.log
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_ST_JSA} \
 	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=$@.log \
-	    -XX:+RecordTraining ${UNPACKED_CMDLINE} &> $@.out &
+	    -XX:+UnlockDiagnosticVMOptions -XX:+AOTRecordTraining ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(exit-app)
 	ls -l $@
@@ -266,22 +266,22 @@ ${PC_DYNAMIC_LT_JSA}: ${PC_STATIC_JSA}
 	rm -f ${PC_DYNAMIC_LT_JSA} ${PC_DYNAMIC_LT_JSA}.log
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_STATIC_JSA} -XX:ArchiveClassesAtExit=${PC_DYNAMIC_LT_JSA} \
 	    -Xlog:cds=debug,cds+class=debug,cds+resolve=debug:file=$@.log \
-	    -XX:+RecordTraining ${UNPACKED_CMDLINE} &> $@.out &
+	    -XX:+UnlockDiagnosticVMOptions -XX:+AOTRecordTraining ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(run-jmeter)
 	$(exit-app)
 	ls -l $@
 
 ${PC_ST_CACHED_CODE}: ${PC_DYNAMIC_ST_JSA}
-	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+ReplayTraining -XX:+StoreCachedCode \
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+StoreCachedCode \
 	     -XX:CachedCodeFile=${PC_ST_CACHED_CODE} -XX:CachedCodeMaxSize=512M ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(exit-app)
 	ls -l $@
 
 ${PC_LT_CACHED_CODE}: ${PC_DYNAMIC_LT_JSA}
-	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining -XX:+StoreCachedCode \
-	     -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log \
+	${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+StoreCachedCode \
+	     -Xlog:aot+codecache=debug,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log \
 	     -XX:CachedCodeFile=${PC_LT_CACHED_CODE} -XX:CachedCodeMaxSize=512M ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(run-jmeter)
@@ -290,8 +290,8 @@ ${PC_LT_CACHED_CODE}: ${PC_DYNAMIC_LT_JSA}
 
 ${PC_CDS_PREIMAGE}: ${PC_APP_UNPACKED}
 	rm -f ${PC_CDS_PREIMAGE} ${PC_CDS}
-	${PREMAIN_JAVA} -XX:+PreloadSharedClasses \
-               -XX:+ArchiveInvokeDynamic -XX:+ArchiveReflectionData \
+	${PREMAIN_JAVA} -XX:+AOTClassLinking \
+               -XX:+ArchiveReflectionData \
                -XX:+ArchiveDynamicProxies -XX:+ArchiveLoaderLookupCache -XX:CachedCodeMaxSize=512M \
                -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage -XX:CacheDataStore=${PC_CDS} \
                -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log \
@@ -303,9 +303,9 @@ ${PC_CDS_PREIMAGE}: ${PC_APP_UNPACKED}
 
 ${PC_CDS}: ${PC_CDS_PREIMAGE}
 	rm -f ${PC_CDS}
-	${PREMAIN_JAVA} -XX:+PreloadSharedClasses -XX:+ArchiveInvokeDynamic -XX:CachedCodeMaxSize=512M \
+	${PREMAIN_JAVA} -XX:+AOTClassLinking -XX:CachedCodeMaxSize=512M \
 	       -XX:+UnlockDiagnosticVMOptions -XX:CDSPreimage=${PC_CDS_PREIMAGE} -XX:CacheDataStore=${PC_CDS} \
-	       -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log \
+	       -Xlog:aot+codecache=debug,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=$@.log \
 	       -XX:-AssemblyStepInlining \
 	       ${UNPACKED_CMDLINE} &> $@.out
 	ls -l $@
@@ -328,7 +328,7 @@ warmup-preload: ${PC_DYNAMIC_NOTRAINING_JSA} ${JMETER_BIN}
 
 # run with dynamic archive with startup training data
 warmup-st: ${PC_DYNAMIC_ST_JSA} ${JMETER_BIN}
-	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+ReplayTraining \
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining \
 		${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(run-jmeter)
@@ -336,7 +336,7 @@ warmup-st: ${PC_DYNAMIC_ST_JSA} ${JMETER_BIN}
 
 # run with dynamic archive with load training data
 warmup-lt: ${PC_DYNAMIC_LT_JSA} ${JMETER_BIN}
-	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining \
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining \
 		${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(run-jmeter)
@@ -344,7 +344,7 @@ warmup-lt: ${PC_DYNAMIC_LT_JSA} ${JMETER_BIN}
 
 # run with startup training data and aot code
 warmup-st-aot: ${PC_ST_CACHED_CODE} ${JMETER_BIN}
-	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_ST_JSA} -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+LoadCachedCode \
 		-XX:CachedCodeFile=${PC_ST_CACHED_CODE} ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)
 	$(run-jmeter)
@@ -352,7 +352,7 @@ warmup-st-aot: ${PC_ST_CACHED_CODE} ${JMETER_BIN}
 
 # run with load training data and aot code
 warmup-lt-aot: ${PC_LT_CACHED_CODE} ${JMETER_BIN}
-	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+ReplayTraining -XX:+LoadCachedCode \
+	time taskset -c "${APP_CPUS}" ${PREMAIN_JAVA} -XX:SharedArchiveFile=${PC_DYNAMIC_LT_JSA} -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+LoadCachedCode \
 		-XX:+UnlockDiagnosticVMOptions -XX:+PrintCompilation -XX:-TraceDeoptimization \
 		-Xlog:init -XX:CachedCodeFile=${PC_LT_CACHED_CODE} ${UNPACKED_CMDLINE} &> $@.out &
 	$(wait-for-startup)

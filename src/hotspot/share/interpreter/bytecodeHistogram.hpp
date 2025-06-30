@@ -32,7 +32,7 @@
 
 class BytecodeCounter: AllStatic {
  private:
-  static jlong _counter_value;
+  static uintx _counter_value;
   static jlong _reset_time;
 
   friend class TemplateInterpreterGenerator;
@@ -43,9 +43,9 @@ class BytecodeCounter: AllStatic {
   static void reset();
 
   // Counter info (all info since last reset)
-  static jlong  counter_value() { return _counter_value; }
+  static uintx  counter_value()            { return _counter_value; };
   static double elapsed_time(); // in seconds
-  static double frequency();    // bytecodes/seconds
+  static double frequency(); // bytecodes/seconds
 
   // Counter printing
   static void   print();

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "compiler/compilerOracle.hpp"
@@ -219,21 +218,22 @@ bool MethodMatcher::match(Symbol* candidate, Symbol* match, Mode match_mode) con
 
 static MethodMatcher::Mode check_mode(char name[], const char*& error_msg) {
   int match = MethodMatcher::Exact;
+  size_t len = strlen(name);
   if (name[0] == '*') {
-    if (strlen(name) == 1) {
+    if (len == 1) {
       return MethodMatcher::Any;
     }
     match |= MethodMatcher::Suffix;
-    memmove(name, name + 1, strlen(name + 1) + 1);
+    memmove(name, name + 1, len); // Include terminating nul in move.
+    len--;
   }
 
-  size_t len = strlen(name);
   if (len > 0 && name[len - 1] == '*') {
     match |= MethodMatcher::Prefix;
     name[--len] = '\0';
   }
 
-  if (strlen(name) == 0) {
+  if (len == 0) {
     error_msg = "** Not a valid pattern";
     return MethodMatcher::Any;
   }
@@ -360,6 +360,15 @@ bool MethodMatcher::matches(const methodHandle& method) const {
   return false;
 }
 
+bool MethodMatcher::matches(MethodDetails& method_details) const {
+  if (match(method_details.class_name(), this->class_name(), _class_mode) &&
+      match(method_details.method_name(), this->method_name(), _method_mode) &&
+      ((this->signature() == nullptr) || match(method_details.signature(), this->signature(), Prefix))) {
+    return true;
+  }
+  return false;
+}
+
 void MethodMatcher::print_symbol(outputStream* st, Symbol* h, Mode mode) {
   if (mode == Suffix || mode == Substring || mode == Any) {
     st->print("*");
@@ -402,6 +411,15 @@ BasicMatcher* BasicMatcher::parse_method_pattern(char* line, const char*& error_
     }
   }
   return bm;
+}
+
+bool BasicMatcher::match(MethodDetails& method_details) {
+  for (BasicMatcher* current = this; current != nullptr; current = current->next()) {
+    if (current->matches(method_details)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool BasicMatcher::match(const methodHandle& method) {

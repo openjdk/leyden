@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -56,6 +56,7 @@ class TemplateInterpreterGenerator: public AbstractInterpreterGenerator {
   address generate_earlyret_entry_for(TosState state);
   address generate_deopt_entry_for(TosState state, int step, address continuation = nullptr);
   address generate_safept_entry_for(TosState state, address runtime_entry);
+  address generate_cont_resume_interpreter_adapter();
   void    generate_throw_exception();
 
   void lock_method();
@@ -74,7 +75,7 @@ class TemplateInterpreterGenerator: public AbstractInterpreterGenerator {
   void set_safepoints_for_all_bytes();
 
   // Helpers for generate_and_dispatch
-  address generate_trace_code(TosState state)   PRODUCT_RETURN0;
+  address generate_trace_code(TosState state)   PRODUCT_RETURN_NULL;
   void count_bytecode();
   void histogram_bytecode(Template* t);
   void histogram_bytecode_pair(Template* t)     PRODUCT_RETURN;
@@ -83,14 +84,20 @@ class TemplateInterpreterGenerator: public AbstractInterpreterGenerator {
 
   void generate_all();
 
+  // helpers for method entry generation
+  bool is_synchronized_method(AbstractInterpreter::MethodKind kind);
+  bool is_runtime_upcalls_method(AbstractInterpreter::MethodKind kind);
+  bool is_intrinsic_method(AbstractInterpreter::MethodKind kind);
+  bool is_abstract_method(AbstractInterpreter::MethodKind kind);
+
   // entry point generator
   address generate_method_entry(AbstractInterpreter::MethodKind kind, bool native);
 
   // generate intrinsic method entries
   address generate_intrinsic_entry(AbstractInterpreter::MethodKind kind);
 
-  address generate_normal_entry(bool synchronized);
-  address generate_native_entry(bool synchronized);
+  address generate_normal_entry(bool synchronized, bool runtime_upcalls);
+  address generate_native_entry(bool synchronized, bool runtime_upcalls);
   address generate_abstract_entry(void);
   address generate_math_entry(AbstractInterpreter::MethodKind kind);
   address generate_Reference_get_entry();
@@ -98,10 +105,6 @@ class TemplateInterpreterGenerator: public AbstractInterpreterGenerator {
   address generate_CRC32_updateBytes_entry(AbstractInterpreter::MethodKind kind);
   address generate_CRC32C_updateBytes_entry(AbstractInterpreter::MethodKind kind);
   address generate_currentThread();
-  address generate_Float_intBitsToFloat_entry();
-  address generate_Float_floatToRawIntBits_entry();
-  address generate_Double_longBitsToDouble_entry();
-  address generate_Double_doubleToRawLongBits_entry();
   address generate_Float_float16ToFloat_entry();
   address generate_Float_floatToFloat16_entry();
 

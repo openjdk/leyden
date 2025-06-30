@@ -7,7 +7,7 @@ condenser pipeline](https://openjdk.org/projects/leyden/notes/03-toward-condense
 
 - The caches are stored in the file specified by the `-XX:CacheDataStore=<app>.cds` option
     - The implementation is still a work in progress. AOT integration is not done yet.
-    - As an imtermediate step, the AOT cache may be stored in a separate file.
+    - As an intermediate step, the AOT cache may be stored in a separate file.
 
 - The `-XX:CacheDataStore` option is intended to be a replacement for the existing
   `-XX:SharedArchiveFile` option.
@@ -34,9 +34,9 @@ condenser pipeline](https://openjdk.org/projects/leyden/notes/03-toward-condense
 - By default, the following VM options are used when `-XX:CacheDataStore=<app>.cds` is specified. This way, you
   can automatically use all the Leyden-premain optimizations without specifying any extra flags.
 
-    - `RecordTraining` is set to `true` when the VM is *writing* the `<app>.cds.preimage` file.
-    - `RecordTraining`, `ReplayTraining` and `StoreCachedCode` are set to `true` when the VM is *writing* the final CDS image file.
-    - `ReplayTraining` and `LoadCachedCode` are set to `true` when the VM is *loading* the final CDS image file.
+    - `AOTRecordTraining` is set to `true` when the VM is *writing* the `<app>.cds.preimage` file.
+    - `AOTRecordTraining`, `AOTReplayTraining` and `StoreCachedCode` are set to `true` when the VM is *writing* the final CDS image file.
+    - `AOTReplayTraining` and `LoadCachedCode` are set to `true` when the VM is *loading* the final CDS image file.
     - `CachedCodeFile` is set to `<app>.cds.code`.
 
   However, you can explicitly disable some of these flags for diagnostic purposes. For example, the
@@ -107,9 +107,9 @@ $ perf stat -r 20 java com.sun.tools.javac.Main HelloWorld.java
 - With `-XX:CacheDataStore` (note: AOT is not yet supported)
 
 ```
-$ perf stat -r 20 java -XX:+ReplayTraining -XX:CacheDataStore=javac.cds com.sun.tools.javac.Main HelloWorld.java
+$ perf stat -r 20 java -XX:+AOTReplayTraining -XX:CacheDataStore=javac.cds com.sun.tools.javac.Main HelloWorld.java
 
- Performance counter stats for 'java -XX:+ReplayTraining -XX:CacheDataStore=javac.cds com.sun.tools.javac.Main HelloWorld.java' (20 runs):
+ Performance counter stats for 'java -XX:+AOTReplayTraining -XX:CacheDataStore=javac.cds com.sun.tools.javac.Main HelloWorld.java' (20 runs):
 
        234.72 msec task-clock        #   2.165 CPUs utilized    ( +-  0.29% )
         1,839      context-switches  #   7.735 K/sec            ( +-  1.22% )

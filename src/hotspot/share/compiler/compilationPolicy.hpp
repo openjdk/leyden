@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,55 +32,6 @@
 #include "utilities/globalDefinitions.hpp"
 
 namespace CompilationPolicyUtils {
-template<int SAMPLE_COUNT = 256>
-class WeightedMovingAverage {
-  int _current;
-  int _samples[SAMPLE_COUNT];
-  int64_t _timestamps[SAMPLE_COUNT];
-
-  void sample(int s, int64_t t) {
-    assert(s >= 0, "Negative sample values are not supported");
-    _samples[_current] = s;
-    _timestamps[_current] = t;
-    if (++_current >= SAMPLE_COUNT) {
-      _current = 0;
-    }
-  }
-
-  // Since sampling happens at irregular invervals the solution is to
-  // discount the older samples proportionally to the time between
-  // the now and the time of the sample.
-  double value(int64_t t) const {
-    double decay_speed = 1;
-    double weighted_sum = 0;
-    int count = 0;
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
-      if (_samples[i] >= 0) {
-        count++;
-        double delta_t = (t - _timestamps[i]) / 1000.0; // in seconds
-        if (delta_t < 1) delta_t = 1;
-        weighted_sum += (double) _samples[i] / (delta_t * decay_speed);
-      }
-    }
-    if (count > 0) {
-      return weighted_sum / count;
-    } else {
-      return 0;
-    }
-  }
-  static int64_t time() {
-    return nanos_to_millis(os::javaTimeNanos());
-  }
-public:
-  WeightedMovingAverage() : _current(0) {
-    for (int i = 0; i < SAMPLE_COUNT; i++) {
-      _samples[i] = -1;
-    }
-  }
-  void sample(int s) { sample(s, time()); }
-  double value() const { return value(time()); }
-};
-
 template<typename T>
 class Queue {
   class QueueNode : public CHeapObj<mtCompiler> {
@@ -296,21 +247,21 @@ class CompileQueue;
 class CompilationPolicy : AllStatic {
   friend class CallPredicate;
   friend class LoopPredicate;
+  friend class RecompilationPolicy;
 
-  typedef CompilationPolicyUtils::WeightedMovingAverage<> LoadAverage;
   typedef CompilationPolicyUtils::Queue<InstanceKlass> TrainingReplayQueue;
 
   static int64_t _start_time;
-  static int _c1_count, _c2_count, _c3_count, _sc_count;
+  static int _c1_count, _c2_count, _c3_count, _ac_count;
   static double _increase_threshold_at_ratio;
-  static LoadAverage _load_average;
-  static volatile bool _recompilation_done;
   static TrainingReplayQueue _training_replay_queue;
 
   // Set carry flags in the counters (in Method* and MDO).
   inline static void handle_counter_overflow(const methodHandle& method);
+#ifdef ASSERT
   // Verify that a level is consistent with the compilation mode
   static bool verify_level(CompLevel level);
+#endif
   // Clamp the request level according to various constraints.
   inline static CompLevel limit_level(CompLevel level);
   // Common transition function. Given a predicate determines if a method should transition to another level.
@@ -369,7 +320,7 @@ class CompilationPolicy : AllStatic {
   static void set_c1_count(int x) { _c1_count = x;    }
   static void set_c2_count(int x) { _c2_count = x;    }
   static void set_c3_count(int x) { _c3_count = x;    }
-  static void set_sc_count(int x) { _sc_count = x;    }
+  static void set_ac_count(int x) { _ac_count = x;    }
 
   enum EventType { CALL, LOOP, COMPILE, FORCE_COMPILE, FORCE_RECOMPILE, REMOVE_FROM_QUEUE, UPDATE_IN_QUEUE, REPROFILE, MAKE_NOT_ENTRANT };
   static void print_event(EventType type, Method* m, Method* im, int bci, CompLevel level);
@@ -402,13 +353,13 @@ class CompilationPolicy : AllStatic {
   static int c1_count() { return _c1_count; }
   static int c2_count() { return _c2_count; }
   static int c3_count() { return _c3_count; }
-  static int sc_count() { return _sc_count; }
+  static int ac_count() { return _ac_count; }
   static int compiler_count(CompLevel comp_level);
   // If m must_be_compiled then request a compilation from the CompileBroker.
   // This supports the -Xcomp option.
   static void compile_if_required(const methodHandle& m, TRAPS);
 
-  static void replay_training_at_init(bool is_on_shutdown, TRAPS);
+  static void flush_replay_training_at_init(TRAPS);
   static void replay_training_at_init(InstanceKlass* klass, TRAPS);
   static void replay_training_at_init_loop(TRAPS);
 

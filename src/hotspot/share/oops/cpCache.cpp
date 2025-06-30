@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,9 +22,9 @@
  *
  */
 
-#include "precompiled.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
+#include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPrelinker.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/resolutionErrors.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -45,6 +45,7 @@
 #include "oops/compressedOops.hpp"
 #include "oops/constantPool.inline.hpp"
 #include "oops/cpCache.inline.hpp"
+#include "oops/method.inline.hpp"
 #include "oops/objArrayOop.inline.hpp"
 #include "oops/oop.inline.hpp"
 #include "oops/method.inline.hpp"
@@ -56,6 +57,7 @@
 #include "runtime/atomic.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/mutexLocker.hpp"
+#include "runtime/synchronizer.hpp"
 #include "runtime/vm_version.hpp"
 #include "utilities/macros.hpp"
 
@@ -174,7 +176,7 @@ void ConstantPoolCache::set_direct_or_vtable_call(Bytecodes::Code invoke_code,
     }
     if (invoke_code == Bytecodes::_invokestatic) {
       assert(method->method_holder()->is_initialized() ||
-             method->method_holder()->is_init_thread(JavaThread::current()) ||
+             method->method_holder()->is_reentrant_initialization(JavaThread::current()) ||
              (CDSConfig::is_dumping_archive() && VM_Version::supports_fast_class_init_checks()),
              "invalid class initialization state for invoke_static");
 
@@ -270,11 +272,20 @@ ResolvedMethodEntry* ConstantPoolCache::set_method_handle(int method_index, cons
   // A losing writer waits on the lock until the winner writes the method and leaves
   // the lock, so that when the losing writer returns, he can use the linked
   // cache entry.
+
   // Lock fields to write
   Bytecodes::Code invoke_code = Bytecodes::_invokehandle;
-  MutexLocker ml(constant_pool()->pool_holder()->init_monitor());
-  ResolvedMethodEntry* method_entry = resolved_method_entry_at(method_index);
 
+  JavaThread* current = JavaThread::current();
+  objArrayHandle resolved_references(current, constant_pool()->resolved_references());
+  // Use the resolved_references() lock for this cpCache entry.
+  // resolved_references are created for all classes with Invokedynamic, MethodHandle
+  // or MethodType constant pool cache entries.
+  assert(resolved_references() != nullptr,
+         "a resolved_references array should have been created for this class");
+  ObjectLocker ol(resolved_references, current);
+
+  ResolvedMethodEntry* method_entry = resolved_method_entry_at(method_index);
   if (method_entry->is_resolved(invoke_code)) {
     return method_entry;
   }
@@ -312,7 +323,6 @@ ResolvedMethodEntry* ConstantPoolCache::set_method_handle(int method_index, cons
   // Store appendix, if any.
   if (has_appendix) {
     const int appendix_index = method_entry->resolved_references_index();
-    objArrayOop resolved_references = constant_pool()->resolved_references();
     assert(appendix_index >= 0 && appendix_index < resolved_references->length(), "oob");
     assert(resolved_references->obj_at(appendix_index) == nullptr, "init just once");
     resolved_references->obj_at_put(appendix_index, appendix());
@@ -362,18 +372,6 @@ Method* ConstantPoolCache::method_if_resolved(int method_index) const {
     }
   }
   return nullptr;
-#if 0
- else {
-    assert(is_field_entry(), "must be a field entry");
-    st->print_cr(" - F1:  [   " PTR_FORMAT "]", (intptr_t)_f1);
-    st->print_cr(" - F2:  [   " PTR_FORMAT "]", (intptr_t)_f2);
-    st->print_cr(" - flag values: [%02x|0|1|0|0|0|%01x|%01x|0|0|%04x]",
-                 flag_state(), is_final(), is_volatile(), field_index());
-    st->print_cr(" - tos: %s\n - final: %d\n - volatile: %d\n - field index: %04x",
-                 type2name(as_BasicType(flag_state())), is_final(), is_volatile(), field_index());
-  }
-  st->print_cr("                 -------------");
-#endif
 }
 
 ConstantPoolCache* ConstantPoolCache::allocate(ClassLoaderData* loader_data,
@@ -412,6 +410,17 @@ void ConstantPoolCache::remove_unshareable_info() {
   if (_resolved_method_entries != nullptr) {
     remove_resolved_method_entries_if_non_deterministic();
   }
+
+#if INCLUDE_CDS_JAVA_HEAP
+  _archived_references_index = -1;
+  if (CDSConfig::is_dumping_heap()) {
+    ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(constant_pool());
+    oop rr = HeapShared::scratch_resolved_references(src_cp);
+    if (rr != nullptr) {
+      _archived_references_index = HeapShared::append_root(rr);
+    }
+  }
+#endif
 }
 
 void ConstantPoolCache::remove_resolved_field_entries_if_non_deterministic() {
@@ -425,25 +434,24 @@ void ConstantPoolCache::remove_resolved_field_entries_if_non_deterministic() {
                     rfi->is_resolved(Bytecodes::_putstatic) ||
                     rfi->is_resolved(Bytecodes::_getfield)  ||
                     rfi->is_resolved(Bytecodes::_putfield);
-    if (resolved && ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
+    if (resolved && AOTConstantPoolResolver::is_resolution_deterministic(src_cp, cp_index)) {
       rfi->mark_and_relocate();
       archived = true;
     } else {
       rfi->remove_unshareable_info();
     }
     if (resolved) {
-      LogStreamHandle(Trace, cds, resolve) log;
+      LogStreamHandle(Trace, aot, resolve) log;
       if (log.is_enabled()) {
         ResourceMark rm;
         int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
         Symbol* klass_name = cp->klass_name_at(klass_cp_index);
         Symbol* name = cp->uncached_name_ref_at(cp_index);
         Symbol* signature = cp->uncached_signature_ref_at(cp_index);
-        log.print("%s field  CP entry [%3d]: %s %s %s.%s:%s",
+        log.print("%s field  CP entry [%3d]: %s => %s.%s:%s",
                   (archived ? "archived" : "reverted"),
                   cp_index,
                   cp->pool_holder()->name()->as_C_string(),
-                  (archived ? "=>" : "  "),
                   klass_name->as_C_string(), name->as_C_string(), signature->as_C_string());
       }
     }
@@ -460,17 +468,17 @@ void ConstantPoolCache::remove_resolved_method_entries_if_non_deterministic() {
     bool archived = false;
     bool resolved = rme->is_resolved(Bytecodes::_invokevirtual)   ||
                     rme->is_resolved(Bytecodes::_invokespecial)   ||
-                    rme->is_resolved(Bytecodes::_invokestatic)    ||
+                  //rme->is_resolved(Bytecodes::_invokestatic)    || // FIXME -- leyden+JEP483 merge
                     rme->is_resolved(Bytecodes::_invokeinterface) ||
                     rme->is_resolved(Bytecodes::_invokehandle);
-    if (resolved && can_archive_resolved_method(rme)) {
+    if (resolved && can_archive_resolved_method(src_cp, rme)) {
       rme->mark_and_relocate(src_cp);
       archived = true;
     } else {
       rme->remove_unshareable_info();
     }
     if (resolved) {
-      LogStreamHandle(Trace, cds, resolve) log;
+      LogStreamHandle(Trace, aot, resolve) log;
       if (log.is_enabled()) {
         ResourceMark rm;
         int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
@@ -503,14 +511,14 @@ void ConstantPoolCache::remove_resolved_indy_entries_if_non_deterministic() {
     int cp_index = rei->constant_pool_index();
     bool archived = false;
     bool resolved = rei->is_resolved();
-    if (resolved && ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
+    if (resolved && AOTConstantPoolResolver::is_resolution_deterministic(src_cp, cp_index)) {
       rei->mark_and_relocate();
       archived = true;
     } else {
       rei->remove_unshareable_info();
     }
     if (resolved) {
-      LogStreamHandle(Trace, cds, resolve) log;
+      LogStreamHandle(Trace, aot, resolve) log;
       if (log.is_enabled()) {
         ResourceMark rm;
         int bsm = cp->bootstrap_method_ref_index_at(cp_index);
@@ -529,33 +537,16 @@ void ConstantPoolCache::remove_resolved_indy_entries_if_non_deterministic() {
   }
 }
 
-bool ConstantPoolCache::can_archive_invokehandle(ResolvedMethodEntry* rme) {
-  ConstantPool* cp = constant_pool();
-  assert(rme->is_resolved(Bytecodes::_invokehandle), "sanity");
-
-  int cp_index = rme->constant_pool_index();
-  int klass_cp_index = cp->uncached_klass_ref_index_at(cp_index);
-  Klass* resolved_klass = cp->resolved_klass_at(klass_cp_index);
-  if (!resolved_klass->is_instance_klass()) {
-    // FIXME: can this ever happen?
-    return false;
-  }
-  // FIXME -- any class referenced by the archived CP entries should be added to ArchiveBuilder::classes, or should be
-  // filtered out.
-  return true;
-}
-
-bool ConstantPoolCache::can_archive_resolved_method(ResolvedMethodEntry* method_entry) {
+bool ConstantPoolCache::can_archive_resolved_method(ConstantPool* src_cp, ResolvedMethodEntry* method_entry) {
   InstanceKlass* pool_holder = constant_pool()->pool_holder();
-  if (!(pool_holder->is_shared_boot_class() || pool_holder->is_shared_platform_class() ||
-        pool_holder->is_shared_app_class())) {
+  if (pool_holder->defined_by_other_loaders()) {
     // Archiving resolved cp entries for classes from non-builtin loaders
     // is not yet supported.
     return false;
   }
 
   if (CDSConfig::is_dumping_dynamic_archive()) {
-    // InstanceKlass::methods() is has been resorted. We need to
+    // InstanceKlass::methods() has been resorted. We need to
     // update the vtable_index in method_entry (not implemented)
     return false;
   }
@@ -570,30 +561,27 @@ bool ConstantPoolCache::can_archive_resolved_method(ResolvedMethodEntry* method_
   }
 
   int cp_index = method_entry->constant_pool_index();
-  ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(constant_pool());
   assert(src_cp->tag_at(cp_index).is_method() || src_cp->tag_at(cp_index).is_interface_method(), "sanity");
 
-  if (!ClassPrelinker::is_resolution_deterministic(src_cp, cp_index)) {
+  if (!AOTConstantPoolResolver::is_resolution_deterministic(src_cp, cp_index)) {
     return false;
   }
 
-  if (method_entry->is_resolved(Bytecodes::_invokehandle)) {
-    if (!ArchiveInvokeDynamic) {
+  if (method_entry->is_resolved(Bytecodes::_invokestatic) ||
+      method_entry->is_resolved(Bytecodes::_invokeinterface) ||
+      method_entry->is_resolved(Bytecodes::_invokevirtual) ||
+      method_entry->is_resolved(Bytecodes::_invokespecial)) {
+    return true;
+  } else if (method_entry->is_resolved(Bytecodes::_invokehandle)) {
+    if (CDSConfig::is_dumping_method_handles()) {
       // invokehandle depends on archived MethodType and LambdaForms.
-      return false;
-    } else if (!can_archive_invokehandle(method_entry)) {
+      return true;
+    } else {
       return false;
     }
-  } else if (method_entry->is_resolved(Bytecodes::_invokestatic) ||
-             method_entry->is_resolved(Bytecodes::_invokeinterface) ||
-             method_entry->is_resolved(Bytecodes::_invokevirtual) ||
-             method_entry->is_resolved(Bytecodes::_invokespecial)) {
-    // OK
   } else {
-    return false; // just to be safe.
+    return false;
   }
-
-  return true;
 }
 #endif // INCLUDE_CDS
 
@@ -633,11 +621,6 @@ void ConstantPoolCache::clear_archived_references() {
     _archived_references_index = -1;
   }
 }
-
-void ConstantPoolCache::set_archived_references(int root_index) {
-  assert(CDSConfig::is_dumping_heap(), "sanity");
-  _archived_references_index = root_index;
-}
 #endif
 
 #if INCLUDE_JVMTI
@@ -662,6 +645,7 @@ void ConstantPoolCache::adjust_method_entries(bool * trace_name_printed) {
       if (old_method == nullptr || !old_method->is_old()) {
         continue;
       }
+      assert(!old_method->is_deleted(), "cannot delete these methods");
       Method* new_method = old_method->get_new_method();
       resolved_indy_entry_at(j)->adjust_method_entry(new_method);
       log_adjust("indy", old_method, new_method, trace_name_printed);
@@ -722,7 +706,7 @@ void ConstantPoolCache::dump_cache() {
 #endif // INCLUDE_JVMTI
 
 void ConstantPoolCache::metaspace_pointers_do(MetaspaceClosure* it) {
-  log_trace(cds)("Iter(ConstantPoolCache): %p", this);
+  log_trace(aot)("Iter(ConstantPoolCache): %p", this);
   it->push(&_constant_pool);
   it->push(&_reference_map);
   if (_resolved_indy_entries != nullptr) {
@@ -743,7 +727,14 @@ bool ConstantPoolCache::save_and_throw_indy_exc(
   assert(PENDING_EXCEPTION->is_a(vmClasses::LinkageError_klass()),
          "No LinkageError exception");
 
-  MutexLocker ml(THREAD, cpool->pool_holder()->init_monitor());
+  // Use the resolved_references() lock for this cpCache entry.
+  // resolved_references are created for all classes with Invokedynamic, MethodHandle
+  // or MethodType constant pool cache entries.
+  JavaThread* current = THREAD;
+  objArrayHandle resolved_references(current, cpool->resolved_references());
+  assert(resolved_references() != nullptr,
+         "a resolved_references array should have been created for this class");
+  ObjectLocker ol(resolved_references, current);
 
   // if the indy_info is resolved or the indy_resolution_failed flag is set then another
   // thread either succeeded in resolving the method or got a LinkageError
@@ -766,11 +757,21 @@ bool ConstantPoolCache::save_and_throw_indy_exc(
 
 oop ConstantPoolCache::set_dynamic_call(const CallInfo &call_info, int index) {
   ResourceMark rm;
-  MutexLocker ml(constant_pool()->pool_holder()->init_monitor());
+
+  // Use the resolved_references() lock for this cpCache entry.
+  // resolved_references are created for all classes with Invokedynamic, MethodHandle
+  // or MethodType constant pool cache entries.
+  JavaThread* current = JavaThread::current();
+  constantPoolHandle cp(current, constant_pool());
+
+  objArrayHandle resolved_references(current, cp->resolved_references());
+  assert(resolved_references() != nullptr,
+         "a resolved_references array should have been created for this class");
+  ObjectLocker ol(resolved_references, current);
   assert(index >= 0, "Indy index must be positive at this point");
 
   if (resolved_indy_entry_at(index)->method() != nullptr) {
-    return constant_pool()->resolved_reference_from_indy(index);
+    return cp->resolved_reference_from_indy(index);
   }
 
   if (resolved_indy_entry_at(index)->resolution_failed()) {
@@ -778,9 +779,7 @@ oop ConstantPoolCache::set_dynamic_call(const CallInfo &call_info, int index) {
     // resolution.  Ignore our success and throw their exception.
     guarantee(index >= 0, "Invalid indy index");
     int encoded_index = ResolutionErrorTable::encode_indy_index(index);
-    JavaThread* THREAD = JavaThread::current(); // For exception macros.
-    constantPoolHandle cp(THREAD, constant_pool());
-    ConstantPool::throw_resolution_error(cp, encoded_index, THREAD);
+    ConstantPool::throw_resolution_error(cp, encoded_index, current);
     return nullptr;
   }
 
@@ -804,7 +803,6 @@ oop ConstantPoolCache::set_dynamic_call(const CallInfo &call_info, int index) {
 
   if (has_appendix) {
     const int appendix_index = resolved_indy_entry_at(index)->resolved_references_index();
-    objArrayOop resolved_references = constant_pool()->resolved_references();
     assert(appendix_index >= 0 && appendix_index < resolved_references->length(), "oob");
     assert(resolved_references->obj_at(appendix_index) == nullptr, "init just once");
     resolved_references->obj_at_put(appendix_index, appendix());
@@ -837,9 +835,15 @@ oop ConstantPoolCache::appendix_if_resolved(ResolvedMethodEntry* method_entry) c
 void ConstantPoolCache::print_on(outputStream* st) const {
   st->print_cr("%s", internal_name());
   // print constant pool cache entries
-  print_resolved_field_entries(st);
-  print_resolved_method_entries(st);
-  print_resolved_indy_entries(st);
+  if (_resolved_field_entries != nullptr) {
+    print_resolved_field_entries(st);
+  }
+  if (_resolved_method_entries != nullptr) {
+    print_resolved_method_entries(st);
+  }
+  if (_resolved_indy_entries != nullptr) {
+    print_resolved_indy_entries(st);
+  }
 }
 
 void ConstantPoolCache::print_resolved_field_entries(outputStream* st) const {

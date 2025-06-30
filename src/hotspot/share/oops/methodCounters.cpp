@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "compiler/compilerOracle.hpp"
@@ -35,7 +34,7 @@
 
 MethodCounters::MethodCounters(const methodHandle& mh) :
   _method(mh()),
-  _method_training_data(nullptr),
+  _method_training_data(method_training_data_sentinel()),
   _prev_time(0),
   _rate(0),
   _highest_comp_level(0),
@@ -54,9 +53,12 @@ MethodCounters::MethodCounters(const methodHandle& mh) :
   _backedge_mask = right_n_bits(CompilerConfig::scaled_freq_log(Tier0BackedgeNotifyFreqLog, scale)) << InvocationCounter::count_shift;
 }
 
+#if INCLUDE_CDS
 MethodCounters::MethodCounters() {
+  // Used by cppVtables.cpp only
   assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
 }
+#endif
 
 MethodCounters* MethodCounters::allocate_no_exception(const methodHandle& mh) {
   ClassLoaderData* loader_data = mh->method_holder()->class_loader_data();
@@ -80,17 +82,16 @@ void MethodCounters::clear_counters() {
 }
 
 void MethodCounters::metaspace_pointers_do(MetaspaceClosure* it) {
-  log_trace(cds)("Iter(MethodCounters): %p", this);
+  log_trace(aot, training)("Iter(MethodCounters): %p", this);
   it->push(&_method);
   it->push(&_method_training_data);
 }
 
 #if INCLUDE_CDS
 void MethodCounters::remove_unshareable_info() {
-  _method_training_data = nullptr;
 }
-
 void MethodCounters::restore_unshareable_info(TRAPS) {
+  _method_training_data = method_training_data_sentinel();
 }
 #endif // INCLUDE_CDS
 

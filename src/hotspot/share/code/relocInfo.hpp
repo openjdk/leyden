@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -576,7 +576,7 @@ class RelocIterator : public StackObj {
 
   void set_has_current(bool b) {
     _datalen = !b ? -1 : 0;
-    debug_only(_data = nullptr);
+    DEBUG_ONLY(_data = nullptr);
   }
   void set_current(relocInfo& ri) {
     _current = &ri;
@@ -602,6 +602,7 @@ class RelocIterator : public StackObj {
   // constructor
   RelocIterator(nmethod* nm, address begin = nullptr, address limit = nullptr);
   RelocIterator(CodeSection* cb, address begin = nullptr, address limit = nullptr);
+  RelocIterator(CodeBlob* cb);
 
   // get next reloc info, return !eos
   bool next() {
@@ -672,6 +673,7 @@ class RelocIterator : public StackObj {
 
 class Relocation {
   friend class RelocIterator;
+  friend class AOTCodeReader;
 
  private:
   // When a relocation has been created by a RelocIterator,
@@ -1258,6 +1260,11 @@ class runtime_call_w_cp_Relocation : public CallRelocation {
 // in the code, it can patch it to jump to the trampoline where is
 // sufficient space for a far branch. Needed on PPC.
 class trampoline_stub_Relocation : public Relocation {
+#ifdef USE_TRAMPOLINE_STUB_FIX_OWNER
+  void pd_fix_owner_after_move();
+  void fix_relocation_after_move(const CodeBuffer* src, CodeBuffer* dest) override;
+#endif
+
  public:
   static RelocationHolder spec(address static_call) {
     return RelocationHolder::construct<trampoline_stub_Relocation>(static_call);
@@ -1345,7 +1352,6 @@ class external_word_Relocation : public DataRelocation {
   // in the code stream.  See external_word_Relocation::target().
   void pack_data_to(CodeSection* dest) override;
   void unpack_data() override;
-  short* pack_data_to(short* p); // Pack address into buffer
 
   void fix_relocation_after_move(const CodeBuffer* src, CodeBuffer* dest) override;
   address  target();        // if _target==nullptr, fetch addr from code stream
@@ -1392,6 +1398,8 @@ class internal_word_Relocation : public DataRelocation {
   void unpack_data() override;
 
   void fix_relocation_after_move(const CodeBuffer* src, CodeBuffer* dest) override;
+  void fix_relocation_after_aot_load(address orig_base_addr, address current_base_addr);
+
   address  target();        // if _target==nullptr, fetch addr from code stream
   int      section()        { return _section;   }
   address  value() override { return target();   }

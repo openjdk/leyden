@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,9 +22,9 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/cdsConfig.hpp"
 #include "ci/ciMethodData.hpp"
+#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
@@ -35,6 +35,7 @@
 #include "memory/metaspaceClosure.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/klass.inline.hpp"
+#include "oops/method.inline.hpp"
 #include "oops/methodData.inline.hpp"
 #include "prims/jvmtiRedefineClasses.hpp"
 #include "runtime/atomic.hpp"
@@ -60,9 +61,14 @@ bool DataLayout::needs_array_len(u1 tag) {
 // Perform generic initialization of the data.  More specific
 // initialization occurs in overrides of ProfileData::post_initialize.
 void DataLayout::initialize(u1 tag, u2 bci, int cell_count) {
-  _header._bits = (intptr_t)0;
-  _header._struct._tag = tag;
-  _header._struct._bci = bci;
+  DataLayout temp;
+  temp._header._bits = (intptr_t)0;
+  temp._header._struct._tag = tag;
+  temp._header._struct._bci = bci;
+  // Write the header using a single intptr_t write.  This ensures that if the layout is
+  // reinitialized readers will never see the transient state where the header is 0.
+  _header = temp._header;
+
   for (int i = 0; i < cell_count; i++) {
     set_cell_at(i, (intptr_t)0);
   }
@@ -315,6 +321,26 @@ void VirtualCallTypeData::post_initialize(BytecodeStream* stream, MethodData* md
   }
 }
 
+static bool is_excluded(Klass* k) {
+#if INCLUDE_CDS
+  if (SafepointSynchronize::is_at_safepoint() &&
+      CDSConfig::is_dumping_archive() &&
+      CDSConfig::current_thread_is_vm_or_dumper()) {
+    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_loaded()) {
+      log_debug(aot, training)("Purged %s from MDO: unloaded class", k->name()->as_C_string());
+      return true;
+    } else {
+      bool excluded = SystemDictionaryShared::should_be_excluded(k);
+      if (excluded) {
+        log_debug(aot, training)("Purged %s from MDO: excluded class", k->name()->as_C_string());
+      }
+      return excluded;
+    }
+  }
+#endif
+  return false;
+}
+
 void TypeStackSlotEntries::clean_weak_klass_links(bool always_clean) {
   for (int i = 0; i < _number_of_entries; i++) {
     intptr_t p = type(i);
@@ -323,7 +349,7 @@ void TypeStackSlotEntries::clean_weak_klass_links(bool always_clean) {
       if (!always_clean && k->is_instance_klass() && InstanceKlass::cast(k)->is_not_initialized()) {
         continue; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
       }
-      if (always_clean || !k->is_loader_alive()) {
+      if (always_clean || !k->is_loader_present_and_alive() || is_excluded(k)) {
         set_type(i, with_status((Klass*)nullptr, p));
       }
     }
@@ -332,10 +358,8 @@ void TypeStackSlotEntries::clean_weak_klass_links(bool always_clean) {
 
 void TypeStackSlotEntries::metaspace_pointers_do(MetaspaceClosure* it) {
   for (int i = 0; i < _number_of_entries; i++) {
-    set_type(i, klass_part(type(i))); // reset tag; FIXME: properly handle tagged pointers
-    Klass** k = (Klass**)type_adr(i);
+    Klass** k = (Klass**)type_adr(i); // tagged
     it->push(k);
-//    it->push_tagged(k);
   }
 }
 
@@ -346,7 +370,7 @@ void ReturnTypeEntry::clean_weak_klass_links(bool always_clean) {
     if (!always_clean && k->is_instance_klass() && InstanceKlass::cast(k)->is_not_initialized()) {
       return; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
     }
-    if (always_clean || !k->is_loader_alive()) {
+    if (always_clean || !k->is_loader_present_and_alive() || is_excluded(k)) {
       set_type(with_status((Klass*)nullptr, p));
     }
   }
@@ -354,9 +378,7 @@ void ReturnTypeEntry::clean_weak_klass_links(bool always_clean) {
 
 void ReturnTypeEntry::metaspace_pointers_do(MetaspaceClosure* it) {
   Klass** k = (Klass**)type_adr(); // tagged
-  set_type(klass_part(type())); // reset tag; FIXME: properly handle tagged pointers
   it->push(k);
-//  it->push_tagged(k);
 }
 
 bool TypeEntriesAtCall::return_profiling_enabled() {
@@ -438,7 +460,7 @@ void ReceiverTypeData::clean_weak_klass_links(bool always_clean) {
       if (!always_clean && p->is_instance_klass() && InstanceKlass::cast(p)->is_not_initialized()) {
         continue; // skip not-yet-initialized classes // TODO: maybe clear the slot instead?
       }
-      if (always_clean || !p->is_loader_alive()) {
+      if (always_clean || !p->is_loader_present_and_alive() || is_excluded(p)) {
         clear_row(row);
       }
     }
@@ -1268,9 +1290,34 @@ MethodData::MethodData(const methodHandle& method)
     initialize();
 }
 
+#if INCLUDE_CDS
 MethodData::MethodData() {
+  // Used by cppVtables.cpp only
   assert(CDSConfig::is_dumping_static_archive() || UseSharedSpaces, "only for CDS");
 }
+#endif
+
+// Reinitialize the storage of an existing MDO at a safepoint.  Doing it this way will ensure it's
+// not being accessed while the contents are being rewritten.
+class VM_ReinitializeMDO: public VM_Operation {
+ private:
+  MethodData* _mdo;
+ public:
+  VM_ReinitializeMDO(MethodData* mdo): _mdo(mdo) {}
+  VMOp_Type type() const                         { return VMOp_ReinitializeMDO; }
+  void doit() {
+    // The extra data is being zero'd, we'd like to acquire the extra_data_lock but it can't be held
+    // over a safepoint.  This means that we don't actually need to acquire the lock.
+    _mdo->initialize();
+  }
+  bool allow_nested_vm_operations() const        { return true; }
+};
+
+void MethodData::reinitialize() {
+  VM_ReinitializeMDO op(this);
+  VMThread::execute(&op);
+}
+
 
 void MethodData::initialize() {
   Thread* thread = Thread::current();
@@ -1278,7 +1325,6 @@ void MethodData::initialize() {
   ResourceMark rm(thread);
 
   init();
-  set_creation_mileage(mileage_of(method()));
 
   // Go through the bytecodes and allocate and initialize the
   // corresponding data cells.
@@ -1385,13 +1431,8 @@ void MethodData::init() {
   clear_escape_info();
 }
 
-// Get a measure of how much mileage the method has on it.
-int MethodData::mileage_of(Method* method) {
-  return MAX2(method->invocation_count(), method->backedge_count());
-}
-
 bool MethodData::is_mature() const {
-  return CompilationPolicy::is_mature((MethodData*)this);
+  return CompilationPolicy::is_mature(const_cast<MethodData*>(this));
 }
 
 // Translate a bci to its corresponding data index (di).
@@ -1579,6 +1620,9 @@ void MethodData::print_value_on(outputStream* st) const {
 }
 
 void MethodData::print_data_on(outputStream* st) const {
+  Mutex* lock = const_cast<MethodData*>(this)->extra_data_lock();
+  ConditionalMutexLocker ml(lock, !lock->owned_by_self(),
+                            Mutex::_no_safepoint_check_flag);
   ResourceMark rm;
   ProfileData* data = first_data();
   if (_parameters_type_data_di != no_parameters) {
@@ -1589,6 +1633,7 @@ void MethodData::print_data_on(outputStream* st) const {
     st->fill_to(6);
     data->print_data_on(st, this);
   }
+
   st->print_cr("--- Extra data:");
   DataLayout* dp    = extra_data_base();
   DataLayout* end   = args_data_limit();
@@ -1749,7 +1794,7 @@ bool MethodData::profile_parameters_for_method(const methodHandle& m) {
 }
 
 void MethodData::metaspace_pointers_do(MetaspaceClosure* it) {
-  log_trace(cds)("Iter(MethodData): %p for %p %s", this, _method, _method->name_and_sig_as_C_string());
+  log_trace(aot, training)("Iter(MethodData): %p for %p %s", this, _method, _method->name_and_sig_as_C_string());
   it->push(&_method);
   if (_parameters_type_data_di != no_parameters) {
     parameters_type_data()->metaspace_pointers_do(it);
@@ -1817,7 +1862,8 @@ public:
 Mutex* MethodData::extra_data_lock() {
   Mutex* lock = Atomic::load(&_extra_data_lock);
   if (lock == nullptr) {
-    lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
+    // This lock could be acquired while we are holding DumpTimeTable_lock/nosafepoint
+    lock = new Mutex(Mutex::nosafepoint-1, "MDOExtraData_lock");
     Mutex* old = Atomic::cmpxchg(&_extra_data_lock, (Mutex*)nullptr, lock);
     if (old != nullptr) {
       // Another thread created the lock before us. Use that lock instead.
@@ -1843,7 +1889,7 @@ void MethodData::clean_extra_data(CleanExtraDataClosure* cl) {
       SpeculativeTrapData* data = new SpeculativeTrapData(dp);
       Method* m = data->method();
       assert(m != nullptr, "should have a method");
-      if (!cl->is_live(m)) {
+      if (is_excluded(m->method_holder()) || !cl->is_live(m)) {
         // "shift" accumulates the number of cells for dead
         // SpeculativeTrapData entries that have been seen so
         // far. Following entries must be shifted left by that many
@@ -1956,7 +2002,7 @@ void MethodData::restore_unshareable_info(TRAPS) {
   //_extra_data_lock = new Mutex(Mutex::nosafepoint, "MDOExtraData_lock");
 }
 #endif // INCLUDE_CDS
-       
+
 #ifdef ASSERT
 void MethodData::check_extra_data_locked() const {
     // Cast const away, just to be able to verify the lock

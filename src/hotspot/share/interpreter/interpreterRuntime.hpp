@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -92,7 +92,7 @@ class InterpreterRuntime: AllStatic {
 
   static void resolve_from_cache(JavaThread* current, Bytecodes::Code bytecode);
 
-  // Used by ClassListParser.
+  // Used by AOTConstantPoolResolver
   static void resolve_get_put(Bytecodes::Code bytecode, int field_index,
                               methodHandle& m, constantPoolHandle& pool, bool initialize_holder, TRAPS);
   static void cds_resolve_invoke(Bytecodes::Code bytecode, int method_index,
@@ -101,7 +101,7 @@ class InterpreterRuntime: AllStatic {
                                        constantPoolHandle& pool, TRAPS);
   static void cds_resolve_invokedynamic(int raw_index,
                                         constantPoolHandle& pool, TRAPS);
- private:
+private:
   // Statics & fields
   static void resolve_getfield(JavaThread* current);
   static void resolve_putfield(JavaThread* current);
@@ -205,7 +205,6 @@ class SignatureHandlerLibrary: public AllStatic {
 
  public:
   static void add(const methodHandle& method);
-  static void add(uint64_t fingerprint, address handler);
 };
 
 #endif // SHARE_INTERPRETER_INTERPRETERRUNTIME_HPP

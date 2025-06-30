@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -37,6 +37,7 @@
 #include "utilities/align.hpp"
 #include "utilities/bytes.hpp"
 #include "utilities/constantTag.hpp"
+#include "utilities/macros.hpp"
 #include "utilities/resourceHash.hpp"
 
 // A ConstantPool is an array containing class constants as described in the
@@ -81,7 +82,7 @@ class ConstantPool : public Metadata {
   friend class JVMCIVMStructs;
   friend class BytecodeInterpreter;  // Directly extracts a klass in the pool for fast instanceof/checkcast
   friend class Universe;             // For null constructor
-  friend class ClassPrelinker;       // CDS
+  friend class AOTConstantPoolResolver;
  private:
   // If you add a new field that points to any metaspace object, you
   // must add this field to ConstantPool::metaspace_pointers_do().
@@ -682,12 +683,12 @@ class ConstantPool : public Metadata {
 #if INCLUDE_CDS
   // CDS support
   objArrayOop prepare_resolved_references_for_archiving() NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
-  void add_dumped_interned_strings() NOT_CDS_JAVA_HEAP_RETURN;
   void remove_unshareable_info();
-  void remove_unshareable_entries();
   void restore_unshareable_info(TRAPS);
- private:
+private:
+  void remove_unshareable_entries();
   void remove_resolved_klass_if_non_deterministic(int cp_index);
+  template <typename Function> void iterate_archivable_resolved_references(Function function);
 #endif
 
  private:
@@ -785,7 +786,7 @@ class ConstantPool : public Metadata {
   int pre_resolve_shared_klasses(TRAPS);
 
   // Debugging
-  const char* printable_name_at(int cp_index) PRODUCT_RETURN0;
+  const char* printable_name_at(int cp_index) PRODUCT_RETURN_NULL;
 
  private:
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,33 +28,22 @@ package java.lang.invoke;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.Constable;
 import java.lang.constant.MethodTypeDesc;
-import java.lang.ref.Reference;
-import java.lang.ref.ReferenceQueue;
-import java.lang.ref.WeakReference;
 import java.util.Arrays;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.function.Supplier;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Stream;
 
-import jdk.internal.misc.CDS;
 import jdk.internal.util.ReferencedKeySet;
 import jdk.internal.util.ReferenceKey;
 import jdk.internal.vm.annotation.Stable;
 import sun.invoke.util.BytecodeDescriptor;
 import sun.invoke.util.VerifyType;
 import sun.invoke.util.Wrapper;
-import sun.security.util.SecurityConstants;
 
 import static java.lang.invoke.MethodHandleStatics.UNSAFE;
 import static java.lang.invoke.MethodHandleStatics.newIllegalArgumentException;
@@ -158,19 +147,11 @@ class MethodType
     private @Stable Invokers invokers;   // cache of handy higher-order adapters
     private @Stable String methodDescriptor;  // cache for toMethodDescriptorString
 
-    private final boolean checkArchivable = CDS.isDumpingArchive();
     /**
      * Constructor that performs no copying or validation.
      * Should only be called from the factory method makeImpl
      */
     private MethodType(Class<?> rtype, Class<?>[] ptypes) {
-        if (checkArchivable) {
-            MethodHandleNatives.checkArchivable(rtype);
-            for (var p : ptypes) {
-                MethodHandleNatives.checkArchivable(p);
-            }
-        }
-
         this.rtype = rtype;
         this.ptypes = ptypes;
     }
@@ -243,7 +224,7 @@ class MethodType
     }
 
     static final ReferencedKeySet<MethodType> internTable =
-        ReferencedKeySet.create(false, true, new Supplier<>() {
+        ReferencedKeySet.create(false, new Supplier<>() {
             @Override
             public Map<ReferenceKey<MethodType>, ReferenceKey<MethodType>> get() {
                 return new ConcurrentHashMap<>(512);
@@ -251,26 +232,6 @@ class MethodType
         });
 
     static final Class<?>[] NO_PTYPES = {};
-
-    private static Object[] archivedObjects;
-
-    private static @Stable HashMap<MethodType,MethodType> archivedMethodTypes;
-
-    private static @Stable MethodType[] objectOnlyTypes;
-
-    @SuppressWarnings("unchecked")
-    static void doit() {
-        CDS.initializeFromArchive(MethodType.class);
-        if (archivedObjects != null) {
-            archivedMethodTypes = (HashMap<MethodType,MethodType>)archivedObjects[0];
-            objectOnlyTypes = (MethodType[])archivedObjects[1];
-        } else {
-            objectOnlyTypes = new MethodType[20];
-        }
-    }
-    static {
-        doit();
-    }
 
     /**
      * Finds or creates an instance of the given method type.
@@ -430,13 +391,6 @@ class MethodType
             ptypes = NO_PTYPES; trusted = true;
         }
         MethodType primordialMT = new MethodType(rtype, ptypes);
-        if (archivedMethodTypes != null) {
-            MethodType mt = archivedMethodTypes.get(primordialMT);
-            if (mt != null) {
-                return mt;
-            }
-        }
-
         MethodType mt = internTable.get(primordialMT);
         if (mt != null)
             return mt;
@@ -455,6 +409,8 @@ class MethodType
         mt.form = MethodTypeForm.findForm(mt);
         return internTable.intern(mt);
     }
+
+    private static final @Stable MethodType[] objectOnlyTypes = new MethodType[20];
 
     /**
      * Finds or creates a method type whose components are {@code Object} with an optional trailing {@code Object[]} array.
@@ -1216,21 +1172,11 @@ class MethodType
      * @throws NullPointerException if the string is {@code null}
      * @throws IllegalArgumentException if the string is not a method descriptor
      * @throws TypeNotPresentException if a named type cannot be found
-     * @throws SecurityException if the security manager is present and
-     *         {@code loader} is {@code null} and the caller does not have the
-     *         {@link RuntimePermission}{@code ("getClassLoader")}
      * @jvms 4.3.3 Method Descriptors
      */
     public static MethodType fromMethodDescriptorString(String descriptor, ClassLoader loader)
         throws IllegalArgumentException, TypeNotPresentException
     {
-        if (loader == null) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
-            }
-        }
         return fromDescriptor(descriptor,
                               (loader == null) ? ClassLoader.getSystemClassLoader() : loader);
     }
@@ -1329,15 +1275,21 @@ class MethodType
      */
     @Override
     public Optional<MethodTypeDesc> describeConstable() {
-        try {
-            return Optional.of(MethodTypeDesc.of(returnType().describeConstable().orElseThrow(),
-                                                 Stream.of(parameterArray())
-                                                      .map(p -> p.describeConstable().orElseThrow())
-                                                      .toArray(ClassDesc[]::new)));
-        }
-        catch (NoSuchElementException e) {
+        var retDesc = returnType().describeConstable();
+        if (retDesc.isEmpty())
             return Optional.empty();
+
+        if (parameterCount() == 0)
+            return Optional.of(MethodTypeDesc.of(retDesc.get()));
+
+        var params = new ClassDesc[parameterCount()];
+        for (int i = 0; i < params.length; i++) {
+            var paramDesc = parameterType(i).describeConstable();
+            if (paramDesc.isEmpty())
+                return Optional.empty();
+            params[i] = paramDesc.get();
         }
+        return Optional.of(MethodTypeDesc.of(retDesc.get(), params));
     }
 
     //--- Serialization.
@@ -1430,55 +1382,9 @@ s.writeObject(this.parameterArray());
         return mt;
     }
 
-    static HashMap<MethodType,MethodType> archive(Archiver archiver) {
-        HashMap<MethodType,MethodType> archivedSet = new HashMap<>();
-
-        for (Iterator<MethodType> i = internTable.iterator(); i.hasNext(); ) {
-            MethodType t = i.next();
-            MethodType a = archiver.clean(t);
-            if (a != null) {
-                archivedSet.put(a, a);
-            }
-        }
-
-        return archivedSet;
-    }
-
-    static class Archiver {
-        ArrayList<MethodType> archived = new ArrayList<>();
-
-        MethodType clean(MethodType t) {
-            if (t == null || t.form == null) { // HACK!
-                return null;
-            }
-            if (archived.contains(t)) {
-                return t;
-            }
-
-            archived.add(t);
-            return t;
-        }
-    }
-
-    // This is called from C code.
-    static void dumpSharedArchive() {
-        // Call these first, as the <clinit> of these classes may add
-        // new MethodTypes into internTable.
-        DirectMethodHandle.dumpSharedArchive();
-        LambdaForm.NamedFunction.dumpSharedArchive();
-
-        Archiver archiver = new Archiver();
-
-        MethodType[] objectOnlyTypesCopy = new MethodType[objectOnlyTypes.length];
-        for (int i = 0; i < objectOnlyTypes.length; i++) {
-            MethodType t = archiver.clean(objectOnlyTypes[i]);
-            if (t != null) {
-                objectOnlyTypesCopy[i] = t;
-            }
-        }
-
-        archivedObjects = new Object[2];
-        archivedObjects[0] = archive(archiver);
-        archivedObjects[1] = objectOnlyTypesCopy;
+    // This is called from C code, at the very end of Java code execution
+    // during the AOT cache assembly phase.
+    private static void assemblySetup() {
+        internTable.prepareForAOTCache();
     }
 }

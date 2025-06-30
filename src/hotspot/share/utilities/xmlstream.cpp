@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2002, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "code/nmethod.hpp"
 #include "memory/allocation.hpp"
 #include "memory/allocation.inline.hpp"
@@ -458,7 +457,7 @@ void xmlStream::method(Method* method, const char* pfx) {
   method_text(method);
   print("' bytes='%d'", method->code_size());
   print(" count='%d'", method->invocation_count());
-  if (RecordTraining) {
+  if (AOTRecordTraining) {
     // print stuff about this method's compilation history
     print(" highest_comp_level='%d'", method->highest_comp_level());
     nmethod* nm = method->code();
@@ -579,7 +578,7 @@ void xmlStream::thread(Thread* t, const char* pfx) {
   assert(inside_attrs_or_error(), "printing attributes");
   intx tid = t == nullptr ? os::current_thread_id() : t->osthread()->thread_id();
   guarantee(tid == (t == nullptr ? Thread::current() : t)->osthread()->thread_id(), "");
-  print(" %sthread='" INTX_FORMAT "'", pfx, tid);
+  print(" %sthread=%zd", pfx, tid);
 }
 
 void xmlStream::object(const char* attr, Handle x) {

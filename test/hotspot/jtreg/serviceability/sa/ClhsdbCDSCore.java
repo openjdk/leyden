@@ -72,7 +72,6 @@ public class ClhsdbCDSCore {
 
         try {
             CDSOptions opts = (new CDSOptions()).setArchiveName(SHARED_ARCHIVE_NAME);
-            opts.addSuffix("-XX:-PreloadSharedClasses");
             CDSTestUtils.createArchiveAndCheck(opts);
 
             String[] jArgs = {

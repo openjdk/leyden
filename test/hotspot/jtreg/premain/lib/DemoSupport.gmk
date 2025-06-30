@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -50,19 +50,19 @@
 
 #  *** NOTE: JDK 21 is needed to build most of the demos
 ifndef BLDJDK_HOME
-BLDJDK_HOME   = /jdk3/official/jdk21
+BLDJDK_HOME   = /work/official/jdk21
 endif
 
 # Points to your build with https://github.com/openjdk/jdk
 # For comparison purposes, this build should be the latest version of the mainline that
 # has been merged into https://github.com/openjdk/leyden/tree/premain
 ifndef MAINLINE_HOME
-MAINLINE_HOME = /jdk3/bld/rum/images/jdk
+MAINLINE_HOME = /work/official/jdk24
 endif
 
 # Points to your build with https://github.com/openjdk/leyden/tree/premain
 ifndef PREMAIN_HOME
-PREMAIN_HOME = /jdk3/bld/le4/images/jdk
+PREMAIN_HOME = /work/bld/le4/images/jdk
 endif
 
 # Override this if your system's MVM version is too old (to point to your own build of mvn, etc)
@@ -87,10 +87,18 @@ PREMAIN_JAVA    = ${PREMAIN_HOME}/bin/java ${PM_OPTS}
 
 DEMO_CLASSLIST  = ${DEMO_NAME}$(PM_VER).classlist
 DEMO_JSA        = ${DEMO_NAME}$(PM_VER).jsa
-DEMO_CDS        = ${DEMO_NAME}$(PM_VER).cds
 
+# Mainline -- CDS only
 DEMO_ML_CLASSLIST = ${DEMO_NAME}$(PM_VER).ml.classlist
 DEMO_ML_JSA       = ${DEMO_NAME}$(PM_VER).ml.jsa
+
+# Mainline -- AOTCache
+DEMO_ML_AOTCONF   = ${DEMO_NAME}$(PM_VER).ml.aotconf
+DEMO_ML_AOT       = ${DEMO_NAME}$(PM_VER).ml.aot
+
+# Leyden -- AOTCache + profiles + compiled method
+DEMO_AOTCONF      = ${DEMO_NAME}$(PM_VER).aotconf
+DEMO_AOT          = ${DEMO_NAME}$(PM_VER).aot
 
 # Rules for the following targets should be specified in the main Makefile.
 # See ../helidon-quickstart-se/Makefile for an example.
@@ -122,14 +130,14 @@ ${DEMO_CLASSLIST}: ${DEMO_JAR}
 ${DEMO_JSA}: ${DEMO_CLASSLIST}
 	rm -f ${DEMO_JSA}.log
 	${PREMAIN_JAVA} -Xshare:dump -XX:SharedClassListFile=${DEMO_CLASSLIST} -XX:SharedArchiveFile=${DEMO_JSA} \
-	    -XX:+PreloadSharedClasses \
+	    -XX:+AOTClassLinking \
 	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_JSA}.log \
 	    ${DEMO_CMDLINE}
 
 runs:  ${DEMO_JSA}
 	${PREMAIN_JAVA} -XX:SharedArchiveFile=${DEMO_JSA} ${DEMO_CMDLINE}
 
-# Static CDS only (Leyden repo)-----------------
+# Static CDS only (Mainline)-----------------
 
 list.ml:  ${DEMO_ML_CLASSLIST}
 jsa.ml:   ${DEMO_ML_JSA}
@@ -149,31 +157,45 @@ run0.ml: ${DEMO_JAR}
 runs.ml: ${DEMO_ML_JSA}
 	${MAINLINE_JAVA} -XX:SharedArchiveFile=${DEMO_ML_JSA} ${DEMO_CMDLINE}
 
-# Leyden new workflow --------------------------
+# AOTCache (JEP 483) with Mainline (no AOT profile/AOT compiled methods)
 
-cds: ${DEMO_CDS}
+aotconf.ml:  ${DEMO_ML_AOTCONF}
+aot.ml:      ${DEMO_ML_AOT}
 
-${DEMO_CDS}: ${DEMO_JAR}
-	rm -f ${DEMO_CDS} ${DEMO_CDS}.log
-	${PREMAIN_JAVA} \
-	    -XX:CacheDataStore=${DEMO_CDS} -XX:CachedCodeMaxSize=512M \
-	    -Xlog:scc,cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_CDS}.log::filesize=0 \
-	     ${DEMO_CMDLINE}
-	ls -l ${DEMO_CDS}
-	ls -l ${DEMO_CDS}.code
+${DEMO_ML_AOTCONF}: ${DEMO_JAR}
+	${MAINLINE_JAVA} -XX:AOTMode=record -XX:AOTConfiguration=${DEMO_ML_AOTCONF} ${DEMO_CMDLINE}
 
-run: runn
+${DEMO_ML_AOT}: ${DEMO_ML_AOTCONF}
+	rm -f ${DEMO_ML_AOT}.log
+	${MAINLINE_JAVA} -XX:AOTMode=create -XX:AOTConfiguration=${DEMO_ML_AOTCONF} -XX:AOTCache=${DEMO_ML_AOT} \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_ML_AOT}.log \
+	    ${DEMO_CMDLINE}
 
-runn: ${DEMO_CDS}
-	${PREMAIN_JAVA} \
-	    -XX:CacheDataStore=${DEMO_CDS} \
-	    -Xlog:scc*=error \
-	     ${DEMO_CMDLINE}
+runa.ml: ${DEMO_ML_AOT}
+	${MAINLINE_JAVA} -XX:AOTMode=on -XX:AOTCache=${DEMO_ML_AOT} ${DEMO_CMDLINE}
+
+# AOTCache (JEP 483) with Leyden (has AOT profile/AOT compiled methods)
+
+aotconf:  ${DEMO_AOTCONF}
+aot:      ${DEMO_AOT}
+
+${DEMO_AOTCONF}: ${DEMO_JAR}
+	${PREMAIN_JAVA} -XX:AOTMode=record -XX:AOTConfiguration=${DEMO_AOTCONF} ${DEMO_CMDLINE}
+
+${DEMO_AOT}: ${DEMO_AOTCONF}
+	rm -f ${DEMO_AOT}.log
+	${PREMAIN_JAVA} -XX:AOTMode=create -XX:AOTConfiguration=${DEMO_AOTCONF} -XX:AOTCache=${DEMO_AOT} \
+	    -Xlog:cds=debug,cds+class=debug,cds+heap=warning,cds+resolve=debug:file=${DEMO_AOT}.log \
+	    ${DEMO_CMDLINE}
+
+runa: ${DEMO_AOT}
+	${PREMAIN_JAVA} -XX:AOTMode=on -XX:AOTCache=${DEMO_AOT} ${DEMO_CMDLINE}
+
+run: runa
 
 showenv:
 	@echo "BLDJDK_JAVA   = ${BLDJDK_JAVA}"
 	@echo "MAINLINE_JAVA = ${MAINLINE_JAVA}"
 	@echo "PREMAIN_JAVA  = ${PREMAIN_JAVA}"
-
 
 include ../lib/Bench.gmk

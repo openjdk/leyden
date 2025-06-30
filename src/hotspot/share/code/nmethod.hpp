@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -45,7 +45,8 @@ class JvmtiThreadState;
 class MetadataClosure;
 class NativeCallWrapper;
 class OopIterateClosure;
-class SCCEntry;
+class AOTCodeReader;
+class AOTCodeEntry;
 class ScopeDesc;
 class xmlStream;
 
@@ -101,7 +102,7 @@ class PcDescCache {
   typedef PcDesc* PcDescPtr;
   volatile PcDescPtr _pc_descs[cache_size]; // last cache_size pc_descs found
  public:
-  PcDescCache() { debug_only(_pc_descs[0] = nullptr); }
+  PcDescCache() { DEBUG_ONLY(_pc_descs[0] = nullptr); }
   void    init_to(PcDesc* initial_pc_desc);
   PcDesc* find_pc_desc(int pc_offset, bool approximate);
   void    add_pc_desc(PcDesc* pc_desc);
@@ -135,27 +136,27 @@ public:
 // nmethods (native methods) are the compiled code versions of Java methods.
 //
 // An nmethod contains:
-//  - header                 (the nmethod structure)
-//  [Relocation]
-//  - relocation information
-//  - constant part          (doubles, longs and floats used in nmethod)
-//  - oop table
-//  [Code]
-//  - code body
-//  - exception handler
-//  - stub code
-//  [Debugging information]
-//  - oop array
-//  - data array
-//  - pcs
-//  [Exception handler table]
-//  - handler entry point array
-//  [Implicit Null Pointer exception table]
-//  - implicit null table array
-//  [Speculations]
-//  - encoded speculations array
-//  [JVMCINMethodData]
-//  - meta data for JVMCI compiled nmethod
+//  - Header                 (the nmethod structure)
+//  - Constant part          (doubles, longs and floats used in nmethod)
+//  - Code part:
+//    - Code body
+//    - Exception handler
+//    - Stub code
+//    - OOP table
+//
+// As a CodeBlob, an nmethod references [mutable data] allocated on the C heap:
+//  - CodeBlob relocation data
+//  - Metainfo
+//  - JVMCI data
+//
+// An nmethod references [immutable data] allocated on C heap:
+//  - Dependency assertions data
+//  - Implicit null table array
+//  - Handler entry point array
+//  - Debugging information:
+//    - Scopes data array
+//    - Scopes pcs array
+//  - JVMCI speculations array
 
 #if INCLUDE_JVMCI
 class FailedSpeculation;
@@ -239,11 +240,11 @@ class nmethod : public CodeBlob {
   // Number of arguments passed on the stack
   uint16_t _num_stack_arg_slots;
 
-  // Offsets in mutable data section
-  // _oops_offset == _data_offset,  offset where embedded oop table begins (inside data)
-  uint16_t _metadata_offset; // embedded meta data table
+  uint16_t _oops_size;
 #if INCLUDE_JVMCI
-  uint16_t _jvmci_data_offset;
+  // _metadata_size is not specific to JVMCI. In the non-JVMCI case, it can be derived as:
+  // _metadata_size = mutable_data_size - relocation_size
+  uint16_t _metadata_size;
 #endif
 
   // Offset in immutable data section
@@ -264,7 +265,7 @@ class nmethod : public CodeBlob {
   CompLevel    _comp_level;            // compilation level (s1)
   CompilerType _compiler_type;         // which compiler made this nmethod (u1)
 
-  SCCEntry* _scc_entry;
+  AOTCodeEntry* _aot_code_entry;
 
   bool _used; // has this nmethod ever been invoked?
 
@@ -279,6 +280,7 @@ class nmethod : public CodeBlob {
           _has_method_handle_invokes:1,// Has this method MethodHandle invokes?
           _has_wide_vectors:1,         // Preserve wide vectors at safepoints
           _has_monitors:1,             // Fastpath monitor detection for continuations
+          _has_scoped_access:1,        // used by for shared scope closure (scopedMemoryAccess.cpp)
           _has_flushed_dependencies:1, // Used for maintenance of dependencies (under CodeCache_lock)
           _is_unlinked:1,              // mark during class unloading
           _load_reported:1,            // used by jvmti to track if an event has been posted for this nmethod
@@ -314,13 +316,15 @@ class nmethod : public CodeBlob {
           int frame_size,
           ByteSize basic_lock_owner_sp_offset, /* synchronized natives only */
           ByteSize basic_lock_sp_offset,       /* synchronized natives only */
-          OopMapSet* oop_maps);
+          OopMapSet* oop_maps,
+          int mutable_data_size);
 
   // For normal JIT compiled code
   nmethod(Method* method,
           CompilerType type,
           int nmethod_size,
           int immutable_data_size,
+          int mutable_data_size,
           int compile_id,
           int entry_bci,
           address immutable_data,
@@ -335,7 +339,7 @@ class nmethod : public CodeBlob {
           ImplicitExceptionTable* nul_chk_table,
           AbstractCompiler* compiler,
           CompLevel comp_level
-          , SCCEntry* scc_entry
+          , AOTCodeEntry* aot_code_entry
 #if INCLUDE_JVMCI
           , char* speculations = nullptr,
           int speculations_len = 0,
@@ -478,7 +482,35 @@ class nmethod : public CodeBlob {
   // transitions).
   void oops_do_set_strong_done(nmethod* old_head);
 
+  void record_nmethod_dependency();
+
+  nmethod* restore(address code_cache_buffer,
+                   const methodHandle& method,
+                   int compile_id,
+                   address reloc_data,
+                   GrowableArray<Handle>& oop_list,
+                   GrowableArray<Metadata*>& metadata_list,
+                   ImmutableOopMapSet* oop_maps,
+                   address immutable_data,
+                   GrowableArray<Handle>& reloc_imm_oop_list,
+                   GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                   AOTCodeReader* aot_code_reader);
+
 public:
+  // create nmethod using archived nmethod from AOT code cache
+  static nmethod* new_nmethod(nmethod* archived_nm,
+                              const methodHandle& method,
+                              AbstractCompiler* compiler,
+                              int compile_id,
+                              address reloc_data,
+                              GrowableArray<Handle>& oop_list,
+                              GrowableArray<Metadata*>& metadata_list,
+                              ImmutableOopMapSet* oop_maps,
+                              address immutable_data,
+                              GrowableArray<Handle>& reloc_imm_oop_list,
+                              GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                              AOTCodeReader* aot_code_reader);
+
   // create nmethod with entry_bci
   static nmethod* new_nmethod(const methodHandle& method,
                               int compile_id,
@@ -494,7 +526,7 @@ public:
                               ImplicitExceptionTable* nul_chk_table,
                               AbstractCompiler* compiler,
                               CompLevel comp_level
-                              , SCCEntry* scc_entry
+                              , AOTCodeEntry* aot_code_entry
 #if INCLUDE_JVMCI
                               , char* speculations = nullptr,
                               int speculations_len = 0,
@@ -514,6 +546,7 @@ public:
                                      int exception_handler = -1);
 
   Method* method       () const { return _method; }
+  uint16_t entry_bci   () const { return _entry_bci; }
   bool is_native_method() const { return _method != nullptr && _method->is_native(); }
   bool is_java_method  () const { return _method != nullptr && !_method->is_native(); }
   bool is_osr_method   () const { return _entry_bci != InvocationEntryBci; }
@@ -537,25 +570,26 @@ public:
   address insts_begin           () const { return           code_begin()   ; }
   address insts_end             () const { return           header_begin() + _stub_offset             ; }
   address stub_begin            () const { return           header_begin() + _stub_offset             ; }
-  address stub_end              () const { return           data_begin()   ; }
+  address stub_end              () const { return           code_end()     ; }
   address exception_begin       () const { return           header_begin() + _exception_offset        ; }
   address deopt_handler_begin   () const { return           header_begin() + _deopt_handler_offset    ; }
-  address deopt_mh_handler_begin() const { return           header_begin() + _deopt_mh_handler_offset ; }
+  address deopt_mh_handler_begin() const { return _deopt_mh_handler_offset != -1 ? (header_begin() + _deopt_mh_handler_offset) : nullptr; }
   address unwind_handler_begin  () const { return _unwind_handler_offset != -1 ? (insts_end() - _unwind_handler_offset) : nullptr; }
+  oop*    oops_begin            () const { return (oop*)    data_begin(); }
+  oop*    oops_end              () const { return (oop*)    data_end(); }
 
   // mutable data
-  oop*    oops_begin            () const { return (oop*)        data_begin(); }
-  oop*    oops_end              () const { return (oop*)       (data_begin() + _metadata_offset)      ; }
-  Metadata** metadata_begin     () const { return (Metadata**) (data_begin() + _metadata_offset)      ; }
+  Metadata** metadata_begin     () const { return (Metadata**) (mutable_data_begin() + _relocation_size); }
 #if INCLUDE_JVMCI
-  Metadata** metadata_end       () const { return (Metadata**) (data_begin() + _jvmci_data_offset)    ; }
-  address jvmci_data_begin      () const { return               data_begin() + _jvmci_data_offset     ; }
-  address jvmci_data_end        () const { return               data_end(); }
+  Metadata** metadata_end       () const { return (Metadata**) (mutable_data_begin() + _relocation_size + _metadata_size); }
+  address jvmci_data_begin      () const { return               mutable_data_begin() + _relocation_size + _metadata_size; }
+  address jvmci_data_end        () const { return               mutable_data_end(); }
 #else
-  Metadata** metadata_end       () const { return (Metadata**)  data_end(); }
+  Metadata** metadata_end       () const { return (Metadata**)  mutable_data_end(); }
 #endif
 
   // immutable data
+  void set_immutable_data(address data) { _immutable_data = data; }
   address immutable_data_begin  () const { return           _immutable_data; }
   address immutable_data_end    () const { return           _immutable_data + _immutable_data_size ; }
   address dependencies_begin    () const { return           _immutable_data; }
@@ -645,8 +679,8 @@ public:
   // alive.  It is used when an uncommon trap happens.  Returns true
   // if this thread changed the state of the nmethod or false if
   // another thread performed the transition.
-  bool  make_not_entrant(bool make_not_entrant = true);
-  bool  make_not_used() { return make_not_entrant(false); }
+  bool  make_not_entrant(const char* reason, bool make_not_entrant = true);
+  bool  make_not_used()    { return make_not_entrant("not used"); }
 
   bool  is_marked_for_deoptimization() const { return deoptimization_status() != not_marked; }
   bool  has_been_deoptimized() const { return deoptimization_status() == deoptimize_done; }
@@ -678,6 +712,9 @@ public:
 
   bool  has_monitors() const                      { return _has_monitors; }
   void  set_has_monitors(bool z)                  { _has_monitors = z; }
+
+  bool  has_scoped_access() const                 { return _has_scoped_access; }
+  void  set_has_scoped_access(bool z)             { _has_scoped_access = z; }
 
   bool  has_method_handle_invokes() const         { return _has_method_handle_invokes; }
   void  set_has_method_handle_invokes(bool z)     { _has_method_handle_invokes = z; }
@@ -724,8 +761,10 @@ public:
     return &metadata_begin()[index - 1];
   }
 
+  void copy_values(GrowableArray<Handle>* array);
   void copy_values(GrowableArray<jobject>* oops);
   void copy_values(GrowableArray<Metadata*>* metadata);
+  void copy_values(GrowableArray<address>* metadata) {} // Nothing to do
 
   // Relocation support
 private:
@@ -738,6 +777,8 @@ protected:
 public:
   void fix_oop_relocations(address begin, address end) { fix_oop_relocations(begin, end, false); }
   void fix_oop_relocations()                           { fix_oop_relocations(nullptr, nullptr, false); }
+
+  void create_reloc_immediates_list(JavaThread* thread, GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
 
   bool is_at_poll_return(address pc);
   bool is_at_poll_or_poll_return(address pc);
@@ -909,8 +950,9 @@ public:
 
   int orig_pc_offset() { return _orig_pc_offset; }
 
-  SCCEntry* scc_entry() const { return _scc_entry; }
-  bool is_scc() const { return scc_entry() != nullptr; }
+  AOTCodeEntry* aot_code_entry() const { return _aot_code_entry; }
+  bool is_aot() const { return aot_code_entry() != nullptr; }
+  void set_aot_code_entry(AOTCodeEntry* entry) { _aot_code_entry = entry; }
 
   bool     used() const { return _used; }
   void set_used()       { _used = true; }
@@ -922,7 +964,7 @@ public:
   void post_compiled_method_load_event(JvmtiThreadState* state = nullptr);
 
   // verify operations
-  void verify() override;
+  void verify();
   void verify_scopes();
   void verify_interrupt_point(address interrupt_point, bool is_inline_cache);
 
@@ -934,9 +976,9 @@ public:
   void decode(outputStream* st) const { decode2(st); } // just delegate here.
 
   // printing support
-  void print()                 const override;
-  void print(outputStream* st) const;
+  void print_on_impl(outputStream* st) const;
   void print_code();
+  void print_value_on_impl(outputStream* st) const;
 
 #if defined(SUPPORT_DATA_STRUCTS)
   // print output in opt build for disassembler library
@@ -944,7 +986,6 @@ public:
   void print_pcs_on(outputStream* st);
   void print_scopes() { print_scopes_on(tty); }
   void print_scopes_on(outputStream* st)          PRODUCT_RETURN;
-  void print_value_on(outputStream* st) const override;
   void print_handler_table();
   void print_nul_chk_table();
   void print_recorded_oop(int log_n, int index);
@@ -963,23 +1004,14 @@ public:
   void maybe_print_nmethod(const DirectiveSet* directive);
   void print_nmethod(bool print_code);
 
-  // need to re-define this from CodeBlob else the overload hides it
-  void print_on(outputStream* st) const override { CodeBlob::print_on(st); }
-  void print_on(outputStream* st, const char* msg) const;
+  void print_on_with_msg(outputStream* st, const char* msg) const;
 
   // Logging
   void log_identity(xmlStream* log) const;
   void log_new_nmethod() const;
-  void log_state_change() const;
+  void log_state_change(const char* reason) const;
 
   // Prints block-level comments, including nmethod specific block labels:
-  void print_block_comment(outputStream* stream, address block_begin) const override {
-#if defined(SUPPORT_ASSEMBLY) || defined(SUPPORT_ABSTRACT_ASSEMBLY)
-    print_nmethod_labels(stream, block_begin);
-    CodeBlob::print_block_comment(stream, block_begin);
-#endif
-  }
-
   void print_nmethod_labels(outputStream* stream, address block_begin, bool print_section_labels=true) const;
   const char* nmethod_section_label(address pos) const;
 
@@ -1017,6 +1049,23 @@ public:
 
   void make_deoptimized();
   void finalize_relocations();
+
+  void prepare_for_archiving_impl();
+
+  class Vptr : public CodeBlob::Vptr {
+    void print_on(const CodeBlob* instance, outputStream* st) const override {
+      ttyLocker ttyl;
+      instance->as_nmethod()->print_on_impl(st);
+    }
+    void print_value_on(const CodeBlob* instance, outputStream* st) const override {
+      instance->as_nmethod()->print_value_on_impl(st);
+    }
+    void prepare_for_archiving(CodeBlob* instance) const override {
+      ((nmethod*)instance)->prepare_for_archiving_impl();
+    };
+  };
+
+  static const Vptr _vpntr;
 };
 
 #endif // SHARE_CODE_NMETHOD_HPP

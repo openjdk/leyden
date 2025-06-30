@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "c1/c1_Compilation.hpp"
 #include "c1/c1_Compiler.hpp"
 #include "c1/c1_FrameMap.hpp"
@@ -31,7 +30,7 @@
 #include "c1/c1_MacroAssembler.hpp"
 #include "c1/c1_Runtime1.hpp"
 #include "c1/c1_ValueType.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDirectives.hpp"
 #include "interpreter/linkResolver.hpp"
@@ -49,17 +48,20 @@
 Compiler::Compiler() : AbstractCompiler(compiler_c1) {
 }
 
-void Compiler::init_c1_runtime() {
+bool Compiler::init_c1_runtime() {
   BufferBlob* buffer_blob = CompilerThread::current()->get_buffer_blob();
-  Runtime1::initialize(buffer_blob);
-  SCCache::init_c1_table();
   FrameMap::initialize();
+  if (!Runtime1::initialize(buffer_blob)) {
+    return false;
+  }
+  AOTCodeCache::init_c1_table();
   // initialize data structures
   ValueType::initialize();
   GraphBuilder::initialize();
   // note: to use more than one instance of LinearScan at a time this function call has to
   //       be moved somewhere outside of this constructor:
   Interval::initialize();
+  return true;
 }
 
 
@@ -68,12 +70,11 @@ void Compiler::initialize() {
   BufferBlob* buffer_blob = init_buffer_blob();
 
   if (should_perform_init()) {
-    if (buffer_blob == nullptr) {
+    if (buffer_blob == nullptr || !init_c1_runtime()) {
       // When we come here we are in state 'initializing'; entire C1 compilation
       // can be shut down.
       set_state(failed);
     } else {
-      init_c1_runtime();
       set_state(initialized);
     }
   }
@@ -158,8 +159,6 @@ bool Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_longBitsToDouble:
   case vmIntrinsics::_getClass:
   case vmIntrinsics::_isInstance:
-  case vmIntrinsics::_isPrimitive:
-  case vmIntrinsics::_getModifiers:
   case vmIntrinsics::_currentCarrierThread:
   case vmIntrinsics::_currentThread:
   case vmIntrinsics::_scopedValueCache:
@@ -169,6 +168,10 @@ bool Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_dsin:
   case vmIntrinsics::_dcos:
   case vmIntrinsics::_dtan:
+  #if defined(AMD64)
+  case vmIntrinsics::_dtanh:
+  case vmIntrinsics::_dcbrt:
+  #endif
   case vmIntrinsics::_dlog:
   case vmIntrinsics::_dlog10:
   case vmIntrinsics::_dexp:
@@ -224,7 +227,7 @@ bool Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_updateCRC32:
   case vmIntrinsics::_updateBytesCRC32:
   case vmIntrinsics::_updateByteBufferCRC32:
-#if defined(S390) || defined(PPC64) || defined(AARCH64)
+#if defined(S390) || defined(PPC64) || defined(AARCH64) || defined(AMD64)
   case vmIntrinsics::_updateBytesCRC32C:
   case vmIntrinsics::_updateDirectByteBufferCRC32C:
 #endif
@@ -252,21 +255,21 @@ bool Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
 
 void Compiler::compile_method(ciEnv* env, ciMethod* method, int entry_bci, bool install_code, DirectiveSet* directive) {
   CompileTask* task = env->task();
-  if (install_code && task->is_scc()) {
+  if (install_code && task->is_aot()) {
     assert(!task->preload(), "Pre-loading cached code is not implemeted for C1 code");
-    bool success = SCCache::load_nmethod(env, method, entry_bci, this, CompLevel(task->comp_level()));
+    bool success = AOTCodeCache::load_nmethod(env, method, entry_bci, this, CompLevel(task->comp_level()));
     if (success) {
       assert(task->is_success(), "sanity");
       return;
     }
-    SCCache::invalidate(task->scc_entry()); // mark scc_entry as not entrant
-    if (SCCache::is_code_load_thread_on() && !StoreCachedCode) {
-      // Bail out if failed to load cached code in SC thread
+    AOTCodeCache::invalidate(task->aot_code_entry()); // mark aot_code_entry as not entrant
+    if (AOTCodeCache::is_code_load_thread_on() && !AOTCodeCache::is_dumping_code()) {
+      // Bail out if failed to load AOT code in AOT Code Caching thread
       // unless the code is updating.
-      env->record_failure("Failed to load cached code");
+      env->record_failure("Failed to load AOT code");
       return;
     }
-    task->clear_scc();
+    task->clear_aot();
   }
   BufferBlob* buffer_blob = CompilerThread::current()->get_buffer_blob();
   assert(buffer_blob != nullptr, "Must exist");

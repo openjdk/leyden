@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -31,15 +31,16 @@
 #include "code/debugInfoRec.hpp"
 #include "code/dependencies.hpp"
 #include "code/exceptionHandlerTable.hpp"
+#include "compiler/cHeapStringHolder.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "compiler/compilerThread.hpp"
-#include "compiler/cHeapStringHolder.hpp"
 #include "oops/methodData.hpp"
 #include "runtime/javaThread.hpp"
 
 class CompileTask;
 class OopMapSet;
-class SCCEntry;
+class AOTCodeEntry;
+class AOTCodeReader;
 
 // ciEnv
 //
@@ -94,10 +95,6 @@ private:
   static ciSymbol*        _unloaded_cisymbol;
   static ciInstanceKlass* _unloaded_ciinstance_klass;
   static ciObjArrayKlass* _unloaded_ciobjarrayklass;
-
-  static jobject _ArrayIndexOutOfBoundsException_handle;
-  static jobject _ArrayStoreException_handle;
-  static jobject _ClassCastException_handle;
 
   ciInstance* _NullPointerException_instance;
   ciInstance* _ArithmeticException_instance;
@@ -296,6 +293,12 @@ private:
   // Helper routine for determining the validity of a compilation with
   // respect to method dependencies (e.g. concurrent class loading).
   void validate_compile_task_dependencies(ciMethod* target);
+
+  // Helper rountimes to factor out common code used by routines that register a method
+  // i.e. register_aot_method() and register_method()
+  bool is_compilation_valid(JavaThread* thread, ciMethod* target, bool preload, bool install_code, CodeBuffer* code_buffer, AOTCodeEntry* aot_code_entry);
+  void make_code_usable(JavaThread* thread, ciMethod* target, bool preload, int entry_bci, AOTCodeEntry* aot_code_entry, nmethod* nm);
+
 public:
   enum {
     MethodCompilable,
@@ -368,6 +371,20 @@ public:
   int comp_level();   // task()->comp_level()
   int compile_id();  // task()->compile_id()
 
+  // Register method loaded from AOT code cache
+  nmethod* register_aot_method(JavaThread* thread,
+                               ciMethod* target,
+                               AbstractCompiler* compiler,
+                               nmethod* archived_nm,
+                               address reloc_data,
+                               GrowableArray<Handle>& oop_list,
+                               GrowableArray<Metadata*>& metadata_list,
+                               ImmutableOopMapSet* oopmaps,
+                               address immutable_data,
+                               GrowableArray<Handle>& reloc_imm_oop_list,
+                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                               AOTCodeReader* aot_code_reader);
+
   // Register the result of a compilation.
   void register_method(ciMethod*                 target,
                        int                       entry_bci,
@@ -384,9 +401,10 @@ public:
                        bool                      has_unsafe_access,
                        bool                      has_wide_vectors,
                        bool                      has_monitors,
+                       bool                      has_scoped_access,
                        int                       immediate_oops_patched,
                        bool                      install_code,
-                       SCCEntry*                 entry = nullptr);
+                       AOTCodeEntry*             entry = nullptr);
 
   // Access to certain well known ciObjects.
 #define VM_CLASS_FUNC(name, ignore_s) \
@@ -404,11 +422,18 @@ public:
     assert(_ArithmeticException_instance != nullptr, "initialization problem");
     return _ArithmeticException_instance;
   }
-
-  // Lazy constructors:
-  ciInstance* ArrayIndexOutOfBoundsException_instance();
-  ciInstance* ArrayStoreException_instance();
-  ciInstance* ClassCastException_instance();
+  ciInstance* ArrayIndexOutOfBoundsException_instance() {
+    assert(_ArrayIndexOutOfBoundsException_instance != nullptr, "initialization problem");
+    return _ArrayIndexOutOfBoundsException_instance;
+  }
+  ciInstance* ArrayStoreException_instance() {
+    assert(_ArrayStoreException_instance != nullptr, "initialization problem");
+    return _ArrayStoreException_instance;
+  }
+  ciInstance* ClassCastException_instance() {
+    assert(_ClassCastException_instance != nullptr, "initialization problem");
+    return _ClassCastException_instance;
+  }
 
   ciInstance* the_null_string();
   ciInstance* the_min_jint_string();
@@ -470,11 +495,11 @@ public:
   void metadata_do(MetadataClosure* f) { _factory->metadata_do(f); }
 
 private:
-  SCCEntry* _scc_clinit_barriers_entry;
+  AOTCodeEntry* _aot_clinit_barriers_entry;
 
 public:
-  void  set_scc_clinit_barriers_entry(SCCEntry* entry) { _scc_clinit_barriers_entry = entry; }
-  SCCEntry* scc_clinit_barriers_entry()          const { return _scc_clinit_barriers_entry; }
+  void  set_aot_clinit_barriers_entry(AOTCodeEntry* entry) { _aot_clinit_barriers_entry = entry; }
+  AOTCodeEntry* aot_clinit_barriers_entry()          const { return _aot_clinit_barriers_entry; }
 
   // Replay support
 private:

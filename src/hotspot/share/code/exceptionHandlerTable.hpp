@@ -84,8 +84,8 @@ class HandlerTableEntry {
 
 class nmethod;
 class ExceptionHandlerTable {
-  friend class SCCache;
-  friend class SCCReader;
+  friend class AOTCodeCache;
+  friend class AOTCodeReader;
 
  private:
   HandlerTableEntry* _table;    // the table
@@ -147,8 +147,8 @@ class ExceptionHandlerTable {
 typedef  uint              implicit_null_entry;
 
 class ImplicitExceptionTable {
-  friend class SCCache;
-  friend class SCCReader;
+  friend class AOTCodeCache;
+  friend class AOTCodeReader;
  private:
   uint _size;
   uint _len;
@@ -159,7 +159,7 @@ class ImplicitExceptionTable {
   void set_len(int length) { _len = length; }
 
 public:
-  ImplicitExceptionTable( ) :  _size(0), _len(0), _data(0) { }
+  ImplicitExceptionTable( ) :  _size(0), _len(0), _data(nullptr) { }
   // (run-time) construction from nmethod
   ImplicitExceptionTable(const nmethod *nm);
 

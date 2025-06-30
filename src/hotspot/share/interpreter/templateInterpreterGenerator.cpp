@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "compiler/disassembler.hpp"
 #include "interpreter/interpreter.hpp"
 #include "interpreter/interpreterRuntime.hpp"
@@ -175,7 +174,9 @@ void TemplateInterpreterGenerator::generate_all() {
     Interpreter::_throw_StackOverflowError_entry             = generate_StackOverflowError_handler();
   }
 
-
+  { CodeletMark cm(_masm, "preemption resume adapter");
+    Interpreter::_cont_resume_interpreter_adapter = generate_cont_resume_interpreter_adapter();
+  }
 
 #define method_entry(kind)                                                                          \
   { CodeletMark cm(_masm, "method entry point (kind = " #kind ")");                                 \
@@ -185,13 +186,18 @@ void TemplateInterpreterGenerator::generate_all() {
   // all non-native method kinds
   method_entry(zerolocals)
   method_entry(zerolocals_synchronized)
+  method_entry(zerolocals_upcalls)
+  method_entry(zerolocals_synchronized_upcalls)
   method_entry(empty)
+  method_entry(empty_upcalls)
   method_entry(getter)
   method_entry(setter)
   method_entry(abstract)
   method_entry(java_lang_math_sin  )
   method_entry(java_lang_math_cos  )
   method_entry(java_lang_math_tan  )
+  method_entry(java_lang_math_tanh )
+  method_entry(java_lang_math_cbrt )
   method_entry(java_lang_math_abs  )
   method_entry(java_lang_math_sqrt )
   method_entry(java_lang_math_sqrt_strict)
@@ -220,6 +226,8 @@ void TemplateInterpreterGenerator::generate_all() {
 
   native_method_entry(native)
   native_method_entry(native_synchronized)
+  native_method_entry(native_upcalls)
+  native_method_entry(native_synchronized_upcalls)
 
   // Entries to intrinsics for native methods should follow
   // entries for `native` methods to use the same address in case
@@ -230,18 +238,12 @@ void TemplateInterpreterGenerator::generate_all() {
   native_method_entry(java_util_zip_CRC32_updateBytes)
   native_method_entry(java_util_zip_CRC32_updateByteBuffer)
 
-  native_method_entry(java_lang_Float_intBitsToFloat)
-  native_method_entry(java_lang_Float_floatToRawIntBits)
-  native_method_entry(java_lang_Double_longBitsToDouble)
-  native_method_entry(java_lang_Double_doubleToRawLongBits)
-
 #undef native_method_entry
 
   // Bytecodes
   set_entry_points_for_all_bytes();
 
   // installation of code in other places in the runtime
-  // (ExcutableCodeManager calls not needed to copy the entries)
   set_safepoints_for_all_bytes();
 
   { CodeletMark cm(_masm, "deoptimization entry points");
@@ -377,7 +379,6 @@ void TemplateInterpreterGenerator::generate_and_dispatch(Template* t, TosState t
   if (PrintBytecodePairHistogram)                                histogram_bytecode_pair(t);
   if (TraceBytecodes)                                            trace_bytecode(t);
   if (StopInterpreterAt > 0)                                     stop_interpreter_at();
-  __ verify_FPU(1, t->tos_in());
 #endif // !PRODUCT
   int step = 0;
   if (!t->does_dispatch()) {
@@ -406,42 +407,97 @@ void TemplateInterpreterGenerator::generate_and_dispatch(Template* t, TosState t
   }
 }
 
+bool TemplateInterpreterGenerator::is_synchronized_method(AbstractInterpreter::MethodKind kind) {
+  switch (kind) {
+    case Interpreter::zerolocals_synchronized        : // fall thru
+    case Interpreter::zerolocals_synchronized_upcalls: // fall thru
+    case Interpreter::native_synchronized            : // fall thru
+    case Interpreter::native_synchronized_upcalls    :
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool TemplateInterpreterGenerator::is_runtime_upcalls_method(AbstractInterpreter::MethodKind kind) {
+  switch (kind) {
+    case Interpreter::zerolocals_upcalls             : // fall thru
+    case Interpreter::zerolocals_synchronized_upcalls: // fall thru
+    case Interpreter::native_upcalls                 : // fall thru
+    case Interpreter::native_synchronized_upcalls    : // fall thru
+    case Interpreter::empty_upcalls                  :
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool TemplateInterpreterGenerator::is_intrinsic_method(AbstractInterpreter::MethodKind kind) {
+  switch (kind) {
+    case Interpreter::zerolocals                     : // fall thru
+    case Interpreter::zerolocals_synchronized        : // fall thru
+    case Interpreter::zerolocals_upcalls             : // fall thru
+    case Interpreter::zerolocals_synchronized_upcalls: // fall thru
+    case Interpreter::native                         : // fall thru
+    case Interpreter::native_synchronized            : // fall thru
+    case Interpreter::native_upcalls                 : // fall thru
+    case Interpreter::native_synchronized_upcalls    : // fall thru
+    case Interpreter::empty                          : // fall thru
+    case Interpreter::empty_upcalls                  : // fall thru
+    case Interpreter::getter                         : // fall thru
+    case Interpreter::setter                         : // fall thru
+    case Interpreter::abstract                       :
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool TemplateInterpreterGenerator::is_abstract_method(AbstractInterpreter::MethodKind kind) {
+  switch (kind) {
+    case Interpreter::abstract:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Generate method entries
 address TemplateInterpreterGenerator::generate_method_entry(
                                         AbstractInterpreter::MethodKind kind, bool native) {
-  // determine code generation flags
-  bool synchronized = false;
   address entry_point = nullptr;
 
-  switch (kind) {
-  case Interpreter::zerolocals             :                           break;
-  case Interpreter::zerolocals_synchronized: synchronized = true;      break;
-  case Interpreter::native                 :                           break;
-  case Interpreter::native_synchronized    : synchronized = true;      break;
-  case Interpreter::empty                  : break;
-  case Interpreter::getter                 : break;
-  case Interpreter::setter                 : break;
-  case Interpreter::abstract               : entry_point = generate_abstract_entry(); break;
-  default:
-    entry_point = generate_intrinsic_entry(kind); // process the rest
-    break;
+  if (is_abstract_method(kind)) {
+    entry_point = generate_abstract_entry();
+  } else if (is_intrinsic_method(kind)) {
+    entry_point = generate_intrinsic_entry(kind);
   }
 
   if (entry_point) {
     return entry_point;
   }
 
+  bool synchronized = is_synchronized_method(kind);
+  bool upcalls = is_runtime_upcalls_method(kind);
+
   // We expect the normal and native entry points to be generated first so we can reuse them.
-  if (native) {
-    entry_point = Interpreter::entry_for_kind(synchronized ? Interpreter::native_synchronized : Interpreter::native);
-    if (entry_point == nullptr) {
-      entry_point = generate_native_entry(synchronized);
-    }
-  } else {
-    entry_point = Interpreter::entry_for_kind(synchronized ? Interpreter::zerolocals_synchronized : Interpreter::zerolocals);
-    if (entry_point == nullptr) {
-      entry_point = generate_normal_entry(synchronized);
-    }
+  if (!synchronized && !upcalls) {
+    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native
+                                                     : Interpreter::zerolocals);
+  } else if (synchronized && !upcalls) {
+    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_synchronized
+                                                     : Interpreter::zerolocals_synchronized);
+  } else if (!synchronized && upcalls) {
+    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_upcalls
+                                                     : Interpreter::zerolocals_upcalls);
+  } else if (synchronized && upcalls) {
+    entry_point = Interpreter::entry_for_kind(native ? Interpreter::native_synchronized_upcalls
+                                                     : Interpreter::zerolocals_synchronized_upcalls);
+  }
+
+  if (entry_point == nullptr) {
+      entry_point = native ? generate_native_entry(synchronized, upcalls)
+                           : generate_normal_entry(synchronized, upcalls);
   }
 
   return entry_point;
@@ -459,6 +515,8 @@ address TemplateInterpreterGenerator::generate_intrinsic_entry(AbstractInterpret
   case Interpreter::java_lang_math_sin     : // fall thru
   case Interpreter::java_lang_math_cos     : // fall thru
   case Interpreter::java_lang_math_tan     : // fall thru
+  case Interpreter::java_lang_math_tanh    : // fall thru
+  case Interpreter::java_lang_math_cbrt    : // fall thru
   case Interpreter::java_lang_math_abs     : // fall thru
   case Interpreter::java_lang_math_log     : // fall thru
   case Interpreter::java_lang_math_log10   : // fall thru
@@ -487,21 +545,9 @@ address TemplateInterpreterGenerator::generate_intrinsic_entry(AbstractInterpret
                                            : entry_point = generate_Float_float16ToFloat_entry(); break;
   case Interpreter::java_lang_Float_floatToFloat16
                                            : entry_point = generate_Float_floatToFloat16_entry(); break;
-
-  // On x86_32 platforms, a special entry is generated for the following four methods.
-  // On other platforms the native entry is used to enter these methods.
-  case Interpreter::java_lang_Float_intBitsToFloat
-                                           : entry_point = generate_Float_intBitsToFloat_entry(); break;
-  case Interpreter::java_lang_Float_floatToRawIntBits
-                                           : entry_point = generate_Float_floatToRawIntBits_entry(); break;
-  case Interpreter::java_lang_Double_longBitsToDouble
-                                           : entry_point = generate_Double_longBitsToDouble_entry(); break;
-  case Interpreter::java_lang_Double_doubleToRawLongBits
-                                           : entry_point = generate_Double_doubleToRawLongBits_entry(); break;
   default:
     fatal("unexpected intrinsic method kind: %d", kind);
     break;
   }
   return entry_point;
 }
-

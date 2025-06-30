@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,9 +22,8 @@
  *
  */
 
-#include "precompiled.hpp"
+#include "cds/aotClassLinker.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classPreloader.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "logging/log.hpp"
 #include "logging/logMessage.hpp"
@@ -54,7 +53,7 @@ void DumpAllocStats::print_stats(int ro_all, int rw_all) {
   const char *sep = "--------------------+---------------------------+---------------------------+--------------------------";
   const char *hdr = "                        ro_cnt   ro_bytes     % |   rw_cnt   rw_bytes     % |  all_cnt  all_bytes     %";
 
-  LogMessage(cds) msg;
+  LogMessage(aot) msg;
 
   msg.debug("Detailed metadata info (excluding heap region):");
   msg.debug("%s", hdr);
@@ -120,8 +119,26 @@ void DumpAllocStats::print_stats(int ro_all, int rw_all) {
            _num_indy_cp_entries, _num_indy_cp_entries_archived,
            percent_of(_num_indy_cp_entries_archived, _num_indy_cp_entries),
            _num_indy_cp_entries_reverted);
-  msg.info("Platform loader initiated classes = %5d", ClassPreloader::num_platform_initiated_classes());
-  msg.info("App      loader initiated classes = %5d", ClassPreloader::num_app_initiated_classes());
-  msg.info("Dynamic proxy classes             = %5d%s", _num_dynamic_proxy_classes,
+  msg.info("Platform loader initiated classes = %6d", AOTClassLinker::num_platform_initiated_classes());
+  msg.info("App      loader initiated classes = %6d", AOTClassLinker::num_app_initiated_classes());
+  msg.info("Dynamic proxy classes             = %6d%s", _num_dynamic_proxy_classes,
            CDSConfig::is_dumping_full_module_graph() ? "" : " (not archiving FMG)");
+  msg.info("MethodCounters                    = %6d (%8d bytes)", _counts[RW][MethodCountersType],
+                                                                  _bytes [RW][MethodCountersType]);
+  msg.info("KlassTrainingData                 = %6d (%8d bytes)", _counts[RW][KlassTrainingDataType],
+                                                                  _bytes [RW][KlassTrainingDataType]);
+  msg.info("MethodTrainingData                = %6d (%8d bytes)", _counts[RW][MethodTrainingDataType],
+                                                                  _bytes [RW][MethodTrainingDataType]);
 }
+
+#ifdef ASSERT
+void DumpAllocStats::verify(int expected_byte_size, bool read_only) const {
+  int bytes = 0;
+  const int what = (int)(read_only ? RO : RW);
+  for (int type = 0; type < int(_number_of_types); type ++) {
+    bytes += _bytes[what][type];
+  }
+  assert(bytes == expected_byte_size, "counter mismatch (%s: %d vs %d)",
+         (read_only ? "RO" : "RW"), bytes, expected_byte_size);
+}
+#endif // ASSERT

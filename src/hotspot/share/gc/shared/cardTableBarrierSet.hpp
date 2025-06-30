@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -105,6 +105,11 @@ public:
   virtual void make_parsable(JavaThread* thread) { flush_deferred_card_mark_barrier(thread); }
 
   virtual void print_on(outputStream* st) const;
+
+  // The AOT code cache manager needs to know the current card shift
+  // and, for some barrier sets, the region grain size shift
+  uint card_shift() const { return _card_table->card_shift(); }
+  virtual uint grain_shift() { return 0; }
 
   template <DecoratorSet decorators, typename BarrierSetT = CardTableBarrierSet>
   class AccessBarrier: public ModRefBarrierSet::AccessBarrier<decorators, BarrierSetT> {};

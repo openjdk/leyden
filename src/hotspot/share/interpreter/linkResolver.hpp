@@ -99,7 +99,6 @@ class CallInfo : public StackObj {
   // Materialize a java.lang.invoke.ResolvedMethodName for this resolved_method
   void     set_resolved_method_name(TRAPS);
 
-  BasicType    result_type() const               { return selected_method()->result_type(); }
   CallKind     call_kind() const                 { return _call_kind; }
   int          vtable_index() const {
     // Even for interface calls the vtable index could be non-negative.
@@ -243,14 +242,14 @@ class LinkResolver: AllStatic {
                                                  Handle recv,
                                                  Klass* recv_klass,
                                                  bool check_null_and_abstract,
-                                                 bool need_selected_method, TRAPS);
+                                                 bool is_abstract_interpretation, TRAPS);
   static void runtime_resolve_interface_method  (CallInfo& result,
                                                  const methodHandle& resolved_method,
                                                  Klass* resolved_klass,
                                                  Handle recv,
                                                  Klass* recv_klass,
                                                  bool check_null_and_abstract,
-                                                 bool needs_selected_methods, TRAPS);
+                                                 bool is_abstract_interpretation, TRAPS);
 
   static bool resolve_previously_linked_invokehandle(CallInfo& result,
                                                      const LinkInfo& link_info,

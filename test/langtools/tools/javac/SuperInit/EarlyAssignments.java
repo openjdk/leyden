@@ -3,7 +3,6 @@
  * @bug 8325805
  * @summary Permit non-superclass instance field assignments before this/super in constructors
  * @compile/fail/ref=EarlyAssignments.out -XDrawDiagnostics EarlyAssignments.java
- * @enablePreview
  */
 public class EarlyAssignments {
 
@@ -155,6 +154,17 @@ public class EarlyAssignments {
 
         public Inner7() {
             x = 2;                              // FAIL - illegal early access
+            super();
+        }
+    }
+
+    public static class Inner8 {
+        class Inner8a {
+            int x;
+        }
+
+        public Inner8() {
+            this.new Inner8a().x = 1;           // FAIL - illegal early access
             super();
         }
     }

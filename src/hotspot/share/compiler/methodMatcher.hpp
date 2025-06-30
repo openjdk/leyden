@@ -26,8 +26,9 @@
 #define SHARE_COMPILER_METHODMATCHER_HPP
 
 #include "memory/allocation.hpp"
-#include "runtime/handles.hpp"
 #include "memory/resourceArea.hpp"
+#include "runtime/handles.hpp"
+#include "runtime/methodDetails.hpp"
 
 class MethodMatcher : public CHeapObj<mtCompiler> {
  public:
@@ -61,6 +62,7 @@ class MethodMatcher : public CHeapObj<mtCompiler> {
   static void parse_method_pattern(char*& line, const char*& error_msg, MethodMatcher* m);
   static void print_symbol(outputStream* st, Symbol* h, Mode mode);
   bool matches(const methodHandle& method) const;
+  bool matches(MethodDetails& method_details) const;
   void print_base(outputStream* st);
 
  private:
@@ -83,6 +85,7 @@ public:
 
   static BasicMatcher* parse_method_pattern(char* line, const char*& error_msg, bool expect_trailing_chars);
   bool match(const methodHandle& method);
+  bool match(MethodDetails& method_details);
   void set_next(BasicMatcher* next) { _next = next; }
   BasicMatcher* next() { return _next; }
 

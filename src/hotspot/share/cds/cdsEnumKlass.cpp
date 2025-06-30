@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/cdsEnumKlass.hpp"
 #include "cds/heapShared.hpp"
@@ -37,9 +36,8 @@
 
 bool CDSEnumKlass::is_enum_obj(oop orig_obj) {
   Klass* k = orig_obj->klass();
-  Klass* buffered_k = ArchiveBuilder::get_buffered_klass(k);
   return k->is_instance_klass() &&
-         InstanceKlass::cast(k)->java_super() == vmClasses::Enum_klass();
+         InstanceKlass::cast(k)->is_enum_subclass();
 }
 
 // -- Handling of Enum objects
@@ -73,104 +71,39 @@ void CDSEnumKlass::handle_enum_obj(int level,
   }
 
   ik->set_has_archived_enum_objs();
-  ArchiveBuilder::get_buffered_klass(ik)->set_has_archived_enum_objs();
 
   oop mirror = ik->java_mirror();
   for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
     if (fs.access_flags().is_static()) {
-      fieldDescriptor& fd = fs.field_descriptor();
-      if (fd.field_type() == T_OBJECT || fd.field_type() == T_ARRAY) {
-        archive_static_oop_field(level, subgraph_info, ik, mirror, fd);
-      } else {
-        archive_static_primitive_field(level, subgraph_info, ik, mirror, fd);
-      }
+      archive_static_field(level, subgraph_info, ik, mirror, fs);
     }
   }
 }
 
-bool CDSEnumKlass::can_archive_static_oop_field(InstanceKlass* enum_klass, oop obj) {
-  Klass* klass = obj->klass();
-  return klass == enum_klass
-      || klass == enum_klass->array_klass_or_null()
-      || klass == vmClasses::Double_klass()
-      || klass == vmClasses::Float_klass();
-}
-
-void CDSEnumKlass::archive_static_oop_field(int level, KlassSubGraphInfo* subgraph_info,
-                                            InstanceKlass* ik, oop mirror, fieldDescriptor& fd) {
+void CDSEnumKlass::archive_static_field(int level, KlassSubGraphInfo* subgraph_info,
+                                        InstanceKlass* ik, oop mirror, JavaFieldStream& fs) {
   ResourceMark rm;
+  fieldDescriptor& fd = fs.field_descriptor();
+  if (fd.field_type() != T_OBJECT && fd.field_type() != T_ARRAY) {
+    guarantee(false, "static field %s::%s must be T_OBJECT or T_ARRAY",
+              ik->external_name(), fd.name()->as_C_string());
+  }
   oop oop_field = mirror->obj_field(fd.offset());
   if (oop_field == nullptr) {
-    return;
-  }
-
-  if (!can_archive_static_oop_field(ik, oop_field)) {
+    guarantee(false, "static field %s::%s must not be null",
+              ik->external_name(), fd.name()->as_C_string());
+  } else if (oop_field->klass() != ik && oop_field->klass() != ik->array_klass_or_null()) {
     guarantee(false, "static field %s::%s is of the wrong type",
               ik->external_name(), fd.name()->as_C_string());
   }
   bool success = HeapShared::archive_reachable_objects_from(level, subgraph_info, oop_field);
   assert(success, "VM should have exited with unarchivable objects for _level > 1");
   int root_index = HeapShared::append_root(oop_field);
-  log_info(cds, heap)("Archived enum obj @%d %s::%s (" INTPTR_FORMAT ")",
+  log_info(aot, heap)("Archived enum obj @%d %s::%s (" INTPTR_FORMAT ")",
                       root_index, ik->external_name(), fd.name()->as_C_string(),
                       p2i((oopDesc*)oop_field));
   SystemDictionaryShared::add_enum_klass_static_field(ik, root_index);
 }
-
-
-void CDSEnumKlass::archive_static_primitive_field(int level, KlassSubGraphInfo* subgraph_info,
-                                                  InstanceKlass* ik, oop mirror, fieldDescriptor& fd) {
-  int v;
-  switch (fd.field_type()) {
-  case T_BOOLEAN:
-    v = mirror->bool_field(fd.offset());
-    SystemDictionaryShared::add_enum_klass_static_field(ik, v);
-    break;
-  case T_BYTE:
-    v = mirror->byte_field(fd.offset());
-    SystemDictionaryShared::add_enum_klass_static_field(ik, v);
-    break;
-  case T_SHORT:
-    v = mirror->short_field(fd.offset());
-    SystemDictionaryShared::add_enum_klass_static_field(ik, v);
-    break;
-  case T_CHAR:
-    v = mirror->char_field(fd.offset());
-    SystemDictionaryShared::add_enum_klass_static_field(ik, v);
-    break;
-  case T_INT:
-    v = mirror->int_field(fd.offset());
-    SystemDictionaryShared::add_enum_klass_static_field(ik, v);
-    break;
-  case T_LONG:
-    {
-      jlong value = mirror->long_field(fd.offset());
-      v = value & 0xffffffff;
-      SystemDictionaryShared::add_enum_klass_static_field(ik, v);
-      v = value > 32;
-      SystemDictionaryShared::add_enum_klass_static_field(ik, v);
-    }
-    break;
-  case T_FLOAT:
-    {            
-      jfloat value = mirror->float_field(fd.offset());
-      int* p = (int*)(&value);
-      SystemDictionaryShared::add_enum_klass_static_field(ik, *p);
-    }
-    break;
-  case T_DOUBLE:
-    {
-      jdouble value = mirror->double_field(fd.offset());
-      int* p = (int*)(&value);
-      SystemDictionaryShared::add_enum_klass_static_field(ik, p[0]);
-      SystemDictionaryShared::add_enum_klass_static_field(ik, p[1]);
-    }
-    break;
-  default:
-    ShouldNotReachHere();
-  }
-}
-
 
 bool CDSEnumKlass::initialize_enum_klass(InstanceKlass* k, TRAPS) {
   if (!ArchiveHeapLoader::is_in_use()) {
@@ -180,67 +113,21 @@ bool CDSEnumKlass::initialize_enum_klass(InstanceKlass* k, TRAPS) {
   RunTimeClassInfo* info = RunTimeClassInfo::get_for(k);
   assert(info != nullptr, "sanity");
 
-  if (log_is_enabled(Info, cds, heap)) {
+  if (log_is_enabled(Info, aot, heap)) {
     ResourceMark rm;
-    log_info(cds, heap)("Initializing Enum class: %s", k->external_name());
+    log_info(aot, heap)("Initializing Enum class: %s", k->external_name());
   }
 
   oop mirror = k->java_mirror();
   int i = 0;
   for (JavaFieldStream fs(k); !fs.done(); fs.next()) {
     if (fs.access_flags().is_static()) {
-      int v = info->enum_klass_static_field_root_index_at(i++);
+      int root_index = info->enum_klass_static_field_root_index_at(i++);
       fieldDescriptor& fd = fs.field_descriptor();
-      switch (fd.field_type()) {
-      case T_OBJECT:
-      case T_ARRAY:
-        mirror->obj_field_put(fd.offset(), HeapShared::get_root(v, /*clear=*/true));
-        break;
-      case T_BOOLEAN:
-        mirror->bool_field_put(fd.offset(), v ? true : false);
-        break;
-      case T_BYTE:
-        mirror->byte_field_put(fd.offset(), (jbyte)v);
-        break;
-      case T_SHORT:
-        mirror->short_field_put(fd.offset(), (jshort)v);
-        break;
-      case T_CHAR:
-        mirror->char_field_put(fd.offset(), (jchar)v);
-        break;
-      case T_INT:
-        mirror->int_field_put(fd.offset(), v);
-        break;
-      case T_LONG:
-        {
-          int v2 = info->enum_klass_static_field_root_index_at(i++);
-          jlong lv = v2;
-          lv <<= 32;
-          lv += v;
-          mirror->long_field_put(fd.offset(), lv);
-        }
-        break;
-      case T_FLOAT:
-        {            
-          jfloat* p = (float*)&v;
-          mirror->float_field_put(fd.offset(), *p);
-        }
-        break;
-      case T_DOUBLE:
-        {
-          int v2 = info->enum_klass_static_field_root_index_at(i++);
-          jdouble d = 0;
-          int* p = (int*)(&d);
-          p[0] = v;
-          p[1] = v2;
-          mirror->double_field_put(fd.offset(), d);
-        }
-        break;
-      default:
-        ShouldNotReachHere();
-      }
+      assert(fd.field_type() == T_OBJECT || fd.field_type() == T_ARRAY, "must be");
+      mirror->obj_field_put(fd.offset(), HeapShared::get_root(root_index, /*clear=*/true));
     }
   }
   return true;
 }
-#endif
+#endif // INCLUDE_CDS_JAVA_HEAP

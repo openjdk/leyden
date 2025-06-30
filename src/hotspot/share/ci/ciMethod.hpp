@@ -197,13 +197,15 @@ class ciMethod : public ciMetadata {
   // Code size for inlining decisions.
   int code_size_for_inlining();
 
-  bool caller_sensitive()       const { return get_Method()->caller_sensitive();       }
-  bool force_inline()           const { return get_Method()->force_inline();           }
-  bool dont_inline()            const { return get_Method()->dont_inline();            }
-  bool intrinsic_candidate()    const { return get_Method()->intrinsic_candidate();    }
-  bool is_static_initializer()  const { return get_Method()->is_static_initializer();  }
-  bool changes_current_thread() const { return get_Method()->changes_current_thread(); }
-  bool deprecated()             const { return is_loaded() && get_Method()->deprecated(); }
+  bool caller_sensitive()           const { return get_Method()->caller_sensitive();           }
+  bool force_inline()               const { return get_Method()->force_inline();               }
+  bool dont_inline()                const { return get_Method()->dont_inline();                }
+  bool intrinsic_candidate()        const { return get_Method()->intrinsic_candidate();        }
+  bool is_static_initializer()      const { return get_Method()->is_static_initializer();      }
+  bool changes_current_thread()     const { return get_Method()->changes_current_thread();     }
+  bool deprecated()                 const { return is_loaded() && get_Method()->deprecated();  }
+  bool has_upcall_on_method_entry() const { return get_Method()->has_upcall_on_method_entry(); }
+  bool has_upcall_on_method_exit()  const { return get_Method()->has_upcall_on_method_exit();  }
 
   bool check_intrinsic_candidate() const {
     if (intrinsic_id() == vmIntrinsics::_blackhole) {
@@ -355,7 +357,6 @@ class ciMethod : public ciMetadata {
   bool is_getter      () const;
   bool is_setter      () const;
   bool is_accessor    () const;
-  bool is_initializer () const;
   bool is_empty       () const;
   bool can_be_statically_bound() const           { return _can_be_statically_bound; }
   bool has_reserved_stack_access() const         { return _has_reserved_stack_access; }
@@ -363,6 +364,8 @@ class ciMethod : public ciMetadata {
   bool is_unboxing_method() const;
   bool is_vector_method() const;
   bool is_object_initializer() const;
+  bool is_scoped() const;
+  bool is_old() const;
 
   bool can_be_statically_bound(ciInstanceKlass* context) const;
 

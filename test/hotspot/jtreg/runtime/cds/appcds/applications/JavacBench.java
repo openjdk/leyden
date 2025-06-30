@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,7 +26,7 @@
  * @test id=static
  * @summary Run JavacBenchApp with the classic static archive workflow
  * @requires vm.cds
- * @library /test/lib
+ * @library /test/lib /test/setup_aot
  * @run driver JavacBench STATIC
  */
 
@@ -34,8 +34,19 @@
  * @test id=dynamic
  * @summary Run JavacBenchApp with the classic dynamic archive workflow
  * @requires vm.cds
- * @library /test/lib
- * @run driver JavacBench DYNAMIC
+ * @library /test/lib /test/setup_aot
+ * @build jdk.test.whitebox.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. JavacBench DYNAMIC
+ */
+
+/*
+ * @test id=aot
+ * @requires vm.cds.supports.aot.class.linking
+ * @summary Run JavacBenchApp with AOT cache (JEP 483)
+ * @requires vm.cds
+ * @library /test/lib /test/setup_aot
+ * @run driver JavacBench AOT
  */
 
 /*
@@ -43,22 +54,12 @@
  * @summary Run JavacBenchApp with Leyden workflow
  * @requires vm.cds
  * @requires vm.cds.write.archived.java.heap
- * @library /test/lib
+ * @library /test/lib /test/setup_aot
  * @run driver JavacBench LEYDEN
- */
-
-/*
- * @test id=leyden_old
- * @summary Run JavacBenchApp with the "OLD" Leyden workflow
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @library /test/lib
- * @run driver JavacBench LEYDEN_OLD
  */
 
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
-import jdk.test.lib.process.OutputAnalyzer;
 
 public class JavacBench {
     static String mainClass = JavacBenchApp.class.getName();

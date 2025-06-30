@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -21,12 +21,11 @@
  * questions.
  */
 
-#include "precompiled.hpp"
+#include "classfile/moduleEntry.hpp"
 #include "classfile/vmClasses.hpp"
+#include "classfile/vmSymbols.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
-#include "classfile/moduleEntry.hpp"
-#include "classfile/vmSymbols.hpp"
 #include "jvmci/jvmciEnv.hpp"
 #include "jvmci/jvmciRuntime.hpp"
 #include "oops/objArrayOop.inline.hpp"
@@ -49,7 +48,7 @@ JVMCICompiler::JVMCICompiler() : AbstractCompiler(compiler_jvmci) {
 
 JVMCICompiler* JVMCICompiler::instance(bool require_non_null, TRAPS) {
   if (!EnableJVMCI) {
-    THROW_MSG_NULL(vmSymbols::java_lang_InternalError(), "JVMCI is not enabled")
+    THROW_MSG_NULL(vmSymbols::java_lang_InternalError(), JVMCI_NOT_ENABLED_ERROR_MESSAGE)
   }
   if (_instance == nullptr && require_non_null) {
     THROW_MSG_NULL(vmSymbols::java_lang_InternalError(), "The JVMCI compiler instance has not been created");
@@ -87,10 +86,10 @@ void JVMCICompiler::bootstrap(TRAPS) {
   int len = objectMethods->length();
   for (int i = 0; i < len; i++) {
     methodHandle mh(THREAD, objectMethods->at(i));
-    if (!mh->is_native() && !mh->is_static() && !mh->is_initializer()) {
+    if (!mh->is_native() && !mh->is_static() && !mh->is_object_initializer() && !mh->is_static_initializer()) {
       ResourceMark rm;
       int hot_count = 10; // TODO: what's the appropriate value?
-      CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, mh, hot_count, false, CompileTask::Reason_Bootstrap, CHECK);
+      CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, hot_count, false, CompileTask::Reason_Bootstrap, CHECK);
     }
   }
 
@@ -198,6 +197,15 @@ void JVMCICompiler::print_timers() {
   tty->cr();
   tty->print_cr("    JVMCI Hosted Time:");
   _hosted_code_installs.print_on(tty, "       Install Code:   ");
+}
+
+bool JVMCICompiler::is_intrinsic_supported(const methodHandle& method) {
+  vmIntrinsics::ID id = method->intrinsic_id();
+  assert(id != vmIntrinsics::_none, "must be a VM intrinsic");
+  JavaThread* thread = JavaThread::current();
+  JVMCIEnv jvmciEnv(thread, __FILE__, __LINE__);
+  JVMCIRuntime* runtime = JVMCI::compiler_runtime(thread, false);
+  return runtime->is_intrinsic_supported(&jvmciEnv, (jint) id);
 }
 
 void JVMCICompiler::CodeInstallStats::print_on(outputStream* st, const char* prefix) const {

@@ -1,4 +1,4 @@
-# Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -187,7 +187,7 @@ function dump_one_jvm () {
     local APPID=$APP-jvm$1
 
     if $JAVA --version > /dev/null; then
-        if $JAVA -XX:+PrintFlagsFinal --version | grep ArchiveInvokeDynamic > /dev/null; then
+        if $JAVA -XX:+PrintFlagsFinal --version | grep CDSManualFinalImage > /dev/null; then
             local is_premain=1
             local type_msg="(premain 5 step)"
         else
@@ -214,7 +214,7 @@ function dump_one_jvm () {
 
     else
         # FIXME -- add support for new workflow
-        LEYDEN_OPTS="-XX:+ArchiveInvokeDynamic"
+        LEYDEN_OPTS="-XX:+AOTClassLinking"
 
         echo "(Premain STEP 1 of 5) Dump classlist"
         (set -x; $JAVA -Xshare:off -XX:DumpLoadedClassList=$APPID.classlist $CMDLINE) || exit 1
@@ -227,13 +227,13 @@ function dump_one_jvm () {
 
         echo "(Premain STEP 3 of 5) Run with $APPID-static.jsa and dump profile in $APPID-dynamic.jsa (With Training Data Replay)"
         rm -f $APPID-dynamic.dump.log
-        (set -x; $JAVA -XX:SharedArchiveFile=$APPID-static.jsa -XX:ArchiveClassesAtExit=$APPID-dynamic.jsa -XX:+RecordTraining \
+        (set -x; $JAVA -XX:SharedArchiveFile=$APPID-static.jsa -XX:ArchiveClassesAtExit=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTRecordTraining \
                        -Xlog:cds=debug,cds+class=debug:file=$APPID-dynamic.dump.log::filesize=0 $CMDLINE) || exit 1
 
         echo "(Premain  4 of 5) Run with $APPID-dynamic.jsa and generate AOT code"
         rm -f $APPID-store-sc.log
-        (set -x; $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+ReplayTraining -XX:+StoreCachedCode \
-                       -Xlog:scc*=warning:file=$APPID-store-sc.log::filesize=0 \
+        (set -x; $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+StoreCachedCode \
+                       -Xlog:aot+codecache*=warning:file=$APPID-store-sc.log::filesize=0 \
                        -XX:CachedCodeFile=$APPID-dynamic.jsa-sc -XX:CachedCodeMaxSize=100M $CMDLINE) || exit 1
 
     fi
@@ -260,13 +260,13 @@ function exec_one_jvm () {
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_xon.$2)
         (set -x;
-         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+ReplayTraining \
+         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining \
               $CMDLINE 2> logs/${1}_td.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_td.$2)
         (set -x;
-         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+ReplayTraining -XX:+LoadCachedCode \
-              -XX:CachedCodeFile=$APPID-dynamic.jsa-sc -Xlog:scc=error \
+         perf stat -r $REPEAT $JAVA -XX:SharedArchiveFile=$APPID-dynamic.jsa -XX:+UnlockDiagnosticVMOptions -XX:+AOTReplayTraining -XX:+LoadCachedCode \
+              -XX:CachedCodeFile=$APPID-dynamic.jsa-sc -Xlog:aot+codecache=error \
               $CMDLINE 2> logs/${1}_aot.$2
         )
         RUNLOG=$RUNLOG,$(get_elapsed logs/${1}_aot.$2)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -41,8 +41,7 @@ class ArchiveHeapInfo {
   MemRegion _buffer_region;             // Contains the archived objects to be written into the CDS archive.
   CHeapBitMap _oopmap;
   CHeapBitMap _ptrmap;
-  size_t _heap_roots_offset;            // Offset of the HeapShared::roots() object, from the bottom
-                                        // of the archived heap objects, in bytes.
+  HeapRootSegments _heap_root_segments;
 
 public:
   ArchiveHeapInfo() : _buffer_region(), _oopmap(128, mtClassShared), _ptrmap(128, mtClassShared) {}
@@ -57,8 +56,8 @@ public:
   CHeapBitMap* oopmap() { return &_oopmap; }
   CHeapBitMap* ptrmap() { return &_ptrmap; }
 
-  void set_heap_roots_offset(size_t n) { _heap_roots_offset = n; }
-  size_t heap_roots_offset() const { return _heap_roots_offset; }
+  void set_heap_root_segments(HeapRootSegments segments) { _heap_root_segments = segments; };
+  HeapRootSegments heap_root_segments() { return _heap_root_segments; }
 };
 
 #if INCLUDE_CDS_JAVA_HEAP
@@ -74,8 +73,9 @@ class ArchiveHeapWriter : AllStatic {
   // - "source objects" are regular Java objects allocated during the execution
   //   of "java -Xshare:dump". They can be used as regular oops.
   //
-  //   HeapShared::archive_objects() recursively searches for the oops that need to be
-  //   stored into the CDS archive. These are entered into HeapShared::archived_object_cache().
+  //   Between HeapShared::start_scanning_for_oops() and HeapShared::end_scanning_for_oops(),
+  //   we recursively search for the oops that need to be stored into the CDS archive.
+  //   These are entered into HeapShared::archived_object_cache().
   //
   // - "buffered objects" are copies of the "source objects", and are stored in into
   //   ArchiveHeapWriter::_buffer, which is a GrowableArray that sits outside of
@@ -113,6 +113,11 @@ class ArchiveHeapWriter : AllStatic {
 public:
   static const intptr_t NOCOOPS_REQUESTED_BASE = 0x10000000;
 
+  // The minimum region size of all collectors that are supported by CDS.
+  // G1 heap region size can never be smaller than 1M.
+  // Shenandoah heap region size can never be smaller than 256K.
+  static constexpr int MIN_GC_REGION_ALIGNMENT = 256 * K;
+
 private:
   class EmbeddedOopRelocator;
   struct NativePointerInfo {
@@ -120,20 +125,13 @@ private:
     int _field_offset;
   };
 
-  // The minimum region size of all collectors that are supported by CDS in
-  // ArchiveHeapLoader::can_map() mode. Currently only G1 is supported. G1's region size
-  // depends on -Xmx, but can never be smaller than 1 * M.
-  // (TODO: Perhaps change to 256K to be compatible with Shenandoah)
-  static constexpr int MIN_GC_REGION_ALIGNMENT = 1 * M;
-
   static GrowableArrayCHeap<u1, mtClassShared>* _buffer;
 
   // The number of bytes that have written into _buffer (may be smaller than _buffer->length()).
   static size_t _buffer_used;
 
-  // The bottom of the copy of Heap::roots() inside this->_buffer.
-  static size_t _heap_roots_offset;
-  static size_t _heap_roots_word_size;
+  // The heap root segments information.
+  static HeapRootSegments _heap_root_segments;
 
   // The address range of the requested location of the archived heap objects.
   static address _requested_bottom;
@@ -141,7 +139,6 @@ private:
 
   static GrowableArrayCHeap<NativePointerInfo, mtClassShared>* _native_pointers;
   static GrowableArrayCHeap<oop, mtClassShared>* _source_objs;
-  static GrowableArrayCHeap<oop, mtClassShared>* _perm_objs;
 
   // We sort _source_objs_order to minimize the number of bits in ptrmap and oopmap.
   // See comments near the body of ArchiveHeapWriter::compare_objs_by_oop_fields().
@@ -195,13 +192,12 @@ private:
     return buffered_addr - buffer_bottom();
   }
 
-  static size_t create_objarray_in_buffer(GrowableArrayCHeap<oop, mtClassShared>* input, int from,
-                                          int num_elms, int extra_length, size_t& objarray_word_size);
-  static int copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots, GrowableArray<size_t>* permobj_seg_offsets);
-  template <typename T> static void add_permobj_segments_to_roots(GrowableArrayCHeap<oop, mtClassShared>* roots,
-                                                                  ArchiveHeapInfo* info, GrowableArray<size_t>* permobj_seg_offsets);
-  static void update_stats(oop src_obj);
+  static void root_segment_at_put(objArrayOop segment, int index, oop root);
+  static objArrayOop allocate_root_segment(size_t offset, int element_count);
+  static void copy_roots_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots);
+  static void copy_source_objs_to_buffer(GrowableArrayCHeap<oop, mtClassShared>* roots);
   static size_t copy_one_source_obj_to_buffer(oop src_obj);
+  static void update_stats(oop src_obj);
 
   static void maybe_fill_gc_region_gap(size_t required_byte_size);
   static size_t filler_array_byte_size(int length);
@@ -209,8 +205,7 @@ private:
   static HeapWord* init_filler_array_at_buffer_top(int array_length, size_t fill_bytes);
 
   static void set_requested_address(ArchiveHeapInfo* info);
-  static void relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassShared>* roots, ArchiveHeapInfo* info,
-                                     GrowableArray<size_t>* permobj_seg_offsets, int num_permobj);
+  static void relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassShared>* roots, ArchiveHeapInfo* info);
   static void compute_ptrmap(ArchiveHeapInfo *info);
   static bool is_in_requested_range(oop o);
   static oop requested_obj_from_buffer_offset(size_t offset);
@@ -226,26 +221,12 @@ private:
   template <typename T> static T* requested_addr_to_buffered_addr(T* p);
   template <typename T> static void relocate_field_in_buffer(T* field_addr_in_buffer, CHeapBitMap* oopmap);
   template <typename T> static void mark_oop_pointer(T* buffered_addr, CHeapBitMap* oopmap);
-  template <typename T> static void relocate_root_at(oop requested_roots, address buffered_roots_addr, int index, CHeapBitMap* oopmap);
 
   static void update_header_for_requested_obj(oop requested_obj, oop src_obj, Klass* src_klass);
 
-  // "Permanent Objects"
-  //
-  // These objects are guaranteed to be in the heap at runtime. The AOT can use
-  // HeapShared::get_archived_object_permanent_index() and HeapShared::get_archived_object() to
-  // inline these objects into the AOT cache.
-  //
-  // Currently all archived objects are "permanent". We may want to narrow the scope ....
-  //
-  // The permobjs are divided into multiple segments, each containing 64K elements (or 4096 in debug builds).
-  // This is to avoid overflowing MIN_GC_REGION_ALIGNMENT.
-  static constexpr int PERMOBJ_SEGMENT_MAX_SHIFT  = DEBUG_ONLY(12) NOT_DEBUG(16);
-  static constexpr int PERMOBJ_SEGMENT_MAX_LENGTH = 1 << PERMOBJ_SEGMENT_MAX_SHIFT;
-  static constexpr int PERMOBJ_SEGMENT_MAX_MASK   = PERMOBJ_SEGMENT_MAX_LENGTH - 1;
-
   static int compare_objs_by_oop_fields(HeapObjOrder* a, HeapObjOrder* b);
   static void sort_source_objs();
+
 public:
   static void init() NOT_CDS_JAVA_HEAP_RETURN;
   static void add_source_obj(oop src_obj);
@@ -254,34 +235,13 @@ public:
   static bool is_string_too_large_to_archive(oop string);
   static void write(GrowableArrayCHeap<oop, mtClassShared>*, ArchiveHeapInfo* heap_info);
   static address requested_address();  // requested address of the lowest achived heap object
-  static oop heap_roots_requested_address(); // requested address of HeapShared::roots()
-  static address buffered_heap_roots_addr() {
-    return offset_to_buffered_address<address>(_heap_roots_offset);
-  }
-  static size_t heap_roots_word_size() {
-    return _heap_roots_word_size;
-  }
   static size_t get_filler_size_at(address buffered_addr);
-  static int get_permobj_segment_at(address buffered_addr, size_t* byte_size, int* permobj_segment_length);
-  static oop get_permobj_source_addr(int permobj_segment, int index);
-  static oop get_perm_object_by_index(int permanent_index);
 
   static void mark_native_pointer(oop src_obj, int offset);
   static bool is_marked_as_native_pointer(ArchiveHeapInfo* heap_info, oop src_obj, int field_offset);
   static oop source_obj_to_requested_obj(oop src_obj);
   static oop buffered_addr_to_source_obj(address buffered_addr);
   static address buffered_addr_to_requested_addr(address buffered_addr);
-
-  // Archived heap object headers carry pre-computed narrow Klass ids calculated with the
-  // following scheme:
-  // 1) the encoding base must be the mapping start address.
-  // 2) shift must be large enough to result in an encoding range that covers the runtime Klass range.
-  //    That Klass range is defined by CDS archive size and runtime class space size. Luckily, the maximum
-  //    size can be predicted: archive size is assumed to be <1G, class space size capped at 3G, and at
-  //    runtime we put both regions adjacent to each other. Therefore, runtime Klass range size < 4G.
-  //    Since nKlass itself is 32 bit, our encoding range len is 4G, and since we set the base directly
-  //    at mapping start, these 4G are enough. Therefore, we don't need to shift at all (shift=0).
-  static constexpr int precomputed_narrow_klass_shift = 0;
 
 };
 #endif // INCLUDE_CDS_JAVA_HEAP

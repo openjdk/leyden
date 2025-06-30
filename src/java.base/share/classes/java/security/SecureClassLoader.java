@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,17 +25,19 @@
 
 package java.security;
 
-import sun.security.util.Debug;
-
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import jdk.internal.misc.CDS;
 
 /**
  * This class extends {@code ClassLoader} with additional support for defining
- * classes with an associated code source and permissions which are
- * retrieved by the system policy by default.
+ * classes with an associated code source and permissions.
+ *
+ * @apiNote
+ * Permissions cannot be used for controlling access to resources
+ * as the Security Manager is no longer supported.
  *
  * @author  Li Gong
  * @author  Roland Schemers
@@ -63,15 +65,7 @@ public class SecureClassLoader extends ClassLoader {
      * Creates a new {@code SecureClassLoader} using the specified parent
      * class loader for delegation.
      *
-     * <p>If there is a security manager, this method first
-     * calls the security manager's {@code checkCreateClassLoader}
-     * method  to ensure creation of a class loader is allowed.
-     *
      * @param parent the parent ClassLoader
-     * @throws     SecurityException  if a security manager exists and its
-     *             {@code checkCreateClassLoader} method doesn't allow
-     *             creation of a class loader.
-     * @see SecurityManager#checkCreateClassLoader
      */
     protected SecureClassLoader(ClassLoader parent) {
         super(parent);
@@ -80,15 +74,6 @@ public class SecureClassLoader extends ClassLoader {
     /**
      * Creates a new {@code SecureClassLoader} using the default parent class
      * loader for delegation.
-     *
-     * <p>If there is a security manager, this method first
-     * calls the security manager's {@code checkCreateClassLoader}
-     * method  to ensure creation of a class loader is allowed.
-     *
-     * @throws     SecurityException  if a security manager exists and its
-     *             {@code checkCreateClassLoader} method doesn't allow
-     *             creation of a class loader.
-     * @see SecurityManager#checkCreateClassLoader
      */
     protected SecureClassLoader() {
         super();
@@ -102,10 +87,6 @@ public class SecureClassLoader extends ClassLoader {
      * @param parent the parent class loader
      *
      * @throws IllegalArgumentException if the given name is empty.
-     *
-     * @throws SecurityException  if a security manager exists and its
-     *         {@link SecurityManager#checkCreateClassLoader()} method
-     *         doesn't allow creation of a class loader.
      *
      * @since 9
      */
@@ -191,19 +172,12 @@ public class SecureClassLoader extends ClassLoader {
      *
      * @param codesource the codesource.
      *
-     * @return the permissions granted to the codesource.
+     * @return the permissions for the codesource.
      *
      */
     protected PermissionCollection getPermissions(CodeSource codesource)
     {
         return new Permissions(); // ProtectionDomain defers the binding
-    }
-
-    /*
-     * holder class for the static field "debug" to delay its initialization
-     */
-    private static class DebugHolder {
-        private static final Debug debug = Debug.getInstance("scl");
     }
 
     /*
@@ -227,10 +201,6 @@ public class SecureClassLoader extends ClassLoader {
                         = SecureClassLoader.this.getPermissions(key.cs);
                 ProtectionDomain pd = new ProtectionDomain(
                         key.cs, perms, SecureClassLoader.this, null);
-                if (DebugHolder.debug != null) {
-                    DebugHolder.debug.println(" getPermissions " + pd);
-                    DebugHolder.debug.println("");
-                }
                 return pd;
             }
         });
@@ -260,6 +230,15 @@ public class SecureClassLoader extends ClassLoader {
      * Called by the VM, during -Xshare:dump
      */
     private void resetArchivedStates() {
-        pdcache.clear();
+        if (CDS.isDumpingProtectionDomains()) {
+            if (System.getProperty("cds.debug.archived.protection.domains") != null) {
+                for (Map.Entry<CodeSourceKey, ProtectionDomain> entry : pdcache.entrySet()) {
+                    CodeSourceKey key = entry.getKey();
+                    System.out.println("Archiving ProtectionDomain " + key.cs + " for " + this);
+                }
+            }            
+        } else {
+            pdcache.clear();
+        }
     }
 }

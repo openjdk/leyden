@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,11 +22,10 @@
  *
  */
 
-#include "precompiled.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
-#include "cds/classPrelinker.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.hpp"
@@ -62,7 +61,7 @@ void ClassListWriter::write(const InstanceKlass* k, const ClassFileStream* cfs) 
   assert(is_enabled(), "must be");
 
   if (!ClassLoader::has_jrt_entry()) {
-    log_warning(cds)("DumpLoadedClassList and CDS are not supported in exploded build");
+    log_warning(aot)("DumpLoadedClassList and CDS are not supported in exploded build");
     DumpLoadedClassList = nullptr;
     return;
   }
@@ -184,6 +183,8 @@ void ClassListWriter::write_to_stream(const InstanceKlass* k, outputStream* stre
       }
     }
 
+    // NB: the string following "source: " is not really a proper file name, but rather
+    // a truncated URI referring to a file. It must be decoded after reading.
 #ifdef _WINDOWS
     // "file:/C:/dir/foo.jar" -> "C:/dir/foo.jar"
     stream->print(" source: %s", cfs->source() + 6);
@@ -257,7 +258,7 @@ void ClassListWriter::write_reflection_data_for(InstanceKlass* ik) {
   }
   if (java_lang_Class::has_reflection_data(ik->java_mirror())) {
     EXCEPTION_MARK;
-    int rd_flags = ClassPrelinker::class_reflection_data_flags(ik, THREAD);
+    int rd_flags = AOTConstantPoolResolver::class_reflection_data_flags(ik, THREAD);
     if (!HAS_PENDING_EXCEPTION) {
       // We can't hold the lock when doing the upcall inside class_reflection_data_flags()
       MutexLocker lock2(ClassListFile_lock, Mutex::_no_safepoint_check_flag);
@@ -320,9 +321,7 @@ void ClassListWriter::write_resolved_constants_for(InstanceKlass* ik) {
     if (field_entries != nullptr) {
       for (int i = 0; i < field_entries->length(); i++) {
         ResolvedFieldEntry* rfe = field_entries->adr_at(i);
-        if (rfe->is_resolved(Bytecodes::_getstatic) ||
-            rfe->is_resolved(Bytecodes::_putstatic) ||
-            rfe->is_resolved(Bytecodes::_getfield) ||
+        if (rfe->is_resolved(Bytecodes::_getfield) ||
             rfe->is_resolved(Bytecodes::_putfield)) {
           list.at_put(rfe->constant_pool_index(), true);
           print = true;

@@ -42,10 +42,10 @@
 //        VM_GC_HeapInspection
 //        VM_PopulateDynamicDumpSharedSpace
 //        VM_SerialGCCollect
-//        VM_ParallelGCSystemGC
+//        VM_ParallelGCCollect
 //        VM_CollectForAllocation
 //          VM_SerialCollectForAllocation
-//          VM_ParallelGCFailedAllocation
+//          VM_ParallelCollectForAllocation
 //      VM_Verify
 //      VM_PopulateDumpSharedSpace
 //
@@ -64,13 +64,13 @@
 //
 //  VM_CollectForAllocation
 //  VM_SerialCollectForAllocation
-//  VM_ParallelGCFailedAllocation
+//  VM_ParallelCollectForAllocation
 //   - this operation is invoked when allocation is failed;
 //     operation performs garbage collection and tries to
 //     allocate afterwards;
 //
 //  VM_SerialGCCollect
-//  VM_ParallelGCSystemGC
+//  VM_ParallelGCCollect
 //   - these operations perform full collection of heaps of
 //     different kind
 //
@@ -108,7 +108,6 @@ class VM_GC_Operation: public VM_GC_Sync_Operation {
   bool           _full;                    // whether a "full" collection
   bool           _prologue_succeeded;      // whether doit_prologue succeeded
   GCCause::Cause _gc_cause;                // the putative cause for this gc op
-  bool           _gc_locked;               // will be set if gc was locked
 
   virtual bool skip_operation() const;
 
@@ -122,8 +121,6 @@ class VM_GC_Operation: public VM_GC_Sync_Operation {
     _gc_count_before    = gc_count_before;
 
     _gc_cause           = _cause;
-
-    _gc_locked = false;
 
     _full_gc_count_before = full_gc_count_before;
     // In ParallelScavengeHeap::mem_allocate() collections can be
@@ -146,10 +143,7 @@ class VM_GC_Operation: public VM_GC_Sync_Operation {
   virtual void doit_epilogue();
 
   virtual bool allow_nested_vm_operations() const  { return true; }
-  bool prologue_succeeded() const { return _prologue_succeeded; }
-
-  void set_gc_locked() { _gc_locked = true; }
-  bool gc_locked() const  { return _gc_locked; }
+  virtual bool gc_succeeded() const { return _prologue_succeeded; }
 
   static void notify_gc_begin(bool full = false);
   static void notify_gc_end();

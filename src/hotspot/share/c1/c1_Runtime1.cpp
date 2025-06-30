@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,20 +22,18 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "asm/codeBuffer.hpp"
 #include "c1/c1_CodeStubs.hpp"
 #include "c1/c1_Defs.hpp"
-#include "c1/c1_FrameMap.hpp"
 #include "c1/c1_LIRAssembler.hpp"
 #include "c1/c1_MacroAssembler.hpp"
 #include "c1/c1_Runtime1.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/compiledIC.hpp"
-#include "code/pcDesc.hpp"
 #include "code/scopeDesc.hpp"
 #include "code/vtableStubs.hpp"
 #include "compiler/compilationPolicy.hpp"
@@ -49,14 +47,12 @@
 #include "interpreter/interpreter.hpp"
 #include "jfr/support/jfrIntrinsics.hpp"
 #include "logging/log.hpp"
-#include "memory/allocation.inline.hpp"
 #include "memory/oopFactory.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "oops/access.inline.hpp"
-#include "oops/klass.inline.hpp"
-#include "oops/objArrayOop.inline.hpp"
 #include "oops/objArrayKlass.hpp"
+#include "oops/objArrayOop.inline.hpp"
 #include "oops/oop.inline.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/atomic.hpp"
@@ -66,10 +62,10 @@
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/perfData.inline.hpp"
+#include "runtime/runtimeUpcalls.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stackWatermarkSet.hpp"
 #include "runtime/stubRoutines.hpp"
-#include "runtime/threadCritical.hpp"
 #include "runtime/vframe.inline.hpp"
 #include "runtime/vframeArray.hpp"
 #include "runtime/vm_version.hpp"
@@ -112,10 +108,13 @@ void StubAssembler::set_num_rt_args(int args) {
 
 // Implementation of Runtime1
 
-CodeBlob* Runtime1::_blobs[Runtime1::number_of_ids];
+CodeBlob* Runtime1::_blobs[(int)C1StubId::NUM_STUBIDS];
+
+#define C1_BLOB_NAME_DEFINE(name)  "C1 Runtime " # name "_blob",
 const char *Runtime1::_blob_names[] = {
-  RUNTIME1_STUBS(STUB_NAME, LAST_STUB_NAME)
+  C1_STUBS_DO(C1_BLOB_NAME_DEFINE)
 };
+#undef C1_STUB_NAME_DEFINE
 
 #ifndef PRODUCT
 // statistics
@@ -193,17 +192,24 @@ static void deopt_caller(JavaThread* current) {
   }
 }
 
-class StubIDStubAssemblerCodeGenClosure: public StubAssemblerCodeGenClosure {
+class C1StubIdStubAssemblerCodeGenClosure: public StubAssemblerCodeGenClosure {
  private:
-  Runtime1::StubID _id;
+  C1StubId _id;
  public:
-  StubIDStubAssemblerCodeGenClosure(Runtime1::StubID id) : _id(id) {}
+  C1StubIdStubAssemblerCodeGenClosure(C1StubId id) : _id(id) {}
   virtual OopMapSet* generate_code(StubAssembler* sasm) {
     return Runtime1::generate_code_for(_id, sasm);
   }
 };
 
-CodeBlob* Runtime1::generate_blob(BufferBlob* buffer_blob, int stub_id, const char* name, bool expect_oop_map, StubAssemblerCodeGenClosure* cl) {
+CodeBlob* Runtime1::generate_blob(BufferBlob* buffer_blob, C1StubId id, const char* name, bool expect_oop_map, StubAssemblerCodeGenClosure* cl) {
+  if ((int)id >= 0) {
+    CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::C1Blob, (uint)id, name, 0, nullptr);
+    if (blob != nullptr) {
+      return blob;
+    }
+  }
+
   ResourceMark rm;
   // create code buffer for code storage
   CodeBuffer code(buffer_blob);
@@ -215,7 +221,7 @@ CodeBlob* Runtime1::generate_blob(BufferBlob* buffer_blob, int stub_id, const ch
   Compilation::setup_code_buffer(&code, 0);
 
   // create assembler for code generation
-  StubAssembler* sasm = new StubAssembler(&code, name, stub_id);
+  StubAssembler* sasm = new StubAssembler(&code, name, (int)id);
   // generate code for runtime stub
   oop_maps = cl->generate_code(sasm);
   assert(oop_maps == nullptr || sasm->frame_size() != no_frame_size,
@@ -235,46 +241,62 @@ CodeBlob* Runtime1::generate_blob(BufferBlob* buffer_blob, int stub_id, const ch
                                                  CodeOffsets::frame_never_safe,
                                                  frame_size,
                                                  oop_maps,
-                                                 must_gc_arguments);
-  assert(blob != nullptr, "blob must exist");
+                                                 must_gc_arguments,
+                                                 false /* alloc_fail_is_fatal */ );
+  if (blob != nullptr && (int)id >= 0) {
+    AOTCodeCache::store_code_blob(*blob, AOTCodeEntry::C1Blob, (uint)id, name, 0, nullptr);
+  }
   return blob;
 }
 
-void Runtime1::generate_blob_for(BufferBlob* buffer_blob, StubID id) {
-  assert(0 <= id && id < number_of_ids, "illegal stub id");
+bool Runtime1::generate_blob_for(BufferBlob* buffer_blob, C1StubId id) {
+  assert(C1StubId::NO_STUBID < id && id < C1StubId::NUM_STUBIDS, "illegal stub id");
   bool expect_oop_map = true;
 #ifdef ASSERT
   // Make sure that stubs that need oopmaps have them
   switch (id) {
     // These stubs don't need to have an oopmap
-  case dtrace_object_alloc_id:
-  case slow_subtype_check_id:
-  case fpu2long_stub_id:
-  case unwind_exception_id:
-  case counter_overflow_id:
+  case C1StubId::dtrace_object_alloc_id:
+  case C1StubId::slow_subtype_check_id:
+  case C1StubId::fpu2long_stub_id:
+  case C1StubId::unwind_exception_id:
+  case C1StubId::counter_overflow_id:
+  case C1StubId::is_instance_of_id:
     expect_oop_map = false;
     break;
   default:
     break;
   }
 #endif
-  StubIDStubAssemblerCodeGenClosure cl(id);
+  C1StubIdStubAssemblerCodeGenClosure cl(id);
   CodeBlob* blob = generate_blob(buffer_blob, id, name_for(id), expect_oop_map, &cl);
   // install blob
-  _blobs[id] = blob;
+  _blobs[(int)id] = blob;
+  return blob != nullptr;
 }
 
-void Runtime1::initialize(BufferBlob* blob) {
+bool Runtime1::initialize(BufferBlob* blob) {
   init_counters();
   // platform-dependent initialization
   initialize_pd();
   // generate stubs
-  for (int id = 0; id < number_of_ids; id++) generate_blob_for(blob, (StubID)id);
+  int limit = (int)C1StubId::NUM_STUBIDS;
+  for (int id = 0; id <= (int)C1StubId::forward_exception_id; id++) {
+    if (!generate_blob_for(blob, (C1StubId) id)) {
+      return false;
+    }
+  }
+  AOTCodeCache::init_early_c1_table();
+  for (int id = (int)C1StubId::forward_exception_id+1; id < limit; id++) {
+    if (!generate_blob_for(blob, (C1StubId) id)) {
+      return false;
+    }
+  }
   // printing
 #ifndef PRODUCT
   if (PrintSimpleStubs) {
     ResourceMark rm;
-    for (int id = 0; id < number_of_ids; id++) {
+    for (int id = 0; id < limit; id++) {
       _blobs[id]->print();
       if (_blobs[id]->oop_maps() != nullptr) {
         _blobs[id]->oop_maps()->print();
@@ -283,23 +305,25 @@ void Runtime1::initialize(BufferBlob* blob) {
   }
 #endif
   BarrierSetC1* bs = BarrierSet::barrier_set()->barrier_set_c1();
-  bs->generate_c1_runtime_stubs(blob);
+  return bs->generate_c1_runtime_stubs(blob);
 }
 
-CodeBlob* Runtime1::blob_for(StubID id) {
-  assert(0 <= id && id < number_of_ids, "illegal stub id");
-  return _blobs[id];
+CodeBlob* Runtime1::blob_for(C1StubId id) {
+  assert(C1StubId::NO_STUBID < id && id < C1StubId::NUM_STUBIDS, "illegal stub id");
+  return _blobs[(int)id];
 }
 
 
-const char* Runtime1::name_for(StubID id) {
-  assert(0 <= id && id < number_of_ids, "illegal stub id");
-  return _blob_names[id];
+const char* Runtime1::name_for(C1StubId id) {
+  assert(C1StubId::NO_STUBID < id && id < C1StubId::NUM_STUBIDS, "illegal stub id");
+  return _blob_names[(int)id];
 }
 
 const char* Runtime1::name_for_address(address entry) {
-  for (int id = 0; id < number_of_ids; id++) {
-    if (entry == entry_for((StubID)id)) return name_for((StubID)id);
+  int limit = (int)C1StubId::NUM_STUBIDS;
+  for (int i = 0; i < limit; i++) {
+    C1StubId id = (C1StubId)i;
+    if (entry == entry_for(id)) return name_for(id);
   }
 
 #define FUNCTION_CASE(a, f) \
@@ -345,8 +369,16 @@ const char* Runtime1::name_for_address(address entry) {
   FUNCTION_CASE(entry, StubRoutines::dsin());
   FUNCTION_CASE(entry, StubRoutines::dcos());
   FUNCTION_CASE(entry, StubRoutines::dtan());
+  FUNCTION_CASE(entry, StubRoutines::dtanh());
+  FUNCTION_CASE(entry, StubRoutines::dcbrt());
 
 #undef FUNCTION_CASE
+
+  // Runtime upcalls also has a map of addresses to names
+  const char* upcall_name = RuntimeUpcalls::get_name_for_upcall_address(entry);
+  if (upcall_name != nullptr) {
+    return upcall_name;
+  }
 
   // Soft float adds more runtime names.
   return pd_name_for_address(entry);
@@ -367,7 +399,7 @@ JRT_ENTRY_PROF(void, Runtime1, new_instance, Runtime1::new_instance(JavaThread* 
   h->initialize(CHECK);
   // allocate instance and return via TLS
   oop obj = h->allocate_instance(CHECK);
-  current->set_vm_result(obj);
+  current->set_vm_result_oop(obj);
 JRT_END
 
 
@@ -383,7 +415,7 @@ JRT_ENTRY_PROF(void, Runtime1, new_type_array, Runtime1::new_type_array(JavaThre
   assert(klass->is_klass(), "not a class");
   BasicType elt_type = TypeArrayKlass::cast(klass)->element_type();
   oop obj = oopFactory::new_typeArray(elt_type, length, CHECK);
-  current->set_vm_result(obj);
+  current->set_vm_result_oop(obj);
   // This is pretty rare but this runtime patch is stressful to deoptimization
   // if we deoptimize here so force a deopt to stress the path.
   if (DeoptimizeALot) {
@@ -406,7 +438,7 @@ JRT_ENTRY_PROF(void, Runtime1, new_object_array, Runtime1::new_object_array(Java
   Handle holder(current, array_klass->klass_holder()); // keep the klass alive
   Klass* elem_klass = ObjArrayKlass::cast(array_klass)->element_klass();
   objArrayOop obj = oopFactory::new_objArray(elem_klass, length, CHECK);
-  current->set_vm_result(obj);
+  current->set_vm_result_oop(obj);
   // This is pretty rare but this runtime patch is stressful to deoptimization
   // if we deoptimize here so force a deopt to stress the path.
   if (DeoptimizeALot) {
@@ -425,12 +457,12 @@ JRT_ENTRY_PROF(void, Runtime1, new_multi_array, Runtime1::new_multi_array(JavaTh
   assert(rank >= 1, "rank must be nonzero");
   Handle holder(current, klass->klass_holder()); // keep the klass alive
   oop obj = ArrayKlass::cast(klass)->multi_allocate(rank, dims, CHECK);
-  current->set_vm_result(obj);
+  current->set_vm_result_oop(obj);
 JRT_END
 
 
-JRT_ENTRY(void, Runtime1::unimplemented_entry(JavaThread* current, StubID id))
-  tty->print_cr("Runtime1::entry_for(%d) returned unimplemented entry point", id);
+JRT_ENTRY(void, Runtime1::unimplemented_entry(JavaThread* current, C1StubId id))
+  tty->print_cr("Runtime1::entry_for(%d) returned unimplemented entry point", (int)id);
 JRT_END
 
 
@@ -488,7 +520,7 @@ static nmethod* counter_overflow_helper(JavaThread* current, int branch_bci, Met
 
 JRT_BLOCK_ENTRY_PROF(address, Runtime1, counter_overflow, Runtime1::counter_overflow(JavaThread* current, int bci, Method* method))
   nmethod* osr_nm;
-  JRT_BLOCK
+  JRT_BLOCK_NO_ASYNC
     osr_nm = counter_overflow_helper(current, bci, method);
     if (osr_nm != nullptr) {
       RegisterMap map(current,
@@ -529,8 +561,8 @@ JRT_ENTRY_NO_ASYNC_PROF(static address, Runtime1, exception_handler_for_pc_helpe
   // This function is called when we are about to throw an exception. Therefore,
   // we have to poll the stack watermark barrier to make sure that not yet safe
   // stack frames are made safe before returning into them.
-  if (current->last_frame().cb() == Runtime1::blob_for(Runtime1::handle_exception_from_callee_id)) {
-    // The Runtime1::handle_exception_from_callee_id handler is invoked after the
+  if (current->last_frame().cb() == Runtime1::blob_for(C1StubId::handle_exception_from_callee_id)) {
+    // The C1StubId::handle_exception_from_callee_id handler is invoked after the
     // frame has been unwound. It instead builds its own stub frame, to call the
     // runtime. But the throwing frame has already been unwound here.
     StackWatermarkSet::after_unwind(current);
@@ -639,7 +671,7 @@ JRT_ENTRY_NO_ASYNC_PROF(static address, Runtime1, exception_handler_for_pc_helpe
     }
   }
 
-  current->set_vm_result(exception());
+  current->set_vm_result_oop(exception());
   // Set flag if return address is a method handle call site.
   current->set_is_method_handle_return(nm->is_method_handle_return(pc));
 
@@ -761,8 +793,8 @@ JRT_BLOCK_ENTRY_PROF(void, Runtime1, monitorenter, Runtime1::monitorenter(JavaTh
   if (LockingMode == LM_MONITOR) {
     lock->set_obj(obj);
   }
-  assert(LockingMode == LM_LIGHTWEIGHT || obj == lock->obj(), "must match");
-  SharedRuntime::monitor_enter_helper(obj, LockingMode == LM_LIGHTWEIGHT ? nullptr : lock->lock(), current);
+  assert(obj == lock->obj(), "must match");
+  SharedRuntime::monitor_enter_helper(obj, lock->lock(), current);
 JRT_END
 
 
@@ -797,7 +829,7 @@ JRT_ENTRY_PROF(void, Runtime1, deoptimize, Runtime1::deoptimize(JavaThread* curr
   Deoptimization::DeoptReason reason = Deoptimization::trap_request_reason(trap_request);
 
   if (action == Deoptimization::Action_make_not_entrant) {
-    if (nm->make_not_entrant()) {
+    if (nm->make_not_entrant("C1 deoptimize")) {
       if (reason == Deoptimization::Reason_tenured) {
         MethodData* trap_mdo = Deoptimization::get_method_data(current, method, true /*create_if_missing*/);
         if (trap_mdo != nullptr) {
@@ -885,7 +917,7 @@ static Klass* resolve_field_return_klass(const methodHandle& caller, int bci, TR
 //             movl reg, [reg1 + <const>]  (for field offsets)
 //             jmp continue
 //             <being_init offset> <bytes to copy> <bytes to skip>
-// patch_stub: jmp Runtim1::patch_code (through a runtime stub)
+// patch_stub: jmp Runtime1::patch_code (through a runtime stub)
 //             jmp patch_site
 //
 // If the class is being initialized the patch body is rewritten and
@@ -927,7 +959,7 @@ static Klass* resolve_field_return_klass(const methodHandle& caller, int bci, TR
 // Therefore, if there is any chance of a race condition, we try to
 // patch only naturally aligned words, as single, full-word writes.
 
-JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* current, Runtime1::StubID stub_id))
+JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* current, C1StubId stub_id))
 #ifndef PRODUCT
   if (PrintC1Statistics) {
     _patch_code_slowcase_cnt++;
@@ -964,9 +996,9 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
   Handle mirror(current, nullptr); // oop needed by load_mirror_patching code
   Handle appendix(current, nullptr); // oop needed by appendix_patching code
   bool load_klass_or_mirror_patch_id =
-    (stub_id == Runtime1::load_klass_patching_id || stub_id == Runtime1::load_mirror_patching_id);
+    (stub_id == C1StubId::load_klass_patching_id || stub_id == C1StubId::load_mirror_patching_id);
 
-  if (stub_id == Runtime1::access_field_patching_id) {
+  if (stub_id == C1StubId::access_field_patching_id) {
 
     Bytecode_field field_access(caller_method, bci);
     fieldDescriptor result; // initialize class if needed
@@ -1050,7 +1082,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
       default: fatal("unexpected bytecode for load_klass_or_mirror_patch_id");
     }
     load_klass = k;
-  } else if (stub_id == load_appendix_patching_id) {
+  } else if (stub_id == C1StubId::load_appendix_patching_id) {
     Bytecode_invoke bytecode(caller_method, bci);
     Bytecodes::Code bc = bytecode.invoke_code();
 
@@ -1091,7 +1123,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
     // safepoint, but if it's still alive then make it not_entrant.
     nmethod* nm = CodeCache::find_nmethod(caller_frame.pc());
     if (nm != nullptr) {
-      nm->make_not_entrant();
+      nm->make_not_entrant("C1 code patch");
     }
 
     Deoptimization::deoptimize_frame(current, caller_frame.id());
@@ -1102,7 +1134,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
   // Now copy code back
 
   {
-    MutexLocker ml_patch (current, Patching_lock, Mutex::_no_safepoint_check_flag);
+    MutexLocker ml_code (current, CodeCache_lock, Mutex::_no_safepoint_check_flag);
     //
     // Deoptimization may have happened while we waited for the lock.
     // In that case we don't bother to do any patching we just return
@@ -1134,7 +1166,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
         if (TracePatching) {
           ttyLocker ttyl;
           tty->print_cr(" Patching %s at bci %d at address " INTPTR_FORMAT "  (%s)", Bytecodes::name(code), bci,
-                        p2i(instr_pc), (stub_id == Runtime1::access_field_patching_id) ? "field" : "klass");
+                        p2i(instr_pc), (stub_id == C1StubId::access_field_patching_id) ? "field" : "klass");
           nmethod* caller_code = CodeCache::find_nmethod(caller_frame.pc());
           assert(caller_code != nullptr, "nmethod not found");
 
@@ -1150,7 +1182,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
         }
         // depending on the code below, do_patch says whether to copy the patch body back into the nmethod
         bool do_patch = true;
-        if (stub_id == Runtime1::access_field_patching_id) {
+        if (stub_id == C1StubId::access_field_patching_id) {
           // The offset may not be correct if the class was not loaded at code generation time.
           // Set it now.
           NativeMovRegMem* n_move = nativeMovRegMem_at(copy_buff);
@@ -1176,7 +1208,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
             assert(n_copy->data() == 0 ||
                    n_copy->data() == (intptr_t)Universe::non_oop_word(),
                    "illegal init value");
-            if (stub_id == Runtime1::load_klass_patching_id) {
+            if (stub_id == C1StubId::load_klass_patching_id) {
               assert(load_klass != nullptr, "klass not set");
               n_copy->set_data((intx) (load_klass));
             } else {
@@ -1188,7 +1220,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
               Disassembler::decode(copy_buff, copy_buff + *byte_count, tty);
             }
           }
-        } else if (stub_id == Runtime1::load_appendix_patching_id) {
+        } else if (stub_id == C1StubId::load_appendix_patching_id) {
           NativeMovConstReg* n_copy = nativeMovConstReg_at(copy_buff);
           assert(n_copy->data() == 0 ||
                  n_copy->data() == (intptr_t)Universe::non_oop_word(),
@@ -1207,7 +1239,7 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
           // first replace the tail, then the call
 #ifdef ARM
           if((load_klass_or_mirror_patch_id ||
-              stub_id == Runtime1::load_appendix_patching_id) &&
+              stub_id == C1StubId::load_appendix_patching_id) &&
               nativeMovConstReg_at(copy_buff)->is_pc_relative()) {
             nmethod* nm = CodeCache::find_nmethod(instr_pc);
             address addr = nullptr;
@@ -1215,13 +1247,13 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
             RelocIterator mds(nm, copy_buff, copy_buff + 1);
             while (mds.next()) {
               if (mds.type() == relocInfo::oop_type) {
-                assert(stub_id == Runtime1::load_mirror_patching_id ||
-                       stub_id == Runtime1::load_appendix_patching_id, "wrong stub id");
+                assert(stub_id == C1StubId::load_mirror_patching_id ||
+                       stub_id == C1StubId::load_appendix_patching_id, "wrong stub id");
                 oop_Relocation* r = mds.oop_reloc();
                 addr = (address)r->oop_addr();
                 break;
               } else if (mds.type() == relocInfo::metadata_type) {
-                assert(stub_id == Runtime1::load_klass_patching_id, "wrong stub id");
+                assert(stub_id == C1StubId::load_klass_patching_id, "wrong stub id");
                 metadata_Relocation* r = mds.metadata_reloc();
                 addr = (address)r->metadata_addr();
                 break;
@@ -1244,9 +1276,9 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
           NativeGeneralJump::replace_mt_safe(instr_pc, copy_buff);
 
           if (load_klass_or_mirror_patch_id ||
-              stub_id == Runtime1::load_appendix_patching_id) {
+              stub_id == C1StubId::load_appendix_patching_id) {
             relocInfo::relocType rtype =
-              (stub_id == Runtime1::load_klass_patching_id) ?
+              (stub_id == C1StubId::load_klass_patching_id) ?
                                    relocInfo::metadata_type :
                                    relocInfo::oop_type;
             // update relocInfo to metadata
@@ -1267,12 +1299,8 @@ JRT_ENTRY_PROF(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* curr
         }
       }
     }
-  }
-
-  // If we are patching in a non-perm oop, make sure the nmethod
-  // is on the right list.
-  {
-    MutexLocker ml_code (current, CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    // If we are patching in a non-perm oop, make sure the nmethod
+    // is on the right list.
     nmethod* nm = CodeCache::find_nmethod(caller_frame.pc());
     guarantee(nm != nullptr, "only nmethods can contain non-perm oops");
 
@@ -1284,9 +1312,9 @@ JRT_END
 
 #else // DEOPTIMIZE_WHEN_PATCHING
 
-static bool is_patching_needed(JavaThread* current, Runtime1::StubID stub_id) {
-  if (stub_id == Runtime1::load_klass_patching_id ||
-      stub_id == Runtime1::load_mirror_patching_id) {
+static bool is_patching_needed(JavaThread* current, C1StubId stub_id) {
+  if (stub_id == C1StubId::load_klass_patching_id ||
+      stub_id == C1StubId::load_mirror_patching_id) {
     // last java frame on stack
     vframeStream vfst(current, true);
     assert(!vfst.at_end(), "Java frame must exist");
@@ -1315,7 +1343,7 @@ static bool is_patching_needed(JavaThread* current, Runtime1::StubID stub_id) {
   return true;
 }
 
-PROF_ENTRY(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* current, Runtime1::StubID stub_id))
+PROF_ENTRY(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* current, C1StubId stub_id))
 #ifndef PRODUCT
   if (PrintC1Statistics) {
     _patch_code_slowcase_cnt++;
@@ -1343,7 +1371,7 @@ PROF_ENTRY(void, Runtime1, patch_code, Runtime1::patch_code(JavaThread* current,
     // Make sure the nmethod is invalidated, i.e. made not entrant.
     nmethod* nm = CodeCache::find_nmethod(caller_frame.pc());
     if (nm != nullptr) {
-      nm->make_not_entrant();
+      nm->make_not_entrant("C1 deoptimize for patching");
     }
   }
 
@@ -1366,11 +1394,11 @@ int Runtime1::move_klass_patching(JavaThread* current) {
 //
 // NOTE: we are still in Java
 //
-  debug_only(NoHandleMark nhm;)
+  DEBUG_ONLY(NoHandleMark nhm;)
   {
     // Enter VM mode
     ResetNoHandleMark rnhm;
-    patch_code(current, load_klass_patching_id);
+    patch_code(current, C1StubId::load_klass_patching_id);
   }
   // Back in JAVA, use no oops DON'T safepoint
 
@@ -1383,11 +1411,11 @@ int Runtime1::move_mirror_patching(JavaThread* current) {
 //
 // NOTE: we are still in Java
 //
-  debug_only(NoHandleMark nhm;)
+  DEBUG_ONLY(NoHandleMark nhm;)
   {
     // Enter VM mode
     ResetNoHandleMark rnhm;
-    patch_code(current, load_mirror_patching_id);
+    patch_code(current, C1StubId::load_mirror_patching_id);
   }
   // Back in JAVA, use no oops DON'T safepoint
 
@@ -1400,11 +1428,11 @@ int Runtime1::move_appendix_patching(JavaThread* current) {
 //
 // NOTE: we are still in Java
 //
-  debug_only(NoHandleMark nhm;)
+  DEBUG_ONLY(NoHandleMark nhm;)
   {
     // Enter VM mode
     ResetNoHandleMark rnhm;
-    patch_code(current, load_appendix_patching_id);
+    patch_code(current, C1StubId::load_appendix_patching_id);
   }
   // Back in JAVA, use no oops DON'T safepoint
 
@@ -1431,7 +1459,7 @@ int Runtime1::access_field_patching(JavaThread* current) {
   {
     // Enter VM mode
     ResetNoHandleMark rnhm;
-    patch_code(current, access_field_patching_id);
+    patch_code(current, C1StubId::access_field_patching_id);
   }
   // Back in JAVA, use no oops DON'T safepoint
 
@@ -1471,7 +1499,7 @@ JRT_ENTRY_PROF(void, Runtime1, predicate_failed_trap, Runtime1::predicate_failed
 
   nmethod* nm = CodeCache::find_nmethod(caller_frame.pc());
   assert (nm != nullptr, "no more nmethod?");
-  nm->make_not_entrant();
+  nm->make_not_entrant("C1 predicate failed trap");
 
   methodHandle m(current, nm->method());
   MethodData* mdo = m->method_data();
@@ -1556,9 +1584,9 @@ void Runtime1::init_counters() {
   if (_perf_##sub##_##name##_count != nullptr) {  \
     jlong count = _perf_##sub##_##name##_count->get_value(); \
     if (count > 0) { \
-      st->print_cr("  %-30s = %4ldms (elapsed) %4ldms (thread) (%5ld events)", #sub "::" #name, \
-                   _perf_##sub##_##name##_timer->elapsed_counter_value_ms(), \
-                   _perf_##sub##_##name##_timer->thread_counter_value_ms(), \
+      st->print_cr("  %-50s = " JLONG_FORMAT_W(6) "us (elapsed) " JLONG_FORMAT_W(6) "us (thread) (" JLONG_FORMAT_W(5) " events)", #sub "::" #name, \
+                   _perf_##sub##_##name##_timer->elapsed_counter_value_us(), \
+                   _perf_##sub##_##name##_timer->thread_counter_value_us(), \
                    count); \
     }}}
 

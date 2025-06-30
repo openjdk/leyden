@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,10 +22,9 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "ci/ciObject.hpp"
 #include "ci/ciUtilities.inline.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "oops/oop.inline.hpp"
 #include "runtime/jniHandles.inline.hpp"
@@ -204,7 +203,7 @@ void ciObject::add_to_constant_value_cache(int off, ciConstant val) {
 // ------------------------------------------------------------------
 // ciObject::should_be_constant()
 bool ciObject::should_be_constant() {
-  if (ScavengeRootsInCode >= 2 && !(SCCache::is_on_for_write())) {
+  if (ScavengeRootsInCode >= 2 && !(AOTCodeCache::is_on_for_dump())) {
     return true;  // force everybody to be a constant
   }
   if (is_null_object()) {
@@ -221,7 +220,7 @@ bool ciObject::should_be_constant() {
   }
   if ((klass()->is_subclass_of(env->MethodHandle_klass()) ||
        klass()->is_subclass_of(env->CallSite_klass())) &&
-      !(SCCache::is_on_for_write())) { // For now disable it when caching startup code.
+      !(AOTCodeCache::is_on_for_dump())) { // For now disable it when caching startup code.
     // We want to treat these aggressively.
     return true;
   }

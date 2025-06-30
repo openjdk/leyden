@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -153,6 +153,9 @@ public:
   }
 
   void print_stats(int ro_all, int rw_all);
+
+  DEBUG_ONLY(void verify(int expected_byte_size, bool read_only) const);
+
 };
 
 #endif // SHARE_CDS_DUMPALLOCSTATS_HPP

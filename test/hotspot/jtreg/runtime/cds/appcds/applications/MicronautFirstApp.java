@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -33,6 +33,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 
 /*
  * @test id=static
+ * @key external-dep
  * @requires vm.cds
  * @summary run MicronautFirstApp with the classic static archive workflow
  * @library /test/lib
@@ -41,28 +42,33 @@ import jdk.test.lib.process.OutputAnalyzer;
 
 /*
  * @test id=dynamic
+ * @key external-dep
  * @requires vm.cds
  * @summary run MicronautFirstApp with the classic dynamic archive workflow
  * @library /test/lib
- * @run driver/timeout=120 MicronautFirstApp DYNAMIC
+ * @build jdk.test.whitebox.WhiteBox
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
+ * @run main/othervm/timeout=120 -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. MicronautFirstApp DYNAMIC
+ */
+
+/*
+ * @test id=aot
+ * @key external-dep
+ * @requires vm.cds
+ * @requires vm.cds.write.archived.java.heap
+ * @summary run MicronautFirstApp with the JEP 483 workflow
+ * @library /test/lib
+ * @run driver/timeout=120 MicronautFirstApp AOT
  */
 
 /*
  * @test id=leyden
+ * @key external-dep
  * @requires vm.cds
  * @requires vm.cds.write.archived.java.heap
- * @summary un MicronautFirstApp with the Leyden workflow
+ * @summary run MicronautFirstApp with the Leyden workflow
  * @library /test/lib
  * @run driver/timeout=120 MicronautFirstApp LEYDEN
- */
-
-/*
- * @test id=leyden_old
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary un MicronautFirstApp with the "OLD" Leyden workflow
- * @library /test/lib
- * @run driver/timeout=120 MicronautFirstApp LEYDEN_OLD
  */
 
 // Test CDS with the example program in https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html
@@ -89,7 +95,7 @@ public class MicronautFirstApp {
     private static String getArtifact() throws Exception {
         Map<String, Path> artifacts = ArtifactResolver.resolve(MicronautFirstApp.class);
         Path path = artifacts.get("io.micronaut.micronaut-first-app-1.0.0");
-        return path.toString() + "/default-0.1.jar";
+        return path.toString() + File.separator + "default-0.1.jar";
     }
 
     static class MicronautFirstAppTester extends CDSAppTester {
@@ -123,14 +129,14 @@ public class MicronautFirstApp {
             };
 
             if (runMode.isProductionRun()) {
-                cmdLine = StringArrayUtils.concat("-Xlog:scc=error", cmdLine);
+                cmdLine = StringArrayUtils.concat("-Xlog:aot+codecache=error", cmdLine);
             }
             return cmdLine;
         }
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (!runMode.isStaticDump()) {
+            if (runMode.isApplicationExecuted()) {
                 out.shouldContain("Booted and returned in ");
             }
         }

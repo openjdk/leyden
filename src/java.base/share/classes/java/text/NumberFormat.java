@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -129,9 +129,9 @@ import sun.util.locale.provider.LocaleServiceProviderPool;
  * <ul>
  * <li> {@link #setParseIntegerOnly(boolean)}; when {@code true}, will only return the
  * integer portion of the number parsed from the String.
- * <li> {@link #setMinimumFractionDigits(int)}; Use to adjust the expected digits when
- * formatting. Use any of the other minimum/maximum or fraction/integer setter methods
- * in the same manner.
+ * <li> {@link #setMinimumFractionDigits(int)}; Use to adjust the expected digits
+ * when formatting. Use any of the other minimum/maximum or fraction/integer
+ * setter methods in the same manner. These methods have no impact on parsing behavior.
  * <li> {@link #setGroupingUsed(boolean)}; when {@code true}, formatted numbers will be displayed
  * with grouping separators. Additionally, when {@code false}, parsing will not expect
  * grouping separators in the parsed String.
@@ -302,17 +302,34 @@ public abstract class NumberFormat extends Format  {
     public StringBuffer format(Object number,
                                StringBuffer toAppendTo,
                                FieldPosition pos) {
-        if (number instanceof Long || number instanceof Integer ||
-            number instanceof Short || number instanceof Byte ||
-            number instanceof AtomicInteger || number instanceof AtomicLong ||
-            (number instanceof BigInteger &&
-             ((BigInteger)number).bitLength() < 64)) {
-            return format(((Number)number).longValue(), toAppendTo, pos);
-        } else if (number instanceof Number) {
-            return format(((Number)number).doubleValue(), toAppendTo, pos);
-        } else {
-            throw new IllegalArgumentException("Cannot format given Object as a Number");
-        }
+        return switch (number) {
+            case Long l -> format(l.longValue(), toAppendTo, pos);
+            case Integer i -> format(i.longValue(), toAppendTo, pos);
+            case Short s -> format(s.longValue(), toAppendTo, pos);
+            case Byte b -> format(b.longValue(), toAppendTo, pos);
+            case AtomicInteger ai -> format(ai.longValue(), toAppendTo, pos);
+            case AtomicLong al -> format(al.longValue(), toAppendTo, pos);
+            case BigInteger bi when bi.bitLength() < 64 -> format(bi.longValue(), toAppendTo, pos);
+            case Number n -> format(n.doubleValue(), toAppendTo, pos);
+            case null, default -> throw new IllegalArgumentException("Cannot format given Object as a Number");
+        };
+    }
+
+    @Override
+    StringBuf format(Object number,
+                     StringBuf toAppendTo,
+                     FieldPosition pos) {
+        return switch (number) {
+            case Long l -> format(l.longValue(), toAppendTo, pos);
+            case Integer i -> format(i.longValue(), toAppendTo, pos);
+            case Short s -> format(s.longValue(), toAppendTo, pos);
+            case Byte b -> format(b.longValue(), toAppendTo, pos);
+            case AtomicInteger ai -> format(ai.longValue(), toAppendTo, pos);
+            case AtomicLong al -> format(al.longValue(), toAppendTo, pos);
+            case BigInteger bi when bi.bitLength() < 64 -> format(bi.longValue(), toAppendTo, pos);
+            case Number n -> format(n.doubleValue(), toAppendTo, pos);
+            case null, default -> throw new IllegalArgumentException("Cannot format given Object as a Number");
+        };
     }
 
     /**
@@ -347,8 +364,13 @@ public abstract class NumberFormat extends Format  {
         if (result != null)
             return result;
 
-        return format(number, new StringBuffer(),
-                      DontCareFieldPosition.INSTANCE).toString();
+        if ("java.text".equals(getClass().getPackageName())) {
+            return format(number, StringBufFactory.of(),
+                    DontCareFieldPosition.INSTANCE).toString();
+        } else {
+            return format(number, new StringBuffer(),
+                    DontCareFieldPosition.INSTANCE).toString();
+        }
     }
 
     /*
@@ -367,8 +389,13 @@ public abstract class NumberFormat extends Format  {
      * @see java.text.Format#format
      */
     public final String format(long number) {
-        return format(number, new StringBuffer(),
-                      DontCareFieldPosition.INSTANCE).toString();
+        if ("java.text".equals(getClass().getPackageName())) {
+            return format(number, StringBufFactory.of(),
+                    DontCareFieldPosition.INSTANCE).toString();
+        } else {
+            return format(number, new StringBuffer(),
+                    DontCareFieldPosition.INSTANCE).toString();
+        }
     }
 
     /**
@@ -394,6 +421,12 @@ public abstract class NumberFormat extends Format  {
                                         StringBuffer toAppendTo,
                                         FieldPosition pos);
 
+    StringBuf format(double number,
+                     StringBuf toAppendTo,
+                     FieldPosition pos) {
+        throw new UnsupportedOperationException("Subclasses should override this method");
+    }
+
     /**
      * Specialization of format.
      *
@@ -416,6 +449,12 @@ public abstract class NumberFormat extends Format  {
     public abstract StringBuffer format(long number,
                                         StringBuffer toAppendTo,
                                         FieldPosition pos);
+
+    StringBuf format(long number,
+                     StringBuf toAppendTo,
+                     FieldPosition pos) {
+        throw new UnsupportedOperationException("Subclasses should override this method");
+    }
 
     /**
      * Parses text from the beginning of the given string to produce a {@code Number}.
@@ -468,12 +507,11 @@ public abstract class NumberFormat extends Format  {
     }
 
     /**
-     * Returns true if this format will parse numbers as integers only.
+     * Returns {@code true} if this format will parse numbers as integers only.
+     * The {@code ParsePosition} index will be set to the position of the decimal
+     * symbol. The exact format accepted by the parse operation is locale dependent.
      * For example in the English locale, with ParseIntegerOnly true, the
-     * string "1234." would be parsed as the integer value 1234 and parsing
-     * would stop at the "." character.  Of course, the exact format accepted
-     * by the parse operation is locale dependent and determined by sub-classes
-     * of NumberFormat.
+     * string "123.45" would be parsed as the integer value 123.
      *
      * @return {@code true} if numbers should be parsed as integers only;
      *         {@code false} otherwise
@@ -845,14 +883,22 @@ public abstract class NumberFormat extends Format  {
     }
 
     /**
-     * Returns true if grouping is used in this format. For example, in the
-     * English locale, with grouping on, the number 1234567 might be formatted
-     * as "1,234,567". The grouping separator as well as the size of each group
-     * is locale dependent and is determined by sub-classes of NumberFormat.
+     * Returns true if grouping is used in this format. This applies to both
+     * formatting and parsing. The grouping separator as well as the size of each
+     * group is locale dependent and is determined by sub-classes of NumberFormat.
+     * For example, consider a {@code NumberFormat} that expects a "{@code ,}"
+     * grouping separator symbol with a grouping size of 3.
+     * <ul>
+     *   <li> Formatting {@code 1234567} with grouping on returns {@code "1,234,567"}
+     *   <li> Parsing {@code "1,234,567"} with grouping off returns {@code 1}
+     *   <li> Parsing {@code "1,234,567"} with grouping off when {@link #isStrict()}
+     *        returns {@code true} throws {@code ParseException}
+     * </ul>
      *
      * @return {@code true} if grouping is used;
      *         {@code false} otherwise
      * @see #setGroupingUsed
+     * @see ##leniency Leniency Section
      */
     public boolean isGroupingUsed() {
         return groupingUsed;
@@ -860,6 +906,7 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Set whether or not grouping will be used in this format.
+     * This applies to both formatting and parsing.
      *
      * @param newValue {@code true} if grouping is used;
      *                 {@code false} otherwise
@@ -871,7 +918,7 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Returns the maximum number of digits allowed in the integer portion of a
-     * number.
+     * number during formatting.
      *
      * @return the maximum number of digits
      * @see #setMaximumIntegerDigits
@@ -882,14 +929,15 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Sets the maximum number of digits allowed in the integer portion of a
-     * number. maximumIntegerDigits must be &ge; minimumIntegerDigits.  If the
-     * new value for maximumIntegerDigits is less than the current value
-     * of minimumIntegerDigits, then minimumIntegerDigits will also be set to
-     * the new value.
+     * number during formatting. {@code maximumIntegerDigits} must be &ge;
+     * {@code minimumIntegerDigits}. If the new value for {@code
+     * maximumIntegerDigits} is less than the current value of
+     * {@code minimumIntegerDigits}, then {@code minimumIntegerDigits} will
+     * also be set to the new value. Negative input values are replaced with 0.
      *
-     * @param newValue the maximum number of integer digits to be shown; if
-     * less than zero, then zero is used. The concrete subclass may enforce an
-     * upper limit to this value appropriate to the numeric type being formatted.
+     * @param newValue the maximum number of integer digits to be shown. The
+     * concrete subclass may enforce an upper limit to this value appropriate to
+     * the numeric type being formatted.
      * @see #getMaximumIntegerDigits
      */
     public void setMaximumIntegerDigits(int newValue) {
@@ -901,7 +949,7 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Returns the minimum number of digits allowed in the integer portion of a
-     * number.
+     * number during formatting.
      *
      * @return the minimum number of digits
      * @see #setMinimumIntegerDigits
@@ -912,14 +960,15 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Sets the minimum number of digits allowed in the integer portion of a
-     * number. minimumIntegerDigits must be &le; maximumIntegerDigits.  If the
-     * new value for minimumIntegerDigits exceeds the current value
-     * of maximumIntegerDigits, then maximumIntegerDigits will also be set to
-     * the new value
+     * number during formatting. {@code minimumIntegerDigits} must be &le;
+     * {@code maximumIntegerDigits}. If the new value for {@code minimumIntegerDigits}
+     * exceeds the current value of {@code maximumIntegerDigits}, then {@code
+     * maximumIntegerDigits} will also be set to the new value. Negative input
+     * values are replaced with 0.
      *
-     * @param newValue the minimum number of integer digits to be shown; if
-     * less than zero, then zero is used. The concrete subclass may enforce an
-     * upper limit to this value appropriate to the numeric type being formatted.
+     * @param newValue the minimum number of integer digits to be shown. The
+     * concrete subclass may enforce an upper limit to this value appropriate to
+     * the numeric type being formatted.
      * @see #getMinimumIntegerDigits
      */
     public void setMinimumIntegerDigits(int newValue) {
@@ -931,7 +980,7 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Returns the maximum number of digits allowed in the fraction portion of a
-     * number.
+     * number during formatting.
      *
      * @return the maximum number of digits.
      * @see #setMaximumFractionDigits
@@ -942,14 +991,15 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Sets the maximum number of digits allowed in the fraction portion of a
-     * number. maximumFractionDigits must be &ge; minimumFractionDigits.  If the
-     * new value for maximumFractionDigits is less than the current value
-     * of minimumFractionDigits, then minimumFractionDigits will also be set to
-     * the new value.
+     * number during formatting. {@code maximumFractionDigits} must be &ge;
+     * {@code minimumFractionDigits}. If the new value for {@code maximumFractionDigits}
+     * is less than the current value of {@code minimumFractionDigits}, then
+     * {@code minimumFractionDigits} will also be set to the new value. Negative
+     * input values are replaced with 0.
      *
-     * @param newValue the maximum number of fraction digits to be shown; if
-     * less than zero, then zero is used. The concrete subclass may enforce an
-     * upper limit to this value appropriate to the numeric type being formatted.
+     * @param newValue the maximum number of fraction digits to be shown. The
+     * concrete subclass may enforce an upper limit to this value appropriate to
+     * the numeric type being formatted.
      * @see #getMaximumFractionDigits
      */
     public void setMaximumFractionDigits(int newValue) {
@@ -961,7 +1011,7 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Returns the minimum number of digits allowed in the fraction portion of a
-     * number.
+     * number during formatting.
      *
      * @return the minimum number of digits
      * @see #setMinimumFractionDigits
@@ -972,14 +1022,15 @@ public abstract class NumberFormat extends Format  {
 
     /**
      * Sets the minimum number of digits allowed in the fraction portion of a
-     * number. minimumFractionDigits must be &le; maximumFractionDigits.  If the
-     * new value for minimumFractionDigits exceeds the current value
-     * of maximumFractionDigits, then maximumFractionDigits will also be set to
-     * the new value
+     * number during formatting. {@code minimumFractionDigits} must be &le;
+     * {@code maximumFractionDigits}. If the new value for {@code
+     * minimumFractionDigits} exceeds the current value of {@code
+     * maximumFractionDigits}, then {@code maximumFractionDigits} will also be
+     * set to the new value. Negative input values are replaced with 0.
      *
-     * @param newValue the minimum number of fraction digits to be shown; if
-     * less than zero, then zero is used. The concrete subclass may enforce an
-     * upper limit to this value appropriate to the numeric type being formatted.
+     * @param newValue the minimum number of fraction digits to be shown. The
+     * concrete subclass may enforce an upper limit to this value appropriate to
+     * the numeric type being formatted.
      * @see #getMinimumFractionDigits
      */
     public void setMinimumFractionDigits(int newValue) {

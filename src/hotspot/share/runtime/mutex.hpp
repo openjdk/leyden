@@ -49,8 +49,19 @@
 // A thread is not allowed to safepoint while holding a mutex whose rank
 // is nosafepoint or lower.
 
+// The Mutex class used to explicitly guarantee fence(); lock(); acquire(); semantics with
+// a hand crafted implementation. That may or may not be a desirable contract for a Mutex,
+// but is nevertheless something that older HotSpot code may or may not rely on for correctness.
+// Newer code is encouraged not to rely more on this feature, but it is not generally safe to
+// remove the fences, until all usages of Mutex have been evaluated on a case-by-case basis, whether
+// they actually rely on this stronger contract, or not.
+
+// Having a fence does not have any significant impact on peformance, as this is an internal VM
+// mutex and is generally not in hot code paths.
+
 class Mutex : public CHeapObj<mtSynchronizer> {
 
+  friend class VMStructs;
  public:
   // Special low level locks are given names and ranges avoid overlap.
   enum class Rank {
@@ -104,6 +115,9 @@ class Mutex : public CHeapObj<mtSynchronizer> {
 #ifndef PRODUCT
   bool    _allow_vm_block;
 #endif
+  static Mutex** _mutex_array;
+  static int _num_mutex;
+
 #ifdef ASSERT
   Rank    _rank;                 // rank (to avoid/detect potential deadlocks)
   Mutex*  _next;                 // Used by a Thread to link up owned locks
@@ -198,13 +212,20 @@ class Mutex : public CHeapObj<mtSynchronizer> {
   int      id() const { return _id; }
 //  void set_id(int id) { _id = id; }
 
-  static const char* id2name(int id);
+  static void  add_mutex(Mutex* var);
 
   void print_on_error(outputStream* st) const;
   #ifndef PRODUCT
     void print_on(outputStream* st) const;
     void print() const;
   #endif
+
+  // Print all mutexes/monitors that are currently owned by a thread; called
+  // by fatal error handler.
+  static void print_owned_locks_on_error(outputStream* st);
+  static void print_lock_ranks(outputStream* st);
+
+  static int num_mutex() { return _num_mutex; }
 };
 
 class Monitor : public Mutex {

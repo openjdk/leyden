@@ -63,6 +63,7 @@ public:
   static void initialize(TRAPS);
 
   static jlong ticks_to_ms(jlong ticks) NOT_MANAGEMENT_RETURN_(0L);
+  static jlong ticks_to_us(jlong ticks) NOT_MANAGEMENT_RETURN_(0L);
   static jlong timestamp() NOT_MANAGEMENT_RETURN_(0L);
 
   static void* get_jmm_interface(int version);

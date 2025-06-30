@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,7 +22,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "oops/method.hpp"
 #include "oops/resolvedMethodEntry.hpp"
@@ -51,11 +50,11 @@ void ResolvedMethodEntry::reset_entry() {
   }
 }
 
+#if INCLUDE_CDS
 void ResolvedMethodEntry::remove_unshareable_info() {
   reset_entry();
 }
 
-#if INCLUDE_CDS
 void ResolvedMethodEntry::mark_and_relocate(ConstantPool* src_cp) {
   if (_method == nullptr) {
     assert(bytecode2() == Bytecodes::_invokevirtual, "");
@@ -142,7 +141,6 @@ void ResolvedMethodEntry::mark_and_relocate(ConstantPool* src_cp) {
 #endif
 }
 #endif
-
 
 void ResolvedMethodEntry::print_on(outputStream* st) const {
   st->print_cr("Method Entry:");

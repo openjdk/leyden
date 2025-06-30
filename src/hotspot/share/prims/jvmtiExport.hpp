@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -287,10 +287,10 @@ class JvmtiExport : public AllStatic {
   }
 
   // field access management
-  static address  get_field_access_count_addr() NOT_JVMTI_RETURN_(0);
+  static address  get_field_access_count_addr() NOT_JVMTI_RETURN_(nullptr);
 
   // field modification management
-  static address  get_field_modification_count_addr() NOT_JVMTI_RETURN_(0);
+  static address  get_field_modification_count_addr() NOT_JVMTI_RETURN_(nullptr);
 
   // -----------------
 
@@ -309,7 +309,11 @@ class JvmtiExport : public AllStatic {
   // If the jvmti_thread_state is absent and any thread filtered event
   // is enabled globally then it is created.
   // Otherwise, the thread->jvmti_thread_state() is returned.
-  static JvmtiThreadState* get_jvmti_thread_state(JavaThread *thread);
+  // The 'allow_suspend' parameter is passed as 'true' by default which work for almost all call sites.
+  // It means that a suspend point need to be organized by this function for virtual threads if the call
+  // to jvmtiEventController::thread_started hits a safepoint and gets a new suspend request.
+  // The 'allow_suspend' parameter must be passed as 'false' if thread is holding a VM lock.
+  static JvmtiThreadState* get_jvmti_thread_state(JavaThread *thread, bool allow_suspend = true);
 
   // single stepping management methods
   static void at_single_stepping_point(JavaThread *thread, Method* method, address location) NOT_JVMTI_RETURN;
@@ -398,6 +402,7 @@ class JvmtiExport : public AllStatic {
   static void post_monitor_contended_entered(JavaThread *thread, ObjectMonitor *obj_mntr) NOT_JVMTI_RETURN;
   static void post_monitor_wait(JavaThread *thread, oop obj, jlong timeout) NOT_JVMTI_RETURN;
   static void post_monitor_waited(JavaThread *thread, ObjectMonitor *obj_mntr, jboolean timed_out) NOT_JVMTI_RETURN;
+  static void vthread_post_monitor_waited(JavaThread *current, ObjectMonitor *obj_mntr, jboolean timed_out) NOT_JVMTI_RETURN;
   static void post_object_free(JvmtiEnv* env, GrowableArray<jlong>* objects) NOT_JVMTI_RETURN;
   static void post_resource_exhausted(jint resource_exhausted_flags, const char* detail) NOT_JVMTI_RETURN;
   static void record_vm_internal_object_allocation(oop object) NOT_JVMTI_RETURN;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,9 +22,8 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "classfile/vmClasses.hpp"
-#include "code/SCCache.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "runtime/handles.inline.hpp"
@@ -103,7 +102,7 @@ bool C2Compiler::init_c2_runtime() {
   HandleMark handle_mark(thread);
   bool success = OptoRuntime::generate(thread->env());
   if (success) {
-    SCCache::init_opto_table();
+    AOTCodeCache::init_c2_table();
   }
   return success;
 }
@@ -128,21 +127,21 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   assert(is_initialized(), "Compiler thread must be initialized");
   CompilationMemoryStatisticMark cmsm(directive);
   CompileTask* task = env->task();
-  if (install_code && task->is_scc()) {
-    bool success = SCCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
+  if (install_code && task->is_aot()) {
+    bool success = AOTCodeCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
     if (success) {
       assert(task->is_success(), "sanity");
       return;
     }
     if (!task->preload()) { // Do not mark entry if pre-loading failed - it can pass normal load
-      SCCache::invalidate(task->scc_entry()); // mark sca_entry as not entrant
+      AOTCodeCache::invalidate(task->aot_code_entry()); // mark aot_code_entry as not entrant
     }
-    if (SCCache::is_code_load_thread_on()) {
-      env->record_failure("Failed to load cached code");
-      // Bail out if failed to load cached code in SC thread
+    if (AOTCodeCache::is_code_load_thread_on()) {
+      env->record_failure("Failed to load AOT code");
+      // Bail out if failed to load AOT code in AOTCodeCache thread
       return;
     }
-    task->clear_scc();
+    task->clear_aot();
   }
 
   bool subsume_loads = SubsumeLoads;
@@ -153,7 +152,7 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool do_locks_coarsening = EliminateLocks;
   bool do_superword = UseSuperWord;
   bool for_preload = (task->compile_reason() != CompileTask::Reason_Precompile) && // non-preload version is requested
-                     SCCache::gen_preload_code(target, entry_bci);
+                     AOTCodeCache::gen_preload_code(target, entry_bci);
   if (task->compile_reason() == CompileTask::Reason_PrecompileForPreload) {
     assert(for_preload, "required");
   }
@@ -387,6 +386,12 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
     break;
   case vmIntrinsics::_floatToFloat16:
     if (!Matcher::match_rule_supported(Op_ConvF2HF)) return false;
+    break;
+  case vmIntrinsics::_sqrt_float16:
+    if (!Matcher::match_rule_supported(Op_SqrtHF)) return false;
+    break;
+  case vmIntrinsics::_fma_float16:
+    if (!Matcher::match_rule_supported(Op_FmaHF)) return false;
     break;
 
   /* CompareAndSet, Object: */
@@ -645,6 +650,8 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_dsin:
   case vmIntrinsics::_dcos:
   case vmIntrinsics::_dtan:
+  case vmIntrinsics::_dtanh:
+  case vmIntrinsics::_dcbrt:
   case vmIntrinsics::_dabs:
   case vmIntrinsics::_fabs:
   case vmIntrinsics::_iabs:
@@ -662,6 +669,8 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_max:
   case vmIntrinsics::_min_strict:
   case vmIntrinsics::_max_strict:
+  case vmIntrinsics::_maxL:
+  case vmIntrinsics::_minL:
   case vmIntrinsics::_arraycopy:
   case vmIntrinsics::_arraySort:
   case vmIntrinsics::_arrayPartition:
@@ -766,6 +775,8 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_setCurrentThread:
   case vmIntrinsics::_scopedValueCache:
   case vmIntrinsics::_setScopedValueCache:
+  case vmIntrinsics::_Continuation_pin:
+  case vmIntrinsics::_Continuation_unpin:
 #ifdef JFR_HAVE_INTRINSICS
   case vmIntrinsics::_counterTime:
   case vmIntrinsics::_getEventWriter:
@@ -782,10 +793,6 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_clone:
   case vmIntrinsics::_isAssignableFrom:
   case vmIntrinsics::_isInstance:
-  case vmIntrinsics::_getModifiers:
-  case vmIntrinsics::_isInterface:
-  case vmIntrinsics::_isArray:
-  case vmIntrinsics::_isPrimitive:
   case vmIntrinsics::_isHidden:
   case vmIntrinsics::_getSuperclass:
   case vmIntrinsics::_getClassAccessFlags:
@@ -798,6 +805,8 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_Reference_get:
   case vmIntrinsics::_Reference_refersTo0:
   case vmIntrinsics::_PhantomReference_refersTo0:
+  case vmIntrinsics::_Reference_clear0:
+  case vmIntrinsics::_PhantomReference_clear0:
   case vmIntrinsics::_Class_cast:
   case vmIntrinsics::_aescrypt_encryptBlock:
   case vmIntrinsics::_aescrypt_decryptBlock:
@@ -809,6 +818,7 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_sha2_implCompress:
   case vmIntrinsics::_sha5_implCompress:
   case vmIntrinsics::_sha3_implCompress:
+  case vmIntrinsics::_double_keccak:
   case vmIntrinsics::_digestBase_implCompressMB:
   case vmIntrinsics::_multiplyToLen:
   case vmIntrinsics::_squareToLen:
@@ -818,6 +828,18 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_vectorizedMismatch:
   case vmIntrinsics::_ghash_processBlocks:
   case vmIntrinsics::_chacha20Block:
+  case vmIntrinsics::_kyberNtt:
+  case vmIntrinsics::_kyberInverseNtt:
+  case vmIntrinsics::_kyberNttMult:
+  case vmIntrinsics::_kyberAddPoly_2:
+  case vmIntrinsics::_kyberAddPoly_3:
+  case vmIntrinsics::_kyber12To16:
+  case vmIntrinsics::_kyberBarrettReduce:
+  case vmIntrinsics::_dilithiumAlmostNtt:
+  case vmIntrinsics::_dilithiumAlmostInverseNtt:
+  case vmIntrinsics::_dilithiumNttMult:
+  case vmIntrinsics::_dilithiumMontMulByConstant:
+  case vmIntrinsics::_dilithiumDecomposePoly:
   case vmIntrinsics::_base64_encodeBlock:
   case vmIntrinsics::_base64_decodeBlock:
   case vmIntrinsics::_poly1305_processBlocks:
@@ -841,18 +863,18 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_VectorBinaryOp:
   case vmIntrinsics::_VectorTernaryOp:
   case vmIntrinsics::_VectorFromBitsCoerced:
-  case vmIntrinsics::_VectorShuffleIota:
-  case vmIntrinsics::_VectorShuffleToVector:
   case vmIntrinsics::_VectorLoadOp:
   case vmIntrinsics::_VectorLoadMaskedOp:
   case vmIntrinsics::_VectorStoreOp:
   case vmIntrinsics::_VectorStoreMaskedOp:
+  case vmIntrinsics::_VectorSelectFromTwoVectorOp:
   case vmIntrinsics::_VectorGatherOp:
   case vmIntrinsics::_VectorScatterOp:
   case vmIntrinsics::_VectorReductionCoerced:
   case vmIntrinsics::_VectorTest:
   case vmIntrinsics::_VectorBlend:
   case vmIntrinsics::_VectorRearrange:
+  case vmIntrinsics::_VectorSelectFrom:
   case vmIntrinsics::_VectorCompare:
   case vmIntrinsics::_VectorBroadcastInt:
   case vmIntrinsics::_VectorConvert:
@@ -862,13 +884,15 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_IndexVector:
   case vmIntrinsics::_IndexPartiallyInUpperRange:
     return EnableVectorSupport;
+  case vmIntrinsics::_VectorUnaryLibOp:
+  case vmIntrinsics::_VectorBinaryLibOp:
+    return EnableVectorSupport && Matcher::supports_vector_calling_convention();
   case vmIntrinsics::_blackhole:
 #if INCLUDE_JVMTI
   case vmIntrinsics::_notifyJvmtiVThreadStart:
   case vmIntrinsics::_notifyJvmtiVThreadEnd:
   case vmIntrinsics::_notifyJvmtiVThreadMount:
   case vmIntrinsics::_notifyJvmtiVThreadUnmount:
-  case vmIntrinsics::_notifyJvmtiVThreadHideFrames:
   case vmIntrinsics::_notifyJvmtiVThreadDisableSuspend:
 #endif
     break;
@@ -883,5 +907,5 @@ int C2Compiler::initial_code_buffer_size(int const_size) {
   // See Compile::init_scratch_buffer_blob
   int locs_size = sizeof(relocInfo) * PhaseOutput::MAX_locs_size;
   int slop = 2 * CodeSection::end_slop(); // space between sections
-  return PhaseOutput::MAX_inst_size + PhaseOutput::MAX_stubs_size + const_size + slop + locs_size;
+  return PhaseOutput::max_inst_size() + PhaseOutput::MAX_stubs_size + const_size + slop + locs_size;
 }

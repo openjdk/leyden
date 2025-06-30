@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -32,13 +32,13 @@ mainline_vs_premain: clean0 _mainline_vs_premain
 
 _mainline_vs_premain:
 	rm -f mainline_vs_premain.csv
-	@echo "run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT" | tee -a mainline_vs_premain.csv
+	@echo "run,mainline default,mainline custom static cds,mainline aot cache,premain aot cache" | tee -a mainline_vs_premain.csv
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
 		$(SLEEP) $(MAKE) LOG_INIT= run0.ml 2>&1 | grep Booted >> tmp.txt; \
 		$(SLEEP) $(MAKE) LOG_INIT= runs.ml 2>&1 | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= runs    2>&1 | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= runn    2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runa.ml 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= runa    2>&1 | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a mainline_vs_premain.csv; \
 	        fi; \
@@ -77,8 +77,8 @@ _compare_premain_builds:
 	@echo "Run,Old CDS + AOT,New CDS + AOT" | tee -a compare_premain_builds.csv
 	@first=1; for i in ${LOOPS}; do \
 		rm -f tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runn 2>&1 | grep Booted >> tmp.txt; \
-		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runn 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_OLD} PM_VER=.old PM_OPTS="${PM_OPTS_OLD}" runa 2>&1 | grep Booted >> tmp.txt; \
+		$(SLEEP) $(MAKE) LOG_INIT= PREMAIN_HOME=${PM_NEW} PM_VER=.new PM_OPTS="${PM_OPTS_NEW}" runa 2>&1 | grep Booted >> tmp.txt; \
 		if test "$$first" != "1"; then \
 		    echo $$i$$(cat tmp.txt | sed -e 's/.*in /,/g' -e 's/ms//g') | sed -e 's/ //g' | tee -a compare_premain_builds.csv; \
 	        fi; \

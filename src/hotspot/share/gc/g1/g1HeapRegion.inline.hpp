@@ -42,47 +42,6 @@
 #include "utilities/align.hpp"
 #include "utilities/globalDefinitions.hpp"
 
-inline HeapWord* G1HeapRegion::allocate_impl(size_t min_word_size,
-                                           size_t desired_word_size,
-                                           size_t* actual_size) {
-  HeapWord* obj = top();
-  size_t available = pointer_delta(end(), obj);
-  size_t want_to_allocate = MIN2(available, desired_word_size);
-  if (want_to_allocate >= min_word_size) {
-    HeapWord* new_top = obj + want_to_allocate;
-    set_top(new_top);
-    assert(is_object_aligned(obj) && is_object_aligned(new_top), "checking alignment");
-    *actual_size = want_to_allocate;
-    return obj;
-  } else {
-    return nullptr;
-  }
-}
-
-inline HeapWord* G1HeapRegion::par_allocate_impl(size_t min_word_size,
-                                               size_t desired_word_size,
-                                               size_t* actual_size) {
-  do {
-    HeapWord* obj = top();
-    size_t available = pointer_delta(end(), obj);
-    size_t want_to_allocate = MIN2(available, desired_word_size);
-    if (want_to_allocate >= min_word_size) {
-      HeapWord* new_top = obj + want_to_allocate;
-      HeapWord* result = Atomic::cmpxchg(&_top, obj, new_top);
-      // result can be one of two:
-      //  the old top value: the exchange succeeded
-      //  otherwise: the new value of the top is returned.
-      if (result == obj) {
-        assert(is_object_aligned(obj) && is_object_aligned(new_top), "checking alignment");
-        *actual_size = want_to_allocate;
-        return obj;
-      }
-    } else {
-      return nullptr;
-    }
-  } while (true);
-}
-
 inline HeapWord* G1HeapRegion::block_start(const void* addr) const {
   return block_start(addr, parsable_bottom_acquire());
 }
@@ -197,6 +156,8 @@ inline void G1HeapRegion::reset_after_full_gc_common() {
 
   _garbage_bytes = 0;
 
+  _incoming_refs = 0;
+
   // Clear unused heap memory in debug builds.
   if (ZapUnusedHeapArea) {
     mangle_unused_area();
@@ -225,9 +186,27 @@ inline void G1HeapRegion::apply_to_marked_objects(G1CMBitMap* bitmap, ApplyToMar
 }
 
 inline HeapWord* G1HeapRegion::par_allocate(size_t min_word_size,
-                                          size_t desired_word_size,
-                                          size_t* actual_word_size) {
-  return par_allocate_impl(min_word_size, desired_word_size, actual_word_size);
+                                            size_t desired_word_size,
+                                            size_t* actual_word_size) {
+  do {
+    HeapWord* obj = top();
+    size_t available = pointer_delta(end(), obj);
+    size_t want_to_allocate = MIN2(available, desired_word_size);
+    if (want_to_allocate >= min_word_size) {
+      HeapWord* new_top = obj + want_to_allocate;
+      HeapWord* result = Atomic::cmpxchg(&_top, obj, new_top);
+      // result can be one of two:
+      // the old top value: the exchange succeeded
+      // otherwise: the new value of the top is returned.
+      if (result == obj) {
+        assert(is_object_aligned(obj) && is_object_aligned(new_top), "checking alignment");
+        *actual_word_size = want_to_allocate;
+        return obj;
+      }
+    } else {
+      return nullptr;
+    }
+  } while (true);
 }
 
 inline HeapWord* G1HeapRegion::allocate(size_t word_size) {
@@ -236,9 +215,20 @@ inline HeapWord* G1HeapRegion::allocate(size_t word_size) {
 }
 
 inline HeapWord* G1HeapRegion::allocate(size_t min_word_size,
-                                      size_t desired_word_size,
-                                      size_t* actual_word_size) {
-  return allocate_impl(min_word_size, desired_word_size, actual_word_size);
+                                        size_t desired_word_size,
+                                        size_t* actual_word_size) {
+  HeapWord* obj = top();
+  size_t available = pointer_delta(end(), obj);
+  size_t want_to_allocate = MIN2(available, desired_word_size);
+  if (want_to_allocate >= min_word_size) {
+    HeapWord* new_top = obj + want_to_allocate;
+    set_top(new_top);
+    assert(is_object_aligned(obj) && is_object_aligned(new_top), "checking alignment");
+    *actual_word_size = want_to_allocate;
+    return obj;
+  } else {
+    return nullptr;
+  }
 }
 
 inline void G1HeapRegion::update_bot() {
@@ -275,11 +265,12 @@ inline void G1HeapRegion::reset_parsable_bottom() {
   Atomic::release_store(&_parsable_bottom, bottom());
 }
 
-inline void G1HeapRegion::note_end_of_marking(HeapWord* top_at_mark_start, size_t marked_bytes) {
+inline void G1HeapRegion::note_end_of_marking(HeapWord* top_at_mark_start, size_t marked_bytes, size_t incoming_refs) {
   assert_at_safepoint();
 
   if (top_at_mark_start != bottom()) {
     _garbage_bytes = byte_size(bottom(), top_at_mark_start) - marked_bytes;
+    _incoming_refs = incoming_refs;
   }
 
   if (needs_scrubbing()) {
@@ -521,6 +512,14 @@ inline void G1HeapRegion::add_pinned_object_count(size_t value) {
   assert(value != 0, "wasted effort");
   assert(!is_free(), "trying to pin free region %u, adding %zu", hrm_index(), value);
   Atomic::add(&_pinned_object_count, value, memory_order_relaxed);
+}
+
+inline void G1HeapRegion::install_cset_group(G1CSetCandidateGroup* cset_group) {
+  _rem_set->install_cset_group(cset_group);
+}
+
+inline void G1HeapRegion::uninstall_cset_group() {
+  _rem_set->uninstall_cset_group();
 }
 
 #endif // SHARE_GC_G1_G1HEAPREGION_INLINE_HPP
