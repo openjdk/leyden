@@ -29,8 +29,9 @@
 #include "memory/allocation.hpp"
 #include "nmt/memTag.hpp"
 #include "oops/oopsHierarchy.hpp"
+#include "runtime/vm_version.hpp"
+#include "utilities/sizes.hpp"
 #include "utilities/exceptions.hpp"
-
 /*
  * AOT Code Cache collects code from Code Cache and corresponding metadata
  * during application training run.
@@ -259,6 +260,7 @@ private:
 public:
   AOTCodeAddressTable() :
     _extrs_addr(nullptr),
+    _stubs_addr(nullptr),
     _shared_blobs_addr(nullptr),
     _C1_blobs_addr(nullptr),
     _C2_blobs_addr(nullptr),
@@ -339,10 +341,12 @@ protected:
       restrictContendedPadding = 256,
     };
     uint _flags;
+    uint _cpu_features_size;
 
   public:
     void record();
     bool verify() const;
+    static size_t trailing_data_size() { return VM_Version::cpu_features_size(); }
   };
 
   class Header : public CHeapObj<mtCode> {
@@ -364,7 +368,7 @@ protected:
     uint   _C1_blobs_count;
     uint   _C2_blobs_count;
     uint   _stubs_count;
-    Config _config;
+    Config _config; // must be the last element as there is trailing data stored immediately after Config
 
   public:
     void init(uint cache_size,
@@ -387,6 +391,7 @@ protected:
       _C2_blobs_count = C2_blobs_count;
       _stubs_count    = stubs_count;
 
+      assert((int)config_offset() + sizeof(Config) == sizeof(Header), "_config must be the last member of Header");
       _config.record();
     }
 
@@ -413,6 +418,9 @@ protected:
     bool verify_vm_config() const { // Called after Universe initialized
       return _config.verify();
     }
+    static size_t trailing_data_size() { return Config::trailing_data_size(); }
+    static size_t size() { return sizeof(Header) + trailing_data_size(); };
+    static ByteSize config_offset() { return byte_offset_of(Header, _config); }
   };
 
 // Continue with AOTCodeCache class definition.

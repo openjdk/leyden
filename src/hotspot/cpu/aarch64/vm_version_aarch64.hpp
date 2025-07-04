@@ -30,6 +30,8 @@
 #include "runtime/abstract_vm_version.hpp"
 #include "utilities/sizes.hpp"
 
+#define BIT_MASK(flag) (1ULL<<(flag))
+
 class VM_Version : public Abstract_VM_Version {
   friend class VMStructs;
   friend class JVMCIVMStructs;
@@ -60,6 +62,8 @@ protected:
   // the function sets the largest supported value.
   static int set_and_get_current_sve_vector_length(int len);
   static int get_current_sve_vector_length();
+
+  static void insert_features_names(uint64_t features, char* names_buf, size_t buf_size);
 
 public:
   // Initialization
@@ -138,16 +142,34 @@ enum Ampere_CPU_Model {
     decl(A53MAC,        a53mac,        31)
 
   enum Feature_Flag {
-#define DECLARE_CPU_FEATURE_FLAG(id, name, bit) CPU_##id = (1 << bit),
+#define DECLARE_CPU_FEATURE_FLAG(id, name, bit) CPU_##id = bit,
     CPU_FEATURE_FLAGS(DECLARE_CPU_FEATURE_FLAG)
 #undef DECLARE_CPU_FEATURE_FLAG
+    MAX_CPU_FEATURES
   };
+
+  STATIC_ASSERT(sizeof(_features) * BitsPerByte >= MAX_CPU_FEATURES);
+
+  static const char* _features_names[MAX_CPU_FEATURES];
 
   // Feature identification
 #define CPU_FEATURE_DETECTION(id, name, bit) \
-  static bool supports_##name() { return (_features & CPU_##id) != 0; };
+  static bool supports_##name() { return supports_feature(CPU_##id); }
   CPU_FEATURE_FLAGS(CPU_FEATURE_DETECTION)
 #undef CPU_FEATURE_DETECTION
+
+  static void set_feature(Feature_Flag flag) {
+    _features |= BIT_MASK(flag);
+  }
+  static void clear_feature(Feature_Flag flag) {
+    _features &= (~BIT_MASK(flag));
+  }
+  static bool supports_feature(Feature_Flag flag) {
+    return (_features & BIT_MASK(flag)) != 0;
+  }
+  static bool supports_feature(uint64_t features, Feature_Flag flag) {
+    return (features & BIT_MASK(flag)) != 0;
+  }
 
   static int cpu_family()                     { return _cpu; }
   static int cpu_model()                      { return _model; }
@@ -199,6 +221,19 @@ enum Ampere_CPU_Model {
   static bool use_neon_for_vector(int vector_length_in_bytes) {
     return vector_length_in_bytes <= 16;
   }
+
+  static void get_supported_cpu_features_name(char* names_buf, size_t buf_size);
+  static void get_cpu_features_name(void* features_buffer, char* names_buf, size_t buf_size);
+  static void get_missing_features_name(void* features_buffer, char* missing_features_name, size_t buf_size);
+
+  // Returns number of bytes required to store cpu features representation
+  static int cpu_features_size();
+
+  // Stores cpu features representation in the provided buffer. This representation is arch dependent.
+  // Size of the buffer must be same as returned by cpu_features_size()
+  static void store_cpu_features(void* buf);
+
+  static bool supports_features(void* features_to_test);
 };
 
 #endif // CPU_AARCH64_VM_VERSION_AARCH64_HPP
