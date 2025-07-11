@@ -793,11 +793,6 @@ void CDSConfig::setup_compiler_args() {
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     AOTCodeCache::enable_caching();
-
-    if (UseSharedSpaces && FLAG_IS_DEFAULT(AOTMode)) {
-      log_info(aot)("Enabled -XX:AOTMode=on by default for troubleshooting Leyden prototype");
-      RequireSharedSpaces = true;
-    }
   } else {
     FLAG_SET_ERGO(AOTReplayTraining, false);
     FLAG_SET_ERGO(AOTRecordTraining, false);
