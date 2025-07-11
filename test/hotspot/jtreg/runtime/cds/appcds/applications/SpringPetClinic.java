@@ -53,16 +53,6 @@
  * @run driver/timeout=120 SpringPetClinic AOT
  */
 
-/*
- * @test id=leyden
- * @key external-dep
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary run Spring Pet Clinic demo with leyden-premain "new workflow"
- * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic LEYDEN
- */
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;

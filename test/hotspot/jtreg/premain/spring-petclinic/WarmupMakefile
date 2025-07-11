@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -65,6 +65,8 @@ JDK17_HOME   = /jdk3/official/jdk17
 BL_HOME      = /jdk3/official/jdk-latest
 PREMAIN_HOME = /jdk3/bld/le4/images/jdk
 #===============================================================================
+
+$(error This makefile no longer works. Need to update it to use -XX:AOTCache flags)
 
 # Usually there's no need to change the following
 JAR_CMD          = ${JDK17_HOME}/bin/jar

@@ -34,18 +34,6 @@
  * @run driver EndTrainingWithAOTCacheMXBean AOT
  */
 
-/*
- * @test id=leyden
- * @requires vm.cds.supports.aot.class.linking
- * @comment work around JDK-8345635
- * @requires !vm.jvmci.enabled
- * @library /test/jdk/lib/testlibrary /test/lib
- * @modules jdk.management
- * @build EndTrainingWithAOTCacheMXBean
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
- * @run driver EndTrainingWithAOTCacheMXBean LEYDEN
- */
-
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;
@@ -94,26 +82,18 @@ public class EndTrainingWithAOTCacheMXBean {
                 out.shouldContain("Hello Leyden " + name);
                 out.shouldContain("ShouldBeCached.dummy()");
                 out.shouldContain("ShouldNotBeCached.dummy()");
-                if(runMode == RunMode.TRAINING || runMode == RunMode.TRAINING0) {
-                    if (isLeydenWorkflow()) {
-                        out.shouldContain("AOTMode = auto");
-                    } else {
-                        out.shouldContain("AOTMode = record");
-                    }
+                if(runMode == RunMode.TRAINING) {
+                    out.shouldContain("AOTMode = record");
                     out.shouldContain("Confirmed is recording");
                     out.shouldContain("Confirmed recording duration > 0");
                     out.shouldContain("Stopped recording successfully after an additional 10ms");
                     out.shouldContain("Last recording duration > than previous duration");
                     out.shouldContain("Confirmed recording stopped");
                     out.shouldContain("Confirmed recording duration has not changed after 10ms");
-                } else if (runMode == RunMode.TRAINING1 || runMode == RunMode.ASSEMBLY) {
+                } else if (runMode == RunMode.ASSEMBLY) {
                     out.shouldNotContain("Hello Leyden ");
                 } else if (runMode == RunMode.PRODUCTION) {
-                    if (isLeydenWorkflow()) {
-                        out.shouldContain("AOTMode = auto");
-                    } else {
-                        out.shouldContain("AOTMode = on");
-                    }
+                    out.shouldContain("AOTMode = on");
                     out.shouldContain("Confirmed is not recording");
                     out.shouldContain("Confirmed recording duration == 0");
                 }
