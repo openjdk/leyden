@@ -249,16 +249,16 @@ bool AOTCodeCache::allow_const_field(ciConstant& value) {
 // At this point all AOT class linking seetings are finilized
 // and AOT cache is open so we can map AOT code region.
 void AOTCodeCache::initialize() {
+  if (!is_caching_enabled()) {
+    log_info(aot, codecache, init)("AOT Code Cache is not used: disabled.");
+    return;
+  }
 #if defined(ZERO) || !(defined(AMD64) || defined(AARCH64))
   log_info(aot, codecache, init)("AOT Code Cache is not supported on this platform.");
   disable_caching();
   return;
 #else
-  if (FLAG_IS_DEFAULT(AOTCache)) {
-    log_info(aot, codecache, init)("AOT Code Cache is not used: AOTCache is not specified.");
-    disable_caching();
-    return; // AOTCache must be specified to dump and use AOT code
-  }
+  assert(!FLAG_IS_DEFAULT(AOTCache), "AOTCache should be specified");
 
   // Disable stubs caching until JDK-8357398 is fixed.
   FLAG_SET_ERGO(AOTStubCaching, false);
@@ -277,10 +277,8 @@ void AOTCodeCache::initialize() {
   bool is_dumping = false;
   bool is_using   = false;
   if (CDSConfig::is_dumping_final_static_archive() && CDSConfig::is_dumping_aot_linked_classes()) {
-    enable_caching();
     is_dumping = is_caching_enabled();
   } else if (CDSConfig::is_using_archive() && CDSConfig::is_using_aot_linked_classes()) {
-    enable_caching();
     is_using = is_caching_enabled();
   } else {
     log_info(aot, codecache, init)("AOT Code Cache is not used: AOT Class Linking is not used.");
@@ -639,6 +637,9 @@ void AOTCodeCache::Config::record() {
   if (RestrictContended) {
     _flags |= restrictContendedPadding;
   }
+  if (PreserveFramePointer) {
+    _flags |= preserveFramePointer;
+  }
   _compressedOopShift    = CompressedOops::shift();
   _compressedOopBase     = CompressedOops::base();
   _compressedKlassShift  = CompressedKlassPointers::shift();
@@ -691,6 +692,10 @@ bool AOTCodeCache::Config::verify() const {
   }
   if (((_flags & restrictContendedPadding) != 0) != RestrictContended) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with RestrictContended = %s", RestrictContended ? "false" : "true");
+    return false;
+  }
+  if (((_flags & preserveFramePointer) != 0) != PreserveFramePointer) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with PreserveFramePointer = %s", PreserveFramePointer ? "false" : "true");
     return false;
   }
   if (_compressedOopShift != (uint)CompressedOops::shift()) {

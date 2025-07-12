@@ -259,6 +259,7 @@ private:
 public:
   AOTCodeAddressTable() :
     _extrs_addr(nullptr),
+    _stubs_addr(nullptr),
     _shared_blobs_addr(nullptr),
     _C1_blobs_addr(nullptr),
     _C2_blobs_addr(nullptr),
@@ -337,6 +338,7 @@ protected:
       userClassAssertions      = 64,
       enableContendedPadding   = 128,
       restrictContendedPadding = 256,
+      preserveFramePointer     = 512
     };
     uint _flags;
 

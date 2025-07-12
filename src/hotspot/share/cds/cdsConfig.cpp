@@ -34,6 +34,7 @@
 #include "classfile/moduleEntry.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "code/aotCodeCache.hpp"
+#include "compiler/compilerDefinitions.inline.hpp"
 #include "include/jvm_io.h"
 #include "logging/log.hpp"
 #include "prims/jvmtiExport.hpp"
@@ -775,7 +776,8 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
 
 void CDSConfig::setup_compiler_args() {
   // AOT profiles and AOT-compiled methods are supported only in the JEP 483 workflow.
-  bool can_dump_profile_and_compiled_code = AOTClassLinking && new_aot_flags_used();
+  bool can_dump_profile_and_compiled_code = !CompilerConfig::is_interpreter_only() && AOTClassLinking && new_aot_flags_used();
+  bool can_use_profile_and_compiled_code = !CompilerConfig::is_interpreter_only() && new_aot_flags_used();
 
   if (is_dumping_preimage_static_archive() && can_dump_profile_and_compiled_code) {
     // JEP 483 workflow -- training
@@ -788,7 +790,7 @@ void CDSConfig::setup_compiler_args() {
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     AOTCodeCache::enable_caching();
     disable_dumping_aot_code(); // Cannot dump aot code until metadata and heap are dumped.
-  } else if (is_using_archive() && new_aot_flags_used()) {
+  } else if (is_using_archive() && can_use_profile_and_compiled_code) {
     // JEP 483 workflow -- production
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
