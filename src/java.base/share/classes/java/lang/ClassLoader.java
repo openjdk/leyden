@@ -2610,10 +2610,10 @@ public abstract class ClassLoader {
                 }
             }
         } else {
-          reinitObjectField("packages", new ConcurrentHashMap<>());
-          reinitObjectField("package2certs", new ConcurrentHashMap<>());
+            reinitObjectField("packages", new ConcurrentHashMap<>());
         }
 
+        reinitObjectField("package2certs", new ConcurrentHashMap<>());
         classes.clear();
         classes.trimToSize();
         classLoaderValueMap = null;

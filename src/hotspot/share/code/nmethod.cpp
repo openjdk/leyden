@@ -2164,7 +2164,7 @@ void nmethod::unlink_from_method() {
 }
 
 // Invalidate code
-bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
+bool nmethod::make_not_entrant(const char* reason, bool keep_aot_entry) {
   assert(reason != nullptr, "Must provide a reason");
 
   // This can be called while the system is already at a safepoint which is ok
@@ -2240,8 +2240,8 @@ bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
     // Remove nmethod from method.
     unlink_from_method();
 
-    if (make_not_entrant) {
-      // Keep cached code if it was simply replaced
+    if (!keep_aot_entry) {
+      // Keep AOT cached code if it was simply replaced
       // otherwise make it not entrant too.
       AOTCodeCache::invalidate(_aot_code_entry);
     }

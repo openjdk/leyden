@@ -53,10 +53,6 @@ abstract public class CDSAppTester {
     private final String aotCacheFileLog;
     private final String dynamicArchiveFile;
     private final String dynamicArchiveFileLog;
-    private final String cdsFile;        // new workflow: -XX:CacheDataStore=<foo>.cds
-    private final String cdsFileLog;
-    private final String cdsFilePreImage;        // new workflow: -XX:CacheDataStore=<foo>.cds
-    private final String cdsFilePreImageLog;
     private final String tempBaseArchiveFile;
     private int numProductionRuns = 0;
     private String whiteBoxJar = null;
@@ -85,10 +81,6 @@ abstract public class CDSAppTester {
         aotCacheFileLog = logFileName(aotCacheFile);;
         dynamicArchiveFile = name() + ".dynamic.jsa";
         dynamicArchiveFileLog = logFileName(dynamicArchiveFile);
-        cdsFile = name() + ".cds";
-        cdsFileLog = logFileName(cdsFile);
-        cdsFilePreImage = cdsFile + ".preimage";
-        cdsFilePreImageLog = logFileName(cdsFilePreImage);
         tempBaseArchiveFile = name() + ".temp-base.jsa";
     }
 
@@ -110,13 +102,10 @@ abstract public class CDSAppTester {
         STATIC,        // classic -Xshare:dump workflow
         DYNAMIC,       // classic -XX:ArchiveClassesAtExit
         AOT,           // JEP 483 Ahead-of-Time Class Loading & Linking
-        LEYDEN,        // The new "one step training workflow" -- see JDK-8320264
     }
 
     public enum RunMode {
         TRAINING,       // -XX:DumpLoadedClassList OR {-XX:AOTMode=record -XX:AOTConfiguration}
-        TRAINING0,      // LEYDEN only
-        TRAINING1,      // LEYDEN only (assembly phase, app logic not executed)
         DUMP_STATIC,    // -Xshare:dump
         DUMP_DYNAMIC,   // -XX:ArchiveClassesArExit
         ASSEMBLY,       // JEP 483 (assembly phase, app logic not executed)
@@ -132,7 +121,7 @@ abstract public class CDSAppTester {
         // When <code>CDSAppTester::checkExecution(out, runMode)</code> is called, has the application been
         // executed? If so, <code>out</code> should contain logs printed by the application's own logic.
         public boolean isApplicationExecuted() {
-            return (this != TRAINING1) && (this != ASSEMBLY) && (this != DUMP_STATIC);
+            return (this != ASSEMBLY) && (this != DUMP_STATIC);
         }
     }
 
@@ -144,7 +133,7 @@ abstract public class CDSAppTester {
         } else if (isAOTWorkflow()) {
             return runMode == RunMode.TRAINING || runMode == RunMode.ASSEMBLY;
         } else {
-            return runMode == RunMode.TRAINING || runMode == RunMode.TRAINING0 || runMode == RunMode.TRAINING1;
+            return false;
         }
     }
 
@@ -197,10 +186,6 @@ abstract public class CDSAppTester {
         return workflow == Workflow.AOT;
     }
 
-    public final boolean isLeydenWorkflow() {
-        return workflow == Workflow.LEYDEN;
-    }
-
     private String logToFile(String logFile, String... logTags) {
         StringBuilder sb = new StringBuilder("-Xlog:arguments");
         String prefix = ",";
@@ -231,7 +216,7 @@ abstract public class CDSAppTester {
         if (checkExitValue) {
             output.shouldHaveExitValue(0);
         }
-        //output.shouldNotContain(CDSTestUtils.MSG_STATIC_FIELD_MAY_HOLD_DIFFERENT_VALUE); // FIXME -- leyden+JEP483 merge
+        output.shouldNotContain(CDSTestUtils.MSG_STATIC_FIELD_MAY_HOLD_DIFFERENT_VALUE);
         CDSTestUtils.checkCommonExecExceptions(output);
         checkExecution(output, runMode);
         return output;
@@ -276,7 +261,8 @@ abstract public class CDSAppTester {
                                                    logToFile(aotConfigurationFileLog,
                                                              "class+load=debug",
                                                              "aot=debug",
-                                                             "aot+class=debug"));
+                                                             "cds=debug",
+                                                             "cds+class=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         return executeAndCheck(cmdLine, runMode, aotConfigurationFile, aotConfigurationFileLog);
@@ -289,8 +275,8 @@ abstract public class CDSAppTester {
                                                    "-XX:AOTCacheOutput=" + aotCacheFile,
                                                    logToFile(aotCacheFileLog,
                                                              "class+load=debug",
-                                                             "aot=debug",
-                                                             "aot+class=debug"));
+                                                             "cds=debug",
+                                                             "cds+class=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         OutputAnalyzer out =  executeAndCheck(cmdLine, runMode, aotCacheFile, aotCacheFileLog);
@@ -313,15 +299,17 @@ abstract public class CDSAppTester {
     private OutputAnalyzer dumpStaticArchive() throws Exception {
         RunMode runMode = RunMode.DUMP_STATIC;
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
+                                                   "-Xlog:aot",
+                                                   "-Xlog:aot+heap=error",
                                                    "-Xlog:cds",
-                                                   "-Xlog:cds+heap=error",
                                                    "-Xshare:dump",
                                                    "-XX:SharedArchiveFile=" + staticArchiveFile,
                                                    "-XX:SharedClassListFile=" + classListFile,
                                                    logToFile(staticArchiveFileLog,
+                                                             "aot=debug",
                                                              "cds=debug",
                                                              "cds+class=debug",
-                                                             "cds+heap=warning",
+                                                             "aot+heap=warning",
                                                              "cds+resolve=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
@@ -333,14 +321,16 @@ abstract public class CDSAppTester {
         String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
                                                    "-Xlog:aot",
                                                    "-Xlog:aot+heap=error",
+                                                   "-Xlog:cds",
                                                    "-XX:AOTMode=create",
                                                    "-XX:AOTConfiguration=" + aotConfigurationFile,
                                                    "-XX:AOTCache=" + aotCacheFile,
                                                    logToFile(aotCacheFileLog,
                                                              "aot=debug",
-                                                             "aot+class=debug",
+                                                             "cds=debug",
+                                                             "cds+class=debug",
                                                              "aot+heap=warning",
-                                                             "aot+resolve=debug"));
+                                                             "cds+resolve=debug"));
         cmdLine = addCommonVMArgs(runMode, cmdLine);
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         return executeAndCheck(cmdLine, runMode, aotCacheFile, aotCacheFileLog);
@@ -384,6 +374,7 @@ abstract public class CDSAppTester {
                                             "-Xlog:cds",
                                             "-XX:ArchiveClassesAtExit=" + dynamicArchiveFile,
                                             logToFile(dynamicArchiveFileLog,
+                                                      "aot=debug",
                                                       "cds=debug",
                                                       "cds+class=debug",
                                                       "cds+resolve=debug",
@@ -395,69 +386,6 @@ abstract public class CDSAppTester {
         }
         cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
         return executeAndCheck(cmdLine, runMode, dynamicArchiveFile, dynamicArchiveFileLog);
-    }
-
-    private String trainingLog(String file) {
-        return logToFile(file,
-                         "cds=debug",
-                         "cds+class=debug",
-                         "cds+heap=warning",
-                         "cds+resolve=debug");
-    }
-
-    // normal training workflow (main JVM process spawns child process)
-    private OutputAnalyzer trainingRun() throws Exception {
-        RunMode runMode = RunMode.TRAINING;
-        File f = new File(cdsFile);
-        f.delete();
-        String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
-                                                   "-XX:+AOTClassLinking",
-                                                   "-XX:+ArchiveDynamicProxies",
-                                                 //"-XX:+ArchiveReflectionData",
-                                                   "-XX:CacheDataStore=" + cdsFile,
-                                                   "-cp", classpath(runMode),
-                                                   // Use PID to distinguish the logs of the training process
-                                                   // and the forked final image dump process.
-                                                   "-Xlog:cds::uptime,level,tags,pid",
-                                                   trainingLog(cdsFileLog));
-        cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
-        OutputAnalyzer out =  executeAndCheck(cmdLine, runMode, cdsFile, cdsFileLog);
-        listOutputFile(cdsFileLog + ".0"); // the preimage dump
-        return out;
-    }
-
-    // "split" training workflow (launch the two processes manually, for easier debugging);
-    private OutputAnalyzer trainingRun0() throws Exception {
-        RunMode runMode = RunMode.TRAINING0;
-        File f = new File(cdsFile);
-        f.delete();
-        String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
-                                                   "-XX:+UnlockDiagnosticVMOptions",
-                                                   "-XX:+CDSManualFinalImage",
-                                                   "-XX:+AOTClassLinking",
-                                                   "-XX:+ArchiveDynamicProxies",
-                                                 //"-XX:+ArchiveReflectionData",
-                                                   "-XX:CacheDataStore=" + cdsFile,
-                                                   "-cp", classpath(runMode),
-                                                   trainingLog(cdsFilePreImageLog));
-        cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
-        return executeAndCheck(cmdLine, runMode, cdsFilePreImage, cdsFilePreImageLog);
-    }
-    private OutputAnalyzer trainingRun1() throws Exception {
-        RunMode runMode = RunMode.TRAINING1;
-        File f = new File(cdsFile);
-        f.delete();
-        String[] cmdLine = StringArrayUtils.concat(vmArgs(runMode),
-                                                   "-XX:+UnlockDiagnosticVMOptions",
-                                                   "-XX:+AOTClassLinking",
-                                                   "-XX:+ArchiveDynamicProxies",
-                                                 //"-XX:+ArchiveReflectionData",
-                                                   "-XX:CacheDataStore=" + cdsFile,
-                                                   "-XX:CDSPreimage=" + cdsFilePreImage,
-                                                   "-cp", classpath(runMode),
-                                                   trainingLog(cdsFileLog));
-        cmdLine = StringArrayUtils.concat(cmdLine, appCommandLine(runMode));
-        return executeAndCheck(cmdLine, runMode, cdsFile, cdsFileLog);
     }
 
     public OutputAnalyzer productionRun() throws Exception {
@@ -484,8 +412,6 @@ abstract public class CDSAppTester {
             cmdLine = StringArrayUtils.concat(cmdLine, "-Xshare:on", "-XX:SharedArchiveFile=" + dynamicArchiveFile);
        } else if (isAOTWorkflow()) {
             cmdLine = StringArrayUtils.concat(cmdLine, "-XX:AOTMode=on", "-XX:AOTCache=" + aotCacheFile);
-        } else {
-            cmdLine = StringArrayUtils.concat(cmdLine, "-XX:CacheDataStore=" + cdsFile);
         }
 
         if (extraVmArgs != null) {
@@ -520,10 +446,6 @@ abstract public class CDSAppTester {
                 runDynamicWorkflow();
             } else if (args[0].equals("AOT")) {
                 runAOTWorkflow(args);
-            } else if (args[0].equals("LEYDEN")) {
-                runLeydenWorkflow(false);
-            } else if (args[0].equals("LEYDEN_TRAINONLY")) {
-                runLeydenWorkflow(true);
             } else {
                 throw new RuntimeException(err);
             }
@@ -541,13 +463,6 @@ abstract public class CDSAppTester {
         this.workflow = Workflow.DYNAMIC;
         dumpDynamicArchive();
         productionRun();
-    }
-
-    // See JEP 483; stop at the assembly run; do not execute production run
-    public void runAOTAssemblyWorkflow() throws Exception {
-        this.workflow = Workflow.AOT;
-        recordAOTConfiguration();
-        createAOTCache();
     }
 
     // See JEP 483
@@ -585,16 +500,10 @@ abstract public class CDSAppTester {
         productionRun();
     }
 
-    private void runLeydenWorkflow(boolean trainOnly) throws Exception {
-        this.workflow = Workflow.LEYDEN;
-        if (System.getProperty("CDSAppTester.split.new.workflow") != null) {
-            trainingRun0();
-            trainingRun1();
-        } else {
-            trainingRun();
-        }
-        if (!trainOnly) {
-            productionRun();
-        }
+    // See JEP 483; stop at the assembly run; do not execute production run
+    public void runAOTAssemblyWorkflow() throws Exception {
+        this.workflow = Workflow.AOT;
+        recordAOTConfiguration();
+        createAOTCache();
     }
 }

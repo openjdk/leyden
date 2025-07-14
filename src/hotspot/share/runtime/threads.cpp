@@ -336,30 +336,6 @@ static void call_initPhase2(TRAPS) {
   }
 
   universe_post_module_init();
-
-#if 0
-  if (CDSConfig::is_using_aot_linked_classes()) {
-    AOTLinkedClassBulkLoader::load_non_javabase_boot_classes(THREAD); 
-    if (CDSConfig::is_using_full_module_graph()) {
-      assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
-      assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
-      AOTLinkedClassBulkLoader::load_platform_classes(THREAD);
-      AOTLinkedClassBulkLoader::load_app_classes(THREAD);
-    } else {
-      // Special case -- we assume that the final archive has the same module graph
-      // as the training run.
-      // AOTLinkedClassBulkLoader will be called for the platform/system loaders
-      // inside SystemDictionary::compute_java_loaders().
-      assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-      assert(SystemDictionary::java_platform_loader() == nullptr, "must be");
-      assert(SystemDictionary::java_system_loader() == nullptr,   "must be");
-    }
-  }
-
-#ifndef PRODUCT
-  HeapShared::initialize_test_class_from_archive(THREAD);
-#endif
-#endif
 }
 
 // Phase 3. final setup - set security manager, system class loader and TCCL
@@ -952,16 +928,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     // Classic -Xshare:dump, aka "old workflow"
     MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
   } else if (CDSConfig::is_dumping_final_static_archive()) {
-    if (CDSConfig::is_experimental_leyden_workflow()) {
-      // TODO: copy the verification and loader constraints from preimage to final image
-      // TODO: load archived classes for custom loaders as well.
-      log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
-      MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
-      vm_direct_exit(0, "CacheDataStore dumping is complete");
-    } else {
-      tty->print_cr("Reading AOTConfiguration %s and writing AOTCache %s", AOTConfiguration, AOTCache);
-      MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
-    }
+    tty->print_cr("Reading AOTConfiguration %s and writing AOTCache %s", AOTConfiguration, AOTCache);
+    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
   }
 
   log_info(init)("At VM initialization completion:");

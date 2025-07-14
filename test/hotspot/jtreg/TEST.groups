@@ -439,7 +439,6 @@ hotspot_appcds_dynamic = \
  -runtime/cds/appcds/leyden/DynamicProxyTest.java \
  -runtime/cds/appcds/leyden/LeydenAndOldClasses.java \
  -runtime/cds/appcds/leyden/LeydenGCFlags.java \
- -runtime/cds/appcds/leyden/LeydenHello.java \
  -runtime/cds/appcds/leyden/LeydenReflection.java \
  -runtime/cds/appcds/methodHandles \
  -runtime/cds/appcds/sharedStrings \

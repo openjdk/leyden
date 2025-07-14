@@ -53,16 +53,6 @@
  * @run driver/timeout=120 SpringPetClinic AOT
  */
 
-/*
- * @test id=leyden
- * @key external-dep
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary run Spring Pet Clinic demo with leyden-premain "new workflow"
- * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic LEYDEN
- */
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -201,16 +191,6 @@ public class SpringPetClinic {
             String cmdLine[] = new String[] {
                 "org.springframework.samples.petclinic.PetClinicApplication"
             };
-/*
-            if (runMode == RunMode.PRODUCTION) {
-                // FIXME: bug JDK-8318393
-                cmdLine = StringArrayUtils.concat("-XX:-LoadCachedCode", cmdLine);
-            }
-
-            if (runMode.isProductionRun()) {
-                cmdLine = StringArrayUtils.concat("-Xlog:aot+codecache=error", cmdLine);
-            }
- */
             return cmdLine;
         }
 

@@ -47,10 +47,6 @@ public class LeydenAndOldClasses {
           Tester tester = new Tester();
           tester.run(new String[] {"AOT"} );
         }
-        {
-          Tester tester = new Tester();
-          tester.run(new String[] {"LEYDEN"} );
-        }
     }
 
     static class Tester extends CDSAppTester {
@@ -77,16 +73,11 @@ public class LeydenAndOldClasses {
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
             if (runMode == RunMode.PRODUCTION) {
                 out.shouldContain("OldClass@");
-            } else if ((isLeydenWorkflow() && (runMode == RunMode.TRAINING || runMode == RunMode.TRAINING1)) ||
-                       (isAOTWorkflow() && runMode == RunMode.ASSEMBLY)) {
+            } else if (isAOTWorkflow() && runMode == RunMode.ASSEMBLY) {
                 // !!! Leyden Repo Only !!!
                 // When AOTClassLinking is enabled, we can safely archive old classes. See comments around
                 // CDSConfig::preserve_all_dumptime_verification_states().
-                if (isAOTWorkflow()) {
-                    out.shouldMatch("aot,class.* = 0x.* app *OldClass aot-linked");
-                } else {
-                    out.shouldMatch("cds,class.* = 0x.* app *OldClass aot-linked");
-                }
+                out.shouldMatch("aot,class.* = 0x.* app *OldClass aot-linked");
             }
         }
     }

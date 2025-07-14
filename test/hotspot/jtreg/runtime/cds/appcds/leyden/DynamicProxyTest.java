@@ -63,10 +63,6 @@ public class DynamicProxyTest {
           Tester tester = new Tester();
           tester.run(new String[] {"AOT"} );
         }
-        {
-          Tester tester = new Tester();
-          tester.run(new String[] {"LEYDEN"} );
-        }
     }
 
     static class Tester extends CDSAppTester {
@@ -78,8 +74,6 @@ public class DynamicProxyTest {
         public String classpath(RunMode runMode) {
             switch (runMode) {
             case RunMode.TRAINING:
-            case RunMode.TRAINING0:
-            case RunMode.TRAINING1:
             case RunMode.DUMP_STATIC:
                 return app1Jar;
             default:

@@ -306,9 +306,7 @@ void MetaspaceShared::initialize_for_static_dump() {
   if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
     if (!((UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC || UseShenandoahGC) && UseCompressedClassPointers)) {
       const char* error;
-      if (CDSConfig::is_experimental_leyden_workflow()) {
-        error = "Cannot create the CacheDataStore";
-      } else if (CDSConfig::is_dumping_preimage_static_archive()) {
+      if (CDSConfig::is_dumping_preimage_static_archive()) {
         error = "Cannot create the AOT configuration file";
       } else {
         error = "Cannot create the AOT cache";
@@ -788,6 +786,10 @@ void MetaspaceShared::link_shared_classes(TRAPS) {
   AOTClassLinker::initialize();
   AOTClassInitializer::init_test_class(CHECK);
 
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    FinalImageRecipes::apply_recipes(CHECK);
+  }
+
   while (true) {
     ResourceMark rm(THREAD);
     CollectClassesForLinking collect_classes;
@@ -825,10 +827,6 @@ void MetaspaceShared::link_shared_classes(TRAPS) {
       }
     }
   }
-
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    FinalImageRecipes::apply_recipes(CHECK);
-  }
 }
 
 // Preload classes from a list, populate the shared spaces and dump to a
@@ -856,9 +854,6 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
                          message == nullptr ? "(null)" : java_lang_String::as_utf8_string(message));
       MetaspaceShared::writing_error(err_msg("Unexpected exception, use -Xlog:aot%s,exceptions=trace for detail",
                                              CDSConfig::new_aot_flags_used() ? "" : ",cds"));
-    }
-    if (CDSConfig::is_experimental_leyden_workflow()) {
-      vm_exit(1);
     }
   }
 
@@ -1113,14 +1108,10 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
 
   bool status = write_static_archive(&builder, mapinfo, heap_info);
   if (status && CDSConfig::is_dumping_preimage_static_archive()) {
-    if (CDSConfig::is_experimental_leyden_workflow()) {
-      fork_and_dump_final_static_archive_experimental_leyden_workflow(CHECK);
-    } else {
-      tty->print_cr("%s AOTConfiguration recorded: %s",
-                    CDSConfig::has_temp_aot_config_file() ? "Temporary" : "", AOTConfiguration);
-      if (CDSConfig::is_single_command_training()) {
-        fork_and_dump_final_static_archive(CHECK);
-      }
+    tty->print_cr("%s AOTConfiguration recorded: %s",
+                  CDSConfig::has_temp_aot_config_file() ? "Temporary" : "", AOTConfiguration);
+    if (CDSConfig::is_single_command_training()) {
+      fork_and_dump_final_static_archive(CHECK);
     }
   }
 
@@ -1191,28 +1182,20 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
   // parsed, so they are not in Arguments::jvm_args_array. If JDK_AOT_VM_OPTIONS is in
   // the environment, it will be inherited and parsed by the child JVM process
   // in Arguments::parse_java_tool_options_environment_variable().
+  precond(strcmp(AOTMode, "record") == 0);
 
   // We don't pass Arguments::jvm_flags_array(), as those will be added by
   // the child process when it loads .hotspotrc
 
-  if (CDSConfig::is_experimental_leyden_workflow()) {
-    stringStream ss;
-    ss.print("-XX:CDSPreimage=");
-    ss.print_raw(CDSPreimage);
-    append_args(&args, ss.freeze(), CHECK_0);
-  } else {
-
-   precond(strcmp(AOTMode, "record") == 0);
-
-   {
+  {
     // If AOTCacheOutput contains %p, it should have been already substituted with the
     // pid of the training process.
     stringStream ss;
     ss.print("-XX:AOTCacheOutput=");
     ss.print_raw(AOTCacheOutput);
     append_args(&args, ss.freeze(), CHECK_0);
-   }
-   {
+  }
+  {
     // If AOTCacheConfiguration contains %p, it should have been already substituted with the
     // pid of the training process.
     // If AOTCacheConfiguration was not explicitly specified, it should have been assigned a
@@ -1221,10 +1204,9 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
     ss.print("-XX:AOTConfiguration=");
     ss.print_raw(AOTConfiguration);
     append_args(&args, ss.freeze(), CHECK_0);
-   }
-
-   append_args(&args, "-XX:AOTMode=create", CHECK_0);
   }
+
+  append_args(&args, "-XX:AOTMode=create", CHECK_0);
 
   Symbol* klass_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$ProcessLauncher");
   Klass* k = SystemDictionary::resolve_or_fail(klass_name, true, CHECK_0);
@@ -1255,85 +1237,6 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
                           &javacall_args,
                           CHECK_0);
   return result.get_jint();
-}
-
-// This is for debugging purposes only (-XX:+CDSManualFinalImage) so we don't bother
-// quoating any special characters. The user should avoid using special chars.
-static void print_vm_arguments(outputStream* st) {
-  const char* cp = Arguments::get_appclasspath();
-  if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
-    st->print(" -cp ");  st->print_raw(cp);
-  }
-  for (int i = 0; i < Arguments::num_jvm_args(); i++) {
-    st->print(" %s", Arguments::jvm_args_array()[i]);
-  }
-}
-
-void MetaspaceShared::fork_and_dump_final_static_archive_experimental_leyden_workflow(TRAPS) {
-  assert(CDSConfig::is_dumping_preimage_static_archive(), "sanity");
-
-  ResourceMark rm;
-  stringStream ss;
-  print_java_launcher(&ss);
-
-  if (CDSManualFinalImage) {
-    print_vm_arguments(&ss);
-    ss.print(" -XX:CDSPreimage=%s", SharedArchiveFile);
-    const char* cmd = ss.freeze();
-
-    tty->print_cr("-XX:+CDSManualFinalImage is specified");
-    tty->print_cr("Please manually execute the following command to create the final CDS image:");
-    tty->print("    "); tty->print_raw_cr(cmd);
-
-    // The following is useful if the dumping was trigger by a script that builds
-    // a complex command-line.
-    tty->print_cr("Note: to recreate the preimage only:");
-    tty->print_cr("    rm -f %s", CacheDataStore);
-    tty->print("    ");
-    print_java_launcher(tty);
-    print_vm_arguments(tty);
-    if (Arguments::java_command() != nullptr) {
-      tty->print(" %s", Arguments::java_command());
-    }
-    tty->cr();
-  } else {
-    const char* cmd = ss.freeze();
-    log_info(cds)("Launching child process to create final CDS image:");
-    log_info(cds)("    %s", cmd);
-    int status = exec_jvm_with_java_tool_options(cmd, CHECK);
-    if (status != 0) {
-      log_error(cds)("Child process finished; status = %d", status);
-      log_error(cds)("To reproduce the error");
-      ResourceMark rm;
-      LogStream ls(Log(cds)::error());
-      ls.print("    "); ls.print_raw_cr(cmd);
-
-      // The following is useful if the dumping was trigger by a script that builds
-      // a complex command-line.
-      ls.print_cr("Note: to recreate the preimage only:");
-      ls.print_cr("    rm -f %s", CacheDataStore);
-      ls.print("    ");
-      print_java_launcher(&ls);
-      print_vm_arguments(&ls);
-      ls.print(" -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage");
-      if (Arguments::java_command() != nullptr) {
-        ls.print(" %s", Arguments::java_command());
-      }
-      ls.cr();
-
-      vm_direct_exit(status);
-    } else {
-      log_info(cds)("Child process finished; status = %d", status);
-      // On Windows, need WRITE permission to remove the file.
-      WINDOWS_ONLY(chmod(CDSPreimage, _S_IREAD | _S_IWRITE));
-      status = remove(CDSPreimage);
-      if (status != 0) {
-        log_error(cds)("Failed to remove CDSPreimage file %s", CDSPreimage);
-      } else {
-        log_info(cds)("Removed CDSPreimage file %s", CDSPreimage);
-      }
-    }
-  }
 }
 
 void MetaspaceShared::fork_and_dump_final_static_archive(TRAPS) {
@@ -1541,14 +1444,12 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
     CDSConfig::disable_dumping_dynamic_archive();
     if (PrintSharedArchiveAndExit) {
       MetaspaceShared::unrecoverable_loading_error("Unable to use shared archive.");
-    } else if (RequireSharedSpaces) {
-      MetaspaceShared::unrecoverable_loading_error("Unable to map shared spaces");
-    } else if (CDSConfig::is_dumping_final_static_archive()) {
-      assert(CDSPreimage != nullptr, "must be");
-      log_error(cds)("Unable to map shared spaces for CDSPreimage = %s", CDSPreimage);
-      MetaspaceShared::unrecoverable_loading_error();
     } else {
-      report_loading_error("Unable to map shared spaces");
+      if (RequireSharedSpaces) {
+        MetaspaceShared::unrecoverable_loading_error("Unable to map shared spaces");
+      } else {
+        report_loading_error("Unable to map shared spaces");
+      }
     }
   }
 

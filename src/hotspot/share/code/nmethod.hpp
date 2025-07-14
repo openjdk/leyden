@@ -679,8 +679,8 @@ public:
   // alive.  It is used when an uncommon trap happens.  Returns true
   // if this thread changed the state of the nmethod or false if
   // another thread performed the transition.
-  bool  make_not_entrant(const char* reason, bool make_not_entrant = true);
-  bool  make_not_used()    { return make_not_entrant("not used"); }
+  bool  make_not_entrant(const char* reason, bool keep_aot_entry = false);
+  bool  make_not_used()    { return make_not_entrant("not used", true /* keep AOT entry */); }
 
   bool  is_marked_for_deoptimization() const { return deoptimization_status() != not_marked; }
   bool  has_been_deoptimized() const { return deoptimization_status() == deoptimize_done; }

@@ -109,15 +109,12 @@ private:
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
-  uint   _decompile;   // Decompile count for this nmethod
   bool   _has_oop_maps;
   bool   _has_clinit_barriers; // Generated code has class init checks
   bool   _for_preload; // Code can be used for preload
   bool   _loaded;      // Code was loaded
   bool   _not_entrant; // Deoptimized
   bool   _load_fail;   // Failed to load due to some klass state
-  bool   _ignore_decompile; // ignore decompile counter if compilation is done
-                            // during "assembly" phase without running application
   address _dumptime_content_start_addr; // CodeBlob::content_begin() at dump time; used for applying relocations
 
 public:
@@ -141,14 +138,12 @@ public:
     _num_inlined_bytecodes = 0;
     _comp_level   = 0;
     _comp_id      = 0;
-    _decompile    = 0;
     _has_oop_maps = false; // unused here
     _has_clinit_barriers = false;
     _for_preload  = false;
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
-    _ignore_decompile = true;
   }
 
   AOTCodeEntry(Kind kind,         uint id,
@@ -157,10 +152,9 @@ public:
                uint blob_offset,  bool has_oop_maps,
                address dumptime_content_start_addr,
                uint comp_level = 0,
-               uint comp_id = 0, uint decomp = 0,
+               uint comp_id = 0,
                bool has_clinit_barriers = false,
-               bool for_preload = false,
-               bool ignore_decompile = false) {
+               bool for_preload = false) {
     _next         = nullptr;
     _method       = nullptr;
     _kind         = kind;
@@ -177,7 +171,6 @@ public:
 
     _comp_level   = comp_level;
     _comp_id      = comp_id;
-    _decompile    = decomp;
     _has_oop_maps = has_oop_maps;
     _has_clinit_barriers = has_clinit_barriers;
     _for_preload  = for_preload;
@@ -188,7 +181,6 @@ public:
     _loaded       = false;
     _not_entrant  = false;
     _load_fail    = false;
-    _ignore_decompile = ignore_decompile;
   }
 
   void* operator new(size_t x, AOTCodeCache* cache);
@@ -223,12 +215,10 @@ public:
   uint comp_level()   const { return _comp_level; }
   uint comp_id()      const { return _comp_id; }
 
-  uint decompile()    const { return _decompile; }
   bool has_clinit_barriers() const { return _has_clinit_barriers; }
   bool for_preload()  const { return _for_preload; }
   bool is_loaded()    const { return _loaded; }
   void set_loaded()         { _loaded = true; }
-  bool ignore_decompile() const { return _ignore_decompile; }
 
   bool not_entrant()  const { return _not_entrant; }
   void set_not_entrant()    { _not_entrant = true; }
@@ -317,14 +307,11 @@ enum class DataKind: int {
   Klass     = 1,
   Method    = 2,
   String    = 3,
-  Primitive = 4, // primitive Class object
-  SysLoader = 5, // java_system_loader
-  PlaLoader = 6, // java_platform_loader
-  MethodCnts= 7,
-  Klass_Shared  = 8,
-  Method_Shared = 9,
-  String_Shared = 10,
-  MH_Oop_Shared = 11
+  MH_Oop    = 4,
+  Primitive = 5, // primitive Class object
+  SysLoader = 6, // java_system_loader
+  PlaLoader = 7, // java_platform_loader
+  MethodCnts= 8
 };
 
 class AOTCodeCache : public CHeapObj<mtCode> {
@@ -339,6 +326,10 @@ protected:
     uint _contendedPaddingWidth;
     uint _objectAlignment;
     uint _gc;
+#if defined(IA32) || defined(AMD64)
+    int  _useSSE; // Hack before we record CPU features
+    int  _useAVX;
+#endif
     enum Flags {
       none                     = 0,
       debugVM                  = 2,
@@ -349,6 +340,7 @@ protected:
       userClassAssertions      = 64,
       enableContendedPadding   = 128,
       restrictContendedPadding = 256,
+      preserveFramePointer     = 512
     };
     uint _flags;
     uint _cpu_features_offset; // offset in the cache where cpu features are stored
@@ -541,7 +533,7 @@ public:
   }
   void preload_startup_code(TRAPS);
 
-  AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0, uint decomp = 0);
+  AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
 
   void store_cpu_features(char*& buffer, uint buffer_size);
@@ -697,8 +689,8 @@ public:
 
   CodeBlob* compile_code_blob(const char* name, int entry_offset_count, int* entry_offsets);
 
-  Klass* read_klass(const methodHandle& comp_method, bool shared);
-  Method* read_method(const methodHandle& comp_method, bool shared);
+  Klass* read_klass(const methodHandle& comp_method);
+  Method* read_method(const methodHandle& comp_method);
 
   oop read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);

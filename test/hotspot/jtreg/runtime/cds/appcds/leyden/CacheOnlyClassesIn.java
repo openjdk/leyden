@@ -71,15 +71,6 @@
  * @run driver CacheOnlyClassesIn AOT
  */
 
-/*
- * @test id=leyden
- * @summary test the -XX:CacheOnlyClassesIn flag with Leyden workflow
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @library /test/lib
- * @run driver CacheOnlyClassesIn LEYDEN
- */
-
 import java.io.File;
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
@@ -126,8 +117,7 @@ public class CacheOnlyClassesIn {
         public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {
             if (runMode == RunMode.DUMP_STATIC ||
                 runMode == RunMode.DUMP_DYNAMIC ||
-                runMode == RunMode.TRAINING ||
-                runMode == RunMode.TRAINING0) {
+                runMode == RunMode.TRAINING) {
                 out.shouldContain("Skipping TestHarness: excluded via -XX:CacheOnlyClassesIn");
             }
         }
