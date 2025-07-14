@@ -1592,13 +1592,13 @@ bool AOTCodeCache::load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const ch
     report_load_failure();
     return false;
   }
-  log_info(aot, codecache,stubs)("Reading stub '%s' id:%d from AOT Code Cache", name, (int)id);
+  log_info(aot, codecache, stubs)("Reading stub '%s' id:%d from AOT Code Cache", name, (int)id);
   // Read code
   uint code_offset = entry->code_offset() + entry_position;
   uint code_size   = entry->code_size();
   copy_bytes(cache->addr(code_offset), start, code_size);
   cgen->assembler()->code_section()->set_end(start + code_size);
-  log_info(aot, codecache,stubs)("Read stub '%s' id:%d from AOT Code Cache", name, (int)id);
+  log_info(aot, codecache, stubs)("Read stub '%s' id:%d from AOT Code Cache", name, (int)id);
   return true;
 }
 
@@ -2320,7 +2320,7 @@ bool AOTCodeCache::write_metadata(Metadata* m) {
     if (!write_method(((MethodCounters*)m)->method())) {
       return false;
     }
-    log_info(aot, codecache)("%d (L%d): Write MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
+    log_debug(aot, codecache, metadata)("%d (L%d): Write MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
   } else { // Not supported
     fatal("metadata : " INTPTR_FORMAT " unimplemented", p2i(m));
     return false;
@@ -2338,30 +2338,28 @@ Metadata* AOTCodeReader::read_metadata(const methodHandle& comp_method) {
     m = (Metadata*)nullptr;
   } else if (kind == DataKind::No_Data) {
     m = (Metadata*)Universe::non_oop_word();
-  } else if (kind == DataKind::Klass || kind == DataKind::Klass_Shared) {
-    m = (Metadata*)read_klass(comp_method, (kind == DataKind::Klass_Shared));
-  } else if (kind == DataKind::Method || kind == DataKind::Method_Shared) {
-    m = (Metadata*)read_method(comp_method, (kind == DataKind::Method_Shared));
+  } else if (kind == DataKind::Klass) {
+    m = (Metadata*)read_klass(comp_method);
+  } else if (kind == DataKind::Method) {
+    m = (Metadata*)read_method(comp_method);
   } else if (kind == DataKind::MethodCnts) {
     kind = *(DataKind*)addr(code_offset);
-    bool shared = (kind == DataKind::Method_Shared);
-    assert(kind == DataKind::Method || shared, "Sanity");
     code_offset += sizeof(DataKind);
     set_read_position(code_offset);
-    m = (Metadata*)read_method(comp_method, shared);
+    m = (Metadata*)read_method(comp_method);
     if (m != nullptr) {
       Method* method = (Method*)m;
       m = method->get_method_counters(Thread::current());
       if (m == nullptr) {
         set_lookup_failed();
-        log_info(aot, codecache)("%d (L%d): Failed to get MethodCounters", compile_id(), comp_level());
+        log_debug(aot, codecache, metadata)("%d (L%d): Failed to get MethodCounters", compile_id(), comp_level());
       } else {
-        log_info(aot, codecache)("%d (L%d): Read MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
+        log_debug(aot, codecache, metadata)("%d (L%d): Read MethodCounters : " INTPTR_FORMAT, compile_id(), comp_level(), p2i(m));
       }
     }
   } else {
     set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Unknown metadata's kind: %d", compile_id(), comp_level(), (int)kind);
+    log_debug(aot, codecache, metadata)("%d (L%d): Unknown metadata's kind: %d", compile_id(), comp_level(), (int)kind);
   }
   return m;
 }
@@ -2369,7 +2367,7 @@ Metadata* AOTCodeReader::read_metadata(const methodHandle& comp_method) {
 bool AOTCodeCache::write_method(Method* method) {
   ResourceMark rm; // To method's name printing
   if (AOTCacheAccess::can_generate_aot_code(method)) {
-    DataKind kind = DataKind::Method_Shared;
+    DataKind kind = DataKind::Method;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
       return false;
@@ -2379,59 +2377,55 @@ bool AOTCodeCache::write_method(Method* method) {
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(aot, codecache, metadata)("%d (L%d): Wrote method: %s @ 0x%08x",
+    log_debug(aot, codecache, metadata)("%d (L%d): Wrote method: %s @ 0x%08x",
              compile_id(), comp_level(), method->name_and_sig_as_C_string(), method_offset);
     return true;
   }
-  log_warning(aot, codecache, metadata)("%d (L%d): Method is not archived: %s",
+  log_debug(aot, codecache, metadata)("%d (L%d): Method is not archived: %s",
               compile_id(), comp_level(), method->name_and_sig_as_C_string());
   set_lookup_failed();
   return false;
 }
 
-Method* AOTCodeReader::read_method(const methodHandle& comp_method, bool shared) {
+Method* AOTCodeReader::read_method(const methodHandle& comp_method) {
   uint code_offset = read_position();
-  if (shared) {
-    uint method_offset = *(uint*)addr(code_offset);
-    code_offset += sizeof(uint);
-    set_read_position(code_offset);
-    Method* m = AOTCacheAccess::convert_offset_to_method(method_offset);
-    if (!MetaspaceShared::is_in_shared_metaspace((address)m)) {
-      // Something changed in CDS
-      set_lookup_failed();
-      log_info(aot, codecache)("Lookup failed for shared method: " INTPTR_FORMAT " is not in CDS ", p2i((address)m));
-      return nullptr;
-    }
-    assert(m->is_method(), "sanity");
-    ResourceMark rm;
-    Klass* k = m->method_holder();
-    if (!k->is_instance_klass()) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for holder %s: not instance klass",
-                    compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
-      return nullptr;
-    } else if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for holder %s: not in CDS",
-                    compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
-      return nullptr;
-    } else if (!InstanceKlass::cast(k)->is_loaded()) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for holder %s: not loaded",
-                    compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
-      return nullptr;
-    } else if (!InstanceKlass::cast(k)->is_linked()) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for holder %s: not linked%s",
-                    compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name(), (_preload ? " for code preload" : ""));
-      return nullptr;
-    }
-    log_info(aot, codecache)("%d (L%d): Shared method lookup: %s",
-                  compile_id(), comp_level(), m->name_and_sig_as_C_string());
-    return m;
+  uint method_offset = *(uint*)addr(code_offset);
+  code_offset += sizeof(uint);
+  set_read_position(code_offset);
+  Method* m = AOTCacheAccess::convert_offset_to_method(method_offset);
+  if (!MetaspaceShared::is_in_shared_metaspace((address)m)) {
+    // Something changed in CDS
+    set_lookup_failed();
+    log_debug(aot, codecache, metadata)("Lookup failed for shared method: " INTPTR_FORMAT " is not in CDS ", p2i((address)m));
+    return nullptr;
   }
-  set_lookup_failed();
-  return nullptr;
+  assert(m->is_method(), "sanity");
+  ResourceMark rm;
+  Klass* k = m->method_holder();
+  if (!k->is_instance_klass()) {
+    set_lookup_failed();
+    log_debug(aot, codecache, metadata)("%d '%s' (L%d): Lookup failed for holder %s: not instance klass",
+                  compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
+    return nullptr;
+  } else if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
+    set_lookup_failed();
+    log_debug(aot, codecache, metadata)("%d '%s' (L%d): Lookup failed for holder %s: not in CDS",
+                  compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
+    return nullptr;
+  } else if (!InstanceKlass::cast(k)->is_loaded()) {
+    set_lookup_failed();
+    log_debug(aot, codecache, metadata)("%d '%s' (L%d): Lookup failed for holder %s: not loaded",
+                  compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
+    return nullptr;
+  } else if (!InstanceKlass::cast(k)->is_linked()) {
+    set_lookup_failed();
+    log_debug(aot, codecache, metadata)("%d '%s' (L%d): Lookup failed for holder %s: not linked%s",
+                  compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name(), (_preload ? " for code preload" : ""));
+    return nullptr;
+  }
+  log_debug(aot, codecache, metadata)("%d (L%d): Shared method lookup: %s",
+                compile_id(), comp_level(), m->name_and_sig_as_C_string());
+  return m;
 }
 
 bool AOTCodeCache::write_klass(Klass* klass) {
@@ -2452,7 +2446,7 @@ bool AOTCodeCache::write_klass(Klass* klass) {
   ResourceMark rm;
   uint state = (array_dim << 1) | (init_state & 1);
   if (can_write) {
-    DataKind kind = DataKind::Klass_Shared;
+    DataKind kind = DataKind::Klass;
     uint n = write_bytes(&kind, sizeof(int));
     if (n != sizeof(int)) {
       return false;
@@ -2467,13 +2461,13 @@ bool AOTCodeCache::write_klass(Klass* klass) {
     if (n != sizeof(uint)) {
       return false;
     }
-    log_info(aot, codecache, metadata)("%d (L%d): Registered klass: %s%s%s @ 0x%08x",
+    log_debug(aot, codecache, metadata)("%d (L%d): Registered klass: %s%s%s @ 0x%08x",
              compile_id(), comp_level(), klass->external_name(),
              (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
              (array_dim > 0 ? " (object array)" : ""), klass_offset);
     return true;
   }
-  log_warning(aot, codecache, metadata)("%d (L%d): Klassis not archived: %s%s%s",
+  log_debug(aot, codecache, metadata)("%d (L%d): Klassis not archived: %s%s%s",
               compile_id(), comp_level(), klass->external_name(),
               (!klass->is_instance_klass() ? "" : (init_state == 1 ? " (initialized)" : " (not-initialized)")),
               (array_dim > 0 ? " (object array)" : ""));
@@ -2481,59 +2475,55 @@ bool AOTCodeCache::write_klass(Klass* klass) {
   return false;
 }
 
-Klass* AOTCodeReader::read_klass(const methodHandle& comp_method, bool shared) {
+Klass* AOTCodeReader::read_klass(const methodHandle& comp_method) {
   uint code_offset = read_position();
   uint state = *(uint*)addr(code_offset);
   uint init_state = (state  & 1);
   uint array_dim  = (state >> 1);
   code_offset += sizeof(int);
-  if (shared) {
-    uint klass_offset = *(uint*)addr(code_offset);
-    code_offset += sizeof(uint);
-    set_read_position(code_offset);
-    Klass* k = AOTCacheAccess::convert_offset_to_klass(klass_offset);
-    if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
-      // Something changed in CDS
-      set_lookup_failed();
-      log_info(aot, codecache)("Lookup failed for shared klass: " INTPTR_FORMAT " is not in CDS ", p2i((address)k));
-      return nullptr;
-    }
-    assert(k->is_klass(), "sanity");
-    ResourceMark rm;
-    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_loaded()) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for klass %s: not loaded",
-                       compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
-      return nullptr;
-    } else
-    // Allow not initialized klass which was uninitialized during code caching or for preload
-    if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1) && !_preload) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d '%s' (L%d): Lookup failed for klass %s: not initialized",
-                       compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
-      return nullptr;
-    }
-    if (array_dim > 0) {
-      assert(k->is_instance_klass() || k->is_typeArray_klass(), "sanity check");
-      Klass* ak = k->array_klass_or_null(array_dim);
-      // FIXME: what would it take to create an array class on the fly?
-//      Klass* ak = k->array_klass(dim, JavaThread::current());
-//      guarantee(JavaThread::current()->pending_exception() == nullptr, "");
-      if (ak == nullptr) {
-        set_lookup_failed();
-        log_info(aot, codecache)("%d (L%d): %d-dimension array klass lookup failed: %s",
-                         compile_id(), comp_level(), array_dim, k->external_name());
-      }
-      log_info(aot, codecache)("%d (L%d): Klass lookup: %s (object array)", compile_id(), comp_level(), k->external_name());
-      return ak;
-    } else {
-      log_info(aot, codecache)("%d (L%d): Shared klass lookup: %s",
-                    compile_id(), comp_level(), k->external_name());
-      return k;
-    }
+  uint klass_offset = *(uint*)addr(code_offset);
+  code_offset += sizeof(uint);
+  set_read_position(code_offset);
+  Klass* k = AOTCacheAccess::convert_offset_to_klass(klass_offset);
+  if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
+    // Something changed in CDS
+    set_lookup_failed();
+    log_debug(aot, codecache, metadata)("Lookup failed for shared klass: " INTPTR_FORMAT " is not in CDS ", p2i((address)k));
+    return nullptr;
   }
-  set_lookup_failed();
-  return nullptr;
+  assert(k->is_klass(), "sanity");
+  ResourceMark rm;
+  if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_loaded()) {
+    set_lookup_failed();
+    log_debug(aot, codecache, metadata)("%d '%s' (L%d): Lookup failed for klass %s: not loaded",
+                     compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
+    return nullptr;
+  } else
+  // Allow not initialized klass which was uninitialized during code caching or for preload
+  if (k->is_instance_klass() && !InstanceKlass::cast(k)->is_initialized() && (init_state == 1) && !_preload) {
+    set_lookup_failed();
+    log_debug(aot, codecache, metadata)("%d '%s' (L%d): Lookup failed for klass %s: not initialized",
+                     compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
+    return nullptr;
+  }
+  if (array_dim > 0) {
+    assert(k->is_instance_klass() || k->is_typeArray_klass(), "sanity check");
+    Klass* ak = k->array_klass_or_null(array_dim);
+    // FIXME: what would it take to create an array class on the fly?
+//    Klass* ak = k->array_klass(dim, JavaThread::current());
+//    guarantee(JavaThread::current()->pending_exception() == nullptr, "");
+    if (ak == nullptr) {
+      set_lookup_failed();
+      log_debug(aot, codecache, metadata)("%d (L%d): %d-dimension array klass lookup failed: %s",
+                       compile_id(), comp_level(), array_dim, k->external_name());
+    }
+    log_debug(aot, codecache, metadata)("%d (L%d): Klass lookup: %s (object array)", compile_id(), comp_level(), k->external_name());
+    return ak;
+  } else {
+    log_debug(aot, codecache, metadata)("%d (L%d): Shared klass lookup: %s",
+                  compile_id(), comp_level(), k->external_name());
+    return k;
+  }
 }
 
 bool AOTCodeCache::write_oop(jobject& jo) {
@@ -2568,7 +2558,7 @@ bool AOTCodeCache::write_oop(oop obj) {
       if (n != sizeof(int)) {
         return false;
       }
-      log_info(aot, codecache)("%d (L%d): Write primitive type klass: %s", compile_id(), comp_level(), type2name((BasicType)bt));
+      log_debug(aot, codecache, oops)("%d (L%d): Write primitive type klass: %s", compile_id(), comp_level(), type2name((BasicType)bt));
     } else {
       Klass* klass = java_lang_Class::as_Klass(obj);
       if (!write_klass(klass)) {
@@ -2581,7 +2571,7 @@ bool AOTCodeCache::write_oop(oop obj) {
     size_t length_sz = 0;
     const char* string = java_lang_String::as_utf8_string(obj, length_sz);
     if (k >= 0) {
-      kind = DataKind::String_Shared;
+      kind = DataKind::String;
       n = write_bytes(&kind, sizeof(int));
       if (n != sizeof(int)) {
         return false;
@@ -2590,12 +2580,12 @@ bool AOTCodeCache::write_oop(oop obj) {
       if (n != sizeof(int)) {
         return false;
       }
-      log_debug(aot, codecache, nmethod)("%d (L%d): Write String object: " PTR_FORMAT " : %s", compile_id(), comp_level(), p2i(obj), string);
+      log_debug(aot, codecache, oops)("%d (L%d): Write String object: " PTR_FORMAT " : %s", compile_id(), comp_level(), p2i(obj), string);
       return true;
     }
     // Not archived String object - bailout
     set_lookup_failed();
-    log_debug(aot, codecache, nmethod)("%d (L%d): Not archived String object: " PTR_FORMAT " : %s",
+    log_debug(aot, codecache, oops)("%d (L%d): Not archived String object: " PTR_FORMAT " : %s",
                                       compile_id(), comp_level(), p2i(obj), string);
     return false;
   } else if (java_lang_Module::is_instance(obj)) {
@@ -2603,10 +2593,10 @@ bool AOTCodeCache::write_oop(oop obj) {
   } else if (java_lang_ClassLoader::is_instance(obj)) {
     if (obj == SystemDictionary::java_system_loader()) {
       kind = DataKind::SysLoader;
-      log_info(aot, codecache)("%d (L%d): Write ClassLoader: java_system_loader", compile_id(), comp_level());
+      log_debug(aot, codecache, oops)("%d (L%d): Write ClassLoader: java_system_loader", compile_id(), comp_level());
     } else if (obj == SystemDictionary::java_platform_loader()) {
       kind = DataKind::PlaLoader;
-      log_info(aot, codecache)("%d (L%d): Write ClassLoader: java_platform_loader", compile_id(), comp_level());
+      log_debug(aot, codecache, oops)("%d (L%d): Write ClassLoader: java_platform_loader", compile_id(), comp_level());
     } else {
       fatal("ClassLoader object unimplemented");
       return false;
@@ -2618,7 +2608,7 @@ bool AOTCodeCache::write_oop(oop obj) {
   } else { // herere
     int k = AOTCacheAccess::get_archived_object_permanent_index(obj);  // k >= 0 means obj is a "permanent heap object"
     if (k >= 0) {
-      kind = DataKind::MH_Oop_Shared;
+      kind = DataKind::MH_Oop;
       n = write_bytes(&kind, sizeof(int));
       if (n != sizeof(int)) {
         return false;
@@ -2627,11 +2617,13 @@ bool AOTCodeCache::write_oop(oop obj) {
       if (n != sizeof(int)) {
         return false;
       }
+      log_debug(aot, codecache, oops)("%d (L%d): Write MH object: " PTR_FORMAT " : %s",
+                              compile_id(), comp_level(), p2i(obj), obj->klass()->external_name());
       return true;
     }
     // Not archived Java object - bailout
     set_lookup_failed();
-    log_info(aot, codecache, nmethod)("%d (L%d): Not archived Java object: " PTR_FORMAT " : %s",
+    log_debug(aot, codecache, oops)("%d (L%d): Not archived Java object: " PTR_FORMAT " : %s",
                               compile_id(), comp_level(), p2i(obj), obj->klass()->external_name());
     return false;
   }
@@ -2648,15 +2640,15 @@ oop AOTCodeReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     return nullptr;
   } else if (kind == DataKind::No_Data) {
     return cast_to_oop(Universe::non_oop_word());
-  } else if (kind == DataKind::Klass || kind == DataKind::Klass_Shared) {
-    Klass* k = read_klass(comp_method, (kind == DataKind::Klass_Shared));
+  } else if (kind == DataKind::Klass) {
+    Klass* k = read_klass(comp_method);
     if (k == nullptr) {
       return nullptr;
     }
     obj = k->java_mirror();
     if (obj == nullptr) {
       set_lookup_failed();
-      log_info(aot, codecache)("Lookup failed for java_mirror of klass %s", k->external_name());
+      log_debug(aot, codecache, oops)("Lookup failed for java_mirror of klass %s", k->external_name());
       return nullptr;
     }
   } else if (kind == DataKind::Primitive) {
@@ -2666,36 +2658,46 @@ oop AOTCodeReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     set_read_position(code_offset);
     BasicType bt = (BasicType)t;
     obj = java_lang_Class::primitive_mirror(bt);
-    log_info(aot, codecache)("%d (L%d): Read primitive type klass: %s", compile_id(), comp_level(), type2name(bt));
-  } else if (kind == DataKind::String_Shared) {
+    log_debug(aot, codecache, oops)("%d (L%d): Read primitive type klass: %s", compile_id(), comp_level(), type2name(bt));
+  } else if (kind == DataKind::String) {
     code_offset = read_position();
     int k = *(int*)addr(code_offset);
     code_offset += sizeof(int);
     set_read_position(code_offset);
     obj = AOTCacheAccess::get_archived_object(k);
+    if (obj == nullptr) {
+      set_lookup_failed();
+      log_debug(aot, codecache, oops)("Lookup failed for String object");
+      return nullptr;
+    }
     assert(java_lang_String::is_instance(obj), "must be string");
 
     ResourceMark rm;
     size_t length_sz = 0;
     const char* string = java_lang_String::as_utf8_string(obj, length_sz);
-    log_debug(aot, codecache, nmethod)("%d (L%d): Read String object: %s", compile_id(), comp_level(), string);
-  } else if (kind == DataKind::String) {
-    fatal("Not archived String");
+    log_debug(aot, codecache, oops)("%d (L%d): Read String object: %s", compile_id(), comp_level(), string);
   } else if (kind == DataKind::SysLoader) {
     obj = SystemDictionary::java_system_loader();
-    log_info(aot, codecache)("%d (L%d): Read java_system_loader", compile_id(), comp_level());
+    log_debug(aot, codecache, oops)("%d (L%d): Read java_system_loader", compile_id(), comp_level());
   } else if (kind == DataKind::PlaLoader) {
     obj = SystemDictionary::java_platform_loader();
-    log_info(aot, codecache)("%d (L%d): Read java_platform_loader", compile_id(), comp_level());
-  } else if (kind == DataKind::MH_Oop_Shared) {
+    log_debug(aot, codecache, oops)("%d (L%d): Read java_platform_loader", compile_id(), comp_level());
+  } else if (kind == DataKind::MH_Oop) {
     code_offset = read_position();
     int k = *(int*)addr(code_offset);
     code_offset += sizeof(int);
     set_read_position(code_offset);
     obj = AOTCacheAccess::get_archived_object(k);
+    if (obj == nullptr) {
+      set_lookup_failed();
+      log_debug(aot, codecache, oops)("Lookup failed for MH object");
+      return nullptr;
+    }
+    log_debug(aot, codecache, oops)("%d (L%d): Read MH object: " PTR_FORMAT " : %s",
+                              compile_id(), comp_level(), p2i(obj), obj->klass()->external_name());
   } else {
     set_lookup_failed();
-    log_info(aot, codecache)("%d (L%d): Unknown oop's kind: %d",
+    log_debug(aot, codecache, oops)("%d (L%d): Unknown oop's kind: %d",
                      compile_id(), comp_level(), (int)kind);
     return nullptr;
   }
@@ -3156,7 +3158,7 @@ void AOTCodeAddressTable::init_extrs() {
   }
 
   _extrs_complete = true;
-  log_info(aot, codecache,init)("External addresses recorded");
+  log_info(aot, codecache, init)("External addresses recorded");
 }
 
 static bool initializing_early_stubs = false;
@@ -3230,7 +3232,7 @@ void AOTCodeAddressTable::init_shared_blobs() {
 
   assert(_shared_blobs_length <= _shared_blobs_max, "increase _shared_blobs_max to %d", _shared_blobs_length);
   _shared_blobs_complete = true;
-  log_info(aot, codecache,init)("All shared blobs recorded");
+  log_info(aot, codecache, init)("All shared blobs recorded");
 }
 
 static bool initializing_stubs = false;
@@ -3408,7 +3410,7 @@ void AOTCodeAddressTable::init_stubs() {
 #endif
 
   _complete = true;
-  log_info(aot, codecache,init)("Stubs recorded");
+  log_info(aot, codecache, init)("Stubs recorded");
 }
 
 void AOTCodeAddressTable::init_early_c1() {
@@ -3481,7 +3483,7 @@ void AOTCodeAddressTable::init_c1() {
 
   assert(_C1_blobs_length <= _C1_blobs_max, "increase _C1_blobs_max to %d", _C1_blobs_length);
   _c1_complete = true;
-  log_info(aot, codecache,init)("Runtime1 Blobs recorded");
+  log_info(aot, codecache, init)("Runtime1 Blobs recorded");
 }
 
 void AOTCodeAddressTable::init_c2() {
@@ -3515,7 +3517,7 @@ void AOTCodeAddressTable::init_c2() {
 
   assert(_C2_blobs_length <= _C2_blobs_max, "increase _C2_blobs_max to %d", _C2_blobs_length);
   _c2_complete = true;
-  log_info(aot, codecache,init)("OptoRuntime Blobs recorded");
+  log_info(aot, codecache, init)("OptoRuntime Blobs recorded");
 }
 #undef SET_ADDRESS
 

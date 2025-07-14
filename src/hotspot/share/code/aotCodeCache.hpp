@@ -306,14 +306,11 @@ enum class DataKind: int {
   Klass     = 1,
   Method    = 2,
   String    = 3,
-  Primitive = 4, // primitive Class object
-  SysLoader = 5, // java_system_loader
-  PlaLoader = 6, // java_platform_loader
-  MethodCnts= 7,
-  Klass_Shared  = 8,
-  Method_Shared = 9,
-  String_Shared = 10,
-  MH_Oop_Shared = 11
+  MH_Oop    = 4,
+  Primitive = 5, // primitive Class object
+  SysLoader = 6, // java_system_loader
+  PlaLoader = 7, // java_platform_loader
+  MethodCnts= 8
 };
 
 class AOTCodeCache : public CHeapObj<mtCode> {
@@ -687,8 +684,8 @@ public:
 
   CodeBlob* compile_code_blob(const char* name, int entry_offset_count, int* entry_offsets);
 
-  Klass* read_klass(const methodHandle& comp_method, bool shared);
-  Method* read_method(const methodHandle& comp_method, bool shared);
+  Klass* read_klass(const methodHandle& comp_method);
+  Method* read_method(const methodHandle& comp_method);
 
   oop read_oop(JavaThread* thread, const methodHandle& comp_method);
   Metadata* read_metadata(const methodHandle& comp_method);
