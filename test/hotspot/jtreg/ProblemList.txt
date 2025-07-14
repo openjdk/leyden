@@ -224,5 +224,8 @@ serviceability/dcmd/compiler/CodelistTest.java 8318142 generic-all
 
 runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#aot 8350619 generic-all
 runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#dynamic 8350619 generic-all
-runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#leyden 8350619 generic-all
 runtime/cds/appcds/leyden/CacheOnlyClassesIn.java#static 8350619 generic-all
+
+compiler/compilercontrol/commands/OptionTest.java 8362195 generic-all
+serviceability/dcmd/compiler/CompilerQueueTest.java 8362194 generic-all
+compiler/tiered/Level2RecompilationTest.java 8362196 generic-all
