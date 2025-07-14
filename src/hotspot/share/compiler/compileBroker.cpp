@@ -2255,7 +2255,9 @@ void CompileBroker::compiler_thread_loop() {
         task->set_failure_reason("breakpoints are present");
       }
 
-      if (UseDynamicNumberOfCompilerThreads) {
+      // Don't use AOT compielr threads for dynamic C1 and C2 threads creation.
+      if (UseDynamicNumberOfCompilerThreads &&
+          (queue == _c1_compile_queue || queue == _c2_compile_queue)) {
         possibly_add_compiler_threads(thread);
         assert(!thread->has_pending_exception(), "should have been handled");
       }

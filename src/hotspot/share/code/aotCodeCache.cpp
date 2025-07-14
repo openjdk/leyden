@@ -2577,6 +2577,9 @@ bool AOTCodeCache::write_oop(oop obj) {
     }
   } else if (java_lang_String::is_instance(obj)) { // herere
     int k = AOTCacheAccess::get_archived_object_permanent_index(obj);  // k >= 0 means obj is a "permanent heap object"
+    ResourceMark rm;
+    size_t length_sz = 0;
+    const char* string = java_lang_String::as_utf8_string(obj, length_sz);
     if (k >= 0) {
       kind = DataKind::String_Shared;
       n = write_bytes(&kind, sizeof(int));
@@ -2587,27 +2590,14 @@ bool AOTCodeCache::write_oop(oop obj) {
       if (n != sizeof(int)) {
         return false;
       }
+      log_debug(aot, codecache, nmethod)("%d (L%d): Write String object: " PTR_FORMAT " : %s", compile_id(), comp_level(), p2i(obj), string);
       return true;
     }
-    kind = DataKind::String;
-    n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
-      return false;
-    }
-    ResourceMark rm;
-    size_t length_sz = 0;
-    const char* string = java_lang_String::as_utf8_string(obj, length_sz);
-    int length = (int)length_sz; // FIXME -- cast
-    length++; // write tailing '/0'
-    n = write_bytes(&length, sizeof(int));
-    if (n != sizeof(int)) {
-      return false;
-    }
-    n = write_bytes(string, (uint)length);
-    if (n != (uint)length) {
-      return false;
-    }
-    log_info(aot, codecache)("%d (L%d): Write String: %s", compile_id(), comp_level(), string);
+    // Not archived String object - bailout
+    set_lookup_failed();
+    log_debug(aot, codecache, nmethod)("%d (L%d): Not archived String object: " PTR_FORMAT " : %s",
+                                      compile_id(), comp_level(), p2i(obj), string);
+    return false;
   } else if (java_lang_Module::is_instance(obj)) {
     fatal("Module object unimplemented");
   } else if (java_lang_ClassLoader::is_instance(obj)) {
@@ -2639,9 +2629,9 @@ bool AOTCodeCache::write_oop(oop obj) {
       }
       return true;
     }
-    // Unhandled oop - bailout
+    // Not archived Java object - bailout
     set_lookup_failed();
-    log_info(aot, codecache, nmethod)("%d (L%d): Unhandled obj: " PTR_FORMAT " : %s",
+    log_info(aot, codecache, nmethod)("%d (L%d): Not archived Java object: " PTR_FORMAT " : %s",
                               compile_id(), comp_level(), p2i(obj), obj->klass()->external_name());
     return false;
   }
@@ -2683,22 +2673,14 @@ oop AOTCodeReader::read_oop(JavaThread* thread, const methodHandle& comp_method)
     code_offset += sizeof(int);
     set_read_position(code_offset);
     obj = AOTCacheAccess::get_archived_object(k);
-  } else if (kind == DataKind::String) {
-    code_offset = read_position();
-    int length = *(int*)addr(code_offset);
-    code_offset += sizeof(int);
-    set_read_position(code_offset);
-    const char* dest = addr(code_offset);
-    set_read_position(code_offset + length);
-    obj = StringTable::intern(&(dest[0]), thread);
-    if (obj == nullptr) {
-      set_lookup_failed();
-      log_info(aot, codecache)("%d (L%d): Lookup failed for String %s",
-                       compile_id(), comp_level(), &(dest[0]));
-      return nullptr;
-    }
     assert(java_lang_String::is_instance(obj), "must be string");
-    log_info(aot, codecache)("%d (L%d): Read String: %s", compile_id(), comp_level(), dest);
+
+    ResourceMark rm;
+    size_t length_sz = 0;
+    const char* string = java_lang_String::as_utf8_string(obj, length_sz);
+    log_debug(aot, codecache, nmethod)("%d (L%d): Read String object: %s", compile_id(), comp_level(), string);
+  } else if (kind == DataKind::String) {
+    fatal("Not archived String");
   } else if (kind == DataKind::SysLoader) {
     obj = SystemDictionary::java_system_loader();
     log_info(aot, codecache)("%d (L%d): Read java_system_loader", compile_id(), comp_level());
