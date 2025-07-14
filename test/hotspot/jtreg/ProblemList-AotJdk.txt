@@ -17,3 +17,7 @@ compiler/intrinsics/klass/TestIsPrimitive.java        0000000 generic-all
 # It has the assumption about unresolved Integer.
 # However when AOTClassLinking is enabled, Integer is always resolved at JVM start-up.
 compiler/ciReplay/TestInliningProtectionDomain.java   0000000 generic-all
+
+# use -XX:TypeProfileLevel=222 invalidating AOT cache
+compiler/profiling/spectrapredefineclass/Launcher.java 0000000 generic-all
+compiler/profiling/spectrapredefineclass_classloaders/Launcher.java 0000000 generic-all

@@ -160,7 +160,7 @@ void SharedRuntime::generate_stubs() {
 #if COMPILER2_OR_JVMCI
   // Vectors are generated only by C2 and JVMCI.
   bool support_wide = is_wide_vector(MaxVectorSize);
-  if (support_wide || AOTCodeCache::is_caching_enabled()) { // Always grenerate for AOT code
+  if (support_wide) {
     _polling_page_vectors_safepoint_handler_blob =
       generate_handler_blob(SharedStubId::polling_page_vectors_safepoint_handler_id,
                             CAST_FROM_FN_PTR(address, SafepointSynchronize::handle_polling_page_exception));

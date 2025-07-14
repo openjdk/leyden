@@ -646,6 +646,10 @@ void AOTCodeCache::Config::record() {
   _compressedKlassBase   = CompressedKlassPointers::base();
   _contendedPaddingWidth = ContendedPaddingWidth;
   _objectAlignment       = ObjectAlignmentInBytes;
+#if defined(IA32) || defined(AMD64)
+  _useSSE                = UseSSE;
+  _useAVX                = UseAVX;
+#endif
   _gc                    = (uint)Universe::heap()->kind();
 }
 
@@ -725,6 +729,17 @@ bool AOTCodeCache::Config::verify() const {
     log_debug(aot, codecache, init)("AOTStubCaching is disabled: incompatible CompressedOops::base(): %p vs current %p", _compressedOopBase, CompressedOops::base());
     return false;
   }
+
+#if defined(IA32) || defined(AMD64)
+  if (UseSSE < _useSSE) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseSSE = %d vs current %d", _useSSE, UseSSE);
+    return false;
+  }
+  if (UseAVX < _useAVX) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseAVX = %d vs current %d", _useAVX, UseAVX);
+    return false;
+  }
+#endif
 
   return true;
 }
@@ -3214,7 +3229,10 @@ void AOTCodeAddressTable::init_shared_blobs() {
   SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_safepoint_handler_blob()->entry_point());
   SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_return_handler_blob()->entry_point());
 #ifdef COMPILER2
-  SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
+  // polling_page_vectors_safepoint_handler_blob can be nullptr if AVX feature is not present or is disabled
+  if (SharedRuntime::polling_page_vectors_safepoint_handler_blob() != nullptr) {
+    SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
+  }
 #endif
 #if INCLUDE_JVMCI
   if (EnableJVMCI) {
@@ -3320,6 +3338,13 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::sha512_implCompressMB());
   SET_ADDRESS(_stubs, StubRoutines::sha3_implCompress());
   SET_ADDRESS(_stubs, StubRoutines::sha3_implCompressMB());
+  SET_ADDRESS(_stubs, StubRoutines::intpoly_assign());
+  SET_ADDRESS(_stubs, StubRoutines::intpoly_montgomeryMult_P256());
+  SET_ADDRESS(_stubs, StubRoutines::dilithiumAlmostNtt());
+  SET_ADDRESS(_stubs, StubRoutines::dilithiumAlmostInverseNtt());
+  SET_ADDRESS(_stubs, StubRoutines::dilithiumNttMult());
+  SET_ADDRESS(_stubs, StubRoutines::dilithiumMontMulByConstant());
+  SET_ADDRESS(_stubs, StubRoutines::dilithiumDecomposePoly());
 
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32());
 
