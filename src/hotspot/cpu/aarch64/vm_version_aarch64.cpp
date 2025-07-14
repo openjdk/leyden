@@ -72,7 +72,7 @@ static SpinWait get_spin_wait_desc() {
 
 void VM_Version::initialize() {
 #define SET_CPU_FEATURE_NAME(id, name, bit) \
-  _features_names[bit] = #name;
+  _features_names[bit] = XSTR(name);
   CPU_FEATURE_FLAGS(SET_CPU_FEATURE_NAME)
 #undef SET_CPU_FEATURE_NAME
 

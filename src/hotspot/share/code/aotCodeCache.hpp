@@ -351,12 +351,11 @@ protected:
       restrictContendedPadding = 256,
     };
     uint _flags;
-    uint _cpu_features_size;
+    uint _cpu_features_offset; // offset in the cache where cpu features are stored
 
   public:
-    void record();
-    bool verify() const;
-    static size_t trailing_data_size() { return VM_Version::cpu_features_size(); }
+    void record(uint cpu_features_offset);
+    bool verify(AOTCodeCache* cache) const;
   };
 
   class Header : public CHeapObj<mtCode> {
@@ -386,7 +385,8 @@ protected:
               uint entries_count,  uint entries_offset,
               uint preload_entries_count, uint preload_entries_offset,
               uint adapters_count, uint shared_blobs_count,
-              uint C1_blobs_count, uint C2_blobs_count, uint stubs_count) {
+              uint C1_blobs_count, uint C2_blobs_count,
+              uint stubs_count, uint cpu_features_offset) {
       _version        = AOT_CODE_VERSION;
       _cache_size     = cache_size;
       _strings_count  = strings_count;
@@ -401,8 +401,7 @@ protected:
       _C2_blobs_count = C2_blobs_count;
       _stubs_count    = stubs_count;
 
-      assert((int)config_offset() + sizeof(Config) == sizeof(Header), "_config must be the last member of Header");
-      _config.record();
+      _config.record(cpu_features_offset);
     }
 
     uint cache_size()     const { return _cache_size; }
@@ -425,12 +424,9 @@ protected:
                                        - _adapters_count; }
 
     bool verify_config(uint load_size)  const;
-    bool verify_vm_config() const { // Called after Universe initialized
-      return _config.verify();
+    bool verify_vm_config(AOTCodeCache* cache) const { // Called after Universe initialized
+      return _config.verify(cache);
     }
-    static size_t trailing_data_size() { return Config::trailing_data_size(); }
-    static size_t size() { return sizeof(Header) + trailing_data_size(); };
-    static ByteSize config_offset() { return byte_offset_of(Header, _config); }
   };
 
 // Continue with AOTCodeCache class definition.
@@ -548,6 +544,8 @@ public:
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0, uint decomp = 0);
   void invalidate_entry(AOTCodeEntry* entry);
 
+  void store_cpu_features(char*& buffer, uint buffer_size);
+
   bool finish_write();
 
   void log_stats_on_exit();
@@ -606,7 +604,7 @@ private:
   static bool open_cache(bool is_dumping, bool is_using);
   static bool verify_vm_config() {
     if (is_on_for_use()) {
-      return _cache->_load_header->verify_vm_config();
+      return _cache->_load_header->verify_vm_config(_cache);
     }
     return true;
   }
