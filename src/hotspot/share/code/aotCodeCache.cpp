@@ -646,7 +646,7 @@ void AOTCodeCache::Config::record() {
   _compressedKlassBase   = CompressedKlassPointers::base();
   _contendedPaddingWidth = ContendedPaddingWidth;
   _objectAlignment       = ObjectAlignmentInBytes;
-#if defined(IA32) || defined(AMD64)
+#if !defined(ZERO) && (defined(IA32) || defined(AMD64))
   _useSSE                = UseSSE;
   _useAVX                = UseAVX;
 #endif
@@ -730,7 +730,7 @@ bool AOTCodeCache::Config::verify() const {
     return false;
   }
 
-#if defined(IA32) || defined(AMD64)
+#if !defined(ZERO) && (defined(IA32) || defined(AMD64))
   if (UseSSE < _useSSE) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseSSE = %d vs current %d", _useSSE, UseSSE);
     return false;
