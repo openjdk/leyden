@@ -786,6 +786,10 @@ void MetaspaceShared::link_shared_classes(TRAPS) {
   AOTClassLinker::initialize();
   AOTClassInitializer::init_test_class(CHECK);
 
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    FinalImageRecipes::apply_recipes(CHECK);
+  }
+
   while (true) {
     ResourceMark rm(THREAD);
     CollectClassesForLinking collect_classes;
@@ -822,10 +826,6 @@ void MetaspaceShared::link_shared_classes(TRAPS) {
         FinalImageRecipes::add_reflection_data_flags(ik, CHECK);
       }
     }
-  }
-
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    FinalImageRecipes::apply_recipes(CHECK);
   }
 }
 
