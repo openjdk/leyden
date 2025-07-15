@@ -326,10 +326,6 @@ protected:
     uint _contendedPaddingWidth;
     uint _objectAlignment;
     uint _gc;
-#if defined(IA32) || defined(AMD64)
-    int  _useSSE; // Hack before we record CPU features
-    int  _useAVX;
-#endif
     enum Flags {
       none                     = 0,
       debugVM                  = 2,
