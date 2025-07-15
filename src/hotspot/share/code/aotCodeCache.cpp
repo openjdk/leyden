@@ -74,6 +74,7 @@
 #include "runtime/timerTrace.hpp"
 #include "runtime/threadIdentifier.hpp"
 #include "utilities/copy.hpp"
+#include "utilities/formatBuffer.hpp"
 #include "utilities/ostream.hpp"
 #include "utilities/spinYield.hpp"
 #ifdef COMPILER1
@@ -721,9 +722,10 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
     return false;
   }
 
-  char cpu_features[2048];
-  VM_Version::get_supported_cpu_features_name(cpu_features, sizeof(cpu_features));
-  log_debug(aot, codecache, init)("Available CPU features: %s", cpu_features);
+  LogStreamHandle(Debug, aot, codecache, init) log;
+  if (log.is_enabled()) {
+    log.print("Available CPU features: %s", VM_Version::features_string());
+  }
 
   uint offset = _cpu_features_offset;
   uint cpu_features_size = *(uint *)cache->addr(offset);
@@ -731,13 +733,18 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   offset += sizeof(uint);
 
   void* cached_cpu_features_buffer = (void *)cache->addr(offset);
-  VM_Version::get_cpu_features_name(cached_cpu_features_buffer, cpu_features, sizeof(cpu_features));
-  log_debug(aot, codecache, init)("CPU features recorded in AOTCodeCache: %s", cpu_features);
+  if (log.is_enabled()) {
+    CpuInfoBuffer msg_buffer;
+    VM_Version::get_cpu_features_name(cached_cpu_features_buffer, msg_buffer);
+    log.print("CPU features recorded in AOTCodeCache: %s", msg_buffer.buffer());
+  }
 
   if (!VM_Version::supports_features(cached_cpu_features_buffer)) {
-    char missing_features_name[2048];
-    VM_Version::get_missing_features_name(cached_cpu_features_buffer, missing_features_name, sizeof(missing_features_name));
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: required cpu features are missing: %s", missing_features_name);
+    if (log.is_enabled()) {
+      CpuInfoBuffer msg_buffer;
+      VM_Version::get_missing_features_name(cached_cpu_features_buffer, msg_buffer);
+      log.print("AOT Code Cache disabled: required cpu features are missing: %s", msg_buffer.buffer());
+    }
     return false;
   }
 
@@ -1099,9 +1106,7 @@ void AOTCodeCache::store_cpu_features(char*& buffer, uint buffer_size) {
   buffer += sizeof(uint);
 
   VM_Version::store_cpu_features(buffer);
-  char cpu_features[4096];
-  VM_Version::get_supported_cpu_features_name(cpu_features, sizeof(cpu_features));
-  log_debug(aot, codecache, exit)("CPU features recorded in AOTCodeCache: %s", cpu_features);
+  log_debug(aot, codecache, exit)("CPU features recorded in AOTCodeCache: %s", VM_Version::features_string());
   buffer += buffer_size;
   buffer = align_up(buffer, DATA_ALIGNMENT);
 }

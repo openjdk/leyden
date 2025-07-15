@@ -63,7 +63,7 @@ protected:
   static int set_and_get_current_sve_vector_length(int len);
   static int get_current_sve_vector_length();
 
-  static void insert_features_names(uint64_t features, char* names_buf, size_t buf_size);
+  static void insert_features_names(uint64_t features, CpuInfoBuffer& info_buffer);
 
 public:
   // Initialization
@@ -222,9 +222,8 @@ enum Ampere_CPU_Model {
     return vector_length_in_bytes <= 16;
   }
 
-  static void get_supported_cpu_features_name(char* names_buf, size_t buf_size);
-  static void get_cpu_features_name(void* features_buffer, char* names_buf, size_t buf_size);
-  static void get_missing_features_name(void* features_buffer, char* missing_features_name, size_t buf_size);
+  static void get_cpu_features_name(void* features_buffer, CpuInfoBuffer& info_buffer);
+  static void get_missing_features_name(void* features_buffer, CpuInfoBuffer& info_buffer);
 
   // Returns number of bytes required to store cpu features representation
   static int cpu_features_size();

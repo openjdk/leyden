@@ -733,55 +733,33 @@ void VM_Version::initialize_cpu_information(void) {
   _initialized = true;
 }
 
-void VM_Version::insert_features_names(uint64_t features, char* names_buf, size_t buf_size) {
-  char* buf = names_buf;
-  size_t buf_rem = buf_size;
-  bool first = true;
-  for (int i = 0; i < MAX_CPU_FEATURES; i++) {
-    if (supports_feature(features, (VM_Version::Feature_Flag)i)) {
-      int res = 0;
-      if (first) {
-        res = jio_snprintf(buf, buf_size, "%s", _features_names[i]);
-      } else {
-        res = jio_snprintf(buf, buf_size, ", %s", _features_names[i]);
-      }
-      assert(res > 0, "not enough temporary space allocated");
-      buf += res;
-      buf_rem -= res;
-      first = false;
+void VM_Version::insert_features_names(uint64_t features, CpuInfoBuffer& info_buffer) {
+  info_buffer.insert_string_list(0, MAX_CPU_FEATURES, [&](int i) {
+    if (supports_feature((VM_Version::Feature_Flag)i)) {
+      return _features_names[i];
+    } else {
+      return (const char*)nullptr;
     }
-  }
+  });
+  assert(!info_buffer.overflow(), "not enough buffer size");
 }
 
-void VM_Version::get_supported_cpu_features_name(char* names_buf, size_t buf_size) {
-  insert_features_names(_features, names_buf, buf_size);
-}
-
-void VM_Version::get_cpu_features_name(void* features_buffer, char* names_buf, size_t buf_size) {
+void VM_Version::get_cpu_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) {
   uint64_t features = *(uint64_t*)features_buffer;
-  insert_features_names(features, names_buf, buf_size);
+  insert_features_names(features, info_buffer);
 }
 
-void VM_Version::get_missing_features_name(void* features_buffer, char* missing_features_name, size_t buf_size) {
+void VM_Version::get_missing_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) {
   uint64_t features_to_test = *(uint64_t*)features_buffer;
-  char* buf = missing_features_name;
-  size_t buf_rem = buf_size;
-  bool first = true;
-  for (int i = 0; i < MAX_CPU_FEATURES; i++) {
+  info_buffer.insert_string_list(0, MAX_CPU_FEATURES, [&](int i) {
     Feature_Flag flag = (Feature_Flag)i;
     if (supports_feature(features_to_test, flag) && !supports_feature(flag)) {
-      int res = 0;
-      if (first) {
-        res = jio_snprintf(buf, buf_size, "%s", _features_names[i]);
-      } else {
-        res = jio_snprintf(buf, buf_size, ", %s", _features_names[i]);
-      }
-      assert(res > 0, "not enough temporary space allocated");
-      buf += res;
-      buf_rem -= res;
-      first = false;
+      return _features_names[i];
+    } else {
+      return (const char*)nullptr;
     }
-  }
+  });
+  assert(!info_buffer.overflow(), "not enough buffer size");
 }
 
 int VM_Version::cpu_features_size() {
