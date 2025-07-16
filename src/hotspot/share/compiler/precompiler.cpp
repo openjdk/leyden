@@ -186,6 +186,9 @@ void Precompiler::compile_cached_code(CompLevel search_level, bool for_preload, 
 }
 
 void Precompiler::compile_cached_code(TRAPS) {
+  if (!AOTCodeCache::is_dumping_code()) {
+    return;
+  }
   log_info(precompile)("Precompilation started");
   if (TrainingData::have_data()) {
     TrainingData::iterate([&](TrainingData* td) {

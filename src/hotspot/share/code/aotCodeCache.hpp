@@ -435,7 +435,6 @@ private:
   bool   _lookup_failed;   // Failed to lookup for info (skip only this code load)
 
   bool   _for_preload;         // Code for preload
-  bool   _gen_preload_code;    // Generate pre-loading code
   bool   _has_clinit_barriers; // Code with clinit barriers
 
   AOTCodeAddressTable* _table;
@@ -521,7 +520,6 @@ public:
   bool for_dump() const { return _for_dump && !_failed; }
 
   bool closing()          const { return _closing; }
-  bool gen_preload_code() const { return _gen_preload_code; }
 
   AOTCodeEntry* add_entry() {
     _store_entries_cnt++;

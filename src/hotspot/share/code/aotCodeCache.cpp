@@ -280,22 +280,15 @@ void AOTCodeCache::initialize() {
     is_dumping = is_caching_enabled();
   } else if (CDSConfig::is_using_archive() && CDSConfig::is_using_aot_linked_classes()) {
     is_using = is_caching_enabled();
-  } else {
-    log_info(aot, codecache, init)("AOT Code Cache is not used: AOT Class Linking is not used.");
-    disable_caching();
-    return; // nothing to do
+  }
+  if (ClassInitBarrierMode > 0 && !(is_dumping && AOTCodeCaching)) {
+    log_info(aot, codecache, init)("Set ClassInitBarrierMode to 0 because AOT Code dumping is off.");
+    FLAG_SET_ERGO(ClassInitBarrierMode, 0);
   }
   if (!(is_dumping || is_using)) {
+    log_info(aot, codecache, init)("AOT Code Cache is not used: AOT Class Linking is not used.");
     disable_caching();
     return; // AOT code caching disabled on command line
-  }
-  if (AOTCodeCaching) {
-    if (FLAG_IS_DEFAULT(ClassInitBarrierMode)) {
-      FLAG_SET_ERGO(ClassInitBarrierMode, 1);
-    }
-  } else if (ClassInitBarrierMode > 0) {
-    log_info(aot, codecache, init)("Set ClassInitBarrierMode to 0 because AOTCodeCaching is false.");
-    FLAG_SET_ERGO(ClassInitBarrierMode, 0);
   }
   // Reserve AOT Cache region when we dumping AOT code.
   _max_aot_code_size = AOTCodeMaxSize;
@@ -344,10 +337,17 @@ void AOTCodeCache::init2() {
       return;
     }
   }
-  if (!verify_vm_config()) {
+  if (!verify_vm_config()) { // Check on AOT code loading
     close();
     report_load_failure();
     return;
+  }
+
+  // Set ClassInitBarrierMode after all checks since it affects code generation
+  if (is_dumping_code()) {
+    FLAG_SET_ERGO_IF_DEFAULT(ClassInitBarrierMode, 1);
+  } else {
+    FLAG_SET_ERGO(ClassInitBarrierMode, 0);
   }
 
   // initialize aot runtime constants as appropriate to this runtime
@@ -456,7 +456,6 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
   _failed(false),
   _lookup_failed(false),
   _for_preload(false),
-  _gen_preload_code(false),
   _has_clinit_barriers(false),
   _table(nullptr),
   _load_entries(nullptr),
@@ -508,8 +507,6 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
     load_strings();
   }
   if (_for_dump) {
-    _gen_preload_code = (ClassInitBarrierMode > 0);
-
     _C_store_buffer = NEW_C_HEAP_ARRAY(char, max_aot_code_size() + DATA_ALIGNMENT, mtCode);
     _store_buffer = align_up(_C_store_buffer, DATA_ALIGNMENT);
     // Entries allocated at the end of buffer in reverse (as on stack).
@@ -898,6 +895,7 @@ uint AOTCodeCache::write_bytes(const void* buffer, uint nbytes) {
 }
 
 AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint comp_level) {
+  assert(is_using_code(), "AOT code caching should be enabled");
   switch (comp_level) {
     case CompLevel_simple:
       if ((DisableCachedCode & (1 << 0)) != 0) {
@@ -1639,7 +1637,7 @@ AOTCodeEntry* AOTCodeCache::store_nmethod(nmethod* nm, AbstractCompiler* compile
 AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   AOTCodeCache* cache = open_for_dump();
   assert(cache != nullptr, "sanity check");
-  assert(!nm->has_clinit_barriers() || _gen_preload_code, "sanity");
+  assert(!nm->has_clinit_barriers() || (ClassInitBarrierMode > 0), "sanity");
   uint comp_id = nm->compile_id();
   uint comp_level = nm->comp_level();
   Method* method = nm->method();
@@ -1954,12 +1952,12 @@ bool skip_preload(methodHandle mh) {
 
 bool AOTCodeCache::gen_preload_code(ciMethod* m, int entry_bci) {
   VM_ENTRY_MARK;
-  return (entry_bci == InvocationEntryBci) && is_on() && _cache->gen_preload_code() &&
+  return (entry_bci == InvocationEntryBci) && is_dumping_code() && (ClassInitBarrierMode > 0) &&
          AOTCacheAccess::can_generate_aot_code(m->get_Method());
 }
 
 void AOTCodeCache::preload_code(JavaThread* thread) {
-  if ((ClassInitBarrierMode == 0) || !is_on_for_use()) {
+  if (!is_using_code()) {
     return;
   }
   if ((DisableCachedCode & (1 << 3)) != 0) {
@@ -3123,6 +3121,8 @@ void AOTCodeAddressTable::init_extrs() {
 
   SET_ADDRESS(_extrs, os::javaTimeMillis);
   SET_ADDRESS(_extrs, os::javaTimeNanos);
+  // For JFR
+  SET_ADDRESS(_extrs, os::elapsed_counter);
 
 #if INCLUDE_JVMTI
   SET_ADDRESS(_extrs, &JvmtiVTMSTransitionDisabler::_VTMS_notify_jvmti_events);
@@ -3255,7 +3255,6 @@ void AOTCodeAddressTable::init_stubs() {
 
   JFR_ONLY(SET_ADDRESS(_stubs, SharedRuntime::jfr_write_checkpoint());)
 
-
   SET_ADDRESS(_stubs, StubRoutines::jbyte_arraycopy());
   SET_ADDRESS(_stubs, StubRoutines::jshort_arraycopy());
   SET_ADDRESS(_stubs, StubRoutines::jint_arraycopy());
@@ -3322,6 +3321,7 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::sha512_implCompressMB());
   SET_ADDRESS(_stubs, StubRoutines::sha3_implCompress());
   SET_ADDRESS(_stubs, StubRoutines::sha3_implCompressMB());
+  SET_ADDRESS(_stubs, StubRoutines::double_keccak());
   SET_ADDRESS(_stubs, StubRoutines::intpoly_assign());
   SET_ADDRESS(_stubs, StubRoutines::intpoly_montgomeryMult_P256());
   SET_ADDRESS(_stubs, StubRoutines::dilithiumAlmostNtt());
@@ -3346,6 +3346,8 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::galoisCounterMode_AESCrypt());
 
   SET_ADDRESS(_stubs, StubRoutines::vectorizedMismatch());
+
+  SET_ADDRESS(_stubs, StubRoutines::unsafe_setmemory());
 
   SET_ADDRESS(_stubs, StubRoutines::dexp());
   SET_ADDRESS(_stubs, StubRoutines::dlog());
