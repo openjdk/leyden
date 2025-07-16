@@ -1593,7 +1593,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
 
 #if INCLUDE_JVMCI
   if (EnableJVMCI && UseJVMCICompiler &&
-      comp_level == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::class_preloading_finished()) {
+      comp_level == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::has_finished_loading_classes()) {
     return nullptr;
   }
 #endif
