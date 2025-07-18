@@ -48,6 +48,8 @@ int VM_Version::_max_supported_sve_vector_length;
 bool VM_Version::_rop_protection;
 uintptr_t VM_Version::_pac_mask;
 
+const char* VM_Version::_features_names[MAX_CPU_FEATURES] = { nullptr };
+
 SpinWait VM_Version::_spin_wait;
 
 static SpinWait get_spin_wait_desc() {
@@ -69,6 +71,11 @@ static SpinWait get_spin_wait_desc() {
 }
 
 void VM_Version::initialize() {
+#define SET_CPU_FEATURE_NAME(id, name, bit) \
+  _features_names[bit] = XSTR(name);
+  CPU_FEATURE_FLAGS(SET_CPU_FEATURE_NAME)
+#undef SET_CPU_FEATURE_NAME
+
   _supports_atomic_getset4 = true;
   _supports_atomic_getadd4 = true;
   _supports_atomic_getset8 = true;
@@ -203,7 +210,7 @@ void VM_Version::initialize() {
 
   // Cortex A53
   if (_cpu == CPU_ARM && model_is(0xd03)) {
-    _features |= CPU_A53MAC;
+    set_feature(CPU_A53MAC);
     if (FLAG_IS_DEFAULT(UseSIMDForArrayEquals)) {
       FLAG_SET_DEFAULT(UseSIMDForArrayEquals, false);
     }
@@ -243,7 +250,7 @@ void VM_Version::initialize() {
     }
   }
 
-  if (_features & (CPU_FP | CPU_ASIMD)) {
+  if (supports_feature(CPU_FP) || supports_feature(CPU_ASIMD)) {
     if (FLAG_IS_DEFAULT(UseSignumIntrinsic)) {
       FLAG_SET_DEFAULT(UseSignumIntrinsic, true);
     }
@@ -406,7 +413,7 @@ void VM_Version::initialize() {
     FLAG_SET_DEFAULT(UseGHASHIntrinsics, false);
   }
 
-  if (_features & CPU_ASIMD) {
+  if (supports_feature(CPU_ASIMD)) {
     if (FLAG_IS_DEFAULT(UseChaCha20Intrinsics)) {
       UseChaCha20Intrinsics = true;
     }
@@ -417,7 +424,7 @@ void VM_Version::initialize() {
     FLAG_SET_DEFAULT(UseChaCha20Intrinsics, false);
   }
 
-  if (_features & CPU_ASIMD) {
+  if (supports_feature(CPU_ASIMD)) {
       if (FLAG_IS_DEFAULT(UseKyberIntrinsics)) {
           UseKyberIntrinsics = true;
       }
@@ -428,7 +435,7 @@ void VM_Version::initialize() {
       FLAG_SET_DEFAULT(UseKyberIntrinsics, false);
   }
 
-  if (_features & CPU_ASIMD) {
+  if (supports_feature(CPU_ASIMD)) {
       if (FLAG_IS_DEFAULT(UseDilithiumIntrinsics)) {
           UseDilithiumIntrinsics = true;
       }
@@ -629,11 +636,11 @@ void VM_Version::initialize() {
 
   // Sync SVE related CPU features with flags
   if (UseSVE < 2) {
-    _features &= ~CPU_SVE2;
-    _features &= ~CPU_SVEBITPERM;
+    clear_feature(CPU_SVE2);
+    clear_feature(CPU_SVEBITPERM);
   }
   if (UseSVE < 1) {
-    _features &= ~CPU_SVE;
+    clear_feature(CPU_SVE);
   }
 
   // Construct the "features" string
@@ -724,4 +731,46 @@ void VM_Version::initialize_cpu_information(void) {
   snprintf(_cpu_desc + desc_len, CPU_DETAILED_DESC_BUF_SIZE - desc_len, " %s", _cpu_info_string);
 
   _initialized = true;
+}
+
+void VM_Version::insert_features_names(uint64_t features, CpuInfoBuffer& info_buffer) {
+  info_buffer.insert_string_list(0, MAX_CPU_FEATURES, [&](int i) {
+    if (supports_feature((VM_Version::Feature_Flag)i)) {
+      return _features_names[i];
+    } else {
+      return (const char*)nullptr;
+    }
+  });
+  assert(!info_buffer.overflow(), "not enough buffer size");
+}
+
+void VM_Version::get_cpu_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) {
+  uint64_t features = *(uint64_t*)features_buffer;
+  insert_features_names(features, info_buffer);
+}
+
+void VM_Version::get_missing_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) {
+  uint64_t features_to_test = *(uint64_t*)features_buffer;
+  info_buffer.insert_string_list(0, MAX_CPU_FEATURES, [&](int i) {
+    Feature_Flag flag = (Feature_Flag)i;
+    if (supports_feature(features_to_test, flag) && !supports_feature(flag)) {
+      return _features_names[i];
+    } else {
+      return (const char*)nullptr;
+    }
+  });
+  assert(!info_buffer.overflow(), "not enough buffer size");
+}
+
+int VM_Version::cpu_features_size() {
+  return sizeof(_features);
+}
+
+void VM_Version::store_cpu_features(void* buf) {
+  *(uint64_t*)buf = _features;
+}
+
+bool VM_Version::supports_features(void* features_buffer) {
+  uint64_t features_to_test = *(uint64_t*)features_buffer;
+  return (_features & features_to_test) == features_to_test;
 }
