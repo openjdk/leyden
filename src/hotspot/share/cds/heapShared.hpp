@@ -427,7 +427,7 @@ private:
   static int append_root(oop obj);
   static GrowableArrayCHeap<OopHandle, mtClassShared>* pending_roots() { return _pending_roots; }
 
-  static void delete_tables_with_raw_oops() NOT_CDS_JAVA_HEAP_RETURN; 
+  static void delete_tables_with_raw_oops() NOT_CDS_JAVA_HEAP_RETURN;
 
   // Dump-time and runtime
   static objArrayOop root_segment(int segment_idx);

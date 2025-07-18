@@ -1573,7 +1573,7 @@ public:
                   ArchiveHeapInfo* heap_info,
                   char* bitmap, size_t bitmap_size_in_bytes) {
     // HeapShared::archived_object_cache() uses raw address of oop to compute the hash. At this point,
-    // a GC might have happened and moved some of the oops, so the table needs to be rehashed.    
+    // a GC might have happened and moved some of the oops, so the table needs to be rehashed.
     NoSafepointVerifier nsv;
     HeapShared::rehash_archived_object_cache();
 
