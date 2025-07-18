@@ -637,6 +637,7 @@ void AOTCodeCache::Config::record() {
   if (PreserveFramePointer) {
     _flags |= preserveFramePointer;
   }
+  _codeCacheSize         = pointer_delta(CodeCache::high_bound(), CodeCache::low_bound(), 1);
   _compressedOopShift    = CompressedOops::shift();
   _compressedOopBase     = CompressedOops::base();
   _compressedKlassShift  = CompressedKlassPointers::shift();
@@ -666,6 +667,12 @@ bool AOTCodeCache::Config::verify() const {
   CollectedHeap::Name aot_gc = (CollectedHeap::Name)_gc;
   if (aot_gc != Universe::heap()->kind()) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with different GC: %s vs current %s", GCConfig::hs_err_name(aot_gc), GCConfig::hs_err_name());
+    return false;
+  }
+
+  size_t codeCacheSize = pointer_delta(CodeCache::high_bound(), CodeCache::low_bound(), 1);
+  if (_codeCacheSize != codeCacheSize) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with CodeCache size = %dKb vs current %dKb", (int)(_codeCacheSize/K), (int)(codeCacheSize/K));
     return false;
   }
 

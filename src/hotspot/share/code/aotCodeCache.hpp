@@ -318,6 +318,7 @@ class AOTCodeCache : public CHeapObj<mtCode> {
 // Classes used to describe AOT code cache.
 protected:
   class Config {
+    size_t  _codeCacheSize;
     address _compressedOopBase;
     address _compressedKlassBase;
     uint _compressedOopShift;
