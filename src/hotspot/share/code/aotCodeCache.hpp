@@ -413,8 +413,8 @@ protected:
                                        - _C2_blobs_count
                                        - _adapters_count; }
 
-    bool verify_config(uint load_size)  const;
-    bool verify_vm_config() const { // Called after Universe initialized
+    bool verify(uint load_size)  const;
+    bool verify_config() const { // Called after Universe initialized
       return _config.verify();
     }
   };
@@ -506,8 +506,6 @@ public:
   void load_strings();
   int store_strings();
 
-  static void init_extrs_table() NOT_CDS_RETURN;
-  static void init_early_stubs_table() NOT_CDS_RETURN;
   static void init_shared_blobs_table() NOT_CDS_RETURN;
   static void init_stubs_table() NOT_CDS_RETURN;
   static void init_early_c1_table() NOT_CDS_RETURN;
@@ -588,9 +586,10 @@ private:
   static AOTCodeCache*  _cache;
 
   static bool open_cache(bool is_dumping, bool is_using);
-  static bool verify_vm_config() {
-    if (is_on_for_use()) {
-      return _cache->_load_header->verify_vm_config();
+
+  bool verify_config_on_use() {
+    if (for_use()) {
+      return _load_header->verify_config();
     }
     return true;
   }
