@@ -65,6 +65,7 @@
 #include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/javaThread.hpp"
+#include "runtime/safepointVerifiers.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/align.hpp"
 #include "utilities/bitMap.inline.hpp"
@@ -1329,6 +1330,7 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
         // Don't print the requested addr again as we have just printed it at the beginning of the line.
         // Example:
         // 0x00000007ffd27938: @@ Object (0xfffa4f27) java.util.HashMap
+        assert(HeapShared::has_been_archived(source_oop), "did you call HeapShared::rehash_archived_object_cache()?");
         print_oop_info_cr(&st, source_oop, /*print_requested_addr=*/false);
         byte_size = source_oop->size() * BytesPerWord;
       } else if ((byte_size = ArchiveHeapWriter::get_filler_size_at(start)) > 0) {
@@ -1378,7 +1380,7 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
         }
         break;
       default:
-        if (ArchiveHeapWriter::is_marked_as_native_pointer(_heap_info, _source_obj, fd->offset())) {
+        if (ArchiveHeapWriter::is_marked_as_native_pointer(_heap_info, _buffered_addr, fd->offset())) {
           print_as_native_pointer(fd);
         } else {
           fd->print_on_for(_st, cast_to_oop(_buffered_addr)); // name, offset, value
@@ -1401,7 +1403,7 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
       address requested_native_ptr = builder->to_requested(builder->get_buffered_addr(source_native_ptr));
 
       // The address of _source_obj at runtime
-      oop requested_obj = ArchiveHeapWriter::source_obj_to_requested_obj(_source_obj);
+      oop requested_obj = cast_to_oop(ArchiveHeapWriter::buffered_addr_to_requested_addr(_buffered_addr));
       // The address of this field in the requested space
       assert(requested_obj != nullptr, "Attempting to load field from null oop");
       address requested_field_addr = cast_from_oop<address>(requested_obj) + fd->offset();
@@ -1501,6 +1503,7 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
       st->print_cr("null");
     } else {
       ResourceMark rm;
+      assert(HeapShared::has_been_archived(source_oop), "did you call HeapShared::rehash_archived_object_cache()?");
       oop requested_obj = ArchiveHeapWriter::source_obj_to_requested_obj(source_oop);
       if (print_requested_addr) {
         st->print(PTR_FORMAT " ", p2i(requested_obj));
@@ -1569,6 +1572,11 @@ public:
   static void log(ArchiveBuilder* builder, FileMapInfo* mapinfo,
                   ArchiveHeapInfo* heap_info,
                   char* bitmap, size_t bitmap_size_in_bytes) {
+    // HeapShared::archived_object_cache() uses raw address of oop to compute the hash. At this point,
+    // a GC might have happened and moved some of the oops, so the table needs to be rehashed.
+    NoSafepointVerifier nsv;
+    HeapShared::rehash_archived_object_cache();
+
     log_info(aot, map)("%s CDS archive map for %s", CDSConfig::is_dumping_static_archive() ? "Static" : "Dynamic", mapinfo->full_path());
 
     address header = address(mapinfo->header());
