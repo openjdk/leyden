@@ -3246,7 +3246,10 @@ void AOTCodeAddressTable::init_shared_blobs() {
   SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_safepoint_handler_blob()->entry_point());
   SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_return_handler_blob()->entry_point());
 #ifdef COMPILER2
-  SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
+  // polling_page_vectors_safepoint_handler_blob can be nullptr if AVX feature is not present or is disabled
+  if (SharedRuntime::polling_page_vectors_safepoint_handler_blob() != nullptr) {
+    SET_ADDRESS(_shared_blobs, SharedRuntime::polling_page_vectors_safepoint_handler_blob()->entry_point());
+  }
 #endif
 #if INCLUDE_JVMCI
   if (EnableJVMCI) {
