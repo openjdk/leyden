@@ -832,15 +832,13 @@ ciMethod* ciEnv::get_method_by_index_impl(const constantPoolHandle& cpool,
     // Patch the call site to the nmethod entry point of the static compiled lambda form.
     // As with other two-component call sites, both values must be independently verified.
     assert(index < cpool->cache()->resolved_indy_entries_length(), "impossible");
-    Method* adapter = cpool->resolved_indy_entry_at(index)->method();
+    ResolvedIndyEntry* indy_info = cpool->resolved_indy_entry_at(index);
+    Method* adapter = indy_info->method();
 #if INCLUDE_CDS
-    if (is_precompiled()) {
-        ResolvedIndyEntry* indy_info = cpool->resolved_indy_entry_at(index);
-        if (!AOTConstantPoolResolver::is_resolution_deterministic(cpool(), indy_info->constant_pool_index())) {
-          // This is an indy callsite that was resolved as a side effect of VM bootstrap, but
-          // it cannot be cached in the resolved state, so AOT code should not reference it.
-          adapter = nullptr;
-        }
+    if (is_precompiled() && !AOTConstantPoolResolver::is_resolution_deterministic(cpool(), indy_info->constant_pool_index())) {
+      // This is an indy callsite that was resolved as a side effect of VM bootstrap, but
+      // it cannot be cached in the resolved state, so AOT code should not reference it.
+      adapter = nullptr;
     }
 #endif
     // Resolved if the adapter is non null.
