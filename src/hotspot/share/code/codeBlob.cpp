@@ -244,8 +244,8 @@ void CodeBlob::prepare_for_archiving_impl() {
   _oop_maps = nullptr;
   _mutable_data = nullptr;
 #ifndef PRODUCT
-  asm_remarks().clear();
-  dbg_strings().clear();
+  asm_remarks().clear_ref();
+  dbg_strings().clear_ref();
 #endif /* PRODUCT */
 }
 
