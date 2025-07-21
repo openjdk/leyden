@@ -578,24 +578,26 @@ void CompilationPolicy::print_event(EventType type, Method* m, Method* im, int b
 
 void CompilationPolicy::initialize() {
   if (!CompilerConfig::is_interpreter_only()) {
-    if (AOTCodeCache::is_dumping_code()) {
-      // Assembly phase runs C1 and C2 compilation in separate phases,
-      // and can use all the CPU threads it can reach. Adjust the common
-      // options before policy starts overwriting them. There is a block
-      // at the very end that overrides final thread counts.
-      if (FLAG_IS_DEFAULT(UseDynamicNumberOfCompilerThreads)) {
-        FLAG_SET_ERGO(UseDynamicNumberOfCompilerThreads, false);
-      }
-      if (FLAG_IS_DEFAULT(CICompilerCount)) {
-        FLAG_SET_ERGO(CICompilerCount, MAX2(2, os::active_processor_count()));
-      }
-    }
     int count = CICompilerCount;
     bool c1_only = CompilerConfig::is_c1_only();
     bool c2_only = CompilerConfig::is_c2_or_jvmci_compiler_only();
 
 #ifdef _LP64
     // Turn on ergonomic compiler count selection
+    if (AOTCodeCache::maybe_dumping_code()) {
+      // Assembly phase runs C1 and C2 compilation in separate phases,
+      // and can use all the CPU threads it can reach. Adjust the common
+      // options before policy starts overwriting them.
+      if (FLAG_IS_DEFAULT(UseDynamicNumberOfCompilerThreads)) {
+        FLAG_SET_ERGO(UseDynamicNumberOfCompilerThreads, false);
+      }
+      if (FLAG_IS_DEFAULT(CICompilerCountPerCPU)) {
+        FLAG_SET_ERGO(CICompilerCountPerCPU, false);
+      }
+      if (FLAG_IS_DEFAULT(CICompilerCount)) {
+        count =  MAX2(count, os::active_processor_count());
+      }
+    }
     if (FLAG_IS_DEFAULT(CICompilerCountPerCPU) && FLAG_IS_DEFAULT(CICompilerCount)) {
       FLAG_SET_DEFAULT(CICompilerCountPerCPU, true);
     }
@@ -604,6 +606,8 @@ void CompilationPolicy::initialize() {
       int log_cpu = log2i(os::active_processor_count());
       int loglog_cpu = log2i(MAX2(log_cpu, 1));
       count = MAX2(log_cpu * loglog_cpu * 3 / 2, 2);
+    }
+    {
       // Make sure there is enough space in the code cache to hold all the compiler buffers
       size_t c1_size = 0;
 #ifdef COMPILER1
@@ -657,11 +661,6 @@ void CompilationPolicy::initialize() {
         set_c1_count(MAX2(count / 3, 1));
         set_c2_count(MAX2(count - c1_count(), 1));
       }
-    }
-    if (AOTCodeCache::is_dumping_code()) {
-      set_c1_count(count);
-      set_c2_count(count);
-      count *= 2; // satisfy the assert below
     }
     if (AOTCodeCache::is_code_load_thread_on()) {
       set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel

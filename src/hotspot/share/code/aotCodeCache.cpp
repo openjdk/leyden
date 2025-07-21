@@ -182,6 +182,15 @@ bool AOTCodeCache::is_using_code() {
   return AOTCodeCaching && is_on_for_use();
 }
 
+// This is used before AOTCodeCahe is initialized
+// but after AOT (CDS) Cache flags consistency is checked.
+bool AOTCodeCache::maybe_dumping_code() {
+  return AOTCodeCaching && CDSConfig::is_dumping_final_static_archive();
+}
+
+// Next methods could be called regardless of AOT code cache status.
+// Initially they are called during AOT flags parsing and finilized
+// in AOTCodeCache::initialize().
 void AOTCodeCache::enable_caching() {
   FLAG_SET_ERGO_IF_DEFAULT(AOTCodeCaching, true);
   FLAG_SET_ERGO_IF_DEFAULT(AOTStubCaching, true);
@@ -322,10 +331,11 @@ void AOTCodeCache::initialize() {
 
 static AOTCodeCache*  opened_cache = nullptr; // Use this until we verify the cache
 AOTCodeCache* AOTCodeCache::_cache = nullptr;
+DEBUG_ONLY( bool AOTCodeCache::_passed_init2 = false; )
 
-// This method is called after universe_init()
-// when all GC settings are finalized.
+// It is called after universe_init() when all GC settings are finalized.
 void AOTCodeCache::init2() {
+  DEBUG_ONLY( _passed_init2 = true; )
   if (opened_cache == nullptr) {
     return;
   }
@@ -356,7 +366,6 @@ void AOTCodeCache::init2() {
   AOTCodeAddressTable* table = opened_cache->_table;
   assert(table != nullptr, "should be initialized already");
   table->init_extrs();
-  table->init_early_stubs();
 
   // Now cache and address table are ready for AOT code generation
   _cache = opened_cache;
@@ -535,6 +544,13 @@ bool AOTCodeCache::is_loaded(AOTCodeEntry* entry) {
     return (uint)((char*)entry - _cache->cache_buffer()) < _cache->load_size();
   }
   return false;
+}
+
+void AOTCodeCache::init_early_stubs_table() {
+  AOTCodeAddressTable* table = addr_table();
+  if (table != nullptr) {
+    table->init_early_stubs();
+  }
 }
 
 void AOTCodeCache::init_shared_blobs_table() {
@@ -4093,16 +4109,16 @@ void AOTCodeEntry::print(outputStream* st) const {
 }
 
 void AOTCodeCache::print_on(outputStream* st) {
-  AOTCodeCache* cache = open_for_use();
-  if (cache != nullptr) {
+  if (opened_cache != nullptr && opened_cache->for_use()) {
     ReadingMark rdmk;
     if (rdmk.failed()) {
       // Cache is closed, cannot touch anything.
       return;
     }
 
-    uint count = cache->_load_header->entries_count();
-    uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
+    st->print_cr("\nAOT Code Cache");
+    uint count = opened_cache->_load_header->entries_count();
+    uint* search_entries = (uint*)opened_cache->addr(opened_cache->_load_header->entries_offset()); // [id, index]
     AOTCodeEntry* load_entries = (AOTCodeEntry*)(search_entries + 2 * count);
 
     for (uint i = 0; i < count; i++) {
@@ -4111,10 +4127,10 @@ void AOTCodeCache::print_on(outputStream* st) {
 
       uint entry_position = entry->offset();
       uint name_offset = entry->name_offset() + entry_position;
-      const char* saved_name = cache->addr(name_offset);
+      const char* saved_name = opened_cache->addr(name_offset);
 
-      st->print_cr("%4u: entry_idx:%4u Kind:%u Id:%u L%u offset:%u size=%u '%s' %s%s%s%s",
-                   i, index, entry->kind(), entry->id(), entry->comp_level(), entry->offset(),
+      st->print_cr("%4u: %10s idx:%4u Id:%u L%u size=%u '%s' %s%s%s%s",
+                   i, aot_code_entry_kind_name[entry->kind()], index, entry->id(), entry->comp_level(),
                    entry->size(),  saved_name,
                    entry->has_clinit_barriers() ? " has_clinit_barriers" : "",
                    entry->for_preload()         ? " for_preload"         : "",
@@ -4122,11 +4138,9 @@ void AOTCodeCache::print_on(outputStream* st) {
                    entry->not_entrant()         ? " not_entrant"         : "");
 
       st->print_raw("         ");
-      AOTCodeReader reader(cache, entry, nullptr);
+      AOTCodeReader reader(opened_cache, entry, nullptr);
       reader.print_on(st);
     }
-  } else {
-    st->print_cr("failed to map code cache");
   }
 }
 
