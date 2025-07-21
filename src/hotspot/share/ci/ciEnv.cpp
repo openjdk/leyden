@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
 #include "ci/ciConstant.hpp"
@@ -832,6 +833,14 @@ ciMethod* ciEnv::get_method_by_index_impl(const constantPoolHandle& cpool,
     // As with other two-component call sites, both values must be independently verified.
     assert(index < cpool->cache()->resolved_indy_entries_length(), "impossible");
     Method* adapter = cpool->resolved_indy_entry_at(index)->method();
+    if (is_precompiled()) {
+        ResolvedIndyEntry* indy_info = cpool()->resolved_indy_entry_at(index);
+        if (!AOTConstantPoolResolver::is_resolution_deterministic(cpool(), indy_info->constant_pool_index())) {
+          // This is an indy callsite that was resolved as a side effect of VM bootstrap, but
+          // it cannot be cached in the resolved state, so AOT code should not reference it.
+          adapter = nullptr;
+        }
+    }
     // Resolved if the adapter is non null.
     if (adapter != nullptr) {
       return get_method(adapter);
