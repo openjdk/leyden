@@ -321,8 +321,11 @@ void CodeCache::initialize_heaps() {
   FLAG_SET_ERGO(NonProfiledCodeHeapSize, non_profiled.size);
   FLAG_SET_ERGO(ReservedCodeCacheSize, cache_size);
 
-  const size_t cds_code_size = align_up(AOTCacheAccess::get_aot_code_region_size(), min_size);
-  cache_size += cds_code_size;
+  const size_t cds_code_size = 0;
+  // FIXME: we should not increase CodeCache size - it affects branches.
+  // Instead we need to create separate code heap in CodeCache for AOT code.
+  // const size_t cds_code_size = align_up(AOTCacheAccess::get_aot_code_region_size(), min_size);
+  // cache_size += cds_code_size;
 
   ReservedSpace rs = reserve_heap_memory(cache_size, ps);
 
@@ -1079,8 +1082,8 @@ size_t CodeCache::max_distance_to_non_nmethod() {
     CodeHeap* blob = get_code_heap(CodeBlobType::NonNMethod);
     // the max distance is minimized by placing the NonNMethod segment
     // in between MethodProfiled and MethodNonProfiled segments
-    size_t dist1 = (size_t)blob->high() - (size_t)_low_bound;
-    size_t dist2 = (size_t)_high_bound - (size_t)blob->low();
+    size_t dist1 = (size_t)blob->high_boundary() - (size_t)_low_bound;
+    size_t dist2 = (size_t)_high_bound - (size_t)blob->low_boundary();
     return dist1 > dist2 ? dist1 : dist2;
   }
 }

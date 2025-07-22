@@ -176,12 +176,13 @@
 // Stub Generator Blobs and Stubs Overview
 //
 // StubGenerator stubs do not require their own individual blob. They
-// are generated in batches into one of four distinct BufferBlobs:
+// are generated in batches into one of five distinct BufferBlobs:
 //
-// 1) Initial stubs
-// 2) Continuation stubs
-// 3) Compiler stubs
-// 4) Final stubs
+// 1) PreUniverse stubs
+// 2) Initial stubs
+// 3) Continuation stubs
+// 4) Compiler stubs
+// 5) Final stubs
 //
 // Creation of each successive BufferBlobs is staged to ensure that
 // specific VM subsystems required by those stubs are suitably
@@ -269,6 +270,7 @@
 // For example,
 //
 // enum platform_dependent_constants {
+//   _preuniverse_stubs_code_size  =   500,
 //   _initial_stubs_code_size      = 10000,
 //   _continuation_stubs_code_size =  2000,
 //   . . .
@@ -502,6 +504,10 @@
 
 #include CPU_HEADER(stubDeclarations)
 
+#ifndef STUBGEN_PREUNIVERSE_BLOBS_ARCH_DO
+#error "Arch-specific directory failed to declare required initial stubs and entries"
+#endif
+
 #ifndef STUBGEN_INITIAL_BLOBS_ARCH_DO
 #error "Arch-specific directory failed to declare required initial stubs and entries"
 #endif
@@ -534,7 +540,32 @@
 // stubs within the correct blob and locate entry declarations
 // immediately after their associated stub declaration.
 
-#define STUBGEN_INITIAL_BLOBS_DO(do_blob, end_blob,                     \
+#define STUBGEN_PREUNIVERSE_BLOBS_DO(do_blob, end_blob,                 \
+                                     do_stub,                           \
+                                     do_entry, do_entry_init,           \
+                                     do_entry_array,                    \
+                                     do_arch_blob,                      \
+                                     do_arch_entry, do_arch_entry_init) \
+  do_blob(preuniverse)                                                  \
+  do_stub(preuniverse, fence)                                           \
+  do_entry(preuniverse, fence, fence_entry, fence_entry)                \
+  do_stub(preuniverse, atomic_add)                                      \
+  do_entry(preuniverse, atomic_add, atomic_add_entry, atomic_add_entry) \
+  do_stub(preuniverse, atomic_xchg)                                     \
+  do_entry(preuniverse, atomic_xchg, atomic_xchg_entry,                 \
+           atomic_xchg_entry)                                           \
+  do_stub(preuniverse, atomic_cmpxchg)                                  \
+  do_entry(preuniverse, atomic_cmpxchg, atomic_cmpxchg_entry,           \
+           atomic_cmpxchg_entry)                                        \
+  do_stub(preuniverse, atomic_cmpxchg_long)                             \
+  do_entry(preuniverse, atomic_cmpxchg_long, atomic_cmpxchg_long_entry, \
+           atomic_cmpxchg_long_entry)                                   \
+  /* merge in stubs and entries declared in arch header */              \
+  STUBGEN_PREUNIVERSE_BLOBS_ARCH_DO(do_stub, do_arch_blob,              \
+                                    do_arch_entry, do_arch_entry_init)  \
+  end_blob(preuniverse)                                                 \
+
+#define STUBGEN_INITIAL_BLOBS_DO(do_blob, end_blob,                      \
                                  do_stub,                               \
                                  do_entry, do_entry_init,               \
                                  do_entry_array,                        \
@@ -551,18 +582,6 @@
   do_stub(initial, catch_exception)                                     \
   do_entry(initial, catch_exception, catch_exception_entry,             \
            catch_exception_entry)                                       \
-  do_stub(initial, fence)                                               \
-  do_entry(initial, fence, fence_entry, fence_entry)                    \
-  do_stub(initial, atomic_add)                                          \
-  do_entry(initial, atomic_add, atomic_add_entry, atomic_add_entry)     \
-  do_stub(initial, atomic_xchg)                                         \
-  do_entry(initial, atomic_xchg, atomic_xchg_entry, atomic_xchg_entry)  \
-  do_stub(initial, atomic_cmpxchg)                                      \
-  do_entry(initial, atomic_cmpxchg, atomic_cmpxchg_entry,               \
-           atomic_cmpxchg_entry)                                        \
-  do_stub(initial, atomic_cmpxchg_long)                                 \
-  do_entry(initial, atomic_cmpxchg_long, atomic_cmpxchg_long_entry,     \
-           atomic_cmpxchg_long_entry)                                   \
   do_stub(initial, updateBytesCRC32)                                    \
   do_entry(initial, updateBytesCRC32, updateBytesCRC32,                 \
            updateBytesCRC32)                                            \
@@ -1013,6 +1032,12 @@
                        do_entry_array,                                  \
                        do_arch_blob,                                    \
                        do_arch_entry, do_arch_entry_init)               \
+  STUBGEN_PREUNIVERSE_BLOBS_DO(do_blob, end_blob,                       \
+                               do_stub,                                 \
+                               do_entry, do_entry_init,                 \
+                               do_entry_array,                          \
+                               do_arch_blob,                            \
+                               do_arch_entry, do_arch_entry_init)       \
   STUBGEN_INITIAL_BLOBS_DO(do_blob, end_blob,                           \
                            do_stub,                                     \
                            do_entry, do_entry_init,                     \

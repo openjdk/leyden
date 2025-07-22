@@ -21,3 +21,6 @@ compiler/ciReplay/TestInliningProtectionDomain.java   0000000 generic-all
 # use -XX:TypeProfileLevel=222 invalidating AOT cache
 compiler/profiling/spectrapredefineclass/Launcher.java 0000000 generic-all
 compiler/profiling/spectrapredefineclass_classloaders/Launcher.java 0000000 generic-all
+
+# Profiling data from AOT cache affects compilation
+compiler/runtime/safepoints/TestMachTempsAcrossSafepoints.java 0000000 generic-all

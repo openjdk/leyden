@@ -3126,6 +3126,17 @@ class StubGenerator: public StubCodeGenerator {
   //---------------------------------------------------------------------------
   // Initialization
 
+  void generate_preuniverse_stubs() {
+    // Atomics are used in universe initialization code (e.g. CDS relocation),
+    // therefore we need to generate real stubs very early on.
+    StubRoutines::_atomic_add_entry = generate_atomic_add();
+    StubRoutines::_atomic_xchg_entry = generate_atomic_xchg();
+    StubRoutines::_atomic_cmpxchg_entry = generate_atomic_cmpxchg();
+    StubRoutines::_atomic_cmpxchg_long_entry = generate_atomic_cmpxchg_long();
+    StubRoutines::Arm::_atomic_load_long_entry = generate_atomic_load_long();
+    StubRoutines::Arm::_atomic_store_long_entry = generate_atomic_store_long();
+  }
+
   void generate_initial_stubs() {
     // Generates all stubs and initializes the entry points
 
@@ -3147,14 +3158,6 @@ class StubGenerator: public StubCodeGenerator {
 
     // integer division used both by interpreter and compiler
     StubRoutines::Arm::_idiv_irem_entry = generate_idiv_irem();
-
-    StubRoutines::_atomic_add_entry = generate_atomic_add();
-    StubRoutines::_atomic_xchg_entry = generate_atomic_xchg();
-    StubRoutines::_atomic_cmpxchg_entry = generate_atomic_cmpxchg();
-    StubRoutines::_atomic_cmpxchg_long_entry = generate_atomic_cmpxchg_long();
-    StubRoutines::Arm::_atomic_load_long_entry = generate_atomic_load_long();
-    StubRoutines::Arm::_atomic_store_long_entry = generate_atomic_store_long();
-
   }
 
   void generate_continuation_stubs() {
@@ -3201,6 +3204,9 @@ class StubGenerator: public StubCodeGenerator {
  public:
   StubGenerator(CodeBuffer* code, StubGenBlobId blob_id) : StubCodeGenerator(code, blob_id) {
     switch(blob_id) {
+    case preuniverse_id:
+      generate_preuniverse_stubs();
+      break;
     case initial_id:
       generate_initial_stubs();
       break;
