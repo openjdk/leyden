@@ -384,7 +384,6 @@ private:
   static ArchivedObjectCache* archived_object_cache() {
     return _archived_object_cache;
   }
-  static void rehash_archived_object_cache();
 
   static CachedOopInfo* get_cached_oop_info(oop orig_obj) {
     OopHandle oh(&orig_obj);
@@ -427,8 +426,6 @@ private:
   static int append_root(oop obj);
   static GrowableArrayCHeap<OopHandle, mtClassShared>* pending_roots() { return _pending_roots; }
 
-  static void delete_tables_with_raw_oops() NOT_CDS_JAVA_HEAP_RETURN;
-
   // Dump-time and runtime
   static objArrayOop root_segment(int segment_idx);
   static oop get_root(int index, bool clear=false);
@@ -452,6 +449,8 @@ private:
     CDS_JAVA_HEAP_ONLY(return (idx == MetaspaceShared::hp);)
     NOT_CDS_JAVA_HEAP_RETURN_(false);
   }
+  static void rehash_archived_object_cache() NOT_CDS_JAVA_HEAP_RETURN;
+  static void delete_tables_with_raw_oops() NOT_CDS_JAVA_HEAP_RETURN;
 
   static void resolve_classes(JavaThread* current) NOT_CDS_JAVA_HEAP_RETURN;
   static void initialize_from_archived_subgraph(JavaThread* current, Klass* k) NOT_CDS_JAVA_HEAP_RETURN;
