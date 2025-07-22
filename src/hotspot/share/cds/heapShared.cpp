@@ -179,6 +179,9 @@ oop HeapShared::CachedOopInfo::orig_referrer() const {
 }
 
 void HeapShared::rehash_archived_object_cache() {
+  if (!CDSConfig::is_dumping_heap()) {
+    return;
+  }
   assert(SafepointSynchronize::is_at_safepoint() ||
          JavaThread::current()->is_in_no_safepoint_scope(), "sanity");
 
