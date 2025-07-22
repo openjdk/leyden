@@ -655,7 +655,6 @@ public:
 // it can be checked by check_for_exclusion().
 bool SystemDictionaryShared::should_be_excluded(Klass* k) {
   assert(CDSConfig::is_dumping_archive(), "sanity");
-  assert(CDSConfig::current_thread_is_vm_or_dumper(), "sanity");
 
   if (k->is_objArray_klass()) {
     return should_be_excluded(ObjArrayKlass::cast(k)->bottom_klass());
@@ -671,7 +670,7 @@ bool SystemDictionaryShared::should_be_excluded(Klass* k) {
       return false;
     }
 
-    if (!SafepointSynchronize::is_at_safepoint()) {
+    if (!SafepointSynchronize::is_at_safepoint() && !Thread::current()->is_Compiler_thread()) {
       if (!ik->is_linked()) {
         // check_for_exclusion() below doesn't link unlinked classes. We come
         // here only when we are trying to aot-link constant pool entries, so
