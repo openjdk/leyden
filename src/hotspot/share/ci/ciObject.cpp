@@ -203,7 +203,7 @@ void ciObject::add_to_constant_value_cache(int off, ciConstant val) {
 // ------------------------------------------------------------------
 // ciObject::should_be_constant()
 bool ciObject::should_be_constant() {
-  if (ScavengeRootsInCode >= 2 && !(AOTCodeCache::is_on_for_dump())) {
+  if (ScavengeRootsInCode >= 2 && !(AOTCodeCache::is_dumping_code())) {
     return true;  // force everybody to be a constant
   }
   if (is_null_object()) {
@@ -220,7 +220,7 @@ bool ciObject::should_be_constant() {
   }
   if ((klass()->is_subclass_of(env->MethodHandle_klass()) ||
        klass()->is_subclass_of(env->CallSite_klass())) &&
-      !(AOTCodeCache::is_on_for_dump())) { // For now disable it when caching startup code.
+      !(AOTCodeCache::is_dumping_code())) { // For now disable it when caching startup code.
     // We want to treat these aggressively.
     return true;
   }

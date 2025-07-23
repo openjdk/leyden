@@ -404,8 +404,8 @@
           "(T1=1; T2=2; T4=4; T5/preload=8")                                \
                                                                             \
   product(uint, ClassInitBarrierMode, 0,                                    \
-          "Produce and use startup code which could be called "             \
-          "on first method invocation, add class initialization barriers, " \
+          "Produce startup code which could be called on first "            \
+          "method invocation, add class initialization barriers, "          \
           "other checks and constrains if needed "                          \
           "(0: no barriers; 1: uncommon trap; 2: full barrier)")            \
                                                                             \

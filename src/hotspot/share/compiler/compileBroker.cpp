@@ -1568,7 +1568,7 @@ AOTCodeEntry* CompileBroker::find_aot_code_entry(const methodHandle& method, int
                                         CompileTask::CompileReason compile_reason,
                                         bool requires_online_compilation) {
   AOTCodeEntry* aot_code_entry = nullptr;
-  if (osr_bci == InvocationEntryBci && !requires_online_compilation && AOTCodeCache::is_on_for_use()) {
+  if (osr_bci == InvocationEntryBci && !requires_online_compilation && AOTCodeCache::is_using_code()) {
     // Check for cached code.
     if (compile_reason == CompileTask::Reason_Preload) {
       aot_code_entry = method->aot_code_entry();

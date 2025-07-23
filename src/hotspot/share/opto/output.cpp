@@ -3675,7 +3675,7 @@ void PhaseOutput::print_statistics() {
 #endif
 
 int PhaseOutput::max_inst_size() {
-  if (AOTCodeCache::is_on_for_dump()) {
+  if (AOTCodeCache::maybe_dumping_code()) {
     // See the comment in output.hpp.
     return 16384;
   } else {

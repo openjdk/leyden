@@ -1166,7 +1166,7 @@ uint AsmRemarks::print(uint offset, outputStream* strm) const {
 // Acting as interface to reference counted collection of (debug) strings used
 // in the code generated, and thus requiring a fixed address.
 //
-DbgStrings::DbgStrings() : _strings(new DbgStringCollection()) {
+DbgStrings::DbgStrings() {
   init();
   assert(_strings != nullptr, "Allocation failure!");
 }

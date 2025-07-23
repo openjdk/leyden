@@ -26,6 +26,7 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "code/aotCodeCache.hpp"
+#include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "compiler/precompiler.hpp"
@@ -186,6 +187,9 @@ void Precompiler::compile_cached_code(CompLevel search_level, bool for_preload, 
 }
 
 void Precompiler::compile_cached_code(TRAPS) {
+  if (!AOTCodeCache::is_dumping_code()) {
+    return;
+  }
   log_info(precompile)("Precompilation started");
   if (TrainingData::have_data()) {
     TrainingData::iterate([&](TrainingData* td) {
@@ -221,14 +225,14 @@ void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
   assert(AOTCodeCache::is_dumping_code(), "sanity");
   if (TrainingData::have_data()) {
     ResourceMark rm;
-
-    {
+    CompLevel highest_level = CompilationPolicy::highest_compile_level();
+    if (highest_level >= CompLevel_full_optimization) {
       PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, CompLevel_full_optimization, THREAD);
       TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);
     }
 
-    for (int level = CompLevel_simple; level <= CompLevel_full_optimization; level++) {
+    for (int level = CompLevel_simple; level <= highest_level; level++) {
       CompLevel comp_level = (CompLevel)level;
       if (comp_level == CompLevel_full_profile) {
         comp_level = CompLevel_limited_profile;

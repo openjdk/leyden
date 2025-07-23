@@ -22,6 +22,7 @@
  *
  */
 
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "interpreter/invocationCounter.hpp"
@@ -337,8 +338,12 @@ void CompilerConfig::set_compilation_policy_flags() {
   // Current Leyden implementation requires SegmentedCodeCache: the archive-backed code
   // cache would be initialized only then. Force SegmentedCodeCache if we are loading/storing
   // cached code. TODO: Resolve this in code cache initialization code.
-  if (!SegmentedCodeCache && (AOTCodeCaching || AOTStubCaching || AOTAdapterCaching)) {
+  if (!SegmentedCodeCache && AOTCodeCache::is_caching_enabled()) {
     FLAG_SET_ERGO(SegmentedCodeCache, true);
+    if (FLAG_IS_DEFAULT(ReservedCodeCacheSize)) {
+      FLAG_SET_ERGO(ReservedCodeCacheSize,
+                    MIN2(CODE_CACHE_DEFAULT_LIMIT, (size_t)ReservedCodeCacheSize * 5));
+    }
   }
 
   if (CompileThresholdScaling < 0) {
