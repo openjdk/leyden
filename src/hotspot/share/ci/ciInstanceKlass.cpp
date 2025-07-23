@@ -154,7 +154,7 @@ void ciInstanceKlass::compute_shared_init_state() {
 InstanceKlass::ClassState ciInstanceKlass::compute_init_state(InstanceKlass* ik) {
   ASSERT_IN_VM;
   ciEnv* env = CURRENT_ENV;
-  if (env != nullptr && env->is_precompiled()) {
+  if (env != nullptr && env->is_precompile()) {
     return env->compute_init_state_for_precompiled(ik);
   } else {
     return ik->init_state();

@@ -1633,7 +1633,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
          compile_reason == CompileTask::Reason_PrecompileForPreload, "method holder must be initialized");
   // return quickly if possible
 
-  if (PrecompileOnlyAndExit && !CompileTask::reason_is_precompiled(compile_reason)) {
+  if (PrecompileOnlyAndExit && !CompileTask::reason_is_precompile(compile_reason)) {
     return nullptr;
   }
 
@@ -1666,7 +1666,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
   assert(!HAS_PENDING_EXCEPTION, "No exception should be present");
   // some prerequisites that are compiler specific
   if (compile_reason != CompileTask::Reason_Preload &&
-      !CompileTask::reason_is_precompiled(compile_reason) &&
+      !CompileTask::reason_is_precompile(compile_reason) &&
      (comp->is_c2() || comp->is_jvmci())) {
     InternalOOMEMark iom(THREAD);
     method->constants()->resolve_string_constants(CHECK_AND_CLEAR_NONASYNC_NULL);
@@ -2612,7 +2612,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
     }
 
 
-    if (!ci_env.failing() && !task->is_success() && !task->is_precompiled()) {
+    if (!ci_env.failing() && !task->is_success() && !task->is_precompile()) {
       assert(ci_env.failure_reason() != nullptr, "expect failure reason");
       assert(false, "compiler should always document failure: %s", ci_env.failure_reason());
       // The compiler elected, without comment, not to register a result.
