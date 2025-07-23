@@ -3327,7 +3327,9 @@ int VM_Version::cpu_features_size() {
 }
 
 void VM_Version::store_cpu_features(void* buf) {
-  memcpy(buf, &_features, sizeof(VM_Features));
+  VM_Features copy = _features;
+  copy.clear_feature(CPU_HT); // HT does not result in incompatibility of aot code cache
+  memcpy(buf, &copy, sizeof(VM_Features));
 }
 
 bool VM_Version::supports_features(void* features_buffer) {
