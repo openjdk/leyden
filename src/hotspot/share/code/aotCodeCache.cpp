@@ -724,7 +724,7 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
 
   LogStreamHandle(Debug, aot, codecache, init) log;
   if (log.is_enabled()) {
-    log.print("Available CPU features: %s", VM_Version::features_string());
+    log.print_cr("Available CPU features: %s", VM_Version::features_string());
   }
 
   uint offset = _cpu_features_offset;
@@ -736,14 +736,14 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   if (log.is_enabled()) {
     CpuInfoBuffer msg_buffer;
     VM_Version::get_cpu_features_name(cached_cpu_features_buffer, msg_buffer);
-    log.print("CPU features recorded in AOTCodeCache: %s", msg_buffer.buffer());
+    log.print_cr("CPU features recorded in AOTCodeCache: %s", msg_buffer.buffer());
   }
 
   if (!VM_Version::supports_features(cached_cpu_features_buffer)) {
     if (log.is_enabled()) {
       CpuInfoBuffer msg_buffer;
       VM_Version::get_missing_features_name(cached_cpu_features_buffer, msg_buffer);
-      log.print("AOT Code Cache disabled: required cpu features are missing: %s", msg_buffer.buffer());
+      log.print_cr("AOT Code Cache disabled: required cpu features are missing: %s", msg_buffer.buffer());
     }
     return false;
   }
