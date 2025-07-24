@@ -588,12 +588,8 @@ void CompilationPolicy::initialize() {
       // Assembly phase runs C1 and C2 compilation in separate phases,
       // and can use all the CPU threads it can reach. Adjust the common
       // options before policy starts overwriting them.
-      if (FLAG_IS_DEFAULT(UseDynamicNumberOfCompilerThreads)) {
-        FLAG_SET_ERGO(UseDynamicNumberOfCompilerThreads, false);
-      }
-      if (FLAG_IS_DEFAULT(CICompilerCountPerCPU)) {
-        FLAG_SET_ERGO(CICompilerCountPerCPU, false);
-      }
+      FLAG_SET_ERGO_IF_DEFAULT(UseDynamicNumberOfCompilerThreads, false);
+      FLAG_SET_ERGO_IF_DEFAULT(CICompilerCountPerCPU, false);
       if (FLAG_IS_DEFAULT(CICompilerCount)) {
         count =  MAX2(count, os::active_processor_count());
       }
@@ -607,7 +603,7 @@ void CompilationPolicy::initialize() {
       int loglog_cpu = log2i(MAX2(log_cpu, 1));
       count = MAX2(log_cpu * loglog_cpu * 3 / 2, 2);
     }
-    {
+    if (FLAG_IS_DEFAULT(CICompilerCount)) {
       // Make sure there is enough space in the code cache to hold all the compiler buffers
       size_t c1_size = 0;
 #ifdef COMPILER1

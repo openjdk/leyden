@@ -3005,9 +3005,6 @@ void AOTCodeAddressTable::init_extrs() {
   SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method);
   SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method_abstract);
   SET_ADDRESS(_extrs, SharedRuntime::handle_wrong_method_ic_miss);
-#if defined(AARCH64) && !defined(ZERO)
-  SET_ADDRESS(_extrs, JavaThread::aarch64_get_thread_helper);
-#endif
   {
     // Required by Shared blobs
     SET_ADDRESS(_extrs, Deoptimization::fetch_unroll_info);
@@ -3022,7 +3019,11 @@ void AOTCodeAddressTable::init_extrs() {
     SET_ADDRESS(_extrs, SharedRuntime::throw_NullPointerException_at_call);
     SET_ADDRESS(_extrs, CompressedOops::base_addr());
     SET_ADDRESS(_extrs, CompressedKlassPointers::base_addr());
-
+  }
+  {
+    // Required by initial stubs
+    SET_ADDRESS(_extrs, StubRoutines::crc_table_addr());
+    SET_ADDRESS(_extrs, StubRoutines::crc32c_table_addr());
   }
 
 #ifdef COMPILER1
@@ -3056,6 +3057,12 @@ void AOTCodeAddressTable::init_extrs() {
     SET_ADDRESS(_extrs, Runtime1::predicate_failed_trap);
     SET_ADDRESS(_extrs, Runtime1::unimplemented_entry);
     SET_ADDRESS(_extrs, Runtime1::trace_block_entry);
+#ifdef X86
+    SET_ADDRESS(_extrs, LIR_Assembler::float_signmask_pool);
+    SET_ADDRESS(_extrs, LIR_Assembler::double_signmask_pool);
+    SET_ADDRESS(_extrs, LIR_Assembler::float_signflip_pool);
+    SET_ADDRESS(_extrs, LIR_Assembler::double_signflip_pool);
+#endif
 #ifndef PRODUCT
     SET_ADDRESS(_extrs, os::breakpoint);
 #endif
@@ -3088,8 +3095,18 @@ void AOTCodeAddressTable::init_extrs() {
     SET_ADDRESS(_extrs, OptoRuntime::slow_arraycopy_C);
     SET_ADDRESS(_extrs, OptoRuntime::register_finalizer_C);
     SET_ADDRESS(_extrs, OptoRuntime::class_init_barrier_C);
+#if defined(AMD64)
+    // Use by C2 intinsic
+    SET_ADDRESS(_extrs, StubRoutines::x86::arrays_hashcode_powers_of_31());
+#endif
   }
 #endif // COMPILER2
+
+  // Record addresses of VM runtime methods and data structs
+  BarrierSet* bs = BarrierSet::barrier_set();
+  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
+    SET_ADDRESS(_extrs, ci_card_table_address_as<address>());
+  }
 
 #if INCLUDE_G1GC
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_post_entry);
@@ -3148,13 +3165,7 @@ void AOTCodeAddressTable::init_extrs() {
   SET_ADDRESS(_extrs, SharedRuntime::ldiv);
   SET_ADDRESS(_extrs, SharedRuntime::lmul);
   SET_ADDRESS(_extrs, SharedRuntime::lrem);
-#if INCLUDE_JVMTI
-  SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);
-#endif /* INCLUDE_JVMTI */
-  BarrierSet* bs = BarrierSet::barrier_set();
-  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
-    SET_ADDRESS(_extrs, ci_card_table_address_as<address>());
-  }
+
   SET_ADDRESS(_extrs, ThreadIdentifier::unsafe_offset());
   SET_ADDRESS(_extrs, Thread::current);
 
@@ -3164,9 +3175,10 @@ void AOTCodeAddressTable::init_extrs() {
   SET_ADDRESS(_extrs, os::elapsed_counter);
 
 #if INCLUDE_JVMTI
+  SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);
   SET_ADDRESS(_extrs, &JvmtiVTMSTransitionDisabler::_VTMS_notify_jvmti_events);
 #endif /* INCLUDE_JVMTI */
-  SET_ADDRESS(_extrs, StubRoutines::crc_table_addr());
+
 #ifndef PRODUCT
   SET_ADDRESS(_extrs, &SharedRuntime::_partial_subtype_ctr);
   SET_ADDRESS(_extrs, JavaThread::verify_cross_modify_fence_failure);
@@ -3176,19 +3188,10 @@ void AOTCodeAddressTable::init_extrs() {
 #if defined(AMD64) || defined(AARCH64) || defined(RISCV64)
   SET_ADDRESS(_extrs, MacroAssembler::debug64);
 #endif
-#if defined(AMD64)
-  SET_ADDRESS(_extrs, StubRoutines::x86::arrays_hashcode_powers_of_31());
+#if defined(AARCH64)
+  SET_ADDRESS(_extrs, JavaThread::aarch64_get_thread_helper);
 #endif
 #endif // ZERO
-
-#ifdef COMPILER1
-#ifdef X86
-  SET_ADDRESS(_extrs, LIR_Assembler::float_signmask_pool);
-  SET_ADDRESS(_extrs, LIR_Assembler::double_signmask_pool);
-  SET_ADDRESS(_extrs, LIR_Assembler::float_signflip_pool);
-  SET_ADDRESS(_extrs, LIR_Assembler::double_signflip_pool);
-#endif
-#endif
 
   // addresses of fields in AOT runtime constants area
   address* p = AOTRuntimeConstants::field_addresses_list();
@@ -3372,8 +3375,6 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::dilithiumDecomposePoly());
 
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32());
-
-  SET_ADDRESS(_stubs, StubRoutines::crc32c_table_addr());
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32C());
   SET_ADDRESS(_stubs, StubRoutines::updateBytesAdler32());
 
@@ -3421,6 +3422,11 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_float_sign_flip());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_double_sign_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_double_sign_flip());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_int_shuffle_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_byte_shuffle_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_short_shuffle_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_long_shuffle_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_long_sign_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_int());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_short());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_long());

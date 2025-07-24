@@ -1289,24 +1289,23 @@ class trampoline_stub_Relocation : public Relocation {
 
   void pack_data_to(CodeSection * dest) override;
   void unpack_data() override;
-#if defined(AARCH64)
-  address    pd_destination     ();
-  void       pd_set_destination (address x);
-#endif
-  address  destination() {
-#if defined(AARCH64)
-    return pd_destination();
+#if defined(AARCH64) && !defined(ZERO)
+  address pd_destination     ();
+  void    pd_set_destination (address x);
 #else
+  address pd_destination     () {
     fatal("trampoline_stub_Relocation::destination() unimplemented");
     return (address)-1;
-#endif
   }
-  void     set_destination(address x) {
-#if defined(AARCH64)
-    pd_set_destination(x);
-#else
+  void    pd_set_destination (address x) {
     fatal("trampoline_stub_Relocation::set_destination() unimplemented");
+  }
 #endif
+  address destination() {
+    return pd_destination();
+  }
+  void    set_destination(address x) {
+    pd_set_destination(x);
   }
 
   // Find the trampoline stub for a call.
