@@ -835,7 +835,7 @@ ciMethod* ciEnv::get_method_by_index_impl(const constantPoolHandle& cpool,
     ResolvedIndyEntry* indy_info = cpool->resolved_indy_entry_at(index);
     Method* adapter = indy_info->method();
 #if INCLUDE_CDS
-    if (is_precompiled() && !AOTConstantPoolResolver::is_resolution_deterministic(cpool(), indy_info->constant_pool_index())) {
+    if (is_precompile() && !AOTConstantPoolResolver::is_resolution_deterministic(cpool(), indy_info->constant_pool_index())) {
       // This is an indy callsite that was resolved as a side effect of VM bootstrap, but
       // it cannot be cached in the resolved state, so AOT code should not reference it.
       adapter = nullptr;
@@ -1857,13 +1857,12 @@ void ciEnv::dump_replay_data_version(outputStream* out) {
   out->print_cr("version %d", REPLAY_VERSION);
 }
 
-bool ciEnv::is_precompiled() {
-  return (task() != nullptr) && (task()->compile_reason() == CompileTask::Reason_Precompile          ||
-                                 task()->compile_reason() == CompileTask::Reason_PrecompileForPreload);
+bool ciEnv::is_precompile() {
+  return (task() != nullptr) && task()->is_precompile();
 }
 
 bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
-  assert(is_precompiled(), "");
+  assert(is_precompile(), "");
   if (task()->method()->method_holder() == ik) {
     return true; // FIXME: may be too strong; being_initialized, at least
   }
@@ -1904,7 +1903,7 @@ bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
 
 InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
   ASSERT_IN_VM;
-  assert(is_precompiled(), "");
+  assert(is_precompile(), "");
   ResourceMark rm;
   if (is_fully_initialized(ik)) {
     log_trace(precompile)("%d: fully_initialized: %s", task()->compile_id(), ik->external_name());

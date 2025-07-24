@@ -247,7 +247,10 @@ bool AOTCodeCache::is_code_load_thread_on() {
 }
 
 bool AOTCodeCache::allow_const_field(ciConstant& value) {
-  return !is_on() || !is_dumping_code() // Restrict only when we generate cache
+  ciEnv* env = CURRENT_ENV;
+  precond(env != nullptr);
+  assert(!env->is_precompile() || is_dumping_code(), "AOT compilation should be enabled");
+  return !env->is_precompile() // Restrict only when we generate AOT code
         // Can not trust primitive too   || !is_reference_type(value.basic_type())
         // May disable this too for now  || is_reference_type(value.basic_type()) && value.as_object()->should_be_constant()
         ;

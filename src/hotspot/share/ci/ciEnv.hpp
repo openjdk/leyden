@@ -546,7 +546,7 @@ public:
   void process_invokehandle(const constantPoolHandle &cp, int index, JavaThread* thread);
   void find_dynamic_call_sites();
 
-  bool is_precompiled();
+  bool is_precompile();
   bool is_fully_initialized(InstanceKlass* ik);
   InstanceKlass::ClassState compute_init_state_for_precompiled(InstanceKlass* ik);
 };

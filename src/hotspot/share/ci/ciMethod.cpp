@@ -1065,7 +1065,7 @@ bool ciMethod::ensure_method_data(bool training_data_only) {
 // ciMethod::method_data
 //
 ciMethodData* ciMethod::method_data() {
-  if (CURRENT_ENV->task()->is_precompiled() && CURRENT_ENV->task()->comp_level() == CompLevel_full_optimization) {
+  if (CURRENT_ENV->task()->is_precompile() && CURRENT_ENV->task()->comp_level() == CompLevel_full_optimization) {
     if (_method_data_recorded == nullptr) {
       VM_ENTRY_MARK;
       methodHandle h_m(thread, get_Method());
