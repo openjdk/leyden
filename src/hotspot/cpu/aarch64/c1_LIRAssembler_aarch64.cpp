@@ -43,6 +43,7 @@
 #include "runtime/frame.inline.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stubRoutines.hpp"
+#include "runtime/threadIdentifier.hpp"
 #include "utilities/powerOfTwo.hpp"
 #include "vmreg_aarch64.inline.hpp"
 
@@ -534,6 +535,10 @@ void LIR_Assembler::const2reg(LIR_Opr src, LIR_Opr dest, LIR_PatchCode patch_cod
         // AOT code needs relocation info for card table base
         address b = c->as_pointer();
         if (is_card_table_address(b)) {
+          __ lea(dest->as_register_lo(), ExternalAddress(b));
+          break;
+        }
+        if (b == (address)ThreadIdentifier::unsafe_offset()) {
           __ lea(dest->as_register_lo(), ExternalAddress(b));
           break;
         }
