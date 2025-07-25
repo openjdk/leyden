@@ -751,7 +751,7 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
     log.print_cr("CPU features recorded in AOTCodeCache: %s", msg_buffer.buffer());
   }
 
-  if (!VM_Version::supports_features(cached_cpu_features_buffer)) {
+  if (AOTCodeCPUFeatureCheck && !VM_Version::supports_features(cached_cpu_features_buffer)) {
     if (log.is_enabled()) {
       CpuInfoBuffer msg_buffer;
       VM_Version::get_missing_features_name(cached_cpu_features_buffer, msg_buffer);
