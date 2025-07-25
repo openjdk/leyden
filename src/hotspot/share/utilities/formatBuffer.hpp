@@ -63,7 +63,7 @@ class FormatBuffer : public FormatBufferBase {
   char* buffer() { return _buf; }
   int size() { return bufsz; }
   int length() { return _len; }
-  int overflow() { return _overflow; }
+  bool overflow() { return _overflow; }
 
   template<typename FN>
   void insert_string_list(int start, int limit, FN fn) {
