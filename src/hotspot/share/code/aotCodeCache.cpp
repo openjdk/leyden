@@ -3026,7 +3026,9 @@ void AOTCodeAddressTable::init_extrs() {
   {
     // Required by initial stubs
     SET_ADDRESS(_extrs, StubRoutines::crc_table_addr());
+#if defined(AMD64)
     SET_ADDRESS(_extrs, StubRoutines::crc32c_table_addr());
+#endif
   }
 
 #ifdef COMPILER1
