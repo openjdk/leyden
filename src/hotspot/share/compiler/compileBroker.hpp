@@ -414,7 +414,7 @@ public:
   }
 
   static bool is_compilation_disabled_forever() {
-    return _should_compile_new_jobs == shutdown_compilation;
+    return Atomic::load(&_should_compile_new_jobs) == shutdown_compilation;
   }
   static void handle_full_code_cache(CodeBlobType code_blob_type);
   // Ensures that warning is only printed once.
