@@ -62,15 +62,15 @@ public class AOTCodeCPUFeatureIncompatibilityTest {
             // To simulate the case of incmpatible SSE feature, we can run this test only on system with higher SSE level (sse3 or above).
             if (isSSE3Supported(cpuFeatures)) {
                 testIncompatibleFeature("-XX:UseSSE=2", "sse3");
-	    }
-	    if (isAVXSupported(cpuFeatures)) {
+            }
+            if (isAVXSupported(cpuFeatures)) {
                 testIncompatibleFeature("-XX:UseAVX=0", "avx");
             }
 
         /*
          * Unfortunately -XX:-UseCRC32 does not clear the feature bit in VM_Version::_features!
          * Disable this test until it is fixed
-	} else if (Platform.isAArch64()) {
+        } else if (Platform.isAArch64()) {
             if (isCRC32Supported(cpuFeatures)) {
                 testIncompatibleFeature("-XX:-UseCRC32", "crc32");
             }
