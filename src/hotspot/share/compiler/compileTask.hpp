@@ -107,7 +107,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   CodeSection::csize_t _nm_content_size;
   CodeSection::csize_t _nm_total_size;
   CodeSection::csize_t _nm_insts_size;
-  DirectiveSet*  _directive;
+  DirectiveSet*        _directive;
   AbstractCompiler*    _compiler;
   AOTCodeEntry*        _aot_code_entry;
 #if INCLUDE_JVMCI

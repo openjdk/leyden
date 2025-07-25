@@ -84,14 +84,6 @@ CompileTask::CompileTask(int compile_id,
   _compile_queue = compile_queue;
 
   AbstractCompiler* comp = CompileBroker::compiler(comp_level);
-#if INCLUDE_JVMCI
-  if (comp->is_jvmci() && CompileBroker::compiler3() != nullptr) {
-    assert(_method != nullptr, "sanity");
-    if (((JVMCICompiler*)comp)->force_comp_at_level_simple(method)) {
-      comp = CompileBroker::compiler3();
-    }
-  }
-#endif
   _compiler = comp;
   _directive = DirectivesStack::getMatchingDirective(method, comp);
 
