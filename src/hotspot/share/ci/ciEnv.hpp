@@ -494,13 +494,6 @@ public:
   // RedefineClasses support
   void metadata_do(MetadataClosure* f) { _factory->metadata_do(f); }
 
-private:
-  AOTCodeEntry* _aot_clinit_barriers_entry;
-
-public:
-  void  set_aot_clinit_barriers_entry(AOTCodeEntry* entry) { _aot_clinit_barriers_entry = entry; }
-  AOTCodeEntry* aot_clinit_barriers_entry()          const { return _aot_clinit_barriers_entry; }
-
   // Replay support
 private:
   static int klass_compare(const InstanceKlass* const &ik1, const InstanceKlass* const &ik2) {

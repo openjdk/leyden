@@ -856,7 +856,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
 #if INCLUDE_CDS
   if (PrecompileCode) {
-    Precompiler::compile_cached_code(CHECK_JNI_ERR);
+    Precompiler::compile_aot_code(CHECK_JNI_ERR);
     if (PrecompileOnlyAndExit) {
       AOTCodeCache::close();
       log_vm_init_stats();

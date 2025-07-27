@@ -1098,7 +1098,7 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
         if (AOTCodeCache::is_dumping_code()) {
           CDSConfig::enable_dumping_aot_code();
           log_info(aot)("Compiling AOT code");
-          Precompiler::compile_cached_code(&builder, CHECK);
+          Precompiler::compile_aot_code(&builder, CHECK);
           log_info(aot)("Finished compiling AOT code");
           CDSConfig::disable_dumping_aot_code();
         }

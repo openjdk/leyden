@@ -2138,6 +2138,7 @@ JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncomm
     profiled_method = trap_method;
 #endif
 
+    const char* nm_kind = nm->compile_kind();
     MethodData* trap_mdo =
       get_method_data(current, profiled_method, create_if_missing);
 
@@ -2149,9 +2150,9 @@ JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncomm
 
       JFR_ONLY(post_deoptimization_event(nm, tm, trap_bci, trap_bc, reason, action);)
       log_deopt(nm, tm, pc, fr, trap_bci, reason_name, reason_action);
-      Events::log_deopt_message(current, "Uncommon trap: reason=%s action=%s pc=" INTPTR_FORMAT " method=%s @ %d %s",
+      Events::log_deopt_message(current, "Uncommon trap: reason=%s action=%s pc=" INTPTR_FORMAT " method=%s @ %d %s %s",
                                 reason_name, reason_action, pc,
-                                tm->name_and_sig_as_C_string(), trap_bci, nm->compiler_name());
+                                tm->name_and_sig_as_C_string(), trap_bci, nm->compiler_name(), nm_kind);
     }
 
     // Print a bunch of diagnostics, if requested.
@@ -2222,7 +2223,7 @@ JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncomm
         st.print("UNCOMMON TRAP method=%s", trap_scope->method()->name_and_sig_as_C_string());
         st.print("  bci=%d pc=" INTPTR_FORMAT ", relative_pc=" INTPTR_FORMAT JVMCI_ONLY(", debug_id=%d"),
                  trap_scope->bci(), p2i(fr.pc()), fr.pc() - nm->code_begin() JVMCI_ONLY(COMMA debug_id));
-        st.print(" compiler=%s compile_id=%d", nm->compiler_name(), nm->compile_id());
+        st.print(" compiler=%s compile_id=%d kind=%s", nm->compiler_name(), nm->compile_id(), nm_kind);
 #if INCLUDE_JVMCI
         if (nm->is_compiled_by_jvmci()) {
           const char* installed_code_name = nm->jvmci_name();

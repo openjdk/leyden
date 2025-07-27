@@ -151,7 +151,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   bool         is_complete() const                  { return _is_complete; }
   bool         is_blocking() const                  { return _is_blocking; }
   bool         is_success() const                   { return _is_success; }
-  bool         is_aot() const                       { return _aot_code_entry != nullptr; }
+  bool         is_aot_load() const                  { return _aot_code_entry != nullptr; }
   void         clear_aot()                          { _aot_code_entry = nullptr; }
   AOTCodeEntry* aot_code_entry()                    { return _aot_code_entry; }
   bool         requires_online_compilation() const  { return _requires_online_compilation; }
@@ -252,7 +252,7 @@ public:
   static void  print(outputStream* st, const nmethod* nm, const char* msg = nullptr, bool short_form = false, bool cr = true) {
     print_impl(st, nm->method(), nm->compile_id(), nm->comp_level(),
                            nm->is_osr_method(), nm->is_osr_method() ? nm->osr_entry_bci() : -1, /*is_blocking*/ false,
-                           nm->aot_code_entry() != nullptr, nm->preloaded(),
+                           nm->is_aot(), nm->preloaded(),
                            nm->compiler_name(), msg, short_form, cr);
   }
   static void  print_ul(const nmethod* nm, const char* msg = nullptr);

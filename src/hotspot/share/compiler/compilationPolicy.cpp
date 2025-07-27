@@ -101,6 +101,8 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
     if (mtd == nullptr) {
       return;              // there is no training data recorded for m
     }
+    // AOT Preload code with class init barriers is used,
+    // consider replacing it with normal (faster) AOT code
     bool recompile = m->code_has_clinit_barriers();
     CompLevel cur_level = static_cast<CompLevel>(m->highest_comp_level());
     CompLevel next_level = trained_transition(m, cur_level, mtd, THREAD);
@@ -108,9 +110,17 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
       bool requires_online_compilation = false;
       CompileTrainingData* ctd = mtd->last_toplevel_compile(next_level);
       if (ctd != nullptr) {
+        // Can't load normal AOT code - not all dependancies are ready,
+        // request normal compilation
         requires_online_compilation = (ctd->init_deps_left() > 0);
       }
       if (requires_online_compilation && recompile) {
+        // Wait when dependencies are ready to load normal AOT code
+        // if AOT Preload code is used now.
+        //
+        // FIXME. We may never (or it take long time) get all dependencies
+        // be ready to replace AOT Preload code. Consider using time and how many
+        // dependencies left to allow normal JIT compilation for replacement.
         return;
       }
       if (PrintTieredEvents) {
@@ -151,7 +161,18 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
     if (PrintTieredEvents) {
       print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, level);
     }
-    CompileBroker::compile_method(m, InvocationEntryBci, level, 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
+    // Test AOT code too
+    bool requires_online_compilation = false;
+    if (TrainingData::have_data()) {
+      MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
+      if (mtd != nullptr) {
+        CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
+        if (ctd != nullptr) {
+          requires_online_compilation = (ctd->init_deps_left() > 0);
+        }
+      }
+    }
+    CompileBroker::compile_method(m, InvocationEntryBci, level, 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
   }
 }
 
@@ -654,7 +675,7 @@ void CompilationPolicy::initialize() {
       }
     }
     if (AOTCodeCache::is_code_load_thread_on()) {
-      set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
+      set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 AOT code in parallel
     }
     assert(count == c1_count() + c2_count(), "inconsistent compiler thread count");
     set_increase_threshold_at_ratio();
@@ -796,7 +817,7 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       task = next_task;
       continue;
     }
-    if (task->is_aot()) {
+    if (task->is_aot_load()) {
       // AOTCodeCache tasks are on separate queue, and they should load fast. There is no need to walk
       // the rest of the queue, just take the task and go.
       return task;
@@ -1084,7 +1105,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  assert(!x->is_aot() && !y->is_aot(), "AOT code caching tasks are not expected here");
+  assert(!x->is_aot_load() && !y->is_aot_load(), "AOT code caching tasks are not expected here");
   if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }

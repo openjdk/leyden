@@ -179,8 +179,6 @@ ciEnv::ciEnv(CompileTask* task)
   _jvmti_can_post_on_exceptions = false;
   _jvmti_can_pop_frame = false;
 
-  _aot_clinit_barriers_entry = nullptr;
-
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
   _dyno_name[0] = '\0';
@@ -300,8 +298,6 @@ ciEnv::ciEnv(Arena* arena) : _ciEnv_arena(mtCompiler, Arena::Tag::tag_cienv) {
   _jvmti_can_access_local_variables = false;
   _jvmti_can_post_on_exceptions = false;
   _jvmti_can_pop_frame = false;
-
-  _aot_clinit_barriers_entry = nullptr;
 
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
@@ -1084,7 +1080,7 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
       char *method_name = method->name_and_sig_as_C_string();
       lt.print("Installing method (L%d) %s id=%d aot=%s%s%u",
                task()->comp_level(), method_name, compile_id(),
-               task()->is_aot() ? "A" : "", preload ? "P" : "",
+               task()->is_aot_load() ? "A" : "", preload ? "P" : "",
                (aot_code_entry != nullptr ? aot_code_entry->offset() : 0));
     }
     // Allow the code to be executed
@@ -1109,12 +1105,11 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
   } else {
     LogTarget(Info, nmethod, install) lt;
     if (lt.is_enabled()) {
+      assert(aot_code_entry == nullptr && !task()->is_aot_load(), "OSR nmethods are not AOT compiled");
       ResourceMark rm;
       char *method_name = method->name_and_sig_as_C_string();
-      lt.print("Installing osr method (L%d) %s @ %d id=%u aot=%s%u",
-               task()->comp_level(), method_name, entry_bci, compile_id(),
-               task()->is_aot() ? "A" : "",
-               (aot_code_entry != nullptr ? aot_code_entry->offset() : 0));
+      lt.print("Installing osr method (L%d) %s @ %d id=%u",
+               task()->comp_level(), method_name, entry_bci, compile_id());
     }
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     if (nm->make_in_use()) {
@@ -1173,6 +1168,7 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
                               aot_code_reader);
 
     if (nm != nullptr) {
+      aot_code_entry->set_loaded();
       make_code_usable(thread, target, preload, InvocationEntryBci, aot_code_entry, nm);
     }
   }
@@ -1260,17 +1256,10 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
-      if (aot_code_entry == nullptr) {
+      if (task()->is_precompile()) {
         aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
         if (aot_code_entry != nullptr) {
           aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
-          if (has_clinit_barriers) {
-            set_aot_clinit_barriers_entry(aot_code_entry); // Record it
-            return;
-          } else if (!for_preload) {
-            AOTCodeEntry* previous_entry = aot_clinit_barriers_entry();
-            aot_code_entry->set_next(previous_entry); // Link it for case of deoptimization
-          }
         }
       }
       make_code_usable(THREAD, target, preload, entry_bci, aot_code_entry, nm);

@@ -1500,7 +1500,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
                                hot_count, aot_code_entry, compile_reason,
                                requires_online_compilation, blocking);
 
-    if (task->is_aot() && (_ac_count > 0)) {
+    if (task->is_aot_load() && (_ac_count > 0)) {
       // Put it on AOT code caching queue
       queue = is_c1_compile(comp_level) ? _ac1_compile_queue : _ac2_compile_queue;
     }
@@ -1521,9 +1521,12 @@ void CompileBroker::compile_method_base(const methodHandle& method,
 AOTCodeEntry* CompileBroker::find_aot_code_entry(const methodHandle& method, int osr_bci, int comp_level,
                                         CompileTask::CompileReason compile_reason,
                                         bool requires_online_compilation) {
+  if (requires_online_compilation || compile_reason == CompileTask::Reason_Whitebox) {
+    return nullptr; // Need normal JIT compilation
+  }
   AOTCodeEntry* aot_code_entry = nullptr;
-  if (osr_bci == InvocationEntryBci && !requires_online_compilation && AOTCodeCache::is_using_code()) {
-    // Check for cached code.
+  if (osr_bci == InvocationEntryBci && AOTCodeCache::is_using_code()) {
+    // Check for AOT preload code first.
     if (compile_reason == CompileTask::Reason_Preload) {
       aot_code_entry = method->aot_code_entry();
       assert(aot_code_entry != nullptr && aot_code_entry->for_preload(), "sanity");
@@ -1586,8 +1589,10 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
          compile_reason == CompileTask::Reason_Precompile ||
          compile_reason == CompileTask::Reason_PrecompileForPreload, "method holder must be initialized");
   // return quickly if possible
-
-  if (PrecompileOnlyAndExit && !CompileTask::reason_is_precompile(compile_reason)) {
+  bool aot_compilation = (PrecompileCode && PrecompileOnlyAndExit) ||
+                         CDSConfig::is_dumping_aot_code();
+  if (aot_compilation && !CompileTask::reason_is_precompile(compile_reason)) {
+    // Skip normal compilations when compiling AOT code
     return nullptr;
   }
 
@@ -2616,7 +2621,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   if (PrintCompilation && PrintCompilation2) {
     tty->print("%7d ", (int) tty->time_stamp().milliseconds());  // print timestamp
     tty->print("%4d ", compile_id);    // print compilation number
-    tty->print("%s ", (is_osr ? "%" : (task->is_aot() ? "A" : " ")));
+    tty->print("%s ", (is_osr ? "%" : (task->is_aot_load() ? (task->preload() ? "P" : "A") : " ")));
     if (task->is_success()) {
       tty->print("size: %d(%d) ", task->nm_total_size(), task->nm_insts_size());
     }
@@ -2791,7 +2796,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
     if (CITime || log_is_enabled(Info, init)) {
       CompilerStatistics* stats = nullptr;
-      if (task->is_aot()) {
+      if (task->is_aot_load()) {
         int level = task->preload() ? CompLevel_full_optimization : (comp_level - 1);
         stats = &_aot_stats_per_level[level];
       } else {
@@ -2810,7 +2815,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
     if (CITime || log_is_enabled(Info, init)) {
       CompilerStatistics* stats = nullptr;
-      if (task->is_aot()) {
+      if (task->is_aot_load()) {
         int level = task->preload() ? CompLevel_full_optimization : (comp_level - 1);
         stats = &_aot_stats_per_level[level];
       } else {
@@ -2831,7 +2836,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
       }
 
       // Collect statistic per compilation level
-      if (task->is_aot()) {
+      if (task->is_aot_load()) {
         _aot_stats._standard.update(time, bytes_compiled);
         _aot_stats._nmethods_size += task->nm_total_size();
         _aot_stats._nmethods_code_size += task->nm_insts_size();
@@ -2855,7 +2860,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
       // Collect statistic per compiler
       AbstractCompiler* comp = task->compiler();
-      if (comp && !task->is_aot()) {
+      if (comp && !task->is_aot_load()) {
         CompilerStatistics* stats = comp->stats();
         if (is_osr) {
           stats->_osr.update(time, bytes_compiled);
@@ -2864,7 +2869,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
         }
         stats->_nmethods_size += task->nm_total_size();
         stats->_nmethods_code_size += task->nm_insts_size();
-      } else if (!task->is_aot()) { // if (!comp)
+      } else if (!task->is_aot_load()) { // if (!comp)
         assert(false, "Compiler object must exist");
       }
     }
@@ -3002,7 +3007,7 @@ static void print_queue_info(outputStream* st, CompileQueue* queue) {
       uint counts[] = {0, 0, 0, 0, 0}; // T1 ... T5
       for (CompileTask* task = queue->first(); task != nullptr; task = task->next()) {
         int tier = task->comp_level();
-        if (task->is_aot() && task->preload()) {
+        if (task->is_aot_load() && task->preload()) {
           assert(tier == CompLevel_full_optimization, "%d", tier);
           tier = CompLevel_full_optimization + 1;
         }

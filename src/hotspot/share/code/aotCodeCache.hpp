@@ -92,7 +92,6 @@ public:
   };
 
 private:
-  AOTCodeEntry* _next;
   Method*       _method;
   uint   _method_offset;
   Kind   _kind;
@@ -122,7 +121,6 @@ public:
                uint code_offset, uint code_size,
                Kind kind, uint id) {
     assert(kind == AOTCodeEntry::Stub, "sanity check");
-    _next         = nullptr;
     _method       = nullptr;
     _kind         = kind;
     _id           = id;
@@ -154,7 +152,6 @@ public:
                uint comp_id = 0,
                bool has_clinit_barriers = false,
                bool for_preload = false) {
-    _next         = nullptr;
     _method       = nullptr;
     _kind         = kind;
     _id           = id;
@@ -185,9 +182,6 @@ public:
   void* operator new(size_t x, AOTCodeCache* cache);
   // Delete is a NOP
   void operator delete( void *ptr ) {}
-
-  AOTCodeEntry* next()        const { return _next; }
-  void set_next(AOTCodeEntry* next) { _next = next; }
 
   Method*   method()  const { return _method; }
   void set_method(Method* method) { _method = method; }
@@ -422,8 +416,8 @@ protected:
 // Continue with AOTCodeCache class definition.
 private:
   Header* _load_header;
-  char*   _load_buffer;    // Aligned buffer for loading cached code
-  char*   _store_buffer;   // Aligned buffer for storing cached code
+  char*   _load_buffer;    // Aligned buffer for loading AOT code
+  char*   _store_buffer;   // Aligned buffer for storing AOT code
   char*   _C_store_buffer; // Original unaligned buffer
 
   uint   _write_position;  // Position in _store_buffer
@@ -526,7 +520,7 @@ public:
     _store_entries -= 1;
     return _store_entries;
   }
-  void preload_startup_code(TRAPS);
+  void preload_aot_code(TRAPS);
 
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
@@ -601,7 +595,6 @@ public:
   static void init2() NOT_CDS_RETURN;
   static void close() NOT_CDS_RETURN;
   static bool is_on() CDS_ONLY({ return cache() != nullptr && !_cache->closing(); }) NOT_CDS_RETURN_(false);
-  static bool is_C3_on() NOT_CDS_RETURN_(false);
   static bool is_code_load_thread_on() NOT_CDS_RETURN_(false);
   static bool is_on_for_use()  CDS_ONLY({ return is_on() && _cache->for_use(); }) NOT_CDS_RETURN_(false);
   static bool is_on_for_dump() CDS_ONLY({ return is_on() && _cache->for_dump(); }) NOT_CDS_RETURN_(false);
@@ -618,10 +611,8 @@ public:
   // It is used before AOTCodeCache is initialized.
   static bool maybe_dumping_code() NOT_CDS_RETURN_(false);
 
-  static bool gen_preload_code(ciMethod* m, int entry_bci) NOT_CDS_RETURN_(false);
   static bool allow_const_field(ciConstant& value) NOT_CDS_RETURN_(false);
   static void invalidate(AOTCodeEntry* entry) NOT_CDS_RETURN;
-  static bool is_loaded(AOTCodeEntry* entry);
   static AOTCodeEntry* find_code_entry(const methodHandle& method, uint comp_level);
   static void preload_code(JavaThread* thread) NOT_CDS_RETURN;
 
@@ -660,7 +651,7 @@ class AOTCodeReader {
 private:
   const AOTCodeCache*  _cache;
   const AOTCodeEntry*  _entry;
-  const char*          _load_buffer; // Loaded cached code buffer
+  const char*          _load_buffer; // Loaded AOT code buffer
   uint  _read_position;              // Position in _load_buffer
   uint  read_position() const { return _read_position; }
   void  set_read_position(uint pos);
@@ -718,7 +709,7 @@ private:
     uint _kind_cnt[AOTCodeEntry::Kind_count];
     uint _nmethod_cnt[AOTCompLevel_count];
     uint _clinit_barriers_cnt;
-  } ccstats; // ccstats = cached code stats
+  } ccstats; // AOT code stats
 
   void check_kind(uint kind) { assert(kind >= AOTCodeEntry::None && kind < AOTCodeEntry::Kind_count, "Invalid AOTCodeEntry kind %d", kind); }
   void check_complevel(uint lvl) { assert(lvl >= CompLevel_none && lvl < AOTCompLevel_count, "Invalid compilation level %d", lvl); }

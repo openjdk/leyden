@@ -335,9 +335,9 @@ void CompilerConfig::set_compilation_policy_flags() {
     }
   }
 
-  // Current Leyden implementation requires SegmentedCodeCache: the archive-backed code
+  // Current Leyden implementation requires SegmentedCodeCache: the archive-backed AOT code
   // cache would be initialized only then. Force SegmentedCodeCache if we are loading/storing
-  // cached code. TODO: Resolve this in code cache initialization code.
+  // AOT code. TODO: Resolve this in code cache initialization code.
   if (!SegmentedCodeCache && AOTCodeCache::is_caching_enabled()) {
     FLAG_SET_ERGO(SegmentedCodeCache, true);
     if (FLAG_IS_DEFAULT(ReservedCodeCacheSize)) {

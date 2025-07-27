@@ -219,7 +219,7 @@ bool os::win32::platform_print_native_stack(outputStream* st, const void* contex
     RtlCaptureContext(&ctx);
   }
 
-  st->print_cr("Native frames: (J=compiled Java code, j=interpreted, Vv=VM code, C=native code)");
+  st->print_cr("Native frames: (J=compiled Java code, A=AOT compiled, P=AOT preloaded, j=interpreted, Vv=VM code, C=native code)");
 
   STACKFRAME stk;
   memset(&stk, 0, sizeof(stk));

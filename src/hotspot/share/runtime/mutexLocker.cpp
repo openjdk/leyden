@@ -86,7 +86,6 @@ Monitor* CompileTaskWait_lock         = nullptr;
 Monitor* MethodCompileQueue_lock      = nullptr;
 Monitor* MethodCompileQueueC1_lock    = nullptr;
 Monitor* MethodCompileQueueC2_lock    = nullptr;
-Monitor* MethodCompileQueueC3_lock    = nullptr;
 Monitor* MethodCompileQueueSC1_lock   = nullptr;
 Monitor* MethodCompileQueueSC2_lock   = nullptr;
 Monitor* CompileThread_lock           = nullptr;
@@ -271,13 +270,11 @@ void mutex_init() {
   if (UseGlobalCompileQueueLock) {
     MethodCompileQueueC1_lock  = MethodCompileQueue_lock;
     MethodCompileQueueC2_lock  = MethodCompileQueue_lock;
-    MethodCompileQueueC3_lock  = MethodCompileQueue_lock;
     MethodCompileQueueSC1_lock = MethodCompileQueue_lock;
     MethodCompileQueueSC2_lock = MethodCompileQueue_lock;
   } else {
     MUTEX_DEFN(MethodCompileQueueC1_lock     , PaddedMonitor, safepoint);
     MUTEX_DEFN(MethodCompileQueueC2_lock     , PaddedMonitor, safepoint);
-    MUTEX_DEFN(MethodCompileQueueC3_lock     , PaddedMonitor, safepoint);
     MUTEX_DEFN(MethodCompileQueueSC1_lock    , PaddedMonitor, safepoint);
     MUTEX_DEFN(MethodCompileQueueSC2_lock    , PaddedMonitor, safepoint);
   }

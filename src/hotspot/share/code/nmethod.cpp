@@ -1029,7 +1029,10 @@ int nmethod::total_size() const {
 }
 
 const char* nmethod::compile_kind() const {
-  if (is_osr_method())     return "osr";
+  if (is_osr_method()) return "osr";
+  if (preloaded())     return "AP";
+  if (is_aot())        return "A";
+
   if (method() != nullptr && is_native_method()) {
     if (method()->is_continuation_native_intrinsic()) {
       return "cnt";
@@ -1699,12 +1702,12 @@ nmethod::nmethod(
 // output should be embedded in some other element.
 void nmethod::log_identity(xmlStream* log) const {
   assert(log->inside_attrs_or_error(), "printing attributes");
-  log->print(" code_compile_id='%d'", compile_id());
+  log->print(" compile_id='%d'", compile_id());
   const char* nm_kind = compile_kind();
-  if (nm_kind != nullptr)  log->print(" code_compile_kind='%s'", nm_kind);
-  log->print(" code_compiler='%s'", compiler_name());
+  if (nm_kind != nullptr)  log->print(" compile_kind='%s'", nm_kind);
+  log->print(" compiler='%s'", compiler_name());
   if (TieredCompilation) {
-    log->print(" code_compile_level='%d'", comp_level());
+    log->print(" compile_level='%d'", comp_level());
   }
 #if INCLUDE_JVMCI
   if (jvmci_nmethod_data() != nullptr) {
@@ -2241,7 +2244,7 @@ bool nmethod::make_not_entrant(const char* reason, bool keep_aot_entry) {
     unlink_from_method();
 
     if (!keep_aot_entry) {
-      // Keep AOT cached code if it was simply replaced
+      // Keep AOT code if it was simply replaced
       // otherwise make it not entrant too.
       AOTCodeCache::invalidate(_aot_code_entry);
     }
@@ -2309,10 +2312,10 @@ void nmethod::purge(bool unregister_nmethod) {
   MutexLocker ml(CodeCache_lock, Mutex::_no_safepoint_check_flag);
 
   // completely deallocate this method
-  Events::log_nmethod_flush(Thread::current(), "flushing %s nmethod " INTPTR_FORMAT, is_osr_method() ? "osr" : "", p2i(this));
+  Events::log_nmethod_flush(Thread::current(), "flushing %s nmethod " INTPTR_FORMAT, compile_kind(), p2i(this));
   log_debug(codecache)("*flushing %s nmethod %3d/" INTPTR_FORMAT ". Live blobs:" UINT32_FORMAT
                        "/Free CodeCache:%zuKb",
-                       is_osr_method() ? "osr" : "",_compile_id, p2i(this), CodeCache::blob_count(),
+                       compile_kind(), _compile_id, p2i(this), CodeCache::blob_count(),
                        CodeCache::unallocated_capacity(CodeCache::get_code_blob_type(this))/1024);
 
   // We need to deallocate any ExceptionCache data.
@@ -2392,11 +2395,11 @@ void nmethod::post_compiled_method(CompileTask* task) {
   task->set_nm_insts_size(insts_size());
   task->set_nm_total_size(total_size());
 
-  // task->is_aot() is true only for loaded cached code.
-  // nmethod::_aot_code_entry is set for loaded and stored cached code
+  // task->is_aot_load() is true only for loaded AOT code.
+  // nmethod::_aot_code_entry is set for loaded and stored AOT code
   // to invalidate the entry when nmethod is deoptimized.
-  // There is option to not store in archive cached code.
-  guarantee((_aot_code_entry != nullptr) || !task->is_aot() || VerifyCachedCode, "sanity");
+  // VerifyAOTCode is option to not store in archive AOT code.
+  guarantee((_aot_code_entry != nullptr) || !task->is_aot_load() || VerifyAOTCode, "sanity");
 
   // JVMTI -- compiled method notification (must be done outside lock)
   post_compiled_method_load_event();
