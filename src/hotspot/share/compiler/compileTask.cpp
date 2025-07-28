@@ -58,8 +58,6 @@ CompileTask::CompileTask(int compile_id,
   _comp_level = comp_level;
   _num_inlined_bytecodes = 0;
 
-  _waiting_count = 0;
-
   _is_complete = false;
   _is_success = false;
 
@@ -84,14 +82,6 @@ CompileTask::CompileTask(int compile_id,
   _compile_queue = compile_queue;
 
   AbstractCompiler* comp = CompileBroker::compiler(comp_level);
-#if INCLUDE_JVMCI
-  if (comp->is_jvmci() && CompileBroker::compiler3() != nullptr) {
-    assert(_method != nullptr, "sanity");
-    if (((JVMCICompiler*)comp)->force_comp_at_level_simple(method)) {
-      comp = CompileBroker::compiler3();
-    }
-  }
-#endif
   _compiler = comp;
   _directive = DirectivesStack::getMatchingDirective(method, comp);
 
@@ -300,7 +290,7 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
 // CompileTask::print_compilation
 void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool cr) {
   bool is_osr_method = osr_bci() != InvocationEntryBci;
-  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot(), preload(),
+  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot_load(), preload(),
              compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished, _aot_load_start, _aot_load_finish);
 }
 
@@ -315,6 +305,10 @@ void CompileTask::log_task(xmlStream* log) {
   log->print(" compile_id='%d'", _compile_id);
   if (_osr_bci != CompileBroker::standard_entry_bci) {
     log->print(" compile_kind='osr'");  // same as nmethod::compile_kind
+  } else if (preload()) {
+    log->print(" compile_kind='AP'");
+  } else if (is_aot_load()) {
+    log->print(" compile_kind='A'");
   } // else compile_kind='c2c'
   if (!method.is_null())  log->method(method());
   if (_osr_bci != CompileBroker::standard_entry_bci) {
@@ -495,7 +489,7 @@ void CompileTask::print_ul(const nmethod* nm, const char* msg) {
     print_impl(&ls, nm->method(), nm->compile_id(),
                nm->comp_level(), nm->is_osr_method(),
                nm->is_osr_method() ? nm->osr_entry_bci() : -1,
-               /*is_blocking*/ false, nm->aot_code_entry() != nullptr,
+               /*is_blocking*/ false, nm->is_aot(),
                nm->preloaded(), nm->compiler_name(),
                msg, /* short form */ true, /* cr */ true);
   }

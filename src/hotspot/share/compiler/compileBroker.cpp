@@ -133,23 +133,20 @@ volatile int  CompileBroker::_print_compilation_warning = 0;
 volatile jint CompileBroker::_should_compile_new_jobs = run_compilation;
 
 // The installed compiler(s)
-AbstractCompiler* CompileBroker::_compilers[3];
+AbstractCompiler* CompileBroker::_compilers[2];
 
 // The maximum numbers of compiler threads to be determined during startup.
 int CompileBroker::_c1_count = 0;
 int CompileBroker::_c2_count = 0;
-int CompileBroker::_c3_count = 0;
 int CompileBroker::_ac_count = 0;
 
 // An array of compiler names as Java String objects
 jobject* CompileBroker::_compiler1_objects = nullptr;
 jobject* CompileBroker::_compiler2_objects = nullptr;
-jobject* CompileBroker::_compiler3_objects = nullptr;
 jobject* CompileBroker::_ac_objects = nullptr;
 
 CompileLog** CompileBroker::_compiler1_logs = nullptr;
 CompileLog** CompileBroker::_compiler2_logs = nullptr;
-CompileLog** CompileBroker::_compiler3_logs = nullptr;
 CompileLog** CompileBroker::_ac_logs = nullptr;
 
 // These counters are used to assign an unique ID to each compilation.
@@ -208,7 +205,6 @@ CompilerStatistics CompileBroker::_stats_per_level[CompLevel_full_optimization];
 CompilerStatistics CompileBroker::_aot_stats;
 CompilerStatistics CompileBroker::_aot_stats_per_level[CompLevel_full_optimization + 1];
 
-CompileQueue* CompileBroker::_c3_compile_queue     = nullptr;
 CompileQueue* CompileBroker::_c2_compile_queue     = nullptr;
 CompileQueue* CompileBroker::_c1_compile_queue     = nullptr;
 CompileQueue* CompileBroker::_ac1_compile_queue    = nullptr;
@@ -438,32 +434,30 @@ void CompileQueue::delete_all() {
   MutexLocker mu(_lock);
   transfer_pending();
 
-  CompileTask* next = _first;
+  CompileTask* current = _first;
 
   // Iterate over all tasks in the compile queue
-  while (next != nullptr) {
-    CompileTask* current = next;
-    next = current->next();
-    bool found_waiter = false;
-    {
-      MutexLocker ct_lock(CompileTaskWait_lock);
-      assert(current->waiting_for_completion_count() <= 1, "more than one thread are waiting for task");
-      if (current->waiting_for_completion_count() > 0) {
-        // If another thread waits for this task, we must wake them up
-        // so they will stop waiting and free the task.
-        CompileTaskWait_lock->notify_all();
-        found_waiter = true;
-      }
-    }
-    if (!found_waiter) {
-      // If no one was waiting for this task, we need to delete it ourselves.
-      // In this case, the task is also certainly unlocked, because, again, there is no waiter.
-      // Otherwise, by convention, it's the waiters responsibility to delete the task.
+  while (current != nullptr) {
+    if (!current->is_blocking()) {
+      // Non-blocking task. No one is waiting for it, delete it now.
       delete current;
+    } else {
+      // Blocking task. By convention, it is the waiters responsibility
+      // to delete the task. We cannot delete it here, because we do not
+      // coordinate with waiters. We will notify the waiters later.
     }
+    current = current->next();
   }
   _first = nullptr;
   _last = nullptr;
+
+  // Wake up all blocking task waiters to deal with remaining blocking
+  // tasks. This is not a performance sensitive path, so we do this
+  // unconditionally to simplify coding/testing.
+  {
+    MonitorLocker ml(Thread::current(), CompileTaskWait_lock);
+    ml.notify_all();
+  }
 
   // Wake up all threads that block on the queue.
   _lock->notify_all();
@@ -657,9 +651,6 @@ void CompileBroker::print_compile_queues(outputStream* st) {
   if (_c2_compile_queue != nullptr) {
     _c2_compile_queue->print(st);
   }
-  if (_c3_compile_queue != nullptr) {
-    _c3_compile_queue->print(st);
-  }
   if (_ac1_compile_queue != nullptr) {
     _ac1_compile_queue->print(st);
   }
@@ -736,7 +727,6 @@ void CompileBroker::compilation_init(JavaThread* THREAD) {
   // Set the interface to the current compiler(s).
   _c1_count = CompilationPolicy::c1_count();
   _c2_count = CompilationPolicy::c2_count();
-  _c3_count = CompilationPolicy::c3_count();
   _ac_count = CompilationPolicy::ac_count();
 
 #if INCLUDE_JVMCI
@@ -760,11 +750,6 @@ void CompileBroker::compilation_init(JavaThread* THREAD) {
         _c1_count = JVMCIHostThreads;
 #endif // COMPILER1
       }
-#ifdef COMPILER2
-      if (AOTCodeCache::is_on() && (_c3_count > 0)) {
-        _compilers[2] = new C2Compiler();
-      }
-#endif
     }
   }
 #endif // INCLUDE_JVMCI
@@ -1101,12 +1086,6 @@ void CompileBroker::init_compiler_threads() {
     _compiler1_logs = NEW_C_HEAP_ARRAY(CompileLog*, _c1_count, mtCompiler);
   }
 
-  if (_c3_count > 0) {
-    const char* name = "C2 compile queue";
-    _c3_compile_queue  = new CompileQueue(name, MethodCompileQueueC3_lock);
-    _compiler3_objects = NEW_C_HEAP_ARRAY(jobject, _c3_count, mtCompiler);
-    _compiler3_logs = NEW_C_HEAP_ARRAY(CompileLog*, _c3_count, mtCompiler);
-  }
   if (_ac_count > 0) {
     if (_c1_count > 0) { // C1 is present
       _ac1_compile_queue  = new CompileQueue("C1 AOT code compile queue", MethodCompileQueueSC1_lock);
@@ -1147,20 +1126,6 @@ void CompileBroker::init_compiler_threads() {
     }
   }
 
-  for (int i = 0; i < _c3_count; i++) {
-    // Create a name for our thread.
-    os::snprintf_checked(name_buffer, sizeof(name_buffer), "C2 CompilerThread%d", i);
-    Handle thread_oop = create_thread_oop(name_buffer, CHECK);
-    jobject thread_handle = JNIHandles::make_global(thread_oop);
-    _compiler3_objects[i] = thread_handle;
-    _compiler3_logs[i] = nullptr;
-
-    JavaThread *ct = make_thread(compiler_t, thread_handle, _c3_compile_queue, _compilers[2], THREAD);
-    assert(ct != nullptr, "should have been handled for initial thread");
-    _compilers[2]->set_num_compiler_threads(i + 1);
-    print_compiler_thread(ct);
-  }
-
   if (_ac_count > 0) {
     int i = 0;
     if (_c1_count > 0) { // C1 is present
@@ -1189,7 +1154,7 @@ void CompileBroker::init_compiler_threads() {
   }
 
   if (UsePerfData) {
-    PerfDataManager::create_constant(SUN_CI, "threads", PerfData::U_Bytes, _c1_count + _c2_count + _c3_count, CHECK);
+    PerfDataManager::create_constant(SUN_CI, "threads", PerfData::U_Bytes, _c1_count + _c2_count, CHECK);
   }
 
 #if defined(ASSERT) && COMPILER2_OR_JVMCI
@@ -1337,9 +1302,6 @@ void CompileBroker::mark_on_stack() {
   assert(SafepointSynchronize::is_at_safepoint(), "sanity check");
   // Since we are at a safepoint, we do not need a lock to access
   // the compile queues.
-  if (_c3_compile_queue != nullptr) {
-    _c3_compile_queue->mark_on_stack();
-  }
   if (_c2_compile_queue != nullptr) {
     _c2_compile_queue->mark_on_stack();
   }
@@ -1429,15 +1391,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
 
   // Outputs from the following MutexLocker block:
   CompileTask* task = nullptr;
-  CompileQueue* queue;
-#if INCLUDE_JVMCI
-  if (is_c2_compile(comp_level) && compiler2()->is_jvmci() && compiler3() != nullptr &&
-      ((JVMCICompiler*)compiler2())->force_comp_at_level_simple(method)) {
-    assert(_c3_compile_queue != nullptr, "sanity");
-    queue = _c3_compile_queue; // JVMCI compiler's methods compilation
-  } else
-#endif
-  queue = compile_queue(comp_level, is_aot);
+  CompileQueue* queue = compile_queue(comp_level, is_aot);
 
   // Acquire our lock.
   {
@@ -1546,7 +1500,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
                                hot_count, aot_code_entry, compile_reason,
                                requires_online_compilation, blocking);
 
-    if (task->is_aot() && (_ac_count > 0)) {
+    if (task->is_aot_load() && (_ac_count > 0)) {
       // Put it on AOT code caching queue
       queue = is_c1_compile(comp_level) ? _ac1_compile_queue : _ac2_compile_queue;
     }
@@ -1567,9 +1521,12 @@ void CompileBroker::compile_method_base(const methodHandle& method,
 AOTCodeEntry* CompileBroker::find_aot_code_entry(const methodHandle& method, int osr_bci, int comp_level,
                                         CompileTask::CompileReason compile_reason,
                                         bool requires_online_compilation) {
+  if (requires_online_compilation || compile_reason == CompileTask::Reason_Whitebox) {
+    return nullptr; // Need normal JIT compilation
+  }
   AOTCodeEntry* aot_code_entry = nullptr;
-  if (osr_bci == InvocationEntryBci && !requires_online_compilation && AOTCodeCache::is_using_code()) {
-    // Check for cached code.
+  if (osr_bci == InvocationEntryBci && AOTCodeCache::is_using_code()) {
+    // Check for AOT preload code first.
     if (compile_reason == CompileTask::Reason_Preload) {
       aot_code_entry = method->aot_code_entry();
       assert(aot_code_entry != nullptr && aot_code_entry->for_preload(), "sanity");
@@ -1632,8 +1589,10 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
          compile_reason == CompileTask::Reason_Precompile ||
          compile_reason == CompileTask::Reason_PrecompileForPreload, "method holder must be initialized");
   // return quickly if possible
-
-  if (PrecompileOnlyAndExit && !CompileTask::reason_is_precompiled(compile_reason)) {
+  bool aot_compilation = (PrecompileCode && PrecompileOnlyAndExit) ||
+                         CDSConfig::is_dumping_aot_code();
+  if (aot_compilation && !CompileTask::reason_is_precompile(compile_reason)) {
+    // Skip normal compilations when compiling AOT code
     return nullptr;
   }
 
@@ -1666,7 +1625,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
   assert(!HAS_PENDING_EXCEPTION, "No exception should be present");
   // some prerequisites that are compiler specific
   if (compile_reason != CompileTask::Reason_Preload &&
-      !CompileTask::reason_is_precompiled(compile_reason) &&
+      !CompileTask::reason_is_precompile(compile_reason) &&
      (comp->is_c2() || comp->is_jvmci())) {
     InternalOOMEMark iom(THREAD);
     method->constants()->resolve_string_constants(CHECK_AND_CLEAR_NONASYNC_NULL);
@@ -1985,23 +1944,26 @@ void CompileBroker::wait_for_completion(CompileTask* task) {
   } else
 #endif
   {
-    MonitorLocker ml(thread, CompileTaskWait_lock);
     free_task = true;
-    task->inc_waiting_for_completion();
+    // Wait until the task is complete or compilation is shut down.
+    MonitorLocker ml(thread, CompileTaskWait_lock);
     while (!task->is_complete() && !is_compilation_disabled_forever()) {
       ml.wait();
     }
-    task->dec_waiting_for_completion();
+  }
+
+  // It is harmless to check this status without the lock, because
+  // completion is a stable property.
+  if (!task->is_complete() && is_compilation_disabled_forever()) {
+    // Task is not complete, and we are exiting for compilation shutdown.
+    // The task can still be executed by some compiler thread, therefore
+    // we cannot delete it. This will leave task allocated, which leaks it.
+    // At this (degraded) point, it is less risky to abandon the task,
+    // rather than attempting a more complicated deletion protocol.
+    free_task = false;
   }
 
   if (free_task) {
-    if (is_compilation_disabled_forever()) {
-      delete task;
-      return;
-    }
-
-    // It is harmless to check this status without the lock, because
-    // completion is a stable property (until the task object is deleted).
     assert(task->is_complete(), "Compilation should have completed");
 
     // By convention, the waiter is responsible for deleting a
@@ -2097,10 +2059,6 @@ void CompileBroker::shutdown_compiler_runtime(AbstractCompiler* comp, CompilerTh
       _c2_compile_queue->delete_all();
     }
 
-    if (_c3_compile_queue != nullptr) {
-      _c3_compile_queue->delete_all();
-    }
-
     // Set flags so that we continue execution with using interpreter only.
     UseCompiler    = false;
     UseInterpreter = true;
@@ -2118,13 +2076,12 @@ CompileLog* CompileBroker::get_log(CompilerThread* ct) {
   if (!LogCompilation) return nullptr;
 
   AbstractCompiler *compiler = ct->compiler();
-  bool jvmci = JVMCI_ONLY( compiler->is_jvmci() ||) false;
   bool c1 = compiler->is_c1();
-  jobject* compiler_objects = c1 ? _compiler1_objects : (_c3_count == 0 ? _compiler2_objects : (jvmci ? _compiler2_objects : _compiler3_objects));
+  jobject* compiler_objects = c1 ? _compiler1_objects : _compiler2_objects;
   assert(compiler_objects != nullptr, "must be initialized at this point");
-  CompileLog** logs = c1 ? _compiler1_logs : (_c3_count == 0 ? _compiler2_logs : (jvmci ? _compiler2_logs : _compiler3_logs));
+  CompileLog** logs = c1 ? _compiler1_logs : _compiler2_logs;
   assert(logs != nullptr, "must be initialized at this point");
-  int count = c1 ? _c1_count : (_c3_count == 0 ? _c2_count : (jvmci ? _c2_count : _c3_count));
+  int count = c1 ? _c1_count : _c2_count;
 
   if (ct->queue() == _ac1_compile_queue || ct->queue() == _ac2_compile_queue) {
     compiler_objects = _ac_objects;
@@ -2612,7 +2569,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
     }
 
 
-    if (!ci_env.failing() && !task->is_success() && !task->is_precompiled()) {
+    if (!ci_env.failing() && !task->is_success() && !task->is_precompile()) {
       assert(ci_env.failure_reason() != nullptr, "expect failure reason");
       assert(false, "compiler should always document failure: %s", ci_env.failure_reason());
       // The compiler elected, without comment, not to register a result.
@@ -2664,7 +2621,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   if (PrintCompilation && PrintCompilation2) {
     tty->print("%7d ", (int) tty->time_stamp().milliseconds());  // print timestamp
     tty->print("%4d ", compile_id);    // print compilation number
-    tty->print("%s ", (is_osr ? "%" : (task->is_aot() ? "A" : " ")));
+    tty->print("%s ", (is_osr ? "%" : (task->is_aot_load() ? (task->preload() ? "P" : "A") : " ")));
     if (task->is_success()) {
       tty->print("size: %d(%d) ", task->nm_total_size(), task->nm_insts_size());
     }
@@ -2839,7 +2796,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
     if (CITime || log_is_enabled(Info, init)) {
       CompilerStatistics* stats = nullptr;
-      if (task->is_aot()) {
+      if (task->is_aot_load()) {
         int level = task->preload() ? CompLevel_full_optimization : (comp_level - 1);
         stats = &_aot_stats_per_level[level];
       } else {
@@ -2858,7 +2815,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
     if (CITime || log_is_enabled(Info, init)) {
       CompilerStatistics* stats = nullptr;
-      if (task->is_aot()) {
+      if (task->is_aot_load()) {
         int level = task->preload() ? CompLevel_full_optimization : (comp_level - 1);
         stats = &_aot_stats_per_level[level];
       } else {
@@ -2879,7 +2836,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
       }
 
       // Collect statistic per compilation level
-      if (task->is_aot()) {
+      if (task->is_aot_load()) {
         _aot_stats._standard.update(time, bytes_compiled);
         _aot_stats._nmethods_size += task->nm_total_size();
         _aot_stats._nmethods_code_size += task->nm_insts_size();
@@ -2903,7 +2860,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
 
       // Collect statistic per compiler
       AbstractCompiler* comp = task->compiler();
-      if (comp && !task->is_aot()) {
+      if (comp && !task->is_aot_load()) {
         CompilerStatistics* stats = comp->stats();
         if (is_osr) {
           stats->_osr.update(time, bytes_compiled);
@@ -2912,7 +2869,7 @@ void CompileBroker::collect_statistics(CompilerThread* thread, elapsedTimer time
         }
         stats->_nmethods_size += task->nm_total_size();
         stats->_nmethods_code_size += task->nm_insts_size();
-      } else if (!task->is_aot()) { // if (!comp)
+      } else if (!task->is_aot_load()) { // if (!comp)
         assert(false, "Compiler object must exist");
       }
     }
@@ -3050,7 +3007,7 @@ static void print_queue_info(outputStream* st, CompileQueue* queue) {
       uint counts[] = {0, 0, 0, 0, 0}; // T1 ... T5
       for (CompileTask* task = queue->first(); task != nullptr; task = task->next()) {
         int tier = task->comp_level();
-        if (task->is_aot() && task->preload()) {
+        if (task->is_aot_load() && task->preload()) {
           assert(tier == CompLevel_full_optimization, "%d", tier);
           tier = CompLevel_full_optimization + 1;
         }
@@ -3104,7 +3061,6 @@ void CompileBroker::print_statistics_on(outputStream* st) {
 
   print_queue_info(st, _c1_compile_queue);
   print_queue_info(st, _c2_compile_queue);
-  print_queue_info(st, _c3_compile_queue);
   print_queue_info(st, _ac1_compile_queue);
   print_queue_info(st, _ac2_compile_queue);
 }
@@ -3196,11 +3152,6 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
     comp->print_timers();
   }
   comp = compiler(CompLevel_full_optimization);
-  if (comp != nullptr) {
-    tty->cr();
-    comp->print_timers();
-  }
-  comp = _compilers[2];
   if (comp != nullptr) {
     tty->cr();
     comp->print_timers();

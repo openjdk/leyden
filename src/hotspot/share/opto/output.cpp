@@ -1922,7 +1922,8 @@ void PhaseOutput::fill_buffer(C2_MacroAssembler* masm, uint* blk_starts) {
       // be sure to tag this tty output with the compile ID.
       if (xtty != nullptr) {
         xtty->head("opto_assembly compile_id='%d'%s", C->compile_id(),
-                   C->is_osr_compilation() ? " compile_kind='osr'" : "");
+                   C->is_osr_compilation() ? " compile_kind='osr'" :
+                   (C->for_preload() ? " compile_kind='AP'" : ""));
       }
       if (C->method() != nullptr) {
         tty->print_cr("----------------------- MetaData before Compile_id = %d ------------------------", C->compile_id());
@@ -3460,15 +3461,7 @@ void PhaseOutput::install_code(ciMethod*         target,
     if (C->log() != nullptr) { // Print code cache state into compiler log
       C->log()->code_cache_state();
     }
-    if (C->has_clinit_barriers()) {
-      assert(C->for_preload(), "sanity");
-      // Build second version of code without class initialization barriers
-      if (C->env()->task()->compile_reason() == CompileTask::Reason_PrecompileForPreload) {
-        // don't automatically precompile a barrier-free version unless explicitly asked
-      } else {
-        C->record_failure(C2Compiler::retry_no_clinit_barriers());
-      }
-    }
+    assert(!C->has_clinit_barriers() || C->for_preload(), "class init barriers should be only in preload code");
   }
 }
 void PhaseOutput::install_stub(const char* stub_name) {

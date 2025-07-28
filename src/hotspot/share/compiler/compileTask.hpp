@@ -89,7 +89,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
     return reason_names[compile_reason];
   }
 
-  static bool reason_is_precompiled(CompileTask::CompileReason compile_reason) {
+  static bool reason_is_precompile(CompileTask::CompileReason compile_reason) {
     return (compile_reason == CompileTask::Reason_Precompile) ||
            (compile_reason == CompileTask::Reason_PrecompileForPreload);
   }
@@ -107,7 +107,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   CodeSection::csize_t _nm_content_size;
   CodeSection::csize_t _nm_total_size;
   CodeSection::csize_t _nm_insts_size;
-  DirectiveSet*  _directive;
+  DirectiveSet*        _directive;
   AbstractCompiler*    _compiler;
   AOTCodeEntry*        _aot_code_entry;
 #if INCLUDE_JVMCI
@@ -115,7 +115,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
   // Compilation state for a blocking JVMCI compilation
   JVMCICompileState*   _blocking_jvmci_compile_state;
 #endif
-  int                  _waiting_count;  // See waiting_for_completion_count()
   int                  _comp_level;
   int                  _num_inlined_bytecodes;
   CompileTask*         _next;
@@ -152,7 +151,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
   bool         is_complete() const                  { return _is_complete; }
   bool         is_blocking() const                  { return _is_blocking; }
   bool         is_success() const                   { return _is_success; }
-  bool         is_aot() const                       { return _aot_code_entry != nullptr; }
+  bool         is_aot_load() const                  { return _aot_code_entry != nullptr; }
   void         clear_aot()                          { _aot_code_entry = nullptr; }
   AOTCodeEntry* aot_code_entry()                    { return _aot_code_entry; }
   bool         requires_online_compilation() const  { return _requires_online_compilation; }
@@ -196,28 +195,11 @@ class CompileTask : public CHeapObj<mtCompiler> {
   }
 #endif
 
-  bool is_precompiled() {
-    return reason_is_precompiled(compile_reason());
+  bool is_precompile() {
+    return reason_is_precompile(compile_reason());
   }
 
   CompileQueue* compile_queue() const            { return _compile_queue; }
-
-  // See how many threads are waiting for this task. Must have lock to read this.
-  int waiting_for_completion_count() {
-    assert(CompileTaskWait_lock->owned_by_self(), "must have lock to use waiting_for_completion_count()");
-    return _waiting_count;
-  }
-  // Indicates that a thread is waiting for this task to complete. Must have lock to use this.
-  void inc_waiting_for_completion() {
-    assert(CompileTaskWait_lock->owned_by_self(), "must have lock to use inc_waiting_for_completion()");
-    _waiting_count++;
-  }
-  // Indicates that a thread stopped waiting for this task to complete. Must have lock to use this.
-  void dec_waiting_for_completion() {
-    assert(CompileTaskWait_lock->owned_by_self(), "must have lock to use dec_waiting_for_completion()");
-    assert(_waiting_count > 0, "waiting count is not positive");
-    _waiting_count--;
-  }
 
   void         mark_complete()                   { _is_complete = true; }
   void         mark_success()                    { _is_success = true; }
@@ -270,7 +252,7 @@ public:
   static void  print(outputStream* st, const nmethod* nm, const char* msg = nullptr, bool short_form = false, bool cr = true) {
     print_impl(st, nm->method(), nm->compile_id(), nm->comp_level(),
                            nm->is_osr_method(), nm->is_osr_method() ? nm->osr_entry_bci() : -1, /*is_blocking*/ false,
-                           nm->aot_code_entry() != nullptr, nm->preloaded(),
+                           nm->is_aot(), nm->preloaded(),
                            nm->compiler_name(), msg, short_form, cr);
   }
   static void  print_ul(const nmethod* nm, const char* msg = nullptr);

@@ -551,11 +551,14 @@ public:
   bool is_java_method  () const { return _method != nullptr && !_method->is_native(); }
   bool is_osr_method   () const { return _entry_bci != InvocationEntryBci; }
 
+  int  orig_pc_offset() { return _orig_pc_offset; }
+
   // Compiler task identification.  Note that all OSR methods
   // are numbered in an independent sequence if CICountOSR is true,
   // and native method wrappers are also numbered independently if
   // CICountNative is true.
   int compile_id() const { return _compile_id; }
+  int comp_level() const { return _comp_level; }
   const char* compile_kind() const;
 
   inline bool  is_compiled_by_c1   () const { return _compiler_type == compiler_c1; }
@@ -740,7 +743,12 @@ public:
       _is_unlinked = true;
   }
 
-  int   comp_level() const                        { return _comp_level; }
+  bool  used() const                              { return _used; }
+  void  set_used()                                { _used = true; }
+
+  bool is_aot() const                             { return _aot_code_entry != nullptr; }
+  void set_aot_code_entry(AOTCodeEntry* entry)    { _aot_code_entry = entry; }
+  AOTCodeEntry* aot_code_entry() const            { return _aot_code_entry; }
 
   // Support for oops in scopes and relocs:
   // Note: index 0 is reserved for null.
@@ -947,15 +955,6 @@ public:
   // copying of debugging information
   void copy_scopes_pcs(PcDesc* pcs, int count);
   void copy_scopes_data(address buffer, int size);
-
-  int orig_pc_offset() { return _orig_pc_offset; }
-
-  AOTCodeEntry* aot_code_entry() const { return _aot_code_entry; }
-  bool is_aot() const { return aot_code_entry() != nullptr; }
-  void set_aot_code_entry(AOTCodeEntry* entry) { _aot_code_entry = entry; }
-
-  bool     used() const { return _used; }
-  void set_used()       { _used = true; }
 
   // Post successful compilation
   void post_compiled_method(CompileTask* task);

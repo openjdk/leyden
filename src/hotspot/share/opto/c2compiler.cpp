@@ -61,10 +61,6 @@ const char* C2Compiler::retry_no_superword() {
   return "retry without SuperWord";
 }
 
-const char* C2Compiler::retry_no_clinit_barriers() {
-  return "retry without class initialization barriers";
-}
-
 void compiler_stubs_init(bool in_compiler_thread);
 
 bool C2Compiler::init_c2_runtime() {
@@ -127,21 +123,24 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   assert(is_initialized(), "Compiler thread must be initialized");
   CompilationMemoryStatisticMark cmsm(directive);
   CompileTask* task = env->task();
-  if (install_code && task->is_aot()) {
+  if (install_code && task->is_aot_load()) {
     bool success = AOTCodeCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
     if (success) {
       assert(task->is_success(), "sanity");
       return;
     }
-    if (!task->preload()) { // Do not mark entry if pre-loading failed - it can pass normal load
-      AOTCodeCache::invalidate(task->aot_code_entry()); // mark aot_code_entry as not entrant
-    }
+    AOTCodeCache::invalidate(task->aot_code_entry()); // mark aot_code_entry as not entrant
     if (AOTCodeCache::is_code_load_thread_on()) {
+      // Bail out if AOT code load failed in AOT Code loading thread
+      // when UseAOTCodeLoadThread flag is on.
+      // We want this thread go quickly through AOT code load requests
+      // instead of spending time on normal compilation.
+      // TODO: pass this task to normal compilation thread.
       env->record_failure("Failed to load AOT code");
-      // Bail out if failed to load AOT code in AOTCodeCache thread
       return;
+    } else {
+      task->clear_aot();
     }
-    task->clear_aot();
   }
 
   bool subsume_loads = SubsumeLoads;
@@ -151,11 +150,8 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
   bool do_superword = UseSuperWord;
-  bool for_preload = (task->compile_reason() != CompileTask::Reason_Precompile) && // non-preload version is requested
-                     AOTCodeCache::gen_preload_code(target, entry_bci);
-  if (task->compile_reason() == CompileTask::Reason_PrecompileForPreload) {
-    assert(for_preload, "required");
-  }
+  bool gen_preload = (task->compile_reason() == CompileTask::Reason_PrecompileForPreload);
+  assert(!gen_preload || (AOTCodeCache::is_dumping_code() && (ClassInitBarrierMode > 0)), "sanity");
   while (!env->failing()) {
     ResourceMark rm;
     // Attempt to compile while subsuming loads into machine instructions.
@@ -166,7 +162,7 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
                     eliminate_boxing,
                     do_locks_coarsening,
                     do_superword,
-                    for_preload,
+                    gen_preload,
                     install_code);
     Compile C(env, target, entry_bci, options, directive);
 
@@ -201,11 +197,6 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
         do_locks_coarsening = false;
         env->report_failure(C.failure_reason());
         continue;  // retry
-      }
-      if (C.failure_reason_is(retry_no_clinit_barriers())) {
-        assert(for_preload, "must make progress");
-        for_preload = false;
-        continue;
       }
       if (C.failure_reason_is(retry_no_superword())) {
         assert(do_superword, "must make progress");

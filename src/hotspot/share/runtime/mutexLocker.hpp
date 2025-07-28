@@ -85,7 +85,6 @@ extern Mutex*   Compile_lock;                    // a lock held when Compilation
 extern Monitor* MethodCompileQueue_lock;         // a lock held when method compilations are enqueued, dequeued
 extern Monitor* MethodCompileQueueC1_lock;       // a lock held when method compilations are enqueued, dequeued
 extern Monitor* MethodCompileQueueC2_lock;       // a lock held when method compilations are enqueued, dequeued
-extern Monitor* MethodCompileQueueC3_lock;       // a lock held when method compilations are enqueued, dequeued
 extern Monitor* MethodCompileQueueSC1_lock;      // a lock held when method compilations are enqueued, dequeued
 extern Monitor* MethodCompileQueueSC2_lock;      // a lock held when method compilations are enqueued, dequeued
 extern Monitor* CompileThread_lock;              // a lock held by compile threads during compilation system initialization

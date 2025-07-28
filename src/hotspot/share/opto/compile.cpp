@@ -569,6 +569,8 @@ void Compile::print_compile_messages() {
   if( PrintOpto ) {
     if (is_osr_compilation()) {
       tty->print("[OSR]%3d", _compile_id);
+    } else if (for_preload()) {
+      tty->print("[AP]%3d", _compile_id);
     } else {
       tty->print("%3d", _compile_id);
     }
@@ -607,7 +609,8 @@ void Compile::print_ideal_ir(const char* phase_name) {
   if (xtty != nullptr) {
     xtty->head("ideal compile_id='%d'%s compile_phase='%s'",
                compile_id(),
-               is_osr_compilation() ? " compile_kind='osr'" : "",
+               is_osr_compilation() ? " compile_kind='osr'" :
+               (for_preload() ? " compile_kind='AP'" : ""),
                phase_name);
   }
 

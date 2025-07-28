@@ -252,7 +252,7 @@ class CompilationPolicy : AllStatic {
   typedef CompilationPolicyUtils::Queue<InstanceKlass> TrainingReplayQueue;
 
   static int64_t _start_time;
-  static int _c1_count, _c2_count, _c3_count, _ac_count;
+  static int _c1_count, _c2_count, _ac_count;
   static double _increase_threshold_at_ratio;
   static TrainingReplayQueue _training_replay_queue;
 
@@ -319,7 +319,6 @@ class CompilationPolicy : AllStatic {
 
   static void set_c1_count(int x) { _c1_count = x;    }
   static void set_c2_count(int x) { _c2_count = x;    }
-  static void set_c3_count(int x) { _c3_count = x;    }
   static void set_ac_count(int x) { _ac_count = x;    }
 
   enum EventType { CALL, LOOP, COMPILE, FORCE_COMPILE, FORCE_RECOMPILE, REMOVE_FROM_QUEUE, UPDATE_IN_QUEUE, REPROFILE, MAKE_NOT_ENTRANT };
@@ -352,7 +351,6 @@ class CompilationPolicy : AllStatic {
   static int min_invocations() { return Tier4MinInvocationThreshold; }
   static int c1_count() { return _c1_count; }
   static int c2_count() { return _c2_count; }
-  static int c3_count() { return _c3_count; }
   static int ac_count() { return _ac_count; }
   static int compiler_count(CompLevel comp_level);
   // If m must_be_compiled then request a compilation from the CompileBroker.

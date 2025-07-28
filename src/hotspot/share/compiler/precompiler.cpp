@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/aotCacheAccess.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/runTimeClassInfo.hpp"
@@ -130,7 +131,9 @@ public:
       Method* m = _methods.at(i);
       methodHandle mh(THREAD, m);
       assert(mh()->method_holder()->is_linked(), "required");
-
+      if (!AOTCacheAccess::can_generate_aot_code(m)) {
+        continue; // Method is not archived
+      }
       assert(!HAS_PENDING_EXCEPTION, "");
       CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level,
                                     0,
@@ -179,14 +182,14 @@ public:
   }
 };
 
-void Precompiler::compile_cached_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS) {
+void Precompiler::compile_aot_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS) {
   ResourceMark rm;
   PrecompileIterator pi(comp_level, for_preload, search_level, THREAD);
   TrainingData::iterate(pi);
   pi.precompile((ArchiveBuilder*)nullptr, THREAD);
 }
 
-void Precompiler::compile_cached_code(TRAPS) {
+void Precompiler::compile_aot_code(TRAPS) {
   if (!AOTCodeCache::is_dumping_code()) {
     return;
   }
@@ -211,22 +214,23 @@ void Precompiler::compile_cached_code(TRAPS) {
       }
     });
 
-    compile_cached_code(CompLevel_full_optimization, true, CompLevel_full_optimization, CHECK);
-
-    compile_cached_code(CompLevel_full_optimization, false, CompLevel_full_optimization, CHECK);
-    compile_cached_code(CompLevel_full_profile,      false, CompLevel_limited_profile,   CHECK);
-    compile_cached_code(CompLevel_limited_profile,   false, CompLevel_limited_profile,   CHECK);
-    compile_cached_code(CompLevel_simple,            false, CompLevel_simple,            CHECK);
+    if (ClassInitBarrierMode > 0) { // Preload code is enabled
+      compile_aot_code(CompLevel_full_optimization, true, CompLevel_full_optimization, CHECK);
+    }
+    compile_aot_code(CompLevel_full_optimization, false, CompLevel_full_optimization, CHECK);
+    compile_aot_code(CompLevel_full_profile,      false, CompLevel_limited_profile,   CHECK);
+    compile_aot_code(CompLevel_limited_profile,   false, CompLevel_limited_profile,   CHECK);
+    compile_aot_code(CompLevel_simple,            false, CompLevel_simple,            CHECK);
   }
 }
 
 // New workflow only
-void Precompiler::compile_cached_code(ArchiveBuilder* builder, TRAPS) {
+void Precompiler::compile_aot_code(ArchiveBuilder* builder, TRAPS) {
   assert(AOTCodeCache::is_dumping_code(), "sanity");
   if (TrainingData::have_data()) {
     ResourceMark rm;
     CompLevel highest_level = CompilationPolicy::highest_compile_level();
-    if (highest_level >= CompLevel_full_optimization) {
+    if (highest_level >= CompLevel_full_optimization && ClassInitBarrierMode > 0) {
       PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, CompLevel_full_optimization, THREAD);
       TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);

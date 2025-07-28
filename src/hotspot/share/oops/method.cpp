@@ -116,6 +116,8 @@ Method::Method(ConstMethod* xconst, AccessFlags access_flags, Symbol* name) {
   set_interpreter_entry(nullptr); // sets i2i entry and from_int
   set_adapter_entry(nullptr);
   Method::clear_code(); // from_c/from_i get set to c2i/i2i
+  set_preload_code(nullptr);
+  set_aot_code_entry(nullptr);
 
   if (access_flags.is_native()) {
     clear_native_function();
@@ -139,6 +141,11 @@ void Method::deallocate_contents(ClassLoaderData* loader_data) {
   set_adapter_entry(nullptr);
   // The nmethod will be gone when we get here.
   if (code() != nullptr) _code = nullptr;
+  if (aot_code_entry() != nullptr) {
+    set_preload_code(nullptr);
+    AOTCodeCache::invalidate(aot_code_entry());
+    set_aot_code_entry(nullptr);
+  }
 }
 
 void Method::release_C_heap_structures() {
@@ -1334,7 +1341,7 @@ void Method::link_method(const methodHandle& h_method, TRAPS) {
       assert(_from_interpreted_entry == get_i2c_entry(), "invariant");
     }
   }
-  if (_preload_code != nullptr) {
+  if (_preload_code != nullptr && !_aot_code_entry->not_entrant()) {
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     set_code(h_method, _preload_code);
     assert(((nmethod*)_preload_code)->aot_code_entry() == _aot_code_entry, "sanity");

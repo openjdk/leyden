@@ -57,7 +57,6 @@
 int64_t CompilationPolicy::_start_time = 0;
 int CompilationPolicy::_c1_count = 0;
 int CompilationPolicy::_c2_count = 0;
-int CompilationPolicy::_c3_count = 0;
 int CompilationPolicy::_ac_count = 0;
 double CompilationPolicy::_increase_threshold_at_ratio = 0;
 
@@ -102,6 +101,8 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
     if (mtd == nullptr) {
       return;              // there is no training data recorded for m
     }
+    // AOT Preload code with class init barriers is used,
+    // consider replacing it with normal (faster) AOT code
     bool recompile = m->code_has_clinit_barriers();
     CompLevel cur_level = static_cast<CompLevel>(m->highest_comp_level());
     CompLevel next_level = trained_transition(m, cur_level, mtd, THREAD);
@@ -109,9 +110,17 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
       bool requires_online_compilation = false;
       CompileTrainingData* ctd = mtd->last_toplevel_compile(next_level);
       if (ctd != nullptr) {
+        // Can't load normal AOT code - not all dependancies are ready,
+        // request normal compilation
         requires_online_compilation = (ctd->init_deps_left() > 0);
       }
       if (requires_online_compilation && recompile) {
+        // Wait when dependencies are ready to load normal AOT code
+        // if AOT Preload code is used now.
+        //
+        // FIXME. We may never (or it take long time) get all dependencies
+        // be ready to replace AOT Preload code. Consider using time and how many
+        // dependencies left to allow normal JIT compilation for replacement.
         return;
       }
       if (PrintTieredEvents) {
@@ -152,7 +161,18 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
     if (PrintTieredEvents) {
       print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, level);
     }
-    CompileBroker::compile_method(m, InvocationEntryBci, level, 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
+    // Test AOT code too
+    bool requires_online_compilation = false;
+    if (TrainingData::have_data()) {
+      MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
+      if (mtd != nullptr) {
+        CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
+        if (ctd != nullptr) {
+          requires_online_compilation = (ctd->init_deps_left() > 0);
+        }
+      }
+    }
+    CompileBroker::compile_method(m, InvocationEntryBci, level, 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
   }
 }
 
@@ -310,7 +330,7 @@ bool CompilationPolicy::force_comp_at_level_simple(const methodHandle& method) {
     if (UseJVMCICompiler) {
       AbstractCompiler* comp = CompileBroker::compiler(CompLevel_full_optimization);
       if (comp != nullptr && comp->is_jvmci() && ((JVMCICompiler*) comp)->force_comp_at_level_simple(method)) {
-        return !AOTCodeCache::is_C3_on();
+        return true;
       }
     }
 #endif
@@ -588,12 +608,8 @@ void CompilationPolicy::initialize() {
       // Assembly phase runs C1 and C2 compilation in separate phases,
       // and can use all the CPU threads it can reach. Adjust the common
       // options before policy starts overwriting them.
-      if (FLAG_IS_DEFAULT(UseDynamicNumberOfCompilerThreads)) {
-        FLAG_SET_ERGO(UseDynamicNumberOfCompilerThreads, false);
-      }
-      if (FLAG_IS_DEFAULT(CICompilerCountPerCPU)) {
-        FLAG_SET_ERGO(CICompilerCountPerCPU, false);
-      }
+      FLAG_SET_ERGO_IF_DEFAULT(UseDynamicNumberOfCompilerThreads, false);
+      FLAG_SET_ERGO_IF_DEFAULT(CICompilerCountPerCPU, false);
       if (FLAG_IS_DEFAULT(CICompilerCount)) {
         count =  MAX2(count, os::active_processor_count());
       }
@@ -607,7 +623,7 @@ void CompilationPolicy::initialize() {
       int loglog_cpu = log2i(MAX2(log_cpu, 1));
       count = MAX2(log_cpu * loglog_cpu * 3 / 2, 2);
     }
-    {
+    if (FLAG_IS_DEFAULT(CICompilerCount)) {
       // Make sure there is enough space in the code cache to hold all the compiler buffers
       size_t c1_size = 0;
 #ifdef COMPILER1
@@ -651,10 +667,6 @@ void CompilationPolicy::initialize() {
         int c1_count = MAX2(count - libjvmci_count, 1);
         set_c2_count(libjvmci_count);
         set_c1_count(c1_count);
-      } else if (AOTCodeCache::is_C3_on()) {
-        set_c1_count(MAX2(count / 3, 1));
-        set_c2_count(MAX2(count - c1_count(), 1));
-        set_c3_count(1);
       } else
 #endif
       {
@@ -663,7 +675,7 @@ void CompilationPolicy::initialize() {
       }
     }
     if (AOTCodeCache::is_code_load_thread_on()) {
-      set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
+      set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 AOT code in parallel
     }
     assert(count == c1_count() + c2_count(), "inconsistent compiler thread count");
     set_increase_threshold_at_ratio();
@@ -805,7 +817,7 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       task = next_task;
       continue;
     }
-    if (task->is_aot()) {
+    if (task->is_aot_load()) {
       // AOTCodeCache tasks are on separate queue, and they should load fast. There is no need to walk
       // the rest of the queue, just take the task and go.
       return task;
@@ -1093,7 +1105,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  assert(!x->is_aot() && !y->is_aot(), "AOT code caching tasks are not expected here");
+  assert(!x->is_aot_load() && !y->is_aot_load(), "AOT code caching tasks are not expected here");
   if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }
