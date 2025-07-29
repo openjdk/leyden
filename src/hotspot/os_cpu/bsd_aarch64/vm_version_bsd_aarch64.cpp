@@ -68,7 +68,7 @@ void VM_Version::get_os_cpu_info() {
   //    See the Arm ARM, section "ID_AA64PFR0_EL1, AArch64 Processor Feature
   //    Register 0".
   set_feature(CPU_FP);
-  set_feature(CPU_ASIMD;
+  set_feature(CPU_ASIMD);
 
   // All Apple-darwin Arm processors have AES, PMULL, SHA1 and SHA2.
   // See https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/arm/commpage/commpage.c#L412
