@@ -795,6 +795,7 @@ void CDSConfig::setup_compiler_args() {
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     AOTCodeCache::enable_caching();
+    FLAG_SET_ERGO_IF_DEFAULT(UseAOTCodeLoadThread, true);
   } else {
     FLAG_SET_ERGO(AOTReplayTraining, false);
     FLAG_SET_ERGO(AOTRecordTraining, false);
