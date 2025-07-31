@@ -229,7 +229,7 @@ uint AOTCodeCache::max_aot_code_size() {
 }
 
 bool AOTCodeCache::is_code_load_thread_on() {
-  return UseAOTCodeLoadThread;
+  return UseAOTCodeLoadThread && AOTCodeCaching;
 }
 
 bool AOTCodeCache::allow_const_field(ciConstant& value) {

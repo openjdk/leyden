@@ -784,11 +784,13 @@ void CDSConfig::setup_compiler_args() {
     FLAG_SET_ERGO_IF_DEFAULT(AOTRecordTraining, true);
     FLAG_SET_ERGO(AOTReplayTraining, false);
     AOTCodeCache::disable_caching();
+    FLAG_SET_ERGO(UseAOTCodeLoadThread, false);
   } else if (is_dumping_final_static_archive() && can_dump_profile_and_compiled_code) {
     // JEP 483 workflow -- assembly
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     AOTCodeCache::enable_caching();
+    FLAG_SET_ERGO(UseAOTCodeLoadThread, false);
     disable_dumping_aot_code(); // Cannot dump aot code until metadata and heap are dumped.
   } else if (is_using_archive() && can_use_profile_and_compiled_code) {
     // JEP 483 workflow -- production
@@ -800,6 +802,7 @@ void CDSConfig::setup_compiler_args() {
     FLAG_SET_ERGO(AOTReplayTraining, false);
     FLAG_SET_ERGO(AOTRecordTraining, false);
     AOTCodeCache::disable_caching();
+    FLAG_SET_ERGO(UseAOTCodeLoadThread, false);
   }
 }
 
