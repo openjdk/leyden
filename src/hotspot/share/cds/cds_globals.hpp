@@ -198,6 +198,10 @@
   develop(bool, TestAOTAdapterLinkFailure, false,                           \
           "Test failure of adapter linking when loading from AOT cache.")   \
                                                                             \
+  product(bool, AOTCodeCPUFeatureCheck, true, DIAGNOSTIC,                   \
+          "Check CPU features during production run are compatible "        \
+          "with the CPU features used during the assembly phase.")          \
+                                                                            \
   /*========== New options added by Leyden =============================*/  \
                                                                             \
   product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \

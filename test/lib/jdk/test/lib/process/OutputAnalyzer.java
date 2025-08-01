@@ -239,6 +239,21 @@ public final class OutputAnalyzer {
         return stdoutContains(expectedString) || stderrContains(expectedString);
     }
 
+    public boolean matches(String regexp) {
+        Pattern pattern = Pattern.compile(regexp, Pattern.MULTILINE);
+        String stdout = getStdout();
+        Matcher matcher = pattern.matcher(stdout);
+        if (matcher.find()) {
+            return true;
+        }
+        String stderr = getStderr();
+        matcher = pattern.matcher(stderr);
+        if (matcher.find()) {
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Verify that the stdout and stderr contents of output buffer contains the string
      *

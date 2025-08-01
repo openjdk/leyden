@@ -29,8 +29,9 @@
 #include "memory/allocation.hpp"
 #include "nmt/memTag.hpp"
 #include "oops/oopsHierarchy.hpp"
+#include "runtime/vm_version.hpp"
+#include "utilities/sizes.hpp"
 #include "utilities/exceptions.hpp"
-
 /*
  * AOT Code Cache collects code from Code Cache and corresponding metadata
  * during application training run.
@@ -320,10 +321,6 @@ protected:
     uint _contendedPaddingWidth;
     uint _objectAlignment;
     uint _gc;
-#if defined(IA32) || defined(AMD64)
-    int  _useSSE; // Hack before we record CPU features
-    int  _useAVX;
-#endif
     enum Flags {
       none                     = 0,
       debugVM                  = 2,
@@ -337,10 +334,11 @@ protected:
       preserveFramePointer     = 512
     };
     uint _flags;
+    uint _cpu_features_offset; // offset in the cache where cpu features are stored
 
   public:
-    void record();
-    bool verify() const;
+    void record(uint cpu_features_offset);
+    bool verify(AOTCodeCache* cache) const;
   };
 
   class Header : public CHeapObj<mtCode> {
@@ -362,7 +360,7 @@ protected:
     uint   _C1_blobs_count;
     uint   _C2_blobs_count;
     uint   _stubs_count;
-    Config _config;
+    Config _config; // must be the last element as there is trailing data stored immediately after Config
 
   public:
     void init(uint cache_size,
@@ -370,7 +368,8 @@ protected:
               uint entries_count,  uint entries_offset,
               uint preload_entries_count, uint preload_entries_offset,
               uint adapters_count, uint shared_blobs_count,
-              uint C1_blobs_count, uint C2_blobs_count, uint stubs_count) {
+              uint C1_blobs_count, uint C2_blobs_count,
+              uint stubs_count, uint cpu_features_offset) {
       _version        = AOT_CODE_VERSION;
       _cache_size     = cache_size;
       _strings_count  = strings_count;
@@ -385,7 +384,7 @@ protected:
       _C2_blobs_count = C2_blobs_count;
       _stubs_count    = stubs_count;
 
-      _config.record();
+      _config.record(cpu_features_offset);
     }
 
     uint cache_size()     const { return _cache_size; }
@@ -408,8 +407,8 @@ protected:
                                        - _adapters_count; }
 
     bool verify(uint load_size)  const;
-    bool verify_config() const { // Called after Universe initialized
-      return _config.verify();
+    bool verify_config(AOTCodeCache* cache) const { // Called after Universe initialized
+      return _config.verify(cache);
     }
   };
 
@@ -525,6 +524,8 @@ public:
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
 
+  void store_cpu_features(char*& buffer, uint buffer_size);
+
   bool finish_write();
 
   void log_stats_on_exit();
@@ -585,7 +586,7 @@ private:
 
   bool verify_config_on_use() {
     if (for_use()) {
-      return _load_header->verify_config();
+      return _load_header->verify_config(this);
     }
     return true;
   }
