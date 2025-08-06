@@ -290,7 +290,14 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
 // CompileTask::print_compilation
 void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool cr) {
   bool is_osr_method = osr_bci() != InvocationEntryBci;
-  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot_load(), preload(),
+  bool is_aot = is_aot_load();
+  bool is_preload = preload();
+  if (is_precompile()) {
+    // Tag aot compilation too
+    is_preload = (compile_reason() == Reason_PrecompileForPreload);
+    is_aot = !is_preload;
+  }
+  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot, is_preload,
              compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished, _aot_load_start, _aot_load_finish);
 }
 

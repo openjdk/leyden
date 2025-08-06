@@ -568,12 +568,15 @@ void Compile::print_compile_messages() {
 
   if( PrintOpto ) {
     if (is_osr_compilation()) {
-      tty->print("[OSR]%3d", _compile_id);
-    } else if (for_preload()) {
-      tty->print("[AP]%3d", _compile_id);
-    } else {
-      tty->print("%3d", _compile_id);
+      tty->print("[OSR]");
+    } else if (env()->task()->is_precompile()) {
+      if (for_preload()) {
+        tty->print("[PRE]");
+      } else {
+        tty->print("[AOT]");
+      }
     }
+    tty->print("%3d", _compile_id);
   }
 #endif
 }

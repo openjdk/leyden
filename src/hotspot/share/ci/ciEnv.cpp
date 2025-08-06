@@ -22,8 +22,8 @@
  *
  */
 
+#include "cds/aotCacheAccess.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
-#include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
 #include "ci/ciConstant.hpp"
 #include "ci/ciEnv.hpp"
@@ -1850,11 +1850,21 @@ bool ciEnv::is_precompile() {
   return (task() != nullptr) && task()->is_precompile();
 }
 
-bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
-  assert(is_precompile(), "");
+InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
+  ASSERT_IN_VM;
+  assert(is_precompile(), "should be called only in assembly phase");
+  assert(AOTCacheAccess::can_generate_aot_code_for(ik), "klass should be archived for AOT compilation");
+  assert(!ik->is_in_error_state(), "there should not be any probelm with this klass");
+  ResourceMark rm;
+
   if (task()->method()->method_holder() == ik) {
-    return true; // FIXME: may be too strong; being_initialized, at least
+    if (task()->method()->is_static_initializer()) { // Happens with -Xcomp
+       return InstanceKlass::ClassState::being_initialized;
+    } else {
+       return InstanceKlass::ClassState::fully_initialized;
+    }
   }
+
   switch (task()->compile_reason()) {
     case CompileTask::Reason_Precompile: {
       // check init dependencies
@@ -1867,52 +1877,24 @@ bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
             KlassTrainingData* ktd = ctd->init_dep(i);
             if (ktd->has_holder() && (ktd->holder() == ik)) {
               log_trace(precompile)("%d: init_dependency: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-              return true; // init dependency present
+              return InstanceKlass::ClassState::fully_initialized;; // init dependency present
             }
           }
         }
       }
-      return false; // no init dependency
+      // Class may be not present during TD creation for this method.
+      // It could happen when profiled data for inlined method
+      // was updated after this method was compiled during training.
+      break;
     }
     case CompileTask::Reason_PrecompileForPreload: {
-      // FIXME: assumes that all shared classes are initialized
-      if (ik->is_shared()) {
-        return true; // class init barriers
-      }
-      if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active() &&
-          ArchiveBuilder::current()->has_been_archived((address)ik)) {
-        return true; // class init barriers
-      }
-      return false;
+      // Preload AOT code does not depend on Training Data,
+      // it has class init barriers to initialize class by
+      // going into interpreter or directly calling runtime.
+      return InstanceKlass::ClassState::fully_initialized;
     }
     default: fatal("%s", CompileTask::reason_name(task()->compile_reason()));
   }
-  return false;
-}
-
-InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
-  ASSERT_IN_VM;
-  assert(is_precompile(), "");
-  ResourceMark rm;
-  if (is_fully_initialized(ik)) {
-    log_trace(precompile)("%d: fully_initialized: %s", task()->compile_id(), ik->external_name());
-    return InstanceKlass::ClassState::fully_initialized;
-  } else if (MetaspaceObj::is_shared(ik)) {
-    guarantee(ik->is_loaded(), ""); // FIXME: assumes pre-loading by CDS; ik->is_linked() requires pre-linking
-    log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-    return ik->init_state(); // not yet initialized
-  } else if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active()) {
-    if (!ArchiveBuilder::current()->has_been_archived((address)ik)) {
-      fatal("New workflow: should not compile code for unarchived class: %s", ik->external_name());
-    }
-    guarantee(ik->is_loaded(), "");
-    log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-    return ik->init_state(); // not yet initialized
-  } else {
-    // Not present in the archive.
-    fatal("unloaded: %s", ik->external_name());
-//    guarantee(SystemDictionaryShared::lookup_init_state(ik) == ik->init_state(), "");
-    log_trace(precompile)("%d: allocated: %s", task()->compile_id(), ik->external_name());
-    return InstanceKlass::ClassState::allocated; // not yet linked
-  }
+  // Skip this class
+  return InstanceKlass::ClassState::initialization_error;
 }

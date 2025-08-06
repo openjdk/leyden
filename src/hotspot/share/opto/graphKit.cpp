@@ -2986,7 +2986,7 @@ bool GraphKit::seems_never_null(Node* obj, ciProfileData* data, bool& speculatin
 }
 
 void GraphKit::guard_klass_is_initialized(Node* klass) {
-  assert(ClassInitBarrierMode > 0, "no barriers");
+  assert(C->do_clinit_barriers(), "should be called only for clinit barriers");
   int init_state_off = in_bytes(InstanceKlass::init_state_offset());
   Node* adr = basic_plus_adr(top(), klass, init_state_off);
   Node* init_state = LoadNode::make(_gvn, nullptr, immutable_memory(), adr,

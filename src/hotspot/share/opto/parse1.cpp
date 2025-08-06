@@ -1599,7 +1599,7 @@ void Parse::do_one_block() {
     if (failing()) return;
 
     assert(!have_se || stopped() || failing() || (sp() - pre_bc_sp) == depth,
-           "incorrect depth prediction: sp=%d, pre_bc_sp=%d, depth=%d", sp(), pre_bc_sp, depth);
+           "incorrect depth prediction: bc=%s bci=%d, sp=%d, pre_bc_sp=%d, depth=%d", Bytecodes::name(bc()), bci(), sp(), pre_bc_sp, depth);
 
     do_exceptions();
 
