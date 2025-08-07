@@ -408,7 +408,7 @@
   product(bool, StressClassInitBarriers, false, DIAGNOSTIC,                 \
           "Force slow path in class initialization barriers")               \
                                                                             \
-  product(bool, UseAOTCodeLoadThread, true,                                 \
+  product(bool, UseAOTCodeLoadThread, false,                                \
           "Use separate thread for AOT code load")                          \
                                                                             \
   product(uint, AOTCodeLoadStart, 0,                                        \

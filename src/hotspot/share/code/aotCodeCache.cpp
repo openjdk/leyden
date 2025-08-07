@@ -230,10 +230,7 @@ uint AOTCodeCache::max_aot_code_size() {
 }
 
 bool AOTCodeCache::is_code_load_thread_on() {
-  // We cannot trust AOTCodeCache status here, due to bootstrapping circularity.
-  // Compilation policy init runs before AOT cache is fully initialized, so the
-  // normal AOT cache status check would always fail.
-  return UseAOTCodeLoadThread && AOTCodeCaching && CDSConfig::is_using_archive();
+  return UseAOTCodeLoadThread && AOTCodeCaching;
 }
 
 bool AOTCodeCache::allow_const_field(ciConstant& value) {

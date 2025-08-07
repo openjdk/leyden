@@ -5434,7 +5434,7 @@ void MacroAssembler::encode_and_move_klass_not_null(Register dst, Register src) 
   if (CompressedKlassPointers::base() != nullptr) {
     if (AOTCodeCache::is_on_for_dump()) {
       movptr(dst, ExternalAddress(CompressedKlassPointers::base_addr()));
-      negl(dst);
+      negq(dst);
     } else {
       movptr(dst, -(intptr_t)CompressedKlassPointers::base());
     }
@@ -5483,7 +5483,7 @@ void  MacroAssembler::decode_and_move_klass_not_null(Register dst, Register src)
       CompressedKlassPointers::shift() == 0) {
     // The best case scenario is that there is no base or shift. Then it is already
     // a pointer that needs nothing but a register rename.
-    movl(dst, src);
+    movptr(dst, src);
   } else {
     if (CompressedKlassPointers::shift() <= Address::times_8) {
       if (CompressedKlassPointers::base() != nullptr) {
@@ -5591,9 +5591,11 @@ void  MacroAssembler::cmp_narrow_klass(Address dst, Klass* k) {
 
 void MacroAssembler::reinit_heapbase() {
   if (UseCompressedOops) {
-    if (Universe::heap() != nullptr) {
+    if (Universe::heap() != nullptr) { // GC was initialized
       if (CompressedOops::base() == nullptr) {
         MacroAssembler::xorptr(r12_heapbase, r12_heapbase);
+      } else if (AOTCodeCache::is_on_for_dump()) {
+        movptr(r12_heapbase, ExternalAddress(CompressedOops::base_addr()));
       } else {
         mov64(r12_heapbase, (int64_t)CompressedOops::base());
       }
