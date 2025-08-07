@@ -757,7 +757,6 @@ void VM_Version::get_missing_features_name(void* features_buffer, stringStream& 
       i += 1;
     }
     return (const char*)nullptr;
-    }
   }, ", ");
 }
 

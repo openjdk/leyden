@@ -42,6 +42,7 @@ typedef enum {
 } VirtualizationType;
 
 class outputStream;
+class stringStream;
 enum class vmIntrinsicID;
 
 // Abstract_VM_Version provides information about the VM.
