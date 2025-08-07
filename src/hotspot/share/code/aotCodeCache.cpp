@@ -963,7 +963,7 @@ AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint co
   if (_load_entries == nullptr) {
     // Read it
     _search_entries = (uint*)addr(_load_header->entries_offset()); // [id, index]
-    _load_entries = (AOTCodeEntry*)(_search_entries + 2 * count);
+    _load_entries = (AOTCodeEntry*)(align_up(_search_entries + 2 * count, DATA_ALIGNMENT));
     log_debug(aot, codecache, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
   }
   // Binary search
@@ -1031,7 +1031,7 @@ void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
     log_info(aot, codecache, nmethod)("Invalidating entry for '%s' (comp_id %d, comp_level %d, hash: " UINT32_FORMAT_X_0 "%s%s)",
                                       name, comp_id, level, entry->id(), (for_preload ? "P" : "A"), (clinit_brs ? ", has clinit barriers" : ""));
   }
-  assert(entry->is_loaded(), "invalidate only AOT code in use");
+  assert(entry->is_loaded() || entry->for_preload(), "invalidate only AOT code in use or a preload code");
   bool found = false;
   uint count = _load_header->entries_count();
   uint i = 0;
@@ -1069,17 +1069,19 @@ void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
   }
 }
 
-void AOTCodeEntry::update_method_for_writing() {
-  if (_method != nullptr) {
-    _method_offset = AOTCacheAccess::delta_from_base_address((address)_method);
-    _method = nullptr;
-  }
-}
-
 static int uint_cmp(const void *i, const void *j) {
   uint a = *(uint *)i;
   uint b = *(uint *)j;
   return a > b ? 1 : a < b ? -1 : 0;
+}
+
+void AOTCodeCache::mark_method_pointer(AOTCodeEntry* entries, int count) {
+  for (int i = 0; i < count; i++) {
+    Method* m = entries[i].method();
+    if (m != nullptr) {
+      AOTCacheAccess::set_pointer(entries[i].method_addr(), m);
+    }
+  }
 }
 
 bool AOTCodeCache::finish_write() {
@@ -1160,7 +1162,6 @@ bool AOTCodeCache::finish_write() {
         }
         copy_bytes((_store_buffer + entry->offset()), (address)current, size);
         entry->set_offset(current - start); // New offset
-        entry->update_method_for_writing();
         current += size;
         uint n = write_bytes(entry, sizeof(AOTCodeEntry));
         if (n != sizeof(AOTCodeEntry)) {
@@ -1220,8 +1221,10 @@ bool AOTCodeCache::finish_write() {
     current += search_size;
 
     // Write entries
+    current = align_up(current, DATA_ALIGNMENT);
     entries_size = entries_count * sizeof(AOTCodeEntry); // New size
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
+    mark_method_pointer((AOTCodeEntry*)current, entries_count);
     current += entries_size;
 
     log_stats_on_exit();
@@ -1921,7 +1924,7 @@ void AOTCodeCache::preload_aot_code(TRAPS) {
   if (_load_entries == nullptr) {
     // Read it
     _search_entries = (uint*)addr(_load_header->entries_offset()); // [id, index]
-    _load_entries = (AOTCodeEntry*)(_search_entries + 2 * count);
+    _load_entries = (AOTCodeEntry*)(align_up(_search_entries + 2 * count, DATA_ALIGNMENT));
     log_info(aot, codecache, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
   }
   uint preload_entries_count = _load_header->preload_entries_count();
@@ -1935,8 +1938,6 @@ void AOTCodeCache::preload_aot_code(TRAPS) {
       if (entry->not_entrant()) {
         continue;
       }
-      Method* m = AOTCacheAccess::convert_offset_to_method(entry->method_offset());
-      entry->set_method(m);
       methodHandle mh(THREAD, entry->method());
       assert((mh.not_null() && MetaspaceShared::is_in_shared_metaspace((address)mh())), "sanity");
       if (skip_preload(mh)) {

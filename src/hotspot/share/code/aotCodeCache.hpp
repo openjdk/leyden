@@ -93,7 +93,6 @@ public:
 
 private:
   Method*       _method;
-  uint   _method_offset;
   Kind   _kind;
   uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or name's hash for nmethod
   uint   _offset;      // Offset to entry
@@ -183,10 +182,9 @@ public:
   // Delete is a NOP
   void operator delete( void *ptr ) {}
 
-  Method*   method()  const { return _method; }
+  Method* method()  const { return _method; }
+  Method** method_addr() { return &_method; }
   void set_method(Method* method) { _method = method; }
-  void update_method_for_writing();
-  uint method_offset() const { return _method_offset; }
 
   Kind kind()         const { return _kind; }
   uint id()           const { return _id; }
@@ -524,6 +522,8 @@ public:
 
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
+
+  void mark_method_pointer(AOTCodeEntry* entries, int count);
 
   bool finish_write();
 
