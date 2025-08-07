@@ -731,6 +731,7 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
 
   void* cached_cpu_features_buffer = (void *)cache->addr(offset);
   if (log.is_enabled()) {
+    ResourceMark rm; // required for stringStream::as_string()
     stringStream ss;
     VM_Version::get_cpu_features_name(cached_cpu_features_buffer, ss);
     log.print_cr("CPU features recorded in AOTCodeCache: %s", ss.as_string());
@@ -738,6 +739,7 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
 
   if (AOTCodeCPUFeatureCheck && !VM_Version::supports_features(cached_cpu_features_buffer)) {
     if (log.is_enabled()) {
+      ResourceMark rm; // required for stringStream::as_string()
       stringStream ss;
       VM_Version::get_missing_features_name(cached_cpu_features_buffer, ss);
       log.print_cr("AOT Code Cache disabled: required cpu features are missing: %s", ss.as_string());
