@@ -41,12 +41,6 @@ typedef enum {
   PowerKVM
 } VirtualizationType;
 
-#define CPU_INFO_BUF_SIZE 2048
-
-template<size_t bufsz> class FormatBuffer;
-
-using CpuInfoBuffer = FormatBuffer<CPU_INFO_BUF_SIZE>;
-
 class outputStream;
 enum class vmIntrinsicID;
 
@@ -138,9 +132,6 @@ class Abstract_VM_Version: AllStatic {
   static const char* features_string() { return _features_string; }
 
   static const char* cpu_info_string() { return _cpu_info_string; }
-  static const char* extract_features_string(const char* cpu_info_string,
-                                             size_t cpu_info_string_len,
-                                             size_t features_offset);
 
   static VirtualizationType get_detected_virtualization() {
     return _detected_virtualization;
@@ -236,8 +227,8 @@ class Abstract_VM_Version: AllStatic {
   static const char* cpu_name(void);
   static const char* cpu_description(void);
 
-  static void get_cpu_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) { return; }
-  static void get_missing_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) { return; }
+  static void get_cpu_features_name(void* features_buffer, stringStream& ss) { return; }
+  static void get_missing_features_name(void* features_buffer, stringStream& ss) { return; }
 
   // Returns number of bytes required to store cpu features representation
   static int cpu_features_size() { return 0; }

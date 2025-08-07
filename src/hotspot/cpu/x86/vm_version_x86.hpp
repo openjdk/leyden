@@ -30,6 +30,8 @@
 #include "utilities/macros.hpp"
 #include "utilities/sizes.hpp"
 
+class stringStream;
+
 class VM_Version : public Abstract_VM_Version {
   friend class VMStructs;
   friend class JVMCIVMStructs;
@@ -931,7 +933,7 @@ public:
 
   static bool is_intel_tsc_synched_at_init();
 
-  static void insert_features_names(VM_Version::VM_Features features, CpuInfoBuffer& info_buffer);
+  static void insert_features_names(VM_Version::VM_Features features, stringStream& ss);
 
   // This checks if the JVM is potentially affected by an erratum on Intel CPUs (SKX102)
   // that causes unpredictable behaviour when jcc crosses 64 byte boundaries. Its microcode
@@ -1083,8 +1085,8 @@ public:
   static void initialize_tsc();
   static void initialize_cpu_information(void);
 
-  static void get_cpu_features_name(void* features_buffer, CpuInfoBuffer& info_buffer);
-  static void get_missing_features_name(void* features_buffer, CpuInfoBuffer& info_buffer);
+  static void get_cpu_features_name(void* features_buffer, stringStream& ss);
+  static void get_missing_features_name(void* features_buffer, stringStream& ss);
 
   // Returns number of bytes required to store cpu features representation
   static int cpu_features_size();

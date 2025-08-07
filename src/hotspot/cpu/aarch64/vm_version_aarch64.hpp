@@ -30,6 +30,8 @@
 #include "runtime/abstract_vm_version.hpp"
 #include "utilities/sizes.hpp"
 
+class stringStream;
+
 #define BIT_MASK(flag) (1ULL<<(flag))
 
 class VM_Version : public Abstract_VM_Version {
@@ -63,7 +65,7 @@ protected:
   static int set_and_get_current_sve_vector_length(int len);
   static int get_current_sve_vector_length();
 
-  static void insert_features_names(uint64_t features, CpuInfoBuffer& info_buffer);
+  static void insert_features_names(uint64_t features, stringStream& ss);
 
 public:
   // Initialization
@@ -222,8 +224,8 @@ enum Ampere_CPU_Model {
     return vector_length_in_bytes <= 16;
   }
 
-  static void get_cpu_features_name(void* features_buffer, CpuInfoBuffer& info_buffer);
-  static void get_missing_features_name(void* features_buffer, CpuInfoBuffer& info_buffer);
+  static void get_cpu_features_name(void* features_buffer, stringStream& ss);
+  static void get_missing_features_name(void* features_buffer, stringStream& ss);
 
   // Returns number of bytes required to store cpu features representation
   static int cpu_features_size();

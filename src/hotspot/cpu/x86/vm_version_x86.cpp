@@ -38,7 +38,7 @@
 #include "runtime/stubCodeGenerator.hpp"
 #include "runtime/vm_version.hpp"
 #include "utilities/checkedCast.hpp"
-#include "utilities/formatBuffer.hpp"
+#include "utilities/ostream.hpp"
 #include "utilities/powerOfTwo.hpp"
 #include "utilities/virtualizationSupport.hpp"
 
@@ -1101,16 +1101,15 @@ void VM_Version::get_processor_features() {
     }
   }
 
-  CpuInfoBuffer info_buffer("(%u cores per cpu, %u threads per core) family %d model %d stepping %d microcode 0x%x",
-                                          cores_per_cpu(), threads_per_core(), cpu_family(),
-                                          _model, _stepping, os::cpu_microcode_revision());
-  assert(!info_buffer.overflow(), "not enough buffer size");
-  info_buffer.append(", ");
-  assert(!info_buffer.overflow(), "not enough buffer size");
-  int features_offset = info_buffer.length();
-  insert_features_names(_features, info_buffer);
+  stringStream ss(2048);
+  ss.print("(%u cores per cpu, %u threads per core) family %d model %d stepping %d microcode 0x%x",
+           cores_per_cpu(), threads_per_core(),
+           cpu_family(), _model, _stepping, os::cpu_microcode_revision());
+  ss.print(", ");
+  int features_offset = (int)ss.size();
+  insert_features_names(_features, ss);
 
-  _cpu_info_string = os::strdup(info_buffer.buffer());
+  _cpu_info_string = ss.as_string(true);
   _features_string = _cpu_info_string + features_offset;
 
   // Use AES instructions if available.
@@ -3293,33 +3292,37 @@ bool VM_Version::is_intrinsic_supported(vmIntrinsicID id) {
   return true;
 }
 
-void VM_Version::insert_features_names(VM_Version::VM_Features features, CpuInfoBuffer& info_buffer) {
-  info_buffer.insert_string_list(0, MAX_CPU_FEATURES, [&](int i) {
-    if (features.supports_feature((VM_Version::Feature_Flag)i)) {
-      return _features_names[i];
-    } else {
-      return (const char*)nullptr;
+void VM_Version::insert_features_names(VM_Version::VM_Features features, stringStream& ss) {
+  int i = 0;
+  ss.join([&]() {
+    while (i < MAX_CPU_FEATURES) {
+      if (features.supports_feature((VM_Version::Feature_Flag)i)) {
+        return _features_names[i++];
+      }
+      i += 1;
     }
-  });
-  assert(!info_buffer.overflow(), "not enough buffer size");
+    return (const char*)nullptr;
+  }, ", ");
 }
 
-void VM_Version::get_cpu_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) {
+void VM_Version::get_cpu_features_name(void* features_buffer, stringStream& ss) {
   VM_Features* features = (VM_Features*)features_buffer;
-  insert_features_names(*features, info_buffer);
+  insert_features_names(*features, ss);
 }
 
-void VM_Version::get_missing_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) {
+void VM_Version::get_missing_features_name(void* features_buffer, stringStream& ss) {
   VM_Features* features_to_test = (VM_Features*)features_buffer;
-  info_buffer.insert_string_list(0, MAX_CPU_FEATURES, [&](int i) {
-    Feature_Flag flag = (Feature_Flag)i;
-    if (features_to_test->supports_feature(flag) && !_features.supports_feature(flag)) {
-      return _features_names[i];
-    } else {
-      return (const char*)nullptr;
+  int i = 0;
+  ss.join([&]() {
+    while (i < MAX_CPU_FEATURES) {
+      Feature_Flag flag = (Feature_Flag)i;
+      if (features_to_test->supports_feature(flag) && !_features.supports_feature(flag)) {
+        return _features_names[i];
+      }
+      i += 1;
     }
-  });
-  assert(!info_buffer.overflow(), "not enough buffer size");
+    return (const char*)nullptr;
+  }, ", ");
 }
 
 int VM_Version::cpu_features_size() {

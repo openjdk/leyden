@@ -32,6 +32,7 @@
 #include "runtime/vm_version.hpp"
 #include "utilities/formatBuffer.hpp"
 #include "utilities/macros.hpp"
+#include "utilities/ostream.hpp"
 
 int VM_Version::_cpu;
 int VM_Version::_model;
@@ -644,24 +645,17 @@ void VM_Version::initialize() {
   }
 
   // Construct the "features" string
-  char buf[512];
-  int buf_used_len = os::snprintf_checked(buf, sizeof(buf), "0x%02x:0x%x:0x%03x:%d", _cpu, _variant, _model, _revision);
+  stringStream ss(512);
+  ss.print("0x%02x:0x%x:0x%03x:%d", _cpu, _variant, _model, _revision);
   if (_model2) {
-    os::snprintf_checked(buf + buf_used_len, sizeof(buf) - buf_used_len, "(0x%03x)", _model2);
+    ss.print("(0x%03x)", _model2);
   }
-  size_t features_offset = strnlen(buf, sizeof(buf));
-#define ADD_FEATURE_IF_SUPPORTED(id, name, bit)                 \
-  do {                                                          \
-    if (VM_Version::supports_##name()) strcat(buf, ", " #name); \
-  } while(0);
-  CPU_FEATURE_FLAGS(ADD_FEATURE_IF_SUPPORTED)
-#undef ADD_FEATURE_IF_SUPPORTED
+  ss.print(", ");
+  int features_offset = (int)ss.size();
+  insert_features_names(_features, ss);
 
-  _cpu_info_string = os::strdup(buf);
-
-  _features_string = extract_features_string(_cpu_info_string,
-                                             strnlen(_cpu_info_string, sizeof(buf)),
-                                             features_offset);
+  _cpu_info_string = ss.as_string(true);
+  _features_string = _cpu_info_string + features_offset;
 }
 
 #if defined(LINUX)
@@ -733,33 +727,38 @@ void VM_Version::initialize_cpu_information(void) {
   _initialized = true;
 }
 
-void VM_Version::insert_features_names(uint64_t features, CpuInfoBuffer& info_buffer) {
-  info_buffer.insert_string_list(0, MAX_CPU_FEATURES, [&](int i) {
-    if (supports_feature((VM_Version::Feature_Flag)i)) {
-      return _features_names[i];
-    } else {
-      return (const char*)nullptr;
+void VM_Version::insert_features_names(uint64_t features, stringStream& ss) {
+  int i = 0;
+  ss.join([&]() {
+    while (i < MAX_CPU_FEATURES) {
+      if (supports_feature((VM_Version::Feature_Flag)i)) {
+        return _features_names[i++];
+      }
+      i += 1;
     }
-  });
-  assert(!info_buffer.overflow(), "not enough buffer size");
+    return (const char*)nullptr;
+  }, ", ");
 }
 
-void VM_Version::get_cpu_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) {
+void VM_Version::get_cpu_features_name(void* features_buffer, stringStream& ss) {
   uint64_t features = *(uint64_t*)features_buffer;
-  insert_features_names(features, info_buffer);
+  insert_features_names(features, ss);
 }
 
-void VM_Version::get_missing_features_name(void* features_buffer, CpuInfoBuffer& info_buffer) {
+void VM_Version::get_missing_features_name(void* features_buffer, stringStream& ss) {
   uint64_t features_to_test = *(uint64_t*)features_buffer;
-  info_buffer.insert_string_list(0, MAX_CPU_FEATURES, [&](int i) {
-    Feature_Flag flag = (Feature_Flag)i;
-    if (supports_feature(features_to_test, flag) && !supports_feature(flag)) {
-      return _features_names[i];
-    } else {
-      return (const char*)nullptr;
+  int i = 0;
+  ss.join([&]() {
+    while (i < MAX_CPU_FEATURES) {
+      Feature_Flag flag = (Feature_Flag)i;
+      if (supports_feature(features_to_test, flag) && !supports_feature(flag)) {
+        return _features_names[i];
+      }
+      i += 1;
     }
-  });
-  assert(!info_buffer.overflow(), "not enough buffer size");
+    return (const char*)nullptr;
+    }
+  }, ", ");
 }
 
 int VM_Version::cpu_features_size() {

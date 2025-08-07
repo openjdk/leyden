@@ -55,65 +55,36 @@ class FormatBuffer : public FormatBufferBase {
   inline FormatBuffer(const char* format, ...) ATTRIBUTE_PRINTF(2, 3);
   // since va_list is unspecified type (can be char*), we use FormatBufferDummy to disambiguate these constructors
   inline FormatBuffer(FormatBufferDummy dummy, const char* format, va_list ap) ATTRIBUTE_PRINTF(3, 0);
-  inline FormatBuffer();
-  inline int append(const char* format, ...)  ATTRIBUTE_PRINTF(2, 3);
+  inline void append(const char* format, ...)  ATTRIBUTE_PRINTF(2, 3);
   inline void print(const char* format, ...)  ATTRIBUTE_PRINTF(2, 3);
   inline void printv(const char* format, va_list ap) ATTRIBUTE_PRINTF(2, 0);
 
   char* buffer() { return _buf; }
   int size() { return bufsz; }
-  int length() { return _len; }
-  bool overflow() { return _overflow; }
-
-  template<typename FN>
-  void insert_string_list(int start, int limit, FN fn) {
-    bool first = true;
-    for (int i = start; i < limit; i++) {
-      const char* str = fn(i);
-      if (str == nullptr) {
-        continue;
-      }
-      const char* comma = first ? "" : ", ";
-      int result = append("%s%s", comma, str);
-      if (result < 0) {
-        return;
-      }
-      first = false;
-    }
-    return;
-  }
 
  private:
   NONCOPYABLE(FormatBuffer);
   char _buffer[bufsz];
-  int _len;
-  bool _overflow;
 
-  bool check_overflow(int result) {
-    if (result == -1) {
-      _overflow = true;
-    }
-    return _overflow;
-  }
+ protected:
+  inline FormatBuffer();
 };
 
 template <size_t bufsz>
-FormatBuffer<bufsz>::FormatBuffer(const char * format, ...) : FormatBufferBase(_buffer), _len(0), _overflow(false) {
+FormatBuffer<bufsz>::FormatBuffer(const char * format, ...) : FormatBufferBase(_buffer) {
   va_list argp;
   va_start(argp, format);
-  int result = jio_vsnprintf(_buf, bufsz, format, argp);
+  jio_vsnprintf(_buf, bufsz, format, argp);
   va_end(argp);
-  _len = check_overflow(result) ? bufsz-1 : result;
 }
 
 template <size_t bufsz>
-FormatBuffer<bufsz>::FormatBuffer(FormatBufferDummy dummy, const char * format, va_list ap) : FormatBufferBase(_buffer), _len(0), _overflow(false) {
-  int result = jio_vsnprintf(_buf, bufsz, format, ap);
-  _len = check_overflow(result) ? bufsz-1 : result;
+FormatBuffer<bufsz>::FormatBuffer(FormatBufferDummy dummy, const char * format, va_list ap) : FormatBufferBase(_buffer) {
+  jio_vsnprintf(_buf, bufsz, format, ap);
 }
 
 template <size_t bufsz>
-FormatBuffer<bufsz>::FormatBuffer() : FormatBufferBase(_buffer), _len(0), _overflow(false) {
+FormatBuffer<bufsz>::FormatBuffer() : FormatBufferBase(_buffer) {
   _buf[0] = '\0';
 }
 
@@ -121,33 +92,26 @@ template <size_t bufsz>
 void FormatBuffer<bufsz>::print(const char * format, ...) {
   va_list argp;
   va_start(argp, format);
-  int result = jio_vsnprintf(_buf, bufsz, format, argp);
+  jio_vsnprintf(_buf, bufsz, format, argp);
   va_end(argp);
-  _len = check_overflow(result) ? bufsz-1 : result;
 }
 
 template <size_t bufsz>
 void FormatBuffer<bufsz>::printv(const char * format, va_list argp) {
-  int result = jio_vsnprintf(_buf, bufsz, format, argp);
-  _len = check_overflow(result) ? bufsz-1 : result;
+  jio_vsnprintf(_buf, bufsz, format, argp);
 }
 
 template <size_t bufsz>
-int FormatBuffer<bufsz>::append(const char* format, ...) {
-  if (_overflow) {
-    return -1;
-  }
+void FormatBuffer<bufsz>::append(const char* format, ...) {
   // Given that the constructor does a vsnprintf we can assume that
   // _buf is already initialized.
-  assert(_buf != nullptr, "sanity check");
-  char* buf_end = _buf + _len;
+  size_t len = strlen(_buf);
+  char* buf_end = _buf + len;
 
   va_list argp;
   va_start(argp, format);
-  int result = jio_vsnprintf(buf_end, bufsz - _len, format, argp);
+  jio_vsnprintf(buf_end, bufsz - len, format, argp);
   va_end(argp);
-  _len = check_overflow(result) ? bufsz-1 : _len+result;
-  return result;
 }
 
 // Used to format messages.
