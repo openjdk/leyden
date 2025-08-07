@@ -1264,6 +1264,7 @@ bool AOTCodeCache::finish_write() {
     uint new_entries_offset = current - start;
     entries_size = entries_count * sizeof(AOTCodeEntry); // New size
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
+    mark_method_pointer((AOTCodeEntry*)current, entries_count);
     current += entries_size;
 
     log_stats_on_exit();
