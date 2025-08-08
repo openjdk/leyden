@@ -962,8 +962,8 @@ AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint co
   uint count = _load_header->entries_count();
   if (_load_entries == nullptr) {
     // Read it
-    _search_entries = (uint*)addr(_load_header->entries_offset()); // [id, index]
-    _load_entries = (AOTCodeEntry*)(align_up(_search_entries + 2 * count, DATA_ALIGNMENT));
+    _search_entries = (uint*)addr(_load_header->search_table_offset()); // [id, index]
+    _load_entries = (AOTCodeEntry*)addr(_load_header->entries_offset());
     log_debug(aot, codecache, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
   }
   // Binary search
@@ -1212,7 +1212,7 @@ bool AOTCodeCache::finish_write() {
       FREE_C_HEAP_ARRAY(uint, preload_entries);
     }
 
-    uint new_entries_offset = (current - start); // New offset
+    uint search_table_offset = current - start;
     // Sort and store search table
     qsort(search, entries_count, 2*sizeof(uint), uint_cmp);
     search_size = 2 * entries_count * sizeof(uint);
@@ -1222,6 +1222,7 @@ bool AOTCodeCache::finish_write() {
 
     // Write entries
     current = align_up(current, DATA_ALIGNMENT);
+    uint new_entries_offset = current - start;
     entries_size = entries_count * sizeof(AOTCodeEntry); // New size
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
     mark_method_pointer((AOTCodeEntry*)current, entries_count);
@@ -1244,7 +1245,7 @@ bool AOTCodeCache::finish_write() {
     // Finalize header
     AOTCodeCache::Header* header = (AOTCodeCache::Header*)start;
     header->init(size, (uint)strings_count, strings_offset,
-                 entries_count, new_entries_offset,
+                 entries_count, search_table_offset, new_entries_offset,
                  preload_entries_cnt, preload_entries_offset,
                  adapters_count, shared_blobs_count,
                  C1_blobs_count, C2_blobs_count, stubs_count);
@@ -1923,8 +1924,8 @@ void AOTCodeCache::preload_aot_code(TRAPS) {
   uint count = _load_header->entries_count();
   if (_load_entries == nullptr) {
     // Read it
-    _search_entries = (uint*)addr(_load_header->entries_offset()); // [id, index]
-    _load_entries = (AOTCodeEntry*)(align_up(_search_entries + 2 * count, DATA_ALIGNMENT));
+    _search_entries = (uint*)addr(_load_header->search_table_offset()); // [id, index]
+    _load_entries = (AOTCodeEntry*)addr(_load_header->entries_offset());
     log_info(aot, codecache, init)("Read %d entries table at offset %d from AOT Code Cache", count, _load_header->entries_offset());
   }
   uint preload_entries_count = _load_header->preload_entries_count();
@@ -3970,8 +3971,7 @@ void AOTCodeCache::print_statistics_on(outputStream* st) {
     }
 
     uint count = cache->_load_header->entries_count();
-    uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
-    AOTCodeEntry* load_entries = (AOTCodeEntry*)(search_entries + 2 * count);
+    AOTCodeEntry* load_entries = (AOTCodeEntry*)cache->addr(cache->_load_header->entries_offset());
 
     AOTCodeStats stats;
     for (uint i = 0; i < count; i++) {
@@ -4059,8 +4059,8 @@ void AOTCodeCache::print_on(outputStream* st) {
 
     st->print_cr("\nAOT Code Cache");
     uint count = opened_cache->_load_header->entries_count();
-    uint* search_entries = (uint*)opened_cache->addr(opened_cache->_load_header->entries_offset()); // [id, index]
-    AOTCodeEntry* load_entries = (AOTCodeEntry*)(search_entries + 2 * count);
+    uint* search_entries = (uint*)opened_cache->addr(opened_cache->_load_header->search_table_offset()); // [id, index]
+    AOTCodeEntry* load_entries = (AOTCodeEntry*)opened_cache->addr(opened_cache->_load_header->entries_offset());
 
     for (uint i = 0; i < count; i++) {
       int index = search_entries[2*i + 1];

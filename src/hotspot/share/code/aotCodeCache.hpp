@@ -352,6 +352,7 @@ protected:
     uint   _strings_count;   // number of recorded C strings
     uint   _strings_offset;  // offset to recorded C strings
     uint   _entries_count;   // number of recorded entries
+    uint   _search_table_offset; // offset of table for looking up an AOTCodeEntry
     uint   _entries_offset;  // offset of AOTCodeEntry array describing entries
     uint   _preload_entries_count; // entries for pre-loading code
     uint   _preload_entries_offset;
@@ -365,7 +366,7 @@ protected:
   public:
     void init(uint cache_size,
               uint strings_count,  uint strings_offset,
-              uint entries_count,  uint entries_offset,
+              uint entries_count,  uint search_table_offset, uint entries_offset,
               uint preload_entries_count, uint preload_entries_offset,
               uint adapters_count, uint shared_blobs_count,
               uint C1_blobs_count, uint C2_blobs_count, uint stubs_count) {
@@ -374,6 +375,7 @@ protected:
       _strings_count  = strings_count;
       _strings_offset = strings_offset;
       _entries_count  = entries_count;
+      _search_table_offset = search_table_offset;
       _entries_offset = entries_offset;
       _preload_entries_count  = preload_entries_count;
       _preload_entries_offset = preload_entries_offset;
@@ -390,6 +392,7 @@ protected:
     uint strings_count()  const { return _strings_count; }
     uint strings_offset() const { return _strings_offset; }
     uint entries_count()  const { return _entries_count; }
+    uint search_table_offset() const { return _search_table_offset; }
     uint entries_offset() const { return _entries_offset; }
     uint preload_entries_count()  const { return _preload_entries_count; }
     uint preload_entries_offset() const { return _preload_entries_offset; }
