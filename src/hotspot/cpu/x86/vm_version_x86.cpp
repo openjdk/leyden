@@ -38,6 +38,7 @@
 #include "runtime/stubCodeGenerator.hpp"
 #include "runtime/vm_version.hpp"
 #include "utilities/checkedCast.hpp"
+#include "utilities/ostream.hpp"
 #include "utilities/powerOfTwo.hpp"
 #include "utilities/virtualizationSupport.hpp"
 
@@ -47,7 +48,7 @@ int VM_Version::_stepping;
 bool VM_Version::_has_intel_jcc_erratum;
 VM_Version::CpuidInfo VM_Version::_cpuid_info = { 0, };
 
-#define DECLARE_CPU_FEATURE_NAME(id, name, bit) name,
+#define DECLARE_CPU_FEATURE_NAME(id, name, bit) XSTR(name),
 const char* VM_Version::_features_names[] = { CPU_FEATURE_FLAGS(DECLARE_CPU_FEATURE_NAME)};
 #undef DECLARE_CPU_FEATURE_FLAG
 
@@ -1100,21 +1101,16 @@ void VM_Version::get_processor_features() {
     }
   }
 
-  char buf[2048];
-  size_t cpu_info_size = jio_snprintf(
-              buf, sizeof(buf),
-              "(%u cores per cpu, %u threads per core) family %d model %d stepping %d microcode 0x%x",
-              cores_per_cpu(), threads_per_core(),
-              cpu_family(), _model, _stepping, os::cpu_microcode_revision());
-  assert(cpu_info_size > 0, "not enough temporary space allocated");
+  stringStream ss(2048);
+  ss.print("(%u cores per cpu, %u threads per core) family %d model %d stepping %d microcode 0x%x",
+           cores_per_cpu(), threads_per_core(),
+           cpu_family(), _model, _stepping, os::cpu_microcode_revision());
+  ss.print(", ");
+  int features_offset = (int)ss.size();
+  insert_features_names(_features, ss);
 
-  insert_features_names(_features, buf + cpu_info_size, sizeof(buf) - cpu_info_size);
-
-  _cpu_info_string = os::strdup(buf);
-
-  _features_string = extract_features_string(_cpu_info_string,
-                                             strnlen(_cpu_info_string, sizeof(buf)),
-                                             cpu_info_size);
+  _cpu_info_string = ss.as_string(true);
+  _features_string = _cpu_info_string + features_offset;
 
   // Use AES instructions if available.
   if (supports_aes()) {
@@ -3296,13 +3292,50 @@ bool VM_Version::is_intrinsic_supported(vmIntrinsicID id) {
   return true;
 }
 
-void VM_Version::insert_features_names(VM_Version::VM_Features features, char* buf, size_t buflen) {
-  for (int i = 0; i < MAX_CPU_FEATURES; i++) {
-    if (features.supports_feature((VM_Version::Feature_Flag)i)) {
-      int res = jio_snprintf(buf, buflen, ", %s", _features_names[i]);
-      assert(res > 0, "not enough temporary space allocated");
-      buf += res;
-      buflen -= res;
+void VM_Version::insert_features_names(VM_Version::VM_Features features, stringStream& ss) {
+  int i = 0;
+  ss.join([&]() {
+    while (i < MAX_CPU_FEATURES) {
+      if (features.supports_feature((VM_Version::Feature_Flag)i)) {
+        return _features_names[i++];
+      }
+      i += 1;
     }
-  }
+    return (const char*)nullptr;
+  }, ", ");
+}
+
+void VM_Version::get_cpu_features_name(void* features_buffer, stringStream& ss) {
+  VM_Features* features = (VM_Features*)features_buffer;
+  insert_features_names(*features, ss);
+}
+
+void VM_Version::get_missing_features_name(void* features_buffer, stringStream& ss) {
+  VM_Features* features_to_test = (VM_Features*)features_buffer;
+  int i = 0;
+  ss.join([&]() {
+    while (i < MAX_CPU_FEATURES) {
+      Feature_Flag flag = (Feature_Flag)i;
+      if (features_to_test->supports_feature(flag) && !_features.supports_feature(flag)) {
+        return _features_names[i];
+      }
+      i += 1;
+    }
+    return (const char*)nullptr;
+  }, ", ");
+}
+
+int VM_Version::cpu_features_size() {
+  return sizeof(VM_Features);
+}
+
+void VM_Version::store_cpu_features(void* buf) {
+  VM_Features copy = _features;
+  copy.clear_feature(CPU_HT); // HT does not result in incompatibility of aot code cache
+  memcpy(buf, &copy, sizeof(VM_Features));
+}
+
+bool VM_Version::supports_features(void* features_buffer) {
+  VM_Features* features_to_test = (VM_Features*)features_buffer;
+  return _features.supports_features(features_to_test);
 }

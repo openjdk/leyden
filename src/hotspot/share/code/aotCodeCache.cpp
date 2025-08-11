@@ -74,6 +74,7 @@
 #include "runtime/timerTrace.hpp"
 #include "runtime/threadIdentifier.hpp"
 #include "utilities/copy.hpp"
+#include "utilities/formatBuffer.hpp"
 #include "utilities/ostream.hpp"
 #include "utilities/spinYield.hpp"
 #ifdef COMPILER1
@@ -600,7 +601,7 @@ AOTCodeCache::~AOTCodeCache() {
   }
 }
 
-void AOTCodeCache::Config::record() {
+void AOTCodeCache::Config::record(uint cpu_features_offset) {
   _flags = 0;
 #ifdef ASSERT
   _flags |= debugVM;
@@ -636,14 +637,11 @@ void AOTCodeCache::Config::record() {
   _compressedKlassBase   = CompressedKlassPointers::base();
   _contendedPaddingWidth = ContendedPaddingWidth;
   _objectAlignment       = ObjectAlignmentInBytes;
-#if !defined(ZERO) && (defined(IA32) || defined(AMD64))
-  _useSSE                = UseSSE;
-  _useAVX                = UseAVX;
-#endif
   _gc                    = (uint)Universe::heap()->kind();
+  _cpu_features_offset   = cpu_features_offset;
 }
 
-bool AOTCodeCache::Config::verify() const {
+bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   // First checks affect all cached AOT code
 #ifdef ASSERT
   if ((_flags & debugVM) == 0) {
@@ -653,17 +651,6 @@ bool AOTCodeCache::Config::verify() const {
 #else
   if ((_flags & debugVM) != 0) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created by debug VM, it can't be used by product VM");
-    return false;
-  }
-#endif
-
-#if !defined(ZERO) && (defined(IA32) || defined(AMD64))
-  if (UseSSE < _useSSE) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseSSE = %d vs current %d", _useSSE, UseSSE);
-    return false;
-  }
-  if (UseAVX < _useAVX) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseAVX = %d vs current %d", _useAVX, UseAVX);
     return false;
   }
 #endif
@@ -726,6 +713,34 @@ bool AOTCodeCache::Config::verify() const {
   }
   if ((_compressedOopBase == nullptr || CompressedOops::base() == nullptr) && (_compressedOopBase != CompressedOops::base())) {
     log_debug(aot, codecache, init)("AOTStubCaching is disabled: incompatible CompressedOops::base(): %p vs current %p", _compressedOopBase, CompressedOops::base());
+    return false;
+  }
+
+  LogStreamHandle(Debug, aot, codecache, init) log;
+  if (log.is_enabled()) {
+    log.print_cr("Available CPU features: %s", VM_Version::features_string());
+  }
+
+  uint offset = _cpu_features_offset;
+  uint cpu_features_size = *(uint *)cache->addr(offset);
+  assert(cpu_features_size == (uint)VM_Version::cpu_features_size(), "must be");
+  offset += sizeof(uint);
+
+  void* cached_cpu_features_buffer = (void *)cache->addr(offset);
+  if (log.is_enabled()) {
+    ResourceMark rm; // required for stringStream::as_string()
+    stringStream ss;
+    VM_Version::get_cpu_features_name(cached_cpu_features_buffer, ss);
+    log.print_cr("CPU features recorded in AOTCodeCache: %s", ss.as_string());
+  }
+
+  if (AOTCodeCPUFeatureCheck && !VM_Version::supports_features(cached_cpu_features_buffer)) {
+    if (log.is_enabled()) {
+      ResourceMark rm; // required for stringStream::as_string()
+      stringStream ss;
+      VM_Version::get_missing_features_name(cached_cpu_features_buffer, ss);
+      log.print_cr("AOT Code Cache disabled: required cpu features are missing: %s", ss.as_string());
+    }
     return false;
   }
 
@@ -1084,6 +1099,17 @@ void AOTCodeCache::mark_method_pointer(AOTCodeEntry* entries, int count) {
   }
 }
 
+void AOTCodeCache::store_cpu_features(char*& buffer, uint buffer_size) {
+  uint* size_ptr = (uint *)buffer;
+  *size_ptr = buffer_size;
+  buffer += sizeof(uint);
+
+  VM_Version::store_cpu_features(buffer);
+  log_debug(aot, codecache, exit)("CPU features recorded in AOTCodeCache: %s", VM_Version::features_string());
+  buffer += buffer_size;
+  buffer = align_up(buffer, DATA_ALIGNMENT);
+}
+
 bool AOTCodeCache::finish_write() {
   if (!align_write()) {
     return false;
@@ -1106,7 +1132,7 @@ bool AOTCodeCache::finish_write() {
     _aot_code_directory = CachedCodeDirectory::create();
     assert(_aot_code_directory != nullptr, "Sanity check");
 
-    uint header_size = (uint)align_up(sizeof(AOTCodeCache::Header),  DATA_ALIGNMENT);
+    uint header_size = (uint)align_up(sizeof(AOTCodeCache::Header), DATA_ALIGNMENT);
     uint search_count = code_count * 2;
     uint search_size = search_count * sizeof(uint);
     uint entries_size = (uint)align_up(code_count * sizeof(AOTCodeEntry), DATA_ALIGNMENT); // In bytes
@@ -1115,17 +1141,25 @@ bool AOTCodeCache::finish_write() {
     uint preload_entries_size = code_count * sizeof(uint);
     // _write_position should include code and strings
     uint code_alignment = code_count * DATA_ALIGNMENT; // We align_up code size when storing it.
+    uint cpu_features_size = VM_Version::cpu_features_size();
+    uint total_cpu_features_size = sizeof(uint) + cpu_features_size; // sizeof(uint) to store cpu_features_size
     uint total_size = _write_position + header_size + code_alignment +
-                      search_size + preload_entries_size + entries_size;
+                      search_size + preload_entries_size + entries_size +
+                      align_up(total_cpu_features_size, DATA_ALIGNMENT);
     assert(total_size < max_aot_code_size(), "AOT Code size (" UINT32_FORMAT " bytes) is greater than AOTCodeMaxSize(" UINT32_FORMAT " bytes).", total_size, max_aot_code_size());
 
-
-    // Create ordered search table for entries [id, index];
-    uint* search = NEW_C_HEAP_ARRAY(uint, search_count, mtCode);
     // Allocate in AOT Cache buffer
     char* buffer = (char *)AOTCacheAccess::allocate_aot_code_region(total_size + DATA_ALIGNMENT);
     char* start = align_up(buffer, DATA_ALIGNMENT);
     char* current = start + header_size; // Skip header
+
+    uint cpu_features_offset = current - start;
+    store_cpu_features(current, cpu_features_size);
+    assert(is_aligned(current, DATA_ALIGNMENT), "sanity check");
+    assert(current < start + total_size, "sanity check");
+
+    // Create ordered search table for entries [id, index];
+    uint* search = NEW_C_HEAP_ARRAY(uint, search_count, mtCode);
 
     AOTCodeEntry* entries_address = _store_entries; // Pointer to latest entry
     uint adapters_count = 0;
@@ -1248,7 +1282,8 @@ bool AOTCodeCache::finish_write() {
                  entries_count, search_table_offset, new_entries_offset,
                  preload_entries_cnt, preload_entries_offset,
                  adapters_count, shared_blobs_count,
-                 C1_blobs_count, C2_blobs_count, stubs_count);
+                 C1_blobs_count, C2_blobs_count,
+                 stubs_count, cpu_features_offset);
 
     log_info(aot, codecache, exit)("Wrote %d AOT code entries to AOT Code Cache", entries_count);
 
