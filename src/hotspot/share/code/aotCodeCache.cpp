@@ -926,18 +926,14 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
   if (is_on() && _cache->cache_buffer() != nullptr) {
     ResourceMark rm;
     const char* target_name = method->name_and_sig_as_C_string();
-    uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
+    //uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
+    uint hash = (uint)pointer_delta((address)method(), (address)SharedBaseAddress, 1);
     AOTCodeEntry* entry = _cache->find_entry(AOTCodeEntry::Code, hash, comp_level);
     if (entry == nullptr) {
       log_info(aot, codecache, nmethod)("Missing entry for '%s' (comp_level %d, hash: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, hash);
 #ifdef ASSERT
-    } else {
-      uint name_offset = entry->offset() + entry->name_offset();
-      uint name_size   = entry->name_size(); // Includes '/0'
-      const char* name = _cache->cache_buffer() + name_offset;
-      if (strncmp(target_name, name, name_size) != 0) {
-        assert(false, "AOTCodeCache: saved nmethod's name '%s' is different from '%s', hash: " UINT32_FORMAT_X_0, name, target_name, hash);
-      }
+    } else if (method() != entry->method()) {
+      assert(false, "AOTCodeCache: saved nmethod's method %p (hash: " UINT32_FORMAT_X_0 ") is different from the method %p being looked up" , entry->method(), hash, method());
 #endif
     }
 
@@ -1628,9 +1624,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
     assert(AOTCacheAccess::can_generate_aot_code(method), "sanity");
     return nullptr;
   }
-  bool method_in_cds = MetaspaceShared::is_in_shared_metaspace((address)method);
   InstanceKlass* holder = method->method_holder();
-  bool klass_in_cds = holder->is_shared() && !holder->defined_by_other_loaders();
   bool builtin_loader = holder->class_loader_data()->is_builtin_class_loader_data();
   if (!builtin_loader) {
     ResourceMark rm;
@@ -1638,13 +1632,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
     assert(builtin_loader, "sanity");
     return nullptr;
   }
-  if (for_preload && !(method_in_cds && klass_in_cds)) {
-    ResourceMark rm;
-    log_info(aot, codecache, nmethod)("%d (L%d): Skip method '%s' for preload: not in CDS", comp_id, (int)comp_level, method->name_and_sig_as_C_string());
-    assert(!for_preload || (method_in_cds && klass_in_cds), "sanity");
-    return nullptr;
-  }
-  assert(!for_preload || (method_in_cds && klass_in_cds), "sanity");
+
   _for_preload = for_preload;
   _has_clinit_barriers = nm->has_clinit_barriers();
 
@@ -1692,8 +1680,9 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
     if (n != name_size) {
       return nullptr;
     }
-    hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
+    //hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
   }
+  hash = AOTCacheAccess::delta_from_base_address((address)nm->method());
 
   // Write CodeBlob
   if (!cache->align_write()) {
@@ -1776,9 +1765,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
                                                 blob_offset, has_oop_maps,
                                                 nm->content_begin(), comp_level, comp_id,
                                                 nm->has_clinit_barriers(), for_preload);
-  if (method_in_cds) {
-    entry->set_method(method);
-  }
+  entry->set_method(method);
 #ifdef ASSERT
   if (nm->has_clinit_barriers() || for_preload) {
     assert(for_preload, "sanity");
