@@ -926,7 +926,6 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
   if (is_on() && _cache->cache_buffer() != nullptr) {
     ResourceMark rm;
     const char* target_name = method->name_and_sig_as_C_string();
-    //uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
     uint hash = (uint)pointer_delta((address)method(), (address)SharedBaseAddress, 1);
     AOTCodeEntry* entry = _cache->find_entry(AOTCodeEntry::Code, hash, comp_level);
     if (entry == nullptr) {
@@ -1680,7 +1679,6 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
     if (n != name_size) {
       return nullptr;
     }
-    //hash = java_lang_String::hash_code((const jbyte*)name, (int)strlen(name));
   }
   hash = AOTCacheAccess::delta_from_base_address((address)nm->method());
 
@@ -1804,7 +1802,7 @@ bool AOTCodeCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abs
     ResourceMark rm;
     methodHandle method(THREAD, target->get_Method());
     const char* target_name = method->name_and_sig_as_C_string();
-    uint hash = java_lang_String::hash_code((const jbyte*)target_name, (int)strlen(target_name));
+    uint hash = (uint)pointer_delta((address)method(), (address)SharedBaseAddress, 1);
     bool clinit_brs = entry->has_clinit_barriers();
     log_info(aot, codecache, nmethod)("%d (L%d): %s nmethod '%s' (hash: " UINT32_FORMAT_X_0 "%s)",
                                       task->compile_id(), task->comp_level(), (preload ? "Preloading" : "Reading"),
