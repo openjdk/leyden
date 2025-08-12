@@ -102,6 +102,9 @@
 #if INCLUDE_ZGC
 #include "gc/z/zBarrierSetRuntime.hpp"
 #endif
+#if defined(X86) && !defined(ZERO)
+#include "rdtsc_x86.hpp"
+#endif
 
 #include <sys/stat.h>
 #include <errno.h>
@@ -2986,6 +2989,7 @@ void AOTCodeAddressTable::init_extrs() {
     SET_ADDRESS(_extrs, SharedRuntime::throw_AbstractMethodError);
     SET_ADDRESS(_extrs, SharedRuntime::throw_IncompatibleClassChangeError);
     SET_ADDRESS(_extrs, SharedRuntime::throw_NullPointerException_at_call);
+    SET_ADDRESS(_extrs, SharedRuntime::throw_StackOverflowError);
     SET_ADDRESS(_extrs, CompressedOops::base_addr());
     SET_ADDRESS(_extrs, CompressedKlassPointers::base_addr());
   }
@@ -3144,6 +3148,9 @@ void AOTCodeAddressTable::init_extrs() {
   SET_ADDRESS(_extrs, os::javaTimeNanos);
   // For JFR
   SET_ADDRESS(_extrs, os::elapsed_counter);
+#if defined(X86) && !defined(ZERO)
+  SET_ADDRESS(_extrs, Rdtsc::elapsed_counter);
+#endif
 
 #if INCLUDE_JVMTI
   SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);

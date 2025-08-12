@@ -989,6 +989,7 @@ char* FileMapInfo::write_bitmap_region(CHeapBitMap* rw_ptrmap, CHeapBitMap* ro_p
   // The bitmap region contains up to 4 parts:
   // rw_ptrmap:           metaspace pointers inside the read-write region
   // ro_ptrmap:           metaspace pointers inside the read-only region
+  // ac_ptrmap:           metaspace pointers inside the AOT code cache region
   // heap_info->oopmap(): Java oop pointers in the heap region
   // heap_info->ptrmap(): metaspace pointers in the heap region
   char* buffer = NEW_C_HEAP_ARRAY(char, size_in_bytes, mtClassShared);
@@ -1000,8 +1001,10 @@ char* FileMapInfo::write_bitmap_region(CHeapBitMap* rw_ptrmap, CHeapBitMap* ro_p
   region_at(MetaspaceShared::ro)->init_ptrmap(written, ro_ptrmap->size());
   written = write_bitmap(ro_ptrmap, buffer, written);
 
-  region_at(MetaspaceShared::ac)->init_ptrmap(written, ac_ptrmap->size());
-  written = write_bitmap(ac_ptrmap, buffer, written);
+  if (ac_ptrmap->size() > 0) {
+    region_at(MetaspaceShared::ac)->init_ptrmap(written, ac_ptrmap->size());
+    written = write_bitmap(ac_ptrmap, buffer, written);
+  }
 
   if (heap_info->is_used()) {
     FileMapRegion* r = region_at(MetaspaceShared::hp);
