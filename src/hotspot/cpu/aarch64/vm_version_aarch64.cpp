@@ -730,13 +730,14 @@ void VM_Version::initialize_cpu_information(void) {
 void VM_Version::insert_features_names(uint64_t features, stringStream& ss) {
   int i = 0;
   ss.join([&]() {
-    while (i < MAX_CPU_FEATURES) {
+    const char* str = nullptr;
+    while ((i < MAX_CPU_FEATURES) && (str == nullptr)) {
       if (supports_feature((VM_Version::Feature_Flag)i)) {
-        return _features_names[i++];
+        str = _features_names[i];
       }
       i += 1;
     }
-    return (const char*)nullptr;
+    return str;
   }, ", ");
 }
 
@@ -749,14 +750,15 @@ void VM_Version::get_missing_features_name(void* features_buffer, stringStream& 
   uint64_t features_to_test = *(uint64_t*)features_buffer;
   int i = 0;
   ss.join([&]() {
-    while (i < MAX_CPU_FEATURES) {
+    const char* str = nullptr;
+    while ((i < MAX_CPU_FEATURES) && (str == nullptr)) {
       Feature_Flag flag = (Feature_Flag)i;
       if (supports_feature(features_to_test, flag) && !supports_feature(flag)) {
-        return _features_names[i];
+        str = _features_names[i];
       }
       i += 1;
     }
-    return (const char*)nullptr;
+    return str;
   }, ", ");
 }
 

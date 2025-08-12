@@ -3295,13 +3295,14 @@ bool VM_Version::is_intrinsic_supported(vmIntrinsicID id) {
 void VM_Version::insert_features_names(VM_Version::VM_Features features, stringStream& ss) {
   int i = 0;
   ss.join([&]() {
-    while (i < MAX_CPU_FEATURES) {
+    const char* str = nullptr;
+    while ((i < MAX_CPU_FEATURES) && (str == nullptr)) {
       if (features.supports_feature((VM_Version::Feature_Flag)i)) {
-        return _features_names[i++];
+        str = _features_names[i];
       }
       i += 1;
     }
-    return (const char*)nullptr;
+    return str;
   }, ", ");
 }
 
@@ -3314,14 +3315,15 @@ void VM_Version::get_missing_features_name(void* features_buffer, stringStream& 
   VM_Features* features_to_test = (VM_Features*)features_buffer;
   int i = 0;
   ss.join([&]() {
-    while (i < MAX_CPU_FEATURES) {
+    const char* str = nullptr;
+    while ((i < MAX_CPU_FEATURES) && (str == nullptr)) {
       Feature_Flag flag = (Feature_Flag)i;
       if (features_to_test->supports_feature(flag) && !_features.supports_feature(flag)) {
-        return _features_names[i];
+        str = _features_names[i];
       }
       i += 1;
     }
-    return (const char*)nullptr;
+    return str;
   }, ", ");
 }
 
