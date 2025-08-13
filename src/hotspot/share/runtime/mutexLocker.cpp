@@ -361,7 +361,7 @@ void mutex_init() {
     MUTEX_DEFL(G1RareEvent_lock             , PaddedMutex  , Threads_lock, true);
   }
 
-  MUTEX_DEFL(CompileTaskAlloc_lock          , PaddedMutex,   MethodCompileQueue_lock);
+  MUTEX_DEFL(CompileTaskAlloc_lock          , PaddedMutex  , MethodCompileQueue_lock);
   MUTEX_DEFL(CompileTaskWait_lock           , PaddedMonitor, MethodCompileQueue_lock);
 
 #if INCLUDE_PARALLELGC

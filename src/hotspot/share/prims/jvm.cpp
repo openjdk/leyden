@@ -2999,6 +2999,14 @@ JVM_ENTRY_PROF(jobject, JVM_GetStackTrace, JVM_GetStackTrace(JNIEnv *env, jobjec
   return JNIHandles::make_local(THREAD, trace);
 JVM_END
 
+JVM_ENTRY_PROF(jobject, JVM_CreateThreadSnapshot, JVM_CreateThreadSnapshot(JNIEnv* env, jobject jthread))
+#if INCLUDE_JVMTI
+  oop snapshot = ThreadSnapshotFactory::get_thread_snapshot(jthread, THREAD);
+  return JNIHandles::make_local(THREAD, snapshot);
+#else
+  return nullptr;
+#endif
+JVM_END
 
 JVM_ENTRY_PROF(void, JVM_SetNativeThreadName, JVM_SetNativeThreadName(JNIEnv* env, jobject jthread, jstring name))
   // We don't use a ThreadsListHandle here because the current thread
@@ -4025,6 +4033,7 @@ JVM_END
   macro(JVM_Interrupt) \
   macro(JVM_HoldsLock) \
   macro(JVM_GetStackTrace) \
+  macro(JVM_CreateThreadSnapshot) \
   macro(JVM_SetNativeThreadName) \
   macro(JVM_ScopedValueCache) \
   macro(JVM_SetScopedValueCache) \

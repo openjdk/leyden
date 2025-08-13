@@ -301,7 +301,6 @@ CodeBlob* CodeBlob::create(CodeBlob* archived_blob,
                                     name,
                                     archived_reloc_data,
                                     archived_oop_maps);
-
       assert(blob != nullptr, "sanity check");
       // Flush the code block
       ICache::invalidate_range(blob->code_begin(), blob->code_size());

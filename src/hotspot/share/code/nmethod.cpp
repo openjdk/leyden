@@ -2136,14 +2136,12 @@ void nmethod::invalidate_osr_method() {
   }
 }
 
-void nmethod::log_state_change(const char* reason) const {
-  assert(reason != nullptr, "Must provide a reason");
-
+void nmethod::log_state_change(ChangeReason change_reason) const {
   if (LogCompilation) {
     if (xtty != nullptr) {
       ttyLocker ttyl;  // keep the following output all in one block
       xtty->begin_elem("make_not_entrant thread='%zu' reason='%s'",
-                       os::current_thread_id(), reason);
+                       os::current_thread_id(), change_reason_to_string(change_reason));
       log_identity(xtty);
       xtty->stamp();
       xtty->end_elem();
@@ -2152,7 +2150,7 @@ void nmethod::log_state_change(const char* reason) const {
 
   ResourceMark rm;
   stringStream ss(NEW_RESOURCE_ARRAY(char, 256), 256);
-  ss.print("made not entrant: %s", reason);
+  ss.print("made not entrant: %s", change_reason_to_string(change_reason));
 
   CompileTask::print_ul(this, ss.freeze());
   if (PrintCompilation) {
@@ -2167,9 +2165,7 @@ void nmethod::unlink_from_method() {
 }
 
 // Invalidate code
-bool nmethod::make_not_entrant(const char* reason, bool keep_aot_entry) {
-  assert(reason != nullptr, "Must provide a reason");
-
+bool nmethod::make_not_entrant(ChangeReason change_reason, bool keep_aot_entry) {
   // This can be called while the system is already at a safepoint which is ok
   NoSafepointVerifier nsv;
 
@@ -2238,7 +2234,7 @@ bool nmethod::make_not_entrant(const char* reason, bool keep_aot_entry) {
     assert(success, "Transition can't fail");
 
     // Log the transition once
-    log_state_change(reason);
+    log_state_change(change_reason);
 
     // Remove nmethod from method.
     unlink_from_method();
@@ -2313,10 +2309,19 @@ void nmethod::purge(bool unregister_nmethod) {
 
   // completely deallocate this method
   Events::log_nmethod_flush(Thread::current(), "flushing %s nmethod " INTPTR_FORMAT, compile_kind(), p2i(this));
-  log_debug(codecache)("*flushing %s nmethod %3d/" INTPTR_FORMAT ". Live blobs:" UINT32_FORMAT
-                       "/Free CodeCache:%zuKb",
-                       compile_kind(), _compile_id, p2i(this), CodeCache::blob_count(),
-                       CodeCache::unallocated_capacity(CodeCache::get_code_blob_type(this))/1024);
+
+  LogTarget(Debug, codecache) lt;
+  if (lt.is_enabled()) {
+    ResourceMark rm;
+    LogStream ls(lt);
+    const char* method_name = method()->name()->as_C_string();
+    const size_t codecache_capacity = CodeCache::capacity()/1024;
+    const size_t codecache_free_space = CodeCache::unallocated_capacity(CodeCache::get_code_blob_type(this))/1024;
+    ls.print("Flushing %s nmethod %6d/" INTPTR_FORMAT ", level=%d, cold=%d, epoch=" UINT64_FORMAT ", cold_count=" UINT64_FORMAT ". "
+              "Cache capacity: %zuKb, free space: %zuKb. method %s (%s)",
+              compile_kind(), _compile_id, p2i(this), _comp_level, is_cold(), _gc_epoch, CodeCache::cold_gc_count(),
+              codecache_capacity, codecache_free_space, method_name, compiler_name());
+  }
 
   // We need to deallocate any ExceptionCache data.
   // Note that we do not need to grab the nmethod lock for this, it
