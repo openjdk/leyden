@@ -960,6 +960,11 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
   return nullptr;
 }
 
+Method* AOTCodeEntry::method() {
+  assert(_kind == Code, "invalid kind %d", _kind);
+  return AOTCacheAccess::convert_offset_to_method(_id);
+}
+
 void* AOTCodeEntry::operator new(size_t x, AOTCodeCache* cache) {
   return (void*)(cache->add_entry());
 }
@@ -1092,15 +1097,6 @@ static int uint_cmp(const void *i, const void *j) {
   uint a = *(uint *)i;
   uint b = *(uint *)j;
   return a > b ? 1 : a < b ? -1 : 0;
-}
-
-void AOTCodeCache::mark_method_pointer(AOTCodeEntry* entries, int count) {
-  for (int i = 0; i < count; i++) {
-    Method* m = entries[i].method();
-    if (m != nullptr) {
-      AOTCacheAccess::set_pointer(entries[i].method_addr(), m);
-    }
-  }
 }
 
 void AOTCodeCache::store_cpu_features(char*& buffer, uint buffer_size) {
@@ -1263,7 +1259,6 @@ bool AOTCodeCache::finish_write() {
     uint new_entries_offset = current - start;
     entries_size = entries_count * sizeof(AOTCodeEntry); // New size
     copy_bytes((_store_buffer + entries_offset), (address)current, entries_size);
-    mark_method_pointer((AOTCodeEntry*)current, entries_count);
     current += entries_size;
 
     log_stats_on_exit();
@@ -1772,7 +1767,6 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
                                                 blob_offset, has_oop_maps,
                                                 nm->content_begin(), comp_level, comp_id,
                                                 nm->has_clinit_barriers(), for_preload);
-  entry->set_method(method);
 #ifdef ASSERT
   if (nm->has_clinit_barriers() || for_preload) {
     assert(for_preload, "sanity");
