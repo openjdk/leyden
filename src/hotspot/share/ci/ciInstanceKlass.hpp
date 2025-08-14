@@ -233,6 +233,8 @@ public:
   ciInstanceKlass* unique_concrete_subklass();
   bool has_finalizable_subclass();
 
+  bool has_class_initializer();
+
   bool contains_field_offset(int offset);
 
   // Get the instance of java.lang.Class corresponding to

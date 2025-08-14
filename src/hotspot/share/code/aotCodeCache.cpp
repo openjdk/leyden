@@ -4077,8 +4077,6 @@ void AOTCodeCache::print_statistics_on(outputStream* st) {
         }
       }
     }
-  } else {
-    st->print_cr("failed to map code cache");
   }
 }
 
@@ -4091,6 +4089,8 @@ void AOTCodeEntry::print(outputStream* st) const {
                (_for_preload ? ", for_preload" : ""));
 }
 
+// This is called after initialize() but before init2()
+// and _cache is not set yet.
 void AOTCodeCache::print_on(outputStream* st) {
   if (opened_cache != nullptr && opened_cache->for_use()) {
     ReadingMark rdmk;
