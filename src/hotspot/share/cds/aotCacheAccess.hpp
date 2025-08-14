@@ -80,6 +80,13 @@ public:
     return (Method*)metadata;
   }
 
+  // Used during production run to convert a Method in AOTCache to offset from SharedBaseAddress
+  static uint convert_method_to_offset(Method* method) {
+    assert(method->is_shared(), "method %p is not in AOTCache", method);
+    uint offset = (uint)pointer_delta((address)method, (address)SharedBaseAddress, 1);
+    return offset;
+  }
+
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 

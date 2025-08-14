@@ -903,6 +903,9 @@ uint AOTCodeCache::write_bytes(const void* buffer, uint nbytes) {
 
 AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint comp_level) {
   assert(is_using_code(), "AOT code caching should be enabled");
+  if (!method->is_shared()) {
+    return nullptr;
+  }
   switch (comp_level) {
     case CompLevel_simple:
       if ((DisableAOTCode & (1 << 0)) != 0) {
@@ -924,15 +927,21 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
   }
   TraceTime t1("Total time to find AOT code", &_t_totalFind, enable_timers(), false);
   if (is_on() && _cache->cache_buffer() != nullptr) {
-    ResourceMark rm;
-    const char* target_name = method->name_and_sig_as_C_string();
-    uint hash = (uint)pointer_delta((address)method(), (address)SharedBaseAddress, 1);
-    AOTCodeEntry* entry = _cache->find_entry(AOTCodeEntry::Code, hash, comp_level);
+    uint id = AOTCacheAccess::convert_method_to_offset(method());
+    AOTCodeEntry* entry = _cache->find_entry(AOTCodeEntry::Code, id, comp_level);
     if (entry == nullptr) {
-      log_info(aot, codecache, nmethod)("Missing entry for '%s' (comp_level %d, hash: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, hash);
+      LogStreamHandle(Info, aot, codecache, nmethod) log;
+      if (log.is_enabled()) {
+        ResourceMark rm;
+        const char* target_name = method->name_and_sig_as_C_string();
+        log.print("Missing entry for '%s' (comp_level %d, id: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, id);
+      }
 #ifdef ASSERT
-    } else if (method() != entry->method()) {
-      assert(false, "AOTCodeCache: saved nmethod's method %p (hash: " UINT32_FORMAT_X_0 ") is different from the method %p being looked up" , entry->method(), hash, method());
+    } else {
+      ResourceMark rm;
+      assert(method() == entry->method(), "AOTCodeCache: saved nmethod's method %p (name: %s id: " UINT32_FORMAT_X_0
+             ") is different from the method %p (name: %s, id: " UINT32_FORMAT_X_0 " being looked up" ,
+             entry->method(), entry->method()->name_and_sig_as_C_string(), entry->id(), method(), method()->name_and_sig_as_C_string(), id);
 #endif
     }
 
@@ -1644,7 +1653,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
   // Write name
   uint name_offset = 0;
   uint name_size   = 0;
-  uint hash = 0;
+  uint id = 0;
   uint n;
   {
     ResourceMark rm;
@@ -1680,7 +1689,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
       return nullptr;
     }
   }
-  hash = AOTCacheAccess::delta_from_base_address((address)nm->method());
+  id = AOTCacheAccess::delta_from_base_address((address)nm->method());
 
   // Write CodeBlob
   if (!cache->align_write()) {
@@ -1757,7 +1766,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
 #endif /* PRODUCT */
 
   uint entry_size = _write_position - entry_position;
-  AOTCodeEntry* entry = new (this) AOTCodeEntry(AOTCodeEntry::Code, hash,
+  AOTCodeEntry* entry = new (this) AOTCodeEntry(AOTCodeEntry::Code, id,
                                                 entry_position, entry_size,
                                                 name_offset, name_size,
                                                 blob_offset, has_oop_maps,
@@ -1802,11 +1811,11 @@ bool AOTCodeCache::load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, Abs
     ResourceMark rm;
     methodHandle method(THREAD, target->get_Method());
     const char* target_name = method->name_and_sig_as_C_string();
-    uint hash = (uint)pointer_delta((address)method(), (address)SharedBaseAddress, 1);
+    uint id = AOTCacheAccess::convert_method_to_offset(method());
     bool clinit_brs = entry->has_clinit_barriers();
-    log_info(aot, codecache, nmethod)("%d (L%d): %s nmethod '%s' (hash: " UINT32_FORMAT_X_0 "%s)",
+    log_info(aot, codecache, nmethod)("%d (L%d): %s nmethod '%s' (id: " UINT32_FORMAT_X_0 "%s)",
                                       task->compile_id(), task->comp_level(), (preload ? "Preloading" : "Reading"),
-                                      target_name, hash, (clinit_brs ? ", has clinit barriers" : ""));
+                                      target_name, id, (clinit_brs ? ", has clinit barriers" : ""));
   }
   ReadingMark rdmk;
   if (rdmk.failed()) {
