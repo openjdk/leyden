@@ -1853,10 +1853,14 @@ bool ciEnv::is_precompile() {
 InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
   ASSERT_IN_VM;
   assert(is_precompile(), "should be called only in assembly phase");
-  assert(AOTCacheAccess::can_generate_aot_code_for(ik), "klass should be archived for AOT compilation");
   assert(!ik->is_in_error_state(), "there should not be any probelm with this klass");
   ResourceMark rm;
 
+  if (!AOTCacheAccess::can_generate_aot_code_for(ik)) {
+    log_debug(precompile)("%d: klass (%s) %s is not archived", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+    // Skip this class
+    return InstanceKlass::ClassState::initialization_error;
+  }
   if (task()->method()->method_holder() == ik) {
     if (task()->method()->is_static_initializer()) { // Happens with -Xcomp
        return InstanceKlass::ClassState::being_initialized;
