@@ -68,6 +68,7 @@ uint AOTCacheAccess::delta_from_base_address(address addr) {
 }
 
 uint AOTCacheAccess::convert_method_to_offset(Method* method) {
+  assert(CDSConfig::is_using_archive() && !CDSConfig::is_dumping_final_static_archive(), "must be");
   assert(MetaspaceShared::is_in_shared_metaspace(method), "method %p is not in AOTCache", method);
   uint offset = (uint)pointer_delta((address)method, (address)SharedBaseAddress, 1);
   return offset;

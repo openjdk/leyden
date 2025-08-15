@@ -962,6 +962,7 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
 
 Method* AOTCodeEntry::method() {
   assert(_kind == Code, "invalid kind %d", _kind);
+  assert(AOTCodeCache::is_on_for_use(), "must be");
   return AOTCacheAccess::convert_offset_to_method(_id);
 }
 
@@ -1083,12 +1084,10 @@ void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
     // We can still use normal AOT code if preload code is
     // invalidated - normal AOT code has less restrictions.
     Method* method = entry->method();
-    if (method != nullptr) {
-      AOTCodeEntry* preload_entry = method->aot_code_entry();
-      if (preload_entry != nullptr) {
-        assert(preload_entry->for_preload(), "expecting only such entries here");
-        invalidate_entry(preload_entry);
-      }
+    AOTCodeEntry* preload_entry = method->aot_code_entry();
+    if (preload_entry != nullptr) {
+      assert(preload_entry->for_preload(), "expecting only such entries here");
+      invalidate_entry(preload_entry);
     }
   }
 }
@@ -1185,7 +1184,7 @@ bool AOTCodeCache::finish_write() {
           continue;
         }
         entry->set_entrant(); // Reset
-      } else if (entry->for_preload() && entry->method() != nullptr) {
+      } else if (entry->for_preload()) {
         // record entrant first version code for pre-loading
         preload_entries[preload_entries_cnt++] = entries_count;
       }
@@ -1770,7 +1769,6 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
 #ifdef ASSERT
   if (nm->has_clinit_barriers() || for_preload) {
     assert(for_preload, "sanity");
-    assert(entry->method() != nullptr, "sanity");
   }
 #endif
   {
