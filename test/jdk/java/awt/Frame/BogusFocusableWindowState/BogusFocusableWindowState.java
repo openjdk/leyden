@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright Amazon.com Inc. or its affiliates. All Rights Reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -21,19 +21,30 @@
  * questions.
  */
 
-import java.lang.management.ManagementFactory;
-import com.sun.management.HotSpotDiagnosticMXBean;
+import java.awt.Window;
 
-class LockingMode {
-    private LockingMode() { }
+/**
+ * @test
+ * @bug 8346952
+ * @summary Verifies no exception occurs when triggering updateCG()
+ * for an ownerless window.
+ * @key headful
+ */
+public final class BogusFocusableWindowState {
 
-    /**
-     * Returns true if using legacy locking mode.
-     */
-    static boolean isLegacy() {
-        return ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class)
-                .getVMOption("LockingMode")
-                .getValue()
-                .equals("1");
+    public static void main(String[] args) {
+        Window frame = new Window(null) {
+            @Override
+            public boolean getFocusableWindowState() {
+                removeNotify();
+                return true;
+            }
+        };
+        try {
+            frame.pack();
+            frame.setVisible(true);
+        } finally {
+            frame.dispose();
+        }
     }
 }

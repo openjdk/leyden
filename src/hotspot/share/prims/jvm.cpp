@@ -3004,7 +3004,7 @@ JVM_ENTRY_PROF(jobject, JVM_CreateThreadSnapshot, JVM_CreateThreadSnapshot(JNIEn
   oop snapshot = ThreadSnapshotFactory::get_thread_snapshot(jthread, THREAD);
   return JNIHandles::make_local(THREAD, snapshot);
 #else
-  return nullptr;
+  THROW_NULL(vmSymbols::java_lang_UnsupportedOperationException());
 #endif
 JVM_END
 

@@ -1,5 +1,5 @@
 /*
- * Copyright Amazon.com Inc. or its affiliates. All Rights Reserved.
+ * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,42 +19,26 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
- *
  */
 
-package sun.jvm.hotspot.runtime;
+/*
+ * @test
+ * @bug 8361214
+ * @summary An anonymous class is erroneously being classify as an abstract class
+ * @compile AnonymousLabeledAsAbstractTest.java
+ */
 
-import sun.jvm.hotspot.types.TypeDataBase;
+class AnonymousLabeledAsAbstractTest {
+    abstract class Base<T> {}
+    abstract class Derived1<T> extends Base<T> {}
+    abstract class Derived2<T> extends Base<T> {
+        Derived2(Derived1<T> obj){}
+    }
+    abstract class Derived3<T> extends Base<T> {
+        Derived3(Derived2<T> obj){}
+    }
 
-
-/** Encapsulates the LockingMode enum in globalDefinitions.hpp in
-    the VM. */
-
-public class LockingMode {
-  private static int monitor;
-  private static int legacy;
-  private static int lightweight;
-
-  static {
-    VM.registerVMInitializedObserver(
-        (o, d) -> initialize(VM.getVM().getTypeDataBase()));
-  }
-
-  private static synchronized void initialize(TypeDataBase db) {
-    monitor     = db.lookupIntConstant("LM_MONITOR").intValue();
-    legacy      = db.lookupIntConstant("LM_LEGACY").intValue();
-    lightweight = db.lookupIntConstant("LM_LIGHTWEIGHT").intValue();
-  }
-
-  public static int getMonitor() {
-    return monitor;
-  }
-
-  public static int getLegacy() {
-    return legacy;
-  }
-
-  public static int getLightweight() {
-    return lightweight;
-  }
+    Base<String> obj = new Derived2<>(new Derived1<>(){}){};
+    Base<String> obj2 = new Derived3<String>(new Derived2<>(new Derived1<>(){}){}){};
+    Base<String> obj3 = new Derived3<>(new Derived2<>(new Derived1<>(){}){}){};
 }

@@ -35,7 +35,6 @@
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/classLoaderData.hpp"
-#include "classfile/classLoaderExt.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.hpp"

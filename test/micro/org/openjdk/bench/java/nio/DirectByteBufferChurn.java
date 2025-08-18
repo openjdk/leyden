@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright Amazon.com Inc. or its affiliates. All Rights Reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,14 +19,30 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
- *
  */
+package org.openjdk.bench.java.nio;
 
-/* @test
- * @summary Run LockStack gtests with LockingMode=2
- * @library /test/lib
- * @modules java.base/jdk.internal.misc
- *          java.xml
- * @requires vm.flagless
- * @run main/native GTestWrapper --gtest_filter=LockStackTest* -XX:LockingMode=2
- */
+import java.nio.ByteBuffer;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.infra.Blackhole;
+
+@OutputTimeUnit(TimeUnit.NANOSECONDS)
+@State(Scope.Thread)
+@BenchmarkMode(Mode.AverageTime)
+@Warmup(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 3, time = 1, timeUnit = TimeUnit.SECONDS)
+@Fork(value = 3, jvmArgs = {"-Xmx256m", "-Xms256m", "-XX:+AlwaysPreTouch"})
+public class DirectByteBufferChurn {
+
+    @Param({"128", "256", "512", "1024", "2048"})
+    int recipFreq;
+
+    @Benchmark
+    public Object test() {
+        boolean direct = ThreadLocalRandom.current().nextInt(recipFreq) == 0;
+        return direct ? ByteBuffer.allocateDirect(1) : ByteBuffer.allocate(1);
+    }
+
+}
