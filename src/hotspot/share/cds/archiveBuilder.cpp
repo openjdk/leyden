@@ -1376,6 +1376,11 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
           fd->print_on(_st); // print just the name and offset
           oop obj = _source_obj->obj_field(fd->offset());
           if (java_lang_Class::is_instance(obj)) {
+            Klass* k = java_lang_Class::as_Klass(obj);
+            if (RegeneratedClasses::has_been_regenerated(k)) {
+              k = RegeneratedClasses::get_regenerated_object(k);
+              obj = k->java_mirror();
+            }
             obj = HeapShared::scratch_java_mirror(obj);
           }
           print_oop_info_cr(_st, obj);
@@ -1537,6 +1542,9 @@ class ArchiveBuilder::CDSMapLogger : AllStatic {
               ArchiveBuilder::current()->get_buffered_addr(InstanceKlass::cast(src_klass));
             if (buffered_klass->has_aot_initialized_mirror()) {
               st->print(" (aot-inited)");
+            }
+            if (RegeneratedClasses::is_regenerated_object(src_klass)) {
+              st->print(" (regenerated)");
             }
           }
         }
