@@ -298,7 +298,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     // instrumentation in order to work with -XX:FlightRecorderOptions:retransform=false.
     // There are only a small number of these classes, so it's not worthwhile to
     // support them and make CDS more complicated.
-    if (!CDSConfig::is_dumping_reflection_data()) { // FIXME: !!! HACK !!!
+    if (!CDSConfig::is_dumping_reflection_data()) { // FIXME: !!! HACK !!! JDK-8365724
       return warn_excluded(k, "JFR event class");
     }
   }

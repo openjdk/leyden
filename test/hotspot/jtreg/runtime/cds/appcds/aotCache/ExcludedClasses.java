@@ -79,6 +79,7 @@ public class ExcludedClasses {
         @Override
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
+                "-XX:-ArchiveReflectionData", // This is needed for JDK-8365724
                 "-Xlog:aot=debug",
                 "-Xlog:aot+class=debug",
                 "-Xlog:aot+resolve=trace",
@@ -100,7 +101,7 @@ public class ExcludedClasses {
                 out.shouldNotMatch("aot,resolve.*archived field.*TestApp.Foo => TestApp.Foo.ShouldBeExcluded.f:I");
             } else if (runMode == RunMode.PRODUCTION) {
                 out.shouldContain("check_verification_constraint: TestApp$Foo$Taz: TestApp$Foo$ShouldBeExcludedChild must be subclass of TestApp$Foo$ShouldBeExcluded");
-                out.shouldContain("jdk.jfr.Event source: shared objects file loader: boot_loader");
+                out.shouldContain("jdk.jfr.Event source: jrt:/jdk.jfr");
                 out.shouldMatch("TestApp[$]Foo[$]ShouldBeExcluded source: .*/app.jar");
                 out.shouldMatch("TestApp[$]Foo[$]ShouldBeExcludedChild source: .*/app.jar");
             }
