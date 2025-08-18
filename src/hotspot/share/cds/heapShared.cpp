@@ -2000,6 +2000,11 @@ void HeapShared::verify_subgraph_from(oop orig_obj) {
 void HeapShared::verify_reachable_objects_from(oop obj) {
   _num_total_verifications ++;
   if (java_lang_Class::is_instance(obj)) {
+    Klass* k = java_lang_Class::as_Klass(obj);
+    if (RegeneratedClasses::has_been_regenerated(k)) {
+      k = RegeneratedClasses::get_regenerated_object(k);
+      obj = k->java_mirror();
+    }
     obj = scratch_java_mirror(obj);
     assert(obj != nullptr, "must be");
   }

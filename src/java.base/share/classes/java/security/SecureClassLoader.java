@@ -245,12 +245,17 @@ public class SecureClassLoader extends ClassLoader {
      */
     private void resetArchivedStates() {
         if (CDS.isDumpingProtectionDomains()) {
+            for (CodeSourceKey key : pdcache.keySet()) {
+                if (key.cs.getCodeSigners() != null) {
+                    // We don't archive any signed classes, so we don't need to cache their ProtectionDomains.
+                    pdcache.remove(key);
+                }
+            }
             if (System.getProperty("cds.debug.archived.protection.domains") != null) {
-                for (Map.Entry<CodeSourceKey, ProtectionDomain> entry : pdcache.entrySet()) {
-                    CodeSourceKey key = entry.getKey();
+                for (CodeSourceKey key : pdcache.keySet()) {
                     System.out.println("Archiving ProtectionDomain " + key.cs + " for " + this);
                 }
-            }            
+            }
         } else {
             pdcache.clear();
         }
