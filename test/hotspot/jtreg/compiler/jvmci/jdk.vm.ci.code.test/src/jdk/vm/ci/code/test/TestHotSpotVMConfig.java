@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -58,6 +58,8 @@ public class TestHotSpotVMConfig extends HotSpotVMConfigAccess {
     // Check field with intx declaration is the same as int64_t.
     public final int heldMonitorCountOffset = getFieldOffset("JavaThread::_held_monitor_count", Integer.class, "int64_t");
 
+    public final int NMETHOD_INVALIDATION_REASON_JVMCI_INVALIDATE = getConstant("nmethod::InvalidationReason::JVMCI_INVALIDATE", Integer.class);
+
     public final boolean ropProtection;
 
     private Boolean initNmethodEntryBarrierConcurrentPatch(Architecture arch) {
@@ -68,10 +70,11 @@ public class TestHotSpotVMConfig extends HotSpotVMConfigAccess {
                 // There currently only 2 variants in use that differ only by the presence of a
                 // dmb instruction
                 int stw = getConstant("NMethodPatchingType::stw_instruction_and_data_patch", Integer.class);
-                int conc = getConstant("NMethodPatchingType::conc_data_patch", Integer.class);
+                int conc1 = getConstant("NMethodPatchingType::conc_data_patch", Integer.class);
+                int conc2 = getConstant("NMethodPatchingType::conc_instruction_and_data_patch", Integer.class);
                 if (patchingType == stw) {
                     patchConcurrent = false;
-                } else if (patchingType == conc) {
+                } else if (patchingType == conc1 || patchingType == conc2) {
                     patchConcurrent = true;
                 } else {
                     throw new IllegalArgumentException("unsupported barrier sequence " + patchingType);

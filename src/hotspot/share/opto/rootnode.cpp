@@ -22,6 +22,7 @@
  *
  */
 
+#include "code/aotCodeCache.hpp"
 #include "memory/allocation.inline.hpp"
 #include "opto/callnode.hpp"
 #include "opto/cfgnode.hpp"
@@ -30,7 +31,6 @@
 #include "opto/rootnode.hpp"
 #include "opto/subnode.hpp"
 #include "opto/type.hpp"
-#include "code/aotCodeCache.hpp"
 
 //------------------------------Ideal------------------------------------------
 // Remove dead inputs
