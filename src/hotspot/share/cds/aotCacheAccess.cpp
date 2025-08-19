@@ -40,7 +40,7 @@ size_t _aot_code_region_size = 0;
 
 bool AOTCacheAccess::can_generate_aot_code(address addr) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-  return ArchiveBuilder::is_active() && ArchiveBuilder::current()->has_been_buffered(addr);
+  return ArchiveBuilder::is_active() && ArchiveBuilder::current()->has_been_archived(addr);
 }
 
 bool AOTCacheAccess::can_generate_aot_code_for(InstanceKlass* ik) {
@@ -49,7 +49,7 @@ bool AOTCacheAccess::can_generate_aot_code_for(InstanceKlass* ik) {
     return false;
   }
   ArchiveBuilder* builder = ArchiveBuilder::current();
-  if (!builder->has_been_buffered((address)ik)) {
+  if (!builder->has_been_archived((address)ik)) {
     return false;
   }
   if (ik->defined_by_other_loaders()) {
