@@ -143,7 +143,7 @@ class CompileTask : public CHeapObj<mtCompiler> {
                   bool requires_online_compilation, bool is_blocking);
   ~CompileTask();
 
-  static void         wait_for_no_active_tasks();
+  static void wait_for_no_active_tasks();
 
   int          compile_id() const                   { return _compile_id; }
   Method*      method() const                       { return _method; }

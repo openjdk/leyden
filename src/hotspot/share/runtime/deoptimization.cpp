@@ -2373,7 +2373,7 @@ JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncomm
     // Deoptimization count is used by the CompileBroker to reason about compilations
     // it requests so do not pollute the count for deoptimizations in non-default (i.e.
     // non-CompilerBroker) compilations.
-    if (nm->is_jvmci_hosted()) {
+    if (nm->jvmci_skip_profile_deopt()) {
       update_trap_state = false;
     }
 #endif
@@ -2773,8 +2773,8 @@ const char* Deoptimization::_trap_reason_name[] = {
   "unstable_if",
   "unstable_fused_if",
   "receiver_constraint",
+  "short_running_loop" JVMCI_ONLY("_or_aliasing"),
 #if INCLUDE_JVMCI
-  "aliasing",
   "transfer_to_interpreter",
   "not_compiled_exception_handler",
   "unresolved",

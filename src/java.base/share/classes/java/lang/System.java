@@ -1543,13 +1543,13 @@ public final class System {
     /**
      * Returns whether the AOT system is recording training data.
      * @return whether the AOT system is recording training data.
-     * @since 25
+     * @since 26
      */
     public static native boolean AOTIsTraining();
 
     /**
      * Will stop the recording of AOT training data.
-     * @since 25
+     * @since 26
      */
     public static native void AOTEndTraining();
 
