@@ -22,6 +22,7 @@
  *
  */
 
+#include "code/aotCodeCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/relocInfo.hpp"
@@ -189,6 +190,12 @@ CodeBlob::CodeBlob(const char* name, CodeBlobKind kind, int size, uint16_t heade
   assert(_mutable_data == blob_end(), "sanity");
 }
 
+#ifdef ASSERT
+CodeBlob::~CodeBlob() {
+  assert(_oop_maps == nullptr || AOTCodeCache::is_address_in_aot_cache((address)_oop_maps), "Not flushed");
+}
+#endif
+ 
 void CodeBlob::restore_mutable_data(address reloc_data) {
   // Relocation data is now stored as part of the mutable data area; allocate it before copy relocations
   if (_mutable_data_size > 0) {

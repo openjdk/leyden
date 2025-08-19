@@ -218,12 +218,15 @@ static uint32_t encode_id(AOTCodeEntry::Kind kind, int id) {
   if (kind == AOTCodeEntry::Adapter) {
     return id;
   } else if (kind == AOTCodeEntry::SharedBlob) {
+    assert(StubInfo::is_shared(static_cast<BlobId>(id)), "not a shared blob id %d", id);
     return id;
   } else if (kind == AOTCodeEntry::C1Blob) {
-    return (int)SharedStubId::NUM_STUBIDS + id;
+    assert(StubInfo::is_c1(static_cast<BlobId>(id)), "not a c1 blob id %d", id);
+    return id;
   } else {
     // kind must be AOTCodeEntry::C2Blob
-    return (int)SharedStubId::NUM_STUBIDS + COMPILER1_PRESENT((int)C1StubId::NUM_STUBIDS) + id;
+    assert(StubInfo::is_c2(static_cast<BlobId>(id)), "not a c2 blob id %d", id);
+    return id;
   }
 }
 
@@ -1401,6 +1404,12 @@ bool AOTCodeCache::store_code_blob(CodeBlob& blob, AOTCodeEntry::Kind entry_kind
   return true;
 }
 
+bool AOTCodeCache::store_code_blob(CodeBlob& blob, AOTCodeEntry::Kind entry_kind, BlobId id, int entry_offset_count, int* entry_offsets) {
+  assert(AOTCodeEntry::is_blob(entry_kind),
+         "wrong entry kind for blob id %s", StubInfo::name(id));
+  return store_code_blob(blob, entry_kind, (uint)id, StubInfo::name(id), entry_offset_count, entry_offsets);
+}
+
 CodeBlob* AOTCodeCache::load_code_blob(AOTCodeEntry::Kind entry_kind, uint id, const char* name, int entry_offset_count, int* entry_offsets) {
   AOTCodeCache* cache = open_for_use();
   if (cache == nullptr) {
@@ -1426,6 +1435,12 @@ CodeBlob* AOTCodeCache::load_code_blob(AOTCodeEntry::Kind entry_kind, uint id, c
   log_debug(aot, codecache, stubs)("%sRead blob '%s' (id=%u, kind=%s) from AOT Code Cache",
                                    (blob == nullptr? "Failed to " : ""), name, id, aot_code_entry_kind_name[entry_kind]);
   return blob;
+}
+
+CodeBlob* AOTCodeCache::load_code_blob(AOTCodeEntry::Kind entry_kind, BlobId id, int entry_offset_count, int* entry_offsets) {
+  assert(AOTCodeEntry::is_blob(entry_kind),
+         "wrong entry kind for blob id %s", StubInfo::name(id));
+  return load_code_blob(entry_kind, (uint)id, StubInfo::name(id), entry_offset_count, entry_offsets);
 }
 
 CodeBlob* AOTCodeReader::compile_code_blob(const char* name, int entry_offset_count, int* entry_offsets) {
@@ -2985,6 +3000,7 @@ void AOTCodeAddressTable::init_extrs() {
     SET_ADDRESS(_extrs, SharedRuntime::resolve_opt_virtual_call_C);
     SET_ADDRESS(_extrs, SharedRuntime::resolve_virtual_call_C);
     SET_ADDRESS(_extrs, SharedRuntime::resolve_static_call_C);
+    SET_ADDRESS(_extrs, SharedRuntime::throw_StackOverflowError);
     SET_ADDRESS(_extrs, SharedRuntime::throw_delayed_StackOverflowError);
     SET_ADDRESS(_extrs, SharedRuntime::throw_AbstractMethodError);
     SET_ADDRESS(_extrs, SharedRuntime::throw_IncompatibleClassChangeError);
@@ -3443,8 +3459,10 @@ void AOTCodeAddressTable::init_stubs() {
 void AOTCodeAddressTable::init_early_c1() {
 #ifdef COMPILER1
   // Runtime1 Blobs
-  for (int i = 0; i <= (int)C1StubId::forward_exception_id; i++) {
-    C1StubId id = (C1StubId)i;
+  StubId id = StubInfo::stub_base(StubGroup::C1);
+  // include forward_exception in range we publish
+  StubId limit = StubInfo::next(StubId::c1_forward_exception_id);
+  for (; id != limit; id = StubInfo::next(id)) {
     if (Runtime1::blob_for(id) == nullptr) {
       log_info(aot, codecache, init)("C1 blob %s is missing", Runtime1::name_for(id));
       continue;
@@ -3465,8 +3483,9 @@ void AOTCodeAddressTable::init_c1() {
 #ifdef COMPILER1
   // Runtime1 Blobs
   assert(_early_c1_complete, "early C1 blobs should be initialized");
-  for (int i = (int)C1StubId::forward_exception_id + 1; i < (int)(C1StubId::NUM_STUBIDS); i++) {
-    C1StubId id = (C1StubId)i;
+  StubId id = StubInfo::next(StubId::c1_forward_exception_id);
+  StubId limit = StubInfo::next(StubInfo::stub_max(StubGroup::C1));
+  for (; id != limit; id = StubInfo::next(id)) {
     if (Runtime1::blob_for(id) == nullptr) {
       log_info(aot, codecache, init)("C1 blob %s is missing", Runtime1::name_for(id));
       continue;

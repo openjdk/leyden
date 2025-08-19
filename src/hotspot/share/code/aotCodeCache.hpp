@@ -29,6 +29,7 @@
 #include "memory/allocation.hpp"
 #include "nmt/memTag.hpp"
 #include "oops/oopsHierarchy.hpp"
+#include "runtime/stubInfo.hpp"
 #include "runtime/vm_version.hpp"
 #include "utilities/sizes.hpp"
 #include "utilities/exceptions.hpp"
@@ -557,6 +558,7 @@ public:
   bool write_dbg_strings(DbgStrings& dbg_strings, bool use_string_table);
 #endif // PRODUCT
 
+  // save and restore API for non-enumerable code blobs
   static bool store_code_blob(CodeBlob& blob,
                               AOTCodeEntry::Kind entry_kind,
                               uint id, const char* name,
@@ -570,6 +572,18 @@ public:
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
   static AOTCodeEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
+
+  // save and restore API for enumerable code blobs
+  static bool store_code_blob(CodeBlob& blob,
+                              AOTCodeEntry::Kind entry_kind,
+                              BlobId id,
+                              int entry_offset_count = 0,
+                              int* entry_offsets = nullptr) NOT_CDS_RETURN_(false);
+
+  static CodeBlob* load_code_blob(AOTCodeEntry::Kind kind,
+                                  BlobId id,
+                                  int entry_offset_count = 0,
+                                  int* entry_offsets = nullptr) NOT_CDS_RETURN_(nullptr);
 
   static uint store_entries_cnt() {
     if (is_on_for_dump()) {

@@ -26,7 +26,6 @@
 #define SHARE_CODE_CODEBLOB_HPP
 
 #include "asm/codeBuffer.hpp"
-#include "code/aotCodeCache.hpp"
 #include "compiler/compilerDefinitions.hpp"
 #include "compiler/oopMap.hpp"
 #include "runtime/javaFrameAnchor.hpp"
@@ -175,9 +174,7 @@ protected:
 
 public:
 
-  ~CodeBlob() {
-    assert(_oop_maps == nullptr || AOTCodeCache::is_address_in_aot_cache((address)_oop_maps), "Not flushed");
-  }
+  ~CodeBlob() NOT_DEBUG_RETURN;
 
   // Returns the space needed for CodeBlob
   static unsigned int allocation_size(CodeBuffer* cb, int header_size);
@@ -458,6 +455,7 @@ class RuntimeStub: public RuntimeBlob {
   void* operator new(size_t s, unsigned size) throw();
 
  public:
+  static const int ENTRY_COUNT = 1;
   // Creation
   static RuntimeStub* new_runtime_stub(
     const char* stub_name,
@@ -560,6 +558,7 @@ class DeoptimizationBlob: public SingletonBlob {
   );
 
  public:
+  static const int ENTRY_COUNT = 4 JVMTI_ONLY(+ 2);
   // Creation
   static DeoptimizationBlob* create(
     CodeBuffer* cb,
@@ -690,6 +689,7 @@ class SafepointBlob: public SingletonBlob {
   );
 
  public:
+  static const int ENTRY_COUNT = 1;
   // Creation
   static SafepointBlob* create(
     CodeBuffer* cb,
