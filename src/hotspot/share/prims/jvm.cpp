@@ -1779,19 +1779,6 @@ JVM_ENTRY_PROF(jobjectArray, JVM_GetClassDeclaredConstructors, JVM_GetClassDecla
 }
 JVM_END
 
-JVM_ENTRY_PROF(jint, JVM_GetClassAccessFlags, JVM_GetClassAccessFlags(JNIEnv *env, jclass cls))
-{
-  oop mirror = JNIHandles::resolve_non_null(cls);
-  if (java_lang_Class::is_primitive(mirror)) {
-    // Primitive type
-    return JVM_ACC_ABSTRACT | JVM_ACC_FINAL | JVM_ACC_PUBLIC;
-  }
-
-  Klass* k = java_lang_Class::as_Klass(mirror);
-  return k->access_flags().as_class_flags();
-}
-JVM_END
-
 JVM_ENTRY_PROF(jboolean, JVM_AreNestMates, JVM_AreNestMates(JNIEnv *env, jclass current, jclass member))
 {
   Klass* c = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(current));
@@ -2931,15 +2918,16 @@ JVM_ENTRY_PROF(void, JVM_SleepNanos, JVM_SleepNanos(JNIEnv* env, jclass threadCl
   } else {
     ThreadState old_state = thread->osthread()->get_state();
     thread->osthread()->set_state(SLEEPING);
-    if (!thread->sleep_nanos(nanos)) { // interrupted
+    if (!thread->sleep_nanos(nanos)) { // interrupted or async exception was installed
       // An asynchronous exception could have been thrown on
       // us while we were sleeping. We do not overwrite those.
       if (!HAS_PENDING_EXCEPTION) {
         HOTSPOT_THREAD_SLEEP_END(1);
-
-        // TODO-FIXME: THROW_MSG returns which means we will not call set_state()
-        // to properly restore the thread state.  That's likely wrong.
-        THROW_MSG(vmSymbols::java_lang_InterruptedException(), "sleep interrupted");
+        if (!thread->has_async_exception_condition()) {
+          // TODO-FIXME: THROW_MSG returns which means we will not call set_state()
+          // to properly restore the thread state.  That's likely wrong.
+          THROW_MSG(vmSymbols::java_lang_InterruptedException(), "sleep interrupted");
+        }
       }
     }
     thread->osthread()->set_state(old_state);
@@ -3973,7 +3961,6 @@ JVM_END
   macro(JVM_GetRecordComponents) \
   macro(JVM_GetClassDeclaredMethods) \
   macro(JVM_GetClassDeclaredConstructors) \
-  macro(JVM_GetClassAccessFlags) \
   macro(JVM_AreNestMates) \
   macro(JVM_GetNestHost) \
   macro(JVM_GetNestMembers) \

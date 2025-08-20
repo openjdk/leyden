@@ -97,7 +97,7 @@ void VM_Version::get_os_cpu_info() {
     set_feature(CPU_SHA3);
   }
   if (cpu_has("hw.optional.arm.FEAT_SB")) {
-    _features |= CPU_SB;
+    set_feature(CPU_SB);
   }
 
   int cache_line_size;

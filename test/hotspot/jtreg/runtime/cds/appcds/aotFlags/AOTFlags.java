@@ -475,6 +475,7 @@ public class AOTFlags {
         testEmptyValue("AOTCache");
         testEmptyValue("AOTConfiguration");
         testEmptyValue("AOTMode");
+        testEmptyValue("AOTCacheOutput");
     }
 
     static void testEmptyValue(String option) throws Exception {

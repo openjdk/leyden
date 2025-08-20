@@ -152,8 +152,12 @@ void VM_Version::get_os_cpu_info() {
       HWCAP_FPHP    |
       HWCAP_ASIMDHP);
 
-  if (auxv2 & HWCAP2_SVE2) set_feature(CPU_SVE2);
-  if (auxv2 & HWCAP2_SVEBITPERM) set_feature(CPU_SVEBITPERM);
+  if (auxv2 & HWCAP2_SVE2) {
+    set_feature(CPU_SVE2);
+  }
+  if (auxv2 & HWCAP2_SVEBITPERM) {
+    set_feature(CPU_SVEBITPERM);
+  }
 
   uint64_t ctr_el0;
   uint64_t dczid_el0;
