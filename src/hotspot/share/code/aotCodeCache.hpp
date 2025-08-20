@@ -95,15 +95,13 @@ public:
   };
 
 private:
-  Method*       _method;
   Kind   _kind;
-  uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or name's hash for nmethod
+  uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or Method's offset in AOTCache for nmethod
   uint   _offset;      // Offset to entry
   uint   _size;        // Entry size
   uint   _name_offset; // Method's or intrinsic name
   uint   _name_size;
   uint   _num_inlined_bytecodes;
-
   uint   _code_offset; // Start of code in cache
   uint   _code_size;   // Total size of all code sections
 
@@ -123,7 +121,6 @@ public:
                uint code_offset, uint code_size,
                Kind kind, uint id) {
     assert(kind == AOTCodeEntry::Stub, "sanity check");
-    _method       = nullptr;
     _kind         = kind;
     _id           = id;
     _offset       = offset;
@@ -154,7 +151,6 @@ public:
                uint comp_id = 0,
                bool has_clinit_barriers = false,
                bool for_preload = false) {
-    _method       = nullptr;
     _kind         = kind;
     _id           = id;
     _offset       = offset;
@@ -185,9 +181,7 @@ public:
   // Delete is a NOP
   void operator delete( void *ptr ) {}
 
-  Method* method()  const { return _method; }
-  Method** method_addr() { return &_method; }
-  void set_method(Method* method) { _method = method; }
+  Method* method();
 
   Kind kind()         const { return _kind; }
   uint id()           const { return _id; }
@@ -527,7 +521,6 @@ public:
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
 
-  void mark_method_pointer(AOTCodeEntry* entries, int count);
   void store_cpu_features(char*& buffer, uint buffer_size);
 
   bool finish_write();

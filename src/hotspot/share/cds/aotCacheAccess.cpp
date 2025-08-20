@@ -66,6 +66,13 @@ uint AOTCacheAccess::delta_from_base_address(address addr) {
   return (uint)pointer_delta(requested_addr, (address)MetaspaceShared::requested_base_address(), 1);
 }
 
+uint AOTCacheAccess::convert_method_to_offset(Method* method) {
+  assert(CDSConfig::is_using_archive() && !CDSConfig::is_dumping_final_static_archive(), "must be");
+  assert(MetaspaceShared::is_in_shared_metaspace(method), "method %p is not in AOTCache", method);
+  uint offset = (uint)pointer_delta((address)method, (address)SharedBaseAddress, 1);
+  return offset;
+}
+
 #if INCLUDE_CDS_JAVA_HEAP
 int AOTCacheAccess::get_archived_object_permanent_index(oop obj) {
   return HeapShared::get_archived_object_permanent_index(obj);
