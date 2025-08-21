@@ -29,7 +29,7 @@
 #include "memory/iterator.hpp"
 #include "oops/oopHandle.hpp"
 #include "utilities/growableArray.hpp"
-#include "utilities/resourceHash.hpp"
+#include "utilities/hashTable.hpp"
 
 class InstanceKlass;
 class Symbol;
@@ -48,7 +48,7 @@ class CDSHeapVerifier : public KlassClosure {
     Symbol* _name;
   };
 
-  ResourceHashtable<oop, StaticFieldInfo,
+  HashTable<oop, StaticFieldInfo,
       15889, // prime number
       AnyObj::C_HEAP,
       mtClassShared,
@@ -80,7 +80,7 @@ public:
   // Overrides KlassClosure::do_klass()
   virtual void do_klass(Klass* k);
 
-  // For ResourceHashtable::iterate()
+  // For HashTable::iterate()
   inline bool do_entry(OopHandle& orig_obj, HeapShared::CachedOopInfo& value);
 
   static void verify();

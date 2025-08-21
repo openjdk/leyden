@@ -70,7 +70,7 @@ void ClassListWriter::write(const InstanceKlass* k, const ClassFileStream* cfs) 
   write_to_stream(k, w.stream(), cfs);
 }
 
-class ClassListWriter::IDTable : public ResourceHashtable<
+class ClassListWriter::IDTable : public HashTable<
   const InstanceKlass*, int,
   15889, // prime number
   AnyObj::C_HEAP> {};

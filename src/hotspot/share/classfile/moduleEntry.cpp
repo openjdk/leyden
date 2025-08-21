@@ -46,9 +46,9 @@
 #include "runtime/safepoint.hpp"
 #include "utilities/events.hpp"
 #include "utilities/growableArray.hpp"
+#include "utilities/hashTable.hpp"
 #include "utilities/ostream.hpp"
 #include "utilities/quickSort.hpp"
-#include "utilities/resourceHash.hpp"
 
 ModuleEntry* ModuleEntryTable::_javabase_module = nullptr;
 
@@ -404,7 +404,7 @@ void ModuleEntry::set_loader_data(ClassLoaderData* cld) {
 }
 
 #if INCLUDE_CDS_JAVA_HEAP
-typedef ResourceHashtable<
+typedef HashTable<
   const ModuleEntry*,
   ModuleEntry*,
   557, // prime number

@@ -90,6 +90,7 @@ CompileTask::CompileTask(int compile_id,
   _arena_bytes = 0;
 
   _next = nullptr;
+  _prev = nullptr;
 
   Atomic::add(&_active_tasks, 1, memory_order_relaxed);
 }

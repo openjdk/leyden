@@ -32,8 +32,8 @@
 #include "utilities/bitMap.hpp"
 #include "utilities/exceptions.hpp"
 #include "utilities/growableArray.hpp"
+#include "utilities/hashTable.hpp"
 #include "utilities/macros.hpp"
-#include "utilities/resourceHash.hpp"
 
 class MemRegion;
 
@@ -153,7 +153,7 @@ private:
   };
   static GrowableArrayCHeap<HeapObjOrder, mtClassShared>* _source_objs_order;
 
-  typedef ResizeableResourceHashtable<size_t, OopHandle,
+  typedef ResizeableHashTable<size_t, OopHandle,
       AnyObj::C_HEAP,
       mtClassShared> BufferOffsetToSourceObjectTable;
   static BufferOffsetToSourceObjectTable* _buffer_offset_to_source_obj_table;

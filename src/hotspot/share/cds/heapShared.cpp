@@ -300,7 +300,7 @@ objArrayOop HeapShared::root_segment(int segment_idx) {
   return segment;
 }
 
-class OrigToScratchObjectTable: public ResourceHashtable<OopHandle, OopHandle,
+class OrigToScratchObjectTable: public HashTable<OopHandle, OopHandle,
     36137, // prime number
     AnyObj::C_HEAP,
     mtClassShared,
@@ -343,7 +343,7 @@ struct PermanentOopInfo {
   PermanentOopInfo(int index, int heap_offset) : _index(index), _heap_offset(heap_offset) {}
 };
 
-class PermanentOopTable: public ResourceHashtable<OopHandle, PermanentOopInfo,
+class PermanentOopTable: public HashTable<OopHandle, PermanentOopInfo,
     36137, // prime number
     AnyObj::C_HEAP,
     mtClassShared,
@@ -582,7 +582,7 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
   }
 }
 
-class MetaspaceObjToOopHandleTable: public ResourceHashtable<MetaspaceObj*, OopHandle,
+class MetaspaceObjToOopHandleTable: public HashTable<MetaspaceObj*, OopHandle,
     36137, // prime number
     AnyObj::C_HEAP,
     mtClassShared> {
