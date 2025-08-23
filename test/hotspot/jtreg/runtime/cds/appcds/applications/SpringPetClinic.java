@@ -174,6 +174,7 @@ public class SpringPetClinic {
 
                 // PetClinic runs very slowly in debug builds if VerifyDependencies is enabled.
                 "-XX:+IgnoreUnrecognizedVMOptions", "-XX:-VerifyDependencies",
+                "-XX:-ArchiveLoaderLookupCache", // LEYDEN_ONLY - work around JDK-8365959
               //These don't seem necessary when pet-clinic is run in "Spring AOT" mode
               //"--add-opens", "java.base/java.io=ALL-UNNAMED",
               //"--add-opens", "java.base/java.lang=ALL-UNNAMED",
