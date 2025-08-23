@@ -24,3 +24,6 @@ compiler/profiling/spectrapredefineclass_classloaders/Launcher.java 0000000 gene
 
 # Profiling data from AOT cache affects compilation
 compiler/runtime/safepoints/TestMachTempsAcrossSafepoints.java 0000000 generic-all
+
+# Error: GC triggered before VM initialization completed. Try increasing NewSize
+gc/arguments/TestG1HeapSizeFlags.java 8366033 generic-all
