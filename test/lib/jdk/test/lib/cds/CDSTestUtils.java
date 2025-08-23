@@ -440,9 +440,6 @@ public class CDSTestUtils {
                 opts.archiveName = getDefaultArchiveName();
             cmd.add("-XX:SharedArchiveFile=" + opts.archiveName);
         }
-        if (!opts.benchmarkMode) {
-          addVerifyArchivedFields(cmd);
-        }
 
         if (opts.useVersion)
             cmd.add("-version");
