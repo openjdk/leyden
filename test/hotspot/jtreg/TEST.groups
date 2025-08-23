@@ -520,6 +520,8 @@ hotspot_cds_epsilongc = \
 # those that rely on redefining classes that are already archived.
 # Note that appcds/aotXXX directories are excluded -- those tests already specifically
 # test AOT class linking, so there's no need to run them again with -XX:+AOTClassLinking.
+#
+# NOTE: runtime/cds/appcds/application is temporarily excluded until JDK-8350550 is merged from mainline.
 hotspot_aot_classlinking = \
   runtime/cds \
  -runtime/cds/appcds/aotCache \
@@ -528,10 +530,13 @@ hotspot_aot_classlinking = \
  -runtime/cds/appcds/aotProfile \
  -runtime/cds/appcds/aotFlags \
  -runtime/cds/appcds/aotProfile \
+ -runtime/cds/appcds/applications \
  -runtime/cds/appcds/BadBSM.java \
  -runtime/cds/appcds/cacheObject/ArchivedIntegerCacheTest.java \
  -runtime/cds/appcds/cacheObject/ArchivedModuleCompareTest.java \
+ -runtime/cds/appcds/cacheObject/OpenArchiveRegion.java \
  -runtime/cds/appcds/CDSandJFR.java \
+ -runtime/cds/appcds/CommandLineFlagCombo.java \
  -runtime/cds/appcds/customLoader/CustomClassListDump.java \
  -runtime/cds/appcds/customLoader/HelloCustom_JFR.java \
  -runtime/cds/appcds/customLoader/OldClassAndInf.java \

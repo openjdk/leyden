@@ -689,9 +689,14 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO_IF_DEFAULT(AOTInvokeDynamicLinking, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
-    FLAG_SET_ERGO_IF_DEFAULT(ArchivePackages, true);
-    FLAG_SET_ERGO_IF_DEFAULT(ArchiveProtectionDomains, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
+
+    // For simplicity, enable these by default only for new workflow
+    if (new_aot_flags_used()) {
+      // These flags will be removed when JDK-8350550 is merged from mainline
+      FLAG_SET_ERGO_IF_DEFAULT(ArchivePackages, true);
+      FLAG_SET_ERGO_IF_DEFAULT(ArchiveProtectionDomains, true);
+    }
   } else {
     // All of these *might* depend on AOTClassLinking. Better be safe than sorry.
     FLAG_SET_ERGO(AOTInvokeDynamicLinking, false);
@@ -909,7 +914,8 @@ bool CDSConfig::is_logging_dynamic_proxies() {
 // then this relationship between A and B cannot be changed at runtime. I.e., the app
 // cannot load alternative versions of A and B such that A is not a subtype of B.
 bool CDSConfig::preserve_all_dumptime_verification_states(const InstanceKlass* ik) {
-  return is_dumping_aot_linked_classes() && SystemDictionaryShared::is_builtin(ik);
+  // This function will be removed when JDK-8350550 is merged from mainline 
+  return ArchivePackages && ArchiveProtectionDomains && is_dumping_aot_linked_classes() && SystemDictionaryShared::is_builtin(ik);
 }
 
 bool CDSConfig::is_using_archive() {
