@@ -437,6 +437,8 @@ hotspot_appcds_dynamic = \
  -runtime/cds/appcds/jvmti/redefineClasses/OldClassAndRedefineClass.java \
  -runtime/cds/appcds/lambdaForm/DefaultClassListLFInvokers.java \
  -runtime/cds/appcds/leyden/DynamicProxyTest.java \
+ -runtime/cds/appcds/leyden/EndTrainingOnMethodEntry.java \
+ -runtime/cds/appcds/leyden/EndTrainingWithAOTCacheMXBean.java \
  -runtime/cds/appcds/leyden/LeydenAndOldClasses.java \
  -runtime/cds/appcds/leyden/LeydenGCFlags.java \
  -runtime/cds/appcds/leyden/LeydenReflection.java \
