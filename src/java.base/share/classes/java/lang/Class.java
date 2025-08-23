@@ -473,6 +473,8 @@ public final class Class<T> implements java.io.Serializable,
             if (bcl.usePositiveCache) {
                 Class<?> result = bcl.checkPositiveLookupCache(className);
                 if (result != null) {
+                    // forName(String, Class) API will always initialize the class
+                    Unsafe.getUnsafe().ensureClassInitialized(result);
                     return result;
                 }
             }
@@ -564,6 +566,9 @@ public final class Class<T> implements java.io.Serializable,
             if (bcl.usePositiveCache) {
                 Class<?> result = bcl.checkPositiveLookupCache(name);
                 if (result != null) {
+                    if (initialize) {
+                        Unsafe.getUnsafe().ensureClassInitialized(result);
+                    }
                     return result;
                 }
             }
