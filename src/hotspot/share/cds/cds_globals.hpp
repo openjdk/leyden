@@ -148,7 +148,7 @@
   product(bool, AOTVerifyTrainingData, trueInDebug, DIAGNOSTIC,             \
           "Verify archived training data")                                  \
                                                                             \
-  product(bool, AOTCompileEagerly, false, EXPERIMENTAL,                     \
+  product(bool, AOTCompileEagerly, true, DIAGNOSTIC,                        \
           "Compile methods as soon as possible")                            \
                                                                             \
   product(bool, AOTRecordOptCompilationOrder, false,                        \
