@@ -4,7 +4,7 @@ The purpose of the Leyden Early Access 2 Release is to prototype improvements to
 the startup time, time to peak performance, and footprint of Java programs, as a part of
 [Project Leyden](https://openjdk.org/projects/leyden). We solicit feedback from
 the Java community, with the hope that some of these improvements can eventually be
-incoporated into future JDK releases.
+incorporated into future JDK releases.
 
 ## 0. Disclaimers
 
@@ -31,7 +31,7 @@ includes new experimental AOT optimizations that are not yet integrated into the
 
 - **[Ahead-of-Time Code Compilation (JEP draft 8335368)](https://openjdk.org/jeps/8335368)**: Methods that are frequently used during the training run can be
   compiled and stored along with the AOT cache. As a result, as soon as the application starts up
-  in the production run, its methods can be can be natively executed.
+  in the production run, its methods can be natively executed.
   - This feature is enabled by default when you create an AOT cache. It can be disabled with the diagnostic
     flag `-XX:-AOTCodeCaching`.
 
@@ -127,9 +127,29 @@ Note that `-XX:AOTEndTrainingOnMethodEntry` uses the same format as `-XX:Compile
 
 See [EndTrainingOnMethodEntry.java](test/hotspot/jtreg/runtime/cds/appcds/leyden/EndTrainingOnMethodEntry.java) for a test case.
 
+### Diagnosing Potential Performance Issues
+
+As mentioned below, parts or all of the AOT cache may be disabled under certain circumstances. This may lead
+to lower performance than expected. To diagnose potential performance issues, you can add `-Xlog:aot*` to the
+command line to see detailed information about what parts of the AOT cache are being utilized. For example, if the
+the AOT-compiled code cannot be loaded, you will see a log message like this:
+
+```
+[0.008s][info][aot,codecache,init] Mapped 652184 bytes at address 0x00007f491005f028 from AOT Code Cache
+[0.008s][info][aot,codecache,init] Loaded 439 AOT code entries from AOT Code Cache
+[0.008s][info][aot,codecache,init] Unable to use AOT Code Cache.
+```
+
 ## 4. Limitations of the Leyden Early Access 2 Release
 
 When trying out this release, please pay attention to the following limitations.
+
+### The Same CPU Must be Used between Training and Production Runs
+
+The AOT-compiled code will be only used if the production run is on a machine with the same type of CPU
+as used in the training run and assembly phase. If this is not the case (for example, the production run is on
+a machine that has different AVX capabilities), the AOT-compiled code will be ignored.
+
 
 ### The Same Garbage Collector Must be Used between Training and Production Runs
 
@@ -148,7 +168,7 @@ $ java -XX:AOTCache=JavacBenchApp.aot -XX:+UseSerialGC -cp JavacBenchApp.jar \
        JavacBenchApp 50
 ```
 
-Otherwise, the AOT cache may not be useable for the production run, leading to suboptimal performance.
+Otherwise, the AOT cache may not be usable for the production run, leading to suboptimal performance.
 For example, sometimes you may perform the assembly phase run on a large development host, and then use
 a container to run the application in a small production node. In the following scenario, as the collector
 is not explicitly specified, the VM will automatically pick G1 for the assembly phase, and SerialGC for the
