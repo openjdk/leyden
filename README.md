@@ -1,7 +1,7 @@
 # Leyden Early Access 2 Release
 
 The purpose of the Leyden Early Access 2 Release is to prototype improvements to
-the startup time, time to peak performance, and footprint of Java programs, as a part of 
+the startup time, time to peak performance, and footprint of Java programs, as a part of
 [Project Leyden](https://openjdk.org/projects/leyden). We solicit feedback from
 the Java community, with the hope that some of these improvements can eventually be
 incoporated into future JDK releases.
@@ -56,7 +56,7 @@ The easiest way to try out the Leyden Early Access 2 features is to use the `jav
 
 Here's a small benchmark that uses the JDK's built-in
 [`JavaCompiler`](https://docs.oracle.com/en/java/javase/21/docs/api/java.compiler/javax/tools/JavaCompiler.html)
-class to compile some Java source files. This benchmark spends a significant amount of start-up time 
+class to compile some Java source files. This benchmark spends a significant amount of start-up time
 setting up the classes used by `JavaCompiler`, so it will benefit from the Leyden features.
 
 First, download [JavacBenchApp.java](test/setup_aot/JavacBenchApp.java) and compile it into a JAR file.
