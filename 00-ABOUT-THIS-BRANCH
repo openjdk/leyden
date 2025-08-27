@@ -1,0 +1,4 @@
+The ONLY purpose of this branch is to create the Release Note for the Leyden EA2 release
+(so that changes in https://github.com/openjdk/leyden/blob/premain/README.md can be easiy merged).
+
+This branch DOES NOT track the version of the Leyden branch used for building the actual EA2 binaries.
