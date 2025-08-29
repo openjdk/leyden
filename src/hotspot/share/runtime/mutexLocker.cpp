@@ -282,7 +282,7 @@ void mutex_init() {
     MUTEX_DEFN(MethodCompileQueueSC1_lock    , PaddedMonitor, safepoint);
     MUTEX_DEFN(MethodCompileQueueSC2_lock    , PaddedMonitor, safepoint);
   }
-  MUTEX_DEFL(TrainingData_lock               , PaddedMutex  , MethodCompileQueue_lock);
+  MUTEX_DEFN(TrainingData_lock               , PaddedMutex  , nosafepoint);
   MUTEX_DEFN(TrainingReplayQueue_lock        , PaddedMonitor, safepoint);
   MUTEX_DEFN(CompileStatistics_lock          , PaddedMutex  , safepoint);
   MUTEX_DEFN(DirectivesStack_lock            , PaddedMutex  , nosafepoint);
@@ -353,7 +353,7 @@ void mutex_init() {
   MUTEX_DEFL(Threads_lock                   , PaddedMonitor, CompileThread_lock, true);
   MUTEX_DEFL(Compile_lock                   , PaddedMutex  , MethodCompileQueue_lock);
   MUTEX_DEFL(JNICritical_lock               , PaddedMonitor, AdapterHandlerLibrary_lock); // used for JNI critical regions
-  MUTEX_DEFL(Heap_lock                      , PaddedMonitor, TrainingData_lock  /*JNICritical_lock*/);
+  MUTEX_DEFL(Heap_lock                      , PaddedMonitor, JNICritical_lock);
 
   MUTEX_DEFL(PerfDataMemAlloc_lock          , PaddedMutex  , Heap_lock);
   MUTEX_DEFL(PerfDataManager_lock           , PaddedMutex  , Heap_lock);

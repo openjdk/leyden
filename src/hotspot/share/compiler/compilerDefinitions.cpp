@@ -644,5 +644,10 @@ void CompilerConfig::ergo_initialize() {
     // blind guess
     LoopStripMiningIterShortLoop = LoopStripMiningIter / 10;
   }
+  if (UseAutoVectorizationSpeculativeAliasingChecks && !LoopMultiversioning && !UseAutoVectorizationPredicate) {
+    warning("Disabling UseAutoVectorizationSpeculativeAliasingChecks, because neither of the following is enabled:"
+            "  LoopMultiversioning UseAutoVectorizationPredicate");
+    UseAutoVectorizationSpeculativeAliasingChecks = false;
+  }
 #endif // COMPILER2
 }

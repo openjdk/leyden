@@ -3066,7 +3066,6 @@ void AOTCodeAddressTable::init_extrs() {
 #if INCLUDE_SHENANDOAHGC
   SET_ADDRESS(_extrs, ShenandoahRuntime::arraycopy_barrier_oop);
   SET_ADDRESS(_extrs, ShenandoahRuntime::arraycopy_barrier_narrow_oop);
-  SET_ADDRESS(_extrs, ShenandoahRuntime::write_ref_field_pre);
   SET_ADDRESS(_extrs, ShenandoahRuntime::clone_barrier);
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_strong);
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_strong_narrow);
@@ -3074,6 +3073,8 @@ void AOTCodeAddressTable::init_extrs() {
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_weak_narrow);
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_phantom);
   SET_ADDRESS(_extrs, ShenandoahRuntime::load_reference_barrier_phantom_narrow);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::write_barrier_pre);
+  SET_ADDRESS(_extrs, ShenandoahRuntime::write_ref_field_pre);
 #endif
 
 #if INCLUDE_ZGC
