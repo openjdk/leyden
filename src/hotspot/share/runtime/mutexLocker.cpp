@@ -28,6 +28,7 @@
 #include "logging/logStream.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "runtime/atomic.hpp"
 #include "runtime/java.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/mutexLocker.hpp"
@@ -396,7 +397,9 @@ void mutex_init() {
 static const int MAX_NAMES = 200;
 static const char* _names[MAX_NAMES] = { nullptr };
 static bool _is_unique[MAX_NAMES] = { false };
-static int _num_names = 0;
+static volatile int _num_names = 0;
+
+static bool _mutex_init_done = false;
 
 PerfCounter** MutexLockerImpl::_perf_lock_count     = nullptr;
 PerfCounter** MutexLockerImpl::_perf_lock_wait_time = nullptr;
@@ -455,6 +458,7 @@ void MutexLockerImpl::init_counters() {
         stringStream ss;
         ss.print("UnnamedMutex#%d", i);
         counter_name = ss.as_string();
+        _names[i] = os::strdup(counter_name, mtInternal); // replace default nullptr
       }
       NEWPERFEVENTCOUNTER(_perf_lock_count[i + 1],     SUN_RT, PerfDataManager::counter_name(counter_name, "Count"));
       NEWPERFEVENTCOUNTER(_perf_lock_wait_time[i + 1], SUN_RT, PerfDataManager::counter_name(counter_name, "BeforeTime"));
@@ -464,21 +468,46 @@ void MutexLockerImpl::init_counters() {
       vm_exit_during_initialization("MutexLockerImpl::init_counters() failed unexpectedly");
     }
   }
+  _mutex_init_done = true;
 }
 
 int MutexLockerImpl::name2id(const char* name) {
   if (ProfileVMLocks && UsePerfData) {
-    for (int i = 0; i < _num_names; i++) {
+    // There is not concurency or duplication in mutex_init().
+    if (!_mutex_init_done) {
+      int new_id = Atomic::load(&_num_names);
+      precond(new_id < MAX_NAMES);
+      Atomic::inc(&_num_names);
+      _names[new_id] = os::strdup(name, mtInternal);
+      _is_unique[new_id] = true;
+      return new_id;
+    }
+    int limit = Atomic::load(&_num_names); // Cache static value which can be updated concurently
+    for (int i = Mutex::num_mutex(); i < limit; i++) {
       if (strcmp(_names[i], name) == 0) {
         _is_unique[i] = false;
         return i;
       }
     }
-    if (_num_names < MAX_NAMES) {
-      int new_id = _num_names++;
-      _names[new_id] = os::strdup(name, mtInternal);
-      _is_unique[new_id] = true;
-      return new_id;
+    if (limit < MAX_NAMES) {
+      int old_limit = limit;
+      const char* name_dup = os::strdup(name, mtInternal);
+      int new_id; // Get new id for this name
+      do {
+        new_id = limit++;
+        if (new_id == MAX_NAMES) break;
+      } while (Atomic::cmpxchg(&_num_names, new_id, limit) != new_id);
+      for (int i = old_limit; i < new_id; i++) {
+        if (strcmp(_names[i], name) == 0) { // Other thread put it there
+          _is_unique[i] = false;
+          return i; // Wasted new_id slot to simplify code: _num_names is only incremented
+        }
+      }
+      if (new_id < MAX_NAMES) {
+        _names[new_id] = name_dup;
+        _is_unique[new_id] = true;
+        return new_id;
+      }
     }
     log_debug(init)("Unnamed: %s", name); // no slots left
   }
