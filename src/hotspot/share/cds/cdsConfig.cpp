@@ -715,12 +715,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       AOTCodeCache::disable_caching();
     }
   }
-
-#ifdef _WINDOWS
-  // This optimization is not working on Windows for some reason. See JDK-8338604.
-  FLAG_SET_ERGO(ArchiveReflectionData, false);
-#endif
-
   if (is_dumping_static_archive()) {
     if (is_dumping_preimage_static_archive()) {
       // Don't tweak execution mode during AOT training run

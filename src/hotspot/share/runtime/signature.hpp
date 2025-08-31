@@ -480,7 +480,7 @@ class SignatureStream : public StackObj {
   Symbol*      _previous_name;    // cache the previously looked up symbol to avoid lookups
   GrowableArray<Symbol*>* _names; // symbols created while parsing that need to be dereferenced
 
-  Symbol* find_symbol();
+  Symbol* find_symbol(bool probe_only);
 
   enum { _s_field = 0, _s_method = 1, _s_method_return = 3 };
   void set_done() {
@@ -521,8 +521,8 @@ class SignatureStream : public StackObj {
   }
 
   // return the symbol for chars in symbol_begin()..symbol_end()
-  Symbol* as_symbol() {
-    return find_symbol();
+  Symbol* as_symbol(bool probe_only = false) {
+    return find_symbol(probe_only);
   }
 
   // in case you want only the return type:

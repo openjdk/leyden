@@ -32,7 +32,11 @@
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar
  *                 TestApp
  *                 TestApp$Foo
+ *                 TestApp$Foo$BadFieldSig
+ *                 TestApp$Foo$BadMethodSig
  *                 TestApp$Foo$Bar
+ *                 TestApp$Foo$GoodSig1
+ *                 TestApp$Foo$GoodSig2
  *                 TestApp$Foo$ShouldBeExcluded
  *                 TestApp$Foo$ShouldBeExcludedChild
  *                 TestApp$Foo$Taz
@@ -44,6 +48,7 @@
 
 import java.io.File;
 import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -79,7 +84,6 @@ public class ExcludedClasses {
         @Override
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
-                "-XX:-ArchiveReflectionData", // This is needed for JDK-8365724
                 "-Xlog:aot=debug",
                 "-Xlog:aot+class=debug",
                 "-Xlog:aot+resolve=trace",
@@ -99,6 +103,10 @@ public class ExcludedClasses {
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
             if (runMode == RunMode.ASSEMBLY) {
                 out.shouldNotMatch("aot,resolve.*archived field.*TestApp.Foo => TestApp.Foo.ShouldBeExcluded.f:I");
+                out.shouldContain("Archived reflection data in TestApp$Foo$GoodSig1");
+                out.shouldContain("Archived reflection data in TestApp$Foo$GoodSig2");
+                out.shouldContain("Cannot archive reflection data in TestApp$Foo$BadMethodSig");
+                out.shouldContain("Cannot archive reflection data in TestApp$Foo$BadFieldSig");
             } else if (runMode == RunMode.PRODUCTION) {
                 out.shouldContain("check_verification_constraint: TestApp$Foo$Taz: TestApp$Foo$ShouldBeExcludedChild must be subclass of TestApp$Foo$ShouldBeExcluded");
                 out.shouldContain("jdk.jfr.Event source: jrt:/jdk.jfr");
@@ -170,6 +178,7 @@ class TestApp {
                 s.hotSpot2();
                 b.hotSpot3();
                 Taz.hotSpot4();
+                reflectHotSpots();
 
                 // In JDK mainline, generated proxy classes are excluded from the AOT cache.
                 // In Leyden/premain, generated proxy classes included. The following code should
@@ -280,6 +289,71 @@ class TestApp {
                 }
             }
         }
+
+        static volatile Object dummyObj;
+
+        static void reflectHotSpots() {
+            try {
+                // f.clazz points to an excluded class, so we should not archive any fields in
+                // the BadFieldSig
+                Field f = BadFieldSig.class.getDeclaredField("myField");
+                Method m = BadMethodSig.class.getDeclaredMethod("myMethod", Object.class, ShouldBeExcluded.class);
+
+                // It's OK to archive the reflection data of this class even if its method signatures
+                // refers to a class that's not loaded at all during the assembly phase.
+                // Note: because the app did not reflect on the methods of GoodSig1, we don't
+                // AOT-generate method reflection data for GoodSig.
+                Field f2 = GoodSig1.class.getDeclaredField("myField");
+
+                // Opposite case as GoodSig1. We should archive its reflection data
+                Method m2 = GoodSig2.class.getDeclaredMethod("myMethod", Object.class, Object.class);
+
+                long start = System.currentTimeMillis();
+                while (System.currentTimeMillis() - start < 50) {
+                    for (int i = 0; i < 50000; i++) {
+                        dummyObj = f.get(null);
+                        dummyObj = m.invoke(null, null, null);
+                        dummyObj = f2.get(null);
+                        dummyObj = m2.invoke(null, null, null);
+                    }
+                }
+            } catch (Throwable t) {
+                throw new RuntimeException("Unexpected exception", t);
+            }
+        }
+
+        static class BadFieldSig {
+            static ShouldBeExcluded myField = new ShouldBeExcluded();
+        }
+
+        static class BadMethodSig {
+            static String myMethod(Object o, ShouldBeExcluded s) {
+                return "Foofoo";
+            }
+        }
+
+        static class GoodSig1 {
+            static Object myField = new Object();
+            static void method(UnavailableClass1 arg) {}
+            static void method(UnavailableClass2[] arg) {}
+        }
+
+        static class GoodSig2 {
+            static String myMethod(Object o, Object o2) {
+                return "Foofoo";
+            }
+
+            UnavailableClass2[] unusedField;
+
+            // This field has never been reflected up or resolved during the training run, so the
+            // array type GoodSig2[][][][] is not resolved during either the training run or the
+            // assembly phase.
+            GoodSig2[][][][] unusedField2;
+        }
     }
 }
+
+// These classes are  NOT part of app.jar, so they cannot be resolved by the app.
+class UnavailableClass1 {}
+class UnavailableClass2 {}
 

@@ -85,6 +85,9 @@ class AOTConstantPoolResolver :  AllStatic {
   static bool check_lambda_metafactory_methodtype_arg(ConstantPool* cp, int bsms_attribute_index, int arg_i);
   static bool check_lambda_metafactory_methodhandle_arg(ConstantPool* cp, int bsms_attribute_index, int arg_i);
 
+  static bool check_signature_for_reflection_data(InstanceKlass* ik, Symbol* sig, bool is_method);
+  static bool can_archive_reflection_data_declared_fields(InstanceKlass* ik);
+  static bool can_archive_reflection_data_declared_methods(InstanceKlass* ik);
 public:
   static void preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
   static void preresolve_field_and_method_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list);
@@ -92,6 +95,7 @@ public:
   static void preresolve_string_cp_entries(InstanceKlass* ik, TRAPS);
 
   // java/lang/Class$ReflectionData caching
+  static bool can_archive_reflection_data(InstanceKlass* k);
   static int class_reflection_data_flags(InstanceKlass* ik, TRAPS);
   static void generate_reflection_data(JavaThread* current, InstanceKlass* ik, int rd_flags);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,6 +34,8 @@ import jdk.internal.misc.VM;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.reflect.ReflectionFactory;
+import jdk.internal.vm.annotation.AOTRuntimeSetup;
+import jdk.internal.vm.annotation.AOTSafeClassInitializer;
 
 /**
  * The {@code AccessibleObject} class is the base class for {@code Field},
@@ -72,8 +74,14 @@ import jdk.internal.reflect.ReflectionFactory;
  * @jls 6.6 Access Control
  * @since 1.2
  */
+@AOTSafeClassInitializer
 public class AccessibleObject implements AnnotatedElement {
     static {
+        runtimeSetup();
+    }
+
+    @AOTRuntimeSetup
+    private static void runtimeSetup() {
         // AccessibleObject is initialized early in initPhase1
         SharedSecrets.setJavaLangReflectAccess(new ReflectAccess());
     }

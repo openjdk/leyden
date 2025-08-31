@@ -388,6 +388,15 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   initialize_class(vmSymbols::java_lang_reflect_Method(), CHECK);
   initialize_class(vmSymbols::java_lang_ref_Finalizer(), CHECK);
 
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    // This is necessary for reflection to work in early core lib bootstrap code.
+    vmClasses::reflect_AccessibleObject_klass()->link_class(CHECK);
+    vmClasses::reflect_Field_klass()->link_class(CHECK);
+    vmClasses::reflect_Parameter_klass()->link_class(CHECK);
+    vmClasses::reflect_Method_klass()->link_class(CHECK);
+    vmClasses::reflect_Constructor_klass()->link_class(CHECK);
+  }
+
   // Phase 1 of the system initialization in the library, java.lang.System class initialization
   call_initPhase1(CHECK);
 

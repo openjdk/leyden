@@ -43,10 +43,12 @@
 #include "interpreter/interpreterRuntime.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/constantPool.inline.hpp"
+#include "oops/fieldStreams.inline.hpp"
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/javaCalls.hpp"
+#include "runtime/signature.hpp"
 
 // Returns true if we CAN PROVE that cp_index will always resolve to
 // the same information at both dump time and run time. This is a
@@ -603,6 +605,93 @@ bool AOTConstantPoolResolver::is_in_archivebuilder_buffer(address p) {
   }
 }
 #endif
+
+// Paranoid check -- if any field/method signature in <ik> is referencing a class that is known to be
+// excluded, do not archive any reflection data in <ik>.
+bool AOTConstantPoolResolver::check_signature_for_reflection_data(InstanceKlass* ik, Symbol* sig, bool is_method) {
+  precond(SafepointSynchronize::is_at_safepoint());
+  ResourceMark rm;
+  for (SignatureStream ss(sig, is_method); !ss.is_done(); ss.next()) {
+    if (ss.is_reference()) {
+      Symbol* klass_name = ss.as_symbol(/*probe_only=*/true);
+      if (klass_name == nullptr) {
+        // This symbol has never been created during the assembly phase, so it can't
+        // possibly be referencing an excluded class.
+        continue;
+      }
+      if (Signature::is_array(klass_name)) {
+        SignatureStream ss2(klass_name, false);
+        ss2.skip_array_prefix();
+        if (ss2.is_reference() && ss2.as_symbol(/*probe_only=*/true) == nullptr) {
+          // klass_name is an array klass that has not been loaded during the assembly phase, so it can't
+          // possibly be referencing an excluded class.
+          continue;
+        }
+      }
+      Klass* k = find_loaded_class(Thread::current(), ik->class_loader(), klass_name);
+      if (k == nullptr) {
+        // No class of this name has been loaded for this loader, so this name can't
+        // possibly be referencing an excluded class.
+        continue;
+      }
+      if (SystemDictionaryShared::should_be_excluded(k)) {
+        if (log_is_enabled(Warning, aot, resolve)) {
+          ResourceMark rm;
+          log_warning(aot, resolve)("Cannot archive reflection data in %s because it refers to excluded class %s",
+                                    ik->external_name(), k->external_name());
+        }
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool AOTConstantPoolResolver::can_archive_reflection_data_declared_fields(InstanceKlass* ik) {
+  for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
+    if (!check_signature_for_reflection_data(ik, fs.signature(), /*is_method=*/false)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool AOTConstantPoolResolver::can_archive_reflection_data_declared_methods(InstanceKlass* ik) {
+  Array<Method*>* methods = ik->methods();
+  for (int i = 0; i < methods->length(); i++) {
+    Method* m = methods->at(i);
+    if (!check_signature_for_reflection_data(ik, m->signature(), /*is_method=*/true)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// This is called by AOT assembly phase to see if java_lang_Class::reflection_data(k) can be
+// archived.
+bool AOTConstantPoolResolver::can_archive_reflection_data(InstanceKlass* ik) {
+  // At this point, we have resolved the reflection data of *all* classes
+  // recorded by FinalImageRecipes.
+  // When we are in the AOT safepoint, we will archive the reflection
+  // data of <ik> *only if* it doesn't reference any excluded classes.
+  precond(SafepointSynchronize::is_at_safepoint());
+
+  if (!can_archive_reflection_data_declared_fields(ik)) {
+    return false;
+  }
+  if (!can_archive_reflection_data_declared_methods(ik)) {
+    return false;
+  }
+
+  if (log_is_enabled(Info, aot, resolve)) {
+    ResourceMark rm;
+    log_info(aot, resolve)("Archived reflection data in %s", ik->external_name());
+  }
+
+  return true;
+}
 
 int AOTConstantPoolResolver::class_reflection_data_flags(InstanceKlass* ik, TRAPS) {
   assert(java_lang_Class::has_reflection_data(ik->java_mirror()), "must be");

@@ -191,9 +191,13 @@ public:
       return;
     }
 
-    if (fd->signature()->equals("Ljdk/internal/access/JavaLangAccess;")) {
-      // A few classes have static fields that point to SharedSecrets.getJavaLangAccess().
+    if (fd->signature()->equals("Ljdk/internal/access/JavaLangAccess;") ||
+        fd->signature()->equals("Ljdk/internal/access/JavaLangReflectAccess;")) {
+      // A few classes have static fields that point to SharedSecrets.get???Access().
       // This object carries no state and we can create a new one in the production run.
+      return;
+    }
+    if (fd->signature()->equals("Ljdk/internal/reflect/ReflectionFactory;")) {
       return;
     }
     oop static_obj_field = _ik->java_mirror()->obj_field(fd->offset());
