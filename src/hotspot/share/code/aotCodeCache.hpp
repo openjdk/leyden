@@ -398,12 +398,14 @@ protected:
     uint C1_blobs_count() const { return _C1_blobs_count; }
     uint C2_blobs_count() const { return _C2_blobs_count; }
     uint stubs_count()    const { return _stubs_count; }
-    uint nmethods_count() const { return _preload_entries_count + _entries_count
+    uint nmethods_count() const { uint count = _entries_count
                                        - _stubs_count
                                        - _shared_blobs_count
                                        - _C1_blobs_count
                                        - _C2_blobs_count
-                                       - _adapters_count; }
+                                       - _adapters_count;
+                                  if (UseNewCode) count += _preload_entries_count;
+                                  return count; }
 
     bool verify(uint load_size)  const;
     bool verify_config(AOTCodeCache* cache) const { // Called after Universe initialized
@@ -519,6 +521,7 @@ public:
     return _store_entries;
   }
   void preload_aot_code(TRAPS);
+  void preload_aot_code_new(TRAPS);
 
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
@@ -526,6 +529,7 @@ public:
   void store_cpu_features(char*& buffer, uint buffer_size);
 
   bool finish_write();
+  bool finish_write_new();
 
   void log_stats_on_exit(AOTCodeStats& stats);
 
