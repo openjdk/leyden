@@ -87,7 +87,7 @@ class RecompilationPolicy : AllStatic {
   static volatile bool _recompilation_done;
 public:
   static void sample_load_average();
-  static void print_load_average();
+  static void print_load_average(outputStream* st);
   static bool have_recompilation_work();
   static bool recompilation_step(int step, TRAPS);
 };

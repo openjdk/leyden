@@ -4117,7 +4117,7 @@ void AOTCodeCache::print_unused_entries_on(outputStream* st) {
               ResourceMark rm;
               mtd->iterate_compiles([&](CompileTrainingData* ctd) {
                 if ((uint)ctd->level() == entry->comp_level()) {
-                  if (ctd->init_deps_left() == 0) {
+                  if (ctd->init_deps_left_acquire() == 0) {
                     nmethod* nm = mtd->holder()->code();
                     if (nm == nullptr) {
                       if (mtd->holder()->queued_for_compilation()) {

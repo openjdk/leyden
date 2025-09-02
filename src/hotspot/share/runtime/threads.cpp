@@ -1078,6 +1078,12 @@ void Threads::destroy_vm() {
   // will be stopped at native=>Java/VM barriers. Note that we can't
   // simply kill or suspend them, as it is inherently deadlock-prone.
 
+  #if INCLUDE_CDS
+  if (AOTVerifyTrainingData) {
+    TrainingData::verify();
+  }
+  #endif
+
   VM_Exit::set_vm_exited();
 
   // Clean up ideal graph printers after the VMThread has started
