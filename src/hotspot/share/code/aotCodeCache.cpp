@@ -1246,7 +1246,7 @@ bool AOTCodeCache::finish_write() {
         } else if (kind == AOTCodeEntry::Stub) {
           stubs_count++;
         } else {
-          assert(kind == AOTCodeEntry::Code, "sanity");
+          assert(kind == AOTCodeEntry::Nmethod, "sanity");
           nmethods_count++;
         }
       }
