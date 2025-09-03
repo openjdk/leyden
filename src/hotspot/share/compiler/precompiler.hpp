@@ -35,9 +35,9 @@ private:
   static int _total_count;
 
 public:
-  static void compile_cached_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS);
-  static void compile_cached_code(TRAPS);
-  static void compile_cached_code(ArchiveBuilder* builder, TRAPS);
+  static void compile_aot_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS);
+  static void compile_aot_code(TRAPS);
+  static void compile_aot_code(ArchiveBuilder* builder, TRAPS);
 };
 
 #endif // SHARE_COMPILER_PRECOMPILER_HPP

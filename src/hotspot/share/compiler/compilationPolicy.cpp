@@ -57,7 +57,6 @@
 int64_t CompilationPolicy::_start_time = 0;
 int CompilationPolicy::_c1_count = 0;
 int CompilationPolicy::_c2_count = 0;
-int CompilationPolicy::_c3_count = 0;
 int CompilationPolicy::_ac_count = 0;
 double CompilationPolicy::_increase_threshold_at_ratio = 0;
 
@@ -102,6 +101,8 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
     if (mtd == nullptr) {
       return;              // there is no training data recorded for m
     }
+    // AOT Preload code with class init barriers is used,
+    // consider replacing it with normal (faster) AOT code
     bool recompile = m->code_has_clinit_barriers();
     CompLevel cur_level = static_cast<CompLevel>(m->highest_comp_level());
     CompLevel next_level = trained_transition(m, cur_level, mtd, THREAD);
@@ -109,9 +110,17 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
       bool requires_online_compilation = false;
       CompileTrainingData* ctd = mtd->last_toplevel_compile(next_level);
       if (ctd != nullptr) {
+        // Can't load normal AOT code - not all dependancies are ready,
+        // request normal compilation
         requires_online_compilation = (ctd->init_deps_left() > 0);
       }
       if (requires_online_compilation && recompile) {
+        // Wait when dependencies are ready to load normal AOT code
+        // if AOT Preload code is used now.
+        //
+        // FIXME. We may never (or it take long time) get all dependencies
+        // be ready to replace AOT Preload code. Consider using time and how many
+        // dependencies left to allow normal JIT compilation for replacement.
         return;
       }
       if (PrintTieredEvents) {
@@ -152,7 +161,18 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
     if (PrintTieredEvents) {
       print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, level);
     }
-    CompileBroker::compile_method(m, InvocationEntryBci, level, 0, false, CompileTask::Reason_MustBeCompiled, THREAD);
+    // Test AOT code too
+    bool requires_online_compilation = false;
+    if (TrainingData::have_data()) {
+      MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
+      if (mtd != nullptr) {
+        CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
+        if (ctd != nullptr) {
+          requires_online_compilation = (ctd->init_deps_left() > 0);
+        }
+      }
+    }
+    CompileBroker::compile_method(m, InvocationEntryBci, level, 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
   }
 }
 
@@ -313,7 +333,7 @@ bool CompilationPolicy::force_comp_at_level_simple(const methodHandle& method) {
     if (UseJVMCICompiler) {
       AbstractCompiler* comp = CompileBroker::compiler(CompLevel_full_optimization);
       if (comp != nullptr && comp->is_jvmci() && ((JVMCICompiler*) comp)->force_comp_at_level_simple(method)) {
-        return !AOTCodeCache::is_C3_on();
+        return true;
       }
     }
 #endif
@@ -414,7 +434,7 @@ public:
 
 double CompilationPolicy::threshold_scale(CompLevel level, int feedback_k) {
   int comp_count = compiler_count(level);
-  if (comp_count > 0) {
+  if (comp_count > 0 && feedback_k > 0) {
     double queue_size = CompileBroker::queue_size(level);
     double k = (double)queue_size / ((double)feedback_k * (double)comp_count) + 1;
 
@@ -433,7 +453,7 @@ double CompilationPolicy::threshold_scale(CompLevel level, int feedback_k) {
   return 1;
 }
 
-void CompilationPolicy::print_counters(const char* prefix, Method* m) {
+void CompilationPolicy::print_counters_on(outputStream* st, const char* prefix, Method* m) {
   int invocation_count = m->invocation_count();
   int backedge_count = m->backedge_count();
   MethodData* mdh = m->method_data();
@@ -445,160 +465,166 @@ void CompilationPolicy::print_counters(const char* prefix, Method* m) {
     mdo_invocations_start = mdh->invocation_count_start();
     mdo_backedges_start = mdh->backedge_count_start();
   }
-  tty->print(" %stotal=%d,%d %smdo=%d(%d),%d(%d)", prefix,
-      invocation_count, backedge_count, prefix,
-      mdo_invocations, mdo_invocations_start,
-      mdo_backedges, mdo_backedges_start);
-  tty->print(" %smax levels=%d,%d", prefix,
-      m->highest_comp_level(), m->highest_osr_comp_level());
+  st->print(" %stotal=%d,%d %smdo=%d(%d),%d(%d)", prefix,
+    invocation_count, backedge_count, prefix,
+    mdo_invocations, mdo_invocations_start,
+    mdo_backedges, mdo_backedges_start);
+  st->print(" %smax levels=%d,%d", prefix, m->highest_comp_level(), m->highest_osr_comp_level());
 }
 
-void CompilationPolicy::print_training_data(const char* prefix, Method* method) {
+void CompilationPolicy::print_training_data_on(outputStream* st,  const char* prefix, Method* method) {
   methodHandle m(Thread::current(), method);
-  tty->print(" %smtd: ", prefix);
+  st->print(" %smtd: ", prefix);
   MethodTrainingData* mtd = MethodTrainingData::find(m);
   if (mtd == nullptr) {
-    tty->print("null");
+    st->print("null");
   } else {
     MethodData* md = mtd->final_profile();
-    tty->print("mdo=");
+    st->print("mdo=");
     if (md == nullptr) {
-      tty->print("null");
+      st->print("null");
     } else {
       int mdo_invocations = md->invocation_count();
       int mdo_backedges = md->backedge_count();
       int mdo_invocations_start = md->invocation_count_start();
       int mdo_backedges_start = md->backedge_count_start();
-      tty->print("%d(%d), %d(%d)", mdo_invocations, mdo_invocations_start, mdo_backedges, mdo_backedges_start);
+      st->print("%d(%d), %d(%d)", mdo_invocations, mdo_invocations_start, mdo_backedges, mdo_backedges_start);
     }
     CompileTrainingData* ctd = mtd->last_toplevel_compile(CompLevel_full_optimization);
-    tty->print(", deps=");
+    st->print(", deps=");
     if (ctd == nullptr) {
-      tty->print("null");
+      st->print("null");
     } else {
-      tty->print("%d", ctd->init_deps_left());
+      st->print("%d", ctd->init_deps_left());
     }
   }
 }
 
 // Print an event.
-void CompilationPolicy::print_event(EventType type, Method* m, Method* im, int bci, CompLevel level) {
+void CompilationPolicy::print_event_on(outputStream *st, EventType type, Method* m, Method* im, int bci, CompLevel level) {
   bool inlinee_event = m != im;
 
-  ttyLocker tty_lock;
-  tty->print("%lf: [", os::elapsedTime());
+  st->print("%lf: [", os::elapsedTime());
 
   switch(type) {
   case CALL:
-    tty->print("call");
+    st->print("call");
     break;
   case LOOP:
-    tty->print("loop");
+    st->print("loop");
     break;
   case COMPILE:
-    tty->print("compile");
+    st->print("compile");
     break;
   case FORCE_COMPILE:
-    tty->print("force-compile");
+    st->print("force-compile");
     break;
   case FORCE_RECOMPILE:
     tty->print("force-recompile");
     break;
   case REMOVE_FROM_QUEUE:
-    tty->print("remove-from-queue");
+    st->print("remove-from-queue");
     break;
   case UPDATE_IN_QUEUE:
-    tty->print("update-in-queue");
+    st->print("update-in-queue");
     break;
   case REPROFILE:
-    tty->print("reprofile");
+    st->print("reprofile");
     break;
   case MAKE_NOT_ENTRANT:
-    tty->print("make-not-entrant");
+    st->print("make-not-entrant");
     break;
   default:
-    tty->print("unknown");
+    st->print("unknown");
   }
 
-  tty->print(" level=%d ", level);
+  st->print(" level=%d ", level);
 
   ResourceMark rm;
   char *method_name = m->name_and_sig_as_C_string();
-  tty->print("[%s", method_name);
+  st->print("[%s", method_name);
   if (inlinee_event) {
     char *inlinee_name = im->name_and_sig_as_C_string();
-    tty->print(" [%s]] ", inlinee_name);
+    st->print(" [%s]] ", inlinee_name);
   }
-  else tty->print("] ");
-  tty->print("@%d queues=%d,%d", bci, CompileBroker::queue_size(CompLevel_full_profile),
-                                      CompileBroker::queue_size(CompLevel_full_optimization));
+  else st->print("] ");
+  st->print("@%d queues=%d,%d", bci, CompileBroker::queue_size(CompLevel_full_profile),
+                                     CompileBroker::queue_size(CompLevel_full_optimization));
 
-  tty->print(" rate=");
-  if (m->prev_time() == 0) tty->print("n/a");
-  else tty->print("%f", m->rate());
+  st->print(" rate=");
+  if (m->prev_time() == 0) st->print("n/a");
+  else st->print("%f", m->rate());
 
   RecompilationPolicy::print_load_average();
 
-  tty->print(" k=%.2lf,%.2lf", threshold_scale(CompLevel_full_profile, Tier3LoadFeedback),
-                               threshold_scale(CompLevel_full_optimization, Tier4LoadFeedback));
+  st->print(" k=%.2lf,%.2lf", threshold_scale(CompLevel_full_profile, Tier3LoadFeedback),
+                              threshold_scale(CompLevel_full_optimization, Tier4LoadFeedback));
 
   if (type != COMPILE) {
-    print_counters("", m);
+    print_counters_on(st, "", m);
     if (inlinee_event) {
-      print_counters("inlinee ", im);
+      print_counters_on(st, "inlinee ", im);
     }
-    tty->print(" compilable=");
+    st->print(" compilable=");
     bool need_comma = false;
     if (!m->is_not_compilable(CompLevel_full_profile)) {
-      tty->print("c1");
+      st->print("c1");
       need_comma = true;
     }
     if (!m->is_not_osr_compilable(CompLevel_full_profile)) {
-      if (need_comma) tty->print(",");
-      tty->print("c1-osr");
+      if (need_comma) st->print(",");
+      st->print("c1-osr");
       need_comma = true;
     }
     if (!m->is_not_compilable(CompLevel_full_optimization)) {
-      if (need_comma) tty->print(",");
-      tty->print("c2");
+      if (need_comma) st->print(",");
+      st->print("c2");
       need_comma = true;
     }
     if (!m->is_not_osr_compilable(CompLevel_full_optimization)) {
-      if (need_comma) tty->print(",");
-      tty->print("c2-osr");
+      if (need_comma) st->print(",");
+      st->print("c2-osr");
     }
-    tty->print(" status=");
+    st->print(" status=");
     if (m->queued_for_compilation()) {
-      tty->print("in-queue");
-    } else tty->print("idle");
-    print_training_data("", m);
+      st->print("in-queue");
+    } else st->print("idle");
+
+    print_training_data_on(st, "", m);
     if (inlinee_event) {
-      print_training_data("inlinee ", im);
+      print_training_data_on(st, "inlinee ", im);
     }
   }
-  tty->print_cr("]");
+  st->print_cr("]");
+
+}
+
+void CompilationPolicy::print_event(EventType type, Method* m, Method* im, int bci, CompLevel level) {
+  stringStream s;
+  print_event_on(&s, type, m, im, bci, level);
+  ResourceMark rm;
+  tty->print("%s", s.as_string());
 }
 
 void CompilationPolicy::initialize() {
   if (!CompilerConfig::is_interpreter_only()) {
-    if (AOTCodeCache::is_dumping_code()) {
-      // Assembly phase runs C1 and C2 compilation in separate phases,
-      // and can use all the CPU threads it can reach. Adjust the common
-      // options before policy starts overwriting them. There is a block
-      // at the very end that overrides final thread counts.
-      if (FLAG_IS_DEFAULT(UseDynamicNumberOfCompilerThreads)) {
-        FLAG_SET_ERGO(UseDynamicNumberOfCompilerThreads, false);
-      }
-      if (FLAG_IS_DEFAULT(CICompilerCount)) {
-        FLAG_SET_ERGO(CICompilerCount, MAX2(2, os::active_processor_count()));
-      }
-    }
     int count = CICompilerCount;
     bool c1_only = CompilerConfig::is_c1_only();
     bool c2_only = CompilerConfig::is_c2_or_jvmci_compiler_only();
+    int min_count = (c1_only || c2_only) ? 1 : 2;
 
 #ifdef _LP64
     // Turn on ergonomic compiler count selection
+    if (AOTCodeCache::maybe_dumping_code()) {
+      // Assembly phase runs C1 and C2 compilation in separate phases,
+      // and can use all the CPU threads it can reach. Adjust the common
+      // options before policy starts overwriting them.
+      FLAG_SET_ERGO_IF_DEFAULT(UseDynamicNumberOfCompilerThreads, false);
+      FLAG_SET_ERGO_IF_DEFAULT(CICompilerCountPerCPU, false);
+      if (FLAG_IS_DEFAULT(CICompilerCount)) {
+        count =  MAX2(count, os::active_processor_count());
+      }
+    }
     if (FLAG_IS_DEFAULT(CICompilerCountPerCPU) && FLAG_IS_DEFAULT(CICompilerCount)) {
       FLAG_SET_DEFAULT(CICompilerCountPerCPU, true);
     }
@@ -606,7 +632,9 @@ void CompilationPolicy::initialize() {
       // Simple log n seems to grow too slowly for tiered, try something faster: log n * log log n
       int log_cpu = log2i(os::active_processor_count());
       int loglog_cpu = log2i(MAX2(log_cpu, 1));
-      count = MAX2(log_cpu * loglog_cpu * 3 / 2, 2);
+      count = MAX2(log_cpu * loglog_cpu * 3 / 2, min_count);
+    }
+    if (FLAG_IS_DEFAULT(CICompilerCount)) {
       // Make sure there is enough space in the code cache to hold all the compiler buffers
       size_t c1_size = 0;
 #ifdef COMPILER1
@@ -616,11 +644,18 @@ void CompilationPolicy::initialize() {
 #ifdef COMPILER2
       c2_size = C2Compiler::initial_code_buffer_size();
 #endif
-      size_t buffer_size = c1_only ? c1_size : (c1_size/3 + 2*c2_size/3);
-      int max_count = (ReservedCodeCacheSize - (CodeCacheMinimumUseSpace DEBUG_ONLY(* 3))) / (int)buffer_size;
-      if (count > max_count) {
+      size_t buffer_size = 0;
+      if (c1_only) {
+        buffer_size = c1_size;
+      } else if (c2_only) {
+        buffer_size = c2_size;
+      } else {
+        buffer_size = c1_size / 3 + 2 * c2_size / 3;
+      }
+      size_t max_count = (NonNMethodCodeHeapSize - (CodeCacheMinimumUseSpace DEBUG_ONLY(* 3))) / buffer_size;
+      if ((size_t)count > max_count) {
         // Lower the compiler count such that all buffers fit into the code cache
-        count = MAX2(max_count, c1_only ? 1 : 2);
+        count = MAX2((int)max_count, min_count);
       }
       FLAG_SET_ERGO(CICompilerCount, count);
     }
@@ -636,12 +671,13 @@ void CompilationPolicy::initialize() {
       count = 3;
       FLAG_SET_ERGO(CICompilerCount, count);
     }
-#endif
+#endif // _LP64
 
     if (c1_only) {
-      // No C2 compiler thread required
+      // No C2 compiler threads are needed
       set_c1_count(count);
     } else if (c2_only) {
+      // No C1 compiler threads are needed
       set_c2_count(count);
     } else {
 #if INCLUDE_JVMCI
@@ -650,10 +686,6 @@ void CompilationPolicy::initialize() {
         int c1_count = MAX2(count - libjvmci_count, 1);
         set_c2_count(libjvmci_count);
         set_c1_count(c1_count);
-      } else if (AOTCodeCache::is_C3_on()) {
-        set_c1_count(MAX2(count / 3, 1));
-        set_c2_count(MAX2(count - c1_count(), 1));
-        set_c3_count(1);
       } else
 #endif
       {
@@ -661,18 +693,15 @@ void CompilationPolicy::initialize() {
         set_c2_count(MAX2(count - c1_count(), 1));
       }
     }
-    if (AOTCodeCache::is_dumping_code()) {
-      set_c1_count(count);
-      set_c2_count(count);
-      count *= 2; // satisfy the assert below
-    }
     if (AOTCodeCache::is_code_load_thread_on()) {
-      set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 cached code in parallel
+      set_ac_count((c1_only || c2_only) ? 1 : 2); // At minimum we need 2 threads to load C1 and C2 AOT code in parallel
     }
     assert(count == c1_count() + c2_count(), "inconsistent compiler thread count");
     set_increase_threshold_at_ratio();
+  } else {
+    // Interpreter mode creates no compilers
+    FLAG_SET_ERGO(CICompilerCount, 0);
   }
-
   set_start_time(nanos_to_millis(os::javaTimeNanos()));
 }
 
@@ -809,7 +838,7 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
       task = next_task;
       continue;
     }
-    if (task->is_aot()) {
+    if (task->is_aot_load()) {
       // AOTCodeCache tasks are on separate queue, and they should load fast. There is no need to walk
       // the rest of the queue, just take the task and go.
       return task;
@@ -987,7 +1016,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
         nmethod* osr_nm = mh->lookup_osr_nmethod_for(bci, CompLevel_simple, false);
         if (osr_nm != nullptr && osr_nm->comp_level() > CompLevel_simple) {
           // Invalidate the existing OSR nmethod so that a compile at CompLevel_simple is permitted.
-          osr_nm->make_not_entrant("OSR invalidation for compiling with C1");
+          osr_nm->make_not_entrant(nmethod::InvalidationReason::OSR_INVALIDATION_FOR_COMPILING_WITH_C1);
         }
         compile(mh, bci, CompLevel_simple, THREAD);
       }
@@ -1097,7 +1126,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 }
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
-  assert(!x->is_aot() && !y->is_aot(), "AOT code caching tasks are not expected here");
+  assert(!x->is_aot_load() && !y->is_aot_load(), "AOT code caching tasks are not expected here");
   if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }
@@ -1596,7 +1625,7 @@ void CompilationPolicy::method_back_branch_event(const methodHandle& mh, const m
               int osr_bci = nm->is_osr_method() ? nm->osr_entry_bci() : InvocationEntryBci;
               print_event(MAKE_NOT_ENTRANT, mh(), mh(), osr_bci, level);
             }
-            nm->make_not_entrant("OSR invalidation, back branch");
+            nm->make_not_entrant(nmethod::InvalidationReason::OSR_INVALIDATION_BACK_BRANCH);
           }
         }
         // Fix up next_level if necessary to avoid deopts

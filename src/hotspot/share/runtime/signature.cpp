@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -460,7 +460,7 @@ static bool signature_symbols_sane() {
 #endif //ASSERT
 
 // returns a symbol; the caller is responsible for decrementing it
-Symbol* SignatureStream::find_symbol() {
+Symbol* SignatureStream::find_symbol(bool probe_only) {
   // Create a symbol from for string _begin _end
   int begin = raw_symbol_begin();
   int end   = raw_symbol_end();
@@ -484,9 +484,16 @@ Symbol* SignatureStream::find_symbol() {
     return name;
   }
 
+  if (probe_only) {
+    name = SymbolTable::probe(symbol_chars, len);
+    if (name == nullptr) {
+      return nullptr;
+    }
+  } else {
+    name = SymbolTable::new_symbol(symbol_chars, len);
+  }
   // Save names for cleaning up reference count at the end of
   // SignatureStream scope.
-  name = SymbolTable::new_symbol(symbol_chars, len);
 
   // Only allocate the GrowableArray for the _names buffer if more than
   // one name is being processed in the signature.

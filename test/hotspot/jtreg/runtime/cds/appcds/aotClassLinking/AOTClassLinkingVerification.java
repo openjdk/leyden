@@ -79,6 +79,8 @@ public class AOTClassLinkingVerification {
                                                      "GoodOldClass"),
                             bootAppendWhiteBox,
                             "-XX:+AOTClassLinking",
+                            "-XX:+ArchivePackages",
+                            "-XX:+ArchiveProtectionDomains",
                             "-Xlog:cds+class=debug");
 
         TestCommon.run("-cp", app1Jar + File.pathSeparator + app2Jar,

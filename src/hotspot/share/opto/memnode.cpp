@@ -24,6 +24,7 @@
  */
 
 #include "classfile/javaClasses.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compileLog.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/c2/barrierSetC2.hpp"
@@ -34,7 +35,6 @@
 #include "opto/addnode.hpp"
 #include "opto/arraycopynode.hpp"
 #include "opto/cfgnode.hpp"
-#include "opto/regalloc.hpp"
 #include "opto/compile.hpp"
 #include "opto/connode.hpp"
 #include "opto/convertnode.hpp"
@@ -46,6 +46,7 @@
 #include "opto/mulnode.hpp"
 #include "opto/narrowptrnode.hpp"
 #include "opto/phaseX.hpp"
+#include "opto/regalloc.hpp"
 #include "opto/regmask.hpp"
 #include "opto/rootnode.hpp"
 #include "opto/traceMergeStoresTag.hpp"
@@ -1977,17 +1978,17 @@ Node *LoadNode::Ideal(PhaseGVN *phase, bool can_reshape) {
 const Type*
 LoadNode::load_array_final_field(const TypeKlassPtr *tkls,
                                  ciKlass* klass) const {
-  assert(!UseCompactObjectHeaders || tkls->offset() != in_bytes(Klass::prototype_header_offset()),
+  assert(!UseCompactObjectHeaders ||
+         AOTCodeCache::is_on_for_dump() ||
+         tkls->offset() != in_bytes(Klass::prototype_header_offset()),
          "must not happen");
   if (tkls->offset() == in_bytes(Klass::access_flags_offset())) {
     // The field is Klass::_access_flags.  Return its (constant) value.
-    // (Folds up the 2nd indirection in Reflection.getClassAccessFlags(aClassConstant).)
     assert(Opcode() == Op_LoadUS, "must load an unsigned short from _access_flags");
     return TypeInt::make(klass->access_flags());
   }
   if (tkls->offset() == in_bytes(Klass::misc_flags_offset())) {
     // The field is Klass::_misc_flags.  Return its (constant) value.
-    // (Folds up the 2nd indirection in Reflection.getClassAccessFlags(aClassConstant).)
     assert(Opcode() == Op_LoadUB, "must load an unsigned byte from _misc_flags");
     return TypeInt::make(klass->misc_flags());
   }
@@ -2162,7 +2163,9 @@ const Type* LoadNode::Value(PhaseGVN* phase) const {
         assert(Opcode() == Op_LoadI, "must load an int from _super_check_offset");
         return TypeInt::make(klass->super_check_offset());
       }
-      if (UseCompactObjectHeaders) {
+      // Class encoding in prototype header may change between runs.
+      // Force loading prototype header when AOT code is generated.
+      if (UseCompactObjectHeaders && !AOTCodeCache::is_on_for_dump()) {
         if (tkls->offset() == in_bytes(Klass::prototype_header_offset())) {
           // The field is Klass::_prototype_header. Return its (constant) value.
           assert(this->Opcode() == Op_LoadX, "must load a proper type from _prototype_header");

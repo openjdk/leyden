@@ -444,8 +444,7 @@ oop ArchiveUtils::builtin_loader_from_type(int loader_type) {
 }
 
 bool ArchiveUtils::has_aot_initialized_mirror(InstanceKlass* src_ik) {
-  if (SystemDictionaryShared::is_excluded_class(src_ik)) {
-    assert(!ArchiveBuilder::current()->has_been_buffered(src_ik), "sanity");
+  if (!ArchiveBuilder::current()->has_been_archived(src_ik)) {
     return false;
   }
   return ArchiveBuilder::current()->get_buffered_addr(src_ik)->has_aot_initialized_mirror();

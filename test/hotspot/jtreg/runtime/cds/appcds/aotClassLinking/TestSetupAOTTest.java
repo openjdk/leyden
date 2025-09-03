@@ -27,9 +27,7 @@
  * @summary This is a test case for creating an AOT cache using the setup_aot/TestSetupAOT.java program, which
  *          is used for running HotSpot tests in the "AOT mode"
  *          (E.g., make test JTREG=AOT_JDK=true TEST=open/test/hotspot/jtreg/runtime/invokedynamic)
- * @requires vm.cds
- * @comment work around JDK-8345635
- * @requires !vm.jvmci.enabled
+ * @requires vm.cds.supports.aot.class.linking
  * @library /test/lib /test/setup_aot
  * @build TestSetupAOTTest JavacBenchApp TestSetupAOT
  * @run driver jdk.test.lib.helpers.ClassFileInstaller

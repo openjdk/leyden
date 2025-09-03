@@ -121,6 +121,7 @@
                                                                             \
   product(ccstr, AOTCacheOutput, nullptr,                                   \
           "Specifies the file name for writing the AOT cache")              \
+          constraint(AOTCacheOutputConstraintFunc, AtParse)                 \
                                                                             \
   product(bool, AOTInvokeDynamicLinking, false, DIAGNOSTIC,                 \
           "AOT-link JVM_CONSTANT_InvokeDynamic entries in cached "          \
@@ -198,6 +199,10 @@
   develop(bool, TestAOTAdapterLinkFailure, false,                           \
           "Test failure of adapter linking when loading from AOT cache.")   \
                                                                             \
+  product(bool, AOTCodeCPUFeatureCheck, true, DIAGNOSTIC,                   \
+          "Check CPU features during production run are compatible "        \
+          "with the CPU features used during the assembly phase.")          \
+                                                                            \
   /*========== New options added by Leyden =============================*/  \
                                                                             \
   product(ccstrlist, AOTEndTrainingOnMethodEntry, "",                       \
@@ -207,18 +212,6 @@
   product(ccstr, CacheOnlyClassesIn, nullptr,                               \
           "If set, only classes loaded from these JAR files will be "       \
           "stored in the AOTCache")                                         \
-                                                                            \
-  product(ccstr, CacheDataStore, nullptr,                                   \
-          "If valid, use the specified file for SharedArchiveFile; "        \
-          "otherwise the specified file is generated at program exit")      \
-                                                                            \
-  product(ccstr, CDSPreimage, nullptr,                                      \
-          "(** internal use only **) -- used by a child JVM process to "    \
-          "create the CacheDataStore final image")                          \
-                                                                            \
-  product(bool, CDSManualFinalImage, false, DIAGNOSTIC,                     \
-          "(** internal use only **) -- if false, automatically launch a "  \
-          "child process to create the final image.")                       \
                                                                             \
   product(bool, ArchiveDynamicProxies, false,                               \
           "Archive classes generated for java/lang/reflect/Proxy")          \

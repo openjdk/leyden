@@ -154,7 +154,7 @@ void ciInstanceKlass::compute_shared_init_state() {
 InstanceKlass::ClassState ciInstanceKlass::compute_init_state(InstanceKlass* ik) {
   ASSERT_IN_VM;
   ciEnv* env = CURRENT_ENV;
-  if (env != nullptr && env->is_precompiled()) {
+  if (env != nullptr && env->is_precompile()) {
     return env->compute_init_state_for_precompiled(ik);
   } else {
     return ik->init_state();
@@ -565,6 +565,11 @@ bool ciInstanceKlass::compute_has_trusted_loader() {
     return true; // bootstrap class loader
   }
   return java_lang_ClassLoader::is_trusted_loader(loader_oop);
+}
+
+bool ciInstanceKlass::has_class_initializer() {
+  VM_ENTRY_MARK;
+  return get_instanceKlass()->class_initializer() != nullptr;
 }
 
 // ------------------------------------------------------------------

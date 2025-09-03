@@ -1713,7 +1713,7 @@ void GraphBuilder::access_field(Bytecodes::Code code) {
                               PatchALot;
 
   ValueStack* state_before = nullptr;
-  if (!holder->is_initialized() || needs_patching) {
+  if (!holder->is_initialized() || needs_patching || compilation()->env()->is_precompile()) {
     // save state before instruction for debug info when
     // deoptimization happens during patching
     state_before = copy_state_before();
@@ -1857,7 +1857,6 @@ void GraphBuilder::access_field(Bytecodes::Code code) {
 
 
 Dependencies* GraphBuilder::dependency_recorder() const {
-  assert(DeoptC1, "need debug information");
   return compilation()->dependency_recorder();
 }
 
@@ -2003,7 +2002,7 @@ void GraphBuilder::invoke(Bytecodes::Code code) {
   ciMethod* cha_monomorphic_target = nullptr;
   ciMethod* exact_target = nullptr;
   Value better_receiver = nullptr;
-  if (UseCHA && DeoptC1 && target->is_loaded() &&
+  if (UseCHA && target->is_loaded() &&
       !(// %%% FIXME: Are both of these relevant?
         target->is_method_handle_intrinsic() ||
         target->is_compiled_lambda_form()) &&
@@ -2122,7 +2121,8 @@ void GraphBuilder::invoke(Bytecodes::Code code) {
       callee_holder->is_loaded()) { // the effect of symbolic reference resolution
 
     // callee is known => check if we have static binding
-    if ((code == Bytecodes::_invokestatic && klass->is_initialized()) || // invokestatic involves an initialization barrier on declaring class
+    if ((code == Bytecodes::_invokestatic && klass->is_initialized() &&
+        !compilation()->env()->is_precompile()) || // invokestatic involves an initialization barrier on declaring class
         code == Bytecodes::_invokespecial ||
         (code == Bytecodes::_invokevirtual && target->is_final_method()) ||
         code == Bytecodes::_invokedynamic) {
@@ -2254,7 +2254,7 @@ bool GraphBuilder::direct_compare(ciKlass* k) {
     if (ik->is_final()) {
       return true;
     } else {
-      if (DeoptC1 && UseCHA && !(ik->has_subklass() || ik->is_interface())) {
+      if (UseCHA && !(ik->has_subklass() || ik->is_interface())) {
         // test class is leaf class
         dependency_recorder()->assert_leaf_type(ik);
         return true;
@@ -3299,6 +3299,7 @@ GraphBuilder::GraphBuilder(Compilation* compilation, IRScope* scope)
   case vmIntrinsics::_dsin          : // fall through
   case vmIntrinsics::_dcos          : // fall through
   case vmIntrinsics::_dtan          : // fall through
+  case vmIntrinsics::_dsinh         : // fall through
   case vmIntrinsics::_dtanh         : // fall through
   case vmIntrinsics::_dcbrt         : // fall through
   case vmIntrinsics::_dlog          : // fall through
@@ -3343,7 +3344,7 @@ GraphBuilder::GraphBuilder(Compilation* compilation, IRScope* scope)
       break;
     }
 
-  case vmIntrinsics::_Reference_get:
+  case vmIntrinsics::_Reference_get0:
     {
       {
         // With java.lang.ref.reference.get() we must go through the
@@ -3865,7 +3866,8 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
       !InlineSynchronizedMethods         ) INLINE_BAILOUT("callee is synchronized");
   if (!callee->holder()->is_linked())      INLINE_BAILOUT("callee's klass not linked yet");
   if (bc == Bytecodes::_invokestatic &&
-      !callee->holder()->is_initialized()) INLINE_BAILOUT("callee's klass not initialized yet");
+      (!callee->holder()->is_initialized() ||
+       compilation()->env()->is_precompile())) INLINE_BAILOUT("callee's klass not initialized yet");
   if (!callee->has_balanced_monitors())    INLINE_BAILOUT("callee's monitors do not match");
 
   // Proper inlining of methods with jsrs requires a little more work.

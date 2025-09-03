@@ -22,6 +22,7 @@
  *
  */
 
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "interpreter/invocationCounter.hpp"
@@ -313,7 +314,7 @@ void CompilerConfig::set_compilation_policy_flags() {
     // Increase the code cache size - tiered compiles a lot more.
     if (FLAG_IS_DEFAULT(ReservedCodeCacheSize)) {
       FLAG_SET_ERGO(ReservedCodeCacheSize,
-                    MIN2(CODE_CACHE_DEFAULT_LIMIT, (size_t)ReservedCodeCacheSize * 5));
+                    MIN2(CODE_CACHE_DEFAULT_LIMIT, ReservedCodeCacheSize * 5));
     }
     // Enable SegmentedCodeCache if tiered compilation is enabled, ReservedCodeCacheSize >= 240M
     // and the code cache contains at least 8 pages (segmentation disables advantage of huge pages).
@@ -334,11 +335,15 @@ void CompilerConfig::set_compilation_policy_flags() {
     }
   }
 
-  // Current Leyden implementation requires SegmentedCodeCache: the archive-backed code
+  // Current Leyden implementation requires SegmentedCodeCache: the archive-backed AOT code
   // cache would be initialized only then. Force SegmentedCodeCache if we are loading/storing
-  // cached code. TODO: Resolve this in code cache initialization code.
-  if (!SegmentedCodeCache && (AOTCodeCaching || AOTStubCaching || AOTAdapterCaching)) {
+  // AOT code. TODO: Resolve this in code cache initialization code.
+  if (!SegmentedCodeCache && AOTCodeCache::is_caching_enabled()) {
     FLAG_SET_ERGO(SegmentedCodeCache, true);
+    if (FLAG_IS_DEFAULT(ReservedCodeCacheSize)) {
+      FLAG_SET_ERGO(ReservedCodeCacheSize,
+                    MIN2(CODE_CACHE_DEFAULT_LIMIT, (size_t)ReservedCodeCacheSize * 5));
+    }
   }
 
   if (CompileThresholdScaling < 0) {
@@ -482,26 +487,26 @@ void CompilerConfig::set_jvmci_specific_flags() {
 bool CompilerConfig::check_args_consistency(bool status) {
   // Check lower bounds of the code cache
   // Template Interpreter code is approximately 3X larger in debug builds.
-  uint min_code_cache_size = CodeCacheMinimumUseSpace DEBUG_ONLY(* 3);
+  size_t min_code_cache_size = CodeCacheMinimumUseSpace DEBUG_ONLY(* 3);
   if (ReservedCodeCacheSize < InitialCodeCacheSize) {
     jio_fprintf(defaultStream::error_stream(),
-                "Invalid ReservedCodeCacheSize: %dK. Must be at least InitialCodeCacheSize=%dK.\n",
+                "Invalid ReservedCodeCacheSize: %zuK. Must be at least InitialCodeCacheSize=%zuK.\n",
                 ReservedCodeCacheSize/K, InitialCodeCacheSize/K);
     status = false;
   } else if (ReservedCodeCacheSize < min_code_cache_size) {
     jio_fprintf(defaultStream::error_stream(),
-                "Invalid ReservedCodeCacheSize=%dK. Must be at least %uK.\n", ReservedCodeCacheSize/K,
+                "Invalid ReservedCodeCacheSize=%zuK. Must be at least %zuK.\n", ReservedCodeCacheSize/K,
                 min_code_cache_size/K);
     status = false;
   } else if (ReservedCodeCacheSize > CODE_CACHE_SIZE_LIMIT) {
     // Code cache size larger than CODE_CACHE_SIZE_LIMIT is not supported.
     jio_fprintf(defaultStream::error_stream(),
-                "Invalid ReservedCodeCacheSize=%dM. Must be at most %uM.\n", ReservedCodeCacheSize/M,
+                "Invalid ReservedCodeCacheSize=%zuM. Must be at most %zuM.\n", ReservedCodeCacheSize/M,
                 CODE_CACHE_SIZE_LIMIT/M);
     status = false;
   } else if (NonNMethodCodeHeapSize < min_code_cache_size) {
     jio_fprintf(defaultStream::error_stream(),
-                "Invalid NonNMethodCodeHeapSize=%dK. Must be at least %uK.\n", NonNMethodCodeHeapSize/K,
+                "Invalid NonNMethodCodeHeapSize=%zuK. Must be at least %zuK.\n", NonNMethodCodeHeapSize/K,
                 min_code_cache_size/K);
     status = false;
   }
@@ -638,6 +643,11 @@ void CompilerConfig::ergo_initialize() {
   if (FLAG_IS_DEFAULT(LoopStripMiningIterShortLoop)) {
     // blind guess
     LoopStripMiningIterShortLoop = LoopStripMiningIter / 10;
+  }
+  if (UseAutoVectorizationSpeculativeAliasingChecks && !LoopMultiversioning && !UseAutoVectorizationPredicate) {
+    warning("Disabling UseAutoVectorizationSpeculativeAliasingChecks, because neither of the following is enabled:"
+            "  LoopMultiversioning UseAutoVectorizationPredicate");
+    UseAutoVectorizationSpeculativeAliasingChecks = false;
   }
 #endif // COMPILER2
 }

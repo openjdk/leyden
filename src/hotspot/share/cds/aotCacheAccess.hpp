@@ -44,9 +44,10 @@ public:
     return can_generate_aot_code((address)m);
   }
   static bool can_generate_aot_code(Klass* k) {
+    assert(!k->is_instance_klass(), "other method should be called");
     return can_generate_aot_code((address)k);
   }
-  static bool can_generate_aot_code(InstanceKlass* ik) NOT_CDS_RETURN_(false);
+  static bool can_generate_aot_code_for(InstanceKlass* ik) NOT_CDS_RETURN_(false);
 
   /*
    * Used during an assembly run to compute the offset of the metadata object in the AOT Cache.
@@ -78,6 +79,9 @@ public:
     assert(metadata->is_method(), "sanity check");
     return (Method*)metadata;
   }
+
+  // Used during production run to convert a Method in AOTCache to offset from SharedBaseAddress
+  static uint convert_method_to_offset(Method* method);
 
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);

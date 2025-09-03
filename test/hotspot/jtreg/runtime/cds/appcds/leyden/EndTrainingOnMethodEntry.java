@@ -33,17 +33,6 @@
  * @run driver EndTrainingOnMethodEntry AOT
  */
 
-/*
- * @test id=leyden
- * @requires vm.cds.supports.aot.class.linking
- * @comment work around JDK-8345635
- * @requires !vm.jvmci.enabled
- * @library /test/jdk/lib/testlibrary /test/lib
- * @build EndTrainingOnMethodEntry
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar MyTestApp ShouldBeCached ShouldNotBeCached
- * @run driver EndTrainingOnMethodEntry LEYDEN
- */
-
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
 import jdk.test.lib.process.OutputAnalyzer;

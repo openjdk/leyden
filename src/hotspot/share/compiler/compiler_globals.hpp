@@ -234,12 +234,14 @@
                                                                             \
   product(intx, Tier3LoadFeedback, 5,                                       \
           "Tier 3 thresholds will increase twofold when C1 queue size "     \
-          "reaches this amount per compiler thread")                        \
+          "reaches this amount per compiler thread"                         \
+          "Passing 0 disables the threshold scaling")                       \
           range(0, max_jint)                                                \
                                                                             \
   product(intx, Tier4LoadFeedback, 3,                                       \
           "Tier 4 thresholds will increase twofold when C2 queue size "     \
-          "reaches this amount per compiler thread")                        \
+          "reaches this amount per compiler thread"                         \
+          "Passing 0 disables the threshold scaling")                       \
           range(0, max_jint)                                                \
                                                                             \
   product(intx, TieredCompileTaskTimeout, 50,                               \
@@ -263,11 +265,11 @@
                                                                             \
   product(intx, TieredRateUpdateMinTime, 1,                                 \
           "Minimum rate sampling interval (in milliseconds)")               \
-          range(0, max_intx)                                                \
+          range(1, max_intx)                                                \
                                                                             \
   product(intx, TieredRateUpdateMaxTime, 25,                                \
           "Maximum rate sampling interval (in milliseconds)")               \
-          range(0, max_intx)                                                \
+          range(1, max_intx)                                                \
                                                                             \
   product(double, Tier0ProfileDelayFactor, 100.0, DIAGNOSTIC,               \
           "Delay profiling/compiling of methods that were "                 \
@@ -393,39 +395,32 @@
           "If compilation is stopped with an error, capture diagnostic "    \
           "information at the bailout point")                               \
                                                                             \
-  /* Code Caching flags */                                                  \
+  /* AOT Code Caching flags */                                              \
                                                                             \
-  product(bool, UseC2asC3, false,                                           \
-          "Use C2 as 3rd compiler when other high-optimizing compiler "     \
-          "is used")                                                        \
-                                                                            \
-  product(uint, DisableCachedCode, 0,                                       \
-          "Disable cached code on some compilation levels "                 \
+  product(uint, DisableAOTCode, 0,                                          \
+          "Disable AOT code on some compilation levels "                    \
           "(T1=1; T2=2; T4=4; T5/preload=8")                                \
                                                                             \
   product(uint, ClassInitBarrierMode, 0,                                    \
-          "Produce and use startup code which could be called "             \
-          "on first method invocation, add class initialization barriers, " \
+          "Produce AOT preload code which could be called on first "        \
+          "method invocation, add class initialization barriers, "          \
           "other checks and constrains if needed "                          \
           "(0: no barriers; 1: uncommon trap; 2: full barrier)")            \
                                                                             \
   product(bool, StressClassInitBarriers, false, DIAGNOSTIC,                 \
           "Force slow path in class initialization barriers")               \
                                                                             \
-  product(bool, UseMetadataPointers, true,                                  \
-          "Store Metadata pointers in Relocation Info for cached code")     \
+  product(bool, UseAOTCodeLoadThread, false,                                \
+          "Use separate thread for AOT code load")                          \
                                                                             \
-  product(bool, UseCodeLoadThread, true,                                    \
-          "Use separate thread for cached code load")                       \
+  product(uint, AOTCodeLoadStart, 0,                                        \
+          "The id of the first AOT code to load")                           \
                                                                             \
-  product(uint, SCLoadStart, 0,                                             \
-          "The id of the first cached code to load")                        \
+  product(uint, AOTCodeLoadStop, max_jint,                                  \
+          "The id of the last AOT code to load")                            \
                                                                             \
-  product(uint, SCLoadStop, max_jint,                                       \
-          "The id of the last cached code to load")                         \
-                                                                            \
-  product(bool, VerifyCachedCode, false, DIAGNOSTIC,                        \
-          "Load compiled code but not publish")                             \
+  product(bool, VerifyAOTCode, false, DIAGNOSTIC,                           \
+          "Load AOT code but not publish")                                  \
                                                                             \
   product(bool, UseGlobalCompileQueueLock, false,                           \
           "Use a global lock for all compilation queues")                   \

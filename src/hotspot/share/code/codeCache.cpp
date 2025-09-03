@@ -226,7 +226,6 @@ void CodeCache::initialize_heaps() {
   size_t compiler_buffer_size = 0;
   COMPILER1_PRESENT(compiler_buffer_size += CompilationPolicy::c1_count() * Compiler::code_buffer_size());
   COMPILER2_PRESENT(compiler_buffer_size += CompilationPolicy::c2_count() * C2Compiler::initial_code_buffer_size());
-  COMPILER2_PRESENT(compiler_buffer_size += (CompilationPolicy::c2_count() + CompilationPolicy::c3_count()) * C2Compiler::initial_code_buffer_size());
 
   if (!non_nmethod.set) {
     non_nmethod.size += compiler_buffer_size;
@@ -321,8 +320,11 @@ void CodeCache::initialize_heaps() {
   FLAG_SET_ERGO(NonProfiledCodeHeapSize, non_profiled.size);
   FLAG_SET_ERGO(ReservedCodeCacheSize, cache_size);
 
-  const size_t cds_code_size = align_up(AOTCacheAccess::get_aot_code_region_size(), min_size);
-  cache_size += cds_code_size;
+  const size_t cds_code_size = 0;
+  // FIXME: we should not increase CodeCache size - it affects branches.
+  // Instead we need to create separate code heap in CodeCache for AOT code.
+  // const size_t cds_code_size = align_up(AOTCacheAccess::get_aot_code_region_size(), min_size);
+  // cache_size += cds_code_size;
 
   ReservedSpace rs = reserve_heap_memory(cache_size, ps);
 
@@ -453,7 +455,7 @@ void CodeCache::add_heap(ReservedSpace rs, const char* name, CodeBlobType code_b
   add_heap(heap);
 
   // Reserve Space
-  size_t size_initial = MIN2((size_t)InitialCodeCacheSize, rs.size());
+  size_t size_initial = MIN2(InitialCodeCacheSize, rs.size());
   size_initial = align_up(size_initial, rs.page_size());
   if (!heap->reserve(rs, size_initial, CodeCacheSegmentSize)) {
     vm_exit_during_initialization(err_msg("Could not reserve enough space in %s (%zuK)",
@@ -902,6 +904,7 @@ void CodeCache::do_unloading(bool unloading_occurred) {
 
 void CodeCache::verify_clean_inline_caches() {
 #ifdef ASSERT
+  if (!VerifyInlineCaches) return;
   NMethodIterator iter(NMethodIterator::not_unloading);
   while(iter.next()) {
     nmethod* nm = iter.method();
@@ -1079,8 +1082,8 @@ size_t CodeCache::max_distance_to_non_nmethod() {
     CodeHeap* blob = get_code_heap(CodeBlobType::NonNMethod);
     // the max distance is minimized by placing the NonNMethod segment
     // in between MethodProfiled and MethodNonProfiled segments
-    size_t dist1 = (size_t)blob->high() - (size_t)_low_bound;
-    size_t dist2 = (size_t)_high_bound - (size_t)blob->low();
+    size_t dist1 = (size_t)blob->high_boundary() - (size_t)_low_bound;
+    size_t dist2 = (size_t)_high_bound - (size_t)blob->low_boundary();
     return dist1 > dist2 ? dist1 : dist2;
   }
 }
@@ -1126,9 +1129,9 @@ size_t CodeCache::freelists_length() {
 void icache_init();
 
 void CodeCache::initialize() {
-  assert(CodeCacheSegmentSize >= (uintx)CodeEntryAlignment, "CodeCacheSegmentSize must be large enough to align entry points");
+  assert(CodeCacheSegmentSize >= (size_t)CodeEntryAlignment, "CodeCacheSegmentSize must be large enough to align entry points");
 #ifdef COMPILER2
-  assert(CodeCacheSegmentSize >= (uintx)OptoLoopAlignment,  "CodeCacheSegmentSize must be large enough to align inner loops");
+  assert(CodeCacheSegmentSize >= (size_t)OptoLoopAlignment,  "CodeCacheSegmentSize must be large enough to align inner loops");
 #endif
   assert(CodeCacheSegmentSize >= sizeof(jdouble),    "CodeCacheSegmentSize must be large enough to align constants");
   // This was originally just a check of the alignment, causing failure, instead, round
@@ -1204,7 +1207,7 @@ static void check_live_nmethods_dependencies(DepChange& changes) {
   // Turn off dependency tracing while actually testing dependencies.
   FlagSetting fs(Dependencies::_verify_in_progress, true);
 
-  typedef ResourceHashtable<DependencySignature, int, 11027,
+  typedef HashTable<DependencySignature, int, 11027,
                             AnyObj::RESOURCE_AREA, mtInternal,
                             &DependencySignature::hash,
                             &DependencySignature::equals> DepTable;
@@ -1389,7 +1392,7 @@ void CodeCache::make_marked_nmethods_deoptimized() {
   while(iter.next()) {
     nmethod* nm = iter.method();
     if (nm->is_marked_for_deoptimization() && !nm->has_been_deoptimized() && nm->can_be_deoptimized()) {
-      nm->make_not_entrant("marked for deoptimization");
+      nm->make_not_entrant(nmethod::InvalidationReason::MARKED_FOR_DEOPTIMIZATION);
       nm->make_deoptimized();
     }
   }

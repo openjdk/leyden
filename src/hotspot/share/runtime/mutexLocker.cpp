@@ -28,6 +28,7 @@
 #include "logging/logStream.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "runtime/atomic.hpp"
 #include "runtime/java.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/mutexLocker.hpp"
@@ -39,6 +40,7 @@
 // Mutexes used in the VM (see comment in mutexLocker.hpp):
 
 Mutex*   NMethodState_lock            = nullptr;
+Mutex*   NMethodEntryBarrier_lock     = nullptr;
 Monitor* SystemDictionary_lock        = nullptr;
 Mutex*   InvokeMethodTypeTable_lock   = nullptr;
 Monitor* InvokeMethodIntrinsicTable_lock = nullptr;
@@ -72,25 +74,18 @@ Monitor* ThreadsLockThrottle_lock     = nullptr;
 Monitor* Threads_lock                 = nullptr;
 Mutex*   NonJavaThreadsList_lock      = nullptr;
 Mutex*   NonJavaThreadsListSync_lock  = nullptr;
-Monitor* CGC_lock                     = nullptr;
 Monitor* STS_lock                     = nullptr;
-Monitor* G1OldGCCount_lock            = nullptr;
-Mutex*   G1RareEvent_lock             = nullptr;
-Mutex*   G1DetachedRefinementStats_lock = nullptr;
-Mutex*   MarkStackFreeList_lock       = nullptr;
-Mutex*   MarkStackChunkList_lock      = nullptr;
 Mutex*   MonitoringSupport_lock       = nullptr;
 Monitor* ConcurrentGCBreakpoints_lock = nullptr;
 Mutex*   Compile_lock                 = nullptr;
+Monitor* CompileTaskWait_lock         = nullptr;
 Monitor* MethodCompileQueue_lock      = nullptr;
 Monitor* MethodCompileQueueC1_lock    = nullptr;
 Monitor* MethodCompileQueueC2_lock    = nullptr;
-Monitor* MethodCompileQueueC3_lock    = nullptr;
 Monitor* MethodCompileQueueSC1_lock   = nullptr;
 Monitor* MethodCompileQueueSC2_lock   = nullptr;
 Monitor* CompileThread_lock           = nullptr;
 Monitor* Compilation_lock             = nullptr;
-Monitor* CompileTaskAlloc_lock        = nullptr;
 Mutex*   CompileStatistics_lock       = nullptr;
 Mutex*   DirectivesStack_lock         = nullptr;
 Monitor* Terminator_lock              = nullptr;
@@ -110,10 +105,18 @@ Mutex*   RawMonitor_lock              = nullptr;
 Mutex*   PerfDataMemAlloc_lock        = nullptr;
 Mutex*   PerfDataManager_lock         = nullptr;
 
-Mutex*   FreeList_lock                = nullptr;
-Mutex*   OldSets_lock                 = nullptr;
-Mutex*   Uncommit_lock                = nullptr;
-Monitor* RootRegionScan_lock          = nullptr;
+#if INCLUDE_G1GC
+Monitor* G1CGC_lock                   = nullptr;
+Mutex*   G1DetachedRefinementStats_lock = nullptr;
+Mutex*   G1FreeList_lock              = nullptr;
+Mutex*   G1MarkStackChunkList_lock    = nullptr;
+Mutex*   G1MarkStackFreeList_lock     = nullptr;
+Monitor* G1OldGCCount_lock            = nullptr;
+Mutex*   G1OldSets_lock               = nullptr;
+Mutex*   G1Uncommit_lock              = nullptr;
+Monitor* G1RootRegionScan_lock        = nullptr;
+Mutex*   G1RareEvent_lock             = nullptr;
+#endif
 
 Mutex*   Management_lock              = nullptr;
 Monitor* MonitorDeflation_lock        = nullptr;
@@ -213,21 +216,23 @@ void assert_lock_strong(const Mutex* lock) {
 void mutex_init() {
   MUTEX_DEFN(tty_lock                        , PaddedMutex  , tty);      // allow to lock in VM
 
+  MUTEX_DEFN(NMethodEntryBarrier_lock        , PaddedMutex  , service-1);
+
   MUTEX_DEFN(STS_lock                        , PaddedMonitor, nosafepoint);
 
+#if INCLUDE_G1GC
   if (UseG1GC) {
-    MUTEX_DEFN(CGC_lock                      , PaddedMonitor, nosafepoint);
-
+    MUTEX_DEFN(G1CGC_lock                    , PaddedMonitor, nosafepoint);
     MUTEX_DEFN(G1DetachedRefinementStats_lock, PaddedMutex  , nosafepoint-2);
-
-    MUTEX_DEFN(FreeList_lock                 , PaddedMutex  , service-1);
-    MUTEX_DEFN(OldSets_lock                  , PaddedMutex  , nosafepoint);
-    MUTEX_DEFN(Uncommit_lock                 , PaddedMutex  , service-2);
-    MUTEX_DEFN(RootRegionScan_lock           , PaddedMonitor, nosafepoint-1);
-
-    MUTEX_DEFN(MarkStackFreeList_lock        , PaddedMutex  , nosafepoint);
-    MUTEX_DEFN(MarkStackChunkList_lock       , PaddedMutex  , nosafepoint);
+    MUTEX_DEFN(G1FreeList_lock               , PaddedMutex  , service-1);
+    MUTEX_DEFN(G1MarkStackChunkList_lock     , PaddedMutex  , nosafepoint);
+    MUTEX_DEFN(G1MarkStackFreeList_lock      , PaddedMutex  , nosafepoint);
+    MUTEX_DEFN(G1OldSets_lock                , PaddedMutex  , nosafepoint);
+    MUTEX_DEFN(G1RootRegionScan_lock         , PaddedMonitor, nosafepoint-1);
+    MUTEX_DEFN(G1Uncommit_lock               , PaddedMutex  , service-2);
   }
+#endif
+
   MUTEX_DEFN(MonitoringSupport_lock          , PaddedMutex  , service-1);        // used for serviceability monitoring support
 
   MUTEX_DEFN(StringDedup_lock                , PaddedMonitor, nosafepoint);
@@ -241,7 +246,7 @@ void mutex_init() {
   MUTEX_DEFN(Service_lock                    , PaddedMonitor, service);          // used for service thread operations
   MUTEX_DEFN(Notification_lock               , PaddedMonitor, service);          // used for notification thread operations
 
-  MUTEX_DEFN(JmethodIdCreation_lock          , PaddedMutex  , nosafepoint-2); // used for creating jmethodIDs.
+  MUTEX_DEFN(JmethodIdCreation_lock          , PaddedMutex  , nosafepoint-1);    // used for creating jmethodIDs can also lock HandshakeState_lock
   MUTEX_DEFN(InvokeMethodTypeTable_lock      , PaddedMutex  , safepoint);
   MUTEX_DEFN(InvokeMethodIntrinsicTable_lock , PaddedMonitor, safepoint);
   MUTEX_DEFN(AdapterHandlerLibrary_lock      , PaddedMutex  , safepoint);
@@ -270,17 +275,15 @@ void mutex_init() {
   if (UseGlobalCompileQueueLock) {
     MethodCompileQueueC1_lock  = MethodCompileQueue_lock;
     MethodCompileQueueC2_lock  = MethodCompileQueue_lock;
-    MethodCompileQueueC3_lock  = MethodCompileQueue_lock;
     MethodCompileQueueSC1_lock = MethodCompileQueue_lock;
     MethodCompileQueueSC2_lock = MethodCompileQueue_lock;
   } else {
     MUTEX_DEFN(MethodCompileQueueC1_lock     , PaddedMonitor, safepoint);
     MUTEX_DEFN(MethodCompileQueueC2_lock     , PaddedMonitor, safepoint);
-    MUTEX_DEFN(MethodCompileQueueC3_lock     , PaddedMonitor, safepoint);
     MUTEX_DEFN(MethodCompileQueueSC1_lock    , PaddedMonitor, safepoint);
     MUTEX_DEFN(MethodCompileQueueSC2_lock    , PaddedMonitor, safepoint);
   }
-  MUTEX_DEFL(TrainingData_lock               , PaddedMutex  , MethodCompileQueue_lock);
+  MUTEX_DEFN(TrainingData_lock               , PaddedMutex  , nosafepoint);
   MUTEX_DEFN(TrainingReplayQueue_lock        , PaddedMonitor, safepoint);
   MUTEX_DEFN(CompileStatistics_lock          , PaddedMutex  , safepoint);
   MUTEX_DEFN(DirectivesStack_lock            , PaddedMutex  , nosafepoint);
@@ -351,19 +354,22 @@ void mutex_init() {
   MUTEX_DEFL(Threads_lock                   , PaddedMonitor, CompileThread_lock, true);
   MUTEX_DEFL(Compile_lock                   , PaddedMutex  , MethodCompileQueue_lock);
   MUTEX_DEFL(JNICritical_lock               , PaddedMonitor, AdapterHandlerLibrary_lock); // used for JNI critical regions
-  MUTEX_DEFL(Heap_lock                      , PaddedMonitor, TrainingData_lock  /*JNICritical_lock*/);
+  MUTEX_DEFL(Heap_lock                      , PaddedMonitor, JNICritical_lock);
 
   MUTEX_DEFL(PerfDataMemAlloc_lock          , PaddedMutex  , Heap_lock);
   MUTEX_DEFL(PerfDataManager_lock           , PaddedMutex  , Heap_lock);
   MUTEX_DEFL(VMOperation_lock               , PaddedMonitor, Heap_lock, true);
   MUTEX_DEFL(ClassInitError_lock            , PaddedMonitor, Threads_lock);
 
+#if INCLUDE_G1GC
   if (UseG1GC) {
-    MUTEX_DEFL(G1OldGCCount_lock            , PaddedMonitor, Threads_lock, true);
-    MUTEX_DEFL(G1RareEvent_lock             , PaddedMutex  , Threads_lock, true);
+    MUTEX_DEFL(G1OldGCCount_lock             , PaddedMonitor, Threads_lock, true);
+    MUTEX_DEFL(G1RareEvent_lock              , PaddedMutex  , Threads_lock, true);
   }
+#endif
 
-  MUTEX_DEFL(CompileTaskAlloc_lock          , PaddedMonitor,  MethodCompileQueue_lock);
+  MUTEX_DEFL(CompileTaskWait_lock           , PaddedMonitor, MethodCompileQueue_lock);
+
 #if INCLUDE_PARALLELGC
   if (UseParallelGC) {
     MUTEX_DEFL(PSOldGenExpand_lock          , PaddedMutex  , Heap_lock, true);
@@ -391,7 +397,9 @@ void mutex_init() {
 static const int MAX_NAMES = 200;
 static const char* _names[MAX_NAMES] = { nullptr };
 static bool _is_unique[MAX_NAMES] = { false };
-static int _num_names = 0;
+static volatile int _num_names = 0;
+
+static bool _mutex_init_done = false;
 
 PerfCounter** MutexLockerImpl::_perf_lock_count     = nullptr;
 PerfCounter** MutexLockerImpl::_perf_lock_wait_time = nullptr;
@@ -450,6 +458,7 @@ void MutexLockerImpl::init_counters() {
         stringStream ss;
         ss.print("UnnamedMutex#%d", i);
         counter_name = ss.as_string();
+        _names[i] = os::strdup(counter_name, mtInternal); // replace default nullptr
       }
       NEWPERFEVENTCOUNTER(_perf_lock_count[i + 1],     SUN_RT, PerfDataManager::counter_name(counter_name, "Count"));
       NEWPERFEVENTCOUNTER(_perf_lock_wait_time[i + 1], SUN_RT, PerfDataManager::counter_name(counter_name, "BeforeTime"));
@@ -459,21 +468,46 @@ void MutexLockerImpl::init_counters() {
       vm_exit_during_initialization("MutexLockerImpl::init_counters() failed unexpectedly");
     }
   }
+  _mutex_init_done = true;
 }
 
 int MutexLockerImpl::name2id(const char* name) {
   if (ProfileVMLocks && UsePerfData) {
-    for (int i = 0; i < _num_names; i++) {
+    // There is not concurency or duplication in mutex_init().
+    if (!_mutex_init_done) {
+      int new_id = Atomic::load(&_num_names);
+      precond(new_id < MAX_NAMES);
+      Atomic::inc(&_num_names);
+      _names[new_id] = os::strdup(name, mtInternal);
+      _is_unique[new_id] = true;
+      return new_id;
+    }
+    int limit = Atomic::load(&_num_names); // Cache static value which can be updated concurently
+    for (int i = Mutex::num_mutex(); i < limit; i++) {
       if (strcmp(_names[i], name) == 0) {
         _is_unique[i] = false;
         return i;
       }
     }
-    if (_num_names < MAX_NAMES) {
-      int new_id = _num_names++;
-      _names[new_id] = os::strdup(name, mtInternal);
-      _is_unique[new_id] = true;
-      return new_id;
+    if (limit < MAX_NAMES) {
+      int old_limit = limit;
+      const char* name_dup = os::strdup(name, mtInternal);
+      int new_id; // Get new id for this name
+      do {
+        new_id = limit++;
+        if (new_id == MAX_NAMES) break;
+      } while (Atomic::cmpxchg(&_num_names, new_id, limit) != new_id);
+      for (int i = old_limit; i < new_id; i++) {
+        if (strcmp(_names[i], name) == 0) { // Other thread put it there
+          _is_unique[i] = false;
+          return i; // Wasted new_id slot to simplify code: _num_names is only incremented
+        }
+      }
+      if (new_id < MAX_NAMES) {
+        _names[new_id] = name_dup;
+        _is_unique[new_id] = true;
+        return new_id;
+      }
     }
     log_debug(init)("Unnamed: %s", name); // no slots left
   }

@@ -22,7 +22,8 @@
  *
  */
 
-#include "cds/archiveBuilder.hpp"
+#include "cds/aotCacheAccess.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/cdsConfig.hpp"
 #include "ci/ciConstant.hpp"
 #include "ci/ciEnv.hpp"
@@ -178,8 +179,6 @@ ciEnv::ciEnv(CompileTask* task)
   _jvmti_can_post_on_exceptions = false;
   _jvmti_can_pop_frame = false;
 
-  _aot_clinit_barriers_entry = nullptr;
-
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
   _dyno_name[0] = '\0';
@@ -299,8 +298,6 @@ ciEnv::ciEnv(Arena* arena) : _ciEnv_arena(mtCompiler, Arena::Tag::tag_cienv) {
   _jvmti_can_access_local_variables = false;
   _jvmti_can_post_on_exceptions = false;
   _jvmti_can_pop_frame = false;
-
-  _aot_clinit_barriers_entry = nullptr;
 
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
@@ -831,7 +828,15 @@ ciMethod* ciEnv::get_method_by_index_impl(const constantPoolHandle& cpool,
     // Patch the call site to the nmethod entry point of the static compiled lambda form.
     // As with other two-component call sites, both values must be independently verified.
     assert(index < cpool->cache()->resolved_indy_entries_length(), "impossible");
-    Method* adapter = cpool->resolved_indy_entry_at(index)->method();
+    ResolvedIndyEntry* indy_info = cpool->resolved_indy_entry_at(index);
+    Method* adapter = indy_info->method();
+#if INCLUDE_CDS
+    if (is_precompile() && !AOTConstantPoolResolver::is_resolution_deterministic(cpool(), indy_info->constant_pool_index())) {
+      // This is an indy callsite that was resolved as a side effect of VM bootstrap, but
+      // it cannot be cached in the resolved state, so AOT code should not reference it.
+      adapter = nullptr;
+    }
+#endif
     // Resolved if the adapter is non null.
     if (adapter != nullptr) {
       return get_method(adapter);
@@ -1075,7 +1080,7 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
       char *method_name = method->name_and_sig_as_C_string();
       lt.print("Installing method (L%d) %s id=%d aot=%s%s%u",
                task()->comp_level(), method_name, compile_id(),
-               task()->is_aot() ? "A" : "", preload ? "P" : "",
+               task()->is_aot_load() ? "A" : "", preload ? "P" : "",
                (aot_code_entry != nullptr ? aot_code_entry->offset() : 0));
     }
     // Allow the code to be executed
@@ -1100,12 +1105,11 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
   } else {
     LogTarget(Info, nmethod, install) lt;
     if (lt.is_enabled()) {
+      assert(aot_code_entry == nullptr && !task()->is_aot_load(), "OSR nmethods are not AOT compiled");
       ResourceMark rm;
       char *method_name = method->name_and_sig_as_C_string();
-      lt.print("Installing osr method (L%d) %s @ %d id=%u aot=%s%u",
-               task()->comp_level(), method_name, entry_bci, compile_id(),
-               task()->is_aot() ? "A" : "",
-               (aot_code_entry != nullptr ? aot_code_entry->offset() : 0));
+      lt.print("Installing osr method (L%d) %s @ %d id=%u",
+               task()->comp_level(), method_name, entry_bci, compile_id());
     }
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     if (nm->make_in_use()) {
@@ -1114,7 +1118,7 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
   }
 }
 
-void ciEnv::register_aot_method(JavaThread* thread,
+nmethod* ciEnv::register_aot_method(JavaThread* thread,
                                 ciMethod* target,
                                 AbstractCompiler* compiler,
                                 nmethod* archived_nm,
@@ -1125,10 +1129,6 @@ void ciEnv::register_aot_method(JavaThread* thread,
                                 address immutable_data,
                                 GrowableArray<Handle>& reloc_imm_oop_list,
                                 GrowableArray<Metadata*>& reloc_imm_metadata_list,
-#ifndef PRODUCT
-                                AsmRemarks& asm_remarks,
-                                DbgStrings& dbg_strings,
-#endif /* PRODUCT */
                                 AOTCodeReader* aot_code_reader)
 {
   AOTCodeEntry* aot_code_entry = task()->aot_code_entry();
@@ -1151,7 +1151,7 @@ void ciEnv::register_aot_method(JavaThread* thread,
     NoSafepointVerifier nsv;
 
     if (!is_compilation_valid(thread, target, preload, true /*install_code*/, nullptr /*code_buffer*/, aot_code_entry)) {
-      return;
+      return nullptr;
     }
 
     nm = nmethod::new_nmethod(archived_nm,
@@ -1165,11 +1165,10 @@ void ciEnv::register_aot_method(JavaThread* thread,
                               immutable_data,
                               reloc_imm_oop_list,
                               reloc_imm_metadata_list,
-                              NOT_PRODUCT_ARG(asm_remarks)
-                              NOT_PRODUCT_ARG(dbg_strings)
                               aot_code_reader);
 
     if (nm != nullptr) {
+      aot_code_entry->set_loaded();
       make_code_usable(thread, target, preload, InvocationEntryBci, aot_code_entry, nm);
     }
   }
@@ -1183,6 +1182,7 @@ void ciEnv::register_aot_method(JavaThread* thread,
     // The CodeCache is full.
     record_failure("code cache is full");
   }
+  return nm;
   // safepoints are allowed again
 }
 
@@ -1256,17 +1256,10 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
-      if (aot_code_entry == nullptr) {
+      if (task()->is_precompile()) {
         aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
         if (aot_code_entry != nullptr) {
           aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
-          if (has_clinit_barriers) {
-            set_aot_clinit_barriers_entry(aot_code_entry); // Record it
-            return;
-          } else if (!for_preload) {
-            AOTCodeEntry* previous_entry = aot_clinit_barriers_entry();
-            aot_code_entry->set_next(previous_entry); // Link it for case of deoptimization
-          }
         }
       }
       make_code_usable(THREAD, target, preload, entry_bci, aot_code_entry, nm);
@@ -1853,16 +1846,29 @@ void ciEnv::dump_replay_data_version(outputStream* out) {
   out->print_cr("version %d", REPLAY_VERSION);
 }
 
-bool ciEnv::is_precompiled() {
-  return (task() != nullptr) && (task()->compile_reason() == CompileTask::Reason_Precompile          ||
-                                 task()->compile_reason() == CompileTask::Reason_PrecompileForPreload);
+bool ciEnv::is_precompile() {
+  return (task() != nullptr) && task()->is_precompile();
 }
 
-bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
-  assert(is_precompiled(), "");
-  if (task()->method()->method_holder() == ik) {
-    return true; // FIXME: may be too strong; being_initialized, at least
+InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
+  ASSERT_IN_VM;
+  assert(is_precompile(), "should be called only in assembly phase");
+  assert(!ik->is_in_error_state(), "there should not be any probelm with this klass");
+  ResourceMark rm;
+
+  if (!AOTCacheAccess::can_generate_aot_code_for(ik)) {
+    log_debug(precompile)("%d: klass (%s) %s is not archived", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+    // Skip this class
+    return InstanceKlass::ClassState::initialization_error;
   }
+  if (task()->method()->method_holder() == ik) {
+    if (task()->method()->is_static_initializer()) { // Happens with -Xcomp
+       return InstanceKlass::ClassState::being_initialized;
+    } else {
+       return InstanceKlass::ClassState::fully_initialized;
+    }
+  }
+
   switch (task()->compile_reason()) {
     case CompileTask::Reason_Precompile: {
       // check init dependencies
@@ -1875,52 +1881,24 @@ bool ciEnv::is_fully_initialized(InstanceKlass* ik) {
             KlassTrainingData* ktd = ctd->init_dep(i);
             if (ktd->has_holder() && (ktd->holder() == ik)) {
               log_trace(precompile)("%d: init_dependency: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-              return true; // init dependency present
+              return InstanceKlass::ClassState::fully_initialized;; // init dependency present
             }
           }
         }
       }
-      return false; // no init dependency
+      // Class may be not present during TD creation for this method.
+      // It could happen when profiled data for inlined method
+      // was updated after this method was compiled during training.
+      break;
     }
     case CompileTask::Reason_PrecompileForPreload: {
-      // FIXME: assumes that all shared classes are initialized
-      if (ik->is_shared()) {
-        return true; // class init barriers
-      }
-      if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active() &&
-          ArchiveBuilder::current()->has_been_archived((address)ik)) {
-        return true; // class init barriers
-      }
-      return false;
+      // Preload AOT code does not depend on Training Data,
+      // it has class init barriers to initialize class by
+      // going into interpreter or directly calling runtime.
+      return InstanceKlass::ClassState::fully_initialized;
     }
     default: fatal("%s", CompileTask::reason_name(task()->compile_reason()));
   }
-  return false;
-}
-
-InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
-  ASSERT_IN_VM;
-  assert(is_precompiled(), "");
-  ResourceMark rm;
-  if (is_fully_initialized(ik)) {
-    log_trace(precompile)("%d: fully_initialized: %s", task()->compile_id(), ik->external_name());
-    return InstanceKlass::ClassState::fully_initialized;
-  } else if (MetaspaceObj::is_shared(ik)) {
-    guarantee(ik->is_loaded(), ""); // FIXME: assumes pre-loading by CDS; ik->is_linked() requires pre-linking
-    log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-    return ik->init_state(); // not yet initialized
-  } else if (CDSConfig::is_dumping_final_static_archive() && ArchiveBuilder::is_active()) {
-    if (!ArchiveBuilder::current()->has_been_archived((address)ik)) {
-      fatal("New workflow: should not compile code for unarchived class: %s", ik->external_name());
-    }
-    guarantee(ik->is_loaded(), "");
-    log_trace(precompile)("%d: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-    return ik->init_state(); // not yet initialized
-  } else {
-    // Not present in the archive.
-    fatal("unloaded: %s", ik->external_name());
-//    guarantee(SystemDictionaryShared::lookup_init_state(ik) == ik->init_state(), "");
-    log_trace(precompile)("%d: allocated: %s", task()->compile_id(), ik->external_name());
-    return InstanceKlass::ClassState::allocated; // not yet linked
-  }
+  // Skip this class
+  return InstanceKlass::ClassState::initialization_error;
 }

@@ -554,8 +554,6 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 #endif
 
-  AOTCodeCache::close(); // Write final data and close archive
-
   // Hang forever on exit if we're reporting an error.
   if (ShowMessageBoxOnError && VMError::is_error_reported()) {
     os::infinite_sleep();
@@ -567,7 +565,10 @@ void before_exit(JavaThread* thread, bool halt) {
     event.commit();
   }
 
-  JFR_ONLY(Jfr::on_vm_shutdown(false, halt);)
+  // 2nd argument (emit_event_shutdown) should be set to false
+  // because EventShutdown would be emitted at Threads::destroy_vm().
+  // (one of the callers of before_exit())
+  JFR_ONLY(Jfr::on_vm_shutdown(true, false, halt);)
 
   // Stop the WatcherThread. We do this before disenrolling various
   // PeriodicTasks to reduce the likelihood of races.
@@ -575,20 +576,8 @@ void before_exit(JavaThread* thread, bool halt) {
 
   NativeHeapTrimmer::cleanup();
 
-  // Stop concurrent GC threads
-  Universe::heap()->stop();
-
-  // Print GC/heap related information.
-  Log(gc, exit) log;
-  if (log.is_info()) {
-    LogStream ls_info(log.info());
-    Universe::print_on(&ls_info);
-    if (log.is_trace()) {
-      LogStream ls_trace(log.trace());
-      MutexLocker mcld(ClassLoaderDataGraph_lock);
-      ClassLoaderDataGraph::print_on(&ls_trace);
-    }
-  }
+  // Run before exit and then stop concurrent GC threads
+  Universe::before_exit();
 
   if (PrintBytecodeHistogram) {
     BytecodeHistogram::print(PrintBytecodeHistogramCutoff);
@@ -623,7 +612,6 @@ void before_exit(JavaThread* thread, bool halt) {
   }
 
   print_statistics();
-  Universe::heap()->print_tracing_info();
 
   { MutexLocker ml(BeforeExit_lock);
     _before_exit_status = BEFORE_EXIT_DONE;

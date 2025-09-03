@@ -372,22 +372,18 @@ public:
   int compile_id();  // task()->compile_id()
 
   // Register method loaded from AOT code cache
-  void register_aot_method(JavaThread* thread,
-                           ciMethod* target,
-                           AbstractCompiler* compiler,
-                           nmethod* archived_nm,
-                           address reloc_data,
-                           GrowableArray<Handle>& oop_list,
-                           GrowableArray<Metadata*>& metadata_list,
-                           ImmutableOopMapSet* oopmaps,
-                           address immutable_data,
-                           GrowableArray<Handle>& reloc_imm_oop_list,
-                           GrowableArray<Metadata*>& reloc_imm_metadata_list,
-#ifndef PRODUCT
-                           AsmRemarks& asm_remarks,
-                           DbgStrings& dbg_strings,
-#endif /* PRODUCT */
-                           AOTCodeReader* aot_code_reader);
+  nmethod* register_aot_method(JavaThread* thread,
+                               ciMethod* target,
+                               AbstractCompiler* compiler,
+                               nmethod* archived_nm,
+                               address reloc_data,
+                               GrowableArray<Handle>& oop_list,
+                               GrowableArray<Metadata*>& metadata_list,
+                               ImmutableOopMapSet* oopmaps,
+                               address immutable_data,
+                               GrowableArray<Handle>& reloc_imm_oop_list,
+                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                               AOTCodeReader* aot_code_reader);
 
   // Register the result of a compilation.
   void register_method(ciMethod*                 target,
@@ -498,13 +494,6 @@ public:
   // RedefineClasses support
   void metadata_do(MetadataClosure* f) { _factory->metadata_do(f); }
 
-private:
-  AOTCodeEntry* _aot_clinit_barriers_entry;
-
-public:
-  void  set_aot_clinit_barriers_entry(AOTCodeEntry* entry) { _aot_clinit_barriers_entry = entry; }
-  AOTCodeEntry* aot_clinit_barriers_entry()          const { return _aot_clinit_barriers_entry; }
-
   // Replay support
 private:
   static int klass_compare(const InstanceKlass* const &ik1, const InstanceKlass* const &ik2) {
@@ -550,8 +539,7 @@ public:
   void process_invokehandle(const constantPoolHandle &cp, int index, JavaThread* thread);
   void find_dynamic_call_sites();
 
-  bool is_precompiled();
-  bool is_fully_initialized(InstanceKlass* ik);
+  bool is_precompile();
   InstanceKlass::ClassState compute_init_state_for_precompiled(InstanceKlass* ik);
 };
 

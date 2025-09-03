@@ -22,10 +22,11 @@
  *
  */
 
-#include "cds/aotCacheAccess.hpp"
 #include "cds/aotArtifactFinder.hpp"
+#include "cds/aotCacheAccess.hpp"
 #include "cds/aotClassInitializer.hpp"
 #include "cds/aotClassLocation.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/aotLogging.hpp"
 #include "cds/aotReferenceObjSupport.hpp"
 #include "cds/archiveBuilder.hpp"
@@ -37,8 +38,8 @@
 #include "cds/cdsHeapVerifier.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/metaspaceShared.hpp"
+#include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoaderData.hpp"
-#include "classfile/classLoaderExt.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/modules.hpp"
 #include "classfile/stringTable.hpp"
@@ -59,6 +60,7 @@
 #include "oops/fieldStreams.inline.hpp"
 #include "oops/objArrayOop.inline.hpp"
 #include "oops/oop.inline.hpp"
+#include "oops/oopHandle.inline.hpp"
 #include "oops/typeArrayOop.inline.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/arguments.hpp"
@@ -173,10 +175,51 @@ bool HeapShared::is_subgraph_root_class(InstanceKlass* ik) {
          is_subgraph_root_class_of(fmg_archive_subgraph_entry_fields, ik);
 }
 
+oop HeapShared::CachedOopInfo::orig_referrer() const {
+  return _orig_referrer.resolve();
+}
+
+void HeapShared::rehash_archived_object_cache() {
+  if (!CDSConfig::is_dumping_heap()) {
+    return;
+  }
+  assert(SafepointSynchronize::is_at_safepoint() ||
+         JavaThread::current()->is_in_no_safepoint_scope(), "sanity");
+
+  ArchivedObjectCache* new_cache =
+      new (mtClass)ArchivedObjectCache(archived_object_cache()->table_size(), MAX_TABLE_SIZE);
+
+  archived_object_cache()->iterate_all([&](OopHandle o, CachedOopInfo& info) {
+    new_cache->put_when_absent(o, info);
+  });
+
+  delete _archived_object_cache;
+  _archived_object_cache = new_cache;
+}
+
 unsigned HeapShared::oop_hash(oop const& p) {
+  assert(SafepointSynchronize::is_at_safepoint() ||
+         JavaThread::current()->is_in_no_safepoint_scope(), "sanity");
   // Do not call p->identity_hash() as that will update the
   // object header.
   return primitive_hash(cast_from_oop<intptr_t>(p));
+}
+
+unsigned int HeapShared::oop_handle_hash_raw(const OopHandle& oh) {
+  return oop_hash(oh.resolve());
+}
+
+unsigned int HeapShared::oop_handle_hash(const OopHandle& oh) {
+  oop o = oh.resolve();
+  if (o == nullptr) {
+    return 0;
+  } else {
+    return o->identity_hash();
+  }
+}
+
+bool HeapShared::oop_handle_equals(const OopHandle& a, const OopHandle& b) {
+  return a.resolve() == b.resolve();
 }
 
 static void reset_states(oop obj, TRAPS) {
@@ -230,7 +273,8 @@ HeapShared::ArchivedObjectCache* HeapShared::_archived_object_cache = nullptr;
 
 bool HeapShared::has_been_archived(oop obj) {
   assert(CDSConfig::is_dumping_heap(), "dump-time only");
-  return archived_object_cache()->get(obj) != nullptr;
+  OopHandle oh(&obj);
+  return archived_object_cache()->get(oh) != nullptr;
 }
 
 int HeapShared::append_root(oop obj) {
@@ -257,25 +301,12 @@ objArrayOop HeapShared::root_segment(int segment_idx) {
   return segment;
 }
 
-inline unsigned int oop_handle_hash(const OopHandle& oh) {
-  oop o = oh.resolve();
-  if (o == nullptr) {
-    return 0;
-  } else {
-    return o->identity_hash();
-  }
-}
-
-inline bool oop_handle_equals(const OopHandle& a, const OopHandle& b) {
-  return a.resolve() == b.resolve();
-}
-
-class OrigToScratchObjectTable: public ResourceHashtable<OopHandle, OopHandle,
+class OrigToScratchObjectTable: public HashTable<OopHandle, OopHandle,
     36137, // prime number
     AnyObj::C_HEAP,
     mtClassShared,
-    oop_handle_hash,
-    oop_handle_equals> {};
+    HeapShared::oop_handle_hash,
+    HeapShared::oop_handle_equals> {};
 
 static OrigToScratchObjectTable* _orig_to_scratch_object_table = nullptr;
 
@@ -313,12 +344,12 @@ struct PermanentOopInfo {
   PermanentOopInfo(int index, int heap_offset) : _index(index), _heap_offset(heap_offset) {}
 };
 
-class PermanentOopTable: public ResourceHashtable<OopHandle, PermanentOopInfo,
+class PermanentOopTable: public HashTable<OopHandle, PermanentOopInfo,
     36137, // prime number
     AnyObj::C_HEAP,
     mtClassShared,
-    oop_handle_hash,
-    oop_handle_equals> {};
+    HeapShared::oop_handle_hash,
+    HeapShared::oop_handle_equals> {};
 
 static int _dumptime_permanent_oop_count = 0;
 static PermanentOopTable* _dumptime_permanent_oop_table = nullptr;
@@ -486,7 +517,9 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
     count_allocation(obj->size());
     ArchiveHeapWriter::add_source_obj(obj);
     CachedOopInfo info = make_cached_oop_info(obj, referrer);
-    archived_object_cache()->put_when_absent(obj, info);
+
+    OopHandle oh(Universe::vm_global(), obj);
+    archived_object_cache()->put_when_absent(oh, info);
     archived_object_cache()->maybe_grow();
     mark_native_pointers(obj);
 
@@ -520,6 +553,9 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
       } else if (java_lang_invoke_ResolvedMethodName::is_instance(obj)) {
         Method* m = java_lang_invoke_ResolvedMethodName::vmtarget(obj);
         if (m != nullptr) {
+          if (RegeneratedClasses::has_been_regenerated(m)) {
+            m = RegeneratedClasses::get_regenerated_object(m);
+          }
           InstanceKlass* method_holder = m->method_holder();
           AOTArtifactFinder::add_cached_class(method_holder);
         }
@@ -547,7 +583,7 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
   }
 }
 
-class MetaspaceObjToOopHandleTable: public ResourceHashtable<MetaspaceObj*, OopHandle,
+class MetaspaceObjToOopHandleTable: public HashTable<MetaspaceObj*, OopHandle,
     36137, // prime number
     AnyObj::C_HEAP,
     mtClassShared> {
@@ -696,14 +732,18 @@ bool HeapShared::is_archivable_hidden_klass(InstanceKlass* ik) {
 
 void HeapShared::copy_and_rescan_aot_inited_mirror(InstanceKlass* ik) {
   ik->set_has_aot_initialized_mirror();
-  if (AOTClassInitializer::is_runtime_setup_required(ik)) {
-    ik->set_is_runtime_setup_required();
+
+  oop orig_mirror;
+  if (RegeneratedClasses::is_regenerated_object(ik)) {
+    InstanceKlass* orig_ik = RegeneratedClasses::get_original_object(ik);
+    precond(orig_ik->is_initialized());
+    orig_mirror = orig_ik->java_mirror();
+  } else {
+    precond(ik->is_initialized());
+    orig_mirror = ik->java_mirror();
   }
 
-  oop orig_mirror = ik->java_mirror();
   oop m = scratch_java_mirror(ik);
-  assert(ik->is_initialized(), "must be");
-
   int nfields = 0;
   for (JavaFieldStream fs(ik); !fs.done(); fs.next()) {
     if (fs.access_flags().is_static()) {
@@ -714,11 +754,6 @@ void HeapShared::copy_and_rescan_aot_inited_mirror(InstanceKlass* ik) {
       case T_ARRAY:
         {
           oop field_obj = orig_mirror->obj_field(offset);
-          if (offset == java_lang_Class::reflection_data_offset()) {
-            // Class::reflectData use SoftReference, which cannot be archived. Set it
-            // to null and it will be recreated at runtime.
-            field_obj = nullptr;
-          }
           m->obj_field_put(offset, field_obj);
           if (field_obj != nullptr) {
             bool success = archive_reachable_objects_from(1, _dump_time_special_subgraph, field_obj);
@@ -772,7 +807,7 @@ void HeapShared::copy_and_rescan_aot_inited_mirror(InstanceKlass* ik) {
   }
 }
 
-static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
+void HeapShared::copy_java_mirror(oop orig_mirror, oop scratch_m) {
   // We need to retain the identity_hash, because it may have been used by some hashtables
   // in the shared heap.
   if (!orig_mirror->fast_no_hash_check()) {
@@ -787,6 +822,14 @@ static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
 
     DEBUG_ONLY(intptr_t archived_hash = scratch_m->identity_hash());
     assert(src_hash == archived_hash, "Different hash codes: original " INTPTR_FORMAT ", archived " INTPTR_FORMAT, src_hash, archived_hash);
+  }
+
+  Klass* k = java_lang_Class::as_Klass(orig_mirror); // is null Universe::void_mirror();
+  if (CDSConfig::is_dumping_reflection_data() &&
+      k != nullptr && k->is_instance_klass() &&
+      java_lang_Class::reflection_data(orig_mirror) != nullptr &&
+      AOTConstantPoolResolver::can_archive_reflection_data(InstanceKlass::cast(k))) {
+    java_lang_Class::set_reflection_data(scratch_m, java_lang_Class::reflection_data(orig_mirror));
   }
 }
 
@@ -823,14 +866,16 @@ void HeapShared::mark_native_pointers(oop orig_obj) {
 }
 
 void HeapShared::get_pointer_info(oop src_obj, bool& has_oop_pointers, bool& has_native_pointers) {
-  CachedOopInfo* info = archived_object_cache()->get(src_obj);
+  OopHandle oh(&src_obj);
+  CachedOopInfo* info = archived_object_cache()->get(oh);
   assert(info != nullptr, "must be");
   has_oop_pointers = info->has_oop_pointers();
   has_native_pointers = info->has_native_pointers();
 }
 
 void HeapShared::set_has_native_pointers(oop src_obj) {
-  CachedOopInfo* info = archived_object_cache()->get(src_obj);
+  OopHandle oh(&src_obj);
+  CachedOopInfo* info = archived_object_cache()->get(oh);
   assert(info != nullptr, "must be");
   info->set_has_native_pointers();
 }
@@ -893,9 +938,15 @@ void HeapShared::write_heap(ArchiveHeapInfo *heap_info) {
 void HeapShared::scan_java_mirror(oop orig_mirror) {
   oop m = scratch_java_mirror(orig_mirror);
   if (m != nullptr) { // nullptr if for custom class loader
-    copy_java_mirror_hashcode(orig_mirror, m);
+    copy_java_mirror(orig_mirror, m);
     bool success = archive_reachable_objects_from(1, _dump_time_special_subgraph, m);
     assert(success, "sanity");
+
+    oop extra;
+    if ((extra = java_lang_Class::reflection_data(m)) != nullptr) {
+      success = archive_reachable_objects_from(1, _dump_time_special_subgraph, extra);
+      assert(success, "sanity");
+    }
   }
 }
 
@@ -1661,7 +1712,7 @@ public:
 HeapShared::CachedOopInfo HeapShared::make_cached_oop_info(oop obj, oop referrer) {
   PointsToOopsChecker points_to_oops_checker;
   obj->oop_iterate(&points_to_oops_checker);
-  return CachedOopInfo(referrer, points_to_oops_checker.result());
+  return CachedOopInfo(OopHandle(Universe::vm_global(), referrer), points_to_oops_checker.result());
 }
 
 void HeapShared::init_box_classes(TRAPS) {
@@ -1747,6 +1798,13 @@ bool HeapShared::walk_one_object(PendingOopStack* stack, int level, KlassSubGrap
     }
     out.print_cr("; scratch mirror = "  PTR_FORMAT,
                  p2i(scratch_java_mirror(orig_obj)));
+  }
+
+  if (java_lang_Class::is_instance(orig_obj)) {
+    Klass* k = java_lang_Class::as_Klass(orig_obj);
+    if (RegeneratedClasses::has_been_regenerated(k)) {
+      orig_obj = RegeneratedClasses::get_regenerated_object(k)->java_mirror();
+    }
   }
 
   if (CDSConfig::is_initing_classes_at_dump_time()) {
@@ -1949,6 +2007,11 @@ void HeapShared::verify_subgraph_from(oop orig_obj) {
 void HeapShared::verify_reachable_objects_from(oop obj) {
   _num_total_verifications ++;
   if (java_lang_Class::is_instance(obj)) {
+    Klass* k = java_lang_Class::as_Klass(obj);
+    if (RegeneratedClasses::has_been_regenerated(k)) {
+      k = RegeneratedClasses::get_regenerated_object(k);
+      obj = k->java_mirror();
+    }
     obj = scratch_java_mirror(obj);
     assert(obj != nullptr, "must be");
   }
@@ -2311,6 +2374,18 @@ void HeapShared::add_to_dumped_interned_strings(oop string) {
 
 bool HeapShared::is_dumped_interned_string(oop o) {
   return _dumped_interned_strings->get(o) != nullptr;
+}
+
+// These tables should be used only within the CDS safepoint, so
+// delete them before we exit the safepoint. Otherwise the table will
+// contain bad oops after a GC.
+void HeapShared::delete_tables_with_raw_oops() {
+  assert(_seen_objects_table == nullptr, "should have been deleted");
+
+  delete _dumped_interned_strings;
+  _dumped_interned_strings = nullptr;
+
+  ArchiveHeapWriter::delete_tables_with_raw_oops();
 }
 
 void HeapShared::debug_trace() {

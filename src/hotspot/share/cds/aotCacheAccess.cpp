@@ -43,7 +43,7 @@ bool AOTCacheAccess::can_generate_aot_code(address addr) {
   return ArchiveBuilder::is_active() && ArchiveBuilder::current()->has_been_archived(addr);
 }
 
-bool AOTCacheAccess::can_generate_aot_code(InstanceKlass* ik) {
+bool AOTCacheAccess::can_generate_aot_code_for(InstanceKlass* ik) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
   if (!ArchiveBuilder::is_active()) {
     return false;
@@ -52,7 +52,6 @@ bool AOTCacheAccess::can_generate_aot_code(InstanceKlass* ik) {
   if (!builder->has_been_archived((address)ik)) {
     return false;
   }
-  InstanceKlass* buffered_ik = builder->get_buffered_addr(ik);
   if (ik->defined_by_other_loaders()) {
     return false;
   }
@@ -65,6 +64,13 @@ uint AOTCacheAccess::delta_from_base_address(address addr) {
   ArchiveBuilder* builder = ArchiveBuilder::current();
   address requested_addr = builder->to_requested(builder->get_buffered_addr(addr));
   return (uint)pointer_delta(requested_addr, (address)MetaspaceShared::requested_base_address(), 1);
+}
+
+uint AOTCacheAccess::convert_method_to_offset(Method* method) {
+  assert(CDSConfig::is_using_archive() && !CDSConfig::is_dumping_final_static_archive(), "must be");
+  assert(MetaspaceShared::is_in_shared_metaspace(method), "method %p is not in AOTCache", method);
+  uint offset = (uint)pointer_delta((address)method, (address)SharedBaseAddress, 1);
+  return offset;
 }
 
 #if INCLUDE_CDS_JAVA_HEAP

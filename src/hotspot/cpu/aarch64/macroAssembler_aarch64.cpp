@@ -574,13 +574,8 @@ address MacroAssembler::target_addr_for_insn_or_null(address insn_addr, unsigned
   return MacroAssembler::target_addr_for_insn(insn_addr, insn);
 }
 
-void MacroAssembler::safepoint_poll(Label& slow_path, bool at_return, bool acquire, bool in_nmethod, Register tmp) {
-  if (acquire) {
-    lea(tmp, Address(rthread, JavaThread::polling_word_offset()));
-    ldar(tmp, tmp);
-  } else {
-    ldr(tmp, Address(rthread, JavaThread::polling_word_offset()));
-  }
+void MacroAssembler::safepoint_poll(Label& slow_path, bool at_return, bool in_nmethod, Register tmp) {
+  ldr(tmp, Address(rthread, JavaThread::polling_word_offset()));
   if (at_return) {
     // Note that when in_nmethod is set, the stack pointer is incremented before the poll. Therefore,
     // we may safely use the sp instead to perform the stack watermark check.
@@ -1010,11 +1005,15 @@ void MacroAssembler::emit_static_call_stub() {
   mov_metadata(rmethod, nullptr);
 
   // Jump to the entry point of the c2i stub.
-  movptr(rscratch1, 0);
-  br(rscratch1);
+  if (codestub_branch_needs_far_jump()) {
+    movptr(rscratch1, 0);
+    br(rscratch1);
+  } else {
+    b(pc());
+  }
 }
 
-int MacroAssembler::static_call_stub_size() {
+int MacroAssembler::max_static_call_stub_size() {
   // isb; movk; movz; movz; movk; movz; movz; br
   return 8 * NativeInstruction::instruction_size;
 }
@@ -5132,7 +5131,8 @@ void MacroAssembler::cmp_klass(Register obj, Register klass, Register tmp) {
     if (CompressedKlassPointers::base() == nullptr) {
       cmp(klass, tmp, LSL, CompressedKlassPointers::shift());
       return;
-    } else if (((uint64_t)CompressedKlassPointers::base() & 0xffffffff) == 0
+    } else if (!AOTCodeCache::is_on_for_dump() &&
+               ((uint64_t)CompressedKlassPointers::base() & 0xffffffff) == 0
                && CompressedKlassPointers::shift() == 0) {
       // Only the bottom 32 bits matter
       cmpw(klass, tmp);
@@ -5391,7 +5391,7 @@ void MacroAssembler::encode_klass_not_null_for_aot(Register dst, Register src) {
 }
 
 void MacroAssembler::encode_klass_not_null(Register dst, Register src) {
-  if (AOTCodeCache::is_on_for_dump()) {
+  if (CompressedKlassPointers::base() != nullptr && AOTCodeCache::is_on_for_dump()) {
     encode_klass_not_null_for_aot(dst, src);
     return;
   }
@@ -5457,7 +5457,7 @@ void MacroAssembler::decode_klass_not_null_for_aot(Register dst, Register src) {
 void  MacroAssembler::decode_klass_not_null(Register dst, Register src) {
   assert (UseCompressedClassPointers, "should only be used for compressed headers");
 
-  if (AOTCodeCache::is_on_for_dump()) {
+  if (CompressedKlassPointers::base() != nullptr && AOTCodeCache::is_on_for_dump()) {
     decode_klass_not_null_for_aot(dst, src);
     return;
   }
@@ -6462,10 +6462,14 @@ void MacroAssembler::fill_words(Register base, Register cnt, Register value)
 
 // Intrinsic for
 //
-// - sun/nio/cs/ISO_8859_1$Encoder.implEncodeISOArray
-//     return the number of characters copied.
-// - java/lang/StringUTF16.compress
-//     return index of non-latin1 character if copy fails, otherwise 'len'.
+// - sun.nio.cs.ISO_8859_1.Encoder#encodeISOArray0(byte[] sa, int sp, byte[] da, int dp, int len)
+//   Encodes char[] to byte[] in ISO-8859-1
+//
+// - java.lang.StringCoding#encodeISOArray0(byte[] sa, int sp, byte[] da, int dp, int len)
+//   Encodes byte[] (containing UTF-16) to byte[] in ISO-8859-1
+//
+// - java.lang.StringCoding#encodeAsciiArray0(char[] sa, int sp, byte[] da, int dp, int len)
+//   Encodes char[] to byte[] in ASCII
 //
 // This version always returns the number of characters copied, and does not
 // clobber the 'len' register. A successful copy will complete with the post-
@@ -6844,6 +6848,7 @@ void MacroAssembler::verify_cross_modify_fence_not_required() {
 #endif
 
 void MacroAssembler::spin_wait() {
+  block_comment("spin_wait {");
   for (int i = 0; i < VM_Version::spin_wait_desc().inst_count(); ++i) {
     switch (VM_Version::spin_wait_desc().inst()) {
       case SpinWait::NOP:
@@ -6855,10 +6860,15 @@ void MacroAssembler::spin_wait() {
       case SpinWait::YIELD:
         yield();
         break;
+      case SpinWait::SB:
+        assert(VM_Version::supports_sb(), "current CPU does not support SB instruction");
+        sb();
+        break;
       default:
         ShouldNotReachHere();
     }
   }
+  block_comment("}");
 }
 
 // Stack frame creation/removal
@@ -7132,7 +7142,6 @@ void MacroAssembler::double_move(VMRegPair src, VMRegPair dst, Register tmp) {
 //  - t1, t2, t3: temporary registers, will be destroyed
 //  - slow: branched to if locking fails, absolute offset may larger than 32KB (imm14 encoding).
 void MacroAssembler::lightweight_lock(Register basic_lock, Register obj, Register t1, Register t2, Register t3, Label& slow) {
-  assert(LockingMode == LM_LIGHTWEIGHT, "only used with new lightweight locking");
   assert_different_registers(basic_lock, obj, t1, t2, t3, rscratch1);
 
   Label push;
@@ -7192,7 +7201,6 @@ void MacroAssembler::lightweight_lock(Register basic_lock, Register obj, Registe
 // - t1, t2, t3: temporary registers
 // - slow: branched to if unlocking fails, absolute offset may larger than 32KB (imm14 encoding).
 void MacroAssembler::lightweight_unlock(Register obj, Register t1, Register t2, Register t3, Label& slow) {
-  assert(LockingMode == LM_LIGHTWEIGHT, "only used with new lightweight locking");
   // cmpxchg clobbers rscratch1.
   assert_different_registers(obj, t1, t2, t3, rscratch1);
 

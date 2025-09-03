@@ -33,7 +33,7 @@
 #include "utilities/debug.hpp"
 #include "utilities/growableArray.hpp"
 #include "utilities/linkedlist.hpp"
-#include "utilities/resizeableResourceHash.hpp"
+#include "utilities/resizableHashTable.hpp"
 #include "utilities/macros.hpp"
 
 template <typename T>
@@ -426,7 +426,7 @@ class AsmRemarks {
   AsmRemarks();
  ~AsmRemarks();
 
-  static void init(AsmRemarks& asm_remarks);
+  void init();
 
   const char* insert(uint offset, const char* remstr);
 
@@ -434,6 +434,9 @@ class AsmRemarks {
 
   void share(const AsmRemarks &src);
   void clear();
+  // Clear Collection refence when storing AOT code,
+  // new one will be created during AOT code load.
+  void clear_ref() { _remarks = nullptr; }
   uint print(uint offset, outputStream* strm = tty) const;
 
   // For testing purposes only.
@@ -454,7 +457,7 @@ class DbgStrings {
   DbgStrings();
  ~DbgStrings();
 
-  static void init(DbgStrings& dbg_strings);
+  void init();
 
   const char* insert(const char* dbgstr);
 
@@ -462,6 +465,9 @@ class DbgStrings {
 
   void share(const DbgStrings &src);
   void clear();
+  // Clear Collection refence when storing AOT code,
+  // new one will be created during AOT code load.
+  void clear_ref() { _strings = nullptr; }
 
   // For testing purposes only.
   const DbgStringCollection* ref() const { return _strings; }
@@ -541,7 +547,7 @@ class CodeBuffer: public StackObj DEBUG_ONLY(COMMA private Scrubber) {
   };
 
   typedef LinkedListImpl<int> Offsets;
-  typedef ResizeableResourceHashtable<address, Offsets, AnyObj::C_HEAP, mtCompiler> SharedTrampolineRequests;
+  typedef ResizeableHashTable<address, Offsets, AnyObj::C_HEAP, mtCompiler> SharedTrampolineRequests;
 
  private:
   enum {
@@ -641,6 +647,7 @@ class CodeBuffer: public StackObj DEBUG_ONLY(COMMA private Scrubber) {
   // copies combined relocations to the blob, returns bytes copied
   // (if target is null, it is a dry run only, just for sizing)
   csize_t copy_relocations_to(CodeBlob* blob) const;
+  csize_t copy_relocations_to(address buf, csize_t buf_limit) const;
 
   // copies combined code to the blob (assumes relocs are already in there)
   void copy_code_to(CodeBlob* blob);
@@ -790,8 +797,6 @@ class CodeBuffer: public StackObj DEBUG_ONLY(COMMA private Scrubber) {
   csize_t total_relocation_size() const;
 
   int total_skipped_instructions_size() const;
-
-  csize_t copy_relocations_to(address buf, csize_t buf_limit, bool only_inst) const;
 
   // allocated size of any and all recorded oops
   csize_t total_oop_size() const {

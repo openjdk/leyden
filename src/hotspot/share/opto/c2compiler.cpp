@@ -26,15 +26,15 @@
 #include "code/aotCodeCache.hpp"
 #include "compiler/compilationMemoryStatistic.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
-#include "runtime/handles.inline.hpp"
 #include "jfr/support/jfrIntrinsics.hpp"
 #include "opto/c2compiler.hpp"
 #include "opto/compile.hpp"
 #include "opto/optoreg.hpp"
 #include "opto/output.hpp"
 #include "opto/runtime.hpp"
-#include "runtime/stubRoutines.hpp"
 #include "runtime/globals_extension.hpp"
+#include "runtime/handles.inline.hpp"
+#include "runtime/stubRoutines.hpp"
 #include "utilities/macros.hpp"
 
 
@@ -59,10 +59,6 @@ const char* C2Compiler::retry_no_reduce_allocation_merges() {
 }
 const char* C2Compiler::retry_no_superword() {
   return "retry without SuperWord";
-}
-
-const char* C2Compiler::retry_no_clinit_barriers() {
-  return "retry without class initialization barriers";
 }
 
 void compiler_stubs_init(bool in_compiler_thread);
@@ -94,6 +90,12 @@ bool C2Compiler::init_c2_runtime() {
   DEBUG_ONLY( Node::init_NodeProperty(); )
 
   compiler_stubs_init(true /* in_compiler_thread */); // generate compiler's intrinsics stubs
+
+  // If there was an error generating the blob then UseCompiler will
+  // have been unset and we need to skip the remaining initialization
+  if (!UseCompiler) {
+    return false;
+  }
 
   Compile::pd_compiler2_init();
 
@@ -127,21 +129,24 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   assert(is_initialized(), "Compiler thread must be initialized");
   CompilationMemoryStatisticMark cmsm(directive);
   CompileTask* task = env->task();
-  if (install_code && task->is_aot()) {
+  if (install_code && task->is_aot_load()) {
     bool success = AOTCodeCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
     if (success) {
       assert(task->is_success(), "sanity");
       return;
     }
-    if (!task->preload()) { // Do not mark entry if pre-loading failed - it can pass normal load
-      AOTCodeCache::invalidate(task->aot_code_entry()); // mark aot_code_entry as not entrant
-    }
+    AOTCodeCache::invalidate(task->aot_code_entry()); // mark aot_code_entry as not entrant
     if (AOTCodeCache::is_code_load_thread_on()) {
+      // Bail out if AOT code load failed in AOT Code loading thread
+      // when UseAOTCodeLoadThread flag is on.
+      // We want this thread go quickly through AOT code load requests
+      // instead of spending time on normal compilation.
+      // TODO: pass this task to normal compilation thread.
       env->record_failure("Failed to load AOT code");
-      // Bail out if failed to load AOT code in AOTCodeCache thread
       return;
+    } else {
+      task->clear_aot();
     }
-    task->clear_aot();
   }
 
   bool subsume_loads = SubsumeLoads;
@@ -151,11 +156,8 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
   bool do_superword = UseSuperWord;
-  bool for_preload = (task->compile_reason() != CompileTask::Reason_Precompile) && // non-preload version is requested
-                     AOTCodeCache::gen_preload_code(target, entry_bci);
-  if (task->compile_reason() == CompileTask::Reason_PrecompileForPreload) {
-    assert(for_preload, "required");
-  }
+  bool gen_preload = (task->compile_reason() == CompileTask::Reason_PrecompileForPreload);
+  assert(!gen_preload || (AOTCodeCache::is_dumping_code() && (ClassInitBarrierMode > 0)), "sanity");
   while (!env->failing()) {
     ResourceMark rm;
     // Attempt to compile while subsuming loads into machine instructions.
@@ -166,7 +168,7 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
                     eliminate_boxing,
                     do_locks_coarsening,
                     do_superword,
-                    for_preload,
+                    gen_preload,
                     install_code);
     Compile C(env, target, entry_bci, options, directive);
 
@@ -201,11 +203,6 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
         do_locks_coarsening = false;
         env->report_failure(C.failure_reason());
         continue;  // retry
-      }
-      if (C.failure_reason_is(retry_no_clinit_barriers())) {
-        assert(for_preload, "must make progress");
-        for_preload = false;
-        continue;
       }
       if (C.failure_reason_is(retry_no_superword())) {
         assert(do_superword, "must make progress");
@@ -650,6 +647,7 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_dsin:
   case vmIntrinsics::_dcos:
   case vmIntrinsics::_dtan:
+  case vmIntrinsics::_dsinh:
   case vmIntrinsics::_dtanh:
   case vmIntrinsics::_dcbrt:
   case vmIntrinsics::_dabs:
@@ -795,14 +793,13 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_isInstance:
   case vmIntrinsics::_isHidden:
   case vmIntrinsics::_getSuperclass:
-  case vmIntrinsics::_getClassAccessFlags:
   case vmIntrinsics::_floatToRawIntBits:
   case vmIntrinsics::_floatToIntBits:
   case vmIntrinsics::_intBitsToFloat:
   case vmIntrinsics::_doubleToRawLongBits:
   case vmIntrinsics::_doubleToLongBits:
   case vmIntrinsics::_longBitsToDouble:
-  case vmIntrinsics::_Reference_get:
+  case vmIntrinsics::_Reference_get0:
   case vmIntrinsics::_Reference_refersTo0:
   case vmIntrinsics::_PhantomReference_refersTo0:
   case vmIntrinsics::_Reference_clear0:

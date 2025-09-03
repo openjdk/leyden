@@ -336,30 +336,6 @@ static void call_initPhase2(TRAPS) {
   }
 
   universe_post_module_init();
-
-#if 0
-  if (CDSConfig::is_using_aot_linked_classes()) {
-    AOTLinkedClassBulkLoader::load_non_javabase_boot_classes(THREAD); 
-    if (CDSConfig::is_using_full_module_graph()) {
-      assert(SystemDictionary::java_platform_loader() != nullptr, "must be");
-      assert(SystemDictionary::java_system_loader() != nullptr,   "must be");
-      AOTLinkedClassBulkLoader::load_platform_classes(THREAD);
-      AOTLinkedClassBulkLoader::load_app_classes(THREAD);
-    } else {
-      // Special case -- we assume that the final archive has the same module graph
-      // as the training run.
-      // AOTLinkedClassBulkLoader will be called for the platform/system loaders
-      // inside SystemDictionary::compute_java_loaders().
-      assert(CDSConfig::is_dumping_final_static_archive(), "must be");
-      assert(SystemDictionary::java_platform_loader() == nullptr, "must be");
-      assert(SystemDictionary::java_system_loader() == nullptr,   "must be");
-    }
-  }
-
-#ifndef PRODUCT
-  HeapShared::initialize_test_class_from_archive(THREAD);
-#endif
-#endif
 }
 
 // Phase 3. final setup - set security manager, system class loader and TCCL
@@ -411,6 +387,15 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   // The VM preresolves methods to these classes. Make sure that they get initialized
   initialize_class(vmSymbols::java_lang_reflect_Method(), CHECK);
   initialize_class(vmSymbols::java_lang_ref_Finalizer(), CHECK);
+
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    // This is necessary for reflection to work in early core lib bootstrap code.
+    vmClasses::reflect_AccessibleObject_klass()->link_class(CHECK);
+    vmClasses::reflect_Field_klass()->link_class(CHECK);
+    vmClasses::reflect_Parameter_klass()->link_class(CHECK);
+    vmClasses::reflect_Method_klass()->link_class(CHECK);
+    vmClasses::reflect_Constructor_klass()->link_class(CHECK);
+  }
 
   // Phase 1 of the system initialization in the library, java.lang.System class initialization
   call_initPhase1(CHECK);
@@ -825,8 +810,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   bool force_JVMCI_initialization = initialize_compilation(CHECK_JNI_ERR);
 
   if (CDSConfig::is_using_aot_linked_classes()) {
-    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
     SystemDictionary::restore_archived_method_handle_intrinsics();
+    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
   }
 
   // Start string deduplication thread if requested.
@@ -880,7 +865,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
 #if INCLUDE_CDS
   if (PrecompileCode) {
-    Precompiler::compile_cached_code(CHECK_JNI_ERR);
+    Precompiler::compile_aot_code(CHECK_JNI_ERR);
     if (PrecompileOnlyAndExit) {
       AOTCodeCache::close();
       log_vm_init_stats();
@@ -917,13 +902,22 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   JFR_ONLY(Jfr::on_create_vm_3();)
 
 #if INCLUDE_MANAGEMENT
-  Management::initialize(THREAD);
+  bool start_agent = true;
+#if INCLUDE_CDS
+  start_agent = !CDSConfig::is_dumping_final_static_archive();
+  if (!start_agent) {
+    log_info(aot)("Not starting management agent during creation of AOT cache.");
+  }
+#endif // INCLUDE_CDS
+  if (start_agent) {
+    Management::initialize(THREAD);
 
-  if (HAS_PENDING_EXCEPTION) {
-    // management agent fails to start possibly due to
-    // configuration problem and is responsible for printing
-    // stack trace if appropriate. Simply exit VM.
-    vm_exit(1);
+    if (HAS_PENDING_EXCEPTION) {
+      // management agent fails to start possibly due to
+      // configuration problem and is responsible for printing
+      // stack trace if appropriate. Simply exit VM.
+      vm_exit(1);
+    }
   }
 #endif // INCLUDE_MANAGEMENT
 
@@ -952,16 +946,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     // Classic -Xshare:dump, aka "old workflow"
     MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
   } else if (CDSConfig::is_dumping_final_static_archive()) {
-    if (CDSConfig::is_experimental_leyden_workflow()) {
-      // TODO: copy the verification and loader constraints from preimage to final image
-      // TODO: load archived classes for custom loaders as well.
-      log_info(cds)("Dumping final image of CacheDataStore %s", CacheDataStore);
-      MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
-      vm_direct_exit(0, "CacheDataStore dumping is complete");
-    } else {
-      tty->print_cr("Reading AOTConfiguration %s and writing AOTCache %s", AOTConfiguration, AOTCache);
-      MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
-    }
+    tty->print_cr("Reading AOTConfiguration %s and writing AOTCache %s", AOTConfiguration, AOTCache);
+    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
   }
 
   log_info(init)("At VM initialization completion:");
@@ -1447,10 +1433,24 @@ void Threads::print_on(outputStream* st, bool print_stacks,
   char buf[32];
   st->print_raw_cr(os::local_time_string(buf, sizeof(buf)));
 
-  st->print_cr("Full thread dump %s (%s %s):",
+  st->print_cr("Full thread dump %s (%s %s)",
                VM_Version::vm_name(),
                VM_Version::vm_release(),
                VM_Version::vm_info_string());
+  JDK_Version::current().to_string(buf, sizeof(buf));
+  const char* runtime_name = JDK_Version::runtime_name() != nullptr ?
+                             JDK_Version::runtime_name() : "";
+  const char* runtime_version = JDK_Version::runtime_version() != nullptr ?
+                                JDK_Version::runtime_version() : "";
+  const char* vendor_version = JDK_Version::runtime_vendor_version() != nullptr ?
+                               JDK_Version::runtime_vendor_version() : "";
+  const char* jdk_debug_level = VM_Version::printable_jdk_debug_level() != nullptr ?
+                                VM_Version::printable_jdk_debug_level() : "";
+
+  st->print_cr("                 JDK version: %s%s%s (%s) (%sbuild %s)", runtime_name,
+                (*vendor_version != '\0') ? " " : "", vendor_version,
+                buf, jdk_debug_level, runtime_version);
+
   st->cr();
 
 #if INCLUDE_SERVICES

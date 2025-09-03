@@ -61,7 +61,12 @@ public class BootLoader {
 
     static {
         JavaLangAccess jla = SharedSecrets.getJavaLangAccess();
-        UNNAMED_MODULE = jla.defineUnnamedModule(null);
+        ArchivedClassLoaders archivedClassLoaders = ArchivedClassLoaders.get();
+        if (archivedClassLoaders != null) {
+            UNNAMED_MODULE = archivedClassLoaders.unnamedModuleForBootLoader();
+        } else {
+            UNNAMED_MODULE = jla.defineUnnamedModule(null);
+        }
         jla.addEnableNativeAccess(UNNAMED_MODULE);
         setBootLoaderUnnamedModule0(UNNAMED_MODULE);
     }

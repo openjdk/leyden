@@ -36,8 +36,8 @@
 #include "memory/allocation.hpp"
 #include "opto/ad.hpp"
 #include "opto/block.hpp"
-#include "opto/c2compiler.hpp"
 #include "opto/c2_MacroAssembler.hpp"
+#include "opto/c2compiler.hpp"
 #include "opto/callnode.hpp"
 #include "opto/cfgnode.hpp"
 #include "opto/locknode.hpp"
@@ -1074,8 +1074,7 @@ void PhaseOutput::Process_OopMap_Node(MachNode *mach, int current_offset) {
     assert( !method ||
             !method->is_synchronized() ||
             method->is_native() ||
-            num_mon > 0 ||
-            !GenerateSynchronizationCode,
+            num_mon > 0,
             "monitors must always exist for synchronized methods");
 
     // Build the growable array of ScopeValues for exp stack
@@ -1922,7 +1921,8 @@ void PhaseOutput::fill_buffer(C2_MacroAssembler* masm, uint* blk_starts) {
       // be sure to tag this tty output with the compile ID.
       if (xtty != nullptr) {
         xtty->head("opto_assembly compile_id='%d'%s", C->compile_id(),
-                   C->is_osr_compilation() ? " compile_kind='osr'" : "");
+                   C->is_osr_compilation() ? " compile_kind='osr'" :
+                   (C->for_preload() ? " compile_kind='AP'" : ""));
       }
       if (C->method() != nullptr) {
         tty->print_cr("----------------------- MetaData before Compile_id = %d ------------------------", C->compile_id());
@@ -2015,8 +2015,10 @@ void PhaseOutput::FillExceptionTables(uint cnt, uint *call_returns, uint *inct_s
 
     // Handle implicit null exception table updates
     if (n->is_MachNullCheck()) {
-      assert(n->in(1)->as_Mach()->barrier_data() == 0,
-             "Implicit null checks on memory accesses with barriers are not yet supported");
+      MachNode* access = n->in(1)->as_Mach();
+      assert(access->barrier_data() == 0 ||
+             access->is_late_expanded_null_check_candidate(),
+             "Implicit null checks on memory accesses with barriers are only supported on nodes explicitly marked as null-check candidates");
       uint block_num = block->non_connector_successor(0)->_pre_order;
       _inc_table.append(inct_starts[inct_cnt++], blk_labels[block_num].loc_pos());
       continue;
@@ -3460,15 +3462,7 @@ void PhaseOutput::install_code(ciMethod*         target,
     if (C->log() != nullptr) { // Print code cache state into compiler log
       C->log()->code_cache_state();
     }
-    if (C->has_clinit_barriers()) {
-      assert(C->for_preload(), "sanity");
-      // Build second version of code without class initialization barriers
-      if (C->env()->task()->compile_reason() == CompileTask::Reason_PrecompileForPreload) {
-        // don't automatically precompile a barrier-free version unless explicitly asked
-      } else {
-        C->record_failure(C2Compiler::retry_no_clinit_barriers());
-      }
-    }
+    assert(!C->has_clinit_barriers() || C->for_preload(), "class init barriers should be only in preload code");
   }
 }
 void PhaseOutput::install_stub(const char* stub_name) {
@@ -3498,7 +3492,8 @@ void PhaseOutput::install_stub(const char* stub_name) {
       } else {
         assert(rs->is_runtime_stub(), "sanity check");
         C->set_stub_entry_point(rs->entry_point());
-        AOTCodeCache::store_code_blob(*rs, AOTCodeEntry::C2Blob, C->stub_id(), stub_name);
+        BlobId blob_id = StubInfo::blob(C->stub_id());
+        AOTCodeCache::store_code_blob(*rs, AOTCodeEntry::C2Blob, blob_id);
       }
     }
   }
@@ -3675,7 +3670,7 @@ void PhaseOutput::print_statistics() {
 #endif
 
 int PhaseOutput::max_inst_size() {
-  if (AOTCodeCache::is_on_for_dump()) {
+  if (AOTCodeCache::maybe_dumping_code()) {
     // See the comment in output.hpp.
     return 16384;
   } else {

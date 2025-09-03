@@ -30,7 +30,7 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/growableArray.hpp"
 #include "utilities/istream.hpp"
-#include "utilities/resizeableResourceHash.hpp"
+#include "utilities/resizableHashTable.hpp"
 
 class constantPoolHandle;
 class Thread;
@@ -84,7 +84,7 @@ public:
 
 private:
   // Must be C_HEAP allocated -- we don't want nested resource allocations.
-  typedef ResizeableResourceHashtable<int, InstanceKlass*,
+  typedef ResizeableHashTable<int, InstanceKlass*,
                                       AnyObj::C_HEAP, mtClassShared> ID2KlassTable;
 
   enum {

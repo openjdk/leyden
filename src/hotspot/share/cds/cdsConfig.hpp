@@ -43,7 +43,6 @@ class CDSConfig : public AllStatic {
   static bool _is_using_full_module_graph;
   static bool _has_aot_linked_classes;
   static bool _is_single_command_training;
-  static bool _is_one_step_training;
   static bool _has_temp_aot_config_file;
   static bool _is_loading_packages;
   static bool _is_loading_protection_domains;
@@ -56,7 +55,6 @@ class CDSConfig : public AllStatic {
 
   static bool  _old_cds_flags_used;
   static bool  _new_aot_flags_used;
-  static bool  _experimental_leyden_flags_used;
   static bool  _disable_heap_dumping;
 
   static JavaThread* _dumper_thread;
@@ -76,13 +74,11 @@ class CDSConfig : public AllStatic {
   static void check_aotmode_record();
   static void check_aotmode_create();
   static void setup_compiler_args();
-  static bool setup_experimental_leyden_workflow(bool xshare_auto_cmd_line); // Deprecated -- to be removed
   static void check_unsupported_dumping_module_options();
 
   // Called after Arguments::apply_ergo() has started
   static void ergo_init_classic_archive_paths();
   static void ergo_init_aot_paths();
-  static void ergo_init_experimental_leyden_paths();
 
 public:
   // Used by jdk.internal.misc.CDS.getCDSConfigStatus();
@@ -102,11 +98,10 @@ public:
   static void set_old_cds_flags_used()                       { CDS_ONLY(_old_cds_flags_used = true); }
   static bool old_cds_flags_used()                           { return CDS_ONLY(_old_cds_flags_used) NOT_CDS(false); }
   static bool new_aot_flags_used()                           { return CDS_ONLY(_new_aot_flags_used) NOT_CDS(false); }
-  static bool experimental_leyden_flags_used()               { return CDS_ONLY(_experimental_leyden_flags_used) NOT_CDS(false); }
   static void check_internal_module_property(const char* key, const char* value) NOT_CDS_RETURN;
   static void check_incompatible_property(const char* key, const char* value) NOT_CDS_RETURN;
   static bool has_unsupported_runtime_module_options() NOT_CDS_RETURN_(false);
-  static bool check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line, bool xshare_auto_cmd_line) NOT_CDS_RETURN_(true);
+  static bool check_vm_args_consistency(bool patch_mod_javabase, bool mode_flag_cmd_line) NOT_CDS_RETURN_(true);
   static const char* type_of_archive_being_loaded();
   static const char* type_of_archive_being_written();
   static void prepare_for_dumping();
@@ -121,10 +116,8 @@ public:
   static bool is_using_only_default_archive()                NOT_CDS_RETURN_(false);
 
   // static_archive
-  static bool is_dumping_static_archive()                    { return (CDS_ONLY(_is_dumping_static_archive) NOT_CDS(false))
-                                                                    || is_dumping_final_static_archive(); }
+  static bool is_dumping_static_archive()                    { return CDS_ONLY(_is_dumping_static_archive) NOT_CDS(false); }
   static void enable_dumping_static_archive()                { CDS_ONLY(_is_dumping_static_archive = true); }
-
 
   // A static CDS archive can be dumped in three modes:
   //
@@ -223,9 +216,6 @@ public:
   static void disable_dumping_aot_code()                     NOT_CDS_RETURN;
   static void enable_dumping_aot_code()                      NOT_CDS_RETURN;
   static bool is_dumping_adapters()                          NOT_CDS_RETURN_(false);
-
-  // Are we using the (to be deprecated) -XX:CacheDataStore workflow?
-  static bool is_experimental_leyden_workflow()              NOT_CDS_RETURN_(false);
 
   // Some CDS functions assume that they are called only within a single-threaded context. I.e.,
   // they are called from:

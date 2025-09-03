@@ -53,16 +53,6 @@
  * @run driver/timeout=120 SpringPetClinic AOT
  */
 
-/*
- * @test id=leyden
- * @key external-dep
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary run Spring Pet Clinic demo with leyden-premain "new workflow"
- * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic LEYDEN
- */
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -184,6 +174,7 @@ public class SpringPetClinic {
 
                 // PetClinic runs very slowly in debug builds if VerifyDependencies is enabled.
                 "-XX:+IgnoreUnrecognizedVMOptions", "-XX:-VerifyDependencies",
+                "-XX:-ArchiveLoaderLookupCache", // LEYDEN_ONLY - work around JDK-8365959
               //These don't seem necessary when pet-clinic is run in "Spring AOT" mode
               //"--add-opens", "java.base/java.io=ALL-UNNAMED",
               //"--add-opens", "java.base/java.lang=ALL-UNNAMED",
@@ -201,16 +192,6 @@ public class SpringPetClinic {
             String cmdLine[] = new String[] {
                 "org.springframework.samples.petclinic.PetClinicApplication"
             };
-/*
-            if (runMode == RunMode.PRODUCTION) {
-                // FIXME: bug JDK-8318393
-                cmdLine = StringArrayUtils.concat("-XX:-LoadCachedCode", cmdLine);
-            }
-
-            if (runMode.isProductionRun()) {
-                cmdLine = StringArrayUtils.concat("-Xlog:aot+codecache=error", cmdLine);
-            }
- */
             return cmdLine;
         }
 

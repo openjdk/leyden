@@ -29,15 +29,14 @@
 #include "code/dependencies.hpp"
 #include "code/nativeInst.hpp"
 #include "code/nmethod.inline.hpp"
-#include "code/relocInfo.hpp"
 #include "code/scopeDesc.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilationLog.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileLog.hpp"
-#include "compiler/compileTask.hpp"
 #include "compiler/compilerDirectives.hpp"
 #include "compiler/compilerOracle.hpp"
+#include "compiler/compileTask.hpp"
 #include "compiler/directivesParser.hpp"
 #include "compiler/disassembler.hpp"
 #include "compiler/oopMap.inline.hpp"
@@ -61,8 +60,8 @@
 #include "prims/jvmtiImpl.hpp"
 #include "prims/jvmtiThreadState.hpp"
 #include "prims/methodHandles.hpp"
-#include "runtime/continuation.hpp"
 #include "runtime/atomic.hpp"
+#include "runtime/continuation.hpp"
 #include "runtime/deoptimization.hpp"
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/frame.inline.hpp"
@@ -81,7 +80,7 @@
 #include "utilities/dtrace.hpp"
 #include "utilities/events.hpp"
 #include "utilities/globalDefinitions.hpp"
-#include "utilities/resourceHash.hpp"
+#include "utilities/hashTable.hpp"
 #include "utilities/xmlstream.hpp"
 #if INCLUDE_JVMCI
 #include "jvmci/jvmciRuntime.hpp"
@@ -693,13 +692,6 @@ address nmethod::oops_reloc_begin() const {
   }
 
   address low_boundary = verified_entry_point();
-  if (!is_in_use()) {
-    low_boundary += NativeJump::instruction_size;
-    // %%% Note:  On SPARC we patch only a 4-byte trap, not a full NativeJump.
-    // This means that the low_boundary is going to be a little too high.
-    // This shouldn't matter, since oops of non-entrant methods are never used.
-    // In fact, why are we bothering to look at oops in a non-entrant method??
-  }
   return low_boundary;
 }
 
@@ -1029,7 +1021,10 @@ int nmethod::total_size() const {
 }
 
 const char* nmethod::compile_kind() const {
-  if (is_osr_method())     return "osr";
+  if (is_osr_method()) return "osr";
+  if (preloaded())     return "AP";
+  if (is_aot())        return "A";
+
   if (method() != nullptr && is_native_method()) {
     if (method()->is_continuation_native_intrinsic()) {
       return "cnt";
@@ -1251,60 +1246,45 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   return nm;
 }
 
-void nmethod::restore_from_archive(nmethod* archived_nm,
-                                   const methodHandle& method,
-                                   int compile_id,
-                                   address reloc_data,
-                                   GrowableArray<Handle>& oop_list,
-                                   GrowableArray<Metadata*>& metadata_list,
-                                   ImmutableOopMapSet* oop_maps,
-                                   address immutable_data,
-                                   GrowableArray<Handle>& reloc_imm_oop_list,
-                                   GrowableArray<Metadata*>& reloc_imm_metadata_list,
-#ifndef PRODUCT
-                                   AsmRemarks& archived_asm_remarks,
-                                   DbgStrings& archived_dbg_strings,
-#endif /* PRODUCT */
-                                   AOTCodeReader* aot_code_reader)
+nmethod* nmethod::restore(address code_cache_buffer,
+                          const methodHandle& method,
+                          int compile_id,
+                          address reloc_data,
+                          GrowableArray<Handle>& oop_list,
+                          GrowableArray<Metadata*>& metadata_list,
+                          ImmutableOopMapSet* oop_maps,
+                          address immutable_data,
+                          GrowableArray<Handle>& reloc_imm_oop_list,
+                          GrowableArray<Metadata*>& reloc_imm_metadata_list,
+                          AOTCodeReader* aot_code_reader)
 {
-  archived_nm->copy_to((address)this);
-  set_name("nmethod");
-  set_method(method());
+  CodeBlob::restore(code_cache_buffer, "nmethod", reloc_data, oop_maps);
+  nmethod* nm = (nmethod*)code_cache_buffer;
+  nm->set_method(method());
+  nm->_compile_id = compile_id;
+  nm->set_immutable_data(immutable_data);
+  nm->copy_values(&oop_list);
+  nm->copy_values(&metadata_list);
 
-  _compile_id = compile_id;
-  // allocate _mutable_data before copying relocation data because relocation data is now stored as part of mutable data area
-  if (archived_nm->mutable_data_size() > 0) {
-    _mutable_data = (address)os::malloc(archived_nm->mutable_data_size(), mtCode);
-    if (_mutable_data == nullptr) {
-      vm_exit_out_of_memory(archived_nm->mutable_data_size(), OOM_MALLOC_ERROR, "codebuffer: no space for mutable data");
-    }
-  }
-  memcpy((address)relocation_begin(), reloc_data, archived_nm->relocation_size());
-  set_oop_maps(oop_maps);
-  set_immutable_data(immutable_data);
-  copy_values(&oop_list);
-  copy_values(&metadata_list);
-
-  aot_code_reader->apply_relocations(this, reloc_imm_oop_list, reloc_imm_metadata_list);
+  aot_code_reader->fix_relocations(nm, &reloc_imm_oop_list, &reloc_imm_metadata_list);
 
 #ifndef PRODUCT
-  AsmRemarks::init(asm_remarks());
-  use_remarks(archived_asm_remarks);
-  archived_asm_remarks.clear();
-  DbgStrings::init(dbg_strings());
-  use_strings(archived_dbg_strings);
-  archived_dbg_strings.clear();
-#endif /* PRODUCT */
+  nm->asm_remarks().init();
+  aot_code_reader->read_asm_remarks(nm->asm_remarks(), /* use_string_table */ false);
+  nm->dbg_strings().init();
+  aot_code_reader->read_dbg_strings(nm->dbg_strings(), /* use_string_table */ false);
+#endif
 
   // Flush the code block
-  ICache::invalidate_range(code_begin(), code_size());
+  ICache::invalidate_range(nm->code_begin(), nm->code_size());
 
   // Create cache after PcDesc data is copied - it will be used to initialize cache
-  _pc_desc_container = new PcDescContainer(scopes_pcs_begin());
+  nm->_pc_desc_container = new PcDescContainer(nm->scopes_pcs_begin());
 
-  set_aot_code_entry(aot_code_reader->aot_code_entry());
+  nm->set_aot_code_entry(aot_code_reader->aot_code_entry());
 
-  post_init();
+  nm->post_init();
+  return nm;
 }
 
 nmethod* nmethod::new_nmethod(nmethod* archived_nm,
@@ -1318,10 +1298,6 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                               address immutable_data,
                               GrowableArray<Handle>& reloc_imm_oop_list,
                               GrowableArray<Metadata*>& reloc_imm_metadata_list,
-#ifndef PRODUCT
-                              AsmRemarks& asm_remarks,
-                              DbgStrings& dbg_strings,
-#endif /* PRODUCT */
                               AOTCodeReader* aot_code_reader)
 {
   nmethod* nm = nullptr;
@@ -1329,21 +1305,19 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
   // create nmethod
   {
     MutexLocker mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    nm = (nmethod *)CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(archived_nm->comp_level()));
-    if (nm != nullptr) {
-      nm->restore_from_archive(archived_nm,
-                               method,
-                               compile_id,
-                               reloc_data,
-                               oop_list,
-                               metadata_list,
-                               oop_maps,
-                               immutable_data,
-                               reloc_imm_oop_list,
-                               reloc_imm_metadata_list,
-                               NOT_PRODUCT_ARG(asm_remarks)
-                               NOT_PRODUCT_ARG(dbg_strings)
-                               aot_code_reader);
+    address code_cache_buffer = (address)CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(archived_nm->comp_level()));
+    if (code_cache_buffer != nullptr) {
+      nm = archived_nm->restore(code_cache_buffer,
+                                method,
+                                compile_id,
+                                reloc_data,
+                                oop_list,
+                                metadata_list,
+                                oop_maps,
+                                immutable_data,
+                                reloc_imm_oop_list,
+                                reloc_imm_metadata_list,
+                                aot_code_reader);
       nm->record_nmethod_dependency();
       NOT_PRODUCT(note_java_nmethod(nm));
     }
@@ -1720,12 +1694,12 @@ nmethod::nmethod(
 // output should be embedded in some other element.
 void nmethod::log_identity(xmlStream* log) const {
   assert(log->inside_attrs_or_error(), "printing attributes");
-  log->print(" code_compile_id='%d'", compile_id());
+  log->print(" compile_id='%d'", compile_id());
   const char* nm_kind = compile_kind();
-  if (nm_kind != nullptr)  log->print(" code_compile_kind='%s'", nm_kind);
-  log->print(" code_compiler='%s'", compiler_name());
+  if (nm_kind != nullptr)  log->print(" compile_kind='%s'", nm_kind);
+  log->print(" compiler='%s'", compiler_name());
   if (TieredCompilation) {
-    log->print(" code_compile_level='%d'", comp_level());
+    log->print(" compile_level='%d'", comp_level());
   }
 #if INCLUDE_JVMCI
   if (jvmci_nmethod_data() != nullptr) {
@@ -1796,10 +1770,6 @@ void nmethod::maybe_print_nmethod(const DirectiveSet* directive) {
 }
 
 void nmethod::print_nmethod(bool printmethod) {
-  // Enter a critical section to prevent a race with deopts that patch code and updates the relocation info.
-  // Unfortunately, we have to lock the NMethodState_lock before the tty lock due to the deadlock rules and
-  // cannot lock in a more finely grained manner.
-  ConditionalMutexLocker ml(NMethodState_lock, !NMethodState_lock->owned_by_self(), Mutex::_no_safepoint_check_flag);
   ttyLocker ttyl;  // keep the following output all in one block
   if (xtty != nullptr) {
     xtty->begin_head("print_nmethod");
@@ -2118,6 +2088,11 @@ bool nmethod::is_maybe_on_stack() {
 void nmethod::inc_decompile_count() {
   if (!is_compiled_by_c2() && !is_compiled_by_jvmci()) return;
   // Could be gated by ProfileTraps, but do not bother...
+#if INCLUDE_JVMCI
+  if (jvmci_skip_profile_deopt()) {
+    return;
+  }
+#endif
   Method* m = method();
   if (m == nullptr)  return;
   MethodData* mdo = m->method_data();
@@ -2154,14 +2129,12 @@ void nmethod::invalidate_osr_method() {
   }
 }
 
-void nmethod::log_state_change(const char* reason) const {
-  assert(reason != nullptr, "Must provide a reason");
-
+void nmethod::log_state_change(InvalidationReason invalidation_reason) const {
   if (LogCompilation) {
     if (xtty != nullptr) {
       ttyLocker ttyl;  // keep the following output all in one block
       xtty->begin_elem("make_not_entrant thread='%zu' reason='%s'",
-                       os::current_thread_id(), reason);
+                       os::current_thread_id(), invalidation_reason_to_string(invalidation_reason));
       log_identity(xtty);
       xtty->stamp();
       xtty->end_elem();
@@ -2170,7 +2143,7 @@ void nmethod::log_state_change(const char* reason) const {
 
   ResourceMark rm;
   stringStream ss(NEW_RESOURCE_ARRAY(char, 256), 256);
-  ss.print("made not entrant: %s", reason);
+  ss.print("made not entrant: %s", invalidation_reason_to_string(invalidation_reason));
 
   CompileTask::print_ul(this, ss.freeze());
   if (PrintCompilation) {
@@ -2185,9 +2158,7 @@ void nmethod::unlink_from_method() {
 }
 
 // Invalidate code
-bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
-  assert(reason != nullptr, "Must provide a reason");
-
+bool nmethod::make_not_entrant(InvalidationReason invalidation_reason, bool keep_aot_entry) {
   // This can be called while the system is already at a safepoint which is ok
   NoSafepointVerifier nsv;
 
@@ -2223,19 +2194,7 @@ bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
     } else {
       // The caller can be calling the method statically or through an inline
       // cache call.
-      NativeJump::patch_verified_entry(entry_point(), verified_entry_point(),
-                                       SharedRuntime::get_handle_wrong_method_stub());
-
-      // Update the relocation info for the patched entry.
-      // First, get the old relocation info...
-      RelocIterator iter(this, verified_entry_point(), verified_entry_point() + 8);
-      if (iter.next() && iter.addr() == verified_entry_point()) {
-        Relocation* old_reloc = iter.reloc();
-        // ...then reset the iterator to update it.
-        RelocIterator iter(this, verified_entry_point(), verified_entry_point() + 8);
-        relocInfo::change_reloc_info_for_address(&iter, verified_entry_point(), old_reloc->type(),
-                                                 relocInfo::relocType::runtime_call_type);
-      }
+      BarrierSet::barrier_set()->barrier_set_nmethod()->make_not_entrant(this);
     }
 
     if (update_recompile_counts()) {
@@ -2256,13 +2215,13 @@ bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
     assert(success, "Transition can't fail");
 
     // Log the transition once
-    log_state_change(reason);
+    log_state_change(invalidation_reason);
 
     // Remove nmethod from method.
     unlink_from_method();
 
-    if (make_not_entrant) {
-      // Keep cached code if it was simply replaced
+    if (!keep_aot_entry) {
+      // Keep AOT code if it was simply replaced
       // otherwise make it not entrant too.
       AOTCodeCache::invalidate(_aot_code_entry);
     }
@@ -2274,7 +2233,7 @@ bool nmethod::make_not_entrant(const char* reason, bool make_not_entrant) {
   // Invalidate can't occur while holding the NMethodState_lock
   JVMCINMethodData* nmethod_data = jvmci_nmethod_data();
   if (nmethod_data != nullptr) {
-    nmethod_data->invalidate_nmethod_mirror(this);
+    nmethod_data->invalidate_nmethod_mirror(this, invalidation_reason);
   }
 #endif
 
@@ -2312,7 +2271,9 @@ void nmethod::unlink() {
   // Clear the link between this nmethod and a HotSpotNmethod mirror
   JVMCINMethodData* nmethod_data = jvmci_nmethod_data();
   if (nmethod_data != nullptr) {
-    nmethod_data->invalidate_nmethod_mirror(this);
+    nmethod_data->invalidate_nmethod_mirror(this, is_cold() ?
+            nmethod::InvalidationReason::UNLOADING_COLD :
+            nmethod::InvalidationReason::UNLOADING);
   }
 #endif
 
@@ -2330,11 +2291,20 @@ void nmethod::purge(bool unregister_nmethod) {
   MutexLocker ml(CodeCache_lock, Mutex::_no_safepoint_check_flag);
 
   // completely deallocate this method
-  Events::log_nmethod_flush(Thread::current(), "flushing %s nmethod " INTPTR_FORMAT, is_osr_method() ? "osr" : "", p2i(this));
-  log_debug(codecache)("*flushing %s nmethod %3d/" INTPTR_FORMAT ". Live blobs:" UINT32_FORMAT
-                       "/Free CodeCache:%zuKb",
-                       is_osr_method() ? "osr" : "",_compile_id, p2i(this), CodeCache::blob_count(),
-                       CodeCache::unallocated_capacity(CodeCache::get_code_blob_type(this))/1024);
+  Events::log_nmethod_flush(Thread::current(), "flushing %s nmethod " INTPTR_FORMAT, compile_kind(), p2i(this));
+
+  LogTarget(Debug, codecache) lt;
+  if (lt.is_enabled()) {
+    ResourceMark rm;
+    LogStream ls(lt);
+    const char* method_name = method()->name()->as_C_string();
+    const size_t codecache_capacity = CodeCache::capacity()/1024;
+    const size_t codecache_free_space = CodeCache::unallocated_capacity(CodeCache::get_code_blob_type(this))/1024;
+    ls.print("Flushing %s nmethod %6d/" INTPTR_FORMAT ", level=%d, cold=%d, epoch=" UINT64_FORMAT ", cold_count=" UINT64_FORMAT ". "
+              "Cache capacity: %zuKb, free space: %zuKb. method %s (%s)",
+              compile_kind(), _compile_id, p2i(this), _comp_level, is_cold(), _gc_epoch, CodeCache::cold_gc_count(),
+              codecache_capacity, codecache_free_space, method_name, compiler_name());
+  }
 
   // We need to deallocate any ExceptionCache data.
   // Note that we do not need to grab the nmethod lock for this, it
@@ -2361,6 +2331,7 @@ void nmethod::purge(bool unregister_nmethod) {
   }
   CodeCache::unregister_old_nmethod(this);
 
+  JVMCI_ONLY( _metadata_size = 0; )
   CodeBlob::purge();
 }
 
@@ -2413,11 +2384,11 @@ void nmethod::post_compiled_method(CompileTask* task) {
   task->set_nm_insts_size(insts_size());
   task->set_nm_total_size(total_size());
 
-  // task->is_aot() is true only for loaded cached code.
-  // nmethod::_aot_code_entry is set for loaded and stored cached code
+  // task->is_aot_load() is true only for loaded AOT code.
+  // nmethod::_aot_code_entry is set for loaded and stored AOT code
   // to invalidate the entry when nmethod is deoptimized.
-  // There is option to not store in archive cached code.
-  guarantee((_aot_code_entry != nullptr) || !task->is_aot() || VerifyCachedCode, "sanity");
+  // VerifyAOTCode is option to not store in archive AOT code.
+  guarantee((_aot_code_entry != nullptr) || !task->is_aot_load() || VerifyAOTCode, "sanity");
 
   // JVMTI -- compiled method notification (must be done outside lock)
   post_compiled_method_load_event();
@@ -2651,7 +2622,7 @@ void nmethod::do_unloading(bool unloading_occurred) {
   }
 }
 
-void nmethod::oops_do(OopClosure* f, bool allow_dead) {
+void nmethod::oops_do(OopClosure* f) {
   // Prevent extra code cache walk for platforms that don't have immediate oops.
   if (relocInfo::mustIterateImmediateOopsInCode()) {
     RelocIterator iter(this, oops_reloc_begin());
@@ -3130,9 +3101,6 @@ class VerifyMetadataClosure: public MetadataClosure {
 void nmethod::verify() {
   if (is_not_entrant())
     return;
-
-  // Make sure all the entry points are correctly aligned for patching.
-  NativeJump::check_verified_entry_alignment(entry_point(), verified_entry_point());
 
   // assert(oopDesc::is_oop(method()), "must be valid");
 
@@ -3686,6 +3654,9 @@ void nmethod::decode2(outputStream* ost) const {
   if (use_compressed_format && ! compressed_with_comments) {
     const_cast<nmethod*>(this)->print_constant_pool(st);
 
+    st->bol();
+    st->cr();
+    st->print_cr("Loading hsdis library failed, undisassembled code is shown in MachCode section");
     //---<  Open the output (Marker for post-mortem disassembler)  >---
     st->print_cr("[MachCode]");
     const char* header = nullptr;
@@ -3720,6 +3691,9 @@ void nmethod::decode2(outputStream* ost) const {
   if (compressed_with_comments) {
     const_cast<nmethod*>(this)->print_constant_pool(st);
 
+    st->bol();
+    st->cr();
+    st->print_cr("Loading hsdis library failed, undisassembled code is shown in MachCode section");
     //---<  Open the output (Marker for post-mortem disassembler)  >---
     st->print_cr("[MachCode]");
     while ((p < end) && (p != nullptr)) {
@@ -4273,10 +4247,14 @@ const char* nmethod::jvmci_name() {
   }
   return nullptr;
 }
+
+bool nmethod::jvmci_skip_profile_deopt() const {
+  return jvmci_nmethod_data() != nullptr && !jvmci_nmethod_data()->profile_deopt();
+}
 #endif
 
-void nmethod::prepare_for_archiving() {
-  CodeBlob::prepare_for_archiving();
+void nmethod::prepare_for_archiving_impl() {
+  CodeBlob::prepare_for_archiving_impl();
   _deoptimization_generation = 0;
   _gc_epoch = 0;
   _method_profiling_count = 0;

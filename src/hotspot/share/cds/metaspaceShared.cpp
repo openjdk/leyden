@@ -22,15 +22,15 @@
  *
  */
 
-#include "cds/aotCacheAccess.hpp"
-#include "cds/aotClassInitializer.hpp"
 #include "cds/aotArtifactFinder.hpp"
+#include "cds/aotCacheAccess.hpp"
 #include "cds/aotClassInitializer.hpp"
 #include "cds/aotClassLinker.hpp"
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotLogging.hpp"
+#include "cds/aotMapLogger.hpp"
 #include "cds/aotReferenceObjSupport.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapLoader.hpp"
@@ -51,7 +51,6 @@
 #include "cds/metaspaceShared.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "classfile/classLoaderDataShared.hpp"
-#include "classfile/classLoaderExt.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/loaderConstraints.hpp"
 #include "classfile/modules.hpp"
@@ -67,8 +66,8 @@
 #include "compiler/compileBroker.hpp"
 #include "compiler/precompiler.hpp"
 #include "gc/shared/gcVMOperations.hpp"
-#include "interpreter/bytecodeStream.hpp"
 #include "interpreter/bytecodes.hpp"
+#include "interpreter/bytecodeStream.hpp"
 #include "jvm_io.h"
 #include "logging/log.hpp"
 #include "logging/logMessage.hpp"
@@ -105,9 +104,9 @@
 #include "utilities/align.hpp"
 #include "utilities/bitMap.inline.hpp"
 #include "utilities/defaultStream.hpp"
+#include "utilities/hashTable.hpp"
 #include "utilities/macros.hpp"
 #include "utilities/ostream.hpp"
-#include "utilities/resourceHash.hpp"
 
 #include <sys/stat.h>
 
@@ -188,7 +187,7 @@ class DumpClassListCLDClosure : public CLDClosure {
   static const int MAX_TABLE_SIZE = 61333;
 
   fileStream *_stream;
-  ResizeableResourceHashtable<InstanceKlass*, bool,
+  ResizeableHashTable<InstanceKlass*, bool,
                               AnyObj::C_HEAP, mtClassShared> _dumped_classes;
 
   void dump(InstanceKlass* ik) {
@@ -255,7 +254,7 @@ static bool shared_base_too_high(char* specified_base, char* aligned_base, size_
 static char* compute_shared_base(size_t cds_max) {
   char* specified_base = (char*)SharedBaseAddress;
   size_t alignment = MetaspaceShared::core_region_alignment();
-  if (UseCompressedClassPointers) {
+  if (UseCompressedClassPointers && CompressedKlassPointers::needs_class_space()) {
     alignment = MAX2(alignment, Metaspace::reserve_alignment());
   }
 
@@ -306,9 +305,7 @@ void MetaspaceShared::initialize_for_static_dump() {
   if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
     if (!((UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC || UseShenandoahGC) && UseCompressedClassPointers)) {
       const char* error;
-      if (CDSConfig::is_experimental_leyden_workflow()) {
-        error = "Cannot create the CacheDataStore";
-      } else if (CDSConfig::is_dumping_preimage_static_archive()) {
+      if (CDSConfig::is_dumping_preimage_static_archive()) {
         error = "Cannot create the AOT configuration file";
       } else {
         error = "Cannot create the AOT cache";
@@ -352,6 +349,24 @@ void MetaspaceShared::initialize_for_static_dump() {
 // Called by universe_post_init()
 void MetaspaceShared::post_initialize(TRAPS) {
   if (CDSConfig::is_using_archive()) {
+    FileMapInfo *static_mapinfo = FileMapInfo::current_info();
+    FileMapInfo *dynamic_mapinfo = FileMapInfo::dynamic_info();
+
+    if (AOTMapLogger::is_logging_at_bootstrap()) {
+      // The map logging needs to be done here, as it requires some stubs on Windows,
+      // which are not generated until the end of init_globals().
+      AOTMapLogger::runtime_log(static_mapinfo, dynamic_mapinfo);
+    }
+
+    // Close any open file descriptors. However, mmap'ed pages will remain in memory.
+    static_mapinfo->close();
+    static_mapinfo->unmap_region(MetaspaceShared::bm);
+
+    if (dynamic_mapinfo != nullptr) {
+      dynamic_mapinfo->close();
+      dynamic_mapinfo->unmap_region(MetaspaceShared::bm);
+    }
+
     int size = AOTClassLocationConfig::runtime()->length();
     if (size > 0) {
       CDSProtectionDomain::allocate_shared_data_arrays(size, CHECK);
@@ -725,6 +740,8 @@ void VM_PopulateDumpSharedSpace::doit() {
   _map_info->set_serialized_data(serialized_data);
   _map_info->set_cloned_vtables(CppVtables::vtables_serialized_base());
   _map_info->header()->set_class_location_config(cl_config);
+
+  HeapShared::delete_tables_with_raw_oops();
 }
 
 class CollectClassesForLinking : public KlassClosure {
@@ -788,6 +805,10 @@ void MetaspaceShared::link_shared_classes(TRAPS) {
   AOTClassLinker::initialize();
   AOTClassInitializer::init_test_class(CHECK);
 
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    FinalImageRecipes::apply_recipes(CHECK);
+  }
+
   while (true) {
     ResourceMark rm(THREAD);
     CollectClassesForLinking collect_classes;
@@ -825,10 +846,6 @@ void MetaspaceShared::link_shared_classes(TRAPS) {
       }
     }
   }
-
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    FinalImageRecipes::apply_recipes(CHECK);
-  }
 }
 
 // Preload classes from a list, populate the shared spaces and dump to a
@@ -857,9 +874,6 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
       MetaspaceShared::writing_error(err_msg("Unexpected exception, use -Xlog:aot%s,exceptions=trace for detail",
                                              CDSConfig::new_aot_flags_used() ? "" : ",cds"));
     }
-    if (CDSConfig::is_experimental_leyden_workflow()) {
-      vm_exit(1);
-    }
   }
 
   if (CDSConfig::new_aot_flags_used()) {
@@ -875,11 +889,10 @@ void MetaspaceShared::preload_and_dump(TRAPS) {
       struct stat st;
       if (os::stat(AOTCache, &st) != 0) {
         tty->print_cr("AOTCache creation failed: %s", AOTCache);
-        vm_exit(0);
       } else {
         tty->print_cr("AOTCache creation is complete: %s " INT64_FORMAT " bytes", AOTCache, (int64_t)(st.st_size));
-        vm_exit(0);
       }
+      vm_direct_exit(0);
     }
   }
 }
@@ -1097,30 +1110,29 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
         TrainingData::print_archived_training_data_on(tty);
       }
 
-      CDSConfig::enable_dumping_aot_code();
       {
         builder.start_ac_region();
         if (AOTCodeCache::is_dumping_code()) {
-          Precompiler::compile_cached_code(&builder, CHECK);
+          CDSConfig::enable_dumping_aot_code();
+          log_info(aot)("Compiling AOT code");
+          Precompiler::compile_aot_code(&builder, CHECK);
+          log_info(aot)("Finished compiling AOT code");
+          CDSConfig::disable_dumping_aot_code();
         }
         // Write the contents to aot code region and close AOTCodeCache before packing the region
         AOTCodeCache::close();
+        log_info(aot)("Dumped AOT code Cache");
         builder.end_ac_region();
       }
-      CDSConfig::disable_dumping_aot_code();
     }
   }
 
   bool status = write_static_archive(&builder, mapinfo, heap_info);
   if (status && CDSConfig::is_dumping_preimage_static_archive()) {
-    if (CDSConfig::is_experimental_leyden_workflow()) {
-      fork_and_dump_final_static_archive_experimental_leyden_workflow(CHECK);
-    } else {
-      tty->print_cr("%s AOTConfiguration recorded: %s",
-                    CDSConfig::has_temp_aot_config_file() ? "Temporary" : "", AOTConfiguration);
-      if (CDSConfig::is_single_command_training()) {
-        fork_and_dump_final_static_archive(CHECK);
-      }
+    tty->print_cr("%s AOTConfiguration recorded: %s",
+                  CDSConfig::has_temp_aot_config_file() ? "Temporary" : "", AOTConfiguration);
+    if (CDSConfig::is_single_command_training()) {
+      fork_and_dump_final_static_archive(CHECK);
     }
   }
 
@@ -1191,28 +1203,20 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
   // parsed, so they are not in Arguments::jvm_args_array. If JDK_AOT_VM_OPTIONS is in
   // the environment, it will be inherited and parsed by the child JVM process
   // in Arguments::parse_java_tool_options_environment_variable().
+  precond(strcmp(AOTMode, "record") == 0);
 
   // We don't pass Arguments::jvm_flags_array(), as those will be added by
   // the child process when it loads .hotspotrc
 
-  if (CDSConfig::is_experimental_leyden_workflow()) {
-    stringStream ss;
-    ss.print("-XX:CDSPreimage=");
-    ss.print_raw(CDSPreimage);
-    append_args(&args, ss.freeze(), CHECK_0);
-  } else {
-
-   precond(strcmp(AOTMode, "record") == 0);
-
-   {
+  {
     // If AOTCacheOutput contains %p, it should have been already substituted with the
     // pid of the training process.
     stringStream ss;
     ss.print("-XX:AOTCacheOutput=");
     ss.print_raw(AOTCacheOutput);
     append_args(&args, ss.freeze(), CHECK_0);
-   }
-   {
+  }
+  {
     // If AOTCacheConfiguration contains %p, it should have been already substituted with the
     // pid of the training process.
     // If AOTCacheConfiguration was not explicitly specified, it should have been assigned a
@@ -1221,10 +1225,9 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
     ss.print("-XX:AOTConfiguration=");
     ss.print_raw(AOTConfiguration);
     append_args(&args, ss.freeze(), CHECK_0);
-   }
-
-   append_args(&args, "-XX:AOTMode=create", CHECK_0);
   }
+
+  append_args(&args, "-XX:AOTMode=create", CHECK_0);
 
   Symbol* klass_name = SymbolTable::new_symbol("jdk/internal/misc/CDS$ProcessLauncher");
   Klass* k = SystemDictionary::resolve_or_fail(klass_name, true, CHECK_0);
@@ -1255,85 +1258,6 @@ static int exec_jvm_with_java_tool_options(const char* java_launcher_path, TRAPS
                           &javacall_args,
                           CHECK_0);
   return result.get_jint();
-}
-
-// This is for debugging purposes only (-XX:+CDSManualFinalImage) so we don't bother
-// quoating any special characters. The user should avoid using special chars.
-static void print_vm_arguments(outputStream* st) {
-  const char* cp = Arguments::get_appclasspath();
-  if (cp != nullptr && strlen(cp) > 0 && strcmp(cp, ".") != 0) {
-    st->print(" -cp ");  st->print_raw(cp);
-  }
-  for (int i = 0; i < Arguments::num_jvm_args(); i++) {
-    st->print(" %s", Arguments::jvm_args_array()[i]);
-  }
-}
-
-void MetaspaceShared::fork_and_dump_final_static_archive_experimental_leyden_workflow(TRAPS) {
-  assert(CDSConfig::is_dumping_preimage_static_archive(), "sanity");
-
-  ResourceMark rm;
-  stringStream ss;
-  print_java_launcher(&ss);
-
-  if (CDSManualFinalImage) {
-    print_vm_arguments(&ss);
-    ss.print(" -XX:CDSPreimage=%s", SharedArchiveFile);
-    const char* cmd = ss.freeze();
-
-    tty->print_cr("-XX:+CDSManualFinalImage is specified");
-    tty->print_cr("Please manually execute the following command to create the final CDS image:");
-    tty->print("    "); tty->print_raw_cr(cmd);
-
-    // The following is useful if the dumping was trigger by a script that builds
-    // a complex command-line.
-    tty->print_cr("Note: to recreate the preimage only:");
-    tty->print_cr("    rm -f %s", CacheDataStore);
-    tty->print("    ");
-    print_java_launcher(tty);
-    print_vm_arguments(tty);
-    if (Arguments::java_command() != nullptr) {
-      tty->print(" %s", Arguments::java_command());
-    }
-    tty->cr();
-  } else {
-    const char* cmd = ss.freeze();
-    log_info(cds)("Launching child process to create final CDS image:");
-    log_info(cds)("    %s", cmd);
-    int status = exec_jvm_with_java_tool_options(cmd, CHECK);
-    if (status != 0) {
-      log_error(cds)("Child process finished; status = %d", status);
-      log_error(cds)("To reproduce the error");
-      ResourceMark rm;
-      LogStream ls(Log(cds)::error());
-      ls.print("    "); ls.print_raw_cr(cmd);
-
-      // The following is useful if the dumping was trigger by a script that builds
-      // a complex command-line.
-      ls.print_cr("Note: to recreate the preimage only:");
-      ls.print_cr("    rm -f %s", CacheDataStore);
-      ls.print("    ");
-      print_java_launcher(&ls);
-      print_vm_arguments(&ls);
-      ls.print(" -XX:+UnlockDiagnosticVMOptions -XX:+CDSManualFinalImage");
-      if (Arguments::java_command() != nullptr) {
-        ls.print(" %s", Arguments::java_command());
-      }
-      ls.cr();
-
-      vm_direct_exit(status);
-    } else {
-      log_info(cds)("Child process finished; status = %d", status);
-      // On Windows, need WRITE permission to remove the file.
-      WINDOWS_ONLY(chmod(CDSPreimage, _S_IREAD | _S_IWRITE));
-      status = remove(CDSPreimage);
-      if (status != 0) {
-        log_error(cds)("Failed to remove CDSPreimage file %s", CDSPreimage);
-      } else {
-        log_info(cds)("Removed CDSPreimage file %s", CDSPreimage);
-      }
-    }
-  }
 }
 
 void MetaspaceShared::fork_and_dump_final_static_archive(TRAPS) {
@@ -1464,6 +1388,10 @@ void MetaspaceShared::report_loading_error(const char* format, ...) {
   LogStream ls_cds(level, LogTagSetMapping<LOG_TAGS(cds)>::tagset());
 
   LogStream& ls = CDSConfig::new_aot_flags_used() ? ls_aot : ls_cds;
+  if (!ls.is_enabled()) {
+    return;
+  }
+
   va_list ap;
   va_start(ap, format);
 
@@ -1541,14 +1469,12 @@ void MetaspaceShared::initialize_runtime_shared_and_meta_spaces() {
     CDSConfig::disable_dumping_dynamic_archive();
     if (PrintSharedArchiveAndExit) {
       MetaspaceShared::unrecoverable_loading_error("Unable to use shared archive.");
-    } else if (RequireSharedSpaces) {
-      MetaspaceShared::unrecoverable_loading_error("Unable to map shared spaces");
-    } else if (CDSConfig::is_dumping_final_static_archive()) {
-      assert(CDSPreimage != nullptr, "must be");
-      log_error(cds)("Unable to map shared spaces for CDSPreimage = %s", CDSPreimage);
-      MetaspaceShared::unrecoverable_loading_error();
     } else {
-      report_loading_error("Unable to map shared spaces");
+      if (RequireSharedSpaces) {
+        MetaspaceShared::unrecoverable_loading_error("Unable to map shared spaces");
+      } else {
+        report_loading_error("Unable to map shared spaces");
+      }
     }
   }
 
@@ -1785,8 +1711,7 @@ MapArchiveResult MetaspaceShared::map_archives(FileMapInfo* static_mapinfo, File
 
       // Set up compressed Klass pointer encoding: the encoding range must
       //  cover both archive and class space.
-      const address encoding_base = (address)mapped_base_address;
-      const address klass_range_start = encoding_base + prot_zone_size;
+      const address klass_range_start = (address)mapped_base_address;
       const size_t klass_range_size = (address)class_space_rs.end() - klass_range_start;
       if (INCLUDE_CDS_JAVA_HEAP || UseCompactObjectHeaders) {
         // The CDS archive may contain narrow Klass IDs that were precomputed at archive generation time:
@@ -1797,13 +1722,19 @@ MapArchiveResult MetaspaceShared::map_archives(FileMapInfo* static_mapinfo, File
         // mapping start (including protection zone), shift should be the shift used at archive generation time.
         CompressedKlassPointers::initialize_for_given_encoding(
           klass_range_start, klass_range_size,
-          encoding_base, ArchiveBuilder::precomputed_narrow_klass_shift() // precomputed encoding, see ArchiveBuilder
+          klass_range_start, ArchiveBuilder::precomputed_narrow_klass_shift() // precomputed encoding, see ArchiveBuilder
         );
+        assert(CompressedKlassPointers::base() == klass_range_start, "must be");
       } else {
         // Let JVM freely choose encoding base and shift
         CompressedKlassPointers::initialize(klass_range_start, klass_range_size);
+        assert(CompressedKlassPointers::base() == nullptr ||
+               CompressedKlassPointers::base() == klass_range_start, "must be");
       }
-      CompressedKlassPointers::establish_protection_zone(encoding_base, prot_zone_size);
+      // Establish protection zone, but only if we need one
+      if (CompressedKlassPointers::base() == klass_range_start) {
+        CompressedKlassPointers::establish_protection_zone(klass_range_start, prot_zone_size);
+      }
 
       // map_or_load_heap_region() compares the current narrow oop and klass encodings
       // with the archived ones, so it must be done after all encodings are determined.
@@ -2135,6 +2066,7 @@ class CountSharedSymbols : public SymbolClosure {
 
 void MetaspaceShared::initialize_shared_spaces() {
   FileMapInfo *static_mapinfo = FileMapInfo::current_info();
+  FileMapInfo *dynamic_mapinfo = FileMapInfo::dynamic_info();
 
   // Verify various attributes of the archive, plus initialize the
   // shared string/symbol tables.
@@ -2150,19 +2082,11 @@ void MetaspaceShared::initialize_shared_spaces() {
   Universe::load_archived_object_instances();
   AOTCodeCache::initialize();
 
-  // Close the mapinfo file
-  static_mapinfo->close();
-
-  static_mapinfo->unmap_region(MetaspaceShared::bm);
-
-  FileMapInfo *dynamic_mapinfo = FileMapInfo::dynamic_info();
   if (dynamic_mapinfo != nullptr) {
     intptr_t* buffer = (intptr_t*)dynamic_mapinfo->serialized_data();
     ReadClosure rc(&buffer, (intptr_t)SharedBaseAddress);
     ArchiveBuilder::serialize_dynamic_archivable_items(&rc);
     DynamicArchive::setup_array_klasses();
-    dynamic_mapinfo->close();
-    dynamic_mapinfo->unmap_region(MetaspaceShared::bm);
   }
 
   LogStreamHandle(Info, aot) lsh;
@@ -2202,10 +2126,7 @@ void MetaspaceShared::initialize_shared_spaces() {
 
     TrainingData::print_archived_training_data_on(tty);
 
-    if (AOTCodeCache::is_on_for_use()) {
-      tty->print_cr("\n\nAOT Code");
-      AOTCodeCache::print_on(tty);
-    }
+    AOTCodeCache::print_on(tty);
 
     // collect shared symbols and strings
     CountSharedSymbols cl;

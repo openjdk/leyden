@@ -25,11 +25,10 @@
 #ifndef SHARE_CDS_CDSENDTRAININGUPCALL_HPP
 #define SHARE_CDS_CDSENDTRAININGUPCALL_HPP
 
-#include "memory/allStatic.hpp"
-#include "utilities/globalDefinitions.hpp"
 #include "interpreter/linkResolver.hpp"
 #include "memory/allStatic.hpp"
 #include "memory/resourceArea.hpp"
+#include "utilities/globalDefinitions.hpp"
 #include "utilities/macros.hpp"
 
 class BasicMatcher;

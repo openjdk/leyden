@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -45,7 +45,7 @@ import jdk.test.lib.StringArrayUtils;
 public class LeydenGCFlags {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
     static final String mainClass = "HelloApp";
-    static final String ERROR_GC_SUPPORTED = "Cannot create the CacheDataStore: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah";
+    static final String ERROR_GC_SUPPORTED = "Cannot create the AOT configuration file: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah";
     static final String ERROR_GC_MISMATCH = "CDS archive has aot-linked classes. It cannot be used because GC used during dump time (.*) is not the same as runtime (.*)";
     static final String ERROR_COOP_MISMATCH = "Disable Startup Code Cache: 'HelloApp.cds.code' was created with CompressedOops::shift.. = .* vs current .*";
 
@@ -113,7 +113,7 @@ public class LeydenGCFlags {
         productionArgs = makeArgs(p);
         Tester tester = new Tester();
         tester.setCheckExitValue(false);
-        tester.run(new String[] {"LEYDEN_TRAINONLY"} );
+        tester.run(new String[] {"AOT"} );
     }
 
     static void fail_run(Object t, Object p, String regexp) throws Exception {
@@ -127,7 +127,7 @@ public class LeydenGCFlags {
         trainingArgs = makeArgs(t);
         productionArgs = makeArgs(p);
         Tester tester = new Tester();
-        tester.run(new String[] {"LEYDEN"} );
+        tester.run(new String[] {"AOT"} );
     }
 
     static String[] makeArgs(Object o) {
@@ -154,9 +154,9 @@ public class LeydenGCFlags {
         @Override
         public String[] appCommandLine(RunMode runMode) {
             if (runMode.isProductionRun()) {
-                return StringArrayUtils.concat(productionArgs, "-Xshare:auto", mainClass);
+                return StringArrayUtils.concat(productionArgs, "-XX:AOTMode=auto", mainClass);
             } else {
-                return StringArrayUtils.concat(trainingArgs, mainClass);
+                return StringArrayUtils.concat(trainingArgs, "-Xlog:aot", mainClass);
             }
         }
 
@@ -170,14 +170,11 @@ public class LeydenGCFlags {
             } else if (shouldFailRun) {
                 if (runMode == RunMode.PRODUCTION) {
                     out.shouldMatch(productFailPattern);
-                    //out.shouldHaveExitValue(1); TODO VM should enable -Xshare:on by default
                 }
             } else {
-                if (runMode != RunMode.TRAINING1) {
-                    out.shouldContain("Hello Leyden");
-                }
+                out.shouldContain("Hello Leyden");
 
-                if (runMode == RunMode.TRAINING || runMode == RunMode.TRAINING1) {
+                if (isDumping(runMode)) {
                     // We should dump the heap even if the collector is not G1
                     out.shouldContain("Shared file region (hp)");
                 }

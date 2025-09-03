@@ -626,7 +626,7 @@ csize_t CodeBuffer::total_relocation_size() const {
   return (csize_t) align_up(total, HeapWordSize);
 }
 
-csize_t CodeBuffer::copy_relocations_to(address buf, csize_t buf_limit, bool only_inst) const {
+csize_t CodeBuffer::copy_relocations_to(address buf, csize_t buf_limit) const {
   csize_t buf_offset = 0;
   csize_t code_end_so_far = 0;
   csize_t code_point_so_far = 0;
@@ -635,10 +635,6 @@ csize_t CodeBuffer::copy_relocations_to(address buf, csize_t buf_limit, bool onl
   assert(buf_limit % HeapWordSize == 0, "buf must be evenly sized");
 
   for (int n = (int) SECT_FIRST; n < (int)SECT_LIMIT; n++) {
-    if (only_inst && (n != (int)SECT_INSTS)) {
-      // Need only relocation info for code.
-      continue;
-    }
     // pull relocs out of each section
     const CodeSection* cs = code_section(n);
     assert(!(cs->is_empty() && cs->locs_count() > 0), "sanity");
@@ -705,7 +701,7 @@ csize_t CodeBuffer::copy_relocations_to(address buf, csize_t buf_limit, bool onl
     buf_offset += sizeof(relocInfo);
   }
 
-  assert(only_inst || code_end_so_far == total_content_size(), "sanity");
+  assert(code_end_so_far == total_content_size(), "sanity");
 
   return buf_offset;
 }
@@ -721,7 +717,7 @@ csize_t CodeBuffer::copy_relocations_to(CodeBlob* dest) const {
   }
   // if dest is null, this is just the sizing pass
   //
-  buf_offset = copy_relocations_to(buf, buf_limit, false);
+  buf_offset = copy_relocations_to(buf, buf_limit);
 
   return buf_offset;
 }
@@ -1106,7 +1102,8 @@ CHeapString::~CHeapString() {
 // offset is a byte offset into an instruction stream (CodeBuffer, CodeBlob or
 // other memory buffer) and remark is a string (comment).
 //
-AsmRemarks::AsmRemarks() : _remarks(new AsmRemarkCollection()) {
+AsmRemarks::AsmRemarks() {
+  init();
   assert(_remarks != nullptr, "Allocation failure!");
 }
 
@@ -1114,11 +1111,11 @@ AsmRemarks::~AsmRemarks() {
   if (_remarks != nullptr) {
     clear();
   }
-  assert(_remarks == nullptr, "Must 'clear()' before deleting!");
+  assert(_remarks == nullptr, "must be");
 }
 
-void AsmRemarks::init(AsmRemarks& asm_remarks) {
-  asm_remarks._remarks = new AsmRemarkCollection();
+void AsmRemarks::init() {
+  _remarks = new AsmRemarkCollection();
 }
 
 const char* AsmRemarks::insert(uint offset, const char* remstr) {
@@ -1165,7 +1162,8 @@ uint AsmRemarks::print(uint offset, outputStream* strm) const {
 // Acting as interface to reference counted collection of (debug) strings used
 // in the code generated, and thus requiring a fixed address.
 //
-DbgStrings::DbgStrings() : _strings(new DbgStringCollection()) {
+DbgStrings::DbgStrings() {
+  init();
   assert(_strings != nullptr, "Allocation failure!");
 }
 
@@ -1173,11 +1171,11 @@ DbgStrings::~DbgStrings() {
   if (_strings != nullptr) {
     clear();
   }
-  assert(_strings == nullptr, "Must 'clear()' before deleting!");
+  assert(_strings == nullptr, "must be");
 }
 
-void DbgStrings::init(DbgStrings& dbg_strings) {
-  dbg_strings._strings = new DbgStringCollection();
+void DbgStrings::init() {
+  _strings = new DbgStringCollection();
 }
 
 const char* DbgStrings::insert(const char* dbgstr) {

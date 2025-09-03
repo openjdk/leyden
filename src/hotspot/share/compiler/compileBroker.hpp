@@ -152,7 +152,7 @@ class CompileQueue : public CHeapObj<mtCompiler> {
 
   // Redefine Classes support
   void mark_on_stack();
-  void free_all();
+  void delete_all();
   void print_tty();
   void print(outputStream* st = tty);
 
@@ -196,23 +196,22 @@ class CompileBroker: AllStatic {
   static volatile jint _should_compile_new_jobs;
 
   // The installed compiler(s)
-  static AbstractCompiler* _compilers[3];
+  static AbstractCompiler* _compilers[2];
 
   // The maximum numbers of compiler threads to be determined during startup.
-  static int _c1_count, _c2_count, _c3_count, _ac_count;
+  static int _c1_count, _c2_count, _ac_count;
 
   // An array of compiler thread Java objects
-  static jobject *_compiler1_objects, *_compiler2_objects, *_compiler3_objects, *_ac_objects;
+  static jobject *_compiler1_objects, *_compiler2_objects, *_ac_objects;
 
   // An array of compiler logs
-  static CompileLog **_compiler1_logs, **_compiler2_logs, **_compiler3_logs, **_ac_logs;
+  static CompileLog **_compiler1_logs, **_compiler2_logs, **_ac_logs;
 
   // These counters are used for assigning id's to each compilation
   static volatile jint _compilation_id;
   static volatile jint _osr_compilation_id;
   static volatile jint _native_compilation_id;
 
-  static CompileQueue* _c3_compile_queue;
   static CompileQueue* _c2_compile_queue;
   static CompileQueue* _c1_compile_queue;
   static CompileQueue* _ac1_compile_queue;
@@ -415,8 +414,9 @@ public:
   }
 
   static bool is_compilation_disabled_forever() {
-    return _should_compile_new_jobs == shutdown_compilation;
+    return Atomic::load(&_should_compile_new_jobs) == shutdown_compilation;
   }
+
   static void handle_full_code_cache(CodeBlobType code_blob_type);
   // Ensures that warning is only printed once.
   static bool should_print_compiler_warning() {
@@ -451,12 +451,6 @@ public:
     return _compiler2_objects[idx];
   }
 
-  static jobject compiler3_object(int idx) {
-    assert(_compiler3_objects != nullptr, "must be initialized");
-    assert(idx < _c3_count, "oob");
-    return _compiler3_objects[idx];
-  }
-
   static jobject ac_object(int idx) {
     assert(_ac_objects != nullptr, "must be initialized");
     assert(idx < _ac_count, "oob");
@@ -465,7 +459,6 @@ public:
 
   static AbstractCompiler* compiler1() { return _compilers[0]; }
   static AbstractCompiler* compiler2() { return _compilers[1]; }
-  static AbstractCompiler* compiler3() { return _compilers[2]; }
 
   static bool can_remove(CompilerThread *ct, bool do_it);
 

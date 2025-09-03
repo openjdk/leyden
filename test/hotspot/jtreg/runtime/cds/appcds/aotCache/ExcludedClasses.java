@@ -26,16 +26,20 @@
  * @test
  * @summary Test how various AOT optimizations handle classes that are excluded from the AOT cache.
  * @requires vm.cds.write.archived.java.heap
- * @comment work around JDK-8345635
- * @requires !vm.jvmci.enabled
  * @library /test/jdk/lib/testlibrary /test/lib
  *          /test/hotspot/jtreg/runtime/cds/appcds/aotCache/test-classes
  * @build ExcludedClasses CustyWithLoop
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar
  *                 TestApp
  *                 TestApp$Foo
+ *                 TestApp$Foo$BadFieldSig
+ *                 TestApp$Foo$BadMethodSig
  *                 TestApp$Foo$Bar
+ *                 TestApp$Foo$GoodSig1
+ *                 TestApp$Foo$GoodSig2
  *                 TestApp$Foo$ShouldBeExcluded
+ *                 TestApp$Foo$ShouldBeExcludedChild
+ *                 TestApp$Foo$Taz
  *                 TestApp$MyInvocationHandler
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar
  *                 CustyWithLoop
@@ -44,6 +48,7 @@
 
 import java.io.File;
 import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -62,14 +67,8 @@ public class ExcludedClasses {
     static final String mainClass = "TestApp";
 
     public static void main(String[] args) throws Exception {
-        {
-          Tester tester = new Tester();
-          tester.run(new String[] {"AOT"} );
-        }
-        {
-          Tester tester = new Tester();
-          tester.run(new String[] {"LEYDEN"} );
-        }
+        Tester tester = new Tester();
+        tester.runAOTWorkflow("AOT", "--two-step-training");
     }
 
     static class Tester extends CDSAppTester {
@@ -85,7 +84,11 @@ public class ExcludedClasses {
         @Override
         public String[] vmArgs(RunMode runMode) {
             return new String[] {
-                "-Xlog:cds+resolve=trace",
+                "-Xlog:aot=debug",
+                "-Xlog:aot+class=debug",
+                "-Xlog:aot+resolve=trace",
+                "-Xlog:aot+verification=trace",
+                "-Xlog:class+load",
             };
         }
 
@@ -98,8 +101,17 @@ public class ExcludedClasses {
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) {
-            if (isDumping(runMode)) {
-                out.shouldNotMatch("cds,resolve.*archived field.*TestApp.Foo => TestApp.Foo.ShouldBeExcluded.f:I");
+            if (runMode == RunMode.ASSEMBLY) {
+                out.shouldNotMatch("aot,resolve.*archived field.*TestApp.Foo => TestApp.Foo.ShouldBeExcluded.f:I");
+                out.shouldContain("Archived reflection data in TestApp$Foo$GoodSig1");
+                out.shouldContain("Archived reflection data in TestApp$Foo$GoodSig2");
+                out.shouldContain("Cannot archive reflection data in TestApp$Foo$BadMethodSig");
+                out.shouldContain("Cannot archive reflection data in TestApp$Foo$BadFieldSig");
+            } else if (runMode == RunMode.PRODUCTION) {
+                out.shouldContain("check_verification_constraint: TestApp$Foo$Taz: TestApp$Foo$ShouldBeExcludedChild must be subclass of TestApp$Foo$ShouldBeExcluded");
+                out.shouldContain("jdk.jfr.Event source: jrt:/jdk.jfr");
+                out.shouldMatch("TestApp[$]Foo[$]ShouldBeExcluded source: .*/app.jar");
+                out.shouldMatch("TestApp[$]Foo[$]ShouldBeExcludedChild source: .*/app.jar");
             }
         }
     }
@@ -110,8 +122,8 @@ class TestApp {
     static volatile Object custArrayInstance;
 
     public static void main(String args[]) throws Exception {
-        // In new workflow, classes from custom loaders are passed from the preimage
-        // to the final image. See ClassPrelinker::record_unregistered_klasses().
+        // In AOT workflow, classes from custom loaders are passed from the preimage
+        // to the final image. See FinalImageRecipes::record_all_classes().
         custInstance = initFromCustomLoader();
         custArrayInstance = Array.newInstance(custInstance.getClass(), 0);
         System.out.println(custArrayInstance);
@@ -165,6 +177,8 @@ class TestApp {
                 lambdaHotSpot();
                 s.hotSpot2();
                 b.hotSpot3();
+                Taz.hotSpot4();
+                reflectHotSpots();
 
                 // In JDK mainline, generated proxy classes are excluded from the AOT cache.
                 // In Leyden/premain, generated proxy classes included. The following code should
@@ -173,7 +187,7 @@ class TestApp {
                 counter += i.intValue();
 
                 if (custInstance != null) {
-                    // Classes loaded by custom loaders are included included in the AOT cache
+                    // Classes loaded by custom loaders are included in the AOT cache
                     // but their array classes are excluded.
                     counter += custInstance.equals(null) ? 1 : 2;
                 }
@@ -224,6 +238,16 @@ class TestApp {
                     f();
                 }
             }
+            int func() {
+                return 1;
+            }
+        }
+
+        static class ShouldBeExcludedChild extends ShouldBeExcluded {
+            @Override
+            int func() {
+                return 2;
+            }
         }
 
         static class Bar {
@@ -242,6 +266,94 @@ class TestApp {
                 }
             }
         }
+
+        static class Taz {
+            static ShouldBeExcluded m() {
+                // When verifying this method, we need to check the constraint that
+                // ShouldBeExcluded must be a supertype of ShouldBeExcludedChild. This information
+                // is checked by SystemDictionaryShared::check_verification_constraints() when the Taz
+                // class is linked during the production run.
+                //
+                // Because ShouldBeExcluded is excluded from the AOT archive, it must be loaded
+                // dynamically from app.jar inside SystemDictionaryShared::check_verification_constraints().
+                // This must happen after the app class loader has been fully restored from the AOT cache.
+                return new ShouldBeExcludedChild();
+            }
+            static void hotSpot4() {
+                long start = System.currentTimeMillis();
+                while (System.currentTimeMillis() - start < 20) {
+                    for (int i = 0; i < 50000; i++) {
+                        counter += i;
+                    }
+                    f();
+                }
+            }
+        }
+
+        static volatile Object dummyObj;
+
+        static void reflectHotSpots() {
+            try {
+                // f.clazz points to an excluded class, so we should not archive any fields in
+                // the BadFieldSig
+                Field f = BadFieldSig.class.getDeclaredField("myField");
+                Method m = BadMethodSig.class.getDeclaredMethod("myMethod", Object.class, ShouldBeExcluded.class);
+
+                // It's OK to archive the reflection data of this class even if its method signatures
+                // refers to a class that's not loaded at all during the assembly phase.
+                // Note: because the app did not reflect on the methods of GoodSig1, we don't
+                // AOT-generate method reflection data for GoodSig.
+                Field f2 = GoodSig1.class.getDeclaredField("myField");
+
+                // Opposite case as GoodSig1. We should archive its reflection data
+                Method m2 = GoodSig2.class.getDeclaredMethod("myMethod", Object.class, Object.class);
+
+                long start = System.currentTimeMillis();
+                while (System.currentTimeMillis() - start < 50) {
+                    for (int i = 0; i < 50000; i++) {
+                        dummyObj = f.get(null);
+                        dummyObj = m.invoke(null, null, null);
+                        dummyObj = f2.get(null);
+                        dummyObj = m2.invoke(null, null, null);
+                    }
+                }
+            } catch (Throwable t) {
+                throw new RuntimeException("Unexpected exception", t);
+            }
+        }
+
+        static class BadFieldSig {
+            static ShouldBeExcluded myField = new ShouldBeExcluded();
+        }
+
+        static class BadMethodSig {
+            static String myMethod(Object o, ShouldBeExcluded s) {
+                return "Foofoo";
+            }
+        }
+
+        static class GoodSig1 {
+            static Object myField = new Object();
+            static void method(UnavailableClass1 arg) {}
+            static void method(UnavailableClass2[] arg) {}
+        }
+
+        static class GoodSig2 {
+            static String myMethod(Object o, Object o2) {
+                return "Foofoo";
+            }
+
+            UnavailableClass2[] unusedField;
+
+            // This field has never been reflected up or resolved during the training run, so the
+            // array type GoodSig2[][][][] is not resolved during either the training run or the
+            // assembly phase.
+            GoodSig2[][][][] unusedField2;
+        }
     }
 }
+
+// These classes are  NOT part of app.jar, so they cannot be resolved by the app.
+class UnavailableClass1 {}
+class UnavailableClass2 {}
 

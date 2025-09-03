@@ -26,8 +26,6 @@
  * @test
  * @summary Sanity test of combinations of the diagnostic flags [+-]AOTRecordTraining and [+-]AOTReplayTraining
  * @requires vm.cds
- * @comment work around JDK-8345635
- * @requires !vm.jvmci.enabled
  * @requires vm.cds.supports.aot.class.linking
  * @requires vm.flagless
  * @library /test/lib /test/setup_aot /test/hotspot/jtreg/runtime/cds/appcds/test-classes
@@ -118,7 +116,7 @@ public class AOTProfileFlags {
 
         out = CDSTestUtils.executeAndLog(pb, "production_failure");
         out.shouldMatch(errorPattern);
-        out.shouldHaveExitValue(1); // RequireSharedSpaces is on in premain
+        out.shouldHaveExitValue(0);
     }
 
     public static void testFlagsMismatch() throws Exception {

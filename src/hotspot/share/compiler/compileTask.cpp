@@ -36,78 +36,18 @@
 #include "runtime/jniHandles.hpp"
 #include "runtime/mutexLocker.hpp"
 
-CompileTask*  CompileTask::_task_free_list = nullptr;
 int CompileTask::_active_tasks = 0;
 
-/**
- * Allocate a CompileTask, from the free list if possible.
- */
-CompileTask* CompileTask::allocate() {
-  MonitorLocker locker(CompileTaskAlloc_lock);
-  CompileTask* task = nullptr;
-
-  if (_task_free_list != nullptr) {
-    task = _task_free_list;
-    _task_free_list = task->next();
-    task->set_next(nullptr);
-  } else {
-    task = new CompileTask();
-    task->set_next(nullptr);
-    task->set_is_free(true);
-  }
-  assert(task->is_free(), "Task must be free.");
-  task->set_is_free(false);
-  _active_tasks++;
-  return task;
-}
-
-/**
-* Add a task to the free list.
-*/
-void CompileTask::free(CompileTask* task) {
-  MonitorLocker locker(CompileTaskAlloc_lock);
-  if (!task->is_free()) {
-    assert(!task->lock()->is_locked(), "Should not be locked when freed");
-    if ((task->_method_holder != nullptr && JNIHandles::is_weak_global_handle(task->_method_holder))) {
-      JNIHandles::destroy_weak_global(task->_method_holder);
-    } else {
-      JNIHandles::destroy_global(task->_method_holder);
-    }
-    if (task->_failure_reason_on_C_heap && task->_failure_reason != nullptr) {
-      os::free((void*) task->_failure_reason);
-    }
-    task->_failure_reason = nullptr;
-    task->_failure_reason_on_C_heap = false;
-
-    task->set_is_free(true);
-    task->set_next(_task_free_list);
-    _task_free_list = task;
-    _active_tasks--;
-    if (_active_tasks == 0) {
-      locker.notify_all();
-    }
-  }
-}
-
-void CompileTask::wait_for_no_active_tasks() {
-  MonitorLocker locker(CompileTaskAlloc_lock);
-  while (_active_tasks > 0) {
-    locker.wait();
-  }
-}
-
-void CompileTask::initialize(int compile_id,
-                             const methodHandle& method,
-                             int osr_bci,
-                             int comp_level,
-                             int hot_count,
-                             AOTCodeEntry* aot_code_entry,
-                             CompileTask::CompileReason compile_reason,
-                             CompileQueue* compile_queue,
-                             bool requires_online_compilation,
-                             bool is_blocking) {
-  assert(!_lock->is_locked(), "bad locking");
-
+CompileTask::CompileTask(int compile_id,
+                         const methodHandle& method,
+                         int osr_bci,
+                         int comp_level,
+                         int hot_count,
+                         AOTCodeEntry* aot_code_entry,
+                         CompileReason compile_reason,
+                         CompileQueue* compile_queue,
+                         bool requires_online_compilation,
+                         bool is_blocking) {
   Thread* thread = Thread::current();
   _compile_id = compile_id;
   _method = method();
@@ -117,8 +57,6 @@ void CompileTask::initialize(int compile_id,
   _is_blocking = is_blocking;
   _comp_level = comp_level;
   _num_inlined_bytecodes = 0;
-
-  _waiting_count = 0;
 
   _is_complete = false;
   _is_success = false;
@@ -144,14 +82,6 @@ void CompileTask::initialize(int compile_id,
   _compile_queue = compile_queue;
 
   AbstractCompiler* comp = CompileBroker::compiler(comp_level);
-#if INCLUDE_JVMCI
-  if (comp->is_jvmci() && CompileBroker::compiler3() != nullptr) {
-    assert(_method != nullptr, "sanity");
-    if (((JVMCICompiler*)comp)->force_comp_at_level_simple(method)) {
-      comp = CompileBroker::compiler3();
-    }
-  }
-#endif
   _compiler = comp;
   _directive = DirectivesStack::getMatchingDirective(method, comp);
 
@@ -160,6 +90,34 @@ void CompileTask::initialize(int compile_id,
   _arena_bytes = 0;
 
   _next = nullptr;
+  _prev = nullptr;
+
+  Atomic::add(&_active_tasks, 1, memory_order_relaxed);
+}
+
+CompileTask::~CompileTask() {
+  if (_method_holder != nullptr && JNIHandles::is_weak_global_handle(_method_holder)) {
+    JNIHandles::destroy_weak_global(_method_holder);
+  } else {
+    JNIHandles::destroy_global(_method_holder);
+  }
+  if (_failure_reason_on_C_heap && _failure_reason != nullptr) {
+    os::free((void*) _failure_reason);
+    _failure_reason = nullptr;
+    _failure_reason_on_C_heap = false;
+  }
+
+  if (Atomic::sub(&_active_tasks, 1, memory_order_relaxed) == 0) {
+    MonitorLocker wait_ml(CompileTaskWait_lock);
+    wait_ml.notify_all();
+  }
+}
+
+void CompileTask::wait_for_no_active_tasks() {
+  MonitorLocker locker(CompileTaskWait_lock);
+  while (Atomic::load(&_active_tasks) > 0) {
+    locker.wait();
+  }
 }
 
 /**
@@ -333,7 +291,14 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
 // CompileTask::print_compilation
 void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool cr) {
   bool is_osr_method = osr_bci() != InvocationEntryBci;
-  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot(), preload(),
+  bool is_aot = is_aot_load();
+  bool is_preload = preload();
+  if (is_precompile()) {
+    // Tag aot compilation too
+    is_preload = (compile_reason() == Reason_PrecompileForPreload);
+    is_aot = !is_preload;
+  }
+  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot, is_preload,
              compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished, _aot_load_start, _aot_load_finish);
 }
 
@@ -348,6 +313,10 @@ void CompileTask::log_task(xmlStream* log) {
   log->print(" compile_id='%d'", _compile_id);
   if (_osr_bci != CompileBroker::standard_entry_bci) {
     log->print(" compile_kind='osr'");  // same as nmethod::compile_kind
+  } else if (preload()) {
+    log->print(" compile_kind='AP'");
+  } else if (is_aot_load()) {
+    log->print(" compile_kind='A'");
   } // else compile_kind='c2c'
   if (!method.is_null())  log->method(method());
   if (_osr_bci != CompileBroker::standard_entry_bci) {
@@ -528,7 +497,7 @@ void CompileTask::print_ul(const nmethod* nm, const char* msg) {
     print_impl(&ls, nm->method(), nm->compile_id(),
                nm->comp_level(), nm->is_osr_method(),
                nm->is_osr_method() ? nm->osr_entry_bci() : -1,
-               /*is_blocking*/ false, nm->aot_code_entry() != nullptr,
+               /*is_blocking*/ false, nm->is_aot(),
                nm->preloaded(), nm->compiler_name(),
                msg, /* short form */ true, /* cr */ true);
   }

@@ -1779,19 +1779,6 @@ JVM_ENTRY_PROF(jobjectArray, JVM_GetClassDeclaredConstructors, JVM_GetClassDecla
 }
 JVM_END
 
-JVM_ENTRY_PROF(jint, JVM_GetClassAccessFlags, JVM_GetClassAccessFlags(JNIEnv *env, jclass cls))
-{
-  oop mirror = JNIHandles::resolve_non_null(cls);
-  if (java_lang_Class::is_primitive(mirror)) {
-    // Primitive type
-    return JVM_ACC_ABSTRACT | JVM_ACC_FINAL | JVM_ACC_PUBLIC;
-  }
-
-  Klass* k = java_lang_Class::as_Klass(mirror);
-  return k->access_flags().as_class_flags();
-}
-JVM_END
-
 JVM_ENTRY_PROF(jboolean, JVM_AreNestMates, JVM_AreNestMates(JNIEnv *env, jclass current, jclass member))
 {
   Klass* c = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(current));
@@ -1978,7 +1965,7 @@ JVM_ENTRY_PROF(jobject, JVM_GetClassConstantPool, JVM_GetClassConstantPool(JNIEn
 JVM_END
 
 
-JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetSize, JVM_ConstantPoolGetSize(JNIEnv *env, jobject obj, jobject unused))
+JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetSize, JVM_ConstantPoolGetSize(JNIEnv *env, jobject obj))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   return cp->length();
@@ -1986,7 +1973,7 @@ JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetSize, JVM_ConstantPoolGetSize(JNIEnv *en
 JVM_END
 
 
-JVM_ENTRY_PROF(jclass, JVM_ConstantPoolGetClassAt, JVM_ConstantPoolGetClassAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jclass, JVM_ConstantPoolGetClassAt, JVM_ConstantPoolGetClassAt(JNIEnv *env, jobject obj, jint index))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   bounds_check(cp, index, CHECK_NULL);
@@ -1999,7 +1986,7 @@ JVM_ENTRY_PROF(jclass, JVM_ConstantPoolGetClassAt, JVM_ConstantPoolGetClassAt(JN
 }
 JVM_END
 
-JVM_ENTRY_PROF(jclass, JVM_ConstantPoolGetClassAtIfLoaded, JVM_ConstantPoolGetClassAtIfLoaded(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jclass, JVM_ConstantPoolGetClassAtIfLoaded, JVM_ConstantPoolGetClassAtIfLoaded(JNIEnv *env, jobject obj, jint index))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   bounds_check(cp, index, CHECK_NULL);
@@ -2043,7 +2030,7 @@ static jobject get_method_at_helper(const constantPoolHandle& cp, jint index, bo
   return JNIHandles::make_local(THREAD, method);
 }
 
-JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetMethodAt, JVM_ConstantPoolGetMethodAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetMethodAt, JVM_ConstantPoolGetMethodAt(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2053,7 +2040,7 @@ JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetMethodAt, JVM_ConstantPoolGetMethodAt
 }
 JVM_END
 
-JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetMethodAtIfLoaded, JVM_ConstantPoolGetMethodAtIfLoaded(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetMethodAtIfLoaded, JVM_ConstantPoolGetMethodAtIfLoaded(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2088,7 +2075,7 @@ static jobject get_field_at_helper(constantPoolHandle cp, jint index, bool force
   return JNIHandles::make_local(THREAD, field);
 }
 
-JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetFieldAt, JVM_ConstantPoolGetFieldAt(JNIEnv *env, jobject obj, jobject unusedl, jint index))
+JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetFieldAt, JVM_ConstantPoolGetFieldAt(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2098,7 +2085,7 @@ JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetFieldAt, JVM_ConstantPoolGetFieldAt(J
 }
 JVM_END
 
-JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetFieldAtIfLoaded, JVM_ConstantPoolGetFieldAtIfLoaded(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetFieldAtIfLoaded, JVM_ConstantPoolGetFieldAtIfLoaded(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2108,7 +2095,7 @@ JVM_ENTRY_PROF(jobject, JVM_ConstantPoolGetFieldAtIfLoaded, JVM_ConstantPoolGetF
 }
 JVM_END
 
-JVM_ENTRY_PROF(jobjectArray, JVM_ConstantPoolGetMemberRefInfoAt, JVM_ConstantPoolGetMemberRefInfoAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jobjectArray, JVM_ConstantPoolGetMemberRefInfoAt, JVM_ConstantPoolGetMemberRefInfoAt(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2133,7 +2120,7 @@ JVM_ENTRY_PROF(jobjectArray, JVM_ConstantPoolGetMemberRefInfoAt, JVM_ConstantPoo
 }
 JVM_END
 
-JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetClassRefIndexAt, JVM_ConstantPoolGetClassRefIndexAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetClassRefIndexAt, JVM_ConstantPoolGetClassRefIndexAt(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2146,7 +2133,7 @@ JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetClassRefIndexAt, JVM_ConstantPoolGetClas
 }
 JVM_END
 
-JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetNameAndTypeRefIndexAt, JVM_ConstantPoolGetNameAndTypeRefIndexAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetNameAndTypeRefIndexAt, JVM_ConstantPoolGetNameAndTypeRefIndexAt(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2159,7 +2146,7 @@ JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetNameAndTypeRefIndexAt, JVM_ConstantPoolG
 }
 JVM_END
 
-JVM_ENTRY_PROF(jobjectArray, JVM_ConstantPoolGetNameAndTypeRefInfoAt, JVM_ConstantPoolGetNameAndTypeRefInfoAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jobjectArray, JVM_ConstantPoolGetNameAndTypeRefInfoAt, JVM_ConstantPoolGetNameAndTypeRefInfoAt(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2180,7 +2167,7 @@ JVM_ENTRY_PROF(jobjectArray, JVM_ConstantPoolGetNameAndTypeRefInfoAt, JVM_Consta
 }
 JVM_END
 
-JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetIntAt, JVM_ConstantPoolGetIntAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetIntAt, JVM_ConstantPoolGetIntAt(JNIEnv *env, jobject obj, jint index))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   bounds_check(cp, index, CHECK_0);
@@ -2192,7 +2179,7 @@ JVM_ENTRY_PROF(jint, JVM_ConstantPoolGetIntAt, JVM_ConstantPoolGetIntAt(JNIEnv *
 }
 JVM_END
 
-JVM_ENTRY_PROF(jlong, JVM_ConstantPoolGetLongAt, JVM_ConstantPoolGetLongAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jlong, JVM_ConstantPoolGetLongAt, JVM_ConstantPoolGetLongAt(JNIEnv *env, jobject obj, jint index))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   bounds_check(cp, index, CHECK_(0L));
@@ -2204,7 +2191,7 @@ JVM_ENTRY_PROF(jlong, JVM_ConstantPoolGetLongAt, JVM_ConstantPoolGetLongAt(JNIEn
 }
 JVM_END
 
-JVM_ENTRY_PROF(jfloat, JVM_ConstantPoolGetFloatAt, JVM_ConstantPoolGetFloatAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jfloat, JVM_ConstantPoolGetFloatAt, JVM_ConstantPoolGetFloatAt(JNIEnv *env, jobject obj, jint index))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   bounds_check(cp, index, CHECK_(0.0f));
@@ -2216,7 +2203,7 @@ JVM_ENTRY_PROF(jfloat, JVM_ConstantPoolGetFloatAt, JVM_ConstantPoolGetFloatAt(JN
 }
 JVM_END
 
-JVM_ENTRY_PROF(jdouble, JVM_ConstantPoolGetDoubleAt, JVM_ConstantPoolGetDoubleAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jdouble, JVM_ConstantPoolGetDoubleAt, JVM_ConstantPoolGetDoubleAt(JNIEnv *env, jobject obj, jint index))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   bounds_check(cp, index, CHECK_(0.0));
@@ -2228,7 +2215,7 @@ JVM_ENTRY_PROF(jdouble, JVM_ConstantPoolGetDoubleAt, JVM_ConstantPoolGetDoubleAt
 }
 JVM_END
 
-JVM_ENTRY_PROF(jstring, JVM_ConstantPoolGetStringAt, JVM_ConstantPoolGetStringAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jstring, JVM_ConstantPoolGetStringAt, JVM_ConstantPoolGetStringAt(JNIEnv *env, jobject obj, jint index))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   bounds_check(cp, index, CHECK_NULL);
@@ -2241,7 +2228,7 @@ JVM_ENTRY_PROF(jstring, JVM_ConstantPoolGetStringAt, JVM_ConstantPoolGetStringAt
 }
 JVM_END
 
-JVM_ENTRY_PROF(jstring, JVM_ConstantPoolGetUTF8At, JVM_ConstantPoolGetUTF8At(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jstring, JVM_ConstantPoolGetUTF8At, JVM_ConstantPoolGetUTF8At(JNIEnv *env, jobject obj, jint index))
 {
   JvmtiVMObjectAllocEventCollector oam;
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
@@ -2256,7 +2243,7 @@ JVM_ENTRY_PROF(jstring, JVM_ConstantPoolGetUTF8At, JVM_ConstantPoolGetUTF8At(JNI
 }
 JVM_END
 
-JVM_ENTRY_PROF(jbyte, JVM_ConstantPoolGetTagAt, JVM_ConstantPoolGetTagAt(JNIEnv *env, jobject obj, jobject unused, jint index))
+JVM_ENTRY_PROF(jbyte, JVM_ConstantPoolGetTagAt, JVM_ConstantPoolGetTagAt(JNIEnv *env, jobject obj, jint index))
 {
   constantPoolHandle cp = constantPoolHandle(THREAD, reflect_ConstantPool::get_cp(JNIHandles::resolve_non_null(obj)));
   bounds_check(cp, index, CHECK_0);
@@ -2931,15 +2918,16 @@ JVM_ENTRY_PROF(void, JVM_SleepNanos, JVM_SleepNanos(JNIEnv* env, jclass threadCl
   } else {
     ThreadState old_state = thread->osthread()->get_state();
     thread->osthread()->set_state(SLEEPING);
-    if (!thread->sleep_nanos(nanos)) { // interrupted
+    if (!thread->sleep_nanos(nanos)) { // interrupted or async exception was installed
       // An asynchronous exception could have been thrown on
       // us while we were sleeping. We do not overwrite those.
       if (!HAS_PENDING_EXCEPTION) {
         HOTSPOT_THREAD_SLEEP_END(1);
-
-        // TODO-FIXME: THROW_MSG returns which means we will not call set_state()
-        // to properly restore the thread state.  That's likely wrong.
-        THROW_MSG(vmSymbols::java_lang_InterruptedException(), "sleep interrupted");
+        if (!thread->has_async_exception_condition()) {
+          // TODO-FIXME: THROW_MSG returns which means we will not call set_state()
+          // to properly restore the thread state.  That's likely wrong.
+          THROW_MSG(vmSymbols::java_lang_InterruptedException(), "sleep interrupted");
+        }
       }
     }
     thread->osthread()->set_state(old_state);
@@ -2995,10 +2983,18 @@ JVM_ENTRY_PROF(jboolean, JVM_HoldsLock, JVM_HoldsLock(JNIEnv* env, jclass thread
 JVM_END
 
 JVM_ENTRY_PROF(jobject, JVM_GetStackTrace, JVM_GetStackTrace(JNIEnv *env, jobject jthread))
-  oop trace = java_lang_Thread::async_get_stack_trace(JNIHandles::resolve(jthread), THREAD);
+  oop trace = java_lang_Thread::async_get_stack_trace(jthread, THREAD);
   return JNIHandles::make_local(THREAD, trace);
 JVM_END
 
+JVM_ENTRY_PROF(jobject, JVM_CreateThreadSnapshot, JVM_CreateThreadSnapshot(JNIEnv* env, jobject jthread))
+#if INCLUDE_JVMTI
+  oop snapshot = ThreadSnapshotFactory::get_thread_snapshot(jthread, THREAD);
+  return JNIHandles::make_local(THREAD, snapshot);
+#else
+  THROW_NULL(vmSymbols::java_lang_UnsupportedOperationException());
+#endif
+JVM_END
 
 JVM_ENTRY_PROF(void, JVM_SetNativeThreadName, JVM_SetNativeThreadName(JNIEnv* env, jobject jthread, jstring name))
   // We don't use a ThreadsListHandle here because the current thread
@@ -3069,9 +3065,17 @@ JVM_ENTRY_PROF(void, JVM_WaitForReferencePendingList, JVM_WaitForReferencePendin
   }
 JVM_END
 
+JVM_ENTRY_PROF(jobject, JVM_ReferenceGet, JVM_ReferenceGet(JNIEnv* env, jobject ref))
+  oop ref_oop = JNIHandles::resolve_non_null(ref);
+  // PhantomReference has its own implementation of get().
+  assert(!java_lang_ref_Reference::is_phantom(ref_oop), "precondition");
+  oop referent = java_lang_ref_Reference::weak_referent(ref_oop);
+  return JNIHandles::make_local(THREAD, referent);
+JVM_END
+
 JVM_ENTRY_PROF(jboolean, JVM_ReferenceRefersTo, JVM_ReferenceRefersTo(JNIEnv* env, jobject ref, jobject o))
   oop ref_oop = JNIHandles::resolve_non_null(ref);
-  // PhantomReference has it's own implementation of refersTo().
+  // PhantomReference has its own implementation of refersTo().
   // See: JVM_PhantomReferenceRefersTo
   assert(!java_lang_ref_Reference::is_phantom(ref_oop), "precondition");
   oop referent = java_lang_ref_Reference::weak_referent_no_keepalive(ref_oop);
@@ -3957,7 +3961,6 @@ JVM_END
   macro(JVM_GetRecordComponents) \
   macro(JVM_GetClassDeclaredMethods) \
   macro(JVM_GetClassDeclaredConstructors) \
-  macro(JVM_GetClassAccessFlags) \
   macro(JVM_AreNestMates) \
   macro(JVM_GetNestHost) \
   macro(JVM_GetNestMembers) \
@@ -4025,6 +4028,7 @@ JVM_END
   macro(JVM_Interrupt) \
   macro(JVM_HoldsLock) \
   macro(JVM_GetStackTrace) \
+  macro(JVM_CreateThreadSnapshot) \
   macro(JVM_SetNativeThreadName) \
   macro(JVM_ScopedValueCache) \
   macro(JVM_SetScopedValueCache) \
@@ -4033,6 +4037,7 @@ JVM_END
   macro(JVM_GetAndClearReferencePendingList) \
   macro(JVM_HasReferencePendingList) \
   macro(JVM_WaitForReferencePendingList) \
+  macro(JVM_ReferenceGet) \
   macro(JVM_ReferenceRefersTo) \
   macro(JVM_ReferenceClear) \
   macro(JVM_PhantomReferenceRefersTo) \

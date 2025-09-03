@@ -61,16 +61,6 @@ import jdk.test.lib.process.OutputAnalyzer;
  * @run driver/timeout=120 MicronautFirstApp AOT
  */
 
-/*
- * @test id=leyden
- * @key external-dep
- * @requires vm.cds
- * @requires vm.cds.write.archived.java.heap
- * @summary run MicronautFirstApp with the Leyden workflow
- * @library /test/lib
- * @run driver/timeout=120 MicronautFirstApp LEYDEN
- */
-
 // Test CDS with the example program in https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html
 //
 // NOTE: if you have not set up an artifactory, you can create micronaut-first-app-1.0.0.zip
