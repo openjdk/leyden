@@ -29,6 +29,7 @@
 #include "classfile/javaThreadStatus.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
@@ -556,6 +557,7 @@
   nonstatic_field(nmethod,                     _immutable_data_size,                          int)                                   \
   nonstatic_field(nmethod,                     _compile_id,                                   int)                                   \
   nonstatic_field(nmethod,                     _comp_level,                                   CompLevel)                             \
+  nonstatic_field(nmethod,                     _aot_code_entry,                               AOTCodeEntry*)                         \
   volatile_nonstatic_field(nmethod,            _exception_cache,                              ExceptionCache*)                       \
                                                                                                                                      \
   nonstatic_field(Deoptimization::UnrollBlock, _size_of_deoptimized_frame,                    int)                                   \
@@ -1105,6 +1107,7 @@
   declare_toplevel_type(CompileTask)                                      \
   declare_toplevel_type(Deoptimization)                                   \
   declare_toplevel_type(Deoptimization::UnrollBlock)                      \
+  declare_toplevel_type(AOTCodeEntry)                                     \
                                                                           \
   /************************/                                              \
   /* ImmutableOopMap      */                                              \
