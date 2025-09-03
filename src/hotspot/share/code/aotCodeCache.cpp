@@ -116,6 +116,7 @@ const char* aot_code_entry_kind_name[] = {
 };
 
 static elapsedTimer _t_totalLoad;
+static elapsedTimer _t_totalPreload;
 static elapsedTimer _t_totalRegister;
 static elapsedTimer _t_totalFind;
 static elapsedTimer _t_totalStore;
@@ -1334,9 +1335,6 @@ bool AOTCodeCache::finish_write_new() {
   }
   uint strings_size = _write_position - strings_offset;
 
-  uint entries_count = 0; // Number of entrant (useful) code entries
-  uint entries_offset = _write_position;
-
   uint code_count = _store_entries_cnt;
   if (code_count > 0) {
     _aot_code_directory = CachedCodeDirectory::create();
@@ -1346,7 +1344,6 @@ bool AOTCodeCache::finish_write_new() {
     uint search_count = code_count * 2;
     uint search_size = search_count * sizeof(uint);
     uint entries_size = (uint)align_up(code_count * sizeof(AOTCodeEntry), DATA_ALIGNMENT); // In bytes
-    uint preload_entries_cnt = 0;
     // _write_position should include code and strings
     uint code_alignment = code_count * DATA_ALIGNMENT; // We align_up code size when storing it.
     uint cpu_features_size = VM_Version::cpu_features_size();
@@ -1377,6 +1374,7 @@ bool AOTCodeCache::finish_write_new() {
 
     // Store AOTCodeEntry-s for preload code
     current = align_up(current, DATA_ALIGNMENT);
+    uint preload_entries_cnt = 0;
     uint preload_entries_offset = current - start;
     AOTCodeEntry* preload_entries = (AOTCodeEntry*)current;
     for (int i = code_count - 1; i >= 0; i--) {
@@ -1412,6 +1410,7 @@ bool AOTCodeCache::finish_write_new() {
     }
 
     current = align_up(current, DATA_ALIGNMENT);
+    uint entries_count = 0;
     uint new_entries_offset = current - start;
     AOTCodeEntry* code_entries = (AOTCodeEntry*)current;
     // Now scan normal entries
@@ -1450,7 +1449,8 @@ bool AOTCodeCache::finish_write_new() {
       FREE_C_HEAP_ARRAY(uint, search);
       return true; // Nothing to write
     }
-    assert(entries_count <= code_count, "%d > %d", entries_count, code_count);
+    uint total_entries_cnt = preload_entries_cnt + entries_count;
+    assert(total_entries_cnt <= code_count, "%d > %d", total_entries_cnt, code_count);
     // Write strings
     if (strings_count > 0) {
       copy_bytes((_store_buffer + strings_offset), (address)current, strings_size);
@@ -1481,7 +1481,7 @@ bool AOTCodeCache::finish_write_new() {
                  stats.entry_count(AOTCodeEntry::C1Blob), stats.entry_count(AOTCodeEntry::C2Blob),
                  stats.entry_count(AOTCodeEntry::Stub), cpu_features_offset);
 
-    log_info(aot, codecache, exit)("Wrote %d AOT code entries to AOT Code Cache", entries_count);
+    log_info(aot, codecache, exit)("Wrote %d AOT code entries to AOT Code Cache", total_entries_cnt);
 
     _aot_code_directory->set_aot_code_data(size, start);
   }
@@ -2128,6 +2128,7 @@ void AOTCodeCache::preload_aot_code(TRAPS) {
     // level we want (that is CompLevel_full_optimization).
     return;
   }
+  TraceTime t1("Total time to preload AOT code", &_t_totalPreload, enable_timers(), false);
   assert(_for_use, "sanity");
   uint count = _load_header->entries_count();
   if (_load_entries == nullptr) {
@@ -2186,6 +2187,7 @@ void AOTCodeCache::preload_aot_code_new(TRAPS) {
     // level we want (that is CompLevel_full_optimization).
     return;
   }
+  TraceTime t1("Total time to preload AOT code", &_t_totalPreload, enable_timers(), false);
   assert(_for_use, "sanity");
   uint count = _load_header->entries_count();
   uint preload_entries_count = _load_header->preload_entries_count();
@@ -4156,6 +4158,7 @@ AOTCodeCache::ReadingMark::~ReadingMark() {
 
 void AOTCodeCache::print_timers_on(outputStream* st) {
   if (is_using_code()) {
+    st->print_cr ("    AOT Code Preload Time:   %7.3f s", _t_totalPreload.seconds());
     st->print_cr ("    AOT Code Load Time:   %7.3f s", _t_totalLoad.seconds());
     st->print_cr ("      nmethod register:     %7.3f s", _t_totalRegister.seconds());
     st->print_cr ("      find AOT code entry:  %7.3f s", _t_totalFind.seconds());
@@ -4208,10 +4211,12 @@ void AOTCodeCache::print_statistics_on(outputStream* st) {
     }
     AOTCodeStats stats;
 
-    uint preload_count = cache->_load_header->preload_entries_count();
-    AOTCodeEntry* preload_entries = (AOTCodeEntry*)cache->addr(cache->_load_header->preload_entries_offset());
-    for (uint i = 0; i < preload_count; i++) {
-      stats.collect_all_stats(&preload_entries[i]);
+    if (UseNewCode) {
+      uint preload_count = cache->_load_header->preload_entries_count();
+      AOTCodeEntry* preload_entries = (AOTCodeEntry*)cache->addr(cache->_load_header->preload_entries_offset());
+      for (uint i = 0; i < preload_count; i++) {
+        stats.collect_all_stats(&preload_entries[i]);
+      }
     }
 
     uint count = cache->_load_header->entries_count();
