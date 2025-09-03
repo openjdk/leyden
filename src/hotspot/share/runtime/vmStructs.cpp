@@ -29,6 +29,7 @@
 #include "classfile/javaThreadStatus.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
@@ -1106,6 +1107,7 @@
   declare_toplevel_type(CompileTask)                                      \
   declare_toplevel_type(Deoptimization)                                   \
   declare_toplevel_type(Deoptimization::UnrollBlock)                      \
+  declare_toplevel_type(AOTCodeEntry)                                     \
                                                                           \
   /************************/                                              \
   /* ImmutableOopMap      */                                              \
