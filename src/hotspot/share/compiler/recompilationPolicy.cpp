@@ -38,8 +38,8 @@ void RecompilationPolicy::sample_load_average() {
   }
 }
 
-void RecompilationPolicy::print_load_average() {
-  tty->print(" load=%lf", _load_average.value());
+void RecompilationPolicy::print_load_average(outputStream* st) {
+  st->print(" load=%lf", _load_average.value());
 }
 
 bool RecompilationPolicy::have_recompilation_work() {
