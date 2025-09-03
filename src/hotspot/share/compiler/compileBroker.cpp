@@ -210,6 +210,8 @@ CompileQueue* CompileBroker::_c1_compile_queue     = nullptr;
 CompileQueue* CompileBroker::_ac1_compile_queue    = nullptr;
 CompileQueue* CompileBroker::_ac2_compile_queue    = nullptr;
 
+TrainingReplayThread* volatile TrainingReplayThread::_instance = nullptr;
+
 bool compileBroker_init() {
   if (LogEvents) {
     CompilationLog::init();

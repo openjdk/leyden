@@ -203,13 +203,23 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
 }
 
 void CompilationPolicy::flush_replay_training_at_init(TRAPS) {
-   MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
-   while (!_training_replay_queue.is_empty_unlocked()) {
-     // Let the replay training thread drain the queue.
-     // We need to re-check the queue periodically, since draining
-     // threads do not notify us about queue going empty.
-     locker.wait(100);
-   }
+  if (!TrainingData::have_data()) {
+    // No training data, nothing to do.
+    return;
+  }
+  TrainingReplayThread* replay_thread = TrainingReplayThread::instance();
+  assert(replay_thread != nullptr, "Should be present");
+  replay_thread->set_should_terminate();
+
+  MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
+  int wait = 1;
+  while (!_training_replay_queue.is_empty_unlocked() && !replay_thread->is_terminated()) {
+    // Let the replay training thread drain the queue and terminate.
+    // We need to re-check periodically, since we would not be notified
+    // when queue goes empty or thread terminates.
+    locker.wait(wait);
+    wait = MIN2(100, wait * 2);
+  }
 }
 
 void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
@@ -235,6 +245,8 @@ void CompilationPolicy::replay_training_at_init_loop(TRAPS) {
     InstanceKlass* ik = _training_replay_queue.pop(TrainingReplayQueue_lock, THREAD);
     if (ik != nullptr) {
       replay_training_at_init_impl(ik, THREAD);
+    } else if (TrainingReplayThread::instance()->should_terminate()) {
+      return;
     }
   }
 }

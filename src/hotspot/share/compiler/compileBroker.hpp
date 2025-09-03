@@ -498,9 +498,21 @@ public:
 // that have just finished running their static initializers. We find all the methods that depend on the given class
 // and for which the number of remaining dependencies is now zero, and eagerly compile them.
 class TrainingReplayThread : public JavaThread {
+  static TrainingReplayThread* volatile _instance;
+  bool volatile _should_terminate;
+
   static void training_replay_thread_entry(JavaThread* thread, TRAPS);
+
 public:
-  TrainingReplayThread() : JavaThread(&training_replay_thread_entry) { }
+  TrainingReplayThread() : JavaThread(&training_replay_thread_entry), _should_terminate(false) {
+    bool succ = Atomic::replace_if_null(&_instance, this);
+    assert(succ, "Installation should succeed");
+  }
+
+  static TrainingReplayThread* instance() { return Atomic::load(&_instance); }
+
+  void set_should_terminate() { Atomic::store(&_should_terminate, true); }
+  bool should_terminate()     { return Atomic::load(&_should_terminate); }
 
   bool is_hidden_from_external_view() const      { return true; }
 };

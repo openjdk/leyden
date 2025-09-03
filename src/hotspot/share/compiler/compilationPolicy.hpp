@@ -84,7 +84,7 @@ public:
 
   T* pop(Monitor* lock, TRAPS) {
     MonitorLocker locker(THREAD, lock);
-    while(is_empty_unlocked() && !CompileBroker::is_compilation_disabled_forever()) {
+    while (is_empty_unlocked() && !CompileBroker::is_compilation_disabled_forever()) {
       locker.wait();
     }
     T* value = pop_unlocked();
