@@ -23,11 +23,11 @@
  */
 
 #include "cds/aotCacheAccess.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "classfile/stringTable.hpp"
 #include "logging/log.hpp"
 #include "logging/logStream.hpp"
@@ -63,12 +63,12 @@ uint AOTCacheAccess::delta_from_base_address(address addr) {
   assert(ArchiveBuilder::is_active(), "must be");
   ArchiveBuilder* builder = ArchiveBuilder::current();
   address requested_addr = builder->to_requested(builder->get_buffered_addr(addr));
-  return (uint)pointer_delta(requested_addr, (address)MetaspaceShared::requested_base_address(), 1);
+  return (uint)pointer_delta(requested_addr, (address)AOTMetaspace::requested_base_address(), 1);
 }
 
 uint AOTCacheAccess::convert_method_to_offset(Method* method) {
   assert(CDSConfig::is_using_archive() && !CDSConfig::is_dumping_final_static_archive(), "must be");
-  assert(MetaspaceShared::is_in_shared_metaspace(method), "method %p is not in AOTCache", method);
+  assert(AOTMetaspace::in_aot_cache(method), "method %p is not in AOTCache", method);
   uint offset = (uint)pointer_delta((address)method, (address)SharedBaseAddress, 1);
   return offset;
 }

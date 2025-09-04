@@ -23,7 +23,6 @@
  */
 
 #include "cds/cdsConfig.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciMetadata.hpp"
 #include "classfile/classLoaderData.hpp"
@@ -634,7 +633,7 @@ void CompileTrainingData::verify(bool verify_dep_counter) {
     guarantee(ktd->_comp_deps.contains(this), "");
   }
 
-if (verify_dep_counter) {
+  if (verify_dep_counter) {
     int init_deps_left1 = init_deps_left_acquire();
     int init_deps_left2 = compute_init_deps_left();
 
@@ -713,7 +712,7 @@ void TrainingData::metaspace_pointers_do(MetaspaceClosure* iter) {
 }
 
 bool TrainingData::Key::can_compute_cds_hash(const Key* const& k) {
-  return k->meta() == nullptr || MetaspaceObj::is_shared(k->meta());
+  return k->meta() == nullptr || MetaspaceObj::in_aot_cache(k->meta());
 }
 
 uint TrainingData::Key::cds_hash(const Key* const& k) {

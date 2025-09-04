@@ -25,10 +25,10 @@
 
 #include "asm/macroAssembler.hpp"
 #include "cds/aotCacheAccess.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "ci/ciConstant.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciField.hpp"
@@ -150,7 +150,7 @@ static void report_store_failure() {
 // where we set number of compiler threads for AOT assembly phase.
 //
 // 3. We determine presence of AOT code in AOT Cache in
-// MetaspaceShared::open_static_archive() which is calles
+// AOTMetaspace::open_static_archive() which is calles
 // after compilationPolicy_init() but before codeCache_init().
 //
 // 4. AOTCodeCache::initialize() is called during universe_init()
@@ -249,7 +249,7 @@ bool AOTCodeCache::allow_const_field(ciConstant& value) {
         ;
 }
 
-// It is called from MetaspaceShared::initialize_shared_spaces()
+// It is called from AOTMetaspace::initialize_shared_spaces()
 // which is called from universe_init().
 // At this point all AOT class linking seetings are finilized
 // and AOT cache is open so we can map AOT code region.
@@ -909,7 +909,7 @@ uint AOTCodeCache::write_bytes(const void* buffer, uint nbytes) {
 
 AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint comp_level) {
   assert(is_using_code(), "AOT code caching should be enabled");
-  if (!method->is_shared()) {
+  if (!method->in_aot_cache()) {
     return nullptr;
   }
   switch (comp_level) {
@@ -1952,7 +1952,7 @@ void AOTCodeCache::preload_aot_code(TRAPS) {
         continue;
       }
       methodHandle mh(THREAD, entry->method());
-      assert((mh.not_null() && MetaspaceShared::is_in_shared_metaspace((address)mh())), "sanity");
+      assert((mh.not_null() && AOTMetaspace::in_aot_cache((address)mh())), "sanity");
       if (skip_preload(mh)) {
         continue; // Exclude preloading for this method
       }
@@ -2371,7 +2371,7 @@ Method* AOTCodeReader::read_method(const methodHandle& comp_method) {
   code_offset += sizeof(uint);
   set_read_position(code_offset);
   Method* m = AOTCacheAccess::convert_offset_to_method(method_offset);
-  if (!MetaspaceShared::is_in_shared_metaspace((address)m)) {
+  if (!AOTMetaspace::in_aot_cache((address)m)) {
     // Something changed in CDS
     set_lookup_failed();
     log_debug(aot, codecache, metadata)("Lookup failed for shared method: " INTPTR_FORMAT " is not in CDS ", p2i((address)m));
@@ -2385,7 +2385,7 @@ Method* AOTCodeReader::read_method(const methodHandle& comp_method) {
     log_debug(aot, codecache, metadata)("%d '%s' (L%d): Lookup failed for holder %s: not instance klass",
                   compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
     return nullptr;
-  } else if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
+  } else if (!AOTMetaspace::in_aot_cache((address)k)) {
     set_lookup_failed();
     log_debug(aot, codecache, metadata)("%d '%s' (L%d): Lookup failed for holder %s: not in CDS",
                   compile_id(), comp_method->name_and_sig_as_C_string(), comp_level(), k->external_name());
@@ -2463,7 +2463,7 @@ Klass* AOTCodeReader::read_klass(const methodHandle& comp_method) {
   code_offset += sizeof(uint);
   set_read_position(code_offset);
   Klass* k = AOTCacheAccess::convert_offset_to_klass(klass_offset);
-  if (!MetaspaceShared::is_in_shared_metaspace((address)k)) {
+  if (!AOTMetaspace::in_aot_cache((address)k)) {
     // Something changed in CDS
     set_lookup_failed();
     log_debug(aot, codecache, metadata)("Lookup failed for shared klass: " INTPTR_FORMAT " is not in CDS ", p2i((address)k));
@@ -4036,7 +4036,7 @@ void AOTCodeCache::print_statistics_on(outputStream* st) {
         nmethod* nm = iter.method();
         if (nm->is_in_use() && !nm->is_native_method() && !nm->is_osr_method()) {
           aot_info.print("%5d:%c%c%c%d:", nm->compile_id(),
-                         (nm->method()->is_shared() ? 'S' : ' '),
+                         (nm->method()->in_aot_cache() ? 'S' : ' '),
                          (nm->is_aot() ? 'A' : ' '),
                          (nm->preloaded() ? 'P' : ' '),
                          nm->comp_level());

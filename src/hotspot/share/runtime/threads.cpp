@@ -25,10 +25,10 @@
  */
 
 #include "cds/aotLinkedClassBulkLoader.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "cds/methodProfiler.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.hpp"
@@ -41,8 +41,8 @@
 #include "code/aotCodeCache.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
-#include "compiler/compileTask.hpp"
 #include "compiler/compilerThread.hpp"
+#include "compiler/compileTask.hpp"
 #include "compiler/precompiler.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetNMethod.hpp"
@@ -97,13 +97,13 @@
 #include "runtime/stackWatermarkSet.inline.hpp"
 #include "runtime/stubCodeGenerator.hpp"
 #include "runtime/thread.inline.hpp"
-#include "runtime/threadSMR.inline.hpp"
 #include "runtime/threads.hpp"
+#include "runtime/threadSMR.inline.hpp"
 #include "runtime/timer.hpp"
 #include "runtime/timerTrace.hpp"
 #include "runtime/trimNativeHeap.hpp"
-#include "runtime/vmOperations.hpp"
 #include "runtime/vm_version.hpp"
+#include "runtime/vmOperations.hpp"
 #include "services/attachListener.hpp"
 #include "services/management.hpp"
 #include "services/threadIdTable.hpp"
@@ -944,10 +944,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   if (CDSConfig::is_dumping_classic_static_archive()) {
     // Classic -Xshare:dump, aka "old workflow"
-    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
+    AOTMetaspace::preload_and_dump(CHECK_JNI_ERR);
   } else if (CDSConfig::is_dumping_final_static_archive()) {
     tty->print_cr("Reading AOTConfiguration %s and writing AOTCache %s", AOTConfiguration, AOTCache);
-    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
+    AOTMetaspace::preload_and_dump(CHECK_JNI_ERR);
   }
 
   log_info(init)("At VM initialization completion:");

@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotLogging.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapLoader.inline.hpp"
 #include "cds/archiveUtils.hpp"
@@ -33,7 +34,6 @@
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaProxyClassDictionary.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
@@ -130,7 +130,7 @@ void ArchivePtrMarker::mark_pointer(address* ptr_loc) {
   if (ptr_base() <= ptr_loc && ptr_loc < ptr_end()) {
     address value = *ptr_loc;
     // We don't want any pointer that points to very bottom of the archive, otherwise when
-    // MetaspaceShared::default_base_address()==0, we can't distinguish between a pointer
+    // AOTMetaspace::default_base_address()==0, we can't distinguish between a pointer
     // to nothing (null) vs a pointer to an objects that happens to be at the very bottom
     // of the archive.
     assert(value != (address)ptr_base(), "don't point to the bottom of the archive");
@@ -222,7 +222,7 @@ char* DumpRegion::expand_top_to(char* newtop) {
       // happens only if you allocate more than 2GB of shared objects and would require
       // millions of shared classes.
       aot_log_error(aot)("Out of memory in the CDS archive: Please reduce the number of shared classes.");
-      MetaspaceShared::unrecoverable_writing_error();
+      AOTMetaspace::unrecoverable_writing_error();
     }
   }
 
@@ -249,11 +249,11 @@ void DumpRegion::commit_to(char* newtop) {
   if (!_vs->expand_by(commit, false)) {
     aot_log_error(aot)("Failed to expand shared space to %zu bytes",
                     need_committed_size);
-    MetaspaceShared::unrecoverable_writing_error();
+    AOTMetaspace::unrecoverable_writing_error();
   }
 
   const char* which;
-  if (_rs->base() == (char*)MetaspaceShared::symbol_rs_base()) {
+  if (_rs->base() == (char*)AOTMetaspace::symbol_rs_base()) {
     which = "symbol";
   } else {
     which = "shared";
@@ -311,7 +311,7 @@ void DumpRegion::init(ReservedSpace* rs, VirtualSpace* vs) {
 
 void DumpRegion::pack(DumpRegion* next) {
   if (!is_packed()) {
-    _end = (char*)align_up(_top, MetaspaceShared::core_region_alignment());
+    _end = (char*)align_up(_top, AOTMetaspace::core_region_alignment());
     _is_packed = true;
   }
   if (next != nullptr) {

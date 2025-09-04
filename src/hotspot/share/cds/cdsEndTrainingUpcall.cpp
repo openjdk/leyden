@@ -22,9 +22,9 @@
  *
  */
 
+#include "cds/aotMetaspace.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cdsEndTrainingUpcall.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "compiler/methodMatcher.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
@@ -74,7 +74,7 @@ bool CDSEndTrainingUpcall::end_training(JavaThread* current)
 {
   if (_triggered == 0) {
     if (Atomic::cmpxchg(&_triggered, 0, 1) == 0) {
-      MetaspaceShared::preload_and_dump(current);
+      AOTMetaspace::preload_and_dump(current);
       assert(!current->has_pending_exception(), "Unexpected exception");
       return true;
     }

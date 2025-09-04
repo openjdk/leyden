@@ -22,7 +22,7 @@
  *
  */
 
-#include "cds/metaspaceShared.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -144,7 +144,7 @@ jint init_globals() {
   bytecodes_init();
   classLoader_init1();
   compilationPolicy_init();
-  MetaspaceShared::open_static_archive();
+  AOTMetaspace::open_static_archive();
   codeCache_init();
   VM_Version_init();              // depends on codeCache_init for emitting code
   icache_init2();                 // depends on VM_Version for choosing the mechanism
@@ -224,10 +224,8 @@ jint init_globals2() {
     JVMCI::initialize_globals();
   }
 #endif
-  // Initialize TrainingData only we're recording/replaying
-  if (TrainingData::have_data() || TrainingData::need_data()) {
-    TrainingData::initialize();
-  }
+
+  TrainingData::initialize();
 
   if (!universe_post_init()) {
     return JNI_ERR;
