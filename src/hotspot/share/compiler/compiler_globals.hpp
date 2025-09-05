@@ -419,6 +419,12 @@
   product(uint, AOTCodeLoadStop, max_jint,                                  \
           "The id of the last AOT code to load")                            \
                                                                             \
+  product(uint, AOTCodePreloadStart, 0,                                     \
+          "The id of the first AOT code to preload")                        \
+                                                                            \
+  product(uint, AOTCodePreloadStop, max_jint,                               \
+          "The id of the last AOT code to preload")                         \
+                                                                            \
   product(bool, VerifyAOTCode, false, DIAGNOSTIC,                           \
           "Load AOT code but not publish")                                  \
                                                                             \
