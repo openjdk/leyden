@@ -1218,6 +1218,10 @@ CompLevel CompilationPolicy::trained_transition_from_none(const methodHandle& me
     return CompLevel_none;
   }
 
+  if (PreloadAndC1Only) {
+    return CompLevel_simple;
+  }
+
   bool training_has_profile = (mtd->final_profile() != nullptr);
   if (mtd->saw_level(CompLevel_full_optimization) && !training_has_profile) {
     return CompLevel_full_profile;
@@ -1436,6 +1440,9 @@ CompLevel CompilationPolicy::transition_from_none(const methodHandle& method, Co
   int i = method->invocation_count();
   int b = method->backedge_count();
   double scale = delay_profiling ? Tier0ProfileDelayFactor : 1.0;
+  if (PreloadAndC1Only) {
+    return CompLevel_simple;
+  }
   // If we were at full profile level, would we switch to full opt?
   if (transition_from_full_profile<Predicate>(method, CompLevel_full_profile) == CompLevel_full_optimization) {
     next_level = CompLevel_full_optimization;
