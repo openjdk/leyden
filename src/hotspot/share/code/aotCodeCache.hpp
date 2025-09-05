@@ -521,7 +521,6 @@ public:
     return _store_entries;
   }
   void preload_aot_code(TRAPS);
-  void preload_aot_code_new(TRAPS);
 
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
@@ -529,7 +528,6 @@ public:
   void store_cpu_features(char*& buffer, uint buffer_size);
 
   bool finish_write();
-  bool finish_write_new();
 
   void log_stats_on_exit(AOTCodeStats& stats);
 
