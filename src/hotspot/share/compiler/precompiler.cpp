@@ -33,20 +33,20 @@
 #include "compiler/precompiler.hpp"
 #include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
+#include "oops/methodCounters.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
 
 class PrecompileIterator : StackObj {
 private:
   CompLevel _comp_level;
-  CompLevel _search_level;
   bool _for_preload;
   Thread* _thread;
   GrowableArray<Method*> _methods;
 
 public:
-  PrecompileIterator(CompLevel comp_level, bool for_preload, CompLevel search_level, JavaThread* thread)
-  : _comp_level(comp_level), _search_level(search_level), _for_preload(for_preload), _thread(thread) {
+  PrecompileIterator(CompLevel comp_level, bool for_preload, JavaThread* thread)
+  : _comp_level(comp_level), _for_preload(for_preload), _thread(thread) {
     assert(TrainingData::have_data(), "sanity");
   }
 
@@ -56,12 +56,34 @@ public:
     }
     DirectiveSet* directives = DirectivesStack::getMatchingDirective(methodHandle(_thread, m), nullptr);
     if (directives->DontPrecompileOption) {
-      return false; // excluded
-    } else if (directives->PrecompileRecordedOption > 0) {
+      return false;
+    }
+    if (directives->PrecompileRecordedOption > 0) {
       return true;
     }
-    int cid = compile_id(m, _search_level);
-    return (cid < INT_MAX);
+    int hi_level = highest_level(m);
+    switch (_comp_level) {
+      case CompLevel_simple:
+      case CompLevel_limited_profile:
+        // Depending on what the tiered policy needs at runtime, we might need
+        // C1 methods, even if only the C2 version is recorded in training data.
+        // This covers the cases of C2 deopt to C1 profiled version, or runtime
+        // policy disallowing C2 completely, or switching to C1 non-profiled version
+        // due to compiler overload.
+        // Additionally, this generates C1 limited profiled version for methods
+        // that only have C1 full profiled version.
+        return _comp_level <= hi_level;
+      case CompLevel_full_profile:
+        // We do not include C1 full profiled methods at this time.
+        // TODO: See if it is profitable to do so. This requires MDO support in AOTCache.
+        return false;
+      case CompLevel_full_optimization:
+        // For C2 levels, we only care about the direct hits.
+        return _comp_level == hi_level;
+      default:
+        assert(false, "Missed the case: %d", _comp_level);
+        return false;
+    }
   }
 
   void do_value(const RunTimeClassInfo* record) {
@@ -82,48 +104,52 @@ public:
     }
   }
 
-  static int compile_id(Method* m, int level) {
-    MethodTrainingData* mtd = m->method_holder()->is_loaded() ? MethodTrainingData::find(methodHandle(Thread::current(), m)) : nullptr;
-    if (mtd != nullptr && mtd->highest_level() == level) {
-      CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
-      if (ctd != nullptr) {
-        return ctd->compile_id();
+  static MethodTrainingData* method_training_data(Method* m) {
+    if (m->method_holder()->is_loaded()) {
+      return MethodTrainingData::find(methodHandle(Thread::current(), m));
+    }
+    return nullptr;
+  }
+
+  static int highest_level(Method* m) {
+    MethodTrainingData* mtd = method_training_data(m);
+    if (mtd != nullptr) {
+      return mtd->highest_level();
+    }
+    return 0;
+  }
+
+  static size_t counts(Method* m) {
+    size_t count = 0;
+    MethodTrainingData* mtd = method_training_data(m);
+    if (mtd != nullptr) {
+      MethodData* md = mtd->final_profile();
+      if (md != nullptr) {
+        count += md->backedge_count();
+        count += md->invocation_count();
+      }
+      MethodCounters* mc = mtd->final_counters();
+      if (mc != nullptr) {
+        count += mc->invocation_count();
+        count += mc->backedge_count();
       }
     }
-    return INT_MAX; // treat as the last compilation
+    return count;
   }
 
-  static int compare_by_compile_id(Method** m1, Method** m2, CompLevel comp_level) {
-    int id1 = compile_id(*m1, comp_level);
-    int id2 = compile_id(*m2, comp_level);
-    return (id1 - id2);
-  }
+  static int compare_methods(Method** m1, Method** m2) {
+    // Hottest methods go first.
+    size_t c1 = counts(*m1);
+    size_t c2 = counts(*m2);
+    if (c1 > c2) return -1;
+    if (c1 < c2) return +1;
 
-  static int compare_by_compile_id_tier1(Method** m1, Method** m2) {
-    return compare_by_compile_id(m1, m2, CompLevel_simple);
-  }
-
-  static int compare_by_compile_id_tier2(Method** m1, Method** m2) {
-    return compare_by_compile_id(m1, m2, CompLevel_limited_profile);
-  }
-
-  static int compare_by_compile_id_tier3(Method** m1, Method** m2) {
-    return compare_by_compile_id(m1, m2, CompLevel_full_profile);
-  }
-
-  static int compare_by_compile_id_tier4(Method** m1, Method** m2) {
-    return compare_by_compile_id(m1, m2, CompLevel_full_optimization);
-  }
-
-  void sort_methods_by_compile_id() {
-    switch(_search_level) {
-      case CompLevel_simple:            _methods.sort(&compare_by_compile_id_tier1); break;
-      case CompLevel_limited_profile:   _methods.sort(&compare_by_compile_id_tier2); break;
-      case CompLevel_full_profile:      _methods.sort(&compare_by_compile_id_tier3); break;
-      case CompLevel_full_optimization: _methods.sort(&compare_by_compile_id_tier4); break;
-
-      default: fatal("%d", _search_level);
-    }
+    // Otherwise, break the tie by code size: largest methods go first.
+    size_t s1 = (*m1)->code_size();
+    size_t s2 = (*m2)->code_size();
+    if (s1 > s2) return -1;
+    if (s1 < s2) return +1;
+    return 0;
   }
 
   void schedule_compilations(TRAPS) {
@@ -166,7 +192,7 @@ public:
           Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
           log.print(" -> %p", requested_m);
         }
-        log.print("] [%d] (%s)", AOTCodeCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
+        log.print("] {%zu} [%d] (%s)", counts(m), AOTCodeCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
       }
     }
 
@@ -175,16 +201,16 @@ public:
   }
 
   void precompile(ArchiveBuilder* builder, TRAPS) {
-    sort_methods_by_compile_id();
+    _methods.sort(&compare_methods);
     schedule_compilations(THREAD);
     CompileBroker::wait_for_no_active_tasks();
     print_compilation_status(builder);
   }
 };
 
-void Precompiler::compile_aot_code(CompLevel search_level, bool for_preload, CompLevel comp_level, TRAPS) {
+void Precompiler::compile_aot_code(CompLevel comp_level, bool for_preload, TRAPS) {
   ResourceMark rm;
-  PrecompileIterator pi(comp_level, for_preload, search_level, THREAD);
+  PrecompileIterator pi(comp_level, for_preload, THREAD);
   TrainingData::iterate(pi);
   pi.precompile((ArchiveBuilder*)nullptr, THREAD);
 }
@@ -215,12 +241,12 @@ void Precompiler::compile_aot_code(TRAPS) {
     });
 
     if (ClassInitBarrierMode > 0) { // Preload code is enabled
-      compile_aot_code(CompLevel_full_optimization, true, CompLevel_full_optimization, CHECK);
+      compile_aot_code(CompLevel_full_optimization, true, CHECK);
     }
-    compile_aot_code(CompLevel_full_optimization, false, CompLevel_full_optimization, CHECK);
-    compile_aot_code(CompLevel_full_profile,      false, CompLevel_limited_profile,   CHECK);
-    compile_aot_code(CompLevel_limited_profile,   false, CompLevel_limited_profile,   CHECK);
-    compile_aot_code(CompLevel_simple,            false, CompLevel_simple,            CHECK);
+    CompLevel highest_level = CompilationPolicy::highest_compile_level();
+    for (int level = CompLevel_simple; level <= highest_level; level++) {
+      compile_aot_code((CompLevel)level, false, CHECK);
+    }
   }
 }
 
@@ -231,17 +257,13 @@ void Precompiler::compile_aot_code(ArchiveBuilder* builder, TRAPS) {
     ResourceMark rm;
     CompLevel highest_level = CompilationPolicy::highest_compile_level();
     if (highest_level >= CompLevel_full_optimization && ClassInitBarrierMode > 0) {
-      PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, CompLevel_full_optimization, THREAD);
+      PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, THREAD);
       TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);
     }
 
     for (int level = CompLevel_simple; level <= highest_level; level++) {
-      CompLevel comp_level = (CompLevel)level;
-      if (comp_level == CompLevel_full_profile) {
-        comp_level = CompLevel_limited_profile;
-      }
-      PrecompileIterator pi(comp_level, false /*for_preload*/, (CompLevel)level, THREAD);
+      PrecompileIterator pi((CompLevel)level, false /*for_preload*/, THREAD);
       TrainingData::iterate(pi);
       pi.precompile(builder, THREAD);
     }
