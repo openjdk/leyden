@@ -2504,7 +2504,7 @@ bool LibraryCallKit::inline_vector_extract() {
   if (vector_klass == nullptr || elem_klass == nullptr || vlen == nullptr || idx == nullptr) {
     return false; // dead code
   }
-  if (vector_klass->const_oop() == nullptr || elem_klass->const_oop() == nullptr || !vlen->is_con() || !idx->is_con()) {
+  if (vector_klass->const_oop() == nullptr || elem_klass->const_oop() == nullptr || !vlen->is_con()) {
     log_if_needed("  ** missing constant: vclass=%s etype=%s vlen=%s",
                     NodeClassNames[argument(0)->Opcode()],
                     NodeClassNames[argument(1)->Opcode()],

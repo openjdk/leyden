@@ -675,6 +675,8 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables(AOTClassLocationConfig*&
 }
 
 void VM_PopulateDumpSharedSpace::doit() {
+  CDSConfig::set_is_at_aot_safepoint(true);
+
   if (!CDSConfig::is_dumping_final_static_archive()) {
     guarantee(!CDSConfig::is_using_archive(), "We should not be using an archive when we dump");
   }
@@ -742,6 +744,7 @@ void VM_PopulateDumpSharedSpace::doit() {
   _map_info->header()->set_class_location_config(cl_config);
 
   HeapShared::delete_tables_with_raw_oops();
+  CDSConfig::set_is_at_aot_safepoint(false);
 }
 
 class CollectClassesForLinking : public KlassClosure {
@@ -780,9 +783,6 @@ public:
 // Check if we can eagerly link this class at dump time, so we can avoid the
 // runtime linking overhead (especially verification)
 bool AOTMetaspace::may_be_eagerly_linked(InstanceKlass* ik) {
-  if (CDSConfig::preserve_all_dumptime_verification_states(ik)) {
-    assert(ik->can_be_verified_at_dumptime(), "sanity");
-  }
   if (!ik->can_be_verified_at_dumptime()) {
     // For old classes, try to leave them in the unlinked state, so
     // we can still store them in the archive. They must be
@@ -801,16 +801,9 @@ bool AOTMetaspace::may_be_eagerly_linked(InstanceKlass* ik) {
   return true;
 }
 
-void AOTMetaspace::link_shared_classes(TRAPS) {
-  AOTClassLinker::initialize();
-  AOTClassInitializer::init_test_class(CHECK);
-
-  if (CDSConfig::is_dumping_final_static_archive()) {
-    FinalImageRecipes::apply_recipes(CHECK);
-  }
-
+void AOTMetaspace::link_all_loaded_classes(JavaThread* current) {
   while (true) {
-    ResourceMark rm(THREAD);
+    ResourceMark rm(current);
     CollectClassesForLinking collect_classes;
     bool has_linked = false;
     const GrowableArray<OopHandle>* mirrors = collect_classes.mirrors();
@@ -818,10 +811,10 @@ void AOTMetaspace::link_shared_classes(TRAPS) {
       OopHandle mirror = mirrors->at(i);
       InstanceKlass* ik = InstanceKlass::cast(java_lang_Class::as_Klass(mirror.resolve()));
       if (may_be_eagerly_linked(ik)) {
-        has_linked |= try_link_class(THREAD, ik);
+        has_linked |= try_link_class(current, ik);
       }
       if (CDSConfig::is_dumping_heap() && ik->is_linked() && !ik->is_initialized()) {
-        AOTClassInitializer::maybe_preinit_class(ik, CHECK);
+        AOTClassInitializer::maybe_preinit_class(ik, current);
       }
     }
 
@@ -831,6 +824,17 @@ void AOTMetaspace::link_shared_classes(TRAPS) {
     // Class linking includes verification which may load more classes.
     // Keep scanning until we have linked no more classes.
   }
+}
+
+void AOTMetaspace::link_shared_classes(TRAPS) {
+  AOTClassLinker::initialize();
+  AOTClassInitializer::init_test_class(CHECK);
+
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    FinalImageRecipes::apply_recipes(CHECK);
+  }
+
+  link_all_loaded_classes(THREAD);
 
   // Eargerly resolve all string constants in constant pools
   {

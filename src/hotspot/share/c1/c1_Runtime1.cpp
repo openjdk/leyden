@@ -789,9 +789,6 @@ JRT_BLOCK_ENTRY_PROF(void, Runtime1, monitorenter, Runtime1::monitorenter(JavaTh
     _monitorenter_slowcase_cnt++;
   }
 #endif
-  if (LockingMode == LM_MONITOR) {
-    lock->set_obj(obj);
-  }
   assert(obj == lock->obj(), "must match");
   SharedRuntime::monitor_enter_helper(obj, lock->lock(), current);
 JRT_END

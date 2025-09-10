@@ -29,8 +29,8 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/macros.hpp"
 
-class InstanceKlass;
 class JavaThread;
+class InstanceKlass;
 
 class CDSConfig : public AllStatic {
 #if INCLUDE_CDS
@@ -44,6 +44,7 @@ class CDSConfig : public AllStatic {
   static bool _has_aot_linked_classes;
   static bool _is_single_command_training;
   static bool _has_temp_aot_config_file;
+  static bool _is_at_aot_safepoint;
   static bool _is_loading_packages;
   static bool _is_loading_protection_domains;
   static bool _is_security_manager_allowed;
@@ -106,6 +107,9 @@ public:
   static const char* type_of_archive_being_written();
   static void prepare_for_dumping();
 
+  static bool is_at_aot_safepoint()                          { return CDS_ONLY(_is_at_aot_safepoint) NOT_CDS(false); }
+  static void set_is_at_aot_safepoint(bool value)            { CDS_ONLY(_is_at_aot_safepoint = value); }
+
   // --- Basic CDS features
 
   // archive(s) in general
@@ -150,7 +154,6 @@ public:
   static void disable_dumping_dynamic_archive()              { CDS_ONLY(_is_dumping_dynamic_archive = false); }
 
   // Misc CDS features
-  static bool preserve_all_dumptime_verification_states(const InstanceKlass* ik);
   static bool allow_only_single_java_thread()                NOT_CDS_RETURN_(false);
 
   static bool is_single_command_training()                   { return CDS_ONLY(_is_single_command_training) NOT_CDS(false); }
@@ -169,6 +172,10 @@ public:
   static bool is_dumping_aot_linked_classes()                NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_using_aot_linked_classes()                  NOT_CDS_JAVA_HEAP_RETURN_(false);
   static void set_has_aot_linked_classes(bool has_aot_linked_classes) NOT_CDS_JAVA_HEAP_RETURN;
+
+  // Bytecode verification
+  static bool is_preserving_verification_constraints();
+  static bool is_old_class_for_verifier(const InstanceKlass* ik);
 
   // archive_path
 

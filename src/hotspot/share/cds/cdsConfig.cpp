@@ -64,6 +64,7 @@ bool CDSConfig::_is_security_manager_allowed = false;
 bool CDSConfig::_old_cds_flags_used = false;
 bool CDSConfig::_new_aot_flags_used = false;
 bool CDSConfig::_disable_heap_dumping = false;
+bool CDSConfig::_is_at_aot_safepoint = false;
 
 const char* CDSConfig::_default_archive_path = nullptr;
 const char* CDSConfig::_input_static_archive_path = nullptr;
@@ -904,17 +905,6 @@ bool CDSConfig::is_logging_dynamic_proxies() {
   return ClassListWriter::is_enabled() || is_dumping_preimage_static_archive();
 }
 
-// Preserve all states that were examined used during dumptime verification, such
-// that the verification result (pass or fail) cannot be changed at runtime.
-//
-// For example, if the verification of ik requires that class A must be a subtype of B,
-// then this relationship between A and B cannot be changed at runtime. I.e., the app
-// cannot load alternative versions of A and B such that A is not a subtype of B.
-bool CDSConfig::preserve_all_dumptime_verification_states(const InstanceKlass* ik) {
-  // This function will be removed when JDK-8350550 is merged from mainline 
-  return ArchivePackages && ArchiveProtectionDomains && is_dumping_aot_linked_classes() && SystemDictionaryShared::is_builtin(ik);
-}
-
 bool CDSConfig::is_using_archive() {
   return UseSharedSpaces;
 }
@@ -1024,6 +1014,35 @@ void CDSConfig::log_reasons_for_not_dumping_heap() {
 // This is *Legacy* optimization for lambdas before JEP 483. May be removed in the future.
 bool CDSConfig::is_dumping_lambdas_in_legacy_mode() {
   return !is_dumping_method_handles();
+}
+
+bool CDSConfig::is_preserving_verification_constraints() {
+  // Verification dependencies are classes used in assignability checks by the
+  // bytecode verifier. In the following example, the verification dependencies
+  // for X are A and B.
+  //
+  //     class X {
+  //        A getA() { return new B(); }
+  //     }
+  //
+  // With the AOT cache, we can ensure that all the verification dependencies
+  // (A and B in the above example) are unconditionally loaded during the bootstrap
+  // of the production run. This means that if a class was successfully verified
+  // in the assembly phase, all of the verifier's assignability checks will remain
+  // valid in the production run, so we don't need to verify aot-linked classes again.
+
+  if (is_dumping_preimage_static_archive()) { // writing AOT config
+    return AOTClassLinking;
+  } else if (is_dumping_final_static_archive()) { // writing AOT cache
+    return is_dumping_aot_linked_classes();
+  } else {
+    // For simplicity, we don't support this optimization with the old CDS workflow.
+    return false;
+  }
+}
+
+bool CDSConfig::is_old_class_for_verifier(const InstanceKlass* ik) {
+  return ik->major_version() < 50 /*JAVA_6_VERSION*/;
 }
 
 #if INCLUDE_CDS_JAVA_HEAP

@@ -23,9 +23,8 @@
  */
 
 /*
- * @test In Leyden repo, classes that are linked during the assembly phase can
- *       skip verification constraint checks. See JDK-8317269.
- *       NOTE: this feature is not included when JDK-8315737 is upstreamed to the mainline.
+ * @test
+ * @bug 8317269
  * @requires vm.cds
  * @requires vm.cds.supports.aot.class.linking
  * @summary Test for verification of classes that are aot-linked
@@ -33,7 +32,9 @@
  *          /test/lib
  *          /test/hotspot/jtreg/runtime/cds/appcds
  *          /test/hotspot/jtreg/runtime/cds/appcds/test-classes
- * @build GoodOldClass BadOldClass BadOldClass2 BadNewClass BadNewClass2
+ * @build GoodOldClass
+ *        BadOldClass BadOldClass2 BadOldClass3 BadOldClass4
+ *        BadNewClass BadNewClass2 BadNewClass3 BadNewClass4
  * @build AOTClassLinkingVerification
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar WhiteBox.jar jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app1.jar
@@ -41,19 +42,25 @@
  *                 Unlinked UnlinkedSuper
  *                 BadOldClass
  *                 BadOldClass2
+ *                 BadOldClass3
+ *                 BadOldClass4
  *                 BadNewClass
  *                 BadNewClass2
+ *                 BadNewClass3
+ *                 BadNewClass4
  *                 GoodOldClass Vehicle Car
  *                 Util
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app2.jar
- *                 UnlinkedSub
  *                 Foo NotFoo
+ *                 UnlinkedSub
  * @run driver AOTClassLinkingVerification
  */
 
 import java.io.File;
 import java.lang.invoke.MethodHandles;
+import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
+import jdk.test.lib.process.OutputAnalyzer;
 import jdk.test.whitebox.WhiteBox;
 
 public class AOTClassLinkingVerification {
@@ -63,6 +70,65 @@ public class AOTClassLinkingVerification {
     static final String bootAppendWhiteBox = "-Xbootclasspath/a:" + wbJar;
     static final String mainClass = AOTClassLinkingVerificationApp.class.getName();
 
+    static class Tester extends CDSAppTester {
+        public Tester(String testName) {
+            super(testName);
+        }
+
+        @Override
+        public String[] vmArgs(RunMode runMode) {
+            if (runMode == RunMode.TRAINING ||
+                runMode == RunMode.ASSEMBLY) {
+                return new String[] {
+                    "-XX:+AOTClassLinking", "-Xlog:cds+class=debug", bootAppendWhiteBox,
+                };
+            } else {
+                return new String[] {
+                    "-XX:+UnlockDiagnosticVMOptions", "-XX:+WhiteBoxAPI", bootAppendWhiteBox,
+                };
+            }
+        }
+
+        @Override
+        public String classpath(RunMode runMode) {
+            if (runMode == RunMode.TRAINING ||
+                runMode == RunMode.ASSEMBLY) {
+                return app1Jar;
+            } else {
+                return app1Jar + File.pathSeparator + app2Jar;
+            }
+        }
+
+        @Override
+        public String[] appCommandLine(RunMode runMode) {
+            if (runMode == RunMode.TRAINING ||
+                runMode == RunMode.ASSEMBLY) {
+                return new String[] {
+                    "AOTClassLinkingVerificationApp", app1Jar, "ASSEMBLY"
+                };
+            } else {
+                return new String[] {
+                    "AOTClassLinkingVerificationApp", app1Jar, "PRODUCTION"
+                };
+            }
+        }
+
+        @Override
+        public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {
+            if (runMode == RunMode.TRAINING) {
+                out.shouldContain("Preload Warning: Verification failed for BadNewClass");
+                out.shouldContain("Preload Warning: Verification failed for BadNewClass2");
+                out.shouldContain("Preload Warning: Verification failed for BadNewClass3");
+                out.shouldContain("Preload Warning: Verification failed for BadNewClass4");
+                out.shouldContain("Preload Warning: Verification failed for BadOldClass");
+                out.shouldContain("Preload Warning: Verification failed for BadOldClass2");
+                out.shouldContain("Preload Warning: Verification failed for BadOldClass3");
+                out.shouldContain("Preload Warning: Verification failed for BadOldClass4");
+                out.shouldContain("Preload Warning: Verification failed for Unlinked");
+            }
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         // Dump without app2.jar so:
         //  - Unlinked can be resolved, but UnlinkedSuper UnlinkedSub cannot be resolved,
@@ -71,24 +137,8 @@ public class AOTClassLinkingVerification {
         //    so BadOldClass2 cannot be verified at dump time.
         //  - BadNewClass2 can be resolved, but Foo and NotFoo cannot be resolved,
         //    so BadNewClass2 cannot be verified at dump time.
-        TestCommon.testDump(app1Jar, TestCommon.list("Unlinked",
-                                                     "BadOldClass",
-                                                     "BadOldClass2",
-                                                     "BadNewClass",
-                                                     "BadNewClass2",
-                                                     "GoodOldClass"),
-                            bootAppendWhiteBox,
-                            "-XX:+AOTClassLinking",
-                            "-XX:+ArchivePackages",
-                            "-XX:+ArchiveProtectionDomains",
-                            "-Xlog:cds+class=debug");
-
-        TestCommon.run("-cp", app1Jar + File.pathSeparator + app2Jar,
-                       "-XX:+UnlockDiagnosticVMOptions",
-                       "-XX:+WhiteBoxAPI",
-                       bootAppendWhiteBox,
-                       "AOTClassLinkingVerificationApp", app1Jar)
-            .assertNormalExit();
+        Tester t1 = new Tester("verification-aot-linked-classes");
+        t1.run("AOT");
     }
 }
 
@@ -96,59 +146,100 @@ class AOTClassLinkingVerificationApp {
     static WhiteBox wb = WhiteBox.getWhiteBox();
     static ClassLoader classLoader = AOTClassLinkingVerificationApp.class.getClassLoader();
     static File app1Jar;
-
+    static boolean isProduction;
     public static void main(String[] args) throws Exception {
         app1Jar = new File(args[0]);
-        assertNotShared(UnlinkedSub.class);
-        assertShared(UnlinkedSuper.class);
-        assertNotShared(Unlinked.class); // failed verification during dump time
-        assertNotShared(Foo.class);
-        assertNotShared(NotFoo.class);
-        String s = Unlinked.doit();
-        if (!s.equals("heyhey")) {
+        isProduction = args[1].equals("PRODUCTION");
+        if (isProduction) {
+            assertNotShared(UnlinkedSub.class);
+            assertShared(UnlinkedSuper.class);
+            assertNotShared(Unlinked.class); // failed verification during dump time
+            assertNotShared(Foo.class);
+            assertNotShared(NotFoo.class);
+        }
+        String s = null;
+        try {
+            s = Unlinked.doit();
+        } catch (NoClassDefFoundError ncdfe) {
+            // UnlinkedSub is in app2Jar but only app1Jar is used during training
+            // and assembly phases. So NoClassDefFoundError is expected during
+            // during training and assembly phases.
+            if (isProduction) {
+                throw ncdfe;
+            }
+        }
+        if (isProduction && !s.equals("heyhey")) {
             throw new RuntimeException("Unlinked.doit() returns wrong result: " + s);
         }
 
-        Class cls_BadOldClass = Class.forName("BadOldClass", false, classLoader);
-        assertNotShared(cls_BadOldClass); // failed verification during dump time
-        try {
-            cls_BadOldClass.newInstance();
-            throw new RuntimeException("BadOldClass cannot be verified");
-        } catch (VerifyError expected) {}
+        // ===============================================================================
+
+        checkSimpleBadClass("BadOldClass");
 
         Class cls_BadOldClass2 = Class.forName("BadOldClass2", false, classLoader);
-        assertNotShared(cls_BadOldClass2); // failed verification during dump time
+        if (isProduction) {
+            assertNotShared(cls_BadOldClass2); // failed verification during dump time
+        }
         try {
             cls_BadOldClass2.newInstance();
             throw new RuntimeException("BadOldClass2 cannot be verified");
+        } catch (NoClassDefFoundError ncdfe) {
+            // BadOldClass2 loads Foo and NotFoo which is in app2Jar which is used
+            // only in production run.
+            if (isProduction) {
+                throw ncdfe;
+            }
         } catch (VerifyError expected) {}
 
-        Class cls_BadNewClass = Class.forName("BadNewClass", false, classLoader);
-        assertNotShared(cls_BadNewClass); // failed verification during dump time
-        try {
-            cls_BadNewClass.newInstance();
-            throw new RuntimeException("BadNewClass cannot be verified");
-        } catch (VerifyError expected) {}
+        checkSimpleBadClass("BadOldClass3");
+        checkSimpleBadClass("BadOldClass4");
+
+        // ===============================================================================
+
+        checkSimpleBadClass("BadNewClass");
 
         Class cls_BadNewClass2 = Class.forName("BadNewClass2", false, classLoader);
-        assertNotShared(cls_BadNewClass2); // failed verification during dump time
+        if (isProduction) {
+            assertNotShared(cls_BadNewClass2); // failed verification during dump time
+        }
         try {
             cls_BadNewClass2.newInstance();
             throw new RuntimeException("BadNewClass2 cannot be verified");
+        } catch (NoClassDefFoundError ncdfe) {
+            // BadNewClass2 loads Foo and NotFoo which is in app2Jar which is used
+            // only in production run.
+            if (isProduction) {
+                throw ncdfe;
+            }
         } catch (VerifyError expected) {}
 
+        checkSimpleBadClass("BadNewClass3");
+        checkSimpleBadClass("BadNewClass4");
 
-        // Although Vehicle and Car are not specified in the classlist, they are archived as
-        // they were used during dumptime verification of GoodOldClass
-        assertAlreadyLoaded("Vehicle");
-        assertAlreadyLoaded("Car");
-        assertAlreadyLoaded("GoodOldClass");
+        // ===============================================================================
 
-        assertShared(GoodOldClass.class);
-        assertShared(Vehicle.class);
-        assertShared(Car.class);
+        if (isProduction) {
+            assertAlreadyLoaded("Vehicle");
+            assertAlreadyLoaded("Car");
+            assertAlreadyLoaded("GoodOldClass");
+
+            assertShared(GoodOldClass.class);
+            assertShared(Vehicle.class);
+            assertShared(Car.class);
+        }
 
         GoodOldClass.doit(); // Should not fail
+    }
+
+    static void checkSimpleBadClass(String className) throws Exception {
+        Class cls = Class.forName(className, false, classLoader);
+        if (isProduction) {
+            assertNotShared(cls); // failed verification during dump time
+        }
+        try {
+            cls.newInstance();
+            throw new RuntimeException(className + " should not pass verification");
+        } catch (VerifyError expected) {}
     }
 
     static void assertShared(Class c) {
