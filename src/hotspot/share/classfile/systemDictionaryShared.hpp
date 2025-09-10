@@ -152,6 +152,7 @@ private:
 
   static ArchiveInfo _static_archive;
   static ArchiveInfo _dynamic_archive;
+  static bool _finished_exclusion_checks;
 
   static ArchiveInfo* get_archive(bool is_static_archive) {
     return is_static_archive ? &_static_archive : &_dynamic_archive;

@@ -2737,7 +2737,6 @@ void InstanceKlass::remove_unshareable_info() {
     // Remember this so we can avoid walking the hierarchy at runtime.
     set_verified_at_dump_time();
   }
-  _misc_flags.set_has_init_deps_processed(false);
 
   _misc_flags.set_has_init_deps_processed(false);
 
@@ -2914,10 +2913,6 @@ void InstanceKlass::restore_unshareable_info(ClassLoaderData* loader_data, Handl
 }
 
 bool InstanceKlass::can_be_verified_at_dumptime() const {
-  if (CDSConfig::preserve_all_dumptime_verification_states(this)) {
-    return true;
-  }
-
   if (AOTMetaspace::in_aot_cache(this)) {
     // This is a class that was dumped into the base archive, so we know
     // it was verified at dump time.

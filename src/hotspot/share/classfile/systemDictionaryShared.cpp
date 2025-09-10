@@ -83,6 +83,7 @@ SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_static_archive;
 SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_dynamic_archive;
 
 DumpTimeSharedClassTable* SystemDictionaryShared::_dumptime_table = nullptr;
+bool SystemDictionaryShared::_finished_exclusion_checks = false;
 
 // Used by NoClassLoadingMark
 DEBUG_ONLY(bool SystemDictionaryShared::_class_loading_may_happen = true;)
@@ -854,9 +855,6 @@ public:
 // When called before the safepoint, we need to link the class so that
 // it can be checked by should_be_excluded_impl().
 bool SystemDictionaryShared::should_be_excluded(Klass* k) {
-  assert(CDSConfig::is_dumping_archive(), "sanity");
-  assert(CDSConfig::current_thread_is_vm_or_dumper(), "sanity");
-
   if (CDSConfig::is_dumping_dynamic_archive() && AOTMetaspace::in_aot_cache(k)) {
     // We have reached a super type that's already in the base archive. Treat it
     // as "not excluded".
@@ -871,10 +869,24 @@ bool SystemDictionaryShared::should_be_excluded(Klass* k) {
   } else {
     InstanceKlass* ik = InstanceKlass::cast(k);
 
-    if (CDSConfig::is_dumping_dynamic_archive() && ik->in_aot_cache()) {
-      // ik is already part of the static archive, so it will never be considered as excluded.
-      return false;
+    if (CDSConfig::is_dumping_final_static_archive() && _finished_exclusion_checks &&
+        !SafepointSynchronize::is_at_safepoint()) {
+      // This is called from the AOT compiler.
+      MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
+      DumpTimeClassInfo* p = get_info_locked(ik);
+      if (p->is_excluded()) {
+        return true;
+      } else if (!p->has_checked_exclusion()) {
+        // This is a class that was loaded after we exited the AOT safepoint. This
+        // class is not in the AOT cache, so it must be considered as "excluded"
+        return true;
+      } else {
+        return false;
+      }
     }
+
+    assert(CDSConfig::is_dumping_archive(), "sanity");
+    assert(CDSConfig::current_thread_is_vm_or_dumper(), "sanity");
 
     if (!SafepointSynchronize::is_at_safepoint()) {
       if (!ik->is_linked()) {
@@ -940,6 +952,7 @@ void SystemDictionaryShared::finish_exclusion_checks() {
   if (CDSConfig::is_dumping_lambdas_in_legacy_mode()) {
     LambdaProxyClassDictionary::cleanup_dumptime_table();
   }
+  _finished_exclusion_checks = true;
 }
 
 bool SystemDictionaryShared::is_excluded_class(InstanceKlass* k) {
@@ -1516,7 +1529,8 @@ void SystemDictionaryShared::create_loader_positive_lookup_cache(TRAPS) {
 
     MutexLocker ml(DumpTimeTable_lock, Mutex::_no_safepoint_check_flag);
     _dumptime_table->iterate_all_classes_in_builtin_loaders([&](InstanceKlass* k, DumpTimeClassInfo& info) {
-        if (!k->is_hidden() && !should_be_excluded(k)) {
+        // FIXME -- this may not be correct before SystemDictionaryShared::finish_exclusion_checks()
+        if (!k->is_hidden() && info.has_checked_exclusion() && !info.is_excluded()) {
           shared_classes_list.append(k);
         }
       }

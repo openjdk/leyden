@@ -23,7 +23,6 @@
  */
 
 #include "cds/archiveBuilder.hpp"
-#include "cds/cdsConfig.hpp"
 #include "cds/dumpTimeClassInfo.inline.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "classfile/classLoader.hpp"
@@ -40,30 +39,6 @@ DumpTimeClassInfo::~DumpTimeClassInfo() {
   if (_loader_constraints != nullptr) {
     delete _loader_constraints;
   }
-}
-
-bool DumpTimeClassInfo::is_excluded() {
-  if (_excluded) {
-    return true;
-  }
-  if (_failed_verification) {
-    if (CDSConfig::preserve_all_dumptime_verification_states(_klass)) {
-      assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
-      // If the verification states are preserved, _klass will be archived in unlinked state. This is
-      // necessary to support the following scenario, where the verification of X requires that
-      // A be a subclass of B:
-      //     class X {
-      //        B getB() { return new A(); }
-      //     }
-      // If X and B can be verified, but A fails verification, we still archive A (in a preloaded
-      // SystemDictionary) so that at runtime we cannot subvert the verification of X by replacing
-      // A with a version that is not a subtype of B.
-    } else {
-      // Don't archive this class. At runtime, load it from classfile and rerun verification.
-      return true;
-    }
-  }
-  return false;
 }
 
 size_t DumpTimeClassInfo::runtime_info_bytesize() const {

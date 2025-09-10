@@ -211,7 +211,9 @@ public:
     }
   }
 
-  bool is_excluded();
+  bool is_excluded() {
+    return _excluded || _failed_verification;
+  }
 
   bool is_aot_tooling_class() {
     return _is_aot_tooling_class;
