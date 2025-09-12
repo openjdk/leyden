@@ -270,12 +270,11 @@ We use a small set of benchmarks to demonstrate the performance of the optimizat
 | Benchmark  | Source |
 | ------------- | ------------- |
 |[helidon-quickstart-se](test/hotspot/jtreg/premain/helidon-quickstart-se) | https://helidon.io/docs/v4/se/guides/quickstart|
+|[javac-bench](test/hotspot/jtreg/premain/javac_bench) | Using Javac to compile 50 source files |
 |[micronaut-first-app](test/hotspot/jtreg/premain/micronaut-first-app) | https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
 |[quarkus-getting-started](test/hotspot/jtreg/premain/quarkus-getting-started) | https://quarkus.io/guides/getting-started|
 |[spring-boot-getting-started](test/hotspot/jtreg/premain/spring-boot-getting-started) | https://spring.io/guides/gs/spring-boot|
 |[spring-petclinic](test/hotspot/jtreg/premain/spring-petclinic) | https://github.com/spring-projects/spring-petclinic|
-
-*(FIXME: add a benchmark for javac)*
 
 ### Benchmarking Against JDK Main-line
 
@@ -369,6 +368,7 @@ current set of Leyden optimizations are enabled.
 The benchmark results are collected with `make bench` in the following directories under [test/hotspot/jtreg/premain](test/hotspot/jtreg/premain):
 
 - `helidon-quickstart-se`
+- `javac-bench`
 - `micronaut-first-app`
 - `quarkus-getting-started`
 - `spring-boot-getting-started`
@@ -385,10 +385,10 @@ The meaning of the four rows in the following the charts:
 
 These JDK versions were used in the comparisons:
 
-- JDK main-line: JDK 24, build 24+36-3646
-- Leyden: https://github.com/openjdk/leyden/tree/bbac8f2d845aa6408182ca3ff9ce60b5ca6e0390
+- JDK main-line: JDK 25, build 25+37-LTS-3491
+- Leyden: https://github.com/openjdk/leyden/tree/8df3504f55cabe9ff8a1d239f469b18d00ff802b
 
-For details information about the hardware and raw numbers, see [bench.20250307.txt](test/hotspot/jtreg/premain/bench_data/bench.20250307.txt)
+For details information about the hardware and raw numbers, see [bench.20250912.txt](test/hotspot/jtreg/premain/bench_data/bench.20250912.txt)
 
 ### Helidon Quick Start (SE) Demo (3.52x improvement)
 
@@ -403,6 +403,21 @@ xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 484, 398, 351]
+```
+
+### JavacBenchApp 50 source files (2.17x improvement)
+
+```mermaid
+---
+config:
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+    bar [1000, 779, 567, 460]
 ```
 
 ### Micronaut First App Demo (2.85x improvement)
