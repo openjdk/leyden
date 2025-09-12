@@ -1,10 +1,10 @@
-# Welcome to the Leyden Prototype Repository!
+# Welcome to the Leyden Prototype Repository
 
-The purpose of the Leyden repository is to prototype improvements to the
-startup time, time to peak performance, and footprint of Java programs, as a part of 
+The purpose of the Leyden repository is to prototype improvements to
+the startup time, time to peak performance, and footprint of Java programs, as a part of
 [Project Leyden](https://openjdk.org/projects/leyden). We solicit feedback from
-the Java community, with the hope that some of these improvements can be eventually
-incoporated in future JDK releases.
+the Java community, with the hope that some of these improvements can eventually be
+incorporated into future JDK releases.
 
 ## 0. Disclaimers
 
@@ -17,64 +17,43 @@ incoporated in future JDK releases.
 - *The benchmarks results reported on this page are for illustrative purposes only. Your
    applications may get better or worse results.*
 
+To try out the Leyden prototype without building it from source code, please download the
+Leyden EA Release from [https://jdk.java.net/leyden/](https://jdk.java.net/leyden/).
+
 ## 1. Overview
 
+As of JDK 25, the Leyden Project has successfully delivered ahead-of-time (AOT)
+optimizations JEPs:
+
+- [JEP 483 - Ahead-of-Time Class Loading & Linking](https://openjdk.org/jeps/483)
+- [JEP 514 - Ahead-of-Time Command-Line Ergonomics](https://openjdk.org/jeps/514)
+- [JEP 515 - Ahead-of-Time Method Profiling](https://openjdk.org/jeps/515)
+
+Please refer to the above JEPs for a detailed discussion of AOT optimizations.
+
 The Leyden "[premain](https://github.com/openjdk/leyden/blob/premain/)" prototype
-includes many optimizations that shift work from run time to earlier
-executions of the application, which are
-called _training runs_. In a training run, we pre-compute various kinds of information.
-Importantly, we pre-compile
-bytecode to native code, guided by observations of the application's actual behavior
-during the training run.
-
-The Leyden repository closely tracks the JDK main line. We are typically only a few weeks behind
-the [main-line JDK repo](https://github.com/openjdk/jdk).
-
-We have implemented the following improvements:
-
-- **[Ahead-of-Time Class Loading & Linking (JEP 483)](https://openjdk.org/jeps/483)**:
-  This gives
-  the JVM the ability to put classes in the _linked_ state as soon the application starts up. As a result,
-  we can implement many other time shifting optimizations with considerably simplified assumptions.
-  - Please refer to the [JEP 483 document](https://openjdk.org/jeps/483) for more details.
-
-- **[Ahead-of-Time Method Profiling (JEP draft 8325147)](https://openjdk.org/jeps/8325147)**: We store method profiles
-  from training runs in the CDS archive, thereby enabling the JIT to begin compiling earlier during warmup.
-  As a result, Java applications can reach peak performance faster.
-  - This feature is enabled by the new diagnostic (`-XX:+UnlockDiagnosticVMOptions`) VM flags `-XX:+RecordTraining` and `-XX:+ReplayTraining`.
+includes new experimental AOT optimizations that are not yet integrated into the JDK mainline:
 
 - **[Ahead-of-Time Code Compilation (JEP draft 8335368)](https://openjdk.org/jeps/8335368)**: Methods that are frequently used during the training run can be
-  compiled and stored along with the CDS archive. As a result, as soon as the application starts up
-  in the production run, its methods can be can be natively executed.
-  - This feature is enabled by the new VM flags `-XX:+StoreCachedCode`, `-XX:+LoadCachedCode`, and `-XX:CachedCodeFile`.
-  - Currently, the native code is stored in a separate file, but our plans is to eventually store the native code
-    inside the CDS archive file.
-
-- **Ahead-of-time resolution of constant pool entries**: many
-  constant pool entries are resolved during the assembly phase. This allows the application to start up faster. Also,
-  the existence of resolved constant pool entries allows the AOT compiler to generate better code.
-  For diagnostic purposes, you can use `-XX:+UnlockDiagnosticVMOptions -XX:-AOTInvokeDynamicLinking`
-  to disable the AOT linking of constant pool entries for the `invokedynamic` bytecode.
+  compiled and stored along with the AOT cache. As a result, as soon as the application starts up
+  in the production run, its methods can be natively executed.
+  - This feature is enabled by default when you create an AOT cache. It can be disabled with the diagnostic
+    flag `-XX:-AOTCodeCaching`.
 
 - **Ahead-of-time generation of [Dynamic Proxies](https://docs.oracle.com/en/java/javase/22/docs/api/java.base/java/lang/reflect/Proxy.html)**:
   Dynamic proxies are frequently used by popular application frameworks. We can improve start-up time by generating these proxies ahead of time.
-  - This feature is enabled by the new VM flag `-XX:+ArchiveDynamicProxies`.
+  - This feature is enabled by default when you create an AOT cache. It can be disabled with the diagnostic
+    flag `-XX:-ArchiveDynamicProxies`.
 
 - **Ahead-of-time generation of reflection data**: Reflection data (such as instances of
   `java.lang.reflect.Method`) are generated by the JVM to support `java.lang.reflect` operations. We can
   generate these ahead of time to improve start-up.
-  - This feature is enabled by the new VM flag `-XX:+ArchiveReflectionData`.
+  - This feature is enabled by default when you create an AOT cache. It can be disabled with the diagnostic
+    flag `-XX:-ArchiveReflectionData`.
 
 - **Class Not Found Cache**: Sometimes application frameworks repeatedly try to load classes that do not exist. This optimization allows such failing lookups to be done quickly without repeatedly scanning the class path.
-  - This feature is enabled by the new VM flag `-XX:+ArchiveLoaderLookupCache`.
-
-By default, all optimizations listed above are enabled.  This simplifies testing of the whole
-prototype.  If necessary for more detailed testing, each feature can
-be individually disabled by negating its associated flag.
-
-The names of all of these VM flags will change in a future EA build as we transition from the old “CDS” terminology to the new “AOT” terminology, as discussed [here](https://openjdk.org/jeps/483#History).
-
-[CDS]: <https://docs.oracle.com/en/java/javase/22/vm/class-data-sharing.html>
+  - This feature is enabled by default when you create an AOT cache. It can be disabled with the diagnostic
+    flag `-XX:-ArchiveLoaderLookupCache`.
 
 ## 2. Building the Leyden Repository
 
@@ -96,16 +75,13 @@ tracking.
 
 The easiest way to try out the Leyden optimizations is to build a JVM from the Leyden repository, and use it with your application with the `-XX:AOTCache` flag.
 
-> Note: in an earlier version of the Leyden prototype, the optimizations were controlled by an experimental flag `-XX:CacheDataStore`. This flag has been deprecated and will be removed. For a reference to this flag, please see an [older version of this document](https://github.com/openjdk/leyden/blob/076c71f7cb9887ef3d64b752976610d19792203b/README.md).
-
 
 Here's a small benchmark that uses the JDK's built-in
 [`JavaCompiler`](https://docs.oracle.com/en/java/javase/21/docs/api/java.compiler/javax/tools/JavaCompiler.html)
-class to compile some Java source files. This benchmark spends a significant amount of start-up time 
+class to compile some Java source files. This benchmark spends a significant amount of start-up time
 setting up the classes used by `JavaCompiler`, so it will benefit from the Leyden features.
 
-First, download [JavacBenchApp.java](https://github.com/iklam/jdk/raw/f95f851aed3d2bf06edabab1e7c24e15f4145d0d/test/hotspot/jtreg/runtime/cds/appcds/applications/JavacBenchApp.java)
-and compile it into a JAR file.
+First, download [JavacBenchApp.java](test/setup_aot/JavacBenchApp.java) and compile it into a JAR file.
 
 (Remember to use the `java` program that you built from the Leyden repository.)
 
@@ -119,7 +95,7 @@ adding: JavacBenchApp$SourceFile.class(in = 1351) (out= 671)(deflated 50%)
 adding: JavacBenchApp.class(in = 7571) (out= 3302)(deflated 56%)
 ```
 
-We can run this benchmark without any Leyden features. It takes 893 ms:
+We can run this benchmark without any AOT optimizations. It takes 893 ms:
 
 ```
 $ java -cp JavacBenchApp.jar JavacBenchApp 50
@@ -145,6 +121,15 @@ $ ls -l JavacBenchApp.aot
 -r--r--r-- 1 iklam iklam 42332160 Mar  3 16:58 JavacBenchApp.aot
 ```
 
+Alternatively, you can also combine the training run and assembly phase with a single command:
+
+```
+$ java -XX:AOTCacheOutput=JavacBenchApp.aot \
+       -cp JavacBenchApp.jar JavacBenchApp 50
+$ ls -l JavacBenchApp.aot
+-r--r--r-- 1 iklam iklam 42332160 Mar  3 16:58 JavacBenchApp.aot
+```
+
 Now, we can make a _production run_ of the program using the AOT cache `JavacBenchApp.aot`. It finishes in 423 ms, or more than twice as fast as
 before.
 
@@ -152,6 +137,8 @@ before.
 $ java -XX:AOTCache=JavacBenchApp.aot -cp JavacBenchApp.jar JavacBenchApp 50
 Generated source code for 51 classes and compiled them in 423 ms
 ```
+
+### Ending the Training Run Early
 
 By default, training runs end when the application terminates.  You have two other options to end training runs:
 
@@ -162,81 +149,18 @@ Note that `-XX:AOTEndTrainingOnMethodEntry` uses the same format as `-XX:Compile
 
 See [EndTrainingOnMethodEntry.java](test/hotspot/jtreg/runtime/cds/appcds/leyden/EndTrainingOnMethodEntry.java) for a test case.
 
-### Prototype for JEP Draft 8350022: Ahead-of-time Command Line Ergonomics
+### Diagnosing Potential Performance Issues
 
-We have implemented part of the JEP draft [8350022: Ahead-of-time Command Line Ergonomics](https://openjdk.org/jeps/8350022).
-This simplifies the training process, so that an AOT cache can be created with a single command-line:
-
-```
-$ java -XX:AOTCacheOutput=JavacBenchApp.aot -cp JavacBenchApp.jar \
-      JavacBenchApp 50
-Generated source code for 51 classes and compiled them in 2212 ms
-[3.720s][warning][cds] Skipping Sanity: Unsupported location
-Temporary AOTConfiguration recorded: JavacBenchApp.aot.config
-Launching child process /bld/images/jdk/bin/java to assemble AOT cache JavacBenchApp.aot
-using configuration JavacBenchApp.aot.config
-Picked up JAVA_TOOL_OPTIONS: -Djava.class.path=JavacBenchApp.jar
-                             -XX:AOTCacheOutput=JavacBenchApp.aot
-                             -XX:AOTConfiguration=JavacBenchApp.aot.config -XX:AOTMode=create
-Reading AOTConfiguration JavacBenchApp.aot.config and writing AOTCache JavacBenchApp.aot
-AOTCache creation is complete: JavacBenchApp.aot 39956480 bytes
-Removed temporary AOT configuration file JavacBenchApp.aot.config
-```
-
-As seen in the log messages, when the application is about to exit, the JVM writes a temporary AOT configuration file
-and spawns a child process to create an AOT cache using this configuration file.
-
-In the above example, the configuration file's name `JavacBenchApp.aot.config` is automatically picked by the JVM. This is a temporary
-file written into the same directory as the file specified by `-XX:AOTCacheOutput`, so you must make sure this directory is writable.
-After the cache is created, this temporary is automatically removed.
-
-If you want to persist the configuration file (for debugging purposes, or for manual cache creation at a later time), you can explicitly
-set the `AOTConfiguration` option:
+As mentioned below, parts or all of the AOT cache may be disabled under certain circumstances. This may lead
+to lower performance than expected. To diagnose potential performance issues, you can add `-Xlog:aot*` to the
+command line to see detailed information about what parts of the AOT cache are being utilized. For example, if the
+the AOT-compiled code cannot be loaded, you will see a log message like this:
 
 ```
-$ java -XX:AOTCacheOutput=JavacBenchApp.aot -XX:AOTConfiguration=myconfig.aotconfig \
-      -cp JavacBenchApp.jar JavacBenchApp 50
+[0.008s][info][aot,codecache,init] Mapped 652184 bytes at address 0x00007f491005f028 from AOT Code Cache
+[0.008s][info][aot,codecache,init] Loaded 439 AOT code entries from AOT Code Cache
+[0.008s][info][aot,codecache,init] Unable to use AOT Code Cache.
 ```
-
-When `-XX:AOTCacheOutput` is specified, the JVM automatically runs with `-XX:AOTMode=record`, although you can also specify this explicitly:
-
-```
-$ java -XX:AOTMode=record -XX:AOTCacheOutput=JavacBenchApp.aot \
-      -cp JavacBenchApp.jar JavacBenchApp 50
-```
-
-An alternative way for single-command cache creation is to specify `-XX:AOTCache=<file>` along with `-XX:AOTMode=record`. This essentially says:
-I want to record my training run directly into the specified AOT cache:
-
-```
-$ java -XX:AOTMode=record -XX:AOTCache=JavacBenchApp.aot \
-      -cp JavacBenchApp.jar JavacBenchApp 50
-
-```
-
-Note that in all the examples in this section, `-XX:AOTCache` and `-XX:AOTCacheOutput` are allowed to be specified at the same time, but in that case they are required to have the same value.
-
-### AOT_TOOL_OPTIONS
-
-When creating a AOT cache with a single command, the environment variable `AOT_TOOL_OPTIONS` can be used to pass extra VM options to
-the child JVM process that performs the assembly step. For example:
-
-```
-$ export AOT_TOOL_OPTIONS=-Xmx128m
-$ java -XX:AOTCacheOutput=JavacBenchApp.aot -cp JavacBenchApp.jar JavacBenchApp 50
-Generated source code for 51 classes and compiled them in 2242 ms
-[3.732s][warning][cds] Skipping Sanity: Unsupported location
-Temporary AOTConfiguration recorded: JavacBenchApp.aot.config
-Launching child process /jdk3/bld/le4-fastdebug/images/jdk/bin/java to assemble AOT 
-cache JavacBenchApp.aot using configuration JavacBenchApp.aot.config
-Picked up AOT_TOOL_OPTIONS: -Xmx128m
-Picked up JAVA_TOOL_OPTIONS: -Djava.class.path=JavacBenchApp.jar -XX:AOTCacheOutput=JavacBenchApp.aot
-                             -XX:AOTConfiguration=JavacBenchApp.aot.config -XX:AOTMode=create -Xmx128m
-Reading AOTConfiguration JavacBenchApp.aot.config and writing AOTCache JavacBenchApp.aot
-AOTCache creation is complete: JavacBenchApp.aot 51937280 bytes
-Removed temporary AOT configuration file JavacBenchApp.aot.config
-```
-
 
 ### Diagnostic VM Flags
 
@@ -246,15 +170,16 @@ without specifying them individually.
 
 For diagnostic purposes, you can selectively disable some of the options:
 
-- The `-XX:+LoadCachedCode` and `-XX:+ReplayTraining` flags affect only the production run.
-- The `-XX:+RecordTraining` option affects only the training run and the assembly phase.
+- The `-XX:+AOTCodeCaching` flag affects only the assembly phase and the production run.
+- The `-XX:+AOTRecordTraining` flag affects only the training run and the assembly phase.
+- The `-XX:+AOTReplayTraining` flag affects only the production run.
 - All other options affect only the assembly phase.
 
 For example, you can disable the loading of AOT-compiled methods during the production run. Notice that the benchmark now
 starts more slowly than it did when AOT-compiled methods was loaded.
 
 ```
-$ java -XX:AOTCache=JavacBenchApp.aot -Xlog:cds=error -XX:-LoadCachedCode \
+$ java -XX:AOTCache=JavacBenchApp.aot -Xlog:cds=error -XX:-AOTCodeCaching \
        -cp JavacBenchApp.jar JavacBenchApp 50
 Generated source code for 51 classes and compiled them in 647 ms
 ```
@@ -265,7 +190,7 @@ cache is smaller because it no longer has AOT-compiled methods.
 ```
 $ java -XX:AOTMode=create -XX:AOTConfiguration=JavacBenchApp.aotconfig \
        -cp JavacBenchApp.jar \
-       -XX:AOTCache=JavacBenchApp.aot -XX:-StoreCachedCode
+       -XX:AOTCache=JavacBenchApp.aot -XX:-AOTCodeCaching
 $ ls -l JavacBenchApp.aot
 -r--r--r-- 1 iklam iklam 29990912 Mar  3 16:34 JavacBenchApp.aot
 ```
@@ -273,13 +198,20 @@ $ ls -l JavacBenchApp.aot
 
 ## 4. Limitations of the Leyden Prototype
 
-When trying out the Leyden, please pay attention to the following limitations.
+When trying out the Leyden prototype, please pay attention to the following limitations.
 
-### The Same Garbage Collector Must be Used between Assembly Phase and Production Runs
+### The Same CPU Must be Used between Training and Production Runs
 
-The CDS archive generated by the Leyden prototype includes machine instructions that are specific to
+The AOT-compiled code will be only used if the production run is on a machine with the same type of CPU
+as used in the training run and assembly phase. If this is not the case (for example, the production run is on
+a machine that has different AVX capabilities), the AOT-compiled code will be ignored.
+
+
+### The Same Garbage Collector Must be Used between Training and Production Runs
+
+The AOT cache generated by the Leyden prototype includes machine instructions that are specific to
 the garbage collector. We recommend that you explicitly specify the same collector during both
-training and production runs. For example:
+training and production runs. For example, if you prefer to use the SerialGC:
 
 ```
 # assembly phase.
@@ -292,7 +224,7 @@ $ java -XX:AOTCache=JavacBenchApp.aot -XX:+UseSerialGC -cp JavacBenchApp.jar \
        JavacBenchApp 50
 ```
 
-Otherwise, the CDS archive may not be useable for the production run, leading to suboptimal performance.
+Otherwise, the AOT cache may not be usable for the production run, leading to suboptimal performance.
 For example, sometimes you may perform the assembly phase run on a large development host, and then use
 a container to run the application in a small production node. In the following scenario, as the collector
 is not explicitly specified, the VM will automatically pick G1 for the assembly phase, and SerialGC for the
@@ -310,10 +242,10 @@ $ docker run --rm -v /repos/leyden/build/linux-x64/images/jdk:/jdk -v $(pwd):/te
     bash -c 'cd /test; ' \
             '/jdk/bin/java -XX:AOTCache=JavacBenchApp.aot ' \
             '    -cp JavacBenchApp.jar JavacBenchApp 50'
-[0.001s][error][cds] CDS archive has aot-linked classes. It cannot be used because
+[0.001s][error][aot] AOT cache has aot-linked classes. It cannot be used because
                      GC used during dump time (G1) is not the same as runtime (Serial)
-[0.001s][error][cds] An error has occurred while processing the AOT cache.
-[0.001s][error][cds] Unable to map shared spaces
+[0.001s][error][aot] An error has occurred while processing the AOT cache.
+[0.001s][error][aot] Unable to map shared spaces
 Error occurred during initialization of VM
 Unable to use AOT cache.
 ```
@@ -330,39 +262,6 @@ Error occurred during initialization of VM
 Cannot create the AOT configuration file: UseCompressedClassPointers must be enabled,
 and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah
 ```
-
-### -XX:AOTMode=on is Enabled by default
-
-As seen in the example immediately above, in the production run, if the CDS archive cannot be
-used for any reason, the JVM will report an error and exit. This happens as if `-XX:AOTMode=on` was
-specified in the command-line.
-
-In the standard JDK, when the CDS archive cannot be used for any reason (for example, the
-archive was created for a different version of the JDK), the application will
-continue to run without using CDS.
-This fall-back strategy ensures that the application will function correctly, though at a lower level of performance.
-
-With the Leyden prototype, we have changed this fall-back behavior to make it easier to diagnose
-performance issues. For example, when the start-up time is not as good as one would expect, we
-want know whether it's caused by a misconfiguration that prevents the CDS archive
-from being used, or it's caused by a deficiency in the implementation of the Leyden optimizations.
-
-To revert to the behavior of the standard JDK, you can explicitly add `-XX:AOTMode=auto` to the command-line.
-
-```
-$ docker run --rm -v /repos/leyden/build/linux-x64/images/jdk:/jdk -v $(pwd):/test \
-    --memory=1024m \
-    container-registry.oracle.com/java/openjdk \
-    bash -c 'cd /test; ' \
-            '/jdk/bin/java -XX:AOTMode=auto -XX:AOTCache=JavacBenchApp.aot ' \
-            '    -cp JavacBenchApp.jar JavacBenchApp 50'
-[0.001s][error][cds] CDS archive has aot-linked classes. It cannot be used because
-                     GC used during dump time (G1) is not the same as runtime (Serial)
-Generated source code for 51 classes and compiled them in 831 ms
-```
-
-See [JEP 483](https://openjdk.org/jeps/483) for a discussion of `-XX:AOTMode=on` vs  `-XX:AOTMode=auto`.
-
 
 ## 5. Benchmarking
 
