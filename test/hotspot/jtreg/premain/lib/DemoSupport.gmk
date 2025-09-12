@@ -77,6 +77,7 @@ endif
 # Options passed to PREMAIN_JAVA. See compare_premain_builds in ./Bench.gmk
 PM_OPTS =
 
+JAVAC           = ${BLDJDK_HOME}/bin/javac
 JAR             = ${BLDJDK_HOME}/bin/jar
 BLDJDK_JAVA     = ${BLDJDK_HOME}/bin/java
 MAINLINE_JAVA   = ${MAINLINE_HOME}/bin/java

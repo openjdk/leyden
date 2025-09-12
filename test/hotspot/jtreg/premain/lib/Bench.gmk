@@ -44,6 +44,7 @@ _mainline_vs_premain:
 	        fi; \
 		first=0; \
 	done
+	@rm -f tmp.txt
 	@${MAINLINE_JAVA} ../lib/GithubMDChart.java mainline_vs_premain.md < mainline_vs_premain.csv
 
 # Compare two premain builds running "make run"
@@ -84,4 +85,5 @@ _compare_premain_builds:
 	        fi; \
 		first=0; \
 	done
+	@rm -f tmp.txt
 	@${MAINLINE_JAVA} ../lib/GithubMDChart.java compare_premain_builds.md < compare_premain_builds.csv
