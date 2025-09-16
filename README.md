@@ -390,7 +390,7 @@ These JDK versions were used in the comparisons:
 
 For details information about the hardware and raw numbers, see [bench.20250912.txt](test/hotspot/jtreg/premain/bench_data/bench.20250912.txt)
 
-### Helidon Quick Start (SE) Demo (3.52x improvement)
+### Helidon Quick Start (SE) Demo (3.60x improvement)
 
 ```mermaid
 ---
@@ -402,7 +402,7 @@ config:
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 484, 398, 351]
+    bar [1000, 529, 335, 278]
 ```
 
 ### JavacBenchApp 50 source files (2.17x improvement)

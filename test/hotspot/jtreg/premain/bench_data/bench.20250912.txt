@@ -31,7 +31,7 @@ run,mainline default,mainline custom static cds,mainline aot cache,premain aot c
 8,236,123,83,64
 9,230,126,79,67
 10,239,124,82,67
-Geomean,240.27,126.99,80.58,66.69 (3.52 improvement)
+Geomean,240.27,126.99,80.58,66.69 (3.60x improvement)
 Stdev,8.09,12.16,1.96,3.94
 Markdown snippets in mainline_vs_premain.md
 
@@ -45,8 +45,8 @@ config:
 ---
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
-    y-axis "Elapsed time (ms, smaller is better)" 0 --> 230.47
-    bar [230.47, 123.45, 76.34, 65.48]
+    y-axis "Elapsed time (ms, smaller is better)" 0 --> 240.27
+    bar [240.27, 126.99, 80.58, 66.69]
 ```
 
 -----------------Normalized---------------------------------------------
@@ -60,7 +60,7 @@ config:
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 536, 331, 284]
+    bar [1000, 529, 335, 278]
 ```
 ===============================================================================
 
@@ -82,7 +82,7 @@ Geomean,471.89,367.82,267.43,217.12 (2.17x improvement)
 Stdev,10.40,7.71,12.10,9.08
 Markdown snippets in mainline_vs_premain.md
 
-/work/le4/open/test/hotspot/jtreg/premain/javac_bench$ cat mainline_vs_premain.md 
+/work/le4/open/test/hotspot/jtreg/premain/javac_bench$ cat mainline_vs_premain.md
 ```mermaid
 ---
 config:
@@ -273,7 +273,7 @@ run,mainline default,mainline custom static cds,mainline aot cache,premain aot c
 Geomean,2398.24,1433.59,1329.35,739.79 (3.24x improvement)
 Stdev,195.91,139.87,129.37,30.02
 Markdown snippets in mainline_vs_premain.md
-cat bench.sh >bench 
+cat bench.sh >bench
 chmod a+x bench
 
 /work/le4/open/test/hotspot/jtreg/premain/spring-petclinic$ cat mainline_vs_premain.md
