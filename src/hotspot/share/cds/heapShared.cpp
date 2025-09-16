@@ -179,24 +179,6 @@ oop HeapShared::CachedOopInfo::orig_referrer() const {
   return _orig_referrer.resolve();
 }
 
-void HeapShared::rehash_archived_object_cache() {
-  if (!CDSConfig::is_dumping_heap()) {
-    return;
-  }
-  assert(SafepointSynchronize::is_at_safepoint() ||
-         JavaThread::current()->is_in_no_safepoint_scope(), "sanity");
-
-  ArchivedObjectCache* new_cache =
-      new (mtClass)ArchivedObjectCache(archived_object_cache()->table_size(), MAX_TABLE_SIZE);
-
-  archived_object_cache()->iterate_all([&](OopHandle o, CachedOopInfo& info) {
-    new_cache->put_when_absent(o, info);
-  });
-
-  delete _archived_object_cache;
-  _archived_object_cache = new_cache;
-}
-
 unsigned HeapShared::oop_hash(oop const& p) {
   assert(SafepointSynchronize::is_at_safepoint() ||
          JavaThread::current()->is_in_no_safepoint_scope(), "sanity");
