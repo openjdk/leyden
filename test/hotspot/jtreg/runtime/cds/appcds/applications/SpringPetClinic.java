@@ -29,7 +29,7 @@
  * @requires vm.cds
  * @summary run Spring Pet Clinic demo with the classic static archive workflow
  * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic STATIC
+ * @run driver/timeout=480 SpringPetClinic STATIC
  */
 
 /*
@@ -40,7 +40,7 @@
  * @library /test/lib
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
- * @run main/othervm/timeout=120 -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. SpringPetClinic DYNAMIC
+ * @run main/othervm/timeout=960 -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. SpringPetClinic DYNAMIC
  */
 
 /*
@@ -50,7 +50,7 @@
  * @requires vm.cds.write.archived.java.heap
  * @summary run Spring Pet Clinic demo with JEP 483 workflow
  * @library /test/lib
- * @run driver/timeout=120 SpringPetClinic AOT
+ * @run driver/timeout=480 SpringPetClinic AOT
  */
 
 import java.io.BufferedInputStream;

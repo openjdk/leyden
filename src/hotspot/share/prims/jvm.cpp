@@ -24,6 +24,7 @@
 
 #include "cds/aotClassInitializer.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
@@ -33,7 +34,6 @@
 #include "cds/lambdaProxyClassDictionary.hpp"
 #include "classfile/classFileStream.hpp"
 #include "classfile/classLoader.inline.hpp"
-#include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoadInfo.hpp"
 #include "classfile/javaAssertions.hpp"
@@ -62,10 +62,10 @@
 #include "oops/instanceKlass.hpp"
 #include "oops/klass.inline.hpp"
 #include "oops/method.hpp"
-#include "oops/recordComponent.hpp"
 #include "oops/objArrayKlass.hpp"
 #include "oops/objArrayOop.inline.hpp"
 #include "oops/oop.inline.hpp"
+#include "oops/recordComponent.hpp"
 #include "prims/foreignGlobals.hpp"
 #include "prims/jvm_misc.hpp"
 #include "prims/jvmtiExport.hpp"
@@ -74,12 +74,12 @@
 #include "runtime/arguments.hpp"
 #include "runtime/atomic.hpp"
 #include "runtime/continuation.hpp"
+#include "runtime/deoptimization.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/handles.inline.hpp"
+#include "runtime/handshake.hpp"
 #include "runtime/init.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
-#include "runtime/deoptimization.hpp"
-#include "runtime/handshake.hpp"
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/javaThread.hpp"
@@ -93,8 +93,8 @@
 #include "runtime/threadIdentifier.hpp"
 #include "runtime/threadSMR.hpp"
 #include "runtime/vframe.inline.hpp"
-#include "runtime/vmOperations.hpp"
 #include "runtime/vm_version.hpp"
+#include "runtime/vmOperations.hpp"
 #include "services/attachListener.hpp"
 #include "services/management.hpp"
 #include "services/threadService.hpp"
@@ -232,7 +232,7 @@ extern void trace_class_resolution(Klass* to_class) {
 
 JVM_LEAF_PROF(jboolean, JVM_AOTIsTraining, JVM_AOTIsTraining(JNIEnv *env))
 #if INCLUDE_CDS
-  return MetaspaceShared::is_recording_preimage_static_archive();
+  return AOTMetaspace::is_recording_preimage_static_archive();
 #else
   return JNI_FALSE;
 #endif // INCLUDE_CDS
@@ -240,8 +240,8 @@ JVM_END
 
 JVM_ENTRY_PROF(jboolean, JVM_AOTEndTraining, JVM_AOTEndTraining(JNIEnv *env))
 #if INCLUDE_CDS
-  if (MetaspaceShared::is_recording_preimage_static_archive()) {
-    MetaspaceShared::preload_and_dump(THREAD);
+  if (AOTMetaspace::is_recording_preimage_static_archive()) {
+    AOTMetaspace::preload_and_dump(THREAD);
     return JNI_TRUE;
   }
   return JNI_FALSE;
@@ -263,7 +263,7 @@ JVM_END
 
 JVM_LEAF_PROF(jlong, JVM_AOTGetRecordingDuration, JVM_AOTGetRecordingDuration(JNIEnv *env))
 #if INCLUDE_CDS
-  return MetaspaceShared::get_preimage_static_archive_recording_duration();
+  return AOTMetaspace::get_preimage_static_archive_recording_duration();
 #else
   return 0;
 #endif // INCLUDE_CDS
@@ -1215,7 +1215,7 @@ JVM_ENTRY_PROF(jobjectArray, JVM_GetClassInterfaces, JVM_GetClassInterfaces(JNIE
   if (klass->is_instance_klass()) {
     // Regular instance klass, fill in all local interfaces
     for (int index = 0; index < size; index++) {
-      Klass* k = InstanceKlass::cast(klass)->local_interfaces()->at(index);
+      InstanceKlass* k = InstanceKlass::cast(klass)->local_interfaces()->at(index);
       result->obj_at_put(index, k->java_mirror());
     }
   } else {
@@ -3460,7 +3460,7 @@ JVM_ENTRY_PROF(jclass, JVM_LookupLambdaProxyClassFromArchive, JVM_LookupLambdaPr
 
   Klass* caller_k = java_lang_Class::as_Klass(JNIHandles::resolve(caller));
   InstanceKlass* caller_ik = InstanceKlass::cast(caller_k);
-  if (!caller_ik->is_shared()) {
+  if (!caller_ik->in_aot_cache()) {
     // there won't be a shared lambda class if the caller_ik is not in the shared archive.
     return nullptr;
   }
@@ -3555,7 +3555,7 @@ JVM_ENTRY_PROF(void, JVM_DumpClassListToFile, JVM_DumpClassListToFile(JNIEnv *en
   ResourceMark rm(THREAD);
   Handle file_handle(THREAD, JNIHandles::resolve_non_null(listFileName));
   char* file_name  = java_lang_String::as_utf8_string(file_handle());
-  MetaspaceShared::dump_loaded_classes(file_name, THREAD);
+  AOTMetaspace::dump_loaded_classes(file_name, THREAD);
 #endif // INCLUDE_CDS
 JVM_END
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,6 +23,8 @@
  */
 
 import java.lang.invoke.MethodHandles;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -206,6 +208,35 @@ public class JavacBenchApp {
     }
 
     public static void main(String args[]) throws Throwable {
+        if (System.getProperty("JavacBenchApp.leyden.bench") == null) {
+            run(args);
+        } else {
+            leydenDriver(args);
+        }
+    }
+
+    // Write the same output as other leyden benchmarks for easy benchmarking.
+    // See https://github.com/openjdk/leyden/blob/premain/test/hotspot/jtreg/premain/lib/Bench.gmk
+    static void leydenDriver(String args[]) throws Throwable {
+        long mainStart = System.currentTimeMillis();
+        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+        // This includes all the time spent inside the JVM before main() is reached
+        // (since os::Posix::init is called and initial_time_count is initialized).
+        long vmStart = runtimeMXBean.getStartTime();
+        long maxBeanOverHead = System.currentTimeMillis() - mainStart;
+
+        run(args);
+
+        long end = System.currentTimeMillis();
+        System.out.println("#### Booted and returned in " + (end - vmStart - maxBeanOverHead) + "ms");
+        System.out.println("#### (debug) mainStart = " + mainStart);
+        System.out.println("#### (debug) vmStart = " + vmStart);
+        System.out.println("#### (debug) before main (mainStart - vmStart) = " + (mainStart - vmStart));
+        System.out.println("#### (debug) maxBeanOverHead = " + maxBeanOverHead);
+        System.out.println("#### (debug) end = " + end);
+    }
+
+    static void run(String args[]) throws Throwable {
         long started = System.currentTimeMillis();
         JavacBenchApp bench = new JavacBenchApp();
 

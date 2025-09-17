@@ -114,7 +114,7 @@ void ClassListWriter::write_to_stream(const InstanceKlass* k, outputStream* stre
   bool is_builtin_loader = SystemDictionaryShared::is_builtin_loader(loader_data);
   if (!is_builtin_loader) {
     // class may be loaded from shared archive
-    if (!k->is_shared()) {
+    if (!k->in_aot_cache()) {
       if (cfs == nullptr || cfs->source() == nullptr) {
         // CDS static dump only handles unregistered class with known source.
         return;
@@ -143,7 +143,7 @@ void ClassListWriter::write_to_stream(const InstanceKlass* k, outputStream* stre
   }
 
   {
-    InstanceKlass* super = k->java_super();
+    InstanceKlass* super = k->super();
     if (super != nullptr && !has_id(super)) {
       return;
     }
@@ -169,7 +169,7 @@ void ClassListWriter::write_to_stream(const InstanceKlass* k, outputStream* stre
   ResourceMark rm;
   stream->print("%s id: %d", k->name()->as_C_string(), get_id(k));
   if (!is_builtin_loader) {
-    InstanceKlass* super = k->java_super();
+    InstanceKlass* super = k->super();
     assert(super != nullptr, "must be");
     stream->print(" super: %d", get_id(super));
 

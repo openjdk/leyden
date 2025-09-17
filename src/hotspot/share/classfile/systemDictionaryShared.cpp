@@ -26,6 +26,7 @@
 #include "cds/aotClassFilter.hpp"
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotLogging.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/cdsConfig.hpp"
@@ -38,7 +39,6 @@
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/lambdaProxyClassDictionary.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "cds/unregisteredClasses.hpp"
 #include "classfile/classFileStream.hpp"
@@ -209,7 +209,7 @@ DumpTimeClassInfo* SystemDictionaryShared::get_info_locked(InstanceKlass* k) {
 }
 
 bool SystemDictionaryShared::check_for_exclusion(InstanceKlass* k, DumpTimeClassInfo* info) {
-  if (CDSConfig::is_dumping_dynamic_archive() && MetaspaceShared::is_in_shared_metaspace(k)) {
+  if (CDSConfig::is_dumping_dynamic_archive() && AOTMetaspace::in_aot_cache(k)) {
     // We have reached a super type that's already in the base archive. Treat it
     // as "not excluded".
     return false;
@@ -242,7 +242,7 @@ bool SystemDictionaryShared::is_jfr_event_class(InstanceKlass *k) {
     if (k->name()->equals("jdk/internal/event/Event")) {
       return true;
     }
-    k = k->java_super();
+    k = k->super();
   }
   return false;
 }
@@ -254,7 +254,7 @@ bool SystemDictionaryShared::is_early_klass(InstanceKlass* ik) {
 
 bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
   if (CDSConfig::is_dumping_final_static_archive() && k->defined_by_other_loaders()
-      && k->is_shared()) {
+      && k->in_aot_cache()) {
     return false; // Do not exclude: unregistered classes are passed from preimage to final image.
   }
 
@@ -304,7 +304,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     if (has_class_failed_verification(k)) {
       return warn_excluded(k, "Failed verification");
     } else if (CDSConfig::is_dumping_aot_linked_classes()) {
-      // Most loaded classes should have been speculatively linked by MetaspaceShared::link_class_for_cds().
+      // Most loaded classes should have been speculatively linked by AOTMetaspace::link_class_for_cds().
       // However, we do not speculatively link old classes, as they are not recorded by
       // SystemDictionaryShared::record_linking_constraint(). As a result, such an unlinked
       // class may fail to verify in AOTLinkedClassBulkLoader::init_required_classes_for_loader(),
@@ -333,7 +333,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     return true;
   }
 
-  InstanceKlass* super = k->java_super();
+  InstanceKlass* super = k->super();
   if (super != nullptr && check_for_exclusion(super, nullptr)) {
     ResourceMark rm;
     aot_log_warning(aot)("Skipping %s: super class %s is excluded", k->name()->as_C_string(), super->name()->as_C_string());
@@ -487,7 +487,7 @@ InstanceKlass* SystemDictionaryShared::get_unregistered_class(Symbol* name) {
 
 void SystemDictionaryShared::copy_unregistered_class_size_and_crc32(InstanceKlass* klass) {
   precond(CDSConfig::is_dumping_final_static_archive());
-  precond(klass->is_shared());
+  precond(klass->in_aot_cache());
 
   // A shared class must have a RunTimeClassInfo record
   const RunTimeClassInfo* record = find_record(&_static_archive._unregistered_dictionary,
@@ -575,7 +575,7 @@ bool SystemDictionaryShared::has_been_redefined(InstanceKlass* k) {
   if (k->has_been_redefined()) {
     return true;
   }
-  if (k->java_super() != nullptr && has_been_redefined(k->java_super())) {
+  if (k->super() != nullptr && has_been_redefined(k->super())) {
     return true;
   }
   Array<InstanceKlass*>* interfaces = k->local_interfaces();
@@ -668,7 +668,7 @@ bool SystemDictionaryShared::should_be_excluded(Klass* k) {
   } else {
     InstanceKlass* ik = InstanceKlass::cast(k);
 
-    if (CDSConfig::is_dumping_dynamic_archive() && ik->is_shared()) {
+    if (CDSConfig::is_dumping_dynamic_archive() && ik->in_aot_cache()) {
       // ik is already part of the static archive, so it will never be considered as excluded.
       return false;
     }
@@ -694,7 +694,7 @@ bool SystemDictionaryShared::should_be_excluded(Klass* k) {
       return check_for_exclusion(ik, p);
     } else {
       // No need to check for is_linked() as all eligible classes should have
-      // already been linked in MetaspaceShared::link_class_for_cds().
+      // already been linked in AOTMetaspace::link_class_for_cds().
       // Can't take the lock as we are in safepoint.
       DumpTimeClassInfo* p = _dumptime_table->get(ik);
       if (p->is_excluded()) {
@@ -795,7 +795,7 @@ void SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbo
          Symbol* from_name, bool from_field_is_protected, bool from_is_array, bool from_is_object,
          bool* skip_assignability_check) {
   assert(CDSConfig::is_dumping_archive(), "sanity");
-  if (CDSConfig::is_dumping_dynamic_archive() && k->is_shared()) {
+  if (CDSConfig::is_dumping_dynamic_archive() && k->in_aot_cache()) {
     // k is a new class in the static archive, but one of its supertypes is an old class, so k wasn't
     // verified during dump time. No need to record constraints as k won't be included in the dynamic archive.
     return;
@@ -1032,7 +1032,7 @@ unsigned int SystemDictionaryShared::hash_for_shared_dictionary(address ptr) {
     uintx offset = ArchiveBuilder::current()->any_to_offset(ptr);
     unsigned int hash = primitive_hash<uintx>(offset);
     DEBUG_ONLY({
-        if (MetaspaceObj::is_shared((const MetaspaceObj*)ptr)) {
+        if (MetaspaceObj::in_aot_cache((const MetaspaceObj*)ptr)) {
           assert(hash == SystemDictionaryShared::hash_for_shared_dictionary_quick(ptr), "must be");
         }
       });
@@ -1120,7 +1120,7 @@ void SystemDictionaryShared::serialize_vm_classes(SerializeClosure* soc) {
 
 const RunTimeClassInfo*
 SystemDictionaryShared::find_record(RunTimeSharedDictionary* static_dict, RunTimeSharedDictionary* dynamic_dict, Symbol* name) {
-  if (!CDSConfig::is_using_archive() || !name->is_shared()) {
+  if (!CDSConfig::is_using_archive() || !name->in_aot_cache()) {
     // The names of all shared classes must also be a shared Symbol.
     return nullptr;
   }
@@ -1138,7 +1138,7 @@ SystemDictionaryShared::find_record(RunTimeSharedDictionary* static_dict, RunTim
     }
   }
 
-  if (!MetaspaceShared::is_shared_dynamic(name)) {
+  if (!AOTMetaspace::in_aot_cache_dynamic_region(name)) {
     // The names of all shared classes in the static dict must also be in the
     // static archive
     record = static_dict->lookup(name, hash, 0);
@@ -1177,7 +1177,7 @@ void SystemDictionaryShared::update_shared_entry(InstanceKlass* k, int id) {
 
 const char* SystemDictionaryShared::loader_type_for_shared_class(Klass* k) {
   assert(k != nullptr, "Sanity");
-  assert(k->is_shared(), "Must be");
+  assert(k->in_aot_cache(), "Must be");
   assert(k->is_instance_klass(), "Must be");
   InstanceKlass* ik = InstanceKlass::cast(k);
   if (ik->defined_by_boot_loader()) {

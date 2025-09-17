@@ -23,8 +23,8 @@
  */
 
 #include "c1/c1_CodeStubs.hpp"
-#include "code/aotCodeCache.hpp"
 #include "c1/c1_LIRGenerator.hpp"
+#include "code/aotCodeCache.hpp"
 #include "gc/g1/c1/g1BarrierSetC1.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"

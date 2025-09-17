@@ -134,11 +134,6 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
   }
 }
 
-void CompilationPolicy::maybe_compile_early_after_init(const methodHandle& m, TRAPS) {
-  assert(m->method_holder()->is_initialized(), "Should be called after class initialization");
-  maybe_compile_early(m, THREAD);
-}
-
 void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
   if (!THREAD->can_call_java() || THREAD->is_Compiler_thread()) {
     // don't force compilation, resolve was on behalf of compiler
@@ -202,10 +197,9 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, JavaT
   }
 }
 
-
 void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, JavaThread* current) {
   assert(klass->is_initialized(), "");
-  if (TrainingData::have_data() && klass->is_shared()) {
+  if (TrainingData::have_data() && klass->in_aot_cache()) {
     _training_replay_queue.push(klass, TrainingReplayQueue_lock, current);
   }
 }

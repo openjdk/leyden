@@ -172,8 +172,8 @@ static void trace_current_location(JavaThread* current) {
     Bytecodes::Code bc = last_frame.code();
     log.print("InterpreterRuntime: " INTPTR_FORMAT ": %s: " INTPTR_FORMAT,
               p2i(current), Bytecodes::name(bc), p2i(caller));
-    if (caller->is_shared()) {
-      log.print(" shared");
+    if (caller->in_aot_cache()) {
+      log.print(" aot");
     }
     if (is_resolved(current)) {
       log.print(" resolved");
@@ -1094,7 +1094,7 @@ void InterpreterRuntime::cds_resolve_invoke(Bytecodes::Code bytecode, int method
     ResourceMark rm;
     InstanceKlass* resolved_iklass = InstanceKlass::cast(link_info.resolved_klass());
     log_info(aot, resolve)("Not resolved: class not linked: %s %s %s",
-                           resolved_iklass->is_shared() ? "is_shared" : "",
+                           resolved_iklass->in_aot_cache() ? "in_aot_cache" : "",
                            resolved_iklass->init_state_name(),
                            resolved_iklass->external_name());
   }
