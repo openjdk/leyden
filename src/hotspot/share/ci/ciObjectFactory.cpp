@@ -239,9 +239,7 @@ ciObject* ciObjectFactory::get(oop key) {
 
   NonPermObject* &bucket = find_non_perm(keyHandle);
   if (bucket != nullptr) {
-    ciObject* obj = bucket->object();
-    notice_object_access(obj);
-    return obj;
+    return bucket->object();
   }
 
   // The ciObject does not yet exist.  Create it and insert it
@@ -253,11 +251,11 @@ ciObject* ciObjectFactory::get(oop key) {
 
   // Not a perm-space object.
   insert_non_perm(bucket, keyHandle, new_object);
-  notice_object_access(new_object);
+  notice_new_object(new_object);
   return new_object;
 }
 
-void ciObjectFactory::notice_object_access(ciBaseObject* new_object) {
+void ciObjectFactory::notice_new_object(ciBaseObject* new_object) {
   if (TrainingData::need_data()) {
     ciEnv* env = ciEnv::current();
     if (env->task() != nullptr) {
@@ -349,12 +347,10 @@ ciMetadata* ciObjectFactory::get_metadata(Metadata* key) {
     }
     assert(!found, "no double insert");
     _ci_metadata.insert_before(index, new_object);
-    notice_object_access(new_object);
+    notice_new_object(new_object);
     return new_object;
   }
-  ciMetadata* metadata = _ci_metadata.at(index)->as_metadata();
-  notice_object_access(metadata);
-  return metadata;
+  return _ci_metadata.at(index)->as_metadata();
 }
 
 // ------------------------------------------------------------------

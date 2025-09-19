@@ -108,7 +108,7 @@ public:
   static ciSymbol* vm_symbol_at(vmSymbolID index);
 
   // Called on every new object made.
-  void notice_object_access(ciBaseObject* new_object);
+  void notice_new_object(ciBaseObject* new_object);
 
   // Get the ciMethod representing an unloaded/unfound method.
   ciMethod* get_unloaded_method(ciInstanceKlass* holder,
