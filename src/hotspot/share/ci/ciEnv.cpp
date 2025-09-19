@@ -1852,8 +1852,8 @@ bool ciEnv::is_precompile() {
 
 InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
   ASSERT_IN_VM;
-  assert(is_precompile(), "should be called only in assembly phase");
-  assert(!ik->is_in_error_state(), "there should not be any probelm with this klass");
+  assert(is_precompile(), "Only for precompiled tasks");
+  assert(!ik->is_in_error_state(), "there should not be any problem with this klass");
   ResourceMark rm;
 
   if (!AOTCacheAccess::can_generate_aot_code_for(ik)) {
@@ -1881,15 +1881,31 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
             KlassTrainingData* ktd = ctd->init_dep(i);
             if (ktd->has_holder() && (ktd->holder() == ik)) {
               log_trace(precompile)("%d: init_dependency: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-              return InstanceKlass::ClassState::fully_initialized;; // init dependency present
+              return InstanceKlass::ClassState::fully_initialized; // init dependency present
             }
           }
         }
       }
+
+      // if (mtd != nullptr) {
+      //   CompileTrainingData* ctd = mtd->last_toplevel_compile(task()->comp_level());
+      //   if (ctd != nullptr) {
+      //     for (int i = 0; i < ctd->init_dep_count(); i++) {
+      //       KlassTrainingData* ktd = ctd->init_dep(i);
+      //       InstanceKlass* holder = ktd->holder();
+      //       if (holder != nullptr) {
+      //         log_warning(precompile)("%d: init_dependency LIST: %s: %s", task()->compile_id(), InstanceKlass::state2name(holder->init_state()), holder->external_name());
+      //       }
+      //     }
+      //   }
+      // }
+
       // Class may be not present during TD creation for this method.
       // It could happen when profiled data for inlined method
       // was updated after this method was compiled during training.
-      break;
+      // log_warning(precompile)("%d: init_dependency MISSING: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+
+      return InstanceKlass::ClassState::initialization_error;
     }
     case CompileTask::Reason_PrecompileForPreload: {
       // Preload AOT code does not depend on Training Data,
