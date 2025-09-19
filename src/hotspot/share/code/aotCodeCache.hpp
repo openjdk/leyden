@@ -82,7 +82,7 @@ enum class vmIntrinsicID : int;
   Fn(SharedBlob) \
   Fn(C1Blob) \
   Fn(C2Blob) \
-  Fn(Code) \
+  Fn(Nmethod) \
 
 // Descriptor of AOT Code Cache's entry
 class AOTCodeEntry {
@@ -220,7 +220,7 @@ public:
   static bool is_valid_entry_kind(Kind kind) { return kind > None && kind < Kind_count; }
   static bool is_blob(Kind kind) { return kind == SharedBlob || kind == C1Blob || kind == C2Blob; }
   static bool is_adapter(Kind kind) { return kind == Adapter; }
-  bool is_code()  { return _kind == Code; }
+  bool is_nmethod()  { return _kind == Nmethod; }
 };
 
 // Addresses of stubs, blobs and runtime finctions called from compiled code.
@@ -301,6 +301,8 @@ enum class DataKind: int {
   PlaLoader = 7, // java_platform_loader
   MethodCnts= 8
 };
+
+struct AOTCodeStats;
 
 class AOTCodeCache : public CHeapObj<mtCode> {
 
@@ -396,12 +398,13 @@ protected:
     uint C1_blobs_count() const { return _C1_blobs_count; }
     uint C2_blobs_count() const { return _C2_blobs_count; }
     uint stubs_count()    const { return _stubs_count; }
-    uint nmethods_count() const { return _entries_count
-                                       - _stubs_count
-                                       - _shared_blobs_count
-                                       - _C1_blobs_count
-                                       - _C2_blobs_count
-                                       - _adapters_count; }
+    uint nmethods_count() const { return _preload_entries_count
+                                         + _entries_count
+                                         - _stubs_count
+                                         - _shared_blobs_count
+                                         - _C1_blobs_count
+                                         - _C2_blobs_count
+                                         - _adapters_count; }
 
     bool verify(uint load_size)  const;
     bool verify_config(AOTCodeCache* cache) const { // Called after Universe initialized
@@ -525,7 +528,7 @@ public:
 
   bool finish_write();
 
-  void log_stats_on_exit();
+  void log_stats_on_exit(AOTCodeStats& stats);
 
   static bool load_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) NOT_CDS_RETURN_(false);
   static bool store_stub(StubCodeGenerator* cgen, vmIntrinsicID id, const char* name, address start) NOT_CDS_RETURN_(false);
@@ -725,7 +728,7 @@ public:
 
   void collect_entry_stats(AOTCodeEntry* entry) {
     inc_entry_cnt(entry->kind());
-    if (entry->is_code()) {
+    if (entry->is_nmethod()) {
       entry->for_preload() ? inc_nmethod_cnt(AOTCompLevel_count-1)
                            : inc_nmethod_cnt(entry->comp_level());
       if (entry->has_clinit_barriers()) {
@@ -779,7 +782,7 @@ public:
 
   void inc_loaded_cnt(AOTCodeEntry* entry) {
     inc_entry_loaded_cnt(entry->kind());
-    if (entry->is_code()) {
+    if (entry->is_nmethod()) {
       entry->for_preload() ? inc_nmethod_loaded_cnt(AOTCompLevel_count-1)
                            : inc_nmethod_loaded_cnt(entry->comp_level());
     }
@@ -787,7 +790,7 @@ public:
 
   void inc_invalidated_cnt(AOTCodeEntry* entry) {
     inc_entry_invalidated_cnt(entry->kind());
-    if (entry->is_code()) {
+    if (entry->is_nmethod()) {
       entry->for_preload() ? inc_nmethod_invalidated_cnt(AOTCompLevel_count-1)
                            : inc_nmethod_invalidated_cnt(entry->comp_level());
     }
@@ -795,7 +798,7 @@ public:
 
   void inc_load_failed_cnt(AOTCodeEntry* entry) {
     inc_entry_load_failed_cnt(entry->kind());
-    if (entry->is_code()) {
+    if (entry->is_nmethod()) {
       entry->for_preload() ? inc_nmethod_load_failed_cnt(AOTCompLevel_count-1)
                            : inc_nmethod_load_failed_cnt(entry->comp_level());
     }
