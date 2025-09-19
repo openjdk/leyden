@@ -398,14 +398,13 @@ protected:
     uint C1_blobs_count() const { return _C1_blobs_count; }
     uint C2_blobs_count() const { return _C2_blobs_count; }
     uint stubs_count()    const { return _stubs_count; }
-    uint nmethods_count() const { uint count = _entries_count
-                                       - _stubs_count
-                                       - _shared_blobs_count
-                                       - _C1_blobs_count
-                                       - _C2_blobs_count
-                                       - _adapters_count;
-                                  if (UseNewCode) count += _preload_entries_count;
-                                  return count; }
+    uint nmethods_count() const { return _preload_entries_count
+                                         + _entries_count
+                                         - _stubs_count
+                                         - _shared_blobs_count
+                                         - _C1_blobs_count
+                                         - _C2_blobs_count
+                                         - _adapters_count; }
 
     bool verify(uint load_size)  const;
     bool verify_config(AOTCodeCache* cache) const { // Called after Universe initialized

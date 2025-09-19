@@ -1192,7 +1192,7 @@ bool AOTCodeCache::finish_write() {
         if (entry->not_entrant()) {
           // Skip not entrant preload code:
           // we can't pre-load code which may have failing dependencies.
-          log_info(aot, codecache, exit)("Not entrant new entry comp_id: %d, comp_level: %d, hash: " UINT32_FORMAT_X_0 "%s",
+          log_info(aot, codecache, exit)("Skip not entrant preload code comp_id: %d, comp_level: %d, hash: " UINT32_FORMAT_X_0 "%s",
                                          entry->comp_id(), entry->comp_level(), entry->id(), (entry->has_clinit_barriers() ? ", has clinit barriers" : ""));
         } else {
           copy_bytes((const char*)entry, (address)current, sizeof(AOTCodeEntry));
