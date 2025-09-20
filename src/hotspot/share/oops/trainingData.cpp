@@ -311,28 +311,23 @@ void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what)
   // We could follow the queries that it is making, but it is
   // simpler to assume, conservatively, that the JIT will
   // eventually depend on the initialization state of k.
-  CompileTask* task = env->task();
-  assert(task != nullptr, "");
-  Method* method = task->method();
-  InstanceKlass* compiling_klass = method->method_holder();
-  if (what->is_metadata()) {
-    ciMetadata* md = what->as_metadata();
-    if (md->is_loaded() && md->is_instance_klass()) {
-      ciInstanceKlass* cik = md->as_instance_klass();
-
-      if (cik->is_initialized()) {
-        InstanceKlass* ik = md->as_instance_klass()->get_instanceKlass();
-        KlassTrainingData* ktd = KlassTrainingData::make(ik);
-        if (ktd == nullptr) {
-          // Allocation failure or snapshot in progress
-          return;
-        }
-        // This JIT task is (probably) requesting that ik be initialized,
-        // so add him to my _init_deps list.
-        TrainingDataLocker l;
-        add_init_dep(ktd);
-      }
+  ciMetadata* md = nullptr;
+  if (what->is_object()) {
+    md = what->as_object()->klass();
+  } else if (what->is_metadata()) {
+    md = what->as_metadata();
+  }
+  if (md != nullptr && md->is_loaded() && md->is_instance_klass()) {
+    InstanceKlass* ik = md->as_instance_klass()->get_instanceKlass();
+    KlassTrainingData* ktd = KlassTrainingData::make(ik);
+    if (ktd == nullptr) {
+      // Allocation failure or snapshot in progress
+      return;
     }
+    // This JIT task is (probably) requesting that ik be initialized,
+    // so add it to my _init_deps list.
+    TrainingDataLocker l;
+    add_init_dep(ktd);
   }
 }
 
