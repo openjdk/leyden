@@ -121,12 +121,12 @@ public class AOTCodeFlags {
                 switch (runMode) {
                 case RunMode.ASSEMBLY:
                 case RunMode.PRODUCTION:
-                    out.shouldNotMatch("Adapters:\\s+total");
-                    out.shouldNotMatch("Shared Blobs:\\s+total");
-                    out.shouldNotMatch("C1 Blobs:\\s+total");
-                    out.shouldNotMatch("C2 Blobs:\\s+total");
-                    out.shouldNotMatch("Stubs:\\s+total");
-                    out.shouldNotMatch("Nmethods:\\s+total");
+                    out.shouldNotMatch("Adapter:\\s+total");
+                    out.shouldNotMatch("SharedBlob:\\s+total");
+                    out.shouldNotMatch("C1Blob:\\s+total");
+                    out.shouldNotMatch("C2Blob:\\s+total");
+                    out.shouldNotMatch("Stub:\\s+total");
+                    out.shouldNotMatch("Nmethod:\\s+total");
                     break;
                 }
             } else {
@@ -135,7 +135,7 @@ public class AOTCodeFlags {
                     case RunMode.ASSEMBLY:
                     case RunMode.PRODUCTION:
                         // AOTAdapterCaching is on, non-zero adapters should be stored/loaded
-                        out.shouldMatch("Adapters:\\s+total=[1-9][0-9]+");
+                        out.shouldMatch("Adapter:\\s+total=[1-9][0-9]+");
                         break;
                     }
                 } else {
@@ -143,7 +143,7 @@ public class AOTCodeFlags {
                     case RunMode.ASSEMBLY:
                     case RunMode.PRODUCTION:
                         // AOTAdapterCaching is off, no adapters should be stored/loaded
-                        out.shouldMatch("Adapters:\\s+total=0");
+                        out.shouldMatch("Adapter:\\s+total=0");
                         break;
                     }
                 }
@@ -152,10 +152,10 @@ public class AOTCodeFlags {
                     case RunMode.ASSEMBLY:
                     case RunMode.PRODUCTION:
                         // AOTStubCaching is on, non-zero stubs should be stored/loaded
-                        out.shouldMatch("Shared Blobs:\\s+total=[1-9][0-9]+");
-                        out.shouldMatch("C1 Blobs:\\s+total=[1-9][0-9]+");
-                        out.shouldMatch("C2 Blobs:\\s+total=[1-9][0-9]+");
-                        out.shouldMatch("Stubs:\\s+total=[1-9]+");
+                        out.shouldMatch("SharedBlob:\\s+total=[1-9][0-9]+");
+                        out.shouldMatch("C1Blob:\\s+total=[1-9][0-9]+");
+                        out.shouldMatch("C2Blob:\\s+total=[1-9][0-9]+");
+                        out.shouldMatch("Stub:\\s+total=[1-9]+");
                         break;
                     }
                 } else {
@@ -163,10 +163,10 @@ public class AOTCodeFlags {
                     case RunMode.ASSEMBLY:
                     case RunMode.PRODUCTION:
                         // AOTStubCaching is off, no stubs should be stored/loaded
-                        out.shouldMatch("Shared Blobs:\\s+total=0");
-                        out.shouldMatch("C1 Blobs:\\s+total=0");
-                        out.shouldMatch("C2 Blobs:\\s+total=0");
-                        out.shouldMatch("Stubs:\\s+total=0");
+                        out.shouldMatch("SharedBlob:\\s+total=0");
+                        out.shouldMatch("C1Blob:\\s+total=0");
+                        out.shouldMatch("C2Blob:\\s+total=0");
+                        out.shouldMatch("Stub:\\s+total=0");
                         break;
                     }
                 }
@@ -175,7 +175,7 @@ public class AOTCodeFlags {
                     case RunMode.ASSEMBLY:
                     case RunMode.PRODUCTION:
                         // AOTAdapterCaching is on, non-zero adapters should be stored/loaded
-                        out.shouldMatch("Nmethods:\\s+total=[1-9]+");
+                        out.shouldMatch("Nmethod:\\s+total=[1-9]+");
                         break;
                     }
                 } else {
@@ -183,7 +183,7 @@ public class AOTCodeFlags {
                     case RunMode.ASSEMBLY:
                     case RunMode.PRODUCTION:
                         // AOTAdapterCaching is off, no adapters should be stored/loaded
-                        out.shouldMatch("Nmethods:\\s+total=0");
+                        out.shouldMatch("Nmethod:\\s+total=0");
                         break;
                     }
                 }
