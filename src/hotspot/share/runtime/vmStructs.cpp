@@ -559,6 +559,8 @@
   nonstatic_field(nmethod,                     _aot_code_entry,                               AOTCodeEntry*)                         \
   volatile_nonstatic_field(nmethod,            _exception_cache,                              ExceptionCache*)                       \
                                                                                                                                      \
+  nonstatic_field(AOTCodeEntry,                _for_preload,                                  bool)                                  \
+                                                                                                                                     \
   nonstatic_field(Deoptimization::UnrollBlock, _size_of_deoptimized_frame,                    int)                                   \
   nonstatic_field(Deoptimization::UnrollBlock, _caller_adjustment,                            int)                                   \
   nonstatic_field(Deoptimization::UnrollBlock, _number_of_frames,                             int)                                   \
