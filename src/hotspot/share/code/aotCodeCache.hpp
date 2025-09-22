@@ -216,7 +216,7 @@ public:
   bool load_fail()  const { return _load_fail; }
   void set_load_fail()    { _load_fail = true; }
 
-  void print(outputStream* st) const;
+  void print(outputStream* st) const NOT_CDS_RETURN;
 
   static bool is_valid_entry_kind(Kind kind) { return kind > None && kind < Kind_count; }
   static bool is_blob(Kind kind) { return kind == SharedBlob || kind == C1Blob || kind == C2Blob; }
@@ -620,7 +620,7 @@ public:
 
   static bool allow_const_field(ciConstant& value) NOT_CDS_RETURN_(false);
   static void invalidate(AOTCodeEntry* entry) NOT_CDS_RETURN;
-  static AOTCodeEntry* find_code_entry(const methodHandle& method, uint comp_level);
+  static AOTCodeEntry* find_code_entry(const methodHandle& method, uint comp_level) NOT_CDS_RETURN_(nullptr);
   static void preload_code(JavaThread* thread) NOT_CDS_RETURN;
 
   template<typename Function>

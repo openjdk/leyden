@@ -4062,9 +4062,12 @@ void InstanceKlass::print_class_load_helper(ClassLoaderData* loader_data,
   }
 
   info_stream.print(" loader:");
+#if INCLUDE_CDS
   if (in_aot_cache()) {
     info_stream.print(" %s", SystemDictionaryShared::loader_type_for_shared_class((Klass*)this));
-  } else if (loader_data == ClassLoaderData::the_null_class_loader_data()) {
+  } else
+#endif
+  if (loader_data == ClassLoaderData::the_null_class_loader_data()) {
     info_stream.print(" boot_loader");
   } else {
     oop class_loader = loader_data->class_loader();
