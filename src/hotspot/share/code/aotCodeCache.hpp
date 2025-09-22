@@ -86,6 +86,7 @@ enum class vmIntrinsicID : int;
 
 // Descriptor of AOT Code Cache's entry
 class AOTCodeEntry {
+  friend class VMStructs;
 public:
   enum Kind : s1 {
 #define DECL_KIND_ENUM(kind) kind,
