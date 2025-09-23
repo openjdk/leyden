@@ -236,10 +236,10 @@ void Precompiler::compile_aot_code(TRAPS) {
       }
     });
 
-    if (ClassInitBarrierMode > 0) { // Preload code is enabled
+    CompLevel highest_level = CompilationPolicy::highest_compile_level();
+    if (highest_level >= CompLevel_full_optimization && ClassInitBarrierMode > 0) {
       compile_aot_code(CompLevel_full_optimization, true, CHECK);
     }
-    CompLevel highest_level = CompilationPolicy::highest_compile_level();
     for (int level = CompLevel_simple; level <= highest_level; level++) {
       compile_aot_code((CompLevel)level, false, CHECK);
     }
