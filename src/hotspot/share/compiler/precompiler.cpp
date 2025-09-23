@@ -77,8 +77,9 @@ public:
         return false;
       default:
         assert(false, "Missed the case: %d", _comp_level);
-        return false;
     }
+    // Do not include methods by default.
+    return false;
   }
 
   void do_value(const RunTimeClassInfo* record) {
