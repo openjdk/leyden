@@ -781,20 +781,6 @@ void ArchiveHeapWriter::mark_native_pointer(oop src_obj, int field_offset) {
   }
 }
 
-// Do we have a jlong/jint field that's actually a pointer to a MetaspaceObj?
-bool ArchiveHeapWriter::is_marked_as_native_pointer(ArchiveHeapInfo* heap_info, address buffered_obj, int field_offset) {
-  size_t offset = buffered_address_to_offset(buffered_obj) + checked_cast<size_t>(field_offset); // in bytes
-  BitMap::idx_t idx = checked_cast<BitMap::idx_t>(offset) / HeapWordSize;
-  // Leading zeros have been removed so some addresses may not be in the ptrmap
-  size_t start_pos = FileMapInfo::current_info()->heap_ptrmap_start_pos();
-  if (idx < start_pos) {
-    return false;
-  } else {
-    idx -= start_pos;
-  }
-  return (idx < heap_info->ptrmap()->size()) && (heap_info->ptrmap()->at(idx) == true);
-}
-
 void ArchiveHeapWriter::compute_ptrmap(ArchiveHeapInfo* heap_info) {
   int num_non_null_ptrs = 0;
   Metadata** bottom = (Metadata**) _requested_bottom;

@@ -342,6 +342,7 @@ private:
                                           int num_loaded_regions);
   static void fill_failed_loaded_region();
   static void mark_native_pointers(oop orig_obj);
+  static bool has_been_archived(oop orig_obj);
   static void prepare_resolved_references();
   static void archive_strings();
   static void archive_subgraphs();
@@ -438,7 +439,6 @@ private:
 #endif // INCLUDE_CDS_JAVA_HEAP
 
  public:
-  static bool has_been_archived(oop orig_obj);
   static oop orig_to_scratch_object(oop orig_obj);
   static void write_heap(ArchiveHeapInfo* heap_info) NOT_CDS_JAVA_HEAP_RETURN;
   static objArrayOop scratch_resolved_references(ConstantPool* src);
@@ -450,7 +450,6 @@ private:
     CDS_JAVA_HEAP_ONLY(return (idx == AOTMetaspace::hp);)
     NOT_CDS_JAVA_HEAP_RETURN_(false);
   }
-  static void rehash_archived_object_cache() NOT_CDS_JAVA_HEAP_RETURN;
   static void delete_tables_with_raw_oops() NOT_CDS_JAVA_HEAP_RETURN;
 
   static void resolve_classes(JavaThread* current) NOT_CDS_JAVA_HEAP_RETURN;

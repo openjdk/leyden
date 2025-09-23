@@ -29,7 +29,7 @@
 
 Example:
 
-helidon-quickstart-se$ tbjava ../lib/GithubMDChart.java < mainline_vs_premain.csv
+helidon-quickstart-se$ cat mainline_vs_premain.csv
 run,mainline default,mainline custom static CDS,premain custom static CDS only,premain CDS + AOT
 1,398,244,144,107
 2,387,247,142,108
@@ -41,7 +41,9 @@ run,mainline default,mainline custom static CDS,premain custom static CDS only,p
 8,387,240,147,110
 9,388,242,147,108
 10,400,242,167,108
-Geomean,397.08,243.76,145.52,110.26
+
+helidon-quickstart-se$ java ../lib/GithubMDChart.java mainline_vs_premain.md < mainline_vs_premain.csv
+Geomean,397.08,243.76,145.52,110.26 (3.60x improvement)
 Stdev,13.55,4.19,7.50,5.73
 
 ```mermaid
@@ -95,6 +97,11 @@ public class GithubMDChart {
                 geomeans[i] = geomean(list);
                 System.out.print(geomeans[i]);
             }
+        }
+        if (head.length > 2) {
+            double old_elapsed = Double.parseDouble(geomeans[1]);
+            double new_elapsed = Double.parseDouble(geomeans[head.length-1]);
+            System.out.format(" (%.2fx improvement)", old_elapsed / new_elapsed);
         }
 
         System.out.println();

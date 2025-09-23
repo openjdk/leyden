@@ -237,11 +237,11 @@ clean: clean0
 
 # clean the the leyden artifacts
 clean0:
-	rm -fv spring-petclinic.* *.aot *.aotconf
+	rm -f spring-petclinic.* *.aot *.aotconf
 
 # clean the the leyden artifacts for the new workflow only
 cleann:
-	rm -fv spring-petclinic.cds.* *.aot *.aotconf
+	rm -f spring-petclinic.cds.* *.aot *.aotconf
 
 include ../lib/Bench.gmk
 
