@@ -745,10 +745,15 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
 
   if (AOTCodeCPUFeatureCheck && !VM_Version::supports_features(cached_cpu_features_buffer, cpu_features_number)) {
     if (log.is_enabled()) {
-      ResourceMark rm; // required for stringStream::as_string()
-      stringStream ss;
-      VM_Version::get_missing_features_name(cached_cpu_features_buffer, ss);
-      log.print_cr("AOT Code Cache disabled: required cpu features are missing: %s", ss.as_string());
+      if (cpu_features_number != (uint)VM_Version::cpu_features_number()) {
+        log.print_cr("AOT Code Cache disabled: archived features number: %d, local features number: %d",
+                     cpu_features_number, (uint)VM_Version::cpu_features_number());
+      } else {
+        ResourceMark rm; // required for stringStream::as_string()
+        stringStream ss;
+        VM_Version::get_missing_features_name(cached_cpu_features_buffer, ss);
+        log.print_cr("AOT Code Cache disabled: required cpu features are missing: %s", ss.as_string());
+      }
     }
     return false;
   }
