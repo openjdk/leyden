@@ -732,7 +732,7 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   assert(cpu_features_size == (uint)VM_Version::cpu_features_size(), "must be");
   offset += sizeof(uint);
   uint cpu_features_number = *(uint *)cache->addr(offset);
-  assert(cpu_features_number == (uint)VM_Version::cpu_features_number(), "must be");
+  assert(cpu_features_number == VM_Version::cpu_features_number(), "must be");
   offset += sizeof(uint);
 
   void* cached_cpu_features_buffer = (void *)cache->addr(offset);

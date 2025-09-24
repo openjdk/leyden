@@ -3310,6 +3310,10 @@ int VM_Version::cpu_features_size() {
   return sizeof(VM_Features);
 }
 
+uint VM_Version::cpu_features_number() {
+  return _features.cpu_features_number();
+}
+
 void VM_Version::store_cpu_features(void* buf) {
   VM_Features copy = _features;
   copy.clear_feature(CPU_HT); // HT does not result in incompatibility of aot code cache

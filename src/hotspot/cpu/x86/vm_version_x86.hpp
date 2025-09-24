@@ -510,8 +510,12 @@ protected:
       return (_features_bitmap[idx] & bit_mask(feature)) != 0;
     }
 
-    bool supports_features(VM_Features* features_to_test, uint cpu_features_number) {
-      if (cpu_features_number != MAX_CPU_FEATURES) {
+    uint cpu_features_number() {
+      return MAX_CPU_FEATURES;
+    }
+
+    bool supports_features(VM_Features* features_to_test, uint cpu_features_num) {
+      if (cpu_features_num != cpu_features_number()) {
         return false;
       }
       for (int i = 0; i < features_bitmap_element_count(); i++) {
@@ -1097,6 +1101,9 @@ public:
 
   // Returns number of bytes required to store cpu features representation
   static int cpu_features_size();
+
+  // Returns number of cpu features
+  static uint cpu_features_number();
 
   // Stores cpu features representation in the provided buffer. This representation is arch dependent.
   // Size of the buffer must be same as returned by cpu_features_size()

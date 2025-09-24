@@ -235,7 +235,7 @@ class Abstract_VM_Version: AllStatic {
   static int cpu_features_size() { return 0; }
 
   // Returns number of cpu features
-  static int cpu_features_number() { return 0; }
+  static uint cpu_features_number() { return 0; }
 
   // Stores arch dependent cpu features representation in the provided buffer.
   // Size of the buffer must be same as returned by cpu_features_size()
