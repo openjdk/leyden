@@ -521,7 +521,7 @@ public:
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
 
-  void store_cpu_features(char*& buffer, uint buffer_size);
+  void store_cpu_features(char*& buffer, uint buffer_size, uint cpu_features_number);
 
   bool finish_write();
 

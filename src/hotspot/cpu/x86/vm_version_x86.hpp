@@ -510,7 +510,10 @@ protected:
       return (_features_bitmap[idx] & bit_mask(feature)) != 0;
     }
 
-    bool supports_features(VM_Features* features_to_test) {
+    bool supports_features(VM_Features* features_to_test, uint cpu_features_number) {
+      if (cpu_features_number != MAX_CPU_FEATURES) {
+        return false;
+      }
       for (int i = 0; i < features_bitmap_element_count(); i++) {
         if ((_features_bitmap[i] & features_to_test->_features_bitmap[i]) != features_to_test->_features_bitmap[i]) {
           return false;
@@ -1099,7 +1102,7 @@ public:
   // Size of the buffer must be same as returned by cpu_features_size()
   static void store_cpu_features(void* buf);
 
-  static bool supports_features(void* features_to_test);
+  static bool supports_features(void* features_to_test, uint cpu_features_number);
 };
 
 #endif // CPU_X86_VM_VERSION_X86_HPP

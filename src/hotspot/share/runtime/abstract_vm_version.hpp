@@ -234,12 +234,15 @@ class Abstract_VM_Version: AllStatic {
   // Returns number of bytes required to store cpu features representation
   static int cpu_features_size() { return 0; }
 
+  // Returns number of cpu features
+  static int cpu_features_number() { return 0; }
+
   // Stores arch dependent cpu features representation in the provided buffer.
   // Size of the buffer must be same as returned by cpu_features_size()
   static void store_cpu_features(void* buf) { return; }
 
   // features_to_test is an opaque object that stores arch specific representation of cpu features
-  static bool supports_features(void* features_to_test) { return false; };
+  static bool supports_features(void* features_to_test, uint cpu_features_number) { return false; };
 };
 
 #endif // SHARE_RUNTIME_ABSTRACT_VM_VERSION_HPP

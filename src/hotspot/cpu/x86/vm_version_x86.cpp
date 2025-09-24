@@ -3316,7 +3316,7 @@ void VM_Version::store_cpu_features(void* buf) {
   memcpy(buf, &copy, sizeof(VM_Features));
 }
 
-bool VM_Version::supports_features(void* features_buffer) {
+bool VM_Version::supports_features(void* features_buffer, uint cpu_features_number) {
   VM_Features* features_to_test = (VM_Features*)features_buffer;
-  return _features.supports_features(features_to_test);
+  return _features.supports_features(features_to_test, cpu_features_number);
 }

@@ -761,7 +761,7 @@ void VM_Version::store_cpu_features(void* buf) {
   *(uint64_t*)buf = _features;
 }
 
-bool VM_Version::supports_features(void* features_buffer) {
+bool VM_Version::supports_features(void* features_buffer, uint cpu_features_number) {
   uint64_t features_to_test = *(uint64_t*)features_buffer;
   return (_features & features_to_test) == features_to_test;
 }

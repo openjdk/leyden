@@ -235,7 +235,7 @@ enum Ampere_CPU_Model {
   // Size of the buffer must be same as returned by cpu_features_size()
   static void store_cpu_features(void* buf);
 
-  static bool supports_features(void* features_to_test);
+  static bool supports_features(void* features_to_test, uint cpu_features_number);
 };
 
 #endif // CPU_AARCH64_VM_VERSION_AARCH64_HPP

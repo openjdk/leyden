@@ -731,6 +731,9 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   uint cpu_features_size = *(uint *)cache->addr(offset);
   assert(cpu_features_size == (uint)VM_Version::cpu_features_size(), "must be");
   offset += sizeof(uint);
+  uint cpu_features_number = *(uint *)cache->addr(offset);
+  assert(cpu_features_number == (uint)VM_Version::cpu_features_number(), "must be");
+  offset += sizeof(uint);
 
   void* cached_cpu_features_buffer = (void *)cache->addr(offset);
   if (log.is_enabled()) {
@@ -740,7 +743,7 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
     log.print_cr("CPU features recorded in AOTCodeCache: %s", ss.as_string());
   }
 
-  if (AOTCodeCPUFeatureCheck && !VM_Version::supports_features(cached_cpu_features_buffer)) {
+  if (AOTCodeCPUFeatureCheck && !VM_Version::supports_features(cached_cpu_features_buffer, cpu_features_number)) {
     if (log.is_enabled()) {
       ResourceMark rm; // required for stringStream::as_string()
       stringStream ss;
@@ -1104,9 +1107,12 @@ static int uint_cmp(const void *i, const void *j) {
   return a > b ? 1 : a < b ? -1 : 0;
 }
 
-void AOTCodeCache::store_cpu_features(char*& buffer, uint buffer_size) {
+void AOTCodeCache::store_cpu_features(char*& buffer, uint buffer_size, uint cpu_features_number) {
   uint* size_ptr = (uint *)buffer;
   *size_ptr = buffer_size;
+  buffer += sizeof(uint);
+  uint* number_ptr = (uint *)buffer;
+  *number_ptr = cpu_features_number;
   buffer += sizeof(uint);
 
   VM_Version::store_cpu_features(buffer);
@@ -1147,6 +1153,7 @@ bool AOTCodeCache::finish_write() {
     // _write_position should include code and strings
     uint code_alignment = code_count * DATA_ALIGNMENT; // We align_up code size when storing it.
     uint cpu_features_size = VM_Version::cpu_features_size();
+    uint cpu_features_number = VM_Version::cpu_features_number();
     uint total_cpu_features_size = sizeof(uint) + cpu_features_size; // sizeof(uint) to store cpu_features_size
     uint total_size = _write_position + header_size + code_alignment +
                       search_size + preload_entries_size + entries_size +
@@ -1159,7 +1166,7 @@ bool AOTCodeCache::finish_write() {
     char* current = start + header_size; // Skip header
 
     uint cpu_features_offset = current - start;
-    store_cpu_features(current, cpu_features_size);
+    store_cpu_features(current, cpu_features_size, cpu_features_number);
     assert(is_aligned(current, DATA_ALIGNMENT), "sanity check");
     assert(current < start + total_size, "sanity check");
 
