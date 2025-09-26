@@ -1168,7 +1168,6 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
   CompLevel comp_level
-  , AOTCodeEntry* aot_code_entry
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -1212,7 +1211,7 @@ nmethod* nmethod::new_nmethod(const methodHandle& method,
     nmethod(method(), compiler->type(), nmethod_size, immutable_data_size, mutable_data_size,
             compile_id, entry_bci, immutable_data, offsets, orig_pc_offset,
             debug_info, dependencies, code_buffer, frame_size, oop_maps,
-            handler_table, nul_chk_table, compiler, comp_level, aot_code_entry
+            handler_table, nul_chk_table, compiler, comp_level
 #if INCLUDE_JVMCI
             , speculations,
             speculations_len,
@@ -1541,7 +1540,6 @@ nmethod::nmethod(
   ImplicitExceptionTable* nul_chk_table,
   AbstractCompiler* compiler,
   CompLevel comp_level
-  , AOTCodeEntry* aot_code_entry
 #if INCLUDE_JVMCI
   , char* speculations,
   int speculations_len,
@@ -1561,7 +1559,7 @@ nmethod::nmethod(
     assert_locked_or_safepoint(CodeCache_lock);
 
     init_defaults(code_buffer, offsets);
-    _aot_code_entry          = aot_code_entry;
+    _aot_code_entry          = nullptr; // runtime compiled nmethod does not have AOTCodeEntry
     _method_profiling_count  = 0;
 
     _osr_entry_point = code_begin() + offsets->value(CodeOffsets::OSR_Entry);

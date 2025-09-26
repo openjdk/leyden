@@ -2168,7 +2168,7 @@ JVMCI::CodeInstallResult JVMCIRuntime::register_method(JVMCIEnv* JVMCIENV,
                                  debug_info, dependencies, code_buffer,
                                  frame_words, oop_map_set,
                                  handler_table, implicit_exception_table,
-                                 compiler, comp_level, nullptr /* AOTCodeEntry */,
+                                 compiler, comp_level,
                                  speculations, speculations_len, data);
 
 
