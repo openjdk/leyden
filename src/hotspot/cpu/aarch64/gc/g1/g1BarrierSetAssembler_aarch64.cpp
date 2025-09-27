@@ -23,9 +23,7 @@
  */
 
 #include "asm/macroAssembler.inline.hpp"
-#if INCLUDE_CDS
 #include "code/aotCodeCache.hpp"
-#endif
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -583,7 +581,20 @@ void G1BarrierSetAssembler::generate_c1_post_barrier_runtime_stub(StubAssembler*
   assert_different_registers(card_offset, byte_map_base, rscratch1);
 
   __ load_parameter(0, card_offset);
-  __ lsr(card_offset, card_offset, CardTable::card_shift());
+#if INCLUDE_CDS
+  // AOT code needs to load the barrier card shift from the aot
+  // runtime constants area in the code cache otherwise we can compile
+  // it as an immediate operand
+  if (AOTCodeCache::is_on_for_dump()) {
+    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
+    __ lea(rscratch1, ExternalAddress(card_shift_address));
+    __ ldrb(rscratch1, rscratch1);
+    __ lsrv(card_offset, card_offset, rscratch1);
+  } else
+#endif
+  {
+    __ lsr(card_offset, card_offset, CardTable::card_shift());
+  }
   __ load_byte_map_base(byte_map_base);
   __ ldrb(rscratch1, Address(byte_map_base, card_offset));
   __ cmpw(rscratch1, (int)G1CardTable::g1_young_card_val());

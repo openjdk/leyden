@@ -236,14 +236,6 @@ void G1BarrierSetAssembler::g1_write_barrier_pre(MacroAssembler* masm,
   __ bind(done);
 }
 
-// return a register that differs from reg1, reg2, reg3 and is not rcx
-
-static Register pick_different_reg(Register reg1, Register reg2 = noreg, Register reg3= noreg, Register reg4 = noreg) {
-  RegSet available = (RegSet::of(rscratch1, rscratch2, rax, rbx) + rdx -
-                      RegSet::of(reg1, reg2, reg3, reg4));
-  return *(available.begin());
-}
-
 static void generate_post_barrier_fast_path(MacroAssembler* masm,
                                             const Register store_addr,
                                             const Register new_val,
@@ -253,33 +245,22 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
                                             bool new_val_may_be_null) {
   CardTableBarrierSet* ct = barrier_set_cast<CardTableBarrierSet>(BarrierSet::barrier_set());
   // Does store cross heap regions?
+  __ movptr(tmp, store_addr);                                    // tmp := store address
+  __ xorptr(tmp, new_val);                                       // tmp := store address ^ new value
+
 #if INCLUDE_CDS
   // AOT code needs to load the barrier grain shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
-
+  Register save = pick_different_reg(rcx, tmp, new_val, store_addr);
   if (AOTCodeCache::is_on_for_dump()) {
-    address grain_shift_addr = AOTRuntimeConstants::grain_shift_address();
-    Register save = pick_different_reg(rcx, tmp, new_val, store_addr);
-    __ push(save);
-    __ movptr(save, store_addr);
-    __ xorptr(save, new_val);
-    __ push(rcx);
-    __ lea(rcx, ExternalAddress(grain_shift_addr));
-    __ movptr(rcx, Address(rcx, 0));
-    __ shrptr(save);
-    __ pop(rcx);
-    __ mov(tmp, save);
-    __ pop(save);
-    __ jcc(Assembler::equal, done);
+    __ shrptr_aotrc(tmp, save, AOTRuntimeConstants::grain_shift_address());
   } else
 #endif // INCLUDE_CDS
   {
-    __ movptr(tmp, store_addr);                                    // tmp := store address
-    __ xorptr(tmp, new_val);                                       // tmp := store address ^ new value
     __ shrptr(tmp, G1HeapRegion::LogOfHRGrainBytes);               // ((store address ^ new value) >> LogOfHRGrainBytes) == 0?
-    __ jcc(Assembler::equal, done);
   }
+  __ jcc(Assembler::equal, done);
 
   // Crosses regions, storing null?
   if (new_val_may_be_null) {
@@ -288,22 +269,13 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   }
   // Storing region crossing non-null, is card young?
   __ movptr(tmp, store_addr);                                    // tmp := store address
+
 #if INCLUDE_CDS
   // AOT code needs to load the barrier card shift from the aot
   // runtime constants area in the code cache otherwise we can compile
   // it as an immediate operand
   if (AOTCodeCache::is_on_for_dump()) {
-    address card_shift_addr = AOTRuntimeConstants::card_shift_address();
-    Register save = pick_different_reg(rcx, tmp);
-    __ push(save);
-    __ mov(save, tmp);
-    __ push(rcx);
-    __ lea(rcx, ExternalAddress(card_shift_addr));
-    __ movptr(rcx, Address(rcx, 0));
-    __ shrptr(save);
-    __ pop(rcx);
-    __ mov(tmp, save);
-    __ pop(save);
+    __ shrptr_aotrc(tmp, save, AOTRuntimeConstants::card_shift_address());
   } else
 #endif // INCLUDE_CDS
   {
@@ -311,10 +283,12 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   }
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
+#if INCLUDE_CDS
   if (AOTCodeCache::is_on_for_dump()) {
-    // AOT code needs relocation info for this address
-    __ lea(tmp2, ExternalAddress((address)ct->card_table()->byte_map_base()));   // tmp2 := card table base address
-  } else {
+    __ movptr(tmp2, ExternalAddress(AOTRuntimeConstants::card_table_address()));
+  } else
+#endif // INCLUDE_CDS
+  {
     __ movptr(tmp2, (intptr_t)ct->card_table()->byte_map_base());   // tmp2 := card table base address
   }
   __ addptr(tmp, tmp2);                                          // tmp := card address
@@ -634,16 +608,27 @@ void G1BarrierSetAssembler::generate_c1_post_barrier_runtime_stub(StubAssembler*
   __ push_ppx(rax);
   __ push_ppx(rcx);
 
-  const Register cardtable = rax;
-  const Register card_addr = rcx;
+  const Register cardtable = rcx;
+  const Register card_addr = rax;
 
   __ load_parameter(0, card_addr);
-  __ shrptr(card_addr, CardTable::card_shift());
+#if INCLUDE_CDS
+  // AOT code needs to load the barrier card shift from the aot
+  // runtime constants area in the code cache otherwise we can compile
+  // it as an immediate operand
+  if (AOTCodeCache::is_on_for_dump()) {
+    // cardtable = rcx is not used yet
+    __ mov32(rcx, ExternalAddress(AOTRuntimeConstants::card_shift_address()));
+    __ shrptr(card_addr);
+  } else
+#endif // INCLUDE_CDS
+  {
+    __ shrptr(card_addr, CardTable::card_shift());
+  }
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
   if (AOTCodeCache::is_on()) {
-    // AOT code needs relocation info for this address
-    __ lea(cardtable, ExternalAddress((address)ct->card_table()->byte_map_base()));
+    __ movptr(cardtable, ExternalAddress(AOTRuntimeConstants::card_table_address()));
   } else {
     __ movptr(cardtable, (intptr_t)ct->card_table()->byte_map_base());
   }

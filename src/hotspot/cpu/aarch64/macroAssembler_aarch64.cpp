@@ -5786,21 +5786,20 @@ void MacroAssembler::adrp(Register reg1, const Address &dest, uint64_t &byte_off
 }
 
 void MacroAssembler::load_byte_map_base(Register reg) {
+#if INCLUDE_CDS
+  if (AOTCodeCache::is_on_for_dump()) {
+    address byte_map_base_adr = AOTRuntimeConstants::card_table_address();
+    lea(reg, ExternalAddress(byte_map_base_adr));
+    ldr(reg, Address(reg));
+    return;
+  }
+#endif
   CardTable::CardValue* byte_map_base =
     ((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base();
 
   // Strictly speaking the byte_map_base isn't an address at all, and it might
   // even be negative. It is thus materialised as a constant.
-#if INCLUDE_CDS
-  if (AOTCodeCache::is_on_for_dump()) {
-    // AOT code needs relocation info for card table base
-    lea(reg, ExternalAddress(reinterpret_cast<address>(byte_map_base)));
-  } else {
-#endif
-    mov(reg, (uint64_t)byte_map_base);
-#if INCLUDE_CDS
-  }
-#endif
+  mov(reg, (uint64_t)byte_map_base);
 }
 
 void MacroAssembler::load_aotrc_address(Register reg, address a) {

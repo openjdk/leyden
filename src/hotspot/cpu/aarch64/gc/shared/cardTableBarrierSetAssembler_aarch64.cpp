@@ -23,6 +23,7 @@
  */
 
 #include "asm/macroAssembler.inline.hpp"
+#include "code/aotCodeCache.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/cardTable.hpp"
 #include "gc/shared/cardTableBarrierSet.hpp"
@@ -37,8 +38,20 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   BarrierSet* bs = BarrierSet::barrier_set();
   assert(bs->kind() == BarrierSet::CardTableBarrierSet, "Wrong barrier set kind");
 
-  __ lsr(obj, obj, CardTable::card_shift());
-
+#if INCLUDE_CDS
+  // AOT code needs to load the barrier card shift from the aot
+  // runtime constants area in the code cache otherwise we can compile
+  // it as an immediate operand
+  if (AOTCodeCache::is_on_for_dump()) {
+    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
+    __ lea(rscratch1, ExternalAddress(card_shift_address));
+    __ ldrb(rscratch1, rscratch1);
+    __ lsrv(obj, obj, rscratch1);
+  } else
+#endif
+  {
+    __ lsr(obj, obj, CardTable::card_shift());
+  }
   assert(CardTable::dirty_card_val() == 0, "must be");
 
   __ load_byte_map_base(rscratch1);
@@ -63,8 +76,22 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
 
   __ lea(end, Address(start, count, Address::lsl(LogBytesPerHeapOop))); // end = start + count << LogBytesPerHeapOop
   __ sub(end, end, BytesPerHeapOop); // last element address to make inclusive
-  __ lsr(start, start, CardTable::card_shift());
-  __ lsr(end, end, CardTable::card_shift());
+#if INCLUDE_CDS
+  // AOT code needs to load the barrier card shift from the aot
+  // runtime constants area in the code cache otherwise we can compile
+  // it as an immediate operand
+  if (AOTCodeCache::is_on_for_dump()) {
+    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
+    __ lea(scratch, ExternalAddress(card_shift_address));
+    __ ldrb(scratch, scratch);
+    __ lsrv(start, start, scratch);
+    __ lsrv(end, end, scratch);
+  } else
+#endif
+  {
+    __ lsr(start, start, CardTable::card_shift());
+    __ lsr(end, end, CardTable::card_shift());
+  }
   __ sub(count, end, start); // number of bytes to copy
 
   __ load_byte_map_base(scratch);

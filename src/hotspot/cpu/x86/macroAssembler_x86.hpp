@@ -817,6 +817,8 @@ public:
   void shrptr(Register dst, int32_t shift);
   void shrptr(Register dst) { shrq(dst); }
 
+  void shrptr_aotrc(Register reg, Register save, address adr);
+
   void sarptr(Register dst) { sarq(dst); }
   void sarptr(Register dst, int32_t src) { sarq(dst, src); }
 

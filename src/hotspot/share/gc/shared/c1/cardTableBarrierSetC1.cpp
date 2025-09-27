@@ -22,6 +22,7 @@
  *
  */
 
+#include "code/aotCodeCache.hpp"
 #include "gc/shared/c1/cardTableBarrierSetC1.hpp"
 #include "gc/shared/cardTable.hpp"
 #include "gc/shared/cardTableBarrierSet.hpp"
@@ -64,9 +65,33 @@ void CardTableBarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Op
   assert(addr->is_register(), "must be a register at this point");
 
 #ifdef CARDTABLEBARRIERSET_POST_BARRIER_HELPER
+  assert(!aotCodeCache::is_on(), "this path is not implemented");
   gen->CardTableBarrierSet_post_barrier_helper(addr, card_table_base);
 #else
   LIR_Opr tmp = gen->new_pointer_register();
+#if INCLUDE_CDS
+  if (AOTCodeCache::is_on_for_dump()) {
+    // AOT code needs to load the barrier card shift from the aot
+    // runtime constants area.
+#ifdef X86
+    LIR_Opr card_shift = gen->shiftCountOpr(); // To use ECX register
+#else // X86
+    LIR_Opr card_shift = gen->new_register(T_INT);
+#endif // X86
+    LIR_Opr card_shift_addr = LIR_OprFact::intptrConst(AOTRuntimeConstants::card_shift_address());
+    LIR_Opr card_shift_reg = gen->new_pointer_register();
+    LIR_Address* card_shift_indirect = new LIR_Address(card_shift_reg, 0, T_INT);
+    __ move(card_shift_addr, card_shift_reg);
+    __ move(card_shift_indirect, card_shift);
+    if (two_operand_lir_form) {
+      LIR_Opr addr_opr = LIR_OprFact::address(new LIR_Address(addr, addr->type()));
+      __ leal(addr_opr, tmp);
+      __ unsigned_shift_right(tmp, card_shift, tmp, LIR_Opr::illegalOpr());
+    } else {
+      __ unsigned_shift_right(addr, card_shift, tmp, LIR_Opr::illegalOpr());
+    }
+  } else // AOTCodeCache::is_on_for_dump()
+#endif // INCLUDE_CDS
   if (two_operand_lir_form) {
     LIR_Opr addr_opr = LIR_OprFact::address(new LIR_Address(addr, addr->type()));
     __ leal(addr_opr, tmp);
@@ -76,6 +101,18 @@ void CardTableBarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Op
   }
 
   LIR_Address* card_addr;
+#if INCLUDE_CDS
+  if (AOTCodeCache::is_on_for_dump()) {
+    // load the card table address from the AOT Runtime Constants area
+    LIR_Opr byte_map_base_adr = LIR_OprFact::intptrConst(AOTRuntimeConstants::card_table_address());
+    LIR_Opr byte_map_base_reg = gen->new_pointer_register();
+    __ move(byte_map_base_adr, byte_map_base_reg);
+    LIR_Address* byte_map_base_indirect = new LIR_Address(byte_map_base_reg, 0, T_LONG);
+    //LIR_Opr byte_map_base = gen->new_pointer_register();
+    __ move(byte_map_base_indirect, byte_map_base_reg);
+    card_addr = new LIR_Address(tmp, byte_map_base_reg, T_BYTE);
+  } else
+#endif
   if (gen->can_inline_as_constant(card_table_base)) {
     card_addr = new LIR_Address(tmp, card_table_base->as_jint(), T_BYTE);
   } else {
