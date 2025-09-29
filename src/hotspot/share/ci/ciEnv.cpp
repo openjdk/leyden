@@ -983,26 +983,14 @@ void ciEnv::validate_compile_task_dependencies(ciMethod* target) {
   }
 }
 
-// aot_code_entry != nullptr implies loading compiled code from AOT code cache
-bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool preload, bool install_code, CodeBuffer* code_buffer, AOTCodeEntry* aot_code_entry) {
+// is_loading_aot_code = true implies loading compiled code from AOT code cache
+bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool install_code, bool is_loading_aot_code, bool preload) {
   methodHandle method(thread, target->get_Method());
 
   // We require method counters to store some method state (max compilation levels) required by the compilation policy.
   if (!preload && method->get_method_counters(thread) == nullptr) {
     record_failure("can't create method counters");
-    if (code_buffer != nullptr) {
-      code_buffer->free_blob();
-    }
     return false;
-  }
-
-  if (aot_code_entry != nullptr) {
-    // Invalid compilation states:
-    //  - AOTCodeCache is closed, AOTCode entry is garbage.
-    //  - AOTCode entry indicates this shared code was marked invalid while it was loaded.
-    if (!AOTCodeCache::is_on() || aot_code_entry->not_entrant()) {
-      return false;
-    }
   }
 
   // Change in Jvmti state may invalidate compilation.
@@ -1022,7 +1010,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
     record_failure("method holder is in error state");
   }
 
-  if (!failing() && (aot_code_entry == nullptr)) {
+  if (!failing() && !is_loading_aot_code) {
     if (log() != nullptr) {
       // Log the dependencies which this compilation declares.
       dependencies()->log_all_dependencies();
@@ -1047,10 +1035,6 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool prel
     MethodData* mdo = method()->method_data();
     if (mdo != nullptr && _inc_decompile_count_on_failure) {
       mdo->inc_decompile_count();
-    }
-
-    if (code_buffer != nullptr) {
-      code_buffer->free_blob();
     }
     return false;
   }
@@ -1150,7 +1134,12 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
     MutexLocker ml(Compile_lock);
     NoSafepointVerifier nsv;
 
-    if (!is_compilation_valid(thread, target, preload, true /*install_code*/, nullptr /*code_buffer*/, aot_code_entry)) {
+    // AOTCode entry indicates this shared code was marked invalid while it was loaded.
+    if (aot_code_entry->not_entrant()) {
+      return nullptr;
+    }
+
+    if (!is_compilation_valid(thread, target, true /*install_code*/, true, preload)) {
       return nullptr;
     }
 
@@ -1205,13 +1194,11 @@ void ciEnv::register_method(ciMethod* target,
                             bool has_monitors,
                             bool has_scoped_access,
                             int immediate_oops_patched,
-                            bool install_code,
-                            AOTCodeEntry* aot_code_entry) {
+                            bool install_code) {
   VM_ENTRY_MARK;
   nmethod* nm = nullptr;
   {
     methodHandle method(THREAD, target->get_Method());
-    bool preload = task()->preload(); // Code is preloaded before Java method execution
 
     // Check if memory should be freed before allocation
     CodeCache::gc_on_allocation();
@@ -1225,7 +1212,8 @@ void ciEnv::register_method(ciMethod* target,
     MutexLocker ml(Compile_lock);
     NoSafepointVerifier nsv;
 
-    if (!is_compilation_valid(THREAD, target, preload, install_code, code_buffer, aot_code_entry)) {
+    if (!is_compilation_valid(THREAD, target, install_code, /*aot_code_entry*/ false, /*preload*/ false)) {
+      code_buffer->free_blob();
       return;
     }
 
@@ -1241,8 +1229,7 @@ void ciEnv::register_method(ciMethod* target,
                                  debug_info(), dependencies(), code_buffer,
                                  frame_words, oop_map_set,
                                  handler_table, inc_table,
-                                 compiler, CompLevel(task()->comp_level()),
-                                 aot_code_entry);
+                                 compiler, CompLevel(task()->comp_level()));
     }
     // Free codeBlobs
     code_buffer->free_blob();
@@ -1252,17 +1239,17 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_wide_vectors(has_wide_vectors);
       nm->set_has_monitors(has_monitors);
       nm->set_has_scoped_access(has_scoped_access);
-      nm->set_preloaded(preload);
+      nm->set_preloaded(false);
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
       if (task()->is_precompile()) {
-        aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
+        AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
         if (aot_code_entry != nullptr) {
           aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
         }
       }
-      make_code_usable(THREAD, target, preload, entry_bci, aot_code_entry, nm);
+      make_code_usable(THREAD, target, /* preload */ false, entry_bci, /* aot_code_entry */ nullptr, nm);
     }
   }
 

@@ -296,7 +296,7 @@ private:
 
   // Helper rountimes to factor out common code used by routines that register a method
   // i.e. register_aot_method() and register_method()
-  bool is_compilation_valid(JavaThread* thread, ciMethod* target, bool preload, bool install_code, CodeBuffer* code_buffer, AOTCodeEntry* aot_code_entry);
+  bool is_compilation_valid(JavaThread* thread, ciMethod* target, bool install_code, bool is_loading_aot_code, bool preload);
   void make_code_usable(JavaThread* thread, ciMethod* target, bool preload, int entry_bci, AOTCodeEntry* aot_code_entry, nmethod* nm);
 
 public:
@@ -403,8 +403,7 @@ public:
                        bool                      has_monitors,
                        bool                      has_scoped_access,
                        int                       immediate_oops_patched,
-                       bool                      install_code,
-                       AOTCodeEntry*             entry = nullptr);
+                       bool                      install_code);
 
   // Access to certain well known ciObjects.
 #define VM_CLASS_FUNC(name, ignore_s) \
