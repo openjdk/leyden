@@ -130,6 +130,20 @@ class MethodCounters : public Metadata {
   InvocationCounter* invocation_counter() { return &_invocation_counter; }
   InvocationCounter* backedge_counter()   { return &_backedge_counter; }
 
+  int invocation_count() {
+    if (invocation_counter()->carry()) {
+      return InvocationCounter::count_limit;
+    }
+    return invocation_counter()->count();
+  }
+
+  int backedge_count() {
+    if (backedge_counter()->carry()) {
+      return InvocationCounter::count_limit;
+    }
+    return backedge_counter()->count();
+  }
+
   static ByteSize invocation_counter_offset()    {
     return byte_offset_of(MethodCounters, _invocation_counter);
   }
