@@ -983,8 +983,8 @@ void ciEnv::validate_compile_task_dependencies(ciMethod* target) {
   }
 }
 
-// is_aot_code = true implies loading compiled code from AOT code cache
-bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool install_code, bool is_aot_code, bool preload) {
+// is_loading_aot_code = true implies loading compiled code from AOT code cache
+bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool install_code, bool is_loading_aot_code, bool preload) {
   methodHandle method(thread, target->get_Method());
 
   // We require method counters to store some method state (max compilation levels) required by the compilation policy.
@@ -1010,7 +1010,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool inst
     record_failure("method holder is in error state");
   }
 
-  if (!failing() && !is_aot_code) {
+  if (!failing() && !is_loading_aot_code) {
     if (log() != nullptr) {
       // Log the dependencies which this compilation declares.
       dependencies()->log_all_dependencies();
