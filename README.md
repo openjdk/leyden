@@ -386,15 +386,16 @@ The meaning of the four rows in the following the charts:
 These JDK versions were used in the comparisons:
 
 - JDK main-line: JDK 25, build 25+37-LTS-3491
-- Leyden: https://github.com/openjdk/leyden/tree/8df3504f55cabe9ff8a1d239f469b18d00ff802b
+- Leyden: https://github.com/openjdk/leyden/tree/ce150637130086ad2b47916d66148007f5331a28
 
-For details information about the hardware and raw numbers, see [bench.20250912.txt](test/hotspot/jtreg/premain/bench_data/bench.20250912.txt)
+For details information about the hardware and raw numbers, see [bench.20250930.txt](test/hotspot/jtreg/premain/bench_data/bench.20250930.txt)
 
-### Helidon Quick Start (SE) Demo (3.60x improvement)
+### Helidon Quick Start (3.59x improvement)
 
 ```mermaid
 ---
 config:
+    theme: "forest"
     xyChart:
         chartOrientation: horizontal
         height: 300
@@ -402,14 +403,15 @@ config:
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 529, 335, 278]
+    bar [1000, 520, 350, 279]
 ```
 
-### JavacBenchApp 50 source files (2.17x improvement)
+### JavacBenchApp 50 source files (2.21x improvement)
 
 ```mermaid
 ---
 config:
+    theme: "forest"
     xyChart:
         chartOrientation: horizontal
         height: 300
@@ -417,14 +419,15 @@ config:
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 779, 567, 460]
+    bar [1000, 785, 572, 452]
 ```
 
-### Micronaut First App Demo (2.85x improvement)
+### Micronaut First App Demo (2.91x improvement)
 
 ```mermaid
 ---
 config:
+    theme: "forest"
     xyChart:
         chartOrientation: horizontal
         height: 300
@@ -432,14 +435,15 @@ config:
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 475, 366, 321]
+    bar [1000, 482, 387, 344]
 ```
 
-### Quarkus Getting Started Demo (2.73x improvement)
+### Quarkus Getting Started Demo (2.97x improvement)
 
 ```mermaid
 ---
 config:
+    theme: "forest"
     xyChart:
         chartOrientation: horizontal
         height: 300
@@ -447,14 +451,15 @@ config:
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 487, 412, 367]
+    bar [1000, 499, 417, 337]
 ```
 
-### Spring-boot Getting Started Demo (3.96x improvement)
+### Spring-boot Getting Started Demo (4.13x improvement)
 
 ```mermaid
 ---
 config:
+    theme: "forest"
     xyChart:
         chartOrientation: horizontal
         height: 300
@@ -462,14 +467,15 @@ config:
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 496, 334, 253]
+    bar [1000, 492, 332, 242]
 ```
 
-### Spring PetClinic Demo (3.24 improvement)
+### Spring PetClinic Demo (3.33x improvement)
 
 ```mermaid
 ---
 config:
+    theme: "forest"
     xyChart:
         chartOrientation: horizontal
         height: 300
@@ -477,8 +483,9 @@ config:
 xychart-beta
     x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
-    bar [1000, 598, 554, 308]
+    bar [1000, 619, 568, 301]
 ```
+
 
 ## 6. More Documentation
 
