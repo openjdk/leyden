@@ -374,7 +374,7 @@ The benchmark results are collected with `make bench` in the following directori
 - `spring-boot-getting-started`
 - `spring-petclinic`
 
-The meaning of the four rows in the following the charts:
+The meaning of the four rows in the following charts:
 
 | Row  | Meaning |
 | ------------- | ------------- |
@@ -383,14 +383,44 @@ The meaning of the four rows in the following the charts:
 | **mainline aot cache**          |Run benchmark with a custom AOT cache (JDK mainline)|
 | **premain aot cache**           |Run benchmark with a custom AOT cache (Leyden Premain Prototype)|
 
+We have benchmark results from two types of configurations using the
+script [test/hotspot/jtreg/premain/bench_data/do_bench.sh](test/hotspot/jtreg/premain/bench_data/do_bench.sh):
+
+- Desktop/Server Class: these are the results when running on a modern desktop or server, using the
+  command `bash bench_data/do_bench.sh`.
+- 2 Cores Only: these are the results when running in a limited configuration where only two cores.
+  are available, using the command `taskset -c 1,2 bash bench_data/do_bench.sh`
+
+The 2 Cores Only setting is intended to emulate microservice configurations where a very small number
+of cores are allocated for small Java programs. In this setting, the JIT compiler may compete for CPU
+with the Java program, making start-up slower. The **premain aot cache** numbers usually are much better in
+this setting because most of the start-up code has been AOT-compiled, so the app can spend most of the
+available CPUs to execute application logic.
+
 These JDK versions were used in the comparisons:
 
 - JDK main-line: JDK 25, build 25+37-LTS-3491
 - Leyden: https://github.com/openjdk/leyden/tree/ce150637130086ad2b47916d66148007f5331a28
 
 For details information about the hardware and raw numbers, see [bench.20250930.txt](test/hotspot/jtreg/premain/bench_data/bench.20250930.txt)
+ and [bench.20250930-2cpu.txt](test/hotspot/jtreg/premain/bench_data/bench.20250930-2cpu.txt)
 
-### Helidon Quick Start (3.59x improvement)
+#### Premain AOT Cache Summary
+
+This is the speed up of **premain aot cache** vs **mainline default** in the two types of configurations
+
+| Benchmark | Desktop/Server Class (28 Cores) | 2 Cores Only|
+|:-------------|-------------:| -------------:|
+| Helidon Quick Start | 3.59x | 4.11x |
+| JavacBenchApp 50 source files | 2.21x | 3.17x |
+| Micronaut First App Demo | 2.91x | 4.90x |
+| Quarkus Getting Started Demo | 2.97x | 3.74x |
+| Spring-boot Getting Started Demo | 4.13x | 4.70x |
+| Spring PetClinic Demo | 3.33x | 3.03x |
+
+### 5.1 Benchmark Results - Desktop/Server Class (28 Cores)
+
+#### Helidon Quick Start (3.59x improvement - Desktop/Server Class (28 Cores))
 
 ```mermaid
 ---
@@ -406,7 +436,7 @@ xychart-beta
     bar [1000, 520, 350, 279]
 ```
 
-### JavacBenchApp 50 source files (2.21x improvement)
+#### JavacBenchApp 50 source files (2.21x improvement - Desktop/Server Class (28 Cores))
 
 ```mermaid
 ---
@@ -422,7 +452,7 @@ xychart-beta
     bar [1000, 785, 572, 452]
 ```
 
-### Micronaut First App Demo (2.91x improvement)
+#### Micronaut First App Demo (2.91x improvement - Desktop/Server Class (28 Cores))
 
 ```mermaid
 ---
@@ -438,7 +468,7 @@ xychart-beta
     bar [1000, 482, 387, 344]
 ```
 
-### Quarkus Getting Started Demo (2.97x improvement)
+#### Quarkus Getting Started Demo (2.97x improvement - Desktop/Server Class (28 Cores))
 
 ```mermaid
 ---
@@ -454,7 +484,7 @@ xychart-beta
     bar [1000, 499, 417, 337]
 ```
 
-### Spring-boot Getting Started Demo (4.13x improvement)
+#### Spring-boot Getting Started Demo (4.13x improvement - Desktop/Server Class (28 Cores))
 
 ```mermaid
 ---
@@ -470,7 +500,7 @@ xychart-beta
     bar [1000, 492, 332, 242]
 ```
 
-### Spring PetClinic Demo (3.33x improvement)
+#### Spring PetClinic Demo (3.33x improvement - Desktop/Server Class (28 Cores))
 
 ```mermaid
 ---
@@ -485,7 +515,103 @@ xychart-beta
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 619, 568, 301]
 ```
+### 5.2 Benchmark Results - 2 Cores Only
 
+#### Helidon Quick Start (4.11x improvement - 2 Cores Only)
+
+```mermaid
+---
+config:
+    theme: "forest"
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+    bar [1000, 585, 459, 244]
+```
+
+#### JavacBenchApp 50 source files (3.17x improvement - 2 Cores Only)
+
+```mermaid
+---
+config:
+    theme: "forest"
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+    bar [1000, 845, 674, 315]
+```
+
+#### Micronaut First App Demo (4.90x improvement - 2 Cores Only)
+
+```mermaid
+---
+config:
+    theme: "forest"
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+    bar [1000, 439, 355, 204]
+```
+
+#### Quarkus Getting Started Demo (3.74x improvement - 2 Cores Only)
+
+```mermaid
+---
+config:
+    theme: "forest"
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+    bar [1000, 512, 495, 268]
+```
+
+#### Spring-boot Getting Started Demo (4.70x improvement - 2 Cores Only)
+
+```mermaid
+---
+config:
+    theme: "forest"
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+    bar [1000, 607, 518, 213]
+```
+
+#### Spring PetClinic Demo (3.03x improvement - 2 Cores Only)
+
+```mermaid
+---
+config:
+    theme: "forest"
+    xyChart:
+        chartOrientation: horizontal
+        height: 300
+---
+xychart-beta
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
+    bar [1000, 632, 572, 330]
+```
 
 ## 6. More Documentation
 

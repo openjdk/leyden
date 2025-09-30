@@ -33,41 +33,80 @@ set group {
     spring-petclinic "Spring PetClinic Demo"
 }
 
-set file [lindex $argv 0]
-set fd [open $file]
+set file1 [lindex $argv 0]
+set file2 [lindex $argv 1]
+set fd [open $file1]
 set data [read $fd]
-seek $fd 0
+close $fd
 
 if {![regexp {built from https://github.com/openjdk/leyden/commit/([0-9a-z]+)} $data dummy version]} {
     puts "Error: cannot find version"
     exit 1
 }
 
+if {![regexp "processor\[\t \]+: (\[0-9\]+)" $data dummy cores]} {
+    puts "Error: cannot find cores"
+    exit 1
+} else {
+    incr cores 1
+}
+
 puts "- Leyden: https://github.com/openjdk/leyden/tree/$version"
 puts ""
-puts "For details information about the hardware and raw numbers, see \[$file\](test/hotspot/jtreg/premain/bench_data/$file)"
+puts "For details information about the hardware and raw numbers, see \[$file1\](test/hotspot/jtreg/premain/bench_data/$file1)"
+puts " and \[$file2\](test/hotspot/jtreg/premain/bench_data/$file2)"
+puts ""
 
-set speed ""
-set i 0
-while {![eof $fd]} {
-    set line [gets $fd]
-    if {[regexp {([0-9]+.[0-9]+x) improvement} $line dummy x]} {
-        set speed $x
-    } elseif {[regexp {[-]Normalized-----} $line]} {
-        set data ""
+set output ""
+set section 1
+set runs [list $file1 "Desktop/Server Class ($cores Cores)" $file2 "2 Cores Only"] 
+foreach {file type} $runs {
+    append output "### 5.$section Benchmark Results - $type\n"
+    set fd [open $file]
+    set speed ""
+    set i 0
+    while {![eof $fd]} {
+        set line [gets $fd]
+        if {[regexp {([0-9]+.[0-9]+x) improvement} $line dummy x]} {
+            set speed $x
+        } elseif {[regexp {[-]Normalized-----} $line]} {
+            set data ""
 
-        while {![eof $fd]} {
-            set line [gets $fd]
-            if {[regexp {[-]--------------------} $line]} {
-                break
-            } else {
-                append data $line\n
+            while {![eof $fd]} {
+                set line [gets $fd]
+                if {[regexp {[-]--------------------} $line]} {
+                    break
+                } else {
+                    append data $line\n
+                }
             }
-        }        
-        set name [lindex $group [expr $i * 2 + 1]]
-        puts "\n### $name ($speed improvement)\n"
-        puts [string trim $data]
-        set speed ""
-        incr i
+            set name [lindex $group [expr $i * 2 + 1]]
+            append output "\n#### $name ($speed improvement - $type)\n\n"
+            append output "[string trim $data]\n"
+
+            set thename($i) $name
+            set summary($file,$i) $speed
+            set speed ""
+            incr i
+        }
     }
+    incr section 1
 }
+
+puts "#### Premain AOT Cache Summary\n"
+
+puts "This is the speed up of **premain aot cache** vs **mainline default** in the two types of configurations"
+puts ""
+puts "| Benchmark | [lindex $runs 1] | [lindex $runs 3]|"
+puts "|:-------------|-------------:| -------------:|"
+
+set total $i
+set t1 [lindex $runs 0]
+set t2 [lindex $runs 2]
+for {set i 0} {$i < $total} {incr i} {
+    puts "| $thename($i) | $summary($t1,$i) | $summary($t2,$i) |"
+}
+
+puts ""
+puts [string trim $output]
+
