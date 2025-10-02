@@ -538,8 +538,8 @@ void LIR_Assembler::const2reg(LIR_Opr src, LIR_Opr dest, LIR_PatchCode patch_cod
           __ load_aotrc_address(dest->as_register_lo(), b);
           break;
         }
-#endif
       }
+#endif
       __ mov(dest->as_register_lo(), (intptr_t)c->as_jlong());
       break;
     }

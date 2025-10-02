@@ -37,7 +37,6 @@ protected:
                             Node* val,
                             bool use_precise) const;
 
-  Node* card_shift_node(IdealKit* kit) const;
   Node* byte_map_base_node(IdealKit* kit) const;
 
 public:

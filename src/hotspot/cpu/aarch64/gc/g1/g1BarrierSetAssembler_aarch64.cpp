@@ -232,22 +232,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
     __ cbz(new_val, done);
   }
   // Storing region crossing non-null, is card young?
-
-#if INCLUDE_CDS
-  // AOT code needs to load the barrier card shift from the aot
-  // runtime constants area in the code cache otherwise we can compile
-  // it as an immediate operand
-  if (AOTCodeCache::is_on_for_dump()) {
-    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
-    __ lea(tmp2, ExternalAddress(card_shift_address));
-    __ ldrb(tmp2, tmp2);
-    __ lsrv(tmp1, store_addr, tmp2);                        // tmp1 := card address relative to card table base
-  } else
-#endif
-  {
-    __ lsr(tmp1, store_addr, CardTable::card_shift());     // tmp1 := card address relative to card table base
-  }
-
+  __ lsr(tmp1, store_addr, CardTable::card_shift());     // tmp1 := card address relative to card table base
   __ load_byte_map_base(tmp2);                           // tmp2 := card table base address
   __ add(tmp1, tmp1, tmp2);                              // tmp1 := card address
   __ ldrb(tmp2, Address(tmp1));                          // tmp2 := card
@@ -581,20 +566,7 @@ void G1BarrierSetAssembler::generate_c1_post_barrier_runtime_stub(StubAssembler*
   assert_different_registers(card_offset, byte_map_base, rscratch1);
 
   __ load_parameter(0, card_offset);
-#if INCLUDE_CDS
-  // AOT code needs to load the barrier card shift from the aot
-  // runtime constants area in the code cache otherwise we can compile
-  // it as an immediate operand
-  if (AOTCodeCache::is_on_for_dump()) {
-    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
-    __ lea(rscratch1, ExternalAddress(card_shift_address));
-    __ ldrb(rscratch1, rscratch1);
-    __ lsrv(card_offset, card_offset, rscratch1);
-  } else
-#endif
-  {
-    __ lsr(card_offset, card_offset, CardTable::card_shift());
-  }
+  __ lsr(card_offset, card_offset, CardTable::card_shift());
   __ load_byte_map_base(byte_map_base);
   __ ldrb(rscratch1, Address(byte_map_base, card_offset));
   __ cmpw(rscratch1, (int)G1CardTable::g1_young_card_val());

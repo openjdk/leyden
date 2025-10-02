@@ -131,13 +131,6 @@ constexpr Register rscratch2 = r11;  // volatile
 constexpr Register r12_heapbase = r12; // callee-saved
 constexpr Register r15_thread   = r15; // callee-saved
 
-// return a register that differs from reg1, reg2, reg3, reg4
-inline Register pick_different_reg(Register reg1, Register reg2, Register reg3, Register reg4) {
-  RegSet available = (RegSet::of(rscratch1, rscratch2, rax, rbx) + rdx -
-                      RegSet::of(reg1, reg2, reg3, reg4));
-  return *(available.begin());
-}
-
 // JSR 292
 // On x86, the SP does not have to be saved when invoking method handle intrinsics
 // or compiled lambda forms. We indicate that by setting rbp_mh_SP_save to noreg.

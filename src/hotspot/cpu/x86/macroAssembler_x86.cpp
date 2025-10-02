@@ -2524,24 +2524,6 @@ void MacroAssembler::shrptr(Register dst, int imm8) {
   shrq(dst, imm8);
 }
 
-void MacroAssembler::shrptr_aotrc(Register reg, Register save, address adr) {
-#if INCLUDE_CDS
-  precond(AOTCodeCache::is_on_for_dump());
-  // all aotrc field addresses should be registered in the AOTCodeCache address table
-  assert(AOTRuntimeConstants::contains(adr), "address out of range for data area");
-  push_ppx(save);
-  movptr(save, reg); // reg could be rcx
-  push_ppx(rcx);
-  mov32(rcx, ExternalAddress(adr));
-  shrptr(save);
-  pop_ppx(rcx);
-  movptr(reg, save);
-  pop_ppx(save);
-#else
-  ShouldNotCallThis();
-#endif
-}
-
 void MacroAssembler::sign_extend_byte(Register reg) {
   movsbl(reg, reg); // movsxb
 }

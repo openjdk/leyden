@@ -317,6 +317,7 @@ protected:
     uint _compressedKlassShift;
     uint _contendedPaddingWidth;
     uint _objectAlignment;
+    uint _gcCardSize;
     uint _gc;
     enum Flags {
       none                     = 0,
@@ -833,7 +834,6 @@ class AOTRuntimeConstants {
  private:
   address _card_table_address;
   uint    _grain_shift;
-  uint    _card_shift;
   static address _field_addresses_list[];
   static AOTRuntimeConstants _aot_runtime_constants;
   // private constructor for unique singleton
@@ -849,7 +849,6 @@ class AOTRuntimeConstants {
   }
   static address card_table_address() { return (address)&_aot_runtime_constants._card_table_address; }
   static address grain_shift_address() { return (address)&_aot_runtime_constants._grain_shift; }
-  static address card_shift_address() { return (address)&_aot_runtime_constants._card_shift; }
   static address* field_addresses_list() {
     return _field_addresses_list;
   }
@@ -857,7 +856,6 @@ class AOTRuntimeConstants {
   static bool contains(address adr)      { return false; }
   static address card_table_address()    { return nullptr; }
   static address grain_shift_address()   { return nullptr; }
-  static address card_shift_address()    { return nullptr; }
   static address* field_addresses_list() { return nullptr; }
 #endif
 };

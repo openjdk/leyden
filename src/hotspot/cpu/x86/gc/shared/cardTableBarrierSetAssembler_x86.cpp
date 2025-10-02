@@ -60,17 +60,8 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
 
   __ leaq(end, Address(addr, count, TIMES_OOP, 0));  // end == addr+count*oop_size
   __ subptr(end, BytesPerHeapOop); // end - 1 to make inclusive
-#if INCLUDE_CDS
-  if (AOTCodeCache::is_on_for_dump()) {
-    Register save = pick_different_reg(rcx, tmp, addr, end); // any could be rcx
-    __ shrptr_aotrc(addr, save, AOTRuntimeConstants::card_shift_address());
-    __ shrptr_aotrc(end, save, AOTRuntimeConstants::card_shift_address());
-  } else
-#endif
-  {
-    __ shrptr(addr, CardTable::card_shift());
-    __ shrptr(end, CardTable::card_shift());
-  }
+  __ shrptr(addr, CardTable::card_shift());
+  __ shrptr(end, CardTable::card_shift());
   __ subptr(end, addr); // end --> cards count
 
 #if INCLUDE_CDS
@@ -90,7 +81,7 @@ __ BIND(L_loop);
 __ BIND(L_done);
 }
 
-void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst) {
+void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst, Register rscratch) {
   // Does a store check for the oop in register obj. The content of
   // register obj is destroyed afterwards.
   BarrierSet* bs = BarrierSet::barrier_set();
@@ -98,18 +89,10 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   CardTableBarrierSet* ctbs = barrier_set_cast<CardTableBarrierSet>(bs);
   CardTable* ct = ctbs->card_table();
 
-#if INCLUDE_CDS
-  Register save = obj == rscratch1 ? rscratch2 : rscratch1;
-  precond(save != rcx);
-  if (AOTCodeCache::is_on_for_dump()) {
-    __ shrptr_aotrc(obj, save, AOTRuntimeConstants::card_shift_address());
-  } else
-#endif
-  {
-    __ shrptr(obj, CardTable::card_shift());
-  }
+  __ shrptr(obj, CardTable::card_shift());
 
   Address card_addr;
+  precond(rscratch != noreg);
 
   // The calculation for byte_map_base is as follows:
   // byte_map_base = _byte_map - (uintptr_t(low_bound) >> card_shift);
@@ -119,9 +102,8 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   intptr_t byte_map_base = (intptr_t)ct->byte_map_base();
 #if INCLUDE_CDS
   if (AOTCodeCache::is_on_for_dump()) {
-    __ push_ppx(save);
-    __ movptr(save, ExternalAddress(AOTRuntimeConstants::card_table_address()));
-    card_addr = Address(save, obj, Address::times_1, 0);
+    __ movptr(rscratch, ExternalAddress(AOTRuntimeConstants::card_table_address()));
+    card_addr = Address(rscratch, obj, Address::times_1, 0);
   } else
 #endif
   if (__ is_simm32(byte_map_base)) {
@@ -133,7 +115,7 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
     // entry and that entry is not properly handled by the relocation code.
     AddressLiteral cardtable((address)byte_map_base, relocInfo::none);
     Address index(noreg, obj, Address::times_1);
-    card_addr = __ as_Address(ArrayAddress(cardtable, index), rscratch1);
+    card_addr = __ as_Address(ArrayAddress(cardtable, index), rscratch);
   }
 
   int dirty = CardTable::dirty_card_val();
@@ -146,11 +128,6 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   } else {
     __ movb(card_addr, dirty);
   }
-#if INCLUDE_CDS
-  if (AOTCodeCache::is_on_for_dump()) {
-    __ pop_ppx(save);
-  }
-#endif
 }
 
 void CardTableBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type,
@@ -167,10 +144,10 @@ void CardTableBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorS
   if (needs_post_barrier) {
     // flatten object address if needed
     if (!precise || (dst.index() == noreg && dst.disp() == 0)) {
-      store_check(masm, dst.base(), dst);
+      store_check(masm, dst.base(), dst, tmp2);
     } else {
       __ lea(tmp1, dst);
-      store_check(masm, tmp1, dst);
+      store_check(masm, tmp1, dst, tmp2);
     }
   }
 }

@@ -23,7 +23,6 @@
  */
 
 #include "asm/macroAssembler.inline.hpp"
-#include "code/aotCodeCache.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/cardTable.hpp"
 #include "gc/shared/cardTableBarrierSet.hpp"
@@ -33,37 +32,25 @@
 
 #define __ masm->
 
-void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst) {
-
+void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst, Register rscratch) {
+  precond(rscratch != noreg);
   BarrierSet* bs = BarrierSet::barrier_set();
   assert(bs->kind() == BarrierSet::CardTableBarrierSet, "Wrong barrier set kind");
 
-#if INCLUDE_CDS
-  // AOT code needs to load the barrier card shift from the aot
-  // runtime constants area in the code cache otherwise we can compile
-  // it as an immediate operand
-  if (AOTCodeCache::is_on_for_dump()) {
-    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
-    __ lea(rscratch1, ExternalAddress(card_shift_address));
-    __ ldrb(rscratch1, rscratch1);
-    __ lsrv(obj, obj, rscratch1);
-  } else
-#endif
-  {
-    __ lsr(obj, obj, CardTable::card_shift());
-  }
+  __ lsr(obj, obj, CardTable::card_shift());
+
   assert(CardTable::dirty_card_val() == 0, "must be");
 
-  __ load_byte_map_base(rscratch1);
+  __ load_byte_map_base(rscratch);
 
   if (UseCondCardMark) {
     Label L_already_dirty;
-    __ ldrb(rscratch2,  Address(obj, rscratch1));
+    __ ldrb(rscratch2,  Address(obj, rscratch));
     __ cbz(rscratch2, L_already_dirty);
-    __ strb(zr, Address(obj, rscratch1));
+    __ strb(zr, Address(obj, rscratch));
     __ bind(L_already_dirty);
   } else {
-    __ strb(zr, Address(obj, rscratch1));
+    __ strb(zr, Address(obj, rscratch));
   }
 }
 
@@ -76,22 +63,8 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
 
   __ lea(end, Address(start, count, Address::lsl(LogBytesPerHeapOop))); // end = start + count << LogBytesPerHeapOop
   __ sub(end, end, BytesPerHeapOop); // last element address to make inclusive
-#if INCLUDE_CDS
-  // AOT code needs to load the barrier card shift from the aot
-  // runtime constants area in the code cache otherwise we can compile
-  // it as an immediate operand
-  if (AOTCodeCache::is_on_for_dump()) {
-    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
-    __ lea(scratch, ExternalAddress(card_shift_address));
-    __ ldrb(scratch, scratch);
-    __ lsrv(start, start, scratch);
-    __ lsrv(end, end, scratch);
-  } else
-#endif
-  {
-    __ lsr(start, start, CardTable::card_shift());
-    __ lsr(end, end, CardTable::card_shift());
-  }
+  __ lsr(start, start, CardTable::card_shift());
+  __ lsr(end, end, CardTable::card_shift());
   __ sub(count, end, start); // number of bytes to copy
 
   __ load_byte_map_base(scratch);
@@ -115,10 +88,10 @@ void CardTableBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorS
   if (needs_post_barrier) {
     // flatten object address if needed
     if (!precise || (dst.index() == noreg && dst.offset() == 0)) {
-      store_check(masm, dst.base(), dst);
+      store_check(masm, dst.base(), dst, tmp2);
     } else {
       __ lea(tmp3, dst);
-      store_check(masm, tmp3, dst);
+      store_check(masm, tmp3, dst, tmp2);
     }
   }
 }

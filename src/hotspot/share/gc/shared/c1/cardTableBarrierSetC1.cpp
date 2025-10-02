@@ -69,29 +69,6 @@ void CardTableBarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Op
   gen->CardTableBarrierSet_post_barrier_helper(addr, card_table_base);
 #else
   LIR_Opr tmp = gen->new_pointer_register();
-#if INCLUDE_CDS
-  if (AOTCodeCache::is_on_for_dump()) {
-    // AOT code needs to load the barrier card shift from the aot
-    // runtime constants area.
-#ifdef X86
-    LIR_Opr card_shift = gen->shiftCountOpr(); // To use ECX register
-#else // X86
-    LIR_Opr card_shift = gen->new_register(T_INT);
-#endif // X86
-    LIR_Opr card_shift_addr = LIR_OprFact::intptrConst(AOTRuntimeConstants::card_shift_address());
-    LIR_Opr card_shift_reg = gen->new_pointer_register();
-    LIR_Address* card_shift_indirect = new LIR_Address(card_shift_reg, 0, T_INT);
-    __ move(card_shift_addr, card_shift_reg);
-    __ move(card_shift_indirect, card_shift);
-    if (two_operand_lir_form) {
-      LIR_Opr addr_opr = LIR_OprFact::address(new LIR_Address(addr, addr->type()));
-      __ leal(addr_opr, tmp);
-      __ unsigned_shift_right(tmp, card_shift, tmp, LIR_Opr::illegalOpr());
-    } else {
-      __ unsigned_shift_right(addr, card_shift, tmp, LIR_Opr::illegalOpr());
-    }
-  } else // AOTCodeCache::is_on_for_dump()
-#endif // INCLUDE_CDS
   if (two_operand_lir_form) {
     LIR_Opr addr_opr = LIR_OprFact::address(new LIR_Address(addr, addr->type()));
     __ leal(addr_opr, tmp);

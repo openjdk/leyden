@@ -36,17 +36,6 @@
 
 #define __ ideal.
 
-Node* CardTableBarrierSetC2::card_shift_node(IdealKit* kit) const {
-#if INCLUDE_CDS
-  if (AOTCodeCache::is_on_for_dump()) {
-    // load the card shift from the AOT Runtime Constants area
-    Node* card_shift_adr = kit->makecon(TypeRawPtr::make(AOTRuntimeConstants::card_shift_address()));
-    return kit->load_aot_const(card_shift_adr, TypeInt::POS);
-  }
-#endif
-  return kit->ConI(CardTable::card_shift());
-}
-
 Node* CardTableBarrierSetC2::byte_map_base_node(IdealKit* kit) const {
   // Get base of card map
 #if INCLUDE_CDS
@@ -105,7 +94,7 @@ void CardTableBarrierSetC2::post_barrier(GraphKit* kit,
   Node* cast = __ CastPX(__ ctrl(), adr);
 
   // Divide by card size
-  Node* card_offset = __ URShiftX(cast, card_shift_node(&ideal));
+  Node* card_offset = __ URShiftX(cast, __ ConI(CardTable::card_shift()));
 
   // Combine card table base and card offset
   Node* card_adr = __ AddP(__ top(), byte_map_base_node(&ideal), card_offset);

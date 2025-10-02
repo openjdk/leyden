@@ -633,6 +633,7 @@ void AOTCodeCache::Config::record(uint cpu_features_offset) {
   _compressedKlassBase   = CompressedKlassPointers::base();
   _contendedPaddingWidth = ContendedPaddingWidth;
   _objectAlignment       = ObjectAlignmentInBytes;
+  _gcCardSize            = GCCardSizeInBytes;
   _gc                    = (uint)Universe::heap()->kind();
   _cpu_features_offset   = cpu_features_offset;
 }
@@ -660,6 +661,11 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   CollectedHeap::Name aot_gc = (CollectedHeap::Name)_gc;
   if (aot_gc != Universe::heap()->kind()) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with different GC: %s vs current %s", GCConfig::hs_err_name(aot_gc), GCConfig::hs_err_name());
+    return false;
+  }
+
+  if (_gcCardSize != (uint)GCCardSizeInBytes) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with GCCardSizeInBytes = %d vs current %d", _gcCardSize, GCCardSizeInBytes);
     return false;
   }
 
@@ -3812,14 +3818,12 @@ void AOTRuntimeConstants::initialize_from_runtime() {
     CardTableBarrierSet* ctbs = barrier_set_cast<CardTableBarrierSet>(bs);
     _aot_runtime_constants._card_table_address = ci_card_table_address_as<address>();
     _aot_runtime_constants._grain_shift = ctbs->grain_shift();
-    _aot_runtime_constants._card_shift = ctbs->card_shift();
   }
 }
 
 address AOTRuntimeConstants::_field_addresses_list[] = {
   card_table_address(),
   grain_shift_address(),
-  card_shift_address(),
   nullptr
 };
 
