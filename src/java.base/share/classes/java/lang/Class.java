@@ -78,6 +78,7 @@ import jdk.internal.reflect.CallerSensitiveAdapter;
 import jdk.internal.reflect.ConstantPool;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.reflect.ReflectionFactory;
+import jdk.internal.util.ModifiedUtf;
 import jdk.internal.vm.annotation.AOTRuntimeSetup;
 import jdk.internal.vm.annotation.AOTSafeClassInitializer;
 import jdk.internal.vm.annotation.IntrinsicCandidate;
@@ -467,6 +468,7 @@ public final class Class<T> implements java.io.Serializable,
     @CallerSensitiveAdapter
     private static Class<?> forName(String className, Class<?> caller)
             throws ClassNotFoundException {
+        validateClassNameLength(className);
         ClassLoader loader = (caller == null) ? ClassLoader.getSystemClassLoader()
                                               : ClassLoader.getClassLoader(caller);
         if (loader instanceof BuiltinClassLoader bcl) {
@@ -562,6 +564,8 @@ public final class Class<T> implements java.io.Serializable,
     public static Class<?> forName(String name, boolean initialize, ClassLoader loader)
         throws ClassNotFoundException
     {
+        validateClassNameLength(name);
+
         if (loader instanceof BuiltinClassLoader bcl) {
             if (bcl.usePositiveCache) {
                 Class<?> result = bcl.checkPositiveLookupCache(name);
@@ -576,6 +580,7 @@ public final class Class<T> implements java.io.Serializable,
                 throw new ClassNotFoundException(name);
             }
         }
+
         return forName0(name, initialize, loader, null);
     }
 
@@ -625,6 +630,9 @@ public final class Class<T> implements java.io.Serializable,
     public static Class<?> forName(Module module, String name) {
         Objects.requireNonNull(module);
         Objects.requireNonNull(name);
+        if (!ModifiedUtf.isValidLengthInConstantPool(name)) {
+            return null;
+        }
 
         ClassLoader cl = module.getClassLoader();
         if (cl != null) {
@@ -4171,6 +4179,16 @@ public final class Class<T> implements java.io.Serializable,
      int getClassFileAccessFlags() {
          return classFileAccessFlags;
      }
+
+    // Validates the length of the class name and throws an exception if it exceeds the maximum allowed length.
+    private static void validateClassNameLength(String name) throws ClassNotFoundException {
+        if (!ModifiedUtf.isValidLengthInConstantPool(name)) {
+            throw new ClassNotFoundException(
+                    "Class name length exceeds limit of "
+                    + ModifiedUtf.CONSTANT_POOL_UTF8_MAX_BYTES
+                    + ": " + name.substring(0,256) + "...");
+        }
+    }
 
     // Support for "OLD" CDS workflow -- {
     private static final int RD_PUBLIC_METHODS          = (1 <<  0);

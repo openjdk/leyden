@@ -59,7 +59,7 @@
 #include "oops/method.inline.hpp"
 #include "oops/trainingData.hpp"
 #include "prims/jvmtiThreadState.hpp"
-#include "runtime/atomic.hpp"
+#include "runtime/atomicAccess.hpp"
 #include "runtime/deoptimization.hpp"
 #include "runtime/flags/flagSetting.hpp"
 #include "runtime/globals_extension.hpp"
@@ -3848,9 +3848,9 @@ address AOTRuntimeConstants::_field_addresses_list[] = {
 
 void AOTCodeCache::wait_for_no_nmethod_readers() {
   while (true) {
-    int cur = Atomic::load(&_nmethod_readers);
+    int cur = AtomicAccess::load(&_nmethod_readers);
     int upd = -(cur + 1);
-    if (cur >= 0 && Atomic::cmpxchg(&_nmethod_readers, cur, upd) == cur) {
+    if (cur >= 0 && AtomicAccess::cmpxchg(&_nmethod_readers, cur, upd) == cur) {
       // Success, no new readers should appear.
       break;
     }
@@ -3858,20 +3858,20 @@ void AOTCodeCache::wait_for_no_nmethod_readers() {
 
   // Now wait for all readers to leave.
   SpinYield w;
-  while (Atomic::load(&_nmethod_readers) != -1) {
+  while (AtomicAccess::load(&_nmethod_readers) != -1) {
     w.wait();
   }
 }
 
 AOTCodeCache::ReadingMark::ReadingMark() {
   while (true) {
-    int cur = Atomic::load(&_nmethod_readers);
+    int cur = AtomicAccess::load(&_nmethod_readers);
     if (cur < 0) {
       // Cache is already closed, cannot proceed.
       _failed = true;
       return;
     }
-    if (Atomic::cmpxchg(&_nmethod_readers, cur, cur + 1) == cur) {
+    if (AtomicAccess::cmpxchg(&_nmethod_readers, cur, cur + 1) == cur) {
       // Successfully recorded ourselves as entered.
       _failed = false;
       return;
@@ -3884,15 +3884,15 @@ AOTCodeCache::ReadingMark::~ReadingMark() {
     return;
   }
   while (true) {
-    int cur = Atomic::load(&_nmethod_readers);
+    int cur = AtomicAccess::load(&_nmethod_readers);
     if (cur > 0) {
       // Cache is open, we are counting down towards 0.
-      if (Atomic::cmpxchg(&_nmethod_readers, cur, cur - 1) == cur) {
+      if (AtomicAccess::cmpxchg(&_nmethod_readers, cur, cur - 1) == cur) {
         return;
       }
     } else {
       // Cache is closed, we are counting up towards -1.
-      if (Atomic::cmpxchg(&_nmethod_readers, cur, cur + 1) == cur) {
+      if (AtomicAccess::cmpxchg(&_nmethod_readers, cur, cur + 1) == cur) {
         return;
       }
     }

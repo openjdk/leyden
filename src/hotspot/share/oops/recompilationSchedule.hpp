@@ -30,7 +30,7 @@
 #include "memory/metaspaceClosure.hpp"
 #include "oops/array.hpp"
 #include "oops/trainingData.hpp"
-#include "runtime/atomic.hpp"
+#include "runtime/atomicAccess.hpp"
 #include "utilities/exceptions.hpp"
 #include "utilities/macros.hpp"
 #include "utilities/ostream.hpp"
@@ -57,13 +57,13 @@ public:
     return &_status[i];
   }
   static bool status_at(int i) {
-    return Atomic::load_acquire(status_adr_at(i));
+    return AtomicAccess::load_acquire(status_adr_at(i));
   }
   static void set_status_at(int i, bool value) {
-    Atomic::release_store(RecompilationSchedule::status_adr_at(i), value);
+    AtomicAccess::release_store(RecompilationSchedule::status_adr_at(i), value);
   }
   static bool claim_at(int i) {
-    return Atomic::cmpxchg(RecompilationSchedule::status_adr_at(i), false, true) == false;
+    return AtomicAccess::cmpxchg(RecompilationSchedule::status_adr_at(i), false, true) == false;
   }
 #if INCLUDE_CDS
   static void iterate_roots(MetaspaceClosure* it);

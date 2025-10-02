@@ -28,7 +28,7 @@
 #include "logging/logStream.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
-#include "runtime/atomic.hpp"
+#include "runtime/atomicAccess.hpp"
 #include "runtime/java.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/mutexLocker.hpp"
@@ -472,14 +472,14 @@ int MutexLockerImpl::name2id(const char* name) {
   if (ProfileVMLocks && UsePerfData) {
     // There is not concurency or duplication in mutex_init().
     if (!_mutex_init_done) {
-      int new_id = Atomic::load(&_num_names);
+      int new_id = AtomicAccess::load(&_num_names);
       precond(new_id < MAX_NAMES);
-      Atomic::inc(&_num_names);
+      AtomicAccess::inc(&_num_names);
       _names[new_id] = os::strdup(name, mtInternal);
       _is_unique[new_id] = true;
       return new_id;
     }
-    int limit = Atomic::load(&_num_names); // Cache static value which can be updated concurently
+    int limit = AtomicAccess::load(&_num_names); // Cache static value which can be updated concurently
     for (int i = Mutex::num_mutex(); i < limit; i++) {
       if (strcmp(_names[i], name) == 0) {
         _is_unique[i] = false;
@@ -493,7 +493,7 @@ int MutexLockerImpl::name2id(const char* name) {
       do {
         new_id = limit++;
         if (new_id == MAX_NAMES) break;
-      } while (Atomic::cmpxchg(&_num_names, new_id, limit) != new_id);
+      } while (AtomicAccess::cmpxchg(&_num_names, new_id, limit) != new_id);
       for (int i = old_limit; i < new_id; i++) {
         if (strcmp(_names[i], name) == 0) { // Other thread put it there
           _is_unique[i] = false;
