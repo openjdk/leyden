@@ -65,7 +65,7 @@ void CardTableBarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Op
   assert(addr->is_register(), "must be a register at this point");
 
 #ifdef CARDTABLEBARRIERSET_POST_BARRIER_HELPER
-  assert(!aotCodeCache::is_on(), "this path is not implemented");
+  assert(!AOTCodeCache::is_on(), "this path is not implemented");
   gen->CardTableBarrierSet_post_barrier_helper(addr, card_table_base);
 #else
   LIR_Opr tmp = gen->new_pointer_register();
@@ -85,7 +85,6 @@ void CardTableBarrierSetC1::post_barrier(LIRAccess& access, LIR_Opr addr, LIR_Op
     LIR_Opr byte_map_base_reg = gen->new_pointer_register();
     __ move(byte_map_base_adr, byte_map_base_reg);
     LIR_Address* byte_map_base_indirect = new LIR_Address(byte_map_base_reg, 0, T_LONG);
-    //LIR_Opr byte_map_base = gen->new_pointer_register();
     __ move(byte_map_base_indirect, byte_map_base_reg);
     card_addr = new LIR_Address(tmp, byte_map_base_reg, T_BYTE);
   } else
