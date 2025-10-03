@@ -234,6 +234,7 @@ class java_lang_String : AllStatic {
 class java_lang_Class : AllStatic {
   friend class VMStructs;
   friend class JVMCIVMStructs;
+  friend class HeapShared;
 
  private:
 
@@ -286,7 +287,7 @@ class java_lang_Class : AllStatic {
 
   // Archiving
   static void serialize_offsets(SerializeClosure* f) NOT_CDS_RETURN;
-  static void create_scratch_mirror(Klass* k, Handle protection_domain, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
+  static void create_scratch_mirror(Klass* k, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static bool restore_archived_mirror(Klass *k, Handle class_loader, Handle module,
                                       Handle protection_domain,
                                       TRAPS) NOT_CDS_JAVA_HEAP_RETURN_(false);

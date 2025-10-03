@@ -27,3 +27,7 @@ compiler/runtime/safepoints/TestMachTempsAcrossSafepoints.java 0000000 generic-a
 
 # Error: GC triggered before VM initialization completed. Try increasing NewSize
 gc/arguments/TestG1HeapSizeFlags.java 8366033 generic-all
+
+# These tests fail often with AotJdk due to JDK-8323727
+compiler/arguments/TestStressReflectiveCode.java 8323727 generic-all
+compiler/arraycopy/TestCloneWithStressReflectiveCode.java 8323727 generic-all

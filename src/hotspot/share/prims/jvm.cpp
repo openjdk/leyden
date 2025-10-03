@@ -241,7 +241,7 @@ JVM_END
 JVM_ENTRY_PROF(jboolean, JVM_AOTEndTraining, JVM_AOTEndTraining(JNIEnv *env))
 #if INCLUDE_CDS
   if (AOTMetaspace::is_recording_preimage_static_archive()) {
-    AOTMetaspace::preload_and_dump(THREAD);
+    AOTMetaspace::dump_static_archive(THREAD);
     return JNI_TRUE;
   }
   return JNI_FALSE;

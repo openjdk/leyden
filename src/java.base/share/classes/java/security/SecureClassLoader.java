@@ -244,7 +244,7 @@ public class SecureClassLoader extends ClassLoader {
      * Called by the VM, during -Xshare:dump
      */
     private void resetArchivedStates() {
-        if (CDS.isDumpingProtectionDomains()) {
+        if (CDS.isDumpingAOTLinkedClasses()) {
             for (CodeSourceKey key : pdcache.keySet()) {
                 if (key.cs.getCodeSigners() != null) {
                     // We don't archive any signed classes, so we don't need to cache their ProtectionDomains.

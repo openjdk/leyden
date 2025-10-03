@@ -74,7 +74,7 @@ bool CDSEndTrainingUpcall::end_training(JavaThread* current)
 {
   if (_triggered == 0) {
     if (AtomicAccess::cmpxchg(&_triggered, 0, 1) == 0) {
-      AOTMetaspace::preload_and_dump(current);
+      AOTMetaspace::dump_static_archive(current);
       assert(!current->has_pending_exception(), "Unexpected exception");
       return true;
     }

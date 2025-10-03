@@ -246,8 +246,6 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _use_optimized_module_handling = CDSConfig::is_using_optimized_module_handling();
   _has_aot_linked_classes = CDSConfig::is_dumping_aot_linked_classes();
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
-  _has_archived_packages = CDSConfig::is_dumping_packages();
-  _has_archived_protection_domains = CDSConfig::is_dumping_protection_domains();
   _gc_kind = (int)Universe::heap()->kind();
   jio_snprintf(_gc_name, sizeof(_gc_name), Universe::heap()->name());
 
@@ -322,8 +320,6 @@ void FileMapHeader::print(outputStream* st) {
   st->print_cr("- use_optimized_module_handling:  %d", _use_optimized_module_handling);
   st->print_cr("- has_full_module_graph           %d", _has_full_module_graph);
   st->print_cr("- has_aot_linked_classes          %d", _has_aot_linked_classes);
-  st->print_cr("- has_archived_packages           %d", _has_archived_packages);
-  st->print_cr("- has_archived_protection_domains %d", _has_archived_protection_domains);
   st->print_cr("- ptrmap_size_in_bits:            %zu", _ptrmap_size_in_bits);
 }
 
@@ -2147,13 +2143,6 @@ bool FileMapHeader::validate() {
     // Only the static archive can contain the full module graph.
     if (!_has_full_module_graph) {
       CDSConfig::stop_using_full_module_graph("archive was created without full module graph");
-    }
-
-    if (_has_archived_packages) {
-      CDSConfig::set_is_loading_packages();
-    }
-    if (_has_archived_protection_domains) {
-      CDSConfig::set_is_loading_protection_domains();
     }
   }
 

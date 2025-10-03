@@ -1559,13 +1559,6 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
     return nullptr;
   }
 
-#if INCLUDE_JVMCI
-  if (EnableJVMCI && UseJVMCICompiler &&
-      comp_level == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::class_preloading_finished()) {
-    return nullptr;
-  }
-#endif
-
   AbstractCompiler *comp = CompileBroker::compiler(comp_level);
   assert(comp != nullptr, "Ensure we have a compiler");
 
