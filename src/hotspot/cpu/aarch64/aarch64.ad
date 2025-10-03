@@ -4616,19 +4616,6 @@ operand immP_1()
   interface(CONST_INTER);
 %}
 
-// Card Table Byte Map Base
-operand immByteMapBase()
-%{
-  // Get base of card map
-  predicate(BarrierSet::barrier_set()->is_a(BarrierSet::CardTableBarrierSet) &&
-            is_card_table_address((address)(n->get_ptr())));
-  match(ConP);
-
-  op_cost(0);
-  format %{ %}
-  interface(CONST_INTER);
-%}
-
 // AOT Runtime Constants Address
 operand immAOTRuntimeConstantsAddress()
 %{
@@ -7000,22 +6987,6 @@ instruct loadConP1(iRegPNoSp dst, immP_1 con)
   format %{ "mov  $dst, $con\t# nullptr ptr" %}
 
   ins_encode(aarch64_enc_mov_p1(dst, con));
-
-  ins_pipe(ialu_imm);
-%}
-
-// Load Byte Map Base Constant
-
-instruct loadByteMapBase(iRegPNoSp dst, immByteMapBase con)
-%{
-  match(Set dst con);
-
-  ins_cost(INSN_COST);
-  format %{ "adr  $dst, $con\t# Byte Map Base" %}
-
-  ins_encode %{
-    __ load_byte_map_base($dst$$Register);
-  %}
 
   ins_pipe(ialu_imm);
 %}

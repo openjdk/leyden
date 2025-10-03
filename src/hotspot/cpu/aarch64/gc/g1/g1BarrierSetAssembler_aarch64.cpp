@@ -23,9 +23,7 @@
  */
 
 #include "asm/macroAssembler.inline.hpp"
-#if INCLUDE_CDS
 #include "code/aotCodeCache.hpp"
-#endif
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -234,22 +232,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
     __ cbz(new_val, done);
   }
   // Storing region crossing non-null, is card young?
-
-#if INCLUDE_CDS
-  // AOT code needs to load the barrier card shift from the aot
-  // runtime constants area in the code cache otherwise we can compile
-  // it as an immediate operand
-  if (AOTCodeCache::is_on_for_dump()) {
-    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
-    __ lea(tmp2, ExternalAddress(card_shift_address));
-    __ ldrb(tmp2, tmp2);
-    __ lsrv(tmp1, store_addr, tmp2);                        // tmp1 := card address relative to card table base
-  } else
-#endif
-  {
-    __ lsr(tmp1, store_addr, CardTable::card_shift());     // tmp1 := card address relative to card table base
-  }
-
+  __ lsr(tmp1, store_addr, CardTable::card_shift());     // tmp1 := card address relative to card table base
   __ load_byte_map_base(tmp2);                           // tmp2 := card table base address
   __ add(tmp1, tmp1, tmp2);                              // tmp1 := card address
   __ ldrb(tmp2, Address(tmp1));                          // tmp2 := card

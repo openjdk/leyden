@@ -288,33 +288,15 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   }
   // Storing region crossing non-null, is card young?
   __ movptr(tmp, store_addr);                                    // tmp := store address
+  __ shrptr(tmp, CardTable::card_shift());                       // tmp := card address relative to card table base
 #if INCLUDE_CDS
-  // AOT code needs to load the barrier card shift from the aot
-  // runtime constants area in the code cache otherwise we can compile
-  // it as an immediate operand
-  if (AOTCodeCache::is_on_for_dump()) {
-    address card_shift_addr = AOTRuntimeConstants::card_shift_address();
-    Register save = pick_different_reg(rcx, tmp);
-    __ push(save);
-    __ mov(save, tmp);
-    __ push(rcx);
-    __ lea(rcx, ExternalAddress(card_shift_addr));
-    __ movptr(rcx, Address(rcx, 0));
-    __ shrptr(save);
-    __ pop(rcx);
-    __ mov(tmp, save);
-    __ pop(save);
-  } else
-#endif // INCLUDE_CDS
-  {
-    __ shrptr(tmp, CardTable::card_shift());                       // tmp := card address relative to card table base
-  }
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
   if (AOTCodeCache::is_on_for_dump()) {
-    // AOT code needs relocation info for this address
-    __ lea(tmp2, ExternalAddress((address)ct->card_table()->byte_map_base()));   // tmp2 := card table base address
-  } else {
+    __ movptr(tmp2, ExternalAddress(AOTRuntimeConstants::card_table_address()));
+  } else
+#endif // INCLUDE_CDS
+  {
     __ movptr(tmp2, (intptr_t)ct->card_table()->byte_map_base());   // tmp2 := card table base address
   }
   __ addptr(tmp, tmp2);                                          // tmp := card address
@@ -639,12 +621,15 @@ void G1BarrierSetAssembler::generate_c1_post_barrier_runtime_stub(StubAssembler*
 
   __ load_parameter(0, card_addr);
   __ shrptr(card_addr, CardTable::card_shift());
+
+#if INCLUDE_CDS
   // Do not use ExternalAddress to load 'byte_map_base', since 'byte_map_base' is NOT
   // a valid address and therefore is not properly handled by the relocation code.
   if (AOTCodeCache::is_on()) {
-    // AOT code needs relocation info for this address
-    __ lea(cardtable, ExternalAddress((address)ct->card_table()->byte_map_base()));
-  } else {
+    __ movptr(cardtable, ExternalAddress(AOTRuntimeConstants::card_table_address()));
+  } else
+#endif // INCLUDE_CDS
+  {
     __ movptr(cardtable, (intptr_t)ct->card_table()->byte_map_base());
   }
   __ addptr(card_addr, cardtable);

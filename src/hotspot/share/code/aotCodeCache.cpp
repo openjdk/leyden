@@ -337,17 +337,6 @@ void AOTCodeCache::init2() {
     return;
   }
   // After Universe initialized
-  BarrierSet* bs = BarrierSet::barrier_set();
-  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
-    address byte_map_base = ci_card_table_address_as<address>();
-    if (is_on_for_dump() && !external_word_Relocation::can_be_relocated(byte_map_base)) {
-      // Bail out since we can't encode card table base address with relocation
-      log_warning(aot, codecache, init)("Can't create AOT Code Cache because card table base address is not relocatable: " INTPTR_FORMAT, p2i(byte_map_base));
-      close();
-      report_load_failure();
-      return;
-    }
-  }
   if (!opened_cache->verify_config_on_use()) { // Check on AOT code loading
     delete opened_cache;
     opened_cache = nullptr;
@@ -644,6 +633,7 @@ void AOTCodeCache::Config::record(uint cpu_features_offset) {
   _compressedKlassBase   = CompressedKlassPointers::base();
   _contendedPaddingWidth = ContendedPaddingWidth;
   _objectAlignment       = ObjectAlignmentInBytes;
+  _gcCardSize            = GCCardSizeInBytes;
   _gc                    = (uint)Universe::heap()->kind();
   _cpu_features_offset   = cpu_features_offset;
 }
@@ -671,6 +661,11 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   CollectedHeap::Name aot_gc = (CollectedHeap::Name)_gc;
   if (aot_gc != Universe::heap()->kind()) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with different GC: %s vs current %s", GCConfig::hs_err_name(aot_gc), GCConfig::hs_err_name());
+    return false;
+  }
+
+  if (_gcCardSize != (uint)GCCardSizeInBytes) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with GCCardSizeInBytes = %d vs current %d", _gcCardSize, GCCardSizeInBytes);
     return false;
   }
 
@@ -3043,13 +3038,6 @@ void AOTCodeAddressTable::init_extrs() {
 #endif
   }
 #endif // COMPILER2
-
-  // Record addresses of VM runtime methods and data structs
-  BarrierSet* bs = BarrierSet::barrier_set();
-  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
-    SET_ADDRESS(_extrs, ci_card_table_address_as<address>());
-  }
-
 #if INCLUDE_G1GC
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_post_entry);
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_pre_entry);
@@ -3725,13 +3713,7 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
   }
   // Check card_table_base address first since it can point to any address
   BarrierSet* bs = BarrierSet::barrier_set();
-  if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
-    if (addr == ci_card_table_address_as<address>()) {
-      id = search_address(addr, _extrs_addr, _extrs_length);
-      assert(id > 0 && _extrs_addr[id - _extrs_base] == addr, "sanity");
-      return id;
-    }
-  }
+  guarantee(!bs->is_a(BarrierSet::CardTableBarrierSet) || addr != ci_card_table_address_as<address>(), "sanity");
 
   // Seach for C string
   id = id_for_C_string(addr);
@@ -3828,20 +3810,20 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
 #undef _C2_blobs_base
 #undef _blobs_end
 
+AOTRuntimeConstants AOTRuntimeConstants::_aot_runtime_constants;
+
 void AOTRuntimeConstants::initialize_from_runtime() {
   BarrierSet* bs = BarrierSet::barrier_set();
   if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
-    CardTableBarrierSet* ctbs = ((CardTableBarrierSet*)bs);
+    CardTableBarrierSet* ctbs = barrier_set_cast<CardTableBarrierSet>(bs);
+    _aot_runtime_constants._card_table_address = ci_card_table_address_as<address>();
     _aot_runtime_constants._grain_shift = ctbs->grain_shift();
-    _aot_runtime_constants._card_shift = ctbs->card_shift();
   }
 }
 
-AOTRuntimeConstants AOTRuntimeConstants::_aot_runtime_constants;
-
 address AOTRuntimeConstants::_field_addresses_list[] = {
+  card_table_address(),
   grain_shift_address(),
-  card_shift_address(),
   nullptr
 };
 

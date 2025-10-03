@@ -30,7 +30,7 @@
 
 class CardTableBarrierSetAssembler: public ModRefBarrierSetAssembler {
 protected:
-  void store_check(MacroAssembler* masm, Register obj, Address dst);
+  void store_check(MacroAssembler* masm, Register obj, Address dst, Register rscratch);
 
   virtual void gen_write_ref_array_post_barrier(MacroAssembler* masm, DecoratorSet decorators,
                                                 Register start, Register count, Register tmp, RegSet saved_regs);

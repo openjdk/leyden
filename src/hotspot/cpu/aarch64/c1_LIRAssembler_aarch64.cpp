@@ -527,24 +527,19 @@ void LIR_Assembler::const2reg(LIR_Opr src, LIR_Opr dest, LIR_PatchCode patch_cod
 
     case T_LONG: {
       assert(patch_code == lir_patch_none, "no patching handled here");
+#if INCLUDE_CDS
       if (AOTCodeCache::is_on_for_dump()) {
-        // AOT code needs relocation info for card table base
         address b = c->as_pointer();
-        if (is_card_table_address(b)) {
-          __ lea(dest->as_register_lo(), ExternalAddress(b));
-          break;
-        }
         if (b == (address)ThreadIdentifier::unsafe_offset()) {
           __ lea(dest->as_register_lo(), ExternalAddress(b));
           break;
         }
-#if INCLUDE_CDS
         if (AOTRuntimeConstants::contains(b)) {
           __ load_aotrc_address(dest->as_register_lo(), b);
           break;
         }
-#endif
       }
+#endif
       __ mov(dest->as_register_lo(), (intptr_t)c->as_jlong());
       break;
     }
