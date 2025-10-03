@@ -3039,7 +3039,6 @@ void AOTCodeAddressTable::init_extrs() {
   }
 #endif // COMPILER2
 #if INCLUDE_G1GC
-  SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_post_entry);
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_pre_entry);
 #endif
 
@@ -3440,8 +3439,6 @@ void AOTCodeAddressTable::init_c1() {
   if (UseG1GC) {
     G1BarrierSetC1* bs = (G1BarrierSetC1*)BarrierSet::barrier_set()->barrier_set_c1();
     address entry = bs->pre_barrier_c1_runtime_code_blob()->code_begin();
-    SET_ADDRESS(_C1_blobs, entry);
-    entry = bs->post_barrier_c1_runtime_code_blob()->code_begin();
     SET_ADDRESS(_C1_blobs, entry);
   }
 #endif // INCLUDE_G1GC
