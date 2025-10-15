@@ -62,7 +62,7 @@ bool CDSEndTrainingUpcall::register_upcalls()
 JRT_ENTRY(void, CDSEndTrainingUpcall::end_training_check(JavaThread* current))
 {
     if (_triggered == 0) {
-      Atomic::inc(&_count);
+      AtomicAccess::inc(&_count);
       if(_count >= _limit) {
         CDSEndTrainingUpcall::end_training(current);
       }
@@ -73,8 +73,8 @@ JRT_END
 bool CDSEndTrainingUpcall::end_training(JavaThread* current)
 {
   if (_triggered == 0) {
-    if (Atomic::cmpxchg(&_triggered, 0, 1) == 0) {
-      AOTMetaspace::preload_and_dump(current);
+    if (AtomicAccess::cmpxchg(&_triggered, 0, 1) == 0) {
+      AOTMetaspace::dump_static_archive(current);
       assert(!current->has_pending_exception(), "Unexpected exception");
       return true;
     }

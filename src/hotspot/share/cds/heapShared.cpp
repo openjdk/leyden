@@ -29,6 +29,7 @@
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/aotLogging.hpp"
 #include "cds/aotMetaspace.hpp"
+#include "cds/aotOopChecker.hpp"
 #include "cds/aotReferenceObjSupport.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapLoader.hpp"
@@ -496,6 +497,8 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
     debug_trace();
     return false;
   } else {
+    AOTOopChecker::check(obj); // Make sure contents of this oop are safe.
+
     count_allocation(obj->size());
     ArchiveHeapWriter::add_source_obj(obj);
     CachedOopInfo info = make_cached_oop_info(obj, referrer);
@@ -804,6 +807,11 @@ void HeapShared::copy_java_mirror(oop orig_mirror, oop scratch_m) {
 
     DEBUG_ONLY(intptr_t archived_hash = scratch_m->identity_hash());
     assert(src_hash == archived_hash, "Different hash codes: original " INTPTR_FORMAT ", archived " INTPTR_FORMAT, src_hash, archived_hash);
+  }
+
+  if (CDSConfig::is_dumping_aot_linked_classes()) {
+    java_lang_Class::set_module(scratch_m, java_lang_Class::module(orig_mirror));
+    java_lang_Class::set_protection_domain(scratch_m, java_lang_Class::protection_domain(orig_mirror));
   }
 
   Klass* k = java_lang_Class::as_Klass(orig_mirror); // is null Universe::void_mirror();
@@ -1864,9 +1872,11 @@ bool HeapShared::walk_one_object(PendingOopStack* stack, int level, KlassSubGrap
   }
 
   if (CDSConfig::is_initing_classes_at_dump_time()) {
-    // The enum klasses are archived with aot-initialized mirror.
-    // See AOTClassInitializer::can_archive_initialized_mirror().
+    // The classes of all archived enum instances have been marked as aot-init,
+    // so there's nothing else to be done in the production run.
   } else {
+    // This is legacy support for enum classes before JEP 483 -- we cannot rerun
+    // the enum's <clinit> in the production run, so special handling is needed.
     if (CDSEnumKlass::is_enum_obj(orig_obj)) {
       CDSEnumKlass::handle_enum_obj(level + 1, subgraph_info, orig_obj);
     }

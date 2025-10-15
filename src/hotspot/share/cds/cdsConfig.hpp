@@ -29,8 +29,8 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/macros.hpp"
 
-class InstanceKlass;
 class JavaThread;
+class InstanceKlass;
 
 class CDSConfig : public AllStatic {
 #if INCLUDE_CDS
@@ -44,9 +44,7 @@ class CDSConfig : public AllStatic {
   static bool _has_aot_linked_classes;
   static bool _is_single_command_training;
   static bool _has_temp_aot_config_file;
-  static bool _is_loading_packages;
-  static bool _is_loading_protection_domains;
-  static bool _is_security_manager_allowed;
+  static bool _is_at_aot_safepoint;
 
   const static char* _default_archive_path;
   const static char* _input_static_archive_path;
@@ -82,15 +80,15 @@ class CDSConfig : public AllStatic {
 
 public:
   // Used by jdk.internal.misc.CDS.getCDSConfigStatus();
-  static const int IS_DUMPING_ARCHIVE              = 1 << 0;
-  static const int IS_DUMPING_METHOD_HANDLES       = 1 << 1;
-  static const int IS_DUMPING_STATIC_ARCHIVE       = 1 << 2;
-  static const int IS_LOGGING_LAMBDA_FORM_INVOKERS = 1 << 3;
-  static const int IS_USING_ARCHIVE                = 1 << 4;
-  static const int IS_DUMPING_HEAP                 = 1 << 5;
-  static const int IS_LOGGING_DYNAMIC_PROXIES      = 1 << 6;
-  static const int IS_DUMPING_PACKAGES             = 1 << 7;
-  static const int IS_DUMPING_PROTECTION_DOMAINS   = 1 << 8;
+  static const int IS_DUMPING_AOT_LINKED_CLASSES   = 1 << 0;
+  static const int IS_DUMPING_ARCHIVE              = 1 << 1;
+  static const int IS_DUMPING_METHOD_HANDLES       = 1 << 2;
+  static const int IS_DUMPING_STATIC_ARCHIVE       = 1 << 3;
+  static const int IS_LOGGING_LAMBDA_FORM_INVOKERS = 1 << 4;
+  static const int IS_USING_ARCHIVE                = 1 << 5;
+  static const int IS_DUMPING_HEAP                 = 1 << 6;
+  static const int IS_LOGGING_DYNAMIC_PROXIES      = 1 << 7;
+
   static int get_status() NOT_CDS_RETURN_(0);
 
   // Initialization and command-line checking
@@ -105,6 +103,9 @@ public:
   static const char* type_of_archive_being_loaded();
   static const char* type_of_archive_being_written();
   static void prepare_for_dumping();
+
+  static bool is_at_aot_safepoint()                          { return CDS_ONLY(_is_at_aot_safepoint) NOT_CDS(false); }
+  static void set_is_at_aot_safepoint(bool value)            { CDS_ONLY(_is_at_aot_safepoint = value); }
 
   // --- Basic CDS features
 
@@ -150,7 +151,6 @@ public:
   static void disable_dumping_dynamic_archive()              { CDS_ONLY(_is_dumping_dynamic_archive = false); }
 
   // Misc CDS features
-  static bool preserve_all_dumptime_verification_states(const InstanceKlass* ik);
   static bool allow_only_single_java_thread()                NOT_CDS_RETURN_(false);
 
   static bool is_single_command_training()                   { return CDS_ONLY(_is_single_command_training) NOT_CDS(false); }
@@ -169,6 +169,10 @@ public:
   static bool is_dumping_aot_linked_classes()                NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_using_aot_linked_classes()                  NOT_CDS_JAVA_HEAP_RETURN_(false);
   static void set_has_aot_linked_classes(bool has_aot_linked_classes) NOT_CDS_JAVA_HEAP_RETURN;
+
+  // Bytecode verification
+  static bool is_preserving_verification_constraints();
+  static bool is_old_class_for_verifier(const InstanceKlass* ik);
 
   // archive_path
 
@@ -190,14 +194,6 @@ public:
 
   static bool is_dumping_invokedynamic()                     NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_dumping_method_handles()                    NOT_CDS_JAVA_HEAP_RETURN_(false);
-
-  static bool is_dumping_packages()                          NOT_CDS_JAVA_HEAP_RETURN_(false);
-  static bool is_loading_packages()                          NOT_CDS_JAVA_HEAP_RETURN_(false);
-  static void set_is_loading_packages()                      { CDS_JAVA_HEAP_ONLY(_is_loading_packages = true); }
-
-  static bool is_dumping_protection_domains()                NOT_CDS_JAVA_HEAP_RETURN_(false);
-  static bool is_loading_protection_domains()                NOT_CDS_JAVA_HEAP_RETURN_(false);
-  static void set_is_loading_protection_domains()            { CDS_JAVA_HEAP_ONLY(_is_loading_protection_domains = true); }
 
   static bool is_dumping_reflection_data()                   NOT_CDS_JAVA_HEAP_RETURN_(false);
 
@@ -229,6 +225,7 @@ public:
     ~DumperThreadMark();
   };
 
+  static bool current_thread_is_dumper() NOT_CDS_RETURN_(false);
   static bool current_thread_is_vm_or_dumper() NOT_CDS_RETURN_(false);
 };
 

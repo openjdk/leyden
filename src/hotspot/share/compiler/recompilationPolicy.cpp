@@ -111,7 +111,7 @@ bool RecompilationPolicy::recompilation_step(int step, TRAPS) {
   }
 
   if (i == size && !repeat) {
-    Atomic::release_store(&_recompilation_done, true);
+    AtomicAccess::release_store(&_recompilation_done, true);
   }
   return count > 0;
 }

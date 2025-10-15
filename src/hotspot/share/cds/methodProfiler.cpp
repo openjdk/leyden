@@ -98,7 +98,7 @@ MethodProfilerClosure()
 
     // Found a C2 top frame that was just executing - sample it
     nm->inc_method_profiling_count();
-    Atomic::inc(&MethodProfiler::_num_samples);
+    AtomicAccess::inc(&MethodProfiler::_num_samples);
   }
 };
 

@@ -28,7 +28,7 @@
 #include "logging/logStream.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
-#include "runtime/atomic.hpp"
+#include "runtime/atomicAccess.hpp"
 #include "runtime/java.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/mutexLocker.hpp"
@@ -40,7 +40,6 @@
 // Mutexes used in the VM (see comment in mutexLocker.hpp):
 
 Mutex*   NMethodState_lock            = nullptr;
-Mutex*   NMethodEntryBarrier_lock     = nullptr;
 Monitor* SystemDictionary_lock        = nullptr;
 Mutex*   InvokeMethodTypeTable_lock   = nullptr;
 Monitor* InvokeMethodIntrinsicTable_lock = nullptr;
@@ -107,15 +106,15 @@ Mutex*   PerfDataManager_lock         = nullptr;
 
 #if INCLUDE_G1GC
 Monitor* G1CGC_lock                   = nullptr;
-Mutex*   G1DetachedRefinementStats_lock = nullptr;
 Mutex*   G1FreeList_lock              = nullptr;
 Mutex*   G1MarkStackChunkList_lock    = nullptr;
 Mutex*   G1MarkStackFreeList_lock     = nullptr;
 Monitor* G1OldGCCount_lock            = nullptr;
 Mutex*   G1OldSets_lock               = nullptr;
-Mutex*   G1Uncommit_lock              = nullptr;
+Mutex*   G1ReviseYoungLength_lock     = nullptr;
 Monitor* G1RootRegionScan_lock        = nullptr;
 Mutex*   G1RareEvent_lock             = nullptr;
+Mutex*   G1Uncommit_lock              = nullptr;
 #endif
 
 Mutex*   Management_lock              = nullptr;
@@ -216,14 +215,11 @@ void assert_lock_strong(const Mutex* lock) {
 void mutex_init() {
   MUTEX_DEFN(tty_lock                        , PaddedMutex  , tty);      // allow to lock in VM
 
-  MUTEX_DEFN(NMethodEntryBarrier_lock        , PaddedMutex  , service-1);
-
   MUTEX_DEFN(STS_lock                        , PaddedMonitor, nosafepoint);
 
 #if INCLUDE_G1GC
   if (UseG1GC) {
     MUTEX_DEFN(G1CGC_lock                    , PaddedMonitor, nosafepoint);
-    MUTEX_DEFN(G1DetachedRefinementStats_lock, PaddedMutex  , nosafepoint-2);
     MUTEX_DEFN(G1FreeList_lock               , PaddedMutex  , service-1);
     MUTEX_DEFN(G1MarkStackChunkList_lock     , PaddedMutex  , nosafepoint);
     MUTEX_DEFN(G1MarkStackFreeList_lock      , PaddedMutex  , nosafepoint);
@@ -324,11 +320,11 @@ void mutex_init() {
 #endif
   MUTEX_DEFN(DumpTimeTable_lock              , PaddedMutex  , nosafepoint);
   MUTEX_DEFN(CDSLambda_lock                  , PaddedMutex  , nosafepoint);
-  MUTEX_DEFN(DumpRegion_lock                 , PaddedMutex  , nosafepoint);
+  MUTEX_DEFL(DumpRegion_lock                 , PaddedMutex  , DumpTimeTable_lock);
   MUTEX_DEFN(ClassListFile_lock              , PaddedMutex  , nosafepoint);
   MUTEX_DEFN(UnregisteredClassesTable_lock   , PaddedMutex  , nosafepoint-1);
   MUTEX_DEFN(LambdaFormInvokers_lock         , PaddedMutex  , safepoint);
-  MUTEX_DEFN(ScratchObjects_lock             , PaddedMutex  , nosafepoint-1); // Holds DumpTimeTable_lock
+  MUTEX_DEFL(ScratchObjects_lock             , PaddedMutex  , DumpTimeTable_lock);
   MUTEX_DEFN(ArchivedObjectTables_lock       , PaddedMutex  , nosafepoint);
   MUTEX_DEFN(FinalImageRecipes_lock          , PaddedMutex  , nosafepoint);
 #endif // INCLUDE_CDS
@@ -363,8 +359,9 @@ void mutex_init() {
 
 #if INCLUDE_G1GC
   if (UseG1GC) {
-    MUTEX_DEFL(G1OldGCCount_lock             , PaddedMonitor, Threads_lock, true);
-    MUTEX_DEFL(G1RareEvent_lock              , PaddedMutex  , Threads_lock, true);
+    MUTEX_DEFL(G1OldGCCount_lock            , PaddedMonitor, Threads_lock, true);
+    MUTEX_DEFL(G1RareEvent_lock             , PaddedMutex  , Threads_lock, true);
+    MUTEX_DEFL(G1ReviseYoungLength_lock     , PaddedMutex  , Threads_lock, true);
   }
 #endif
 
@@ -475,14 +472,14 @@ int MutexLockerImpl::name2id(const char* name) {
   if (ProfileVMLocks && UsePerfData) {
     // There is not concurency or duplication in mutex_init().
     if (!_mutex_init_done) {
-      int new_id = Atomic::load(&_num_names);
+      int new_id = AtomicAccess::load(&_num_names);
       precond(new_id < MAX_NAMES);
-      Atomic::inc(&_num_names);
+      AtomicAccess::inc(&_num_names);
       _names[new_id] = os::strdup(name, mtInternal);
       _is_unique[new_id] = true;
       return new_id;
     }
-    int limit = Atomic::load(&_num_names); // Cache static value which can be updated concurently
+    int limit = AtomicAccess::load(&_num_names); // Cache static value which can be updated concurently
     for (int i = Mutex::num_mutex(); i < limit; i++) {
       if (strcmp(_names[i], name) == 0) {
         _is_unique[i] = false;
@@ -496,7 +493,7 @@ int MutexLockerImpl::name2id(const char* name) {
       do {
         new_id = limit++;
         if (new_id == MAX_NAMES) break;
-      } while (Atomic::cmpxchg(&_num_names, new_id, limit) != new_id);
+      } while (AtomicAccess::cmpxchg(&_num_names, new_id, limit) != new_id);
       for (int i = old_limit; i < new_id; i++) {
         if (strcmp(_names[i], name) == 0) { // Other thread put it there
           _is_unique[i] = false;

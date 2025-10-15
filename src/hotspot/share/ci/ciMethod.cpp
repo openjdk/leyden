@@ -1169,12 +1169,6 @@ bool ciMethod::can_be_compiled() {
     return _is_c1_compilable;
   }
 
-#if INCLUDE_JVMCI
-  if (EnableJVMCI && UseJVMCICompiler &&
-      env->comp_level() == CompLevel_full_optimization && !AOTLinkedClassBulkLoader::class_preloading_finished()) {
-    return false;
-  }
-#endif
   return _is_c2_compilable;
 }
 

@@ -23,7 +23,6 @@
  */
 
 #include "cds/archiveBuilder.hpp"
-#include "cds/cdsConfig.hpp"
 #include "cds/dumpTimeClassInfo.inline.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "classfile/classLoader.hpp"
@@ -42,37 +41,13 @@ DumpTimeClassInfo::~DumpTimeClassInfo() {
   }
 }
 
-bool DumpTimeClassInfo::is_excluded() {
-  if (_excluded) {
-    return true;
-  }
-  if (_failed_verification) {
-    if (CDSConfig::preserve_all_dumptime_verification_states(_klass)) {
-      assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
-      // If the verification states are preserved, _klass will be archived in unlinked state. This is
-      // necessary to support the following scenario, where the verification of X requires that
-      // A be a subclass of B:
-      //     class X {
-      //        B getB() { return new A(); }
-      //     }
-      // If X and B can be verified, but A fails verification, we still archive A (in a preloaded
-      // SystemDictionary) so that at runtime we cannot subvert the verification of X by replacing
-      // A with a version that is not a subtype of B.
-    } else {
-      // Don't archive this class. At runtime, load it from classfile and rerun verification.
-      return true;
-    }
-  }
-  return false;
-}
-
 size_t DumpTimeClassInfo::runtime_info_bytesize() const {
   return RunTimeClassInfo::byte_size(_klass, num_verifier_constraints(),
                                      num_loader_constraints(),
                                      num_enum_klass_static_fields());
 }
 
-void DumpTimeClassInfo::add_verification_constraint(InstanceKlass* k, Symbol* name,
+void DumpTimeClassInfo::add_verification_constraint(Symbol* name,
          Symbol* from_name, bool from_field_is_protected, bool from_is_array, bool from_is_object) {
   if (_verifier_constraints == nullptr) {
     _verifier_constraints = new (mtClass) GrowableArray<DTVerifierConstraint>(4, mtClass);
@@ -98,9 +73,14 @@ void DumpTimeClassInfo::add_verification_constraint(InstanceKlass* k, Symbol* na
 
   if (log_is_enabled(Trace, aot, verification)) {
     ResourceMark rm;
-    log_trace(aot, verification)("add_verification_constraint: %s: %s must be subclass of %s [0x%x] array len %d flags len %d",
-                                 k->external_name(), from_name->as_klass_external_name(),
-                                 name->as_klass_external_name(), c, vc_array->length(), vcflags_array->length());
+    if (from_name != nullptr) {
+      log_trace(aot, verification)("add verification constraint: %s: %s must be subclass of %s [0x%x]",
+                                   _klass->external_name(), from_name->as_klass_external_name(),
+                                   name->as_klass_external_name(), c);
+    } else {
+      log_trace(aot, verification)("added old verification constraint: %s: %s", _klass->external_name(),
+                                   name->as_klass_external_name());
+    }
   }
 }
 

@@ -32,8 +32,8 @@
 
 #define __ masm->
 
-void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst) {
-
+void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst, Register rscratch) {
+  precond(rscratch != noreg);
   BarrierSet* bs = BarrierSet::barrier_set();
   assert(bs->kind() == BarrierSet::CardTableBarrierSet, "Wrong barrier set kind");
 
@@ -41,16 +41,17 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
 
   assert(CardTable::dirty_card_val() == 0, "must be");
 
-  __ load_byte_map_base(rscratch1);
+  __ load_byte_map_base(rscratch);
 
   if (UseCondCardMark) {
+    precond(rscratch != rscratch2);
     Label L_already_dirty;
-    __ ldrb(rscratch2,  Address(obj, rscratch1));
+    __ ldrb(rscratch2,  Address(obj, rscratch));
     __ cbz(rscratch2, L_already_dirty);
-    __ strb(zr, Address(obj, rscratch1));
+    __ strb(zr, Address(obj, rscratch));
     __ bind(L_already_dirty);
   } else {
-    __ strb(zr, Address(obj, rscratch1));
+    __ strb(zr, Address(obj, rscratch));
   }
 }
 
@@ -88,10 +89,10 @@ void CardTableBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorS
   if (needs_post_barrier) {
     // flatten object address if needed
     if (!precise || (dst.index() == noreg && dst.offset() == 0)) {
-      store_check(masm, dst.base(), dst);
+      store_check(masm, dst.base(), dst, tmp2);
     } else {
       __ lea(tmp3, dst);
-      store_check(masm, tmp3, dst);
+      store_check(masm, tmp3, dst, tmp2);
     }
   }
 }

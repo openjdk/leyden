@@ -811,7 +811,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   if (CDSConfig::is_using_aot_linked_classes()) {
     SystemDictionary::restore_archived_method_handle_intrinsics();
-    AOTLinkedClassBulkLoader::finish_loading_javabase_classes(CHECK_JNI_ERR);
+    AOTLinkedClassBulkLoader::link_or_init_javabase_classes(THREAD);
   }
 
   // Start string deduplication thread if requested.
@@ -829,8 +829,8 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // loaded until phase 2 completes
   call_initPhase2(CHECK_JNI_ERR);
 
-  if (CDSConfig::is_using_aot_linked_classes() && !CDSConfig::is_dumping_final_static_archive()) {
-    AOTLinkedClassBulkLoader::load_non_javabase_classes(THREAD);
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    AOTLinkedClassBulkLoader::link_or_init_non_javabase_classes(THREAD);
   }
 #ifndef PRODUCT
   HeapShared::initialize_test_class_from_archive(THREAD);
@@ -944,10 +944,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   if (CDSConfig::is_dumping_classic_static_archive()) {
     // Classic -Xshare:dump, aka "old workflow"
-    AOTMetaspace::preload_and_dump(CHECK_JNI_ERR);
+    AOTMetaspace::dump_static_archive(CHECK_JNI_ERR);
   } else if (CDSConfig::is_dumping_final_static_archive()) {
     tty->print_cr("Reading AOTConfiguration %s and writing AOTCache %s", AOTConfiguration, AOTCache);
-    AOTMetaspace::preload_and_dump(CHECK_JNI_ERR);
+    AOTMetaspace::dump_static_archive(CHECK_JNI_ERR);
   }
 
   log_info(init)("At VM initialization completion:");
@@ -1367,21 +1367,7 @@ GrowableArray<JavaThread*>* Threads::get_pending_threads(ThreadsList * t_list,
 }
 #endif // INCLUDE_JVMTI
 
-JavaThread *Threads::owning_thread_from_stacklock(ThreadsList * t_list, address basicLock) {
-  assert(LockingMode == LM_LEGACY, "Not with new lightweight locking");
-
-  JavaThread* the_owner = nullptr;
-  for (JavaThread* q : *t_list) {
-    if (q->is_lock_owned(basicLock)) {
-      the_owner = q;
-      break;
-    }
-  }
-  return the_owner;
-}
-
 JavaThread* Threads::owning_thread_from_object(ThreadsList * t_list, oop obj) {
-  assert(LockingMode == LM_LIGHTWEIGHT, "Only with new lightweight locking");
   for (JavaThread* q : *t_list) {
     // Need to start processing before accessing oops in the thread.
     StackWatermark* watermark = StackWatermarkSet::get(q, StackWatermarkKind::gc);
@@ -1398,12 +1384,7 @@ JavaThread* Threads::owning_thread_from_object(ThreadsList * t_list, oop obj) {
 
 JavaThread* Threads::owning_thread_from_monitor(ThreadsList* t_list, ObjectMonitor* monitor) {
   if (monitor->has_anonymous_owner()) {
-    if (LockingMode == LM_LIGHTWEIGHT) {
-      return owning_thread_from_object(t_list, monitor->object());
-    } else {
-      assert(LockingMode == LM_LEGACY, "invariant");
-      return owning_thread_from_stacklock(t_list, (address)monitor->stack_locker());
-    }
+    return owning_thread_from_object(t_list, monitor->object());
   } else {
     JavaThread* the_owner = nullptr;
     for (JavaThread* q : *t_list) {

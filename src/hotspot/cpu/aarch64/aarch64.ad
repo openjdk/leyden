@@ -4616,19 +4616,6 @@ operand immP_1()
   interface(CONST_INTER);
 %}
 
-// Card Table Byte Map Base
-operand immByteMapBase()
-%{
-  // Get base of card map
-  predicate(BarrierSet::barrier_set()->is_a(BarrierSet::CardTableBarrierSet) &&
-            is_card_table_address((address)(n->get_ptr())));
-  match(ConP);
-
-  op_cost(0);
-  format %{ %}
-  interface(CONST_INTER);
-%}
-
 // AOT Runtime Constants Address
 operand immAOTRuntimeConstantsAddress()
 %{
@@ -5990,9 +5977,6 @@ attributes %{
   instruction_unit_size = 4;         // An instruction is 4 bytes long
   instruction_fetch_unit_size = 64;  // The processor fetches one line
   instruction_fetch_units = 1;       // of 64 bytes
-
-  // List of nop instructions
-  nops( MachNop );
 %}
 
 // We don't use an actual pipeline model so don't care about resources
@@ -7003,22 +6987,6 @@ instruct loadConP1(iRegPNoSp dst, immP_1 con)
   format %{ "mov  $dst, $con\t# nullptr ptr" %}
 
   ins_encode(aarch64_enc_mov_p1(dst, con));
-
-  ins_pipe(ialu_imm);
-%}
-
-// Load Byte Map Base Constant
-
-instruct loadByteMapBase(iRegPNoSp dst, immByteMapBase con)
-%{
-  match(Set dst con);
-
-  ins_cost(INSN_COST);
-  format %{ "adr  $dst, $con\t# Byte Map Base" %}
-
-  ins_encode %{
-    __ load_byte_map_base($dst$$Register);
-  %}
 
   ins_pipe(ialu_imm);
 %}

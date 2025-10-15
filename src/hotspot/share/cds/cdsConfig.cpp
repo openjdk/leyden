@@ -58,12 +58,10 @@ bool CDSConfig::_is_using_full_module_graph = true;
 bool CDSConfig::_has_aot_linked_classes = false;
 bool CDSConfig::_is_single_command_training = false;
 bool CDSConfig::_has_temp_aot_config_file = false;
-bool CDSConfig::_is_loading_packages = false;
-bool CDSConfig::_is_loading_protection_domains = false;
-bool CDSConfig::_is_security_manager_allowed = false;
 bool CDSConfig::_old_cds_flags_used = false;
 bool CDSConfig::_new_aot_flags_used = false;
 bool CDSConfig::_disable_heap_dumping = false;
+bool CDSConfig::_is_at_aot_safepoint = false;
 
 const char* CDSConfig::_default_archive_path = nullptr;
 const char* CDSConfig::_input_static_archive_path = nullptr;
@@ -74,15 +72,14 @@ JavaThread* CDSConfig::_dumper_thread = nullptr;
 
 int CDSConfig::get_status() {
   assert(Universe::is_fully_initialized(), "status is finalized only after Universe is initialized");
-  return (is_dumping_archive()              ? IS_DUMPING_ARCHIVE : 0) |
+  return (is_dumping_aot_linked_classes()   ? IS_DUMPING_AOT_LINKED_CLASSES : 0) |
+         (is_dumping_archive()              ? IS_DUMPING_ARCHIVE : 0) |
          (is_dumping_method_handles()       ? IS_DUMPING_METHOD_HANDLES : 0) |
          (is_dumping_static_archive()       ? IS_DUMPING_STATIC_ARCHIVE : 0) |
          (is_logging_lambda_form_invokers() ? IS_LOGGING_LAMBDA_FORM_INVOKERS : 0) |
          (is_using_archive()                ? IS_USING_ARCHIVE : 0) |
          (is_dumping_heap()                 ? IS_DUMPING_HEAP : 0) |
-         (is_logging_dynamic_proxies()      ? IS_LOGGING_DYNAMIC_PROXIES : 0) |
-         (is_dumping_packages()             ? IS_DUMPING_PACKAGES : 0) |
-         (is_dumping_protection_domains()   ? IS_DUMPING_PROTECTION_DOMAINS : 0);
+         (is_logging_dynamic_proxies()      ? IS_LOGGING_DYNAMIC_PROXIES : 0);
 }
 
 DEBUG_ONLY(static bool _cds_ergo_initialize_started = false);
@@ -362,13 +359,6 @@ void CDSConfig::check_incompatible_property(const char* key, const char* value) 
       break;
     }
   }
-
-  // Match the logic in java/lang/System.java, but we need to know this before the System class is initialized.
-  if (strcmp(key, "java.security.manager") == 0) {
-    if (strcmp(value, "disallowed") != 0) {
-      _is_security_manager_allowed = true;
-    }
-  }
 }
 
 // Returns any JVM command-line option, such as "--patch-module", that's not supported by CDS.
@@ -519,10 +509,6 @@ void CDSConfig::check_aot_flags() {
     assert(strcmp(AOTMode, "create") == 0, "checked by AOTModeConstraintFunc");
     check_aotmode_create();
   }
-
-  // This is an old flag used by CDS regression testing only. It doesn't apply
-  // to the AOT workflow.
-  FLAG_SET_ERGO(AllowArchivingWithJavaAgent, false);
 }
 
 void CDSConfig::check_aotmode_off() {
@@ -785,13 +771,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     }
   }
 
-  if (is_dumping_classic_static_archive() && AOTClassLinking) {
-    if (JvmtiAgentList::disable_agent_list()) {
-      FLAG_SET_ERGO(AllowArchivingWithJavaAgent, false);
-      log_warning(cds)("Disabled all JVMTI agents with -Xshare:dump -XX:+AOTClassLinking");
-    }
-  }
-
   if (AOTClassLinking) {
     if (is_dumping_final_static_archive() && !is_dumping_full_module_graph()) {
       if (bad_module_prop_key != nullptr) {
@@ -829,6 +808,9 @@ void CDSConfig::setup_compiler_args() {
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
     AOTCodeCache::enable_caching();
     FLAG_SET_ERGO_IF_DEFAULT(UseAOTCodeLoadThread, true);
+    if (AOTCodeCaching) {
+      FLAG_SET_ERGO_IF_DEFAULT(SkipTier2IfPossible, true);
+    }
   } else {
     FLAG_SET_ERGO(AOTReplayTraining, false);
     FLAG_SET_ERGO(AOTRecordTraining, false);
@@ -839,6 +821,13 @@ void CDSConfig::setup_compiler_args() {
 
 void CDSConfig::prepare_for_dumping() {
   assert(CDSConfig::is_dumping_archive(), "sanity");
+
+  if (is_dumping_dynamic_archive() && AOTClassLinking) {
+    if (FLAG_IS_CMDLINE(AOTClassLinking)) {
+      log_warning(cds)("AOTClassLinking is not supported for dynamic CDS archive");
+    }
+    FLAG_SET_ERGO(AOTClassLinking, false);
+  }
 
   if (is_dumping_dynamic_archive() && !is_using_archive()) {
     assert(!is_dumping_static_archive(), "cannot be dumping both static and dynamic archives");
@@ -904,17 +893,6 @@ bool CDSConfig::is_logging_dynamic_proxies() {
   return ClassListWriter::is_enabled() || is_dumping_preimage_static_archive();
 }
 
-// Preserve all states that were examined used during dumptime verification, such
-// that the verification result (pass or fail) cannot be changed at runtime.
-//
-// For example, if the verification of ik requires that class A must be a subtype of B,
-// then this relationship between A and B cannot be changed at runtime. I.e., the app
-// cannot load alternative versions of A and B such that A is not a subtype of B.
-bool CDSConfig::preserve_all_dumptime_verification_states(const InstanceKlass* ik) {
-  // This function will be removed when JDK-8350550 is merged from mainline 
-  return ArchivePackages && ArchiveProtectionDomains && is_dumping_aot_linked_classes() && SystemDictionaryShared::is_builtin(ik);
-}
-
 bool CDSConfig::is_using_archive() {
   return UseSharedSpaces;
 }
@@ -965,7 +943,11 @@ CDSConfig::DumperThreadMark::~DumperThreadMark() {
 
 bool CDSConfig::current_thread_is_vm_or_dumper() {
   Thread* t = Thread::current();
-  return t != nullptr && (t->is_VM_thread() || t == _dumper_thread);
+  return t->is_VM_thread() || t == _dumper_thread;
+}
+
+bool CDSConfig::current_thread_is_dumper() {
+  return Thread::current() == _dumper_thread;
 }
 
 const char* CDSConfig::type_of_archive_being_loaded() {
@@ -1026,6 +1008,35 @@ bool CDSConfig::is_dumping_lambdas_in_legacy_mode() {
   return !is_dumping_method_handles();
 }
 
+bool CDSConfig::is_preserving_verification_constraints() {
+  // Verification dependencies are classes used in assignability checks by the
+  // bytecode verifier. In the following example, the verification dependencies
+  // for X are A and B.
+  //
+  //     class X {
+  //        A getA() { return new B(); }
+  //     }
+  //
+  // With the AOT cache, we can ensure that all the verification dependencies
+  // (A and B in the above example) are unconditionally loaded during the bootstrap
+  // of the production run. This means that if a class was successfully verified
+  // in the assembly phase, all of the verifier's assignability checks will remain
+  // valid in the production run, so we don't need to verify aot-linked classes again.
+
+  if (is_dumping_preimage_static_archive()) { // writing AOT config
+    return AOTClassLinking;
+  } else if (is_dumping_final_static_archive()) { // writing AOT cache
+    return is_dumping_aot_linked_classes();
+  } else {
+    // For simplicity, we don't support this optimization with the old CDS workflow.
+    return false;
+  }
+}
+
+bool CDSConfig::is_old_class_for_verifier(const InstanceKlass* ik) {
+  return ik->major_version() < 50 /*JAVA_6_VERSION*/;
+}
+
 #if INCLUDE_CDS_JAVA_HEAP
 bool CDSConfig::are_vm_options_incompatible_with_dumping_heap() {
   return check_options_incompatible_with_dumping_heap() != nullptr;
@@ -1084,11 +1095,10 @@ void CDSConfig::stop_using_full_module_graph(const char* reason) {
 }
 
 bool CDSConfig::is_dumping_aot_linked_classes() {
-  if (is_dumping_preimage_static_archive()) {
-    return false;
-  } else if (is_dumping_dynamic_archive()) {
-    return is_using_full_module_graph() && AOTClassLinking;
-  } else if (is_dumping_static_archive()) {
+  if (is_dumping_classic_static_archive() || is_dumping_final_static_archive()) {
+    // FMG is required to guarantee that all cached boot/platform/app classes
+    // are visible in the production run, so they can be unconditionally
+    // loaded during VM bootstrap.
     return is_dumping_full_module_graph() && AOTClassLinking;
   } else {
     return false;
@@ -1117,32 +1127,6 @@ bool CDSConfig::is_dumping_invokedynamic() {
   // Requires is_dumping_aot_linked_classes(). Otherwise the classes of some archived heap
   // objects used by the archive indy callsites may be replaced at runtime.
   return AOTInvokeDynamicLinking && is_dumping_aot_linked_classes() && is_dumping_heap();
-}
-
-bool CDSConfig::is_dumping_packages() {
-  return ArchivePackages && is_dumping_heap();
-}
-
-bool CDSConfig::is_loading_packages() {
-  return UseSharedSpaces && is_using_full_module_graph() && _is_loading_packages;
-}
-
-bool CDSConfig::is_dumping_protection_domains() {
-  if (_is_security_manager_allowed) {
-    // For sanity, don't archive PDs. TODO: can this be relaxed?
-    return false;
-  }
-  // Archived PDs for the modules will reference their java.lang.Module, which must
-  // also be archived.
-  return ArchiveProtectionDomains && is_dumping_full_module_graph();
-}
-
-bool CDSConfig::is_loading_protection_domains() {
-  if (_is_security_manager_allowed) {
-    // For sanity, don't used any archived PDs. TODO: can this be relaxed?
-    return false;
-  }
-  return UseSharedSpaces && is_using_full_module_graph() && _is_loading_protection_domains;
 }
 
 bool CDSConfig::is_dumping_reflection_data() {

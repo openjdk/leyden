@@ -135,13 +135,10 @@ private:
   char*  _requested_base_address;       // Archive relocation is not necessary if we map with this base address.
   char*  _mapped_base_address;          // Actual base address where archive is mapped.
 
-  bool   _allow_archiving_with_java_agent; // setting of the AllowArchivingWithJavaAgent option
   bool   _use_optimized_module_handling;// No module-relation VM options were specified, so we can skip
                                         // some expensive operations.
   bool   _has_aot_linked_classes;       // Was the CDS archive created with -XX:+AOTClassLinking
   bool   _has_full_module_graph;        // Does this CDS archive contain the full archived module graph?
-  bool   _has_archived_packages;
-  bool   _has_archived_protection_domains;
   int    _gc_kind;                      // Universe::heap()->kind();
   char   _gc_name[32];                  // Universe::heap()->name();
   size_t _ptrmap_size_in_bits;          // Size of pointer relocation bitmap

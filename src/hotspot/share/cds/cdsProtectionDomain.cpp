@@ -59,10 +59,6 @@ Handle CDSProtectionDomain::init_security_info(Handle class_loader, InstanceKlas
     // all packages from module image are already created during VM bootstrap in
     // Modules::define_module().
     assert(pkg_entry != nullptr, "archived class in module image cannot be from unnamed package");
-    Handle archived_pd = get_archived_protection_domain(THREAD, ik);
-    if (archived_pd.not_null()) {
-      return archived_pd;
-    }
     ModuleEntry* mod_entry = pkg_entry->module();
     return get_shared_protection_domain(class_loader, mod_entry, THREAD);
   } else {
@@ -90,7 +86,6 @@ Handle CDSProtectionDomain::init_security_info(Handle class_loader, InstanceKlas
     //   the corresponding CDSProtectionDomain::get_shared_xxx() function.
     Handle manifest = get_shared_jar_manifest(index, CHECK_NH);
     Handle url = get_shared_jar_url(index, CHECK_NH);
-   if (!CDSConfig::is_loading_packages()) { // leyden
     int index_offset = index - AOTClassLocationConfig::runtime()->app_cp_start_index();
     if (index_offset < PackageEntry::max_index_for_defined_in_class_path()) {
       if (pkg_entry == nullptr || !pkg_entry->is_defined_by_cds_in_class_path(index_offset)) {
@@ -100,14 +95,9 @@ Handle CDSProtectionDomain::init_security_info(Handle class_loader, InstanceKlas
         if (pkg_entry != nullptr) {
           pkg_entry->set_defined_by_cds_in_class_path(index_offset);
         }
-      } else {
-        define_shared_package(class_name, class_loader, manifest, url, CHECK_NH);
       }
-    }
-   } // leyden-end
-    Handle archived_pd = get_archived_protection_domain(THREAD, ik);
-    if (archived_pd.not_null()) {
-      return archived_pd;
+    } else {
+      define_shared_package(class_name, class_loader, manifest, url, CHECK_NH);
     }
     return get_shared_protection_domain(class_loader, index, url, THREAD);
   }
@@ -214,36 +204,6 @@ Handle CDSProtectionDomain::get_shared_jar_url(int shared_path_index, TRAPS) {
   url_h = Handle(THREAD, shared_jar_url(shared_path_index));
   assert(url_h.not_null(), "sanity");
   return url_h;
-}
-
-
-Handle CDSProtectionDomain::get_archived_protection_domain(JavaThread* current, InstanceKlass* klass) {
-  oop pd = nullptr;
-
-  if (CDSConfig::is_loading_protection_domains()) {
-    oop mirror;
-    if (klass->has_archived_mirror_index()) {
-      mirror = klass->archived_java_mirror();
-    } else {
-      mirror = klass->java_mirror();
-    }
-
-    if (mirror != nullptr) {
-      pd = java_lang_Class::protection_domain(mirror);
-    }
-  }
-
-  if (log_is_enabled(Info, cds, protectiondomain)) {
-    ResourceMark rm;
-    log_info(cds, protectiondomain)("Archived protection domain for %s = %s", klass->external_name(),
-                                    (pd == nullptr) ? "none" : "found");
-  }
-
-  if (pd == nullptr) {
-    return Handle();
-  } else {
-    return Handle(current, pd);
-  }
 }
 
 oop CDSProtectionDomain::to_file_URL(const char* path, Handle url_h, TRAPS) {

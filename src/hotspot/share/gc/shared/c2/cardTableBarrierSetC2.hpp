@@ -27,6 +27,8 @@
 
 #include "gc/shared/c2/modRefBarrierSetC2.hpp"
 
+class IdealKit;
+
 class CardTableBarrierSetC2: public ModRefBarrierSetC2 {
 protected:
   virtual void post_barrier(GraphKit* kit,
@@ -35,7 +37,7 @@ protected:
                             Node* val,
                             bool use_precise) const;
 
-  Node* byte_map_base_node(GraphKit* kit) const;
+  Node* byte_map_base_node(IdealKit* kit) const;
 
 public:
   virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;

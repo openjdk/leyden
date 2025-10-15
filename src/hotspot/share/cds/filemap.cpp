@@ -246,8 +246,6 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _use_optimized_module_handling = CDSConfig::is_using_optimized_module_handling();
   _has_aot_linked_classes = CDSConfig::is_dumping_aot_linked_classes();
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
-  _has_archived_packages = CDSConfig::is_dumping_packages();
-  _has_archived_protection_domains = CDSConfig::is_dumping_protection_domains();
   _gc_kind = (int)Universe::heap()->kind();
   jio_snprintf(_gc_name, sizeof(_gc_name), Universe::heap()->name());
 
@@ -263,7 +261,6 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _has_platform_or_app_classes = AOTClassLocationConfig::dumptime()->has_platform_or_app_classes();
   _requested_base_address = (char*)SharedBaseAddress;
   _mapped_base_address = (char*)SharedBaseAddress;
-  _allow_archiving_with_java_agent = AllowArchivingWithJavaAgent;
 }
 
 void FileMapHeader::copy_base_archive_name(const char* archive) {
@@ -320,12 +317,9 @@ void FileMapHeader::print(outputStream* st) {
   st->print_cr("- _heap_ptrmap_start_pos:         %zu", _heap_ptrmap_start_pos);
   st->print_cr("- _rw_ptrmap_start_pos:           %zu", _rw_ptrmap_start_pos);
   st->print_cr("- _ro_ptrmap_start_pos:           %zu", _ro_ptrmap_start_pos);
-  st->print_cr("- allow_archiving_with_java_agent:%d", _allow_archiving_with_java_agent);
   st->print_cr("- use_optimized_module_handling:  %d", _use_optimized_module_handling);
   st->print_cr("- has_full_module_graph           %d", _has_full_module_graph);
   st->print_cr("- has_aot_linked_classes          %d", _has_aot_linked_classes);
-  st->print_cr("- has_archived_packages           %d", _has_archived_packages);
-  st->print_cr("- has_archived_protection_domains %d", _has_archived_protection_domains);
   st->print_cr("- ptrmap_size_in_bits:            %zu", _ptrmap_size_in_bits);
 }
 
@@ -2124,21 +2118,6 @@ bool FileMapHeader::validate() {
     _has_platform_or_app_classes = false;
   }
 
-  // Java agents are allowed during run time. Therefore, the following condition is not
-  // checked: (!_allow_archiving_with_java_agent && AllowArchivingWithJavaAgent)
-  // Note: _allow_archiving_with_java_agent is set in the shared archive during dump time
-  // while AllowArchivingWithJavaAgent is set during the current run.
-  if (_allow_archiving_with_java_agent && !AllowArchivingWithJavaAgent) {
-    AOTMetaspace::report_loading_error("The setting of the AllowArchivingWithJavaAgent is different "
-                                          "from the setting in the %s.", file_type);
-    return false;
-  }
-
-  if (_allow_archiving_with_java_agent) {
-    aot_log_warning(aot)("This %s was created with AllowArchivingWithJavaAgent. It should be used "
-            "for testing purposes only and should not be used in a production environment", file_type);
-  }
-
   aot_log_info(aot)("The %s was created with UseCompressedOops = %d, UseCompressedClassPointers = %d, UseCompactObjectHeaders = %d",
                           file_type, compressed_oops(), compressed_class_pointers(), compact_headers());
   if (compressed_oops() != UseCompressedOops || compressed_class_pointers() != UseCompressedClassPointers) {
@@ -2164,13 +2143,6 @@ bool FileMapHeader::validate() {
     // Only the static archive can contain the full module graph.
     if (!_has_full_module_graph) {
       CDSConfig::stop_using_full_module_graph("archive was created without full module graph");
-    }
-
-    if (_has_archived_packages) {
-      CDSConfig::set_is_loading_packages();
-    }
-    if (_has_archived_protection_domains) {
-      CDSConfig::set_is_loading_protection_domains();
     }
   }
 

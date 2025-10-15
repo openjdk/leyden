@@ -64,10 +64,12 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
   __ shrptr(end, CardTable::card_shift());
   __ subptr(end, addr); // end --> cards count
 
+#if INCLUDE_CDS
   if (AOTCodeCache::is_on_for_dump()) {
-    // AOT code needs relocation info for this address
-    __ lea(tmp, ExternalAddress((address)byte_map_base));
-  } else {
+    __ movptr(tmp, ExternalAddress(AOTRuntimeConstants::card_table_address()));
+  } else
+#endif
+  {
     __ mov64(tmp, byte_map_base);
   }
   __ addptr(addr, tmp);
@@ -79,7 +81,7 @@ __ BIND(L_loop);
 __ BIND(L_done);
 }
 
-void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst) {
+void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst, Register rscratch) {
   // Does a store check for the oop in register obj. The content of
   // register obj is destroyed afterwards.
   BarrierSet* bs = BarrierSet::barrier_set();
@@ -90,6 +92,7 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   __ shrptr(obj, CardTable::card_shift());
 
   Address card_addr;
+  precond(rscratch != noreg);
 
   // The calculation for byte_map_base is as follows:
   // byte_map_base = _byte_map - (uintptr_t(low_bound) >> card_shift);
@@ -97,12 +100,12 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   // never need to be relocated. On 64bit however the value may be too
   // large for a 32bit displacement.
   intptr_t byte_map_base = (intptr_t)ct->byte_map_base();
+#if INCLUDE_CDS
   if (AOTCodeCache::is_on_for_dump()) {
-    // AOT code needs relocation info for this address
-    ExternalAddress cardtable((address)byte_map_base);
-    Address index(noreg, obj, Address::times_1);
-    card_addr = __ as_Address(ArrayAddress(cardtable, index), rscratch1);
+    __ movptr(rscratch, ExternalAddress(AOTRuntimeConstants::card_table_address()));
+    card_addr = Address(rscratch, obj, Address::times_1, 0);
   } else
+#endif
   if (__ is_simm32(byte_map_base)) {
     card_addr = Address(noreg, obj, Address::times_1, byte_map_base);
   } else {
@@ -112,7 +115,7 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
     // entry and that entry is not properly handled by the relocation code.
     AddressLiteral cardtable((address)byte_map_base, relocInfo::none);
     Address index(noreg, obj, Address::times_1);
-    card_addr = __ as_Address(ArrayAddress(cardtable, index), rscratch1);
+    card_addr = __ as_Address(ArrayAddress(cardtable, index), rscratch);
   }
 
   int dirty = CardTable::dirty_card_val();
@@ -141,10 +144,10 @@ void CardTableBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorS
   if (needs_post_barrier) {
     // flatten object address if needed
     if (!precise || (dst.index() == noreg && dst.disp() == 0)) {
-      store_check(masm, dst.base(), dst);
+      store_check(masm, dst.base(), dst, tmp2);
     } else {
       __ lea(tmp1, dst);
-      store_check(masm, tmp1, dst);
+      store_check(masm, tmp1, dst, tmp2);
     }
   }
 }
