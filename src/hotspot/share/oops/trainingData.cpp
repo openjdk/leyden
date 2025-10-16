@@ -317,8 +317,7 @@ void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what)
   } else if (what->is_metadata()) {
     md = what->as_metadata();
   }
-  if (md != nullptr && md->is_instance_klass()) {
-  // if (md != nullptr && md->is_loaded() && md->is_instance_klass()) {
+  if (md != nullptr && md->is_loaded() && md->is_instance_klass()) {
     ciInstanceKlass* cik = md->as_instance_klass();
     if (!cik->is_initialized()) {
       return;
