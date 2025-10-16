@@ -31,12 +31,11 @@
 #include "gc/shared/c2/barrierSetC2.hpp"
 #include "interpreter/interpreter.hpp"
 #include "memory/resourceArea.hpp"
+#include "oops/trainingData.hpp"
 #include "opto/addnode.hpp"
 #include "opto/castnode.hpp"
 #include "opto/convertnode.hpp"
 #include "opto/graphKit.hpp"
-
-#include "oops/trainingData.hpp"
 #include "opto/idealKit.hpp"
 #include "opto/intrinsicnode.hpp"
 #include "opto/locknode.hpp"
