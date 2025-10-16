@@ -183,7 +183,6 @@ class Options {
   const bool _eliminate_boxing;      // Do boxing elimination.
   const bool _do_locks_coarsening;   // Do locks coarsening
   const bool _for_preload;           // Generate code for preload (before Java method execution), do class init barriers
-  const bool _for_aot;               // TBD
   const bool _do_superword;          // Do SuperWord
   const bool _install_code;          // Install the code that was compiled
  public:
@@ -195,7 +194,6 @@ class Options {
           bool do_locks_coarsening,
           bool do_superword,
           bool for_preload,
-          bool for_aot,
           bool install_code) :
           _subsume_loads(subsume_loads),
           _do_escape_analysis(do_escape_analysis),
@@ -204,7 +202,6 @@ class Options {
           _eliminate_boxing(eliminate_boxing),
           _do_locks_coarsening(do_locks_coarsening),
           _for_preload(for_preload),
-          _for_aot(for_aot),
           _do_superword(do_superword),
           _install_code(install_code) {
   }
@@ -218,7 +215,6 @@ class Options {
        /* eliminate_boxing = */ false,
        /* do_lock_coarsening = */ false,
        /* for_preload = */ false,
-       /* for_aot = */ false,
        /* do_superword = */ true,
        /* install_code = */ true
     );
@@ -573,7 +569,6 @@ public:
 
   bool              do_clinit_barriers()  const { return _options._for_preload; }
   bool              for_preload()         const { return _options._for_preload; }
-  bool              for_aot()             const { return _options._for_aot; }
 
   // Other fixed compilation parameters.
   ciMethod*         method() const              { return _method; }

@@ -157,7 +157,6 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool do_locks_coarsening = EliminateLocks;
   bool do_superword = UseSuperWord;
   bool gen_preload = (task->compile_reason() == CompileTask::Reason_PrecompileForPreload);
-  bool for_aot = (task->compile_reason() == CompileTask::Reason_Precompile);
   assert(!gen_preload || (AOTCodeCache::is_dumping_code() && (ClassInitBarrierMode > 0)), "sanity");
   while (!env->failing()) {
     ResourceMark rm;
@@ -170,7 +169,6 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
                     do_locks_coarsening,
                     do_superword,
                     gen_preload,
-                    for_aot,
                     install_code);
     Compile C(env, target, entry_bci, options, directive);
 
