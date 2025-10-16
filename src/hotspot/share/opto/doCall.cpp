@@ -33,6 +33,7 @@
 #include "logging/logLevel.hpp"
 #include "logging/logMessage.hpp"
 #include "logging/logStream.hpp"
+#include "oops/trainingData.hpp"
 #include "opto/addnode.hpp"
 #include "opto/callGenerator.hpp"
 #include "opto/castnode.hpp"
@@ -486,6 +487,38 @@ bool Parse::can_not_compile_call_site(ciMethod *dest_method, ciInstanceKlass* kl
   if (!holder_klass->is_being_initialized() &&
       !holder_klass->is_initialized() &&
       !holder_klass->is_interface()) {
+    if (C->for_aot()) {
+      ResourceMark rm;
+      ttyLocker locker;
+
+      bool found = false;
+      CompileTask * task = C->env()->task();
+      MethodTrainingData* mtd = MethodTrainingData::find(methodHandle(Thread::current(), task->method()));
+      if (mtd != nullptr) {
+        CompileTrainingData* ctd = mtd->last_toplevel_compile(task->comp_level());
+        if (ctd != nullptr) {
+          for (int i = 0; i < ctd->init_dep_count(); i++) {
+            KlassTrainingData* ktd = ctd->init_dep(i);
+            if (ktd->has_holder()) {
+              tty->print_cr("%d: init_dependency: %s", i, ktd->holder()->name()->as_klass_external_name());
+              found = true;
+            }
+          }
+        }
+      }
+      assert(found, "Trying to emit uncommon trap (cannot compile call site) for %s, even though there is init dep", holder_klass->name()->as_klass_external_name());
+
+      if (holder_klass->get_instanceKlass() == vmClasses::Invokers_Holder_klass()) {
+        tty->print_cr("PERMITTING (cannot compile call site; INDY) for %s at bci %d", holder_klass->name()->as_klass_external_name(), bci());
+        return false;
+      }
+
+      if (bc() == Bytecodes::_invokedynamic) {
+        tty->print_cr("Emitting uncommon trap (cannot compile call site; INDY) for %s at bci %d", holder_klass->name()->as_klass_external_name(), bci());
+      } else {
+        tty->print_cr("Emitting uncommon trap (cannot compile call site) for %s at bci %d", holder_klass->name()->as_klass_external_name(), bci());
+      }
+    }
     uncommon_trap(Deoptimization::Reason_uninitialized,
                   Deoptimization::Action_reinterpret,
                   holder_klass);

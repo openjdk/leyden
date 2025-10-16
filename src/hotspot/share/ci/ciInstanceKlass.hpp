@@ -86,9 +86,11 @@ protected:
   ciInstanceKlass(Klass* k);
   ciInstanceKlass(ciSymbol* name, jobject loader);
 
+public:
   InstanceKlass* get_instanceKlass() const {
     return InstanceKlass::cast(get_Klass());
   }
+protected:
 
   oop loader();
   jobject loader_handle();
@@ -111,7 +113,7 @@ protected:
 
   // Update the init_state for shared klasses
   void update_if_shared(InstanceKlass::ClassState expected) {
-    if (_is_shared && _init_state != expected) {
+    if (_init_state != expected) {
       if (is_loaded()) compute_shared_init_state();
     }
   }

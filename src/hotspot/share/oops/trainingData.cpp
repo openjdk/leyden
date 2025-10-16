@@ -317,9 +317,13 @@ void CompileTrainingData::notice_jit_observation(ciEnv* env, ciBaseObject* what)
   } else if (what->is_metadata()) {
     md = what->as_metadata();
   }
-  if (md != nullptr && md->is_loaded() && md->is_instance_klass()) {
-    InstanceKlass* ik = md->as_instance_klass()->get_instanceKlass();
-    KlassTrainingData* ktd = KlassTrainingData::make(ik);
+  if (md != nullptr && md->is_instance_klass()) {
+  // if (md != nullptr && md->is_loaded() && md->is_instance_klass()) {
+    ciInstanceKlass* cik = md->as_instance_klass();
+    if (!cik->is_initialized()) {
+      return;
+    }
+    KlassTrainingData* ktd = KlassTrainingData::make(cik->get_instanceKlass());
     if (ktd == nullptr) {
       // Allocation failure or snapshot in progress
       return;

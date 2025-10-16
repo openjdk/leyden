@@ -35,6 +35,8 @@
 #include "opto/castnode.hpp"
 #include "opto/convertnode.hpp"
 #include "opto/graphKit.hpp"
+
+#include "oops/trainingData.hpp"
 #include "opto/idealKit.hpp"
 #include "opto/intrinsicnode.hpp"
 #include "opto/locknode.hpp"
@@ -3111,6 +3113,7 @@ void GraphKit::guard_init_thread(Node* klass) {
 }
 
 void GraphKit::clinit_barrier(ciInstanceKlass* ik, ciMethod* context) {
+  // ciObjectFactory::notice_object_access(ik, false);
   if (C->do_clinit_barriers()) {
     Node* klass = makecon(TypeKlassPtr::make(ik, Type::trust_interfaces));
     guard_klass_is_initialized(klass);
