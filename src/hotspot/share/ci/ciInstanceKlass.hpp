@@ -111,7 +111,7 @@ protected:
 
   // Update the init_state for shared klasses
   void update_if_shared(InstanceKlass::ClassState expected) {
-    if (_init_state != expected) {
+    if (_is_shared && _init_state != expected) {
       if (is_loaded()) compute_shared_init_state();
     }
   }
