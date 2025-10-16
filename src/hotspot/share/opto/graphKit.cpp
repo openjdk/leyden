@@ -3113,7 +3113,6 @@ void GraphKit::guard_init_thread(Node* klass) {
 }
 
 void GraphKit::clinit_barrier(ciInstanceKlass* ik, ciMethod* context) {
-  // ciObjectFactory::notice_object_access(ik, false);
   if (C->do_clinit_barriers()) {
     Node* klass = makecon(TypeKlassPtr::make(ik, Type::trust_interfaces));
     guard_klass_is_initialized(klass);
@@ -3129,6 +3128,10 @@ void GraphKit::clinit_barrier(ciInstanceKlass* ik, ciMethod* context) {
   } else if (ik->is_initialized()) {
     return; // no barrier needed
   } else {
+    if (C->for_aot()) {
+      ResourceMark rm;
+      log_debug(precompile)("Emitting uncommon trap (clinit barrier) in AOT code for %s", ik->name()->as_klass_external_name());
+    }
     uncommon_trap(Deoptimization::Reason_uninitialized,
                   Deoptimization::Action_reinterpret,
                   nullptr);

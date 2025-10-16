@@ -25,6 +25,7 @@
 #include "cds/aotCacheAccess.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/lambdaFormInvokers.inline.hpp"
 #include "ci/ciConstant.hpp"
 #include "ci/ciEnv.hpp"
 #include "ci/ciField.hpp"
@@ -1873,6 +1874,13 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
           }
         }
       }
+
+      // LF invokers are initialized in production run. In assembly, they are not.
+      // See: HeapShared::initialize_java_lang_invoke
+      if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
+        return InstanceKlass::ClassState::fully_initialized;
+      }
+
       // Class may be not present during TD creation for this method.
       // It could happen when profiled data for inlined method
       // was updated after this method was compiled during training.

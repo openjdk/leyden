@@ -86,11 +86,9 @@ protected:
   ciInstanceKlass(Klass* k);
   ciInstanceKlass(ciSymbol* name, jobject loader);
 
-public:
   InstanceKlass* get_instanceKlass() const {
     return InstanceKlass::cast(get_Klass());
   }
-protected:
 
   oop loader();
   jobject loader_handle();
