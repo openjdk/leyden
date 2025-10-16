@@ -1876,7 +1876,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       }
 
       // Core java/lang/invoke classes are peculiar. They include LF invokers, which
-      // are initialized in production run, but can be non-initialized in assembly.
+      // are initialized in production run, but they are not recorded as init dependencies.
       // CI query should report their status as if in production run, otherwise AOT
       // code would have uncommon traps at invokedynamic calls.
       if (HeapShared::is_core_java_lang_invoke_klass(ik)) {
