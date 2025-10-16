@@ -57,6 +57,7 @@
 #include "interpreter/linkResolver.hpp"
 #include "jfr/jfrEvents.hpp"
 #include "jvm.h"
+#include "cds/heapShared.hpp"
 #include "logging/log.hpp"
 #include "memory/allocation.inline.hpp"
 #include "memory/oopFactory.hpp"
@@ -1859,7 +1860,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
 
   switch (task()->compile_reason()) {
     case CompileTask::Reason_Precompile: {
-      // check init dependencies
+      // Check init dependencies
       MethodTrainingData* mtd = nullptr;
       GUARDED_VM_ENTRY(mtd = MethodTrainingData::find(methodHandle(Thread::current(), task()->method())); )
       if (mtd != nullptr) {
@@ -1869,15 +1870,17 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
             KlassTrainingData* ktd = ctd->init_dep(i);
             if (ktd->has_holder() && (ktd->holder() == ik)) {
               log_trace(precompile)("%d: init_dependency: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-              return InstanceKlass::ClassState::fully_initialized;; // init dependency present
+              return InstanceKlass::ClassState::fully_initialized; // init dependency present
             }
           }
         }
       }
 
-      // LF invokers are initialized in production run. In assembly, they are not.
-      // See: HeapShared::initialize_java_lang_invoke
-      if (LambdaFormInvokers::may_be_regenerated_class(ik->name())) {
+      // Core java/lang/invoke classes are peculiar. They include LF invokers, which
+      // are initialized in production run, but can be non-initialized in assembly.
+      // CI query should report their status as if in production run, otherwise AOT
+      // code would have uncommon traps at invokedynamic calls.
+      if (HeapShared::is_core_java_lang_invoke_klass(ik)) {
         return InstanceKlass::ClassState::fully_initialized;
       }
 

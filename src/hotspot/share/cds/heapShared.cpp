@@ -1371,16 +1371,36 @@ void HeapShared::resolve_classes_for_subgraph_of(JavaThread* current, Klass* k) 
   }
 }
 
+static const char* java_lang_invoke_core_klasses[] = {
+  "java/lang/invoke/Invokers$Holder",
+  "java/lang/invoke/MethodHandle",
+  "java/lang/invoke/MethodHandleNatives",
+  "java/lang/invoke/DirectMethodHandle$Holder",
+  "java/lang/invoke/DelegatingMethodHandle$Holder",
+  "java/lang/invoke/LambdaForm$Holder",
+  "java/lang/invoke/BoundMethodHandle$Species_L",
+};
+
 void HeapShared::initialize_java_lang_invoke(TRAPS) {
   if (CDSConfig::is_using_aot_linked_classes() || CDSConfig::is_dumping_method_handles()) {
-    resolve_or_init("java/lang/invoke/Invokers$Holder", true, CHECK);
-    resolve_or_init("java/lang/invoke/MethodHandle", true, CHECK);
-    resolve_or_init("java/lang/invoke/MethodHandleNatives", true, CHECK);
-    resolve_or_init("java/lang/invoke/DirectMethodHandle$Holder", true, CHECK);
-    resolve_or_init("java/lang/invoke/DelegatingMethodHandle$Holder", true, CHECK);
-    resolve_or_init("java/lang/invoke/LambdaForm$Holder", true, CHECK);
-    resolve_or_init("java/lang/invoke/BoundMethodHandle$Species_L", true, CHECK);
+    int len = sizeof(java_lang_invoke_core_klasses)/sizeof(char*);
+    for (int i = 0; i < len; i++) {
+      resolve_or_init(java_lang_invoke_core_klasses[i], true, CHECK);
+    }
   }
+}
+
+bool HeapShared::is_core_java_lang_invoke_klass(InstanceKlass* klass) {
+  // TODO: Crude, rewrite using Symbols or vmClasses instead
+  ResourceMark rm;
+  char* s2 = klass->name()->as_C_string();
+  int len = sizeof(java_lang_invoke_core_klasses)/sizeof(char*);
+  for (int i = 0; i < len; i++) {
+    if (strcmp(java_lang_invoke_core_klasses[i], s2) == 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Initialize the InstanceKlasses of objects that are reachable from the following roots:

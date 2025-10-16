@@ -66,8 +66,6 @@
 #include "runtime/continuation.hpp"
 #include "runtime/continuationEntry.inline.hpp"
 #include "runtime/deoptimization.hpp"
-
-#include "compiler/disassembler.hpp"
 #include "runtime/escapeBarrier.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/frame.inline.hpp"
@@ -2034,7 +2032,6 @@ static void log_deopt(nmethod* nm, Method* tm, intptr_t pc, frame& fr, int trap_
     ls.print("%s ", reason_action);
     ls.print_cr("pc=" INTPTR_FORMAT " relative_pc=" INTPTR_FORMAT,
              pc, fr.pc() - nm->code_begin());
-    // Disassembler::decode(nm, &ls);
   }
 }
 
