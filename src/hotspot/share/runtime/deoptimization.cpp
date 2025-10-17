@@ -2018,8 +2018,11 @@ static void log_deopt(nmethod* nm, Method* tm, intptr_t pc, frame& fr, int trap_
   if (lt.is_enabled()) {
     LogStream ls(lt);
     bool is_osr = nm->is_osr_method();
-    ls.print("cid=%4d %s%s level=%d",
-             nm->compile_id(), (is_osr ? "osr" : "   "), (nm->preloaded() ? "preload" : ""), nm->comp_level());
+    ls.print("cid=%4d %s%s%s level=%d",
+             nm->compile_id(), (is_osr ? "osr" : "   "),
+             (nm->is_aot() ? "aot " : ""),
+             (nm->preloaded() ? "preload " : ""),
+             nm->comp_level());
     ls.print(" %s", tm->name_and_sig_as_C_string());
     ls.print(" trap_bci=%d ", trap_bci);
     if (is_osr) {

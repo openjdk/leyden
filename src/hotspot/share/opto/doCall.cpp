@@ -33,6 +33,7 @@
 #include "logging/logLevel.hpp"
 #include "logging/logMessage.hpp"
 #include "logging/logStream.hpp"
+#include "oops/trainingData.hpp"
 #include "opto/addnode.hpp"
 #include "opto/callGenerator.hpp"
 #include "opto/castnode.hpp"
@@ -486,6 +487,10 @@ bool Parse::can_not_compile_call_site(ciMethod *dest_method, ciInstanceKlass* kl
   if (!holder_klass->is_being_initialized() &&
       !holder_klass->is_initialized() &&
       !holder_klass->is_interface()) {
+    if (C->env()->task()->is_precompile()) {
+      ResourceMark rm;
+      log_debug(precompile)("Emitting uncommon trap (cannot compile call site) in AOT code for %s", holder_klass->name()->as_klass_external_name());
+    }
     uncommon_trap(Deoptimization::Reason_uninitialized,
                   Deoptimization::Action_reinterpret,
                   holder_klass);
