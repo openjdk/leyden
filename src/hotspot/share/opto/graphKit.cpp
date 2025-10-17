@@ -31,6 +31,7 @@
 #include "gc/shared/c2/barrierSetC2.hpp"
 #include "interpreter/interpreter.hpp"
 #include "memory/resourceArea.hpp"
+#include "oops/trainingData.hpp"
 #include "opto/addnode.hpp"
 #include "opto/castnode.hpp"
 #include "opto/convertnode.hpp"
@@ -3126,6 +3127,10 @@ void GraphKit::clinit_barrier(ciInstanceKlass* ik, ciMethod* context) {
   } else if (ik->is_initialized()) {
     return; // no barrier needed
   } else {
+    if (C->env()->task()->is_precompile()) {
+      ResourceMark rm;
+      log_debug(precompile)("Emitting uncommon trap (clinit barrier) in AOT code for %s", ik->name()->as_klass_external_name());
+    }
     uncommon_trap(Deoptimization::Reason_uninitialized,
                   Deoptimization::Action_reinterpret,
                   nullptr);
