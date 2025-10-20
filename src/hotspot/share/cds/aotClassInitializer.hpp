@@ -31,13 +31,12 @@
 class InstanceKlass;
 
 class AOTClassInitializer : AllStatic {
-  class AllowedSpec;
-  static bool is_allowed(AllowedSpec* specs, InstanceKlass* ik);
-
   static bool has_default_static_fields(InstanceKlass* ik);
   static bool check_can_be_preinited(InstanceKlass* ik);
   static bool can_be_preinited(InstanceKlass* ik);
   static bool can_be_preinited_locked(InstanceKlass* ik);
+
+  static void check_aot_annotations(InstanceKlass* ik);
 
 public:
   // Called by metaspaceShared.cpp to speculatively initialize a class (if the results

@@ -33,8 +33,6 @@ typedef void (*initializer)(void);
 
 // Per-compiler statistics
 class CompilerStatistics {
-  friend class VMStructs;
-
  public:
   class Data {
     friend class VMStructs;

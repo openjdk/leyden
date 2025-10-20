@@ -3062,7 +3062,6 @@ void AOTCodeAddressTable::init_extrs() {
 #endif
 #endif // INCLUDE_ZGC
 
-  SET_ADDRESS(_extrs, SharedRuntime::log_jni_monitor_still_held);
   SET_ADDRESS(_extrs, SharedRuntime::rc_trace_method_entry);
   SET_ADDRESS(_extrs, SharedRuntime::reguard_yellow_pages);
   SET_ADDRESS(_extrs, SharedRuntime::dtrace_method_exit);
