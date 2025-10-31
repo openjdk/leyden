@@ -2572,7 +2572,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
       comp->compile_method(&ci_env, target, osr_bci, true, directive);
 
       /* Repeat compilation without installing code for profiling purposes */
-      int repeat_compilation_count = directive->RepeatCompilationOption;
+      int repeat_compilation_count = task->is_aot_load() ? 0 : directive->RepeatCompilationOption;
       while (repeat_compilation_count > 0) {
         ResourceMark rm(thread);
         task->print_ul("NO CODE INSTALLED");
