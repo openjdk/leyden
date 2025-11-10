@@ -71,7 +71,7 @@
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stackWatermarkSet.hpp"
 #include "runtime/stubRoutines.hpp"
-#include "runtime/synchronizer.inline.hpp"
+#include "runtime/synchronizer.hpp"
 #include "services/management.hpp"
 #include "utilities/align.hpp"
 #include "utilities/checkedCast.hpp"
@@ -338,7 +338,7 @@ JRT_ENTRY_PROF(void, InterpreterRuntime, new, InterpreterRuntime::_new(JavaThrea
   klass->check_valid_for_instantiation(true, CHECK);
 
   // Make sure klass is initialized
-  klass->initialize(CHECK);
+  klass->initialize_preemptable(CHECK_AND_CLEAR_PREEMPTED);
 
   oop obj = klass->allocate_instance(CHECK);
   current->set_vm_result_oop(obj);
@@ -778,33 +778,34 @@ JRT_END
 //
 
 PROF_ENTRY(void, InterpreterRuntime, resolve_getfield, InterpreterRuntime::resolve_getfield(JavaThread* current))
-  resolve_get_put(current, Bytecodes::_getfield);
+  resolve_get_put(Bytecodes::_getfield, current);
 PROF_END
 
 PROF_ENTRY(void, InterpreterRuntime, resolve_putfield, InterpreterRuntime::resolve_putfield(JavaThread* current))
-  resolve_get_put(current, Bytecodes::_putfield);
+  resolve_get_put(Bytecodes::_putfield, current);
 PROF_END
 
 PROF_ENTRY(void, InterpreterRuntime, resolve_getstatic, InterpreterRuntime::resolve_getstatic(JavaThread* current))
-  resolve_get_put(current, Bytecodes::_getstatic);
+  resolve_get_put(Bytecodes::_getstatic, current);
 PROF_END
 
 PROF_ENTRY(void, InterpreterRuntime, resolve_putstatic, InterpreterRuntime::resolve_putstatic(JavaThread* current))
-  resolve_get_put(current, Bytecodes::_putstatic);
+  resolve_get_put(Bytecodes::_putstatic, current);
 PROF_END
 
-void InterpreterRuntime::resolve_get_put(JavaThread* current, Bytecodes::Code bytecode) {
+void InterpreterRuntime::resolve_get_put(Bytecodes::Code bytecode, TRAPS) {
+  JavaThread* current = THREAD;
   LastFrameAccessor last_frame(current);
   constantPoolHandle pool(current, last_frame.method()->constants());
   methodHandle m(current, last_frame.method());
 
-  resolve_get_put(bytecode, last_frame.get_index_u2(bytecode), m, pool, true /*initialize_holder*/, current);
+  resolve_get_put(bytecode, last_frame.get_index_u2(bytecode), m, pool, ClassInitMode::init_preemptable, THREAD);
 }
 
 void InterpreterRuntime::resolve_get_put(Bytecodes::Code bytecode, int field_index,
                                          methodHandle& m,
                                          constantPoolHandle& pool,
-                                         bool initialize_holder, TRAPS) {
+                                         ClassInitMode init_mode, TRAPS) {
   fieldDescriptor info;
   bool is_put    = (bytecode == Bytecodes::_putfield  || bytecode == Bytecodes::_nofast_putfield ||
                     bytecode == Bytecodes::_putstatic);
@@ -812,8 +813,7 @@ void InterpreterRuntime::resolve_get_put(Bytecodes::Code bytecode, int field_ind
 
   {
     JvmtiHideSingleStepping jhss(THREAD);
-    LinkResolver::resolve_field_access(info, pool, field_index,
-                                       m, bytecode, initialize_holder, CHECK);
+    LinkResolver::resolve_field_access(info, pool, field_index, m, bytecode, init_mode, CHECK);
   } // end JvmtiHideSingleStepping
 
   // check if link resolution caused cpCache to be updated
@@ -944,22 +944,23 @@ JRT_ENTRY_PROF(void, InterpreterRuntime, breakpoint, InterpreterRuntime::_breakp
 JRT_END
 
 PROF_ENTRY(void, InterpreterRuntime, resolve_invokevirtual, InterpreterRuntime::resolve_invokevirtual(JavaThread* current))
-  resolve_invoke(current, Bytecodes::_invokevirtual);
+  resolve_invoke(Bytecodes::_invokevirtual, current);
 PROF_END
 
 PROF_ENTRY(void, InterpreterRuntime, resolve_invokespecial, InterpreterRuntime::resolve_invokespecial(JavaThread* current))
-  resolve_invoke(current, Bytecodes::_invokespecial);
+  resolve_invoke(Bytecodes::_invokespecial, current);
 PROF_END
 
 PROF_ENTRY(void, InterpreterRuntime, resolve_invokestatic, InterpreterRuntime::resolve_invokestatic(JavaThread* current))
-  resolve_invoke(current, Bytecodes::_invokestatic);
+  resolve_invoke(Bytecodes::_invokestatic, current);
 PROF_END
 
 PROF_ENTRY(void, InterpreterRuntime, resolve_invokeinterface, InterpreterRuntime::resolve_invokeinterface(JavaThread* current))
-  resolve_invoke(current, Bytecodes::_invokeinterface);
+  resolve_invoke(Bytecodes::_invokeinterface, current);
 PROF_END
 
-void InterpreterRuntime::resolve_invoke(JavaThread* current, Bytecodes::Code bytecode) {
+void InterpreterRuntime::resolve_invoke(Bytecodes::Code bytecode, TRAPS) {
+  JavaThread* current = THREAD;
   LastFrameAccessor last_frame(current);
   // extract receiver from the outgoing argument list if necessary
   Handle receiver(current, nullptr);
@@ -987,10 +988,9 @@ void InterpreterRuntime::resolve_invoke(JavaThread* current, Bytecodes::Code byt
   int method_index = last_frame.get_index_u2(bytecode);
   {
     JvmtiHideSingleStepping jhss(current);
-    JavaThread* THREAD = current; // For exception macros.
     LinkResolver::resolve_invoke(info, receiver, pool,
                                  method_index, bytecode,
-                                 THREAD);
+                                 ClassInitMode::init_preemptable, THREAD);
 
     if (HAS_PENDING_EXCEPTION) {
       if (ProfileTraps && PENDING_EXCEPTION->klass()->name() == vmSymbols::java_lang_NullPointerException()) {
@@ -1160,6 +1160,7 @@ JRT_ENTRY(void, InterpreterRuntime::resolve_from_cache(JavaThread* current, Byte
   trace_current_location(current);
 
   switch (bytecode) {
+#if 0 // LEYDEN tracing - disabled after c6a88155b519a5d0b22f6009e75a0e6388601756
   case Bytecodes::_getstatic: resolve_getstatic(current); break;
   case Bytecodes::_putstatic: resolve_putstatic(current); break;
   case Bytecodes::_getfield:  resolve_getfield(current);  break;
@@ -1171,7 +1172,25 @@ JRT_ENTRY(void, InterpreterRuntime::resolve_from_cache(JavaThread* current, Byte
   case Bytecodes::_invokeinterface: resolve_invokeinterface(current); break;
   case Bytecodes::_invokehandle:    resolve_invokehandle(current);    break;
   case Bytecodes::_invokedynamic:   resolve_invokedynamic(current);   break;
-
+#endif
+  case Bytecodes::_getstatic:
+  case Bytecodes::_putstatic:
+  case Bytecodes::_getfield:
+  case Bytecodes::_putfield:
+    resolve_get_put(bytecode, CHECK_AND_CLEAR_PREEMPTED);
+    break;
+  case Bytecodes::_invokevirtual:
+  case Bytecodes::_invokespecial:
+  case Bytecodes::_invokestatic:
+  case Bytecodes::_invokeinterface:
+    resolve_invoke(bytecode, CHECK_AND_CLEAR_PREEMPTED);
+    break;
+  case Bytecodes::_invokehandle:
+    resolve_invokehandle(THREAD);
+    break;
+  case Bytecodes::_invokedynamic:
+    resolve_invokedynamic(THREAD);
+    break;
   default:
     fatal("unexpected bytecode: %s", Bytecodes::name(bytecode));
     break;
@@ -1624,7 +1643,7 @@ JRT_ENTRY_PROF(void, InterpreterRuntime, prepare_native_call, InterpreterRuntime
   // preparing the same method will be sure to see non-null entry & mirror.
 JRT_END
 
-#if defined(IA32) || defined(AMD64) || defined(ARM)
+#if defined(AMD64) || defined(ARM)
 JRT_LEAF(void, InterpreterRuntime::popframe_move_outgoing_args(JavaThread* current, void* src_address, void* dest_address))
   assert(current == JavaThread::current(), "pre-condition");
   if (src_address == dest_address) {
@@ -1689,6 +1708,14 @@ JRT_LEAF(intptr_t, InterpreterRuntime::trace_bytecode(JavaThread* current, intpt
   return preserve_this_value;
 JRT_END
 #endif // !PRODUCT
+
+#ifdef ASSERT
+bool InterpreterRuntime::is_preemptable_call(address entry_point) {
+  return entry_point == CAST_FROM_FN_PTR(address, InterpreterRuntime::monitorenter) ||
+         entry_point == CAST_FROM_FN_PTR(address, InterpreterRuntime::resolve_from_cache) ||
+         entry_point == CAST_FROM_FN_PTR(address, InterpreterRuntime::_new);
+}
+#endif // ASSERT
 
 #define DO_COUNTERS(macro) \
   macro(InterpreterRuntime, ldc) \
@@ -1790,4 +1817,3 @@ void InterpreterRuntime::print_counters_on(outputStream* st) {
 #undef PRINT_COUNTER
 #undef DO_JVMTI_COUNTERS
 #undef DO_COUNTERS
-

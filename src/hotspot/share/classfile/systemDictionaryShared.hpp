@@ -172,6 +172,8 @@ private:
 
   static void write_dictionary(RunTimeSharedDictionary* dictionary,
                                bool is_builtin);
+  static bool is_jfr_event_class(InstanceKlass *k);
+  static void link_all_exclusion_check_candidates(InstanceKlass* ik);
   static bool should_be_excluded_impl(InstanceKlass* k, DumpTimeClassInfo* info);
 
   // exclusion checks
@@ -203,7 +205,6 @@ public:
   static bool should_hidden_class_be_archived(InstanceKlass* k);
   static void mark_required_hidden_class(InstanceKlass* k);
   static bool has_been_redefined(InstanceKlass* k);
-  static bool is_jfr_event_class(InstanceKlass *k);
   static bool is_early_klass(InstanceKlass* k);   // Was k loaded while JvmtiExport::is_early_phase()==true
   static bool has_archived_enum_objs(InstanceKlass* ik);
   static void set_has_archived_enum_objs(InstanceKlass* ik);

@@ -1005,7 +1005,7 @@ public:
     return true;
   }
 
-  constexpr static bool supports_recursive_lightweight_locking() {
+  constexpr static bool supports_recursive_fast_locking() {
     return true;
   }
 

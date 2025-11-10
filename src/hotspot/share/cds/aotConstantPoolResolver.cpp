@@ -262,8 +262,44 @@ void AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(JavaThread*
       switch (raw_bc) {
       case Bytecodes::_getstatic:
       case Bytecodes::_putstatic:
+        maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
+        if (HAS_PENDING_EXCEPTION) {
+          CLEAR_PENDING_EXCEPTION; // just ignore
+        }
+        break;
       case Bytecodes::_getfield:
+      // no-fast bytecode
+      case Bytecodes::_nofast_getfield:
+      // fast bytecodes
+      case Bytecodes::_fast_agetfield:
+      case Bytecodes::_fast_bgetfield:
+      case Bytecodes::_fast_cgetfield:
+      case Bytecodes::_fast_dgetfield:
+      case Bytecodes::_fast_fgetfield:
+      case Bytecodes::_fast_igetfield:
+      case Bytecodes::_fast_lgetfield:
+      case Bytecodes::_fast_sgetfield:
+        raw_bc = Bytecodes::_getfield;
+        maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
+        if (HAS_PENDING_EXCEPTION) {
+          CLEAR_PENDING_EXCEPTION; // just ignore
+        }
+        break;
+
       case Bytecodes::_putfield:
+      // no-fast bytecode
+      case Bytecodes::_nofast_putfield:
+      // fast bytecodes
+      case Bytecodes::_fast_aputfield:
+      case Bytecodes::_fast_bputfield:
+      case Bytecodes::_fast_zputfield:
+      case Bytecodes::_fast_cputfield:
+      case Bytecodes::_fast_dputfield:
+      case Bytecodes::_fast_fputfield:
+      case Bytecodes::_fast_iputfield:
+      case Bytecodes::_fast_lputfield:
+      case Bytecodes::_fast_sputfield:
+        raw_bc = Bytecodes::_putfield;
         maybe_resolve_fmi_ref(ik, m, raw_bc, bcs.get_index_u2(), preresolve_list, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           CLEAR_PENDING_EXCEPTION; // just ignore
@@ -318,12 +354,13 @@ void AOTConstantPoolResolver::maybe_resolve_fmi_ref(InstanceKlass* ik, Method* m
     if (!VM_Version::supports_fast_class_init_checks()) {
       return; // Do not resolve since interpreter lacks fast clinit barriers support
     }
-    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
+    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, ClassInitMode::dont_init, CHECK);
     is_static = " *** static";
     break;
+
   case Bytecodes::_getfield:
   case Bytecodes::_putfield:
-    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, false /*initialize_holder*/, CHECK);
+    InterpreterRuntime::resolve_get_put(bc, raw_index, mh, cp, ClassInitMode::dont_init, CHECK);
     break;
 
   case Bytecodes::_invokestatic:

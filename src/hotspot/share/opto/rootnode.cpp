@@ -90,5 +90,5 @@ const Type* HaltNode::Value(PhaseGVN* phase) const {
 }
 
 const RegMask &HaltNode::out_RegMask() const {
-  return RegMask::Empty;
+  return RegMask::EMPTY;
 }

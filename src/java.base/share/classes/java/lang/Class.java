@@ -483,7 +483,7 @@ public final class Class<T> implements java.io.Serializable,
                 throw new ClassNotFoundException(className);
             }
         }
-        return forName0(className, true, loader, caller);
+        return forName0(className, true, loader);
     }
 
     /**
@@ -580,13 +580,12 @@ public final class Class<T> implements java.io.Serializable,
             }
         }
 
-        return forName0(name, initialize, loader, null);
+        return forName0(name, initialize, loader);
     }
 
     /** Called after security check for system loader access checks have been made. */
     private static native Class<?> forName0(String name, boolean initialize,
-                                            ClassLoader loader,
-                                            Class<?> caller)
+                                            ClassLoader loader)
         throws ClassNotFoundException;
 
 
