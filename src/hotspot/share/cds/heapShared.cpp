@@ -1182,7 +1182,11 @@ void KlassSubGraphInfo::add_subgraph_entry_field(int static_field_offset, oop v)
       new (mtClass) GrowableArray<int>(10, mtClass);
   }
   _subgraph_entry_fields->append(static_field_offset);
-  _subgraph_entry_fields->append(HeapShared::append_root(v));
+  if (v == nullptr) {
+    _subgraph_entry_fields->append(-1);
+  } else {
+    _subgraph_entry_fields->append(HeapShared::append_root(v));
+  }
 }
 
 // Add the Klass* for an object in the current KlassSubGraphInfo's subgraphs.
@@ -1765,7 +1769,12 @@ void HeapShared::init_archived_fields_for(Klass* k, const ArchivedKlassSubGraphI
       int root_index = entry_field_records->at(i+1);
       // Load the subgraph entry fields from the record and store them back to
       // the corresponding fields within the mirror.
-      oop v = get_root(root_index, /*clear=*/true);
+      oop v;
+      if (root_index < 0) {
+        v = nullptr;
+      } else {
+        v = get_root(root_index, /*clear=*/true);
+      }
       oop m = k->java_mirror();
       if (k->has_aot_initialized_mirror()) {
         assert(v == m->obj_field(field_offset), "must be aot-initialized");
