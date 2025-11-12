@@ -86,8 +86,6 @@ public:
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
   static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 
-  static void test_heap_access_api() NOT_CDS_JAVA_HEAP_RETURN;
-
   static void* allocate_aot_code_region(size_t size) NOT_CDS_RETURN_(nullptr);
 
   static size_t get_aot_code_region_size() NOT_CDS_RETURN_(0);

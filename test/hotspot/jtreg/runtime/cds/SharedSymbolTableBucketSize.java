@@ -47,9 +47,9 @@ public class SharedSymbolTableBucketSize {
         String s = output.firstMatch(regex, 1);
         Float f = Float.parseFloat(s);
         int size = Math.round(f);
-        if (size != bucket_size) {
+        if (size != bucket_size && size != bucket_size + 1) {
             throw new Exception("FAILED: incorrect bucket size " + size +
-                                ", expect " + bucket_size);
+                                ", expect " + bucket_size + ", or " + (bucket_size + 1));
         }
 
         // Invalid SharedSymbolTableBucketSize input

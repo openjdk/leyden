@@ -304,7 +304,7 @@ void AOTMetaspace::initialize_for_static_dump() {
   assert(CDSConfig::is_dumping_static_archive(), "sanity");
 
   if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
-    if (!((UseG1GC || UseParallelGC || UseSerialGC || UseEpsilonGC || UseShenandoahGC) && UseCompressedClassPointers)) {
+    if (!((UseEpsilonGC || UseG1GC || UseParallelGC || UseSerialGC || UseShenandoahGC || UseZGC) && UseCompressedClassPointers)) {
       const char* error;
       if (CDSConfig::is_dumping_preimage_static_archive()) {
         error = "Cannot create the AOT configuration file";
@@ -313,7 +313,8 @@ void AOTMetaspace::initialize_for_static_dump() {
       }
 
       vm_exit_during_initialization(error,
-                                    "UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah");
+          "UseCompressedClassPointers must be enabled, and collector must be "
+          "Epsilon, G1, Parallel, Serial, Shenandoah, or ZGC");
     }
   }
 
@@ -1201,10 +1202,6 @@ void AOTMetaspace::dump_static_archive_impl(StaticArchiveBuilder& builder, TRAPS
 
   if (CDSConfig::is_dumping_final_static_archive()) {
     if (AOTCodeCache::is_caching_enabled()) {
-      if (log_is_enabled(Info, cds, jit)) {
-        AOTCacheAccess::test_heap_access_api();
-      }
-
       // We have just created the final image. Let's run the AOT compiler
       if (AOTPrintTrainingInfo) {
         tty->print_cr("==================== archived_training_data ** after dumping ====================");

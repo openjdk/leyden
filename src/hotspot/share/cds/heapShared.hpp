@@ -578,7 +578,6 @@ private:
 #endif // INCLUDE_CDS_JAVA_HEAP
 
  public:
-  static oop orig_to_scratch_object(oop orig_obj);
   static void finish_materialize_objects() NOT_CDS_JAVA_HEAP_RETURN;
 
   static void write_heap(ArchiveMappedHeapInfo* mapped_heap_info, ArchiveStreamedHeapInfo* streamed_heap_info) NOT_CDS_JAVA_HEAP_RETURN;
