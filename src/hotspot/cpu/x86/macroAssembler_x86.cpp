@@ -958,8 +958,8 @@ void MacroAssembler::call(AddressLiteral entry, Register rscratch) {
   }
 }
 
-void MacroAssembler::ic_call(address entry, jint method_index) {
-  RelocationHolder rh = virtual_call_Relocation::spec(pc(), method_index);
+void MacroAssembler::ic_call(address entry, jint method_index, bool is_mhi) {
+  RelocationHolder rh = virtual_call_Relocation::spec(pc(), method_index, is_mhi);
   // Needs full 64-bit immediate for later patching.
   mov64(rax, (int64_t)Universe::non_oop_word());
   call(AddressLiteral(entry, rh));

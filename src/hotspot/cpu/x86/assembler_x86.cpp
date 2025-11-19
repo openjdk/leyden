@@ -119,6 +119,22 @@ AddressLiteral::AddressLiteral(address target, relocInfo::relocType rtype) {
   }
 }
 
+AddressLiteral::AddressLiteral(address target, relocInfo::relocType rtype, int method_index, bool is_mhi) {
+  _is_lval = false;
+  _target = target;
+  switch (rtype) {
+  case relocInfo::opt_virtual_call_type:
+    _rspec = opt_virtual_call_Relocation::spec(method_index, is_mhi);
+    break;
+  case relocInfo::static_call_type:
+    _rspec = static_call_Relocation::spec(method_index, is_mhi);
+    break;
+  default:
+    ShouldNotReachHere();
+    break;
+  }
+}
+
 // Implementation of Address
 
 Address Address::make_array(ArrayAddress adr) {

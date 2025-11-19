@@ -942,6 +942,7 @@ public:
 // It is PC-relative on most machines.
 class CallRelocation : public Relocation {
  public:
+  static const int MHI_BIT = ~max_jint;
   CallRelocation(relocInfo::relocType type) : Relocation(type) { }
 
   bool is_call() override { return true; }
@@ -1079,8 +1080,8 @@ class virtual_call_Relocation : public CallRelocation {
   // "cached_value" points to the first associated set-oop.
   // The oop_limit helps find the last associated set-oop.
   // (See comments at the top of this file.)
-  static RelocationHolder spec(address cached_value, jint method_index = 0) {
-    return RelocationHolder::construct<virtual_call_Relocation>(cached_value, method_index);
+  static RelocationHolder spec(address cached_value, jint method_index = 0, bool is_mhi = false) {
+    return RelocationHolder::construct<virtual_call_Relocation>(cached_value, method_index, is_mhi);
   }
 
   void copy_into(RelocationHolder& holder) const override;
@@ -1089,10 +1090,10 @@ class virtual_call_Relocation : public CallRelocation {
   address _cached_value; // location of set-value instruction
   jint    _method_index; // resolved method for a Java call
 
-  virtual_call_Relocation(address cached_value, int method_index)
+  virtual_call_Relocation(address cached_value, int method_index, bool is_mhi)
     : CallRelocation(relocInfo::virtual_call_type),
-      _cached_value(cached_value),
-      _method_index(method_index) {
+      _cached_value(cached_value) {
+    _method_index = is_mhi ? method_index | MHI_BIT : method_index;
     assert(cached_value != nullptr, "first oop address must be specified");
   }
 
@@ -1102,7 +1103,8 @@ class virtual_call_Relocation : public CallRelocation {
  public:
   address cached_value();
 
-  int     method_index() { return _method_index; }
+  int     method_index() { return _method_index & ~MHI_BIT; }
+  bool    is_mhi() { return (_method_index & MHI_BIT) != 0; }
   Method* method_value();
 
   // data is packed as scaled offsets in "2_ints" format:  [f l] or [Ff Ll]
@@ -1117,8 +1119,8 @@ class virtual_call_Relocation : public CallRelocation {
 
 class opt_virtual_call_Relocation : public CallRelocation {
  public:
-  static RelocationHolder spec(int method_index = 0) {
-    return RelocationHolder::construct<opt_virtual_call_Relocation>(method_index);
+  static RelocationHolder spec(int method_index = 0, bool is_mhi = false) {
+    return RelocationHolder::construct<opt_virtual_call_Relocation>(method_index, is_mhi);
   }
 
   void copy_into(RelocationHolder& holder) const override;
@@ -1126,15 +1128,17 @@ class opt_virtual_call_Relocation : public CallRelocation {
  private:
   jint _method_index; // resolved method for a Java call
 
-  opt_virtual_call_Relocation(int method_index)
-    : CallRelocation(relocInfo::opt_virtual_call_type),
-      _method_index(method_index) { }
+  opt_virtual_call_Relocation(int method_index, bool is_mhi)
+    : CallRelocation(relocInfo::opt_virtual_call_type) {
+    _method_index = is_mhi ? method_index | MHI_BIT : method_index;
+  }
 
   friend class RelocationHolder;
   opt_virtual_call_Relocation() : CallRelocation(relocInfo::opt_virtual_call_type) {}
 
  public:
-  int     method_index() { return _method_index; }
+  int     method_index() { return _method_index & ~MHI_BIT; }
+  bool    is_mhi() { return (_method_index & MHI_BIT) != 0; }
   Method* method_value();
 
   void pack_data_to(CodeSection* dest) override;
@@ -1149,8 +1153,8 @@ class opt_virtual_call_Relocation : public CallRelocation {
 
 class static_call_Relocation : public CallRelocation {
  public:
-  static RelocationHolder spec(int method_index = 0) {
-    return RelocationHolder::construct<static_call_Relocation>(method_index);
+  static RelocationHolder spec(int method_index = 0, bool is_mhi = false) {
+    return RelocationHolder::construct<static_call_Relocation>(method_index, is_mhi);
   }
 
   void copy_into(RelocationHolder& holder) const override;
@@ -1158,15 +1162,17 @@ class static_call_Relocation : public CallRelocation {
  private:
   jint _method_index; // resolved method for a Java call
 
-  static_call_Relocation(int method_index)
-    : CallRelocation(relocInfo::static_call_type),
-    _method_index(method_index) { }
+  static_call_Relocation(int method_index, bool is_mhi)
+    : CallRelocation(relocInfo::static_call_type) {
+    _method_index = is_mhi ? method_index | MHI_BIT : method_index;
+  }
 
   friend class RelocationHolder;
   static_call_Relocation() : CallRelocation(relocInfo::static_call_type) {}
 
  public:
-  int     method_index() { return _method_index; }
+  int     method_index() { return _method_index & ~MHI_BIT; }
+  bool    is_mhi() { return (_method_index & MHI_BIT) != 0; }
   Method* method_value();
 
   void pack_data_to(CodeSection* dest) override;

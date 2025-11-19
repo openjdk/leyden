@@ -404,9 +404,12 @@ class SharedRuntime: AllStatic {
 
  private:
   static Handle find_callee_info(Bytecodes::Code& bc, CallInfo& callinfo, TRAPS);
-  static Handle find_callee_info_helper(vframeStream& vfst, Bytecodes::Code& bc, CallInfo& callinfo, TRAPS);
+  static Handle find_callee_info_helper(vframeStream& vfst, Bytecodes::Code& bc, CallInfo& callinfo, Method* attached_method, TRAPS);
 
   static Method* extract_attached_method(vframeStream& vfst);
+  static Method* extract_attached_method_if_mhi(vframeStream& vfst);
+  static Method* extract_attached_method_if_mhi(nmethod* caller, address pc);
+  static Method* extract_attached_method(nmethod* caller, address pc, bool& is_mhi);
 
 #if defined(X86) && defined(COMPILER1)
   // For Object.hashCode, System.identityHashCode try to pull hashCode from object header if available.
@@ -576,6 +579,10 @@ class SharedRuntime: AllStatic {
   static PerfTickCounters* _perf_resolve_static_total_time;
   static PerfTickCounters* _perf_handle_wrong_method_total_time;
   static PerfTickCounters* _perf_ic_miss_total_time;
+
+  static uint _perf_resolve_static_cache_hit_ctr;
+  static uint _perf_resolve_opt_virtual_cache_hit_ctr;
+
  public:
   static uint _ic_miss_ctr;                      // total # of IC misses
   static uint _wrong_method_ctr;
