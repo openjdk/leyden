@@ -992,7 +992,6 @@ void PhaseOutput::Process_OopMap_Node(MachNode *mach, int current_offset) {
   MachCallNode      *mcall;
 
   int safepoint_pc_offset = current_offset;
-  bool is_method_handle_invoke = false;
   bool return_oop = false;
   bool has_ea_local_in_scope = sfn->_has_ea_local_in_scope;
   bool arg_escape = false;
@@ -1004,12 +1003,7 @@ void PhaseOutput::Process_OopMap_Node(MachNode *mach, int current_offset) {
   } else {
     mcall = mach->as_MachCall();
 
-    // Is the call a MethodHandle call?
     if (mcall->is_MachCallJava()) {
-      if (mcall->as_MachCallJava()->_method_handle_invoke) {
-        assert(C->has_method_handle_invokes(), "must have been set during call generation");
-        is_method_handle_invoke = true;
-      }
       arg_escape = mcall->as_MachCallJava()->_arg_escape;
     }
 
@@ -1192,7 +1186,6 @@ void PhaseOutput::Process_OopMap_Node(MachNode *mach, int current_offset) {
       jvms->bci(),
       jvms->should_reexecute(),
       rethrow_exception,
-      is_method_handle_invoke,
       return_oop,
       has_ea_local_in_scope,
       arg_escape,
@@ -1369,9 +1362,6 @@ CodeBuffer* PhaseOutput::init_buffer() {
           stub_req +
           exception_handler_req +
           deopt_handler_req;               // deopt handler
-
-  if (C->has_method_handle_invokes())
-    total_req += deopt_handler_req;  // deopt MH handler
 
   CodeBuffer* cb = code_buffer();
   cb->set_const_section_alignment(constant_table().alignment());
@@ -1806,13 +1796,6 @@ void PhaseOutput::fill_buffer(C2_MacroAssembler* masm, uint* blk_starts) {
     }
     // Emit the deopt handler code.
     _code_offsets.set_value(CodeOffsets::Deopt, HandlerImpl::emit_deopt_handler(masm));
-
-    // Emit the MethodHandle deopt handler code (if required).
-    if (C->has_method_handle_invokes() && !C->failing()) {
-      // We can use the same code as for the normal deopt handler, we
-      // just need a different entry point address.
-      _code_offsets.set_value(CodeOffsets::DeoptMH, HandlerImpl::emit_deopt_handler(masm));
-    }
   }
 
   // One last check for failed CodeBuffer::expand:
@@ -1831,11 +1814,7 @@ void PhaseOutput::fill_buffer(C2_MacroAssembler* masm, uint* blk_starts) {
 #if defined(SUPPORT_OPTO_ASSEMBLY)
   // Dump the assembly code, including basic-block numbers
   if (C->print_assembly()) {
-    ttyLocker ttyl;  // keep the following output all in one block
-    if (!VMThread::should_terminate()) {  // test this under the tty lock
-      // print_metadata and dump_asm may safepoint which makes us loose the ttylock.
-      // We call them first and write to a stringStream, then we retake the lock to
-      // make sure the end tag is coherent, and that xmlStream->pop_tag is done thread safe.
+    if (!VMThread::should_terminate()) {
       ResourceMark rm;
       stringStream method_metadata_str;
       if (C->method() != nullptr) {
@@ -1844,8 +1823,9 @@ void PhaseOutput::fill_buffer(C2_MacroAssembler* masm, uint* blk_starts) {
       stringStream dump_asm_str;
       dump_asm_on(&dump_asm_str, node_offsets, node_offset_limit);
 
+      // Make sure the end tag is coherent, and that xmlStream->pop_tag is done thread safe.
       NoSafepointVerifier nsv;
-      ttyLocker ttyl2;
+      ttyLocker ttyl;
       // This output goes directly to the tty, not the compiler log.
       // To enable tools to match it up with the compilation activity,
       // be sure to tag this tty output with the compile ID.

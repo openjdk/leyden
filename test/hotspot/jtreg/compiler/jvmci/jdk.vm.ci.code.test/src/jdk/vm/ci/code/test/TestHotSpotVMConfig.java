@@ -55,9 +55,6 @@ public class TestHotSpotVMConfig extends HotSpotVMConfigAccess {
     public final int maxOopMapStackOffset = getFieldValue("CompilerToVM::Data::_max_oop_map_stack_offset", Integer.class, "int");
     public final int heapWordSize = getConstant("HeapWordSize", Integer.class);
 
-    // Check field with intx declaration is the same as int64_t.
-    public final int heldMonitorCountOffset = getFieldOffset("JavaThread::_held_monitor_count", Integer.class, "int64_t");
-
     public final int NMETHOD_INVALIDATION_REASON_JVMCI_INVALIDATE = getConstant("nmethod::InvalidationReason::JVMCI_INVALIDATE", Integer.class);
 
     public final boolean ropProtection;

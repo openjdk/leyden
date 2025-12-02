@@ -45,7 +45,6 @@ import jdk.test.lib.StringArrayUtils;
 public class LeydenGCFlags {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
     static final String mainClass = "HelloApp";
-    static final String ERROR_GC_SUPPORTED = "Cannot create the AOT configuration file: UseCompressedClassPointers must be enabled, and collector must be G1, Parallel, Serial, Epsilon, or Shenandoah";
     static final String ERROR_GC_MISMATCH = "CDS archive has aot-linked classes. It cannot be used because GC used during dump time (.*) is not the same as runtime (.*)";
     static final String ERROR_COOP_MISMATCH = "Disable Startup Code Cache: 'HelloApp.cds.code' was created with CompressedOops::shift.. = .* vs current .*";
 
@@ -56,11 +55,6 @@ public class LeydenGCFlags {
     static String productFailPattern;
 
     public static void main(String[] args) throws Exception {
-        if (GC.Z.isSupported()) {
-            // ZGC not supported for now
-            fail_dump("-XX:+UseZGC",  "-Xmx8g",  ERROR_GC_SUPPORTED);
-        }
-
         // Serial, Parallel and Shenandoah collectors are allowed to be used,
         // as long as the same one is used between training and production
         if (GC.Serial.isSupported()) {

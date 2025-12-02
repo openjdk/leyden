@@ -42,18 +42,19 @@ template <typename T> class Array;
 //   - The list of all classes that are stored in the AOTConfiguration file.
 //   - The list of all classes that require AOT resolution of invokedynamic call sites.
 class FinalImageRecipes {
-  static constexpr int HAS_CLASS            = 0x1;
-  static constexpr int HAS_FIELD_AND_METHOD = 0x2;
-  static constexpr int HAS_INDY             = 0x4;
+  static constexpr int CP_RESOLVE_CLASS            = 0x1 << 0; // CP has preresolved class entries
+  static constexpr int CP_RESOLVE_FIELD_AND_METHOD = 0x1 << 1; // CP has preresolved field/method entries
+  static constexpr int CP_RESOLVE_INDY             = 0x1 << 2; // CP has preresolved indy entries
+  static constexpr int WAS_INITED                  = 0x1 << 3; // Class was initialized during training run
 
   // A list of all the archived classes from the preimage. We want to transfer all of these
   // into the final image.
   Array<Klass*>* _all_klasses;
 
-  // For each klass k _all_klasses->at(i), _cp_recipes->at(i) lists all the {klass,field,method,indy}
-  // cp indices that were resolved for k during the training run.
+  // For each klass k _all_klasses->at(i): _cp_recipes->at(i) lists all the {klass,field,method,indy}
+  // cp indices that were resolved for k during the training run; _flags->at(i) has extra info about k.
   Array<Array<int>*>* _cp_recipes;
-  Array<int>* _cp_flags;
+  Array<int>* _flags;
 
   // The RefectionData for  _reflect_klasses[i] should be initialized with _reflect_flags[i]
   Array<InstanceKlass*>* _reflect_klasses;
@@ -80,7 +81,7 @@ class FinalImageRecipes {
 
   static GrowableArray<TmpDynamicProxyClassInfo>* _tmp_dynamic_proxy_classes;
 
-  FinalImageRecipes() : _all_klasses(nullptr), _cp_recipes(nullptr), _cp_flags(nullptr),
+  FinalImageRecipes() : _all_klasses(nullptr), _cp_recipes(nullptr), _flags(nullptr),
                         _reflect_klasses(nullptr), _reflect_flags(nullptr),
                         _dynamic_proxy_classes(nullptr) {}
 

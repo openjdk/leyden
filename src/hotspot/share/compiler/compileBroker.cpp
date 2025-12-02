@@ -1207,7 +1207,7 @@ void CompileBroker::possibly_add_compiler_threads(JavaThread* THREAD) {
   if (new_c2_count <= old_c2_count && new_c1_count <= old_c1_count) return;
 
   // Now, we do the more expensive operations.
-  size_t free_memory = 0;
+  physical_memory_size_type free_memory = 0;
   // Return value ignored - defaulting to 0 on failure.
   (void)os::free_memory(free_memory);
   // If SegmentedCodeCache is off, both values refer to the single heap (with type CodeBlobType::All).
@@ -2572,7 +2572,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
       comp->compile_method(&ci_env, target, osr_bci, true, directive);
 
       /* Repeat compilation without installing code for profiling purposes */
-      int repeat_compilation_count = directive->RepeatCompilationOption;
+      int repeat_compilation_count = task->is_aot_load() ? 0 : directive->RepeatCompilationOption;
       while (repeat_compilation_count > 0) {
         ResourceMark rm(thread);
         task->print_ul("NO CODE INSTALLED");

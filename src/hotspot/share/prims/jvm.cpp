@@ -838,16 +838,14 @@ JVM_ENTRY_PROF(jclass, JVM_FindClassFromBootLoader, JVM_FindClassFromBootLoader(
   return (jclass) JNIHandles::make_local(THREAD, k->java_mirror());
 JVM_END
 
-// Find a class with this name in this loader, using the caller's protection domain.
-JVM_ENTRY_PROF(jclass, JVM_FindClassFromCaller, JVM_FindClassFromCaller(JNIEnv* env, const char* name,
-                                                                   jboolean init, jobject loader,
-                                                                   jclass caller))
+// Find a class with this name in this loader.
+JVM_ENTRY_PROF(jclass, JVM_FindClassFromLoader, JVM_FindClassFromLoader(JNIEnv* env, const char* name,
+                                                                   jboolean init, jobject loader))
   TempNewSymbol h_name =
        SystemDictionary::class_name_symbol(name, vmSymbols::java_lang_ClassNotFoundException(),
                                            CHECK_NULL);
 
   oop loader_oop = JNIHandles::resolve(loader);
-  oop from_class = JNIHandles::resolve(caller);
   Handle h_loader(THREAD, loader_oop);
 
   jclass result = find_class_from_class_loader(env, h_name, init, h_loader,
@@ -866,13 +864,11 @@ JVM_ENTRY_PROF(jclass, JVM_FindClassFromClass, JVM_FindClassFromClass(JNIEnv *en
        SystemDictionary::class_name_symbol(name, vmSymbols::java_lang_ClassNotFoundException(),
                                            CHECK_NULL);
   oop from_class_oop = JNIHandles::resolve(from);
-  Klass* from_class = (from_class_oop == nullptr)
-                           ? (Klass*)nullptr
-                           : java_lang_Class::as_Klass(from_class_oop);
-  oop class_loader = nullptr;
-  if (from_class != nullptr) {
-    class_loader = from_class->class_loader();
-  }
+  assert(from_class_oop != nullptr, "must be");
+  Klass* from_class = java_lang_Class::as_Klass(from_class_oop);
+  assert(from_class != nullptr, "must be");
+  oop class_loader = from_class->class_loader();
+
   Handle h_loader(THREAD, class_loader);
   jclass result = find_class_from_class_loader(env, h_name, init, h_loader, true, thread);
 
@@ -3895,7 +3891,7 @@ JVM_END
   macro(JVM_GetCallerClass) \
   macro(JVM_FindPrimitiveClass) \
   macro(JVM_FindClassFromBootLoader) \
-  macro(JVM_FindClassFromCaller) \
+  macro(JVM_FindClassFromLoader) \
   macro(JVM_FindClassFromClass) \
   macro(JVM_DefineClass) \
   macro(JVM_LookupDefineClass) \

@@ -948,6 +948,8 @@ public:
 
   static bool is_intel_cascade_lake();
 
+  static bool is_intel_darkmont();
+
   static int avx3_threshold();
 
   static bool is_intel_tsc_synched_at_init();
@@ -1003,7 +1005,7 @@ public:
     return true;
   }
 
-  constexpr static bool supports_recursive_lightweight_locking() {
+  constexpr static bool supports_recursive_fast_locking() {
     return true;
   }
 
@@ -1101,7 +1103,6 @@ public:
 
   static bool supports_tscinv_ext(void);
 
-  static void initialize_tsc();
   static void initialize_cpu_information(void);
 
   static void get_cpu_features_name(void* features_buffer, stringStream& ss);

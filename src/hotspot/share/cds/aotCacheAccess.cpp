@@ -84,59 +84,6 @@ oop AOTCacheAccess::get_archived_object(int permanent_index) {
   return o;
 }
 
-static void test_cds_heap_access_api_for_object(oop obj) {
-  LogStreamHandle(Info, cds, jit) log;
-
-  obj->print_on(&log);
-  log.cr();
-
-  int n = AOTCacheAccess::get_archived_object_permanent_index(obj); // call this when AOTCodeCaching is on
-  if (n < 0) {
-    log.print_cr("*** This object is not in CDS archive");
-  } else {
-    log.print_cr("AOTCacheAccess::get_archived_object_permanent_index(s) = %d", n);
-    oop archived_obj = AOTCacheAccess::get_archived_object(n); // call this when AOTCodeCaching is on
-    if (archived_obj == obj || archived_obj == HeapShared::orig_to_scratch_object(obj)) {
-      log.print_cr("AOTCacheAccess::get_archived_object(%d) returns the same object, as expected", n);
-    } else {
-      log.print_cr("Error!!! AOTCacheAccess::get_archived_object(%d) returns an unexpected object", n);
-      if (archived_obj == nullptr) {
-        log.print_cr("--> null");
-      } else {
-        archived_obj->print_on(&log);
-        log.cr();
-      }
-    }
-  }
-}
-
-// TEMP: examples for using the AOTCacheAccess::get_archived_object_permanent_index() and AOTCacheAccess::get_archived_object()
-// APIs for the AOT compiler.
-
-void AOTCacheAccess::test_heap_access_api() {
-  ResourceMark rm;
-  const char* tests[] = {
-    "",
-    "null",
-    "NARROW",
-    "not in cds",
-    nullptr,
-  };
-
-  LogStreamHandle(Info, cds, jit) log;
-
-  int i;
-  for (i = 0; tests[i] != nullptr; i++) {
-    EXCEPTION_MARK;
-    log.print_cr("Test %d ======================================== \"%s\"", i, tests[i]);
-    oop s = StringTable::intern(tests[i], CHECK);
-    test_cds_heap_access_api_for_object(s);
-  }
-
-  log.print_cr("Test %d ======================================== Universe::null_ptr_exception_instance()", i);
-  test_cds_heap_access_api_for_object(Universe::null_ptr_exception_instance());
-}
-
 #endif // INCLUDE_CDS_JAVA_HEAP
 
 void* AOTCacheAccess::allocate_aot_code_region(size_t size) {

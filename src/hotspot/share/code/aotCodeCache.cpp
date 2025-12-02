@@ -51,6 +51,7 @@
 #include "compiler/compileBroker.hpp"
 #include "compiler/compileTask.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
+#include "gc/shared/barrierSetAssembler.hpp"
 #include "gc/shared/gcConfig.hpp"
 #include "logging/logStream.hpp"
 #include "memory/memoryReserver.hpp"
@@ -3060,9 +3061,12 @@ void AOTCodeAddressTable::init_extrs() {
 #if defined(AMD64)
   SET_ADDRESS(_extrs, &ZPointerLoadShift);
 #endif
+#if defined(AARCH64)
+  BarrierSetAssembler* bs_asm = BarrierSet::barrier_set()->barrier_set_assembler();
+  SET_ADDRESS(_extrs, bs_asm->patching_epoch_addr());
+#endif
 #endif // INCLUDE_ZGC
 
-  SET_ADDRESS(_extrs, SharedRuntime::log_jni_monitor_still_held);
   SET_ADDRESS(_extrs, SharedRuntime::rc_trace_method_entry);
   SET_ADDRESS(_extrs, SharedRuntime::reguard_yellow_pages);
   SET_ADDRESS(_extrs, SharedRuntime::dtrace_method_exit);
