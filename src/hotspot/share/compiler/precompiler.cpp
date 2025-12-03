@@ -115,36 +115,24 @@ public:
     return 0;
   }
 
-  static size_t counts(Method* m) {
-    size_t count = 0;
+  static int compile_id(Method* m) {
     MethodTrainingData* mtd = method_training_data(m);
     if (mtd != nullptr) {
-      MethodData* md = mtd->final_profile();
-      if (md != nullptr) {
-        count += md->backedge_count();
-        count += md->invocation_count();
-      }
-      MethodCounters* mc = mtd->final_counters();
-      if (mc != nullptr) {
-        count += mc->invocation_count();
-        count += mc->backedge_count();
+      int level = mtd->highest_top_level();
+      CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
+      if (ctd != nullptr) {
+        return ctd->compile_id();
       }
     }
-    return count;
+    return INT_MAX;
   }
 
+  // Methods get sorted by ID: we presume hottest methods get compiled first.
   static int compare_methods(Method** m1, Method** m2) {
-    // Hottest methods go first.
-    size_t c1 = counts(*m1);
-    size_t c2 = counts(*m2);
-    if (c1 > c2) return -1;
-    if (c1 < c2) return +1;
-
-    // Otherwise, break the tie by code size: largest methods go first.
-    size_t s1 = (*m1)->code_size();
-    size_t s2 = (*m2)->code_size();
-    if (s1 > s2) return -1;
-    if (s1 < s2) return +1;
+    int c1 = compile_id(*m1);
+    int c2 = compile_id(*m2);
+    if (c1 < c2) return -1;
+    if (c1 > c2) return +1;
     return 0;
   }
 
@@ -188,7 +176,7 @@ public:
           Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
           log.print(" -> %p", requested_m);
         }
-        log.print("] {%zu} [%d] (%s)", counts(m), AOTCodeCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
+        log.print("] {%d} [%d] (%s)", compile_id(m), AOTCodeCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
       }
     }
 

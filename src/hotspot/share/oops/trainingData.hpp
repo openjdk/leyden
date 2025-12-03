@@ -783,7 +783,6 @@ class MethodTrainingData : public TrainingData {
   bool saw_level(CompLevel l) const { return (_level_mask & level_mask(l)) != 0; }
   int highest_level()         const { return highest_level(_level_mask); }
   int highest_top_level()     const { return _highest_top_level; }
-  MethodCounters* final_counters() const { return _final_counters; }
   MethodData* final_profile() const { return _final_profile; }
   int invocation_count() const { return _invocation_count; }
   int backedge_count() const { return _backedge_count; }
