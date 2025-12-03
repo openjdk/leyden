@@ -115,25 +115,32 @@ public:
     return 0;
   }
 
-  static int compile_id(Method* m) {
-    MethodTrainingData* mtd = method_training_data(m);
-    if (mtd != nullptr) {
-      int level = mtd->highest_top_level();
-      CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
-      if (ctd != nullptr) {
-        return ctd->compile_id();
-      }
-    }
-    return INT_MAX;
-  }
-
-  // Methods get sorted by ID: we presume hottest methods get compiled first.
+  // We sort methods by compile ID, presuming the methods that compiled earlier
+  // are more important. This only matters for preload code, which is loaded
+  // asynchronously; other levels are sorted for better consistency between training
+  // runs. Since we can accept methods from multiple levels, we use the compile ID
+  // from the lowest level.
   static int compare_methods(Method** m1, Method** m2) {
     int c1 = compile_id(*m1);
     int c2 = compile_id(*m2);
     if (c1 < c2) return -1;
     if (c1 > c2) return +1;
     return 0;
+  }
+
+  static int compile_id(Method* m) {
+    // Methods without recorded compilations are treated as "compiled last"
+    int id = INT_MAX;
+    MethodTrainingData* mtd = method_training_data(m);
+    if (mtd != nullptr) {
+      for (int level = CompLevel_simple; level <= CompilationPolicy::highest_compile_level(); level++) {
+        CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
+        if (ctd != nullptr) {
+          id = MIN2(id, ctd->compile_id());
+        }
+      }
+    }
+    return id;
   }
 
   void schedule_compilations(TRAPS) {
