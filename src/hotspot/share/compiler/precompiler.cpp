@@ -33,7 +33,6 @@
 #include "compiler/precompiler.hpp"
 #include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
-#include "oops/methodCounters.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
 
@@ -94,8 +93,8 @@ public:
   void operator()(TrainingData* td) {
     if (td->is_MethodTrainingData()) {
       MethodTrainingData* mtd = td->as_MethodTrainingData();
-      if (mtd->has_holder() && include((Method*)mtd->holder())) {
-        _methods.push((Method*)mtd->holder());
+      if (mtd->has_holder() && include(mtd->holder())) {
+        _methods.push(mtd->holder());
       }
     }
   }
