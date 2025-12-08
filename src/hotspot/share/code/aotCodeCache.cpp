@@ -2259,14 +2259,14 @@ bool AOTCodeCache::write_metadata(Metadata* m) {
   uint n = 0;
   if (m == nullptr) {
     DataKind kind = DataKind::Null;
-    n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
+    n = write_bytes(&kind, sizeof(DataKind));
+    if (n != sizeof(DataKind)) {
       return false;
     }
   } else if (m == (Metadata*)Universe::non_oop_word()) {
     DataKind kind = DataKind::No_Data;
-    n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
+    n = write_bytes(&kind, sizeof(DataKind));
+    if (n != sizeof(DataKind)) {
       return false;
     }
   } else if (m->is_klass()) {
@@ -2279,8 +2279,8 @@ bool AOTCodeCache::write_metadata(Metadata* m) {
     }
   } else if (m->is_methodCounters()) {
     DataKind kind = DataKind::MethodCnts;
-    n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
+    n = write_bytes(&kind, sizeof(DataKind));
+    if (n != sizeof(DataKind)) {
       return false;
     }
     if (!write_method(((MethodCounters*)m)->method())) {
@@ -2334,8 +2334,8 @@ bool AOTCodeCache::write_method(Method* method) {
   ResourceMark rm; // To method's name printing
   if (AOTCacheAccess::can_generate_aot_code(method)) {
     DataKind kind = DataKind::Method;
-    uint n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
+    uint n = write_bytes(&kind, sizeof(DataKind));
+    if (n != sizeof(DataKind)) {
       return false;
     }
     uint method_offset = AOTCacheAccess::delta_from_base_address((address)method);
@@ -2413,8 +2413,8 @@ bool AOTCodeCache::write_klass(Klass* klass) {
   uint state = (array_dim << 1) | (init_state & 1);
   if (can_write) {
     DataKind kind = DataKind::Klass;
-    uint n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
+    uint n = write_bytes(&kind, sizeof(DataKind));
+    if (n != sizeof(DataKind)) {
       return false;
     }
     // Record state of instance klass initialization and array dimentions.
@@ -2502,22 +2502,22 @@ bool AOTCodeCache::write_oop(oop obj) {
   uint n = 0;
   if (obj == nullptr) {
     kind = DataKind::Null;
-    n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
+    n = write_bytes(&kind, sizeof(DataKind));
+    if (n != sizeof(DataKind)) {
       return false;
     }
   } else if (cast_from_oop<void *>(obj) == Universe::non_oop_word()) {
     kind = DataKind::No_Data;
-    n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
+    n = write_bytes(&kind, sizeof(DataKind));
+    if (n != sizeof(DataKind)) {
       return false;
     }
   } else if (java_lang_Class::is_instance(obj)) {
     if (java_lang_Class::is_primitive(obj)) {
       int bt = (int)java_lang_Class::primitive_type(obj);
       kind = DataKind::Primitive;
-      n = write_bytes(&kind, sizeof(int));
-      if (n != sizeof(int)) {
+      n = write_bytes(&kind, sizeof(DataKind));
+      if (n != sizeof(DataKind)) {
         return false;
       }
       n = write_bytes(&bt, sizeof(int));
@@ -2538,8 +2538,8 @@ bool AOTCodeCache::write_oop(oop obj) {
     const char* string = java_lang_String::as_utf8_string(obj, length_sz);
     if (k >= 0) {
       kind = DataKind::String;
-      n = write_bytes(&kind, sizeof(int));
-      if (n != sizeof(int)) {
+      n = write_bytes(&kind, sizeof(DataKind));
+      if (n != sizeof(DataKind)) {
         return false;
       }
       n = write_bytes(&k, sizeof(int));
@@ -2570,8 +2570,8 @@ bool AOTCodeCache::write_oop(oop obj) {
                                       compile_id(), comp_level(), p2i(obj), obj->klass()->external_name());
       return false;
     }
-    n = write_bytes(&kind, sizeof(int));
-    if (n != sizeof(int)) {
+    n = write_bytes(&kind, sizeof(DataKind));
+    if (n != sizeof(DataKind)) {
       return false;
     }
   } else { // herere
@@ -2579,8 +2579,8 @@ bool AOTCodeCache::write_oop(oop obj) {
     int k = AOTCacheAccess::get_archived_object_permanent_index(obj);  // k >= 0 means obj is a "permanent heap object"
     if (k >= 0) {
       kind = DataKind::MH_Oop;
-      n = write_bytes(&kind, sizeof(int));
-      if (n != sizeof(int)) {
+      n = write_bytes(&kind, sizeof(DataKind));
+      if (n != sizeof(DataKind)) {
         return false;
       }
       n = write_bytes(&k, sizeof(int));

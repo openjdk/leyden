@@ -290,7 +290,7 @@ public:
   uint _offset;
 };
 
-enum class DataKind: int {
+enum class DataKind: int8_t {
   No_Data   = -1,
   Null      = 0,
   Klass     = 1,
