@@ -927,8 +927,8 @@ public:
 
   bool has_evol_metadata();
 
-  Method* attached_method(address call_pc);
-  Method* attached_method_before_pc(address pc);
+  Method* attached_method(address call_pc, bool& is_mhi);
+  Method* attached_method_before_pc(address pc, bool& is_mhi);
 
   // GC unloading support
   // Cleans unloaded klasses and unloaded nmethods in inline caches

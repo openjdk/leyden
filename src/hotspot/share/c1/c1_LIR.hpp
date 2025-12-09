@@ -1176,15 +1176,17 @@ class LIR_OpJavaCall: public LIR_OpCall {
  private:
   ciMethod* _method;
   LIR_Opr   _receiver;
+  ciMethod* _cha_monomorphic_target;
 
  public:
   LIR_OpJavaCall(LIR_Code code, ciMethod* method,
                  LIR_Opr receiver, LIR_Opr result,
                  address addr, LIR_OprList* arguments,
-                 CodeEmitInfo* info)
+                 CodeEmitInfo* info, ciMethod* cha_monomorphic_target = nullptr)
   : LIR_OpCall(code, addr, result, arguments, info)
   , _method(method)
   , _receiver(receiver)
+  , _cha_monomorphic_target(cha_monomorphic_target)
   { assert(is_in_range(code, begin_opJavaCall, end_opJavaCall), "code check"); }
 
   LIR_OpJavaCall(LIR_Code code, ciMethod* method,
@@ -1197,6 +1199,7 @@ class LIR_OpJavaCall: public LIR_OpCall {
 
   LIR_Opr receiver() const                       { return _receiver; }
   ciMethod* method() const                       { return _method;   }
+  ciMethod* cha_monomorphic_target() const       { return _cha_monomorphic_target; }
 
   // JSR 292 support.
   bool is_invokedynamic() const                  { return code() == lir_dynamic_call; }
@@ -2100,8 +2103,8 @@ class LIR_List: public CompilationResourceObj {
   //---------- instructions -------------
   void call_opt_virtual(ciMethod* method, LIR_Opr receiver, LIR_Opr result,
                         address dest, LIR_OprList* arguments,
-                        CodeEmitInfo* info) {
-    append(new LIR_OpJavaCall(lir_optvirtual_call, method, receiver, result, dest, arguments, info));
+                        CodeEmitInfo* info, ciMethod* cha_monomorphic_target) {
+    append(new LIR_OpJavaCall(lir_optvirtual_call, method, receiver, result, dest, arguments, info, cha_monomorphic_target));
   }
   void call_static(ciMethod* method, LIR_Opr result,
                    address dest, LIR_OprList* arguments, CodeEmitInfo* info) {

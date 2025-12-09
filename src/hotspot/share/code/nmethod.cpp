@@ -706,10 +706,11 @@ void nmethod::preserve_callee_argument_oops(frame fr, const RegisterMap *reg_map
     address pc = fr.pc();
     bool has_receiver, has_appendix;
     Symbol* signature;
+    bool is_mhi_ignored;
 
     // The method attached by JIT-compilers should be used, if present.
     // Bytecode can be inaccurate in such case.
-    Method* callee = attached_method_before_pc(pc);
+    Method* callee = attached_method_before_pc(pc, is_mhi_ignored);
     if (callee != nullptr) {
       has_receiver = !(callee->access_flags().is_static());
       has_appendix = false;
@@ -731,26 +732,32 @@ void nmethod::preserve_callee_argument_oops(frame fr, const RegisterMap *reg_map
   }
 }
 
-Method* nmethod::attached_method(address call_instr) {
+Method* nmethod::attached_method(address call_instr, bool& is_mhi) {
   assert(code_contains(call_instr), "not part of the nmethod");
   RelocIterator iter(this, call_instr, call_instr + 1);
   while (iter.next()) {
     if (iter.addr() == call_instr) {
       switch(iter.type()) {
-        case relocInfo::static_call_type:      return iter.static_call_reloc()->method_value();
-        case relocInfo::opt_virtual_call_type: return iter.opt_virtual_call_reloc()->method_value();
-        case relocInfo::virtual_call_type:     return iter.virtual_call_reloc()->method_value();
-        default:                               break;
+      case relocInfo::static_call_type:
+        is_mhi = iter.static_call_reloc()->is_mhi();
+        return iter.static_call_reloc()->method_value();
+      case relocInfo::opt_virtual_call_type:
+        is_mhi = iter.opt_virtual_call_reloc()->is_mhi();
+        return iter.opt_virtual_call_reloc()->method_value();
+      case relocInfo::virtual_call_type:
+        is_mhi = iter.virtual_call_reloc()->is_mhi();
+        return iter.virtual_call_reloc()->method_value();
+      default: break;
       }
     }
   }
   return nullptr; // not found
 }
 
-Method* nmethod::attached_method_before_pc(address pc) {
+Method* nmethod::attached_method_before_pc(address pc, bool& is_mhi) {
   if (NativeCall::is_call_before(pc)) {
     NativeCall* ncall = nativeCall_before(pc);
-    return attached_method(ncall->instruction_address());
+    return attached_method(ncall->instruction_address(), is_mhi);
   }
   return nullptr; // not a call
 }

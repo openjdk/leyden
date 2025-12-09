@@ -645,8 +645,8 @@ address virtual_call_Relocation::cached_value() {
 Method* virtual_call_Relocation::method_value() {
   nmethod* nm = code();
   if (nm == nullptr) return (Method*)nullptr;
-  Metadata* m = nm->metadata_at(_method_index);
-  assert(m != nullptr || _method_index == 0, "should be non-null for non-zero index");
+  Metadata* m = nm->metadata_at(method_index());
+  assert(m != nullptr || method_index() == 0, "should be non-null for non-zero index");
   assert(m == nullptr || m->is_method(), "not a method");
   return (Method*)m;
 }
@@ -671,8 +671,8 @@ void opt_virtual_call_Relocation::unpack_data() {
 Method* opt_virtual_call_Relocation::method_value() {
   nmethod* nm = code();
   if (nm == nullptr) return (Method*)nullptr;
-  Metadata* m = nm->metadata_at(_method_index);
-  assert(m != nullptr || _method_index == 0, "should be non-null for non-zero index");
+  Metadata* m = nm->metadata_at(method_index());
+  assert(m != nullptr || method_index() == 0, "should be non-null for non-zero index");
   assert(m == nullptr || m->is_method(), "not a method");
   return (Method*)m;
 }
@@ -701,8 +701,8 @@ address opt_virtual_call_Relocation::static_stub() {
 Method* static_call_Relocation::method_value() {
   nmethod* nm = code();
   if (nm == nullptr) return (Method*)nullptr;
-  Metadata* m = nm->metadata_at(_method_index);
-  assert(m != nullptr || _method_index == 0, "should be non-null for non-zero index");
+  Metadata* m = nm->metadata_at(method_index());
+  assert(m != nullptr || method_index() == 0, "should be non-null for non-zero index");
   assert(m == nullptr || m->is_method(), "not a method");
   return (Method*)m;
 }

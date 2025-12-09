@@ -958,6 +958,7 @@ protected:
   virtual uint size_of() const; // Size is bigger
 public:
   ciMethod* _method;                 // Method being direct called
+  bool      _is_mhi;                  // Tells if node is a call to method handle intrinsic
   bool      _override_symbolic_info; // Override symbolic call site info from bytecode
   bool      _optimized_virtual;      // Tells if node is a static call or an optimized virtual
   bool      _arg_escape;             // ArgEscape in parameter list
@@ -966,7 +967,7 @@ public:
   }
 
   virtual const RegMask &in_RegMask(uint) const;
-
+  bool is_mhi() const { return _is_mhi; }
   int resolved_method_index(C2_MacroAssembler *masm) const {
     if (_override_symbolic_info) {
       // Attach corresponding Method* to the call site, so VM can use it during resolution
