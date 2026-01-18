@@ -113,6 +113,8 @@ public:
   static void atomic_set_shared_jar_manifest(int index, oop man) {
     atomic_set_array_index(_shared_jar_manifests, index, man);
   }
+  static void define_named_package(Handle class_loader, PackageEntry* pkg_entry, TRAPS);
+  static Handle get_default_protection_domain(Handle class_loader, TRAPS);
 };
 
 #endif // SHARE_CDS_CDSPROTECTIONDOMAIN_HPP

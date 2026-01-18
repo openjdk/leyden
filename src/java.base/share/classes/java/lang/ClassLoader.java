@@ -337,10 +337,16 @@ public abstract class ClassLoader {
     private final ConcurrentHashMap<String, NamedPackage> packages
             = new ConcurrentHashMap<>();
 
-    /*
+    /**
      * Returns a named package for the given module.
+     *
+     * @param pn 
+     *        package name
+     * @param m
+     *        module
+     * @return NamedPackage
      */
-    private NamedPackage getNamedPackage(String pn, Module m) {
+    protected NamedPackage getNamedPackage(String pn, Module m) {
         NamedPackage p = packages.get(pn);
         if (p == null) {
             p = new NamedPackage(pn, m);
@@ -2651,6 +2657,25 @@ public abstract class ClassLoader {
         classLoaderValueMap = null;
         libraries.clear();
     }
+
+    ProtectionDomain getDefaultProtectionDomain() {
+        return defaultDomain;
+    }
+
+    private String aotIdentity = null;
+
+    /**
+     * Set unique and repeatable ID of the classloader
+     *
+     * @param  id 
+     *         unique id of the classloader object.
+     */
+    protected void setAOTIdentity(String id) {
+        aotIdentity = id;
+        registerAsAOTCompatibleLoader();
+    }
+
+    private native void registerAsAOTCompatibleLoader();
 }
 
 /*

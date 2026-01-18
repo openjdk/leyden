@@ -766,6 +766,7 @@ void Klass::metaspace_pointers_do(MetaspaceClosure* it) {
   }
 
   it->push(&_name);
+  it->push(&_cl_aot_identity);
   it->push(&_secondary_supers);
   for (int i = 0; i < _primary_super_limit; i++) {
     it->push(&_primary_supers[i]);

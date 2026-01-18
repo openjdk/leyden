@@ -47,59 +47,66 @@ OopHandle CDSProtectionDomain::_shared_jar_manifests;
 // the given InstanceKlass.
 // Returns the ProtectionDomain for the InstanceKlass.
 Handle CDSProtectionDomain::init_security_info(Handle class_loader, InstanceKlass* ik, PackageEntry* pkg_entry, TRAPS) {
-  int index = ik->shared_classpath_index();
-  assert(index >= 0, "Sanity");
-  const AOTClassLocation* cl = AOTClassLocationConfig::runtime()->class_location_at(index);
-  Symbol* class_name = ik->name();
-
-  if (cl->is_modules_image()) {
-    // For shared app/platform classes originated from the run-time image:
-    //   The ProtectionDomains are cached in the corresponding ModuleEntries
-    //   for fast access by the VM.
-    // all packages from module image are already created during VM bootstrap in
-    // Modules::define_module().
-    assert(pkg_entry != nullptr, "archived class in module image cannot be from unnamed package");
-    ModuleEntry* mod_entry = pkg_entry->module();
-    return get_shared_protection_domain(class_loader, mod_entry, THREAD);
+  if (ik->defined_by_other_loaders()) {
+    // define NamedPackage in java layer
+    define_named_package(class_loader, pkg_entry, THREAD);
+    // Get ClassLoader::defaultDomain
+    return get_default_protection_domain(class_loader, THREAD);
   } else {
-    // For shared app/platform classes originated from JAR files on the class path:
-    //   Each of the 3 CDSProtectionDomain::_shared_xxx arrays has the same length
-    //   as the shared classpath table in the shared archive.
-    //
-    //   If a shared InstanceKlass k is loaded from the class path, let
-    //
-    //     index = k->shared_classpath_index();
-    //
-    //   AOTClassLocationConfig::_runtime_instance->_array->at(index) identifies the JAR file that contains k.
-    //
-    //   k's protection domain is:
-    //
-    //     ProtectionDomain pd = _shared_protection_domains[index];
-    //
-    //   and k's Package is initialized using
-    //
-    //     manifest = _shared_jar_manifests[index];
-    //     url = _shared_jar_urls[index];
-    //     define_shared_package(class_name, class_loader, manifest, url, CHECK_NH);
-    //
-    //   Note that if an element of these 3 _shared_xxx arrays is null, it will be initialized by
-    //   the corresponding CDSProtectionDomain::get_shared_xxx() function.
-    Handle manifest = get_shared_jar_manifest(index, CHECK_NH);
-    Handle url = get_shared_jar_url(index, CHECK_NH);
-    int index_offset = index - AOTClassLocationConfig::runtime()->app_cp_start_index();
-    if (index_offset < PackageEntry::max_index_for_defined_in_class_path()) {
-      if (pkg_entry == nullptr || !pkg_entry->is_defined_by_cds_in_class_path(index_offset)) {
-        // define_shared_package only needs to be called once for each package in a jar specified
-        // in the shared class path.
-        define_shared_package(class_name, class_loader, manifest, url, CHECK_NH);
-        if (pkg_entry != nullptr) {
-          pkg_entry->set_defined_by_cds_in_class_path(index_offset);
-        }
-      }
+    int index = ik->shared_classpath_index();
+    assert(index >= 0, "Sanity");
+    const AOTClassLocation* cl = AOTClassLocationConfig::runtime()->class_location_at(index);
+    Symbol* class_name = ik->name();
+
+    if (cl->is_modules_image()) {
+      // For shared app/platform classes originated from the run-time image:
+      //   The ProtectionDomains are cached in the corresponding ModuleEntries
+      //   for fast access by the VM.
+      // all packages from module image are already created during VM bootstrap in
+      // Modules::define_module().
+      assert(pkg_entry != nullptr, "archived class in module image cannot be from unnamed package");
+      ModuleEntry* mod_entry = pkg_entry->module();
+      return get_shared_protection_domain(class_loader, mod_entry, THREAD);
     } else {
-      define_shared_package(class_name, class_loader, manifest, url, CHECK_NH);
+      // For shared app/platform classes originated from JAR files on the class path:
+      //   Each of the 3 CDSProtectionDomain::_shared_xxx arrays has the same length
+      //   as the shared classpath table in the shared archive.
+      //
+      //   If a shared InstanceKlass k is loaded from the class path, let
+      //
+      //     index = k->shared_classpath_index();
+      //
+      //   AOTClassLocationConfig::_runtime_instance->_array->at(index) identifies the JAR file that contains k.
+      //
+      //   k's protection domain is:
+      //
+      //     ProtectionDomain pd = _shared_protection_domains[index];
+      //
+      //   and k's Package is initialized using
+      //
+      //     manifest = _shared_jar_manifests[index];
+      //     url = _shared_jar_urls[index];
+      //     define_shared_package(class_name, class_loader, manifest, url, CHECK_NH);
+      //
+      //   Note that if an element of these 3 _shared_xxx arrays is null, it will be initialized by
+      //   the corresponding CDSProtectionDomain::get_shared_xxx() function.
+      Handle manifest = get_shared_jar_manifest(index, CHECK_NH);
+      Handle url = get_shared_jar_url(index, CHECK_NH);
+      int index_offset = index - AOTClassLocationConfig::runtime()->app_cp_start_index();
+      if (index_offset < PackageEntry::max_index_for_defined_in_class_path()) {
+        if (pkg_entry == nullptr || !pkg_entry->is_defined_by_cds_in_class_path(index_offset)) {
+          // define_shared_package only needs to be called once for each package in a jar specified
+          // in the shared class path.
+          define_shared_package(class_name, class_loader, manifest, url, CHECK_NH);
+          if (pkg_entry != nullptr) {
+            pkg_entry->set_defined_by_cds_in_class_path(index_offset);
+          }
+        }
+      } else {
+        define_shared_package(class_name, class_loader, manifest, url, CHECK_NH);
+      }
+      return get_shared_protection_domain(class_loader, index, url, THREAD);
     }
-    return get_shared_protection_domain(class_loader, index, url, THREAD);
   }
 }
 
@@ -119,7 +126,7 @@ PackageEntry* CDSProtectionDomain::get_package_entry_from_class(InstanceKlass* i
   PackageEntry* pkg_entry = ik->package();
   if (CDSConfig::is_using_full_module_graph() && ik->in_aot_cache() && pkg_entry != nullptr) {
     assert(AOTMetaspace::in_aot_cache(pkg_entry), "must be");
-    assert(!ik->defined_by_other_loaders(), "unexpected archived package entry for an unregistered class");
+    assert(!ik->defined_by_other_loaders() || ik->cl_aot_identity() != nullptr, "unexpected archived package entry for an unregistered class");
     return pkg_entry;
   }
   TempNewSymbol pkg_name = ClassLoader::package_from_class_name(ik->name());
@@ -158,6 +165,33 @@ void CDSProtectionDomain::define_shared_package(Symbol*  class_name,
   }
 }
 
+void CDSProtectionDomain::define_named_package(Handle class_loader, PackageEntry* pkg_entry, TRAPS) {
+  Handle pkgname_string;
+  Handle module_h;
+
+  if (pkg_entry != nullptr) {
+    ResourceMark rm(THREAD);
+    Symbol* pkg = pkg_entry->name();
+    const char* pkgname = pkg->as_klass_external_name();
+    pkgname_string = java_lang_String::create_from_str(pkgname, CHECK);
+    module_h = Handle(THREAD, pkg_entry->module()->module_oop());
+  } else {
+    // unnamed package; get unnamed module from class_loader
+    module_h = Handle(THREAD, java_lang_ClassLoader::unnamedModule(class_loader()));
+  }
+  if (pkgname_string.not_null()) {
+    JavaValue result(T_OBJECT);
+    JavaCallArguments args(2);
+    args.set_receiver(class_loader);
+    args.push_oop(pkgname_string);
+    args.push_oop(module_h);
+    JavaCalls::call_virtual(&result, vmClasses::ClassLoader_klass(),
+                            vmSymbols::getNamedPackage_name(),
+                            vmSymbols::getNamedPackage_signature(),
+                            &args,
+                            CHECK);
+  }
+}
 Handle CDSProtectionDomain::create_jar_manifest(const char* manifest_chars, size_t size, TRAPS) {
   typeArrayOop buf = oopFactory::new_byteArray((int)size, CHECK_NH);
   typeArrayHandle bufhandle(THREAD, buf);
@@ -232,6 +266,16 @@ Handle CDSProtectionDomain::get_protection_domain_from_classloader(Handle class_
                           vmSymbols::getProtectionDomain_name(),
                           vmSymbols::getProtectionDomain_signature(),
                           cs, CHECK_NH);
+  return Handle(THREAD, obj_result.get_oop());
+}
+
+Handle CDSProtectionDomain::get_default_protection_domain(Handle class_loader, TRAPS) {
+  Handle protection_domain;
+  JavaValue obj_result(T_OBJECT);
+  JavaCalls::call_virtual(&obj_result, class_loader, vmClasses::ClassLoader_klass(),
+                          vmSymbols::getDefaultProtectionDomain_name(),
+                          vmSymbols::getDefaultProtectionDomain_signature(),
+                          CHECK_NH);
   return Handle(THREAD, obj_result.get_oop());
 }
 

@@ -1164,7 +1164,7 @@ void KlassSubGraphInfo::add_subgraph_object_klass(Klass* orig_k) {
     if (CDSConfig::is_dumping_method_handles()) {
       // -XX:AOTInitTestClass must be used carefully in regression tests to
       // include only classes that are safe to aot-initialize.
-      assert(ik->class_loader() == nullptr ||
+      assert(ik->class_loader() == nullptr || ik->cl_aot_identity() != nullptr ||
              HeapShared::is_lambda_proxy_klass(ik) ||
              AOTClassInitializer::has_test_class(),
             "we can archive only instances of boot classes or lambda proxy classes");
@@ -1243,6 +1243,10 @@ void KlassSubGraphInfo::check_allowed_klass(InstanceKlass* ik) {
 #else
   const char* testcls_msg = "";
 #endif
+
+  if (ik->cl_aot_identity() != nullptr) {
+    return;
+  }
 
   ResourceMark rm;
   log_error(aot, heap)("Class %s not allowed in archive heap. Must be in java.base%s%s",
@@ -1477,7 +1481,7 @@ void HeapShared::resolve_classes_for_subgraphs(JavaThread* current, ArchivableSt
   for (int i = 0; fields[i].valid(); i++) {
     ArchivableStaticFieldInfo* info = &fields[i];
     TempNewSymbol klass_name = SymbolTable::new_symbol(info->klass_name);
-    InstanceKlass* k = SystemDictionaryShared::find_builtin_class(klass_name);
+    InstanceKlass* k = SystemDictionaryShared::find_class_in_aot_compatible_dictionary(klass_name);
     assert(k != nullptr && k->defined_by_boot_loader(), "sanity");
     resolve_classes_for_subgraph_of(current, k);
   }
@@ -1681,7 +1685,7 @@ HeapShared::resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAP
 
 void HeapShared::resolve_or_init(const char* klass_name, bool do_init, TRAPS) {
   TempNewSymbol klass_name_sym =  SymbolTable::new_symbol(klass_name);
-  InstanceKlass* k = SystemDictionaryShared::find_builtin_class(klass_name_sym);
+  InstanceKlass* k = SystemDictionaryShared::find_class_in_aot_compatible_dictionary(klass_name_sym);
   if (k == nullptr) {
     return;
   }

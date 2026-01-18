@@ -48,6 +48,7 @@
 
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoaderDataGraph.inline.hpp"
+#include "classfile/classLoaderDataShared.hpp"
 #include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/moduleEntry.hpp"
@@ -89,7 +90,7 @@ void ClassLoaderData::init_null_class_loader_data() {
   _the_null_class_loader_data = new ClassLoaderData(Handle(), false);
   ClassLoaderDataGraph::_head = _the_null_class_loader_data;
   assert(_the_null_class_loader_data->is_the_null_class_loader_data(), "Must be");
-
+  _the_null_class_loader_data->_aot_identity = SymbolTable::new_symbol("BOOT");
   LogTarget(Trace, class, loader, data) lt;
   if (lt.is_enabled()) {
     ResourceMark rm;
@@ -149,11 +150,16 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
   _deallocate_list(nullptr),
   _next(nullptr),
   _unloading_next(nullptr),
-  _class_loader_klass(nullptr), _name(nullptr), _name_and_id(nullptr) {
+  _class_loader_klass(nullptr), _name(nullptr), _name_and_id(nullptr),
+  _aot_identity(nullptr), _restored(false) {
 
   if (!h_class_loader.is_null()) {
     _class_loader = _handles.add(h_class_loader());
     _class_loader_klass = h_class_loader->klass();
+    oop aot_identity = java_lang_ClassLoader::aotIdentity(h_class_loader());
+    if (aot_identity != nullptr) {
+      _aot_identity = java_lang_String::as_symbol(aot_identity);
+    }
     initialize_name(h_class_loader);
   }
 
@@ -174,6 +180,11 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
     }
     _dictionary = create_dictionary();
   }
+#if 0
+  if (_aot_identity != nullptr && CDSConfig::is_using_full_module_graph()) {
+    ClassLoaderDataShared::restore_archived_data(this);
+  }
+#endif
 
   NOT_PRODUCT(_dependency_count = 0); // number of class loader dependencies
 
@@ -632,11 +643,11 @@ void ClassLoaderData::unload() {
   }
 }
 
-ModuleEntryTable* ClassLoaderData::modules() {
+ModuleEntryTable* ClassLoaderData::modules(bool create_if_null) {
   // Lazily create the module entry table at first request.
   // Lock-free access requires load_acquire.
   ModuleEntryTable* modules = AtomicAccess::load_acquire(&_modules);
-  if (modules == nullptr) {
+  if (modules == nullptr && create_if_null) {
     MutexLocker m1(Module_lock);
     // Check if _modules got allocated while we were waiting for this lock.
     if ((modules = _modules) == nullptr) {

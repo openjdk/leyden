@@ -932,6 +932,9 @@ jint universe_init() {
   }
 #endif
 
+  // Create symbol table before initializing bootloader which needs symbol table for creating AOT identity
+  SymbolTable::create_table();
+
   ClassLoaderData::init_null_class_loader_data();
 
 #if INCLUDE_CDS
@@ -944,8 +947,6 @@ jint universe_init() {
     CDSConfig::prepare_for_dumping();
   }
 #endif
-
-  SymbolTable::create_table();
 
   if (strlen(VerifySubSet) > 0) {
     Universe::initialize_verify_flags();

@@ -1195,7 +1195,8 @@ void java_lang_Class::create_mirror(Klass* k, Handle class_loader,
 // latter may contain dumptime-specific information that cannot be archived
 // (e.g., ClassLoaderData*, or static fields that are modified by Java code execution).
 void java_lang_Class::create_scratch_mirror(Klass* k, TRAPS) {
-  if (k->class_loader() != nullptr &&
+  if (k->cl_aot_identity() == nullptr &&
+      k->class_loader() != nullptr &&
       k->class_loader() != SystemDictionary::java_platform_loader() &&
       k->class_loader() != SystemDictionary::java_system_loader()) {
     // We only archive the mirrors of classes loaded by the built-in loaders
@@ -4790,6 +4791,7 @@ int  java_lang_ClassLoader::_name_offset;
 int  java_lang_ClassLoader::_nameAndId_offset;
 int  java_lang_ClassLoader::_unnamedModule_offset;
 int  java_lang_ClassLoader::_parent_offset;
+int  java_lang_ClassLoader::_aotIdentity_offset;
 
 ClassLoaderData* java_lang_ClassLoader::loader_data_acquire(oop loader) {
   assert(loader != nullptr, "loader must not be null");
@@ -4814,7 +4816,8 @@ void java_lang_ClassLoader::release_set_loader_data(oop loader, ClassLoaderData*
   macro(_name_offset,            k1, vmSymbols::name_name(), string_signature, false); \
   macro(_nameAndId_offset,       k1, "nameAndId",            string_signature, false); \
   macro(_unnamedModule_offset,   k1, "unnamedModule",        module_signature, false); \
-  macro(_parent_offset,          k1, "parent",               classloader_signature, false)
+  macro(_parent_offset,          k1, "parent",               classloader_signature, false); \
+  macro(_aotIdentity_offset,     k1, "aotIdentity",          string_signature, false);
 
 void java_lang_ClassLoader::compute_offsets() {
   InstanceKlass* k1 = vmClasses::ClassLoader_klass();
@@ -4856,6 +4859,11 @@ oop java_lang_ClassLoader::name(oop loader) {
 oop java_lang_ClassLoader::nameAndId(oop loader) {
   assert(is_instance(loader), "loader must be oop");
   return loader->obj_field(_nameAndId_offset);
+}
+
+oop java_lang_ClassLoader::aotIdentity(oop loader) {
+  assert(is_instance(loader), "loader must be oop");
+  return loader->obj_field(_aotIdentity_offset);
 }
 
 bool java_lang_ClassLoader::isAncestor(oop loader, oop cl) {

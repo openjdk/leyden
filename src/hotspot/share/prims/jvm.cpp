@@ -29,6 +29,7 @@
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/dynamicArchive.hpp"
+#include "cds/finalImageRecipes.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.hpp"
 #include "cds/lambdaProxyClassDictionary.hpp"
@@ -2280,6 +2281,10 @@ JVM_ENTRY_PROF(jobject, JVM_AssertionStatusDirectives, JVM_AssertionStatusDirect
   JvmtiVMObjectAllocEventCollector oam;
   oop asd = JavaAssertions::createAssertionStatusDirectives(CHECK_NULL);
   return JNIHandles::make_local(THREAD, asd);
+JVM_END
+
+JVM_ENTRY_PROF(void, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCompatibleLoader(JNIEnv *env, jobject loader))
+  FinalImageRecipes::add_aot_compatible_loader(JNIHandles::resolve_non_null(loader), CHECK);
 JVM_END
 
 // Verification ////////////////////////////////////////////////////////////////////////////////

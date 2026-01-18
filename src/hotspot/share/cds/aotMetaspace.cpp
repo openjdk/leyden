@@ -735,6 +735,9 @@ char* VM_PopulateDumpSharedSpace::dump_early_read_only_tables() {
 char* VM_PopulateDumpSharedSpace::dump_read_only_tables(AOTClassLocationConfig*& cl_config) {
   ArchiveBuilder::OtherROAllocMark mark;
 
+  if (CDSConfig::is_dumping_full_module_graph()) {
+    ClassLoaderDataShared::write_cld_table();
+  }
   SystemDictionaryShared::write_to_archive();
   cl_config = AOTClassLocationConfig::dumptime()->write_to_archive();
   AOTClassLinker::write_to_archive();

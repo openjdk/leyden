@@ -131,6 +131,7 @@ public class ClassLoaders {
     private static class BootClassLoader extends BuiltinClassLoader {
         BootClassLoader(URLClassPath bcp) {
             super(null, null, bcp);
+            setAOTIdentity("BOOT");
         }
 
         @Override
@@ -151,6 +152,7 @@ public class ClassLoaders {
 
         PlatformClassLoader(BootClassLoader parent) {
             super("platform", parent, null);
+            setAOTIdentity("PLATFORM");
         }
     }
 
@@ -166,6 +168,7 @@ public class ClassLoaders {
 
         AppClassLoader(BuiltinClassLoader parent, URLClassPath ucp) {
             super("app", parent, ucp);
+            setAOTIdentity("APP");
         }
 
         /**

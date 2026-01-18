@@ -518,6 +518,10 @@ class SerializeClosure;
   template(objectWaiter_name,                         "objectWaiter")                             \
   template(atKlassInit_name,                          "atKlassInit")                              \
   template(hasArgsAtTop_name,                         "hasArgsAtTop")                             \
+  template(getNamedPackage_name,                      "getNamedPackage")                          \
+  template(getNamedPackage_signature,                 "(Ljava/lang/String;Ljava/lang/Module;)Ljava/lang/NamedPackage;") \
+  template(getDefaultProtectionDomain_name,           "getDefaultProtectionDomain")               \
+  template(getDefaultProtectionDomain_signature,      "()Ljava/security/ProtectionDomain;")       \
                                                                                                   \
   /* name symbols needed by intrinsics */                                                         \
   VM_INTRINSICS_DO(VM_INTRINSIC_IGNORE, VM_SYMBOL_IGNORE, template, VM_SYMBOL_IGNORE, VM_ALIAS_IGNORE) \

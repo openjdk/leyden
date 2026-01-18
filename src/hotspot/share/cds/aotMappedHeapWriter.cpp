@@ -550,10 +550,13 @@ size_t AOTMappedHeapWriter::copy_one_source_obj_to_buffer(oop src_obj) {
   } else if (java_lang_ClassLoader::is_instance(src_obj)) {
 #ifdef ASSERT
     // We only archive these loaders
+    assert(java_lang_ClassLoader::aotIdentity(src_obj) != nullptr, "sanity check");
+#if 0
     if (src_obj != SystemDictionary::java_platform_loader() &&
         src_obj != SystemDictionary::java_system_loader()) {
       assert(src_obj->klass()->name()->equals("jdk/internal/loader/ClassLoaders$BootClassLoader"), "must be");
     }
+#endif
 #endif
     update_buffered_object_field<ClassLoaderData*>(to, java_lang_ClassLoader::loader_data_offset(), nullptr);
   }

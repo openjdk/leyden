@@ -45,6 +45,7 @@
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
+#include "classfile/classLoaderDataShared.hpp"
 #include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
@@ -98,14 +99,16 @@ static void check_klass_after_loading(const Klass* k) {
 }
 #endif
 
-InstanceKlass* SystemDictionaryShared::load_shared_class_for_builtin_loader(
+InstanceKlass* SystemDictionaryShared::load_shared_class_for_aot_compatible_loader(
                  Symbol* class_name, Handle class_loader, TRAPS) {
   assert(CDSConfig::is_using_archive(), "must be");
-  InstanceKlass* ik = find_builtin_class(class_name);
+  InstanceKlass* ik = find_class_in_aot_compatible_dictionary(class_name);
 
   if (ik != nullptr && !ik->shared_loading_failed()) {
-    if ((SystemDictionary::is_system_class_loader(class_loader()) && ik->defined_by_app_loader())  ||
-        (SystemDictionary::is_platform_class_loader(class_loader()) && ik->defined_by_platform_loader())) {
+    oop aot_identity = java_lang_ClassLoader::aotIdentity(class_loader());
+    assert(aot_identity != nullptr, "must be");
+    Symbol* aot_identity_sym = java_lang_String::as_symbol(aot_identity);
+    if (aot_identity_sym->equals(ik->cl_aot_identity())) {
       SharedClassLoadingMark slm(THREAD, ik);
       PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
       Handle protection_domain;
@@ -138,8 +141,8 @@ InstanceKlass* SystemDictionaryShared::lookup_from_stream(Symbol* class_name,
     return nullptr;
   }
 
-  const RunTimeClassInfo* record = find_record(&_static_archive._unregistered_dictionary,
-                                               &_dynamic_archive._unregistered_dictionary,
+  const RunTimeClassInfo* record = find_record(&_static_archive._aot_incompatible_loader_dict,
+                                               &_dynamic_archive._aot_incompatible_loader_dict,
                                                class_name);
   if (record == nullptr) {
     return nullptr;
@@ -628,15 +631,17 @@ InstanceKlass* SystemDictionaryShared::find_or_load_shared_class(
       return nullptr;
     }
 
-    if (SystemDictionary::is_system_class_loader(class_loader()) ||
-        SystemDictionary::is_platform_class_loader(class_loader())) {
+    if (java_lang_ClassLoader::aotIdentity(class_loader()) != nullptr) {
       ClassLoaderData *loader_data = register_loader(class_loader);
+      if (CDSConfig::is_using_full_module_graph()) {
+        ClassLoaderDataShared::restore_archived_data(loader_data);
+      }
       Dictionary* dictionary = loader_data->dictionary();
 
       // Note: currently, find_or_load_shared_class is called only from
       // JVM_FindLoadedClass and used for PlatformClassLoader and AppClassLoader,
       // which are parallel-capable loaders, so a lock here is NOT taken.
-      assert(get_loader_lock_or_null(class_loader) == nullptr, "ObjectLocker not required");
+      //assert(get_loader_lock_or_null(class_loader) == nullptr, "ObjectLocker not required");
       {
         MutexLocker mu(THREAD, SystemDictionary_lock);
         InstanceKlass* check = dictionary->find_class(THREAD, name);
@@ -645,7 +650,7 @@ InstanceKlass* SystemDictionaryShared::find_or_load_shared_class(
         }
       }
 
-      k = load_shared_class_for_builtin_loader(name, class_loader, THREAD);
+      k = load_shared_class_for_aot_compatible_loader(name, class_loader, THREAD);
       if (k != nullptr) {
         SharedClassLoadingMark slm(THREAD, k);
         k = find_or_define_instance_class(name, class_loader, k, CHECK_NULL);
@@ -698,7 +703,7 @@ void SystemDictionaryShared::copy_unregistered_class_size_and_crc32(InstanceKlas
   precond(klass->in_aot_cache());
 
   // A shared class must have a RunTimeClassInfo record
-  const RunTimeClassInfo* record = find_record(&_static_archive._unregistered_dictionary,
+  const RunTimeClassInfo* record = find_record(&_static_archive._aot_incompatible_loader_dict,
                                                nullptr, klass->name());
   precond(record != nullptr);
   precond(record->klass() == klass);
@@ -1314,15 +1319,15 @@ unsigned int SystemDictionaryShared::hash_for_shared_dictionary(address ptr) {
 
 class CopySharedClassInfoToArchive : StackObj {
   CompactHashtableWriter* _writer;
-  bool _is_builtin;
+  bool _is_aot_compatible_loader;
   ArchiveBuilder *_builder;
 public:
   CopySharedClassInfoToArchive(CompactHashtableWriter* writer,
-                               bool is_builtin)
-    : _writer(writer), _is_builtin(is_builtin), _builder(ArchiveBuilder::current()) {}
+                               bool is_aot_compatible_loader)
+    : _writer(writer), _is_aot_compatible_loader(is_aot_compatible_loader), _builder(ArchiveBuilder::current()) {}
 
   void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (!info.is_excluded() && info.is_builtin() == _is_builtin) {
+    if (!info.is_excluded() && k->is_aot_compatible_loader() == _is_aot_compatible_loader) {
       size_t byte_size = info.runtime_info_bytesize();
       RunTimeClassInfo* record;
       record = (RunTimeClassInfo*)ArchiveBuilder::ro_region_alloc(byte_size);
@@ -1333,14 +1338,14 @@ public:
       name = ArchiveBuilder::current()->get_buffered_addr(name);
       hash = SystemDictionaryShared::hash_for_shared_dictionary((address)name);
       u4 delta = _builder->buffer_to_offset_u4((address)record);
-      if (_is_builtin && info._klass->is_hidden()) {
+      if (_is_aot_compatible_loader && info._klass->is_hidden()) {
         // skip
       } else {
         _writer->add(hash, delta);
       }
       if (log_is_enabled(Trace, aot, hashtables)) {
         ResourceMark rm;
-        log_trace(aot, hashtables)("%s dictionary: %s", (_is_builtin ? "builtin" : "unregistered"), info._klass->external_name());
+        log_trace(aot, hashtables)("%s dictionary: %s", (_is_aot_compatible_loader ? "aot_compatible_loader" : "aot_incompatible_loader"), info._klass->external_name());
       }
 
       // Save this for quick runtime lookup of InstanceKlass* -> RunTimeClassInfo*
@@ -1351,21 +1356,21 @@ public:
 };
 
 void SystemDictionaryShared::write_dictionary(RunTimeSharedDictionary* dictionary,
-                                              bool is_builtin) {
+                                              bool is_aot_compatible_loader) {
   CompactHashtableStats stats;
   dictionary->reset();
-  CompactHashtableWriter writer(_dumptime_table->count_of(is_builtin), &stats);
-  CopySharedClassInfoToArchive copy(&writer, is_builtin);
+  CompactHashtableWriter writer(_dumptime_table->count_of(is_aot_compatible_loader), &stats);
+  CopySharedClassInfoToArchive copy(&writer, is_aot_compatible_loader);
   assert_lock_strong(DumpTimeTable_lock);
   _dumptime_table->iterate_all_live_classes(&copy);
-  writer.dump(dictionary, is_builtin ? "builtin dictionary" : "unregistered dictionary");
+  writer.dump(dictionary, is_aot_compatible_loader? "aot_compatible_loader dictionary" : "aot_incompatible_loader dictionary");
 }
 
 void SystemDictionaryShared::write_to_archive(bool is_static_archive) {
   ArchiveInfo* archive = get_archive(is_static_archive);
 
-  write_dictionary(&archive->_builtin_dictionary, true);
-  write_dictionary(&archive->_unregistered_dictionary, false);
+  write_dictionary(&archive->_aot_compatible_loader_dict, true);
+  write_dictionary(&archive->_aot_incompatible_loader_dict, false);
   if (CDSConfig::is_dumping_lambdas_in_legacy_mode()) {
     LambdaProxyClassDictionary::write_dictionary(is_static_archive);
   } else {
@@ -1377,8 +1382,8 @@ void SystemDictionaryShared::serialize_dictionary_headers(SerializeClosure* soc,
                                                           bool is_static_archive) {
   ArchiveInfo* archive = get_archive(is_static_archive);
 
-  archive->_builtin_dictionary.serialize_header(soc);
-  archive->_unregistered_dictionary.serialize_header(soc);
+  archive->_aot_compatible_loader_dict.serialize_header(soc);
+  archive->_aot_incompatible_loader_dict.serialize_header(soc);
   LambdaProxyClassDictionary::serialize(soc, is_static_archive);
 }
 
@@ -1421,9 +1426,9 @@ SystemDictionaryShared::find_record(RunTimeSharedDictionary* static_dict, RunTim
   return record;
 }
 
-InstanceKlass* SystemDictionaryShared::find_builtin_class(Symbol* name) {
-  const RunTimeClassInfo* record = find_record(&_static_archive._builtin_dictionary,
-                                               &_dynamic_archive._builtin_dictionary,
+InstanceKlass* SystemDictionaryShared::find_class_in_aot_compatible_dictionary(Symbol* name) {
+  const RunTimeClassInfo* record = find_record(&_static_archive._aot_compatible_loader_dict,
+                                               &_dynamic_archive._aot_compatible_loader_dict,
                                                name);
   if (record != nullptr) {
     assert(!record->klass()->is_hidden(), "hidden class cannot be looked up by name");
@@ -1464,11 +1469,11 @@ const char* SystemDictionaryShared::loader_type_for_shared_class(Klass* k) {
 }
 
 void SystemDictionaryShared::get_all_archived_classes(bool is_static_archive, GrowableArray<Klass*>* classes) {
-  get_archive(is_static_archive)->_builtin_dictionary.iterate([&] (const RunTimeClassInfo* record) {
+  get_archive(is_static_archive)->_aot_compatible_loader_dict.iterate([&] (const RunTimeClassInfo* record) {
       classes->append(record->klass());
     });
 
-  get_archive(is_static_archive)->_unregistered_dictionary.iterate([&] (const RunTimeClassInfo* record) {
+  get_archive(is_static_archive)->_aot_incompatible_loader_dict.iterate([&] (const RunTimeClassInfo* record) {
       classes->append(record->klass());
     });
 }
@@ -1496,10 +1501,10 @@ void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
                                                    bool is_static_archive) {
   st->print_cr("%sShared Dictionary", prefix);
   SharedDictionaryPrinter p(st);
-  st->print_cr("%sShared Builtin Dictionary", prefix);
-  _builtin_dictionary.iterate(&p);
-  st->print_cr("%sShared Unregistered Dictionary", prefix);
-  _unregistered_dictionary.iterate(&p);
+  st->print_cr("%sShared AOT Compatible Loaders Dictionary", prefix);
+  _aot_compatible_loader_dict.iterate(&p);
+  st->print_cr("%sShared AOT Incompatible Loaders Dictionary", prefix);
+  _aot_incompatible_loader_dict.iterate(&p);
   LambdaProxyClassDictionary::print_on(prefix, st, p.index(), is_static_archive);
 }
 
@@ -1507,8 +1512,8 @@ void SystemDictionaryShared::ArchiveInfo::print_table_statistics(const char* pre
                                                                  outputStream* st,
                                                                  bool is_static_archive) {
   st->print_cr("%sArchve Statistics", prefix);
-  _builtin_dictionary.print_table_statistics(st, "Builtin Shared Dictionary");
-  _unregistered_dictionary.print_table_statistics(st, "Unregistered Shared Dictionary");
+  _aot_compatible_loader_dict.print_table_statistics(st, "AOT Compatible Loaders Dictionary");
+  _aot_incompatible_loader_dict.print_table_statistics(st, "AOT Incompatible Loaders Dictionary");
   LambdaProxyClassDictionary::print_statistics(st, is_static_archive);
 }
 

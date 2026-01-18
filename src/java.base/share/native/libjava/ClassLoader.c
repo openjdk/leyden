@@ -35,7 +35,8 @@
 #include "jvm.h"
 
 static JNINativeMethod methods[] = {
-    {"retrieveDirectives",  "()Ljava/lang/AssertionStatusDirectives;", (void *)&JVM_AssertionStatusDirectives}
+    {"retrieveDirectives",  "()Ljava/lang/AssertionStatusDirectives;", (void *)&JVM_AssertionStatusDirectives},
+    {"registerAsAOTCompatibleLoader", "()V", (void *)&JVM_RegisterAsAOTCompatibleLoader}
 };
 
 JNIEXPORT void JNICALL

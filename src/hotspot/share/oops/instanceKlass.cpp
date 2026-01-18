@@ -2859,7 +2859,7 @@ void InstanceKlass::init_shared_package_entry() {
   _package_entry = nullptr;
 #else
   if (CDSConfig::is_dumping_full_module_graph()) {
-    if (defined_by_other_loaders()) {
+    if (defined_by_other_loaders() && cl_aot_identity() == nullptr) {
       _package_entry = nullptr;
     } else {
       _package_entry = PackageEntry::get_archived_entry(_package_entry);
@@ -4090,7 +4090,11 @@ void InstanceKlass::print_class_load_helper(ClassLoaderData* loader_data,
   info_stream.print(" loader:");
 #if INCLUDE_CDS
   if (in_aot_cache()) {
-    info_stream.print(" %s", SystemDictionaryShared::loader_type_for_shared_class((Klass*)this));
+    if (loader_data->aot_identity() != nullptr) {
+      info_stream.print(" %s", loader_data->aot_identity()->as_C_string());
+    } else {
+      info_stream.print(" %s", SystemDictionaryShared::loader_type_for_shared_class((Klass*)this));
+    }
   } else
 #endif
   if (loader_data == ClassLoaderData::the_null_class_loader_data()) {
