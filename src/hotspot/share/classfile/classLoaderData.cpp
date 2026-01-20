@@ -90,7 +90,7 @@ void ClassLoaderData::init_null_class_loader_data() {
   _the_null_class_loader_data = new ClassLoaderData(Handle(), false);
   ClassLoaderDataGraph::_head = _the_null_class_loader_data;
   assert(_the_null_class_loader_data->is_the_null_class_loader_data(), "Must be");
-  _the_null_class_loader_data->_aot_identity = SymbolTable::new_symbol("BOOT");
+  //_the_null_class_loader_data->_aot_identity = SymbolTable::new_symbol("BOOT");
   LogTarget(Trace, class, loader, data) lt;
   if (lt.is_enabled()) {
     ResourceMark rm;
@@ -181,6 +181,11 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
     _dictionary = create_dictionary();
   }
 #if 0
+  /* This happens at a place where safepoint is not allowed. See NoSafepointVerifier in ClassLoaderDataGraph::add_to_graph().
+   * However, call to restore_archived_data() may create a new Module and acquire Module_lock which allows safepoint.
+   * So we hit assertion in JavaThread::check_possible_safepoint():
+   *  assert(false, "Possible safepoint reached by thread that does not allow it");
+   */
   if (_aot_identity != nullptr && CDSConfig::is_using_full_module_graph()) {
     ClassLoaderDataShared::restore_archived_data(this);
   }

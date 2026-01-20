@@ -48,6 +48,7 @@ OopHandle CDSProtectionDomain::_shared_jar_manifests;
 // Returns the ProtectionDomain for the InstanceKlass.
 Handle CDSProtectionDomain::init_security_info(Handle class_loader, InstanceKlass* ik, PackageEntry* pkg_entry, TRAPS) {
   if (ik->defined_by_other_loaders()) {
+    assert(ik->cl_aot_identity() != nullptr, "sanity check");
     // define NamedPackage in java layer
     define_named_package(class_loader, pkg_entry, THREAD);
     // Get ClassLoader::defaultDomain

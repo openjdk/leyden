@@ -340,7 +340,7 @@ public abstract class ClassLoader {
     /**
      * Returns a named package for the given module.
      *
-     * @param pn 
+     * @param pn
      *        package name
      * @param m
      *        module
@@ -2667,7 +2667,7 @@ public abstract class ClassLoader {
     /**
      * Set unique and repeatable ID of the classloader
      *
-     * @param  id 
+     * @param  id
      *         unique id of the classloader object.
      */
     protected void setAOTIdentity(String id) {

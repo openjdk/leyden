@@ -61,6 +61,7 @@ bool CDSConfig::_old_cds_flags_used = false;
 bool CDSConfig::_new_aot_flags_used = false;
 bool CDSConfig::_disable_heap_dumping = false;
 bool CDSConfig::_is_at_aot_safepoint = false;
+bool CDSConfig::_supports_custom_loaders = false;
 
 const char* CDSConfig::_default_archive_path = nullptr;
 const char* CDSConfig::_input_static_archive_path = nullptr;
@@ -780,6 +781,10 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     }
   }
 
+  if (is_dumping_archive()) {
+    set_custom_loaders_support(AOTCacheSupportForCustomLoader);
+  }
+
   return true;
 }
 
@@ -1158,4 +1163,12 @@ void CDSConfig::enable_dumping_aot_code() {
 
 bool CDSConfig::is_dumping_adapters() {
   return (AOTAdapterCaching && is_dumping_final_static_archive());
+}
+
+bool CDSConfig::supports_custom_loaders() {
+  return _supports_custom_loaders;
+}
+
+void CDSConfig::set_custom_loaders_support(bool value) {
+  _supports_custom_loaders = value;
 }

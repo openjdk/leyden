@@ -233,6 +233,10 @@
                                                                             \
   product(bool, SkipArchiveHeapVerification, false,                         \
           "Skip verification of CDS archive heap")                          \
+                                                                            \
+  product(bool, AOTCacheSupportForCustomLoader, false,                      \
+          "Enable support for custom loaders in AOTCache")                  \
+
 
 // end of CDS_FLAGS
 

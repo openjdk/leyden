@@ -25,6 +25,7 @@
 #ifndef SHARE_OOPS_KLASS_HPP
 #define SHARE_OOPS_KLASS_HPP
 
+#include "cds/cdsConfig.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "oops/klassFlags.hpp"
 #include "oops/markWord.hpp"
@@ -315,13 +316,13 @@ protected:
   ClassLoaderData* class_loader_data() const               { return _class_loader_data; }
   void set_class_loader_data(ClassLoaderData* loader_data) {
     _class_loader_data = loader_data;
-    if (loader_data != nullptr) {
+    if (CDSConfig::supports_custom_loaders() && loader_data != nullptr) {
       _cl_aot_identity = loader_data->aot_identity();
     }
   }
 
   Symbol* cl_aot_identity() const { return _cl_aot_identity; }
-  bool is_aot_compatible_loader() const { return _cl_aot_identity != nullptr; }
+  bool is_defined_by_aot_safe_custom_loader() const { return _cl_aot_identity != nullptr; }
 
   s2 shared_classpath_index() const   {
     return _shared_class_path_index;

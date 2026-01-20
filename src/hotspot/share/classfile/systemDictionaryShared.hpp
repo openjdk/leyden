@@ -139,10 +139,9 @@ class SystemDictionaryShared: public SystemDictionary {
   friend class LambdaProxyClassDictionary;
 
   struct ArchiveInfo {
-    //RunTimeSharedDictionary _builtin_dictionary;
-    //RunTimeSharedDictionary _unregistered_dictionary;
-    RunTimeSharedDictionary _aot_compatible_loader_dict;
-    RunTimeSharedDictionary _aot_incompatible_loader_dict;
+    RunTimeSharedDictionary _builtin_dictionary;
+    RunTimeSharedDictionary _aot_safe_custom_loader_dict;
+    RunTimeSharedDictionary _unregistered_dictionary;
 
     void print_on(const char* prefix, outputStream* st, bool is_static_archive);
     void print_table_statistics(const char* prefix, outputStream* st, bool is_static_archive);
@@ -160,7 +159,11 @@ private:
     return is_static_archive ? &_static_archive : &_dynamic_archive;
   }
 
-  static InstanceKlass* load_shared_class_for_aot_compatible_loader(
+  static InstanceKlass* load_shared_class_for_builtin_loader(
+                                               Symbol* class_name,
+                                               Handle class_loader,
+                                               TRAPS);
+  static InstanceKlass* load_shared_class_for_aot_safe_custom_loader(
                                                Symbol* class_name,
                                                Handle class_loader,
                                                TRAPS);
@@ -173,7 +176,7 @@ private:
 
 
   static void write_dictionary(RunTimeSharedDictionary* dictionary,
-                               bool is_builtin);
+                               bool is_builtin, bool is_defined_by_aot_safe_custom_loader);
   static bool is_jfr_event_class(InstanceKlass *k);
   static void link_all_exclusion_check_candidates(InstanceKlass* ik);
   static bool should_be_excluded_impl(InstanceKlass* k, DumpTimeClassInfo* info);
@@ -211,7 +214,8 @@ public:
   static bool has_archived_enum_objs(InstanceKlass* ik);
   static void set_has_archived_enum_objs(InstanceKlass* ik);
 
-  static InstanceKlass* find_class_in_aot_compatible_dictionary(Symbol* class_name);
+  static InstanceKlass* find_builtin_class(Symbol* name);
+  static InstanceKlass* find_class_in_aot_safe_custom_loader_dict(Symbol* class_name);
 
   static const RunTimeClassInfo* find_record(RunTimeSharedDictionary* static_dict,
                                                    RunTimeSharedDictionary* dynamic_dict,

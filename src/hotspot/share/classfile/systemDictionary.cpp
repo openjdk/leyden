@@ -1290,7 +1290,12 @@ InstanceKlass* SystemDictionary::load_instance_class_impl(Symbol* class_name, Ha
     if (CDSConfig::is_using_archive())
     {
       PerfTraceElapsedTime vmtimer(ClassLoader::perf_shared_classload_time());
-      InstanceKlass* ik = SystemDictionaryShared::find_class_in_aot_compatible_dictionary(class_name);
+      InstanceKlass* ik = nullptr;
+      if (SystemDictionary::is_builtin_class_loader(class_loader())) {
+        ik = SystemDictionaryShared::find_builtin_class(class_name);
+      } else if (CDSConfig::supports_custom_loaders()) {
+        ik = SystemDictionaryShared::find_class_in_aot_safe_custom_loader_dict(class_name);
+      }
       if (ik != nullptr && ik->defined_by_boot_loader() && !ik->shared_loading_failed()) {
         SharedClassLoadingMark slm(THREAD, ik);
         k = load_shared_class(ik, class_loader, Handle(), nullptr,  pkg_entry, CHECK_NULL);

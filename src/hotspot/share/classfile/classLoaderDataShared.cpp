@@ -79,11 +79,9 @@ public:
   void clear_archived_oops();
 };
 
-#if 0
 static ArchivedClassLoaderData _archived_boot_loader_data;
 static ArchivedClassLoaderData _archived_platform_loader_data;
 static ArchivedClassLoaderData _archived_system_loader_data;
-#endif
 
 static ModuleEntry* _archived_javabase_moduleEntry = nullptr;
 static int _platform_loader_root_index = -1;
@@ -93,8 +91,8 @@ static bool archived_cld_map_equals_fn(ArchivedClassLoaderData* archived_cld, Sy
   return archived_cld->aot_identity()->equals(sym);
 }
 
-using ArchivedCLDataMap = OffsetCompactHashtable<Symbol*, ArchivedClassLoaderData*, archived_cld_map_equals_fn>;
-static ArchivedCLDataMap _archived_cld_map;
+using ArchivedAOTIdToCLDataMap = OffsetCompactHashtable<Symbol*, ArchivedClassLoaderData*, archived_cld_map_equals_fn>;
+static ArchivedAOTIdToCLDataMap _aotid_to_archived_cld_map;
 
 void ArchivedClassLoaderData::iterate_symbols(ClassLoaderData* loader_data, MetaspaceClosure* closure) {
   assert(CDSConfig::is_dumping_full_module_graph(), "must be");
@@ -119,7 +117,9 @@ void ArchivedClassLoaderData::allocate(ClassLoaderData* loader_data) {
       _modules = loader_data->modules(false)->allocate_archived_entries();
     }
     _unnamed_module = loader_data->unnamed_module()->allocate_archived_entry();
-    _aot_identity = loader_data->aot_identity();
+    if (!loader_data->is_builtin_class_loader_data()) {
+      _aot_identity = loader_data->aot_identity();
+    }
     ArchivePtrMarker::mark_pointer((address*)&_packages);
     ArchivePtrMarker::mark_pointer((address*)&_modules);
     ArchivePtrMarker::mark_pointer((address*)&_unnamed_module);
@@ -136,8 +136,10 @@ void ArchivedClassLoaderData::init_archived_entries(ClassLoaderData* loader_data
       loader_data->modules(false) ->init_archived_entries(_modules);
     }
     _unnamed_module->init_as_archived_entry();
-    _aot_identity = ArchiveBuilder::get_buffered_symbol(_aot_identity);
-    assert(_aot_identity != nullptr, "sanity check");
+    if (!loader_data->is_builtin_class_loader_data()) {
+      _aot_identity = ArchiveBuilder::get_buffered_symbol(_aot_identity);
+      assert(_aot_identity != nullptr, "sanity check");
+    }
   }
 }
 
@@ -179,8 +181,8 @@ void ArchivedClassLoaderData::clear_archived_oops() {
 
 // ------------------------------
 
-void ClassLoaderDataShared::load_archived_platform_and_system_class_loaders(Handle h_platform_loader, Handle h_system_loader) {
- 
+void ClassLoaderDataShared::load_archived_platform_and_system_class_loaders() {
+
 #if INCLUDE_CDS_JAVA_HEAP
   // The streaming object loader prefers loading the class loader related objects before
   //  the CLD constructor which has a NoSafepointVerifier.
@@ -197,24 +199,12 @@ void ClassLoaderDataShared::load_archived_platform_and_system_class_loaders(Hand
   }
 
   // When using the full module graph, we need to load unnamed modules too.
-
-  Symbol* aot_identity_sym = nullptr;
-  oop aot_identity = java_lang_ClassLoader::aotIdentity(h_platform_loader());
-  assert(aot_identity != nullptr, "sanity check");
-  aot_identity_sym = java_lang_String::as_symbol(aot_identity);
-  unsigned int hash = Symbol::symbol_hash(aot_identity_sym);
-  ArchivedClassLoaderData* archived_platform_cld = _archived_cld_map.lookup(aot_identity_sym, hash, 0);
-  ModuleEntry* platform_loader_module_entry = archived_platform_cld->unnamed_module();
+  ModuleEntry* platform_loader_module_entry = _archived_platform_loader_data.unnamed_module();
   if (platform_loader_module_entry != nullptr) {
     platform_loader_module_entry->preload_archived_oops();
   }
 
-  aot_identity = java_lang_ClassLoader::aotIdentity(h_system_loader());
-  assert(aot_identity != nullptr, "sanity check");
-  aot_identity_sym = java_lang_String::as_symbol(aot_identity);
-  hash = Symbol::symbol_hash(aot_identity_sym);
-  ArchivedClassLoaderData* archived_system_cld = _archived_cld_map.lookup(aot_identity_sym, hash, 0);
-  ModuleEntry* system_loader_module_entry = archived_system_cld->unnamed_module();
+  ModuleEntry* system_loader_module_entry = _archived_system_loader_data.unnamed_module();
   if (system_loader_module_entry != nullptr) {
     system_loader_module_entry->preload_archived_oops();
   }
@@ -226,7 +216,7 @@ static ClassLoaderData* null_class_loader_data() {
   assert(loader_data != nullptr, "must be");
   return loader_data;
 }
-#if 0
+
 static ClassLoaderData* java_platform_loader_data_or_null() {
   return ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_platform_loader());
 }
@@ -234,7 +224,6 @@ static ClassLoaderData* java_platform_loader_data_or_null() {
 static ClassLoaderData* java_system_loader_data_or_null() {
   return ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_system_loader());
 }
-#endif
 
 // ModuleEntryTables (even if empty) are required for iterate_symbols() to scan the
 // platform/system loaders inside the CDS safepoint, but the tables can be created only
@@ -268,50 +257,48 @@ class CLDSymbolsIterator : public CLDClosure {
 
 void ClassLoaderDataShared::iterate_symbols(MetaspaceClosure* closure) {
   assert(CDSConfig::is_dumping_full_module_graph(), "must be");
-  CLDSymbolsIterator sym_iterator(closure);
-  ClassLoaderDataGraph::cld_do(&sym_iterator);
-#if 0
   _archived_boot_loader_data.iterate_symbols    (null_class_loader_data(), closure);
   _archived_platform_loader_data.iterate_symbols(java_platform_loader_data_or_null(), closure);
   _archived_system_loader_data.iterate_symbols  (java_system_loader_data_or_null(), closure);
-#endif
+
+  CLDSymbolsIterator sym_iterator(closure);
+  ClassLoaderDataGraph::cld_do(&sym_iterator);
 }
 
 using ArchivedCLDToCLDMap = HashTable<ArchivedClassLoaderData*, ClassLoaderData*, 5, AnyObj::C_HEAP, mtClassShared>;
-ArchivedCLDToCLDMap* _aot_compatible_loaders = nullptr;
+ArchivedCLDToCLDMap* _archived_cld_to_runtime_cld_map = nullptr;
 
 class ArchiveAOTCompatibleLoaders : public CLDClosure {
  public:
   void do_cld(ClassLoaderData* cld) {
-    if (cld->aot_identity() != nullptr) {
+    if (!cld->is_builtin_class_loader_data() && cld->aot_identity() != nullptr) {
       ArchivedClassLoaderData* archived_entry = (ArchivedClassLoaderData*)ArchiveBuilder::rw_region_alloc(sizeof(ArchivedClassLoaderData));
       archived_entry->allocate(cld);
-      _aot_compatible_loaders->put(archived_entry, cld);
+      _archived_cld_to_runtime_cld_map->put(archived_entry, cld);
     }
   }
 };
 
 void ClassLoaderDataShared::allocate_archived_tables() {
   assert(CDSConfig::is_dumping_full_module_graph(), "must be");
-  _aot_compatible_loaders = new (mtClassShared) ArchivedCLDToCLDMap();
-  ArchiveAOTCompatibleLoaders archive_closure;
-  ClassLoaderDataGraph::cld_do(&archive_closure);
-
-#if 0
   _archived_boot_loader_data.allocate    (null_class_loader_data());
   _archived_platform_loader_data.allocate(java_platform_loader_data_or_null());
   _archived_system_loader_data.allocate  (java_system_loader_data_or_null());
-#endif
+
+  _archived_cld_to_runtime_cld_map = new (mtClassShared) ArchivedCLDToCLDMap();
+  if (CDSConfig::supports_custom_loaders()) {
+    ArchiveAOTCompatibleLoaders archive_closure;
+    ClassLoaderDataGraph::cld_do(&archive_closure);
+  }
 }
 
 void ClassLoaderDataShared::init_archived_tables() {
   assert(CDSConfig::is_dumping_full_module_graph(), "must be");
-#if 0
   _archived_boot_loader_data.init_archived_entries    (null_class_loader_data());
   _archived_platform_loader_data.init_archived_entries(java_platform_loader_data_or_null());
   _archived_system_loader_data.init_archived_entries  (java_system_loader_data_or_null());
-#endif
-  _aot_compatible_loaders->iterate_all([&](ArchivedClassLoaderData* &archived_cld, ClassLoaderData* &cld) {
+
+  _archived_cld_to_runtime_cld_map->iterate_all([&](ArchivedClassLoaderData* &archived_cld, ClassLoaderData* &cld) {
     archived_cld->init_archived_entries(cld);
   });
 
@@ -323,9 +310,9 @@ void ClassLoaderDataShared::init_archived_tables() {
 
 void ClassLoaderDataShared::write_cld_table() {
   CompactHashtableStats stats;
-  _archived_cld_map.reset();
-  CompactHashtableWriter writer(_aot_compatible_loaders->number_of_entries(), &stats);
-  _aot_compatible_loaders->iterate_all([&](ArchivedClassLoaderData* &archived_cld, ClassLoaderData* &cld) {
+  _aotid_to_archived_cld_map.reset();
+  CompactHashtableWriter writer(_archived_cld_to_runtime_cld_map->number_of_entries(), &stats);
+  _archived_cld_to_runtime_cld_map->iterate_all([&](ArchivedClassLoaderData* &archived_cld, ClassLoaderData* &cld) {
     ResourceMark rm;
     Symbol* aot_id = cld->aot_identity();
     assert(aot_id != nullptr, "sanity check");
@@ -338,16 +325,14 @@ void ClassLoaderDataShared::write_cld_table() {
       log_trace(aot, hashtables)("archived cld dictionary: %s", aot_id->as_C_string());
     }
   });
-  writer.dump(&_archived_cld_map, "aot_cld_map dictionary");
+  writer.dump(&_aotid_to_archived_cld_map, "aot_cld_map dictionary");
 }
 
 void ClassLoaderDataShared::serialize(SerializeClosure* f) {
-#if 0
   _archived_boot_loader_data.serialize(f);
   _archived_platform_loader_data.serialize(f);
   _archived_system_loader_data.serialize(f);
-#endif
-  _archived_cld_map.serialize_header(f); 
+  _aotid_to_archived_cld_map.serialize_header(f);
   f->do_ptr(&_archived_javabase_moduleEntry);
   f->do_int(&_platform_loader_root_index);
   f->do_int(&_system_loader_root_index);
@@ -355,11 +340,14 @@ void ClassLoaderDataShared::serialize(SerializeClosure* f) {
 
 ModuleEntry* ClassLoaderDataShared::archived_boot_unnamed_module() {
   if (CDSConfig::is_using_full_module_graph()) {
-    Symbol* boot_loader_aot_identity = SymbolTable::new_symbol("BOOT"); 
+    return _archived_boot_loader_data.unnamed_module();
+#if 0
+    Symbol* boot_loader_aot_identity = SymbolTable::new_symbol("BOOT");
     unsigned int hash = Symbol::symbol_hash(boot_loader_aot_identity);
-    ArchivedClassLoaderData* archived_cld = _archived_cld_map.lookup(boot_loader_aot_identity, hash, 0);
+    ArchivedClassLoaderData* archived_cld = _aotid_to_archived_cld_map.lookup(boot_loader_aot_identity, hash, 0);
     assert(archived_cld != nullptr, "sanity check");
     return archived_cld->unnamed_module();
+#endif
   } else {
     return nullptr;
   }
@@ -368,36 +356,34 @@ ModuleEntry* ClassLoaderDataShared::archived_boot_unnamed_module() {
 ModuleEntry* ClassLoaderDataShared::archived_unnamed_module(ClassLoaderData* loader_data) {
   ModuleEntry* archived_module = nullptr;
 
-  //if (!Universe::is_module_initialized() && CDSConfig::is_using_full_module_graph()) {
-  if (CDSConfig::is_using_full_module_graph() && loader_data->aot_identity() != nullptr) {
-    precond(_platform_loader_root_index >= 0);
-    precond(_system_loader_root_index >= 0);
+  if (CDSConfig::is_using_full_module_graph()) {
+    if (!Universe::is_module_initialized()) {
+      precond(_platform_loader_root_index >= 0);
+      precond(_system_loader_root_index >= 0);
 
-#if 0
-    if (loader_data->class_loader() == HeapShared::get_root(_platform_loader_root_index)) {
-      archived_module = _archived_platform_loader_data.unnamed_module();
-    } else if (loader_data->class_loader() == HeapShared::get_root(_system_loader_root_index)) {
-      archived_module = _archived_system_loader_data.unnamed_module();
-    }
-#endif
-    unsigned int hash = Symbol::symbol_hash(loader_data->aot_identity());
-    ArchivedClassLoaderData* archived_cld = _archived_cld_map.lookup(loader_data->aot_identity(), hash, 0);
-    if (archived_cld != nullptr) {
-      archived_module = archived_cld->unnamed_module();
+      if (loader_data->class_loader() == HeapShared::get_root(_platform_loader_root_index)) {
+        archived_module = _archived_platform_loader_data.unnamed_module();
+      } else if (loader_data->class_loader() == HeapShared::get_root(_system_loader_root_index)) {
+        archived_module = _archived_system_loader_data.unnamed_module();
+      }
+    } else if (loader_data->aot_identity() != nullptr) {
+      unsigned int hash = Symbol::symbol_hash(loader_data->aot_identity());
+      ArchivedClassLoaderData* archived_cld = _aotid_to_archived_cld_map.lookup(loader_data->aot_identity(), hash, 0);
+      if (archived_cld != nullptr) {
+        archived_module = archived_cld->unnamed_module();
+      }
     }
   }
   return archived_module;
 }
 
-
 void ClassLoaderDataShared::clear_archived_oops() {
   assert(!CDSConfig::is_using_full_module_graph(), "must be");
-#if 0
   _archived_boot_loader_data.clear_archived_oops();
   _archived_platform_loader_data.clear_archived_oops();
   _archived_system_loader_data.clear_archived_oops();
-#endif
-  _archived_cld_map.iterate([&](ArchivedClassLoaderData* archived_cld) {
+
+  _aotid_to_archived_cld_map.iterate([&](ArchivedClassLoaderData* archived_cld) {
     archived_cld->clear_archived_oops();
   });
   if (_platform_loader_root_index >= 0) {
@@ -409,10 +395,10 @@ void ClassLoaderDataShared::clear_archived_oops() {
 // Must be done before ClassLoader::create_javabase()
 void ClassLoaderDataShared::restore_archived_entries_for_null_class_loader_data() {
   precond(CDSConfig::is_using_full_module_graph());
-  unsigned int hash = Symbol::symbol_hash(null_class_loader_data()->aot_identity());
-  ArchivedClassLoaderData* archived_cld = _archived_cld_map.lookup(null_class_loader_data()->aot_identity(), hash, 0);
-  archived_cld->restore(null_class_loader_data(), true, false);
-  //_archived_boot_loader_data.restore(null_class_loader_data(), true, false);
+  //unsigned int hash = Symbol::symbol_hash(null_class_loader_data()->aot_identity());
+  //ArchivedClassLoaderData* archived_cld = _aotid_to_archived_cld_map.lookup(null_class_loader_data()->aot_identity(), hash, 0);
+  //archived_cld->restore(null_class_loader_data(), true, false);
+  _archived_boot_loader_data.restore(null_class_loader_data(), true, false);
   ModuleEntryTable::set_javabase_moduleEntry(_archived_javabase_moduleEntry);
   aot_log_info(aot)("use_full_module_graph = true; java.base = " INTPTR_FORMAT,
                     p2i(_archived_javabase_moduleEntry));
@@ -420,31 +406,31 @@ void ClassLoaderDataShared::restore_archived_entries_for_null_class_loader_data(
 
 oop ClassLoaderDataShared::restore_archived_oops_for_null_class_loader_data() {
   assert(CDSConfig::is_using_full_module_graph(), "must be");
-  unsigned int hash = Symbol::symbol_hash(null_class_loader_data()->aot_identity());
-  ArchivedClassLoaderData* archived_cld = _archived_cld_map.lookup(null_class_loader_data()->aot_identity(), hash, 0);
-  archived_cld->restore(null_class_loader_data(), false, true);
-  //_archived_boot_loader_data.restore(null_class_loader_data(), false, true);
-  null_class_loader_data()->set_restored(true);
+  //unsigned int hash = Symbol::symbol_hash(null_class_loader_data()->aot_identity());
+  //ArchivedClassLoaderData* archived_cld = _aotid_to_archived_cld_map.lookup(null_class_loader_data()->aot_identity(), hash, 0);
+  //archived_cld->restore(null_class_loader_data(), false, true);
+  _archived_boot_loader_data.restore(null_class_loader_data(), false, true);
+  //null_class_loader_data()->set_restored(true);
   return _archived_javabase_moduleEntry->module_oop();
 }
 
 void ClassLoaderDataShared::restore_java_platform_loader_from_archive(ClassLoaderData* loader_data) {
   assert(CDSConfig::is_using_full_module_graph(), "must be");
-  unsigned int hash = Symbol::symbol_hash(loader_data->aot_identity());
-  ArchivedClassLoaderData* archived_cld = _archived_cld_map.lookup(loader_data->aot_identity(), hash, 0);
-  assert(archived_cld != nullptr, "ArchivedClassLoaderData for platform loader not found");
-  archived_cld->restore(loader_data, true, true);
-  //_archived_platform_loader_data.restore(loader_data, true, true);
+  //unsigned int hash = Symbol::symbol_hash(loader_data->aot_identity());
+  //ArchivedClassLoaderData* archived_cld = _aotid_to_archived_cld_map.lookup(loader_data->aot_identity(), hash, 0);
+  //assert(archived_cld != nullptr, "ArchivedClassLoaderData for platform loader not found");
+  //archived_cld->restore(loader_data, true, true);
+  _archived_platform_loader_data.restore(loader_data, true, true);
   loader_data->set_restored(true);
 }
 
 void ClassLoaderDataShared::restore_java_system_loader_from_archive(ClassLoaderData* loader_data) {
   assert(CDSConfig::is_using_full_module_graph(), "must be");
-  unsigned int hash = Symbol::symbol_hash(loader_data->aot_identity());
-  ArchivedClassLoaderData* archived_cld = _archived_cld_map.lookup(loader_data->aot_identity(), hash, 0);
-  assert(archived_cld != nullptr, "ArchivedClassLoaderData for system loader not found");
-  archived_cld->restore(loader_data, true, true);
-  //_archived_system_loader_data.restore(loader_data, true, true);
+  //unsigned int hash = Symbol::symbol_hash(loader_data->aot_identity());
+  //ArchivedClassLoaderData* archived_cld = _aotid_to_archived_cld_map.lookup(loader_data->aot_identity(), hash, 0);
+  //assert(archived_cld != nullptr, "ArchivedClassLoaderData for system loader not found");
+  //archived_cld->restore(loader_data, true, true);
+  _archived_system_loader_data.restore(loader_data, true, true);
   _full_module_graph_loaded = true;
   loader_data->set_restored(true);
 }
@@ -462,7 +448,8 @@ void ClassLoaderDataShared::restore_archived_modules_for_preloading_classes(Java
   Modules::init_archived_modules(current, h_platform_loader, h_system_loader);
 }
 
-void ClassLoaderDataShared::restore_archived_data(ClassLoaderData* loader_data) {
+void ClassLoaderDataShared::restore_custom_loader_archived_data(ClassLoaderData* loader_data) {
+  assert(!loader_data->is_builtin_class_loader_data(), "should not be called for built-in loaders");
   //if already restored, nothing to do
   if (loader_data->restored()) {
     return;
@@ -472,7 +459,7 @@ void ClassLoaderDataShared::restore_archived_data(ClassLoaderData* loader_data) 
   Symbol* aot_id = loader_data->aot_identity();
   assert(aot_id != nullptr, "sanity check");
   unsigned int hash = Symbol::symbol_hash(aot_id);
-  ArchivedClassLoaderData* archived_cld = _archived_cld_map.lookup(aot_id, hash, 0);
+  ArchivedClassLoaderData* archived_cld = _aotid_to_archived_cld_map.lookup(aot_id, hash, 0);
   assert(archived_cld != nullptr, "ArchivedClassLoaderData for loader with aot_id=%s not found", aot_id->as_C_string());
   archived_cld->restore(loader_data, true, true);
   loader_data->set_restored(true);

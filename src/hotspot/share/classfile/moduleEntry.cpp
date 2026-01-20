@@ -417,8 +417,7 @@ static int _num_inited_module_entries = 0;
 #endif
 
 bool ModuleEntry::should_be_archived() const {
-  //return SystemDictionaryShared::is_builtin_loader(loader_data());
-  return loader_data()->aot_identity() != nullptr;
+  return SystemDictionaryShared::is_builtin_loader(loader_data()) || loader_data()->aot_identity() != nullptr;
 }
 
 ModuleEntry* ModuleEntry::allocate_archived_entry() const {

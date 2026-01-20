@@ -172,6 +172,8 @@ public:
     if (!info.is_excluded()) {
       if (info.is_builtin()) {
         _table->inc_builtin_count();
+      } else if (k->is_defined_by_aot_safe_custom_loader()) {
+        _table->inc_defined_by_aot_safe_custom_loaders_count();
       } else {
         _table->inc_unregistered_count();
       }
@@ -181,6 +183,7 @@ public:
 
 void DumpTimeSharedClassTable::update_counts() {
   _builtin_count = 0;
+  _defined_by_aot_safe_custom_loaders_count = 0;
   _unregistered_count = 0;
   CountClassByCategory counter(this);
   iterate_all_live_classes(&counter);

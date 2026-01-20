@@ -505,8 +505,7 @@ void Modules::check_archived_module_oop(oop orig_module_obj) {
     // We only archive the default module graph, which should contain only java.lang.Module oops
     // for the 3 built-in loaders (boot/platform/system)
     ClassLoaderData* loader_data = orig_module_ent->loader_data();
-    //assert(loader_data->is_builtin_class_loader_data(), "must be");
-    assert(loader_data->aot_identity() != nullptr, "must be");
+    assert(loader_data->is_builtin_class_loader_data() || loader_data->aot_identity() != nullptr, "must be");
 
     if (orig_module_ent->name() != nullptr) {
       // For each named module, we archive both the java.lang.Module oop and the ModuleEntry.
@@ -742,7 +741,7 @@ void Modules::init_archived_modules(JavaThread* current, Handle h_platform_loade
     ModuleEntryTable::patch_javabase_entries(current, java_base_module);
   }
 
-  ClassLoaderDataShared::load_archived_platform_and_system_class_loaders(h_platform_loader, h_system_loader);
+  ClassLoaderDataShared::load_archived_platform_and_system_class_loaders();
 
   ClassLoaderData* platform_loader_data = SystemDictionary::register_loader(h_platform_loader);
   SystemDictionary::set_platform_loader(platform_loader_data);

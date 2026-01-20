@@ -276,20 +276,25 @@ using DumpTimeSharedClassTableBaseType = HashTable<
 class DumpTimeSharedClassTable: public DumpTimeSharedClassTableBaseType
 {
   int _builtin_count;
+  int _defined_by_aot_safe_custom_loaders_count;
   int _unregistered_count;
 public:
   DumpTimeSharedClassTable() {
     _builtin_count = 0;
+    _defined_by_aot_safe_custom_loaders_count = 0;
     _unregistered_count = 0;
   }
   DumpTimeClassInfo* allocate_info(InstanceKlass* k);
   DumpTimeClassInfo* get_info(InstanceKlass* k);
   void inc_builtin_count()      { _builtin_count++; }
+  void inc_defined_by_aot_safe_custom_loaders_count() { _defined_by_aot_safe_custom_loaders_count++; }
   void inc_unregistered_count() { _unregistered_count++; }
   void update_counts();
-  int count_of(bool is_builtin) const {
+  int count_of(bool is_builtin, bool is_defined_by_aot_safe_custom_loaders) const {
     if (is_builtin) {
       return _builtin_count;
+    } else if (is_defined_by_aot_safe_custom_loaders) {
+      return _defined_by_aot_safe_custom_loaders_count;
     } else {
       return _unregistered_count;
     }
