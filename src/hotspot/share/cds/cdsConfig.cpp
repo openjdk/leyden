@@ -564,7 +564,7 @@ void CDSConfig::check_aotmode_record() {
   bool has_output = !FLAG_IS_DEFAULT(AOTCacheOutput);
 
   if (!has_output && !has_config) {
-      vm_exit_during_initialization("At least one of AOTCacheOutput and AOTConfiguration must be specified when using -XX:AOTMode=record");
+    vm_exit_during_initialization("At least one of AOTCacheOutput and AOTConfiguration must be specified when using -XX:AOTMode=record");
   }
 
   if (has_output) {
@@ -675,7 +675,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
   if (AOTClassLinking) {
     // If AOTClassLinking is specified, enable all these optimizations by default.
     FLAG_SET_ERGO_IF_DEFAULT(AOTInvokeDynamicLinking, true);
-    FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, true);
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, false); // FIXME-merge
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
 
@@ -767,16 +767,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     if (!BytecodeVerificationRemote) {
       BytecodeVerificationRemote = true;
       aot_log_info(aot)("All non-system classes will be verified (-Xverify:remote) during CDS dump time.");
-    }
-  }
-
-  if (AOTClassLinking) {
-    if (is_dumping_final_static_archive() && !is_dumping_full_module_graph()) {
-      if (bad_module_prop_key != nullptr) {
-        log_warning(cds)("optimized module handling/full module graph: disabled due to incompatible property: %s=%s",
-                         bad_module_prop_key, bad_module_prop_value);
-      }
-      vm_exit_during_initialization("AOT cache cannot be created because AOTClassLinking is enabled but full module graph is disabled");
     }
   }
 
@@ -1111,10 +1101,6 @@ void CDSConfig::set_has_aot_linked_classes(bool has_aot_linked_classes) {
   _has_aot_linked_classes |= has_aot_linked_classes;
 }
 
-bool CDSConfig::is_initing_classes_at_dump_time() {
-  return is_dumping_heap() && is_dumping_aot_linked_classes();
-}
-
 bool CDSConfig::is_dumping_invokedynamic() {
   // Requires is_dumping_aot_linked_classes(). Otherwise the classes of some archived heap
   // objects used by the archive indy callsites may be replaced at runtime.
@@ -1126,13 +1112,13 @@ bool CDSConfig::is_dumping_reflection_data() {
   return ArchiveReflectionData && is_dumping_invokedynamic();
 }
 
-// When we are dumping aot-linked classes and we are able to write archived heap objects, we automatically
-// enable the archiving of MethodHandles. This will in turn enable the archiving of MethodTypes and hidden
+// When we are dumping aot-linked classes, we automatically enable the archiving of MethodHandles.
+// This will in turn enable the archiving of MethodTypes and hidden
 // classes that are used in the implementation of MethodHandles.
 // Archived MethodHandles are required for higher-level optimizations such as AOT resolution of invokedynamic
 // and dynamic proxies.
 bool CDSConfig::is_dumping_method_handles() {
-  return is_initing_classes_at_dump_time();
+  return is_dumping_aot_linked_classes();
 }
 
 #endif // INCLUDE_CDS_JAVA_HEAP

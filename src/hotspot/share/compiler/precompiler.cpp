@@ -81,15 +81,6 @@ public:
     return false;
   }
 
-  void do_value(const RunTimeClassInfo* record) {
-    Array<Method*>* methods = record->klass()->methods();
-    for (int i = 0; i < methods->length(); i++) {
-      Method* m = methods->at(i);
-      if (include(m)) {
-        _methods.push(m);
-      }
-    }
-  }
   void operator()(TrainingData* td) {
     if (td->is_MethodTrainingData()) {
       MethodTrainingData* mtd = td->as_MethodTrainingData();

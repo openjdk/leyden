@@ -292,19 +292,6 @@ static void cpchars(jchar *dst, char *src, int n)
     }
 }
 
-JNIEXPORT jboolean JNICALL
-Java_java_lang_System_AOTIsTraining(JNIEnv *env, jclass ign)
-{
-    jboolean isTraining = JVM_AOTIsTraining(env);
-    return isTraining;
-}
-
-JNIEXPORT void JNICALL
-Java_java_lang_System_AOTEndTraining(JNIEnv *env, jclass ign)
-{
-    JVM_AOTEndTraining(env);
-}
-
 JNIEXPORT jstring JNICALL
 Java_java_lang_System_mapLibraryName(JNIEnv *env, jclass ign, jstring libname)
 {

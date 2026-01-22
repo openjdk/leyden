@@ -101,32 +101,11 @@ Java_sun_management_VMManagementImpl_getVmArguments0
     return JVM_GetVmArguments(env);
 }
 
-JNIEXPORT jstring JNICALL
-Java_sun_management_VMManagementImpl_getAOTMode
-  (JNIEnv *env, jobject dummy)
-{
-    return JVM_AOTGetMode(env);
-}
-
-JNIEXPORT jboolean JNICALL
-Java_sun_management_VMManagementImpl_isAOTRecording
-  (JNIEnv *env, jobject dummy)
-{
-    return JVM_AOTIsTraining(env);
-}
-
-JNIEXPORT jlong JNICALL
-Java_sun_management_VMManagementImpl_getAOTRecordingDuration
-  (JNIEnv *env, jobject dummy)
-{
-    return JVM_AOTGetRecordingDuration(env);
-}
-
 JNIEXPORT jboolean JNICALL
 Java_sun_management_VMManagementImpl_endAOTRecording
   (JNIEnv *env, jobject dummy)
 {
-    return JVM_AOTEndTraining(env);
+    return JVM_AOTEndRecording(env);
 }
 
 JNIEXPORT jlong JNICALL
@@ -147,6 +126,13 @@ Java_sun_management_VMManagementImpl_getUnloadedClassCount
     jlong count = jmm_interface->GetLongAttribute(env, NULL,
                                                   JMM_CLASS_UNLOADED_COUNT);
     return count;
+}
+
+JNIEXPORT jlong JNICALL
+Java_sun_management_VMManagementImpl_getTotalGcCpuTime
+  (JNIEnv *env, jobject dummy)
+{
+    return jmm_interface->GetLongAttribute(env, NULL, JMM_TOTAL_GC_CPU_TIME);
 }
 
 JNIEXPORT jboolean JNICALL

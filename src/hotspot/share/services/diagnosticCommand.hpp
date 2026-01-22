@@ -326,12 +326,12 @@ public:
 };
 
 #if INCLUDE_CDS
-class AOTEndTrainingDCmd : public DCmd {
+class AOTEndRecordingDCmd : public DCmd {
 public:
-  AOTEndTrainingDCmd(outputStream* output, bool heap) : DCmd(output, heap) { }
-    static const char* name() { return "AOT.end_training"; }
+  AOTEndRecordingDCmd(outputStream* output, bool heap) : DCmd(output, heap) { }
+    static const char* name() { return "AOT.end_recording"; }
     static const char* description() {
-      return "End AOT training and create the cache.";
+      return "End AOT recording.";
     }
     static const char* impact() {
       return "Medium: Pause time depends on number of loaded classes";

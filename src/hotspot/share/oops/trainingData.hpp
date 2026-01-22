@@ -311,7 +311,7 @@ private:
   static void iterate(Function& fn) { // lambda enabled API
     TrainingDataLocker l;
     if (have_data()) {
-      archived_training_data_dictionary()->iterate(fn);
+      archived_training_data_dictionary()->iterate_all([&](TrainingData* td) { fn(td); });
     }
     if (need_data()) {
       training_data_set()->iterate(fn);

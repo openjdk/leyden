@@ -88,16 +88,7 @@ JVM_InternString(JNIEnv *env, jstring str);
  * java.lang.System
  */
 JNIEXPORT jboolean JNICALL
-JVM_AOTIsTraining(JNIEnv *env);
-
-JNIEXPORT jboolean JNICALL
-JVM_AOTEndTraining(JNIEnv *env);
-
-JNIEXPORT jstring JNICALL
-JVM_AOTGetMode(JNIEnv *env);
-
-JNIEXPORT jlong JNICALL
-JVM_AOTGetRecordingDuration(JNIEnv *env);
+JVM_AOTEndRecording(JNIEnv *env);
 
 JNIEXPORT jlong JNICALL
 JVM_CurrentTimeMillis(JNIEnv *env, jclass ignored);
@@ -1115,16 +1106,16 @@ JVM_GetEnclosingMethodInfo(JNIEnv* env, jclass ofClass);
  * Virtual thread support.
  */
 JNIEXPORT void JNICALL
-JVM_VirtualThreadStart(JNIEnv* env, jobject vthread);
+JVM_VirtualThreadEndFirstTransition(JNIEnv* env, jobject vthread);
 
 JNIEXPORT void JNICALL
-JVM_VirtualThreadEnd(JNIEnv* env, jobject vthread);
+JVM_VirtualThreadStartFinalTransition(JNIEnv* env, jobject vthread);
 
 JNIEXPORT void JNICALL
-JVM_VirtualThreadMount(JNIEnv* env, jobject vthread, jboolean hide);
+JVM_VirtualThreadStartTransition(JNIEnv* env, jobject vthread, jboolean is_mount);
 
 JNIEXPORT void JNICALL
-JVM_VirtualThreadUnmount(JNIEnv* env, jobject vthread, jboolean hide);
+JVM_VirtualThreadEndTransition(JNIEnv* env, jobject vthread, jboolean is_mount);
 
 JNIEXPORT void JNICALL
 JVM_VirtualThreadDisableSuspend(JNIEnv* env, jclass clazz, jboolean enter);
