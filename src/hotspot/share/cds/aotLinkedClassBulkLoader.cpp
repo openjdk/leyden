@@ -31,6 +31,7 @@
 #include "cds/heapShared.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderDataShared.hpp"
+#include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -46,6 +47,7 @@
 #include "runtime/perfData.inline.hpp"
 #include "runtime/serviceThread.hpp"
 #include "utilities/growableArray.hpp"
+#include "utilities/resizableHashTable.hpp"
 
 static PerfCounter* _perf_classes_preloaded = nullptr;
 static PerfTickCounters* _perf_class_preload_counters = nullptr;
@@ -95,6 +97,70 @@ void AOTLinkedClassBulkLoader::preload_classes_impl(TRAPS) {
   initiate_loading(THREAD, "app", h_system_loader, table->boot2());
   initiate_loading(THREAD, "app", h_system_loader, table->platform());
   preload_classes_in_table(table->app(), "app", h_system_loader, CHECK);
+
+  // For each loader load all its classes, and then mark it as the initiating loader
+  // for the all the classes loaded by its ancentar loaders
+  GrowableArray<Handle> custom_loader_objs;
+  ClassLoaderDataShared::get_archived_custom_loader_objs(custom_loader_objs);
+  for (int i = 0; i < custom_loader_objs.length(); i++) {
+    ResourceMark rm;
+    Handle h_loader = custom_loader_objs.at(i);
+    Symbol* aot_id = java_lang_ClassLoader::loader_data(h_loader())->aot_identity();
+    AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
+    preload_classes_in_table(table->class_list(), aot_id->as_C_string(), h_loader, CHECK);
+  }
+
+  ResizeableHashTable<ClassLoaderData*, bool> processed(10, 100);
+  MonitorLocker mu1(SystemDictionary_lock);
+  for (int i = 0; i < custom_loader_objs.length(); i++) {
+    ResourceMark rm;
+    Handle h_loader = custom_loader_objs.at(i);
+    mark_initiating_loader(THREAD, h_loader(), processed);
+  }
+}
+
+class DictionaryCopier : public KlassClosure {
+ private:
+  Dictionary* _dict;
+  GrowableArray<InstanceKlass*> _klasses;
+ public:
+  DictionaryCopier(Dictionary* dict) : _dict(dict) {}
+  void do_klass(Klass* k) {
+    assert(k->is_instance_klass(), "must be");
+    Symbol* name  = k->name();
+    _klasses.append(InstanceKlass::cast(k));
+  }
+  GrowableArray<InstanceKlass*>* klasses() {
+    return &_klasses;
+  }
+};
+
+void AOTLinkedClassBulkLoader::mark_initiating_loader(JavaThread* currentThread, oop loader, ResizeableHashTable<ClassLoaderData*, bool>& processed) {
+  if (SystemDictionary::is_builtin_class_loader(loader)) {
+    //terminating condition: loader is builtin loader for which this computation has already been done
+    return;
+  }
+  ClassLoaderData* cl_data = java_lang_ClassLoader::loader_data(loader); 
+  if (processed.contains(cl_data)) {
+    return;
+  }
+  oop parent = java_lang_ClassLoader::parent(loader);
+  assert(parent != nullptr, "custom loader's parent loader cannot be null");
+  mark_initiating_loader(currentThread, parent, processed);
+  ClassLoaderData* parent_cl_data = java_lang_ClassLoader::loader_data(parent); 
+  Dictionary* parent_dict = parent_cl_data->dictionary();
+  Dictionary* loader_dict = cl_data->dictionary();
+  DictionaryCopier copier(loader_dict);
+  parent_dict->all_entries_do(&copier);
+  GrowableArray<InstanceKlass*>* klasses = copier.klasses();
+  for (int i = 0; i < klasses->length(); i++) {
+    Symbol* name = klasses->at(i)->name();
+    if (loader_dict->find_class(currentThread, name) == nullptr) {
+      loader_dict->add_klass(currentThread, name, klasses->at(i));
+    }
+  }
+  bool created;
+  processed.put_if_absent(cl_data, &created);
 }
 
 void AOTLinkedClassBulkLoader::preload_classes_in_table(Array<InstanceKlass*>* classes,

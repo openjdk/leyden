@@ -45,6 +45,12 @@ AOTClassLinker::ClassesTable* AOTClassLinker::_vm_classes = nullptr;
 AOTClassLinker::ClassesTable* AOTClassLinker::_candidates = nullptr;
 GrowableArrayCHeap<InstanceKlass*, mtClassShared>* AOTClassLinker::_sorted_candidates = nullptr;
 
+static const unsigned INITIAL_TABLE_SIZE = 997; // prime number
+static const unsigned MAX_TABLE_SIZE     = 10000;
+typedef GrowableArrayCHeap<InstanceKlass*, mtClassShared> ClassList;
+typedef ResizeableHashTable<Symbol*, ClassList*, AnyObj::C_HEAP, mtClass> ClassLoaderIdToPrelinkedTable;
+ClassLoaderIdToPrelinkedTable* _custom_loader_prelinked_table;
+
 #ifdef ASSERT
 bool AOTClassLinker::is_initialized() {
   assert(CDSConfig::is_dumping_archive(), "AOTClassLinker is for CDS dumping only");
@@ -58,6 +64,8 @@ void AOTClassLinker::initialize() {
   _vm_classes = new (mtClass)ClassesTable();
   _candidates = new (mtClass)ClassesTable();
   _sorted_candidates = new GrowableArrayCHeap<InstanceKlass*, mtClassShared>(1000);
+
+  _custom_loader_prelinked_table = new (mtClass) ClassLoaderIdToPrelinkedTable(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
 
   for (auto id : EnumRange<vmClassID>{}) {
     add_vm_class(vmClasses::klass_at(id));
@@ -113,6 +121,19 @@ void AOTClassLinker::add_new_candidate(InstanceKlass* ik) {
   _candidates->put_when_absent(ik, true);
   _sorted_candidates->append(ik);
 
+  Symbol* loader_id;
+  loader_id = ik->cl_aot_identity();
+  if (loader_id != nullptr) {
+    ClassList** class_list_ptr = _custom_loader_prelinked_table->get(loader_id);
+    ClassList* class_list = nullptr;
+    if (class_list_ptr != nullptr) {
+      class_list = *class_list_ptr;
+    } else {
+      class_list = new ClassList(1000);
+      _custom_loader_prelinked_table->put(loader_id, class_list);
+    }
+    class_list->append(ik);
+  }
   if (log_is_enabled(Info, aot, link)) {
     ResourceMark rm;
     log_info(aot, link)("%s %s %p", class_category_name(ik), ik->external_name(), ik);
@@ -127,7 +148,7 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
   assert(is_initialized(), "sanity");
   assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
 
-  if (!SystemDictionaryShared::is_builtin(ik)) {
+  if (!SystemDictionaryShared::is_builtin(ik) && ik->cl_aot_identity() == nullptr) {
     // not loaded by a class loader which we know about
     return false;
   }
@@ -190,6 +211,67 @@ void AOTClassLinker::add_candidates() {
   }
 }
 
+static inline bool prelinked_table_equals(AOTLinkedClassTableForCustomLoader* table, Symbol* loader_id, int len_unused) {
+  return table->loader_id()->equals(loader_id);
+}
+
+class ArchivedCustomLoaderPrelinkedTable : public OffsetCompactHashtable<Symbol*, AOTLinkedClassTableForCustomLoader*,
+                                                                         prelinked_table_equals> {};
+ArchivedCustomLoaderPrelinkedTable _archived_custom_loader_prelinked_table;
+
+AOTLinkedClassTableForCustomLoader* AOTClassLinker::get_prelinked_table(Symbol* aot_id) {
+  unsigned int hash = Symbol::symbol_hash(aot_id);
+  return _archived_custom_loader_prelinked_table.lookup(aot_id, hash, 0 /* ignored */);
+}
+
+void AOTClassLinker::all_symbols_do(MetaspaceClosure* it) {
+  _custom_loader_prelinked_table->iterate_all([&](Symbol* loader_id, ClassList* class_list) {
+    it->push(&loader_id);
+  });
+}
+
+void AOTClassLinker::serialize_prelinked_table_header(SerializeClosure* soc) {
+  _archived_custom_loader_prelinked_table.serialize_header(soc);
+}
+
+void AOTClassLinker::print_archived_custom_loader_prelinked_table() {
+  if (log_is_enabled(Info, aot, link)) {
+    ResourceMark rm;
+    _archived_custom_loader_prelinked_table.iterate([&](AOTLinkedClassTableForCustomLoader* table) {
+      Array<InstanceKlass*>* class_list = table->class_list();
+      log_info(aot, link)("Class loader \"%s\" has %d classes in prelinked table", table->loader_id()->as_C_string(), class_list->length());
+      for (int i = 0; i < class_list->length(); i++) {
+        InstanceKlass* ik = class_list->at(i);
+        log_info(aot, link)("  %s", ik->external_name());
+      }
+    });
+  }
+}
+
+class CopyPrelinkTableToArchive : StackObj {
+private:
+  CompactHashtableWriter* _writer;
+  ArchiveBuilder* _builder;
+public:
+  CopyPrelinkTableToArchive(CompactHashtableWriter* writer) : _writer(writer),
+                                                              _builder(ArchiveBuilder::current())
+  {}
+
+  bool do_entry(Symbol* loader_id, ClassList* class_list) {
+    AOTLinkedClassTableForCustomLoader* tableForLoader = (AOTLinkedClassTableForCustomLoader*)ArchiveBuilder::ro_region_alloc(sizeof(AOTLinkedClassTableForCustomLoader));
+    assert(_builder->has_been_archived(loader_id), "must be");
+    Symbol* buffered_sym = _builder->get_buffered_addr(loader_id);
+    tableForLoader->set_loader_id(buffered_sym);
+    tableForLoader->set_class_list(ArchiveUtils::archive_array(class_list));
+    ArchivePtrMarker::mark_pointer(tableForLoader->loader_id_addr());
+    ArchivePtrMarker::mark_pointer(tableForLoader->class_list_addr());
+    unsigned int hash = Symbol::symbol_hash(loader_id);
+    u4 delta = _builder->buffer_to_offset_u4((address)tableForLoader);
+    _writer->add(hash, delta);
+    return true;
+  }
+};
+
 void AOTClassLinker::write_to_archive() {
   assert(is_initialized(), "sanity");
   assert_at_safepoint();
@@ -200,6 +282,24 @@ void AOTClassLinker::write_to_archive() {
     table->set_boot2(write_classes(nullptr, false));
     table->set_platform(write_classes(SystemDictionary::java_platform_loader(), false));
     table->set_app(write_classes(SystemDictionary::java_system_loader(), false));
+
+    CompactHashtableStats stats;
+    CompactHashtableWriter writer(_custom_loader_prelinked_table->number_of_entries(), &stats);
+    CopyPrelinkTableToArchive archiver(&writer);
+    _custom_loader_prelinked_table->iterate(&archiver);
+    writer.dump(&_archived_custom_loader_prelinked_table, "archived prelinked table");
+
+    if (log_is_enabled(Info, aot, link)) {
+      ResourceMark rm;
+      _custom_loader_prelinked_table->iterate_all([&](Symbol* loader_id, ClassList* class_list) {
+        log_info(aot, link)("Class loader \"%s\" has %d classes in prelinked table", loader_id->as_C_string(), class_list->length());
+        for (int i = 0; i < class_list->length(); i++) {
+          InstanceKlass* ik = class_list->at(i);
+          log_info(aot, link)("  %s", ik->external_name());
+        }
+        return true;
+      });
+    }
   }
 }
 
@@ -227,6 +327,8 @@ Array<InstanceKlass*>* AOTClassLinker::write_classes(oop class_loader, bool is_j
     return ArchiveUtils::archive_array(&list);
   }
 }
+
+
 
 int AOTClassLinker::num_platform_initiated_classes() {
   if (CDSConfig::is_dumping_aot_linked_classes()) {
@@ -281,6 +383,8 @@ const char* AOTClassLinker::class_category_name(Klass* k) {
         return "plat";
       } else if (loader == SystemDictionary::java_system_loader()) {
         return "app";
+      } else if (k->cl_aot_identity() != nullptr) {
+        return "aotsafe_custom_lodaer";
       } else {
         return "unreg";
       }

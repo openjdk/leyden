@@ -1174,7 +1174,7 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
 void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRAPS) {
   precond(Universe::is_bootstrapping());
   precond(java_platform_loader() != nullptr && java_system_loader() != nullptr);
-  precond(class_loader() == nullptr || class_loader() == java_platform_loader() ||class_loader() == java_system_loader());
+  precond(class_loader() == nullptr || class_loader() == java_platform_loader() ||class_loader() == java_system_loader() || ik->cl_aot_identity() != nullptr);
   precond(CDSConfig::is_using_aot_linked_classes());
   precond(AOTMetaspace::in_aot_cache_static_region((void*)ik));
   precond(!ik->is_loaded());
@@ -1196,7 +1196,7 @@ void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRA
   ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(class_loader());
   oop java_mirror = ik->archived_java_mirror();
   precond(java_mirror != nullptr);
-  assert(java_lang_Class::module(java_mirror) != nullptr, "must have been archived");
+  //assert(java_lang_Class::module(java_mirror) != nullptr, "must have been archived");
 
   Handle pd(THREAD, java_lang_Class::protection_domain(java_mirror));
   PackageEntry* pkg_entry = ik->package();

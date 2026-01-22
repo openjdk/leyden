@@ -44,12 +44,26 @@
 
 bool ClassLoaderDataShared::_full_module_graph_loaded = false;
 
+static ClassLoaderData* null_class_loader_data() {
+  ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
+  assert(loader_data != nullptr, "must be");
+  return loader_data;
+}
+
+static ClassLoaderData* java_platform_loader_data_or_null() {
+  return ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_platform_loader());
+}
+
+static ClassLoaderData* java_system_loader_data_or_null() {
+  return ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_system_loader());
+}
+
 class ArchivedClassLoaderData {
   Array<PackageEntry*>* _packages;
   Array<ModuleEntry*>* _modules;
   ModuleEntry* _unnamed_module;
   Symbol* _aot_identity;
-
+  int _loader_obj_index;
   void assert_valid(ClassLoaderData* loader_data) {
     // loader_data may be null if the boot layer has loaded no modules for the platform or
     // system loaders (e.g., if you create a custom JDK image with only java.base).
@@ -59,7 +73,7 @@ class ArchivedClassLoaderData {
     }
   }
 public:
-  ArchivedClassLoaderData() : _packages(nullptr), _modules(nullptr), _unnamed_module(nullptr) {}
+  ArchivedClassLoaderData() : _packages(nullptr), _modules(nullptr), _unnamed_module(nullptr), _aot_identity(nullptr), _loader_obj_index(-1) {}
 
   void iterate_symbols(ClassLoaderData* loader_data, MetaspaceClosure* closure);
   void allocate(ClassLoaderData* loader_data);
@@ -68,11 +82,14 @@ public:
     return _unnamed_module;
   }
   Symbol* aot_identity() { return _aot_identity; }
+  int loader_obj_index() { return _loader_obj_index; }
 
   void serialize(SerializeClosure* f) {
     f->do_ptr(&_packages);
     f->do_ptr(&_modules);
     f->do_ptr(&_unnamed_module);
+    f->do_ptr(&_aot_identity);
+    f->do_int(&_loader_obj_index);
   }
 
   void restore(ClassLoaderData* loader_data, bool do_entries, bool do_oops);
@@ -119,6 +136,12 @@ void ArchivedClassLoaderData::allocate(ClassLoaderData* loader_data) {
     _unnamed_module = loader_data->unnamed_module()->allocate_archived_entry();
     if (!loader_data->is_builtin_class_loader_data()) {
       _aot_identity = loader_data->aot_identity();
+    }
+    if (!loader_data->class_loader_handle().is_empty()) {
+      _loader_obj_index = HeapShared::append_root(loader_data->class_loader_handle().resolve());
+    } else {
+      assert(loader_data == null_class_loader_data(), "sanity check");
+      _loader_obj_index = -1;
     }
     ArchivePtrMarker::mark_pointer((address*)&_packages);
     ArchivePtrMarker::mark_pointer((address*)&_modules);
@@ -209,20 +232,6 @@ void ClassLoaderDataShared::load_archived_platform_and_system_class_loaders() {
     system_loader_module_entry->preload_archived_oops();
   }
 #endif
-}
-
-static ClassLoaderData* null_class_loader_data() {
-  ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
-  assert(loader_data != nullptr, "must be");
-  return loader_data;
-}
-
-static ClassLoaderData* java_platform_loader_data_or_null() {
-  return ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_platform_loader());
-}
-
-static ClassLoaderData* java_system_loader_data_or_null() {
-  return ClassLoaderData::class_loader_data_or_null(SystemDictionary::java_system_loader());
 }
 
 // ModuleEntryTables (even if empty) are required for iterate_symbols() to scan the
@@ -446,6 +455,12 @@ void ClassLoaderDataShared::restore_archived_modules_for_preloading_classes(Java
   Handle h_platform_loader(current, HeapShared::get_root(_platform_loader_root_index));
   Handle h_system_loader(current, HeapShared::get_root(_system_loader_root_index));
   Modules::init_archived_modules(current, h_platform_loader, h_system_loader);
+
+  _aotid_to_archived_cld_map.iterate([&](ArchivedClassLoaderData* archived_cld) {
+    Handle h_loader(current, HeapShared::get_root(archived_cld->loader_obj_index()));
+    ClassLoaderData* runtime_cld = SystemDictionary::register_loader(h_loader);
+    ClassLoaderDataShared::restore_custom_loader_archived_data(runtime_cld);
+  });
 }
 
 void ClassLoaderDataShared::restore_custom_loader_archived_data(ClassLoaderData* loader_data) {
@@ -463,6 +478,14 @@ void ClassLoaderDataShared::restore_custom_loader_archived_data(ClassLoaderData*
   assert(archived_cld != nullptr, "ArchivedClassLoaderData for loader with aot_id=%s not found", aot_id->as_C_string());
   archived_cld->restore(loader_data, true, true);
   loader_data->set_restored(true);
+}
+
+void ClassLoaderDataShared::get_archived_custom_loader_objs(GrowableArray<Handle>& loader_obj_list) {
+  // TODO: assert that it is called in production run only
+  _aotid_to_archived_cld_map.iterate([&](ArchivedClassLoaderData* archived_cld) {
+    Handle h_loader(Thread::current(), HeapShared::get_root(archived_cld->loader_obj_index()));
+    loader_obj_list.append(h_loader);
+  });
 }
 
 #endif // INCLUDE_CDS_JAVA_HEAP

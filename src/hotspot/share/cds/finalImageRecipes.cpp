@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotConstantPoolResolver.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
@@ -38,6 +39,7 @@
 #include "oops/symbol.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/mutexLocker.hpp"
+#include "utilities/resizableHashTable.hpp"
 
 GrowableArray<InstanceKlass*>* FinalImageRecipes::_tmp_reflect_klasses = nullptr;
 GrowableArray<int>* FinalImageRecipes::_tmp_reflect_flags = nullptr;
@@ -305,6 +307,14 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
         }
       }
     }
+    ResizeableHashTable<ClassLoaderData*, bool> processed(10, 100);
+    MonitorLocker mu1(SystemDictionary_lock);
+    _aot_safe_custom_loaders_map->iterate([&](Symbol* aot_id, OopHandle h_loader) {
+      ResourceMark rm;
+      oop loader = h_loader.resolve();;
+      AOTLinkedClassBulkLoader::mark_initiating_loader(THREAD, loader, processed);
+      return true;
+    });
   }
 }
 

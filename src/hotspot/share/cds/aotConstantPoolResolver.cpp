@@ -219,7 +219,7 @@ void AOTConstantPoolResolver::resolve_string(constantPoolHandle cp, int cp_index
 #endif
 
 void AOTConstantPoolResolver::preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
-  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data())) {
+  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && ik->cl_aot_identity() == nullptr) {
     return;
   }
 

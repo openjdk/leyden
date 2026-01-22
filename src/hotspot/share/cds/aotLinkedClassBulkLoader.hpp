@@ -76,6 +76,7 @@ public:
 
   static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;
   static void print_counters_on(outputStream* st) NOT_CDS_RETURN;
+  static void mark_initiating_loader(JavaThread* currentThread, oop loader, ResizeableHashTable<ClassLoaderData*, bool>& processed);
 };
 
 #endif // SHARE_CDS_AOTLINKEDCLASSBULKLOADER_HPP

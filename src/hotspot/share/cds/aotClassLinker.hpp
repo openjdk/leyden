@@ -40,6 +40,19 @@ class SerializeClosure;
 template <typename T> class Array;
 enum class AOTLinkedClassCategory : int;
 
+class AOTLinkedClassTableForCustomLoader {
+private:
+  Symbol* _loader_id;
+  Array<InstanceKlass*>* _prelinked_classes;
+public:
+  Symbol* loader_id() const { return _loader_id; }
+  address* loader_id_addr() const { return (address*)&_loader_id; }
+  Array<InstanceKlass*>* class_list() const { return _prelinked_classes; }
+  address* class_list_addr() const { return (address*)&_prelinked_classes; }
+  void set_loader_id(Symbol* id) { _loader_id = id; }
+  void set_class_list(Array<InstanceKlass*>* list) { _prelinked_classes = list; }
+};
+
 // AOTClassLinker is used during the AOTCache Assembly Phase.
 // It links eligible classes before they are written into the AOTCache
 //
@@ -110,6 +123,11 @@ public:
 
   static int num_app_initiated_classes();
   static int num_platform_initiated_classes();
+
+  static void all_symbols_do(MetaspaceClosure* it);
+  static void serialize_prelinked_table_header(SerializeClosure* soc);
+  static void print_archived_custom_loader_prelinked_table();
+  static AOTLinkedClassTableForCustomLoader* get_prelinked_table(Symbol* aot_id);
 
   // Used in logging: "boot1", "boot2", "plat", "app" and "unreg";
   static const char* class_category_name(AOTLinkedClassCategory category);

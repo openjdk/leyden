@@ -530,6 +530,7 @@ void AOTMetaspace::serialize(SerializeClosure* soc) {
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
   AOTLinkedClassBulkLoader::serialize(soc);
+  AOTClassLinker::serialize_prelinked_table_header(soc);
   FinalImageRecipes::serialize(soc);
   TrainingData::serialize(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
@@ -717,6 +718,7 @@ public:
     for (int i = 0; i < _pending_method_handle_intrinsics->length(); i++) {
       it->push(_pending_method_handle_intrinsics->adr_at(i));
     }
+    AOTClassLinker::all_symbols_do(it);
   }
 };
 
