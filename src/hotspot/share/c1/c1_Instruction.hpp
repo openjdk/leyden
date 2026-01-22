@@ -1222,11 +1222,12 @@ LEAF(Invoke, StateSplit)
   Values*         _args;
   BasicTypeList*  _signature;
   ciMethod*       _target;
+  ciMethod*       _cha_monomorphic_target;
 
  public:
   // creation
   Invoke(Bytecodes::Code code, ValueType* result_type, Value recv, Values* args,
-         ciMethod* target, ValueStack* state_before);
+         ciMethod* target, ValueStack* state_before, ciMethod* cha_monomorphic_target = nullptr);
 
   // accessors
   Bytecodes::Code code() const                   { return _code; }
@@ -1236,6 +1237,7 @@ LEAF(Invoke, StateSplit)
   Value argument_at(int i) const                 { return _args->at(i); }
   BasicTypeList* signature() const               { return _signature; }
   ciMethod* target() const                       { return _target; }
+  ciMethod* cha_monomorphic_target() const       { return _cha_monomorphic_target; }
 
   ciType* declared_type() const;
 

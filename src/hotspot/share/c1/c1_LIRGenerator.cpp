@@ -2741,7 +2741,7 @@ void LIRGenerator::do_Invoke(Invoke* x) {
       if (x->code() == Bytecodes::_invokespecial || x->target_is_final()) {
         __ call_opt_virtual(target, receiver, result_register,
                             SharedRuntime::get_resolve_opt_virtual_call_stub(),
-                            arg_list, info);
+                            arg_list, info, x->cha_monomorphic_target());
       } else {
         __ call_icvirtual(target, receiver, result_register,
                           SharedRuntime::get_resolve_virtual_call_stub(),

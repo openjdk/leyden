@@ -893,7 +893,7 @@ public:
   void call(AddressLiteral entry, Register rscratch = rax);
 
   // Emit the CompiledIC call idiom
-  void ic_call(address entry, jint method_index = 0);
+  void ic_call(address entry, jint method_index = 0, bool is_mhi = false);
   static int ic_check_size();
   int ic_check(int end_alignment);
 
