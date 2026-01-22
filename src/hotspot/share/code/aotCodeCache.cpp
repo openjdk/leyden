@@ -653,15 +653,11 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   }
 #endif
 
-#if 0
-  // FIXME-merge - failing with
-  // [0.022s][debug][aot,codecache,init] AOT Code Cache disabled: it was created with CodeCache size = 245768Kb vs current 245764Kb
   size_t codeCacheSize = pointer_delta(CodeCache::high_bound(), CodeCache::low_bound(), 1);
-  if (_codeCacheSize != codeCacheSize) {
+  if (codeCacheSize > _codeCacheSize) { // Only allow smaller or equal CodeCache size in production run
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with CodeCache size = %dKb vs current %dKb", (int)(_codeCacheSize/K), (int)(codeCacheSize/K));
     return false;
   }
-#endif
 
   CollectedHeap::Name aot_gc = (CollectedHeap::Name)_gc;
   if (aot_gc != Universe::heap()->kind()) {
