@@ -310,7 +310,7 @@ private:
   template<typename Function>
   static void iterate(Function& fn) { // lambda enabled API
     TrainingDataLocker l;
-    if (have_data()) {
+    if (have_data() && !need_data()) {
       archived_training_data_dictionary()->iterate_all([&](TrainingData* td) { fn(td); });
     }
     if (need_data()) {
@@ -336,8 +336,21 @@ private:
   // possibly cyclic.
   template<typename E>
   class DepList : public StackObj {
+    static const int INITIAL_CAPACITY = 10;
+
     GrowableArrayCHeap<E, mtCompiler>* _deps_dyn;
     Array<E>*                          _deps;
+
+    void copy_on_write_if_necessary() {
+      TrainingDataLocker::assert_locked_or_snapshotted();
+      if (_deps != nullptr && _deps_dyn == nullptr) {
+        _deps_dyn = new GrowableArrayCHeap<E, mtCompiler>(length() + INITIAL_CAPACITY);
+        for (int i = 0; _deps->length(); i++) {
+          _deps_dyn->append(_deps->at(i));
+        }
+        _deps = nullptr;
+      }
+    }
   public:
     DepList() {
       _deps_dyn = nullptr;
@@ -350,21 +363,20 @@ private:
               : _deps   != nullptr ? _deps->length()
               : 0);
     }
-    E* adr_at(int i) const {
-      TrainingDataLocker::assert_locked_or_snapshotted();
-      return (_deps_dyn != nullptr ? _deps_dyn->adr_at(i)
-              : _deps   != nullptr ? _deps->adr_at(i)
-              : nullptr);
-    }
     E at(int i) const {
       TrainingDataLocker::assert_locked_or_snapshotted();
       assert(i >= 0 && i < length(), "oob");
-      return *adr_at(i);
+      if (_deps_dyn != nullptr) {
+        return _deps_dyn->at(i);
+      } else if (_deps != nullptr) {
+        return _deps->at(i);
+      } else ShouldNotReachHere();
     }
     bool append_if_missing(E dep) {
       TrainingDataLocker::assert_can_add();
+      copy_on_write_if_necessary();
       if (_deps_dyn == nullptr) {
-        _deps_dyn = new GrowableArrayCHeap<E, mtCompiler>(10);
+        _deps_dyn = new GrowableArrayCHeap<E, mtCompiler>(INITIAL_CAPACITY);
         _deps_dyn->append(dep);
         return true;
       } else {
@@ -373,6 +385,7 @@ private:
     }
     bool remove_if_existing(E dep) {
       TrainingDataLocker::assert_can_add();
+      copy_on_write_if_necessary();
       if (_deps_dyn != nullptr) {
         return _deps_dyn->remove_if_existing(dep);
       }
@@ -383,11 +396,13 @@ private:
       if (_deps_dyn != nullptr)  {
         _deps_dyn->clear();
       }
+      _deps = nullptr;
     }
     void append(E dep) {
       TrainingDataLocker::assert_can_add();
+      copy_on_write_if_necessary();
       if (_deps_dyn == nullptr) {
-        _deps_dyn = new GrowableArrayCHeap<E, mtCompiler>(10);
+        _deps_dyn = new GrowableArrayCHeap<E, mtCompiler>(INITIAL_CAPACITY);
       }
       _deps_dyn->append(dep);
     }

@@ -1865,6 +1865,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       MethodTrainingData* mtd = nullptr;
       GUARDED_VM_ENTRY(mtd = MethodTrainingData::find(methodHandle(Thread::current(), task()->method())); )
       if (mtd != nullptr) {
+        TrainingData::TrainingDataLocker l;
         CompileTrainingData* ctd = mtd->last_toplevel_compile(task()->comp_level());
         if (ctd != nullptr) {
           for (int i = 0; i < ctd->init_dep_count(); i++) {
