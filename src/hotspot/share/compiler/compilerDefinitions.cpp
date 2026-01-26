@@ -608,7 +608,9 @@ void CompilerConfig::ergo_initialize() {
     FLAG_SET_DEFAULT(ProfileInterpreter, false);
     FLAG_SET_DEFAULT(UseOnStackReplacement, false);
     FLAG_SET_DEFAULT(UseLoopCounter, false);
+  }
 
+  if (PreloadOnly || PreloadAndC1Only) {
     // Disable compilations through training data replay.
     FLAG_SET_DEFAULT(AOTReplayTraining, false);
   }

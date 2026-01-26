@@ -63,17 +63,22 @@ public:
     int high_top_level = highest_top_level(m);
     switch (_comp_level) {
       case CompLevel_simple:
-      case CompLevel_full_optimization:
-        // For final C1/C2 compilations, we only compile when there was relevant compilation during training.
-        return _comp_level == high_top_level;
       case CompLevel_limited_profile:
-        // For profiled C1 compilations, generate limited profile when there was limited/full
-        // profiled compilation in training.
-        return CompLevel_limited_profile <= high_top_level && high_top_level <= CompLevel_full_profile;
+        // Depending on what the tiered policy needs at runtime, we might need
+        // C1 methods, even if only the C2 version is recorded in training data.
+        // This covers the cases of C2 deopt to C1 profiled version, or runtime
+        // policy disallowing C2 completely, or switching to C1 non-profiled version
+        // due to compiler overload.
+        // Additionally, this generates C1 limited profiled version for methods
+        // that only have C1 full profiled version.
+        return _comp_level <= high_top_level;
       case CompLevel_full_profile:
         // We do not include C1 full profiled methods at this time.
         // TODO: See if it is profitable to do so.
         return false;
+      case CompLevel_full_optimization:
+        // For C2 levels, we only care about the direct hits.
+        return _comp_level == high_top_level;
       default:
         assert(false, "Missed the case: %d", _comp_level);
     }
