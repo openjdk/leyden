@@ -98,6 +98,7 @@ void AOTLinkedClassBulkLoader::preload_classes_impl(TRAPS) {
   initiate_loading(THREAD, "app", h_system_loader, table->platform());
   preload_classes_in_table(table->app(), "app", h_system_loader, CHECK);
 
+#if 0
   // For each loader load all its classes, and then mark it as the initiating loader
   // for the all the classes loaded by its ancentar loaders
   GrowableArray<Handle> custom_loader_objs;
@@ -117,6 +118,29 @@ void AOTLinkedClassBulkLoader::preload_classes_impl(TRAPS) {
     Handle h_loader = custom_loader_objs.at(i);
     mark_initiating_loader(THREAD, h_loader(), processed);
   }
+#endif
+}
+
+void AOTLinkedClassBulkLoader::preload_classes_for_loader(ClassLoaderData* loader_data, TRAPS) {
+  Handle h_loader(THREAD, loader_data->class_loader_handle().resolve());
+  preload_classes_for_loader_impl(h_loader, CHECK);
+}
+
+void AOTLinkedClassBulkLoader::preload_classes_for_loader_impl(Handle loader_obj, TRAPS) {
+  if (SystemDictionary::is_builtin_class_loader(loader_obj())) {
+    // classes for builtin loaders should have already been loaded during startup
+    return;
+  }
+  Symbol* aot_id = java_lang_ClassLoader::loader_data(loader_obj())->aot_identity();
+  AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
+  if (table->is_loaded()) {
+    return;
+  }
+  oop parent = java_lang_ClassLoader::parent(loader_obj());
+  preload_classes_for_loader_impl(Handle(THREAD, parent), CHECK);
+  preload_classes_in_table(table->class_list(), aot_id->as_C_string(), loader_obj, CHECK);
+  MonitorLocker mu1(SystemDictionary_lock);
+  mark_initiating_loader(THREAD, loader_obj());
 }
 
 class DictionaryCopier : public KlassClosure {
@@ -134,6 +158,25 @@ class DictionaryCopier : public KlassClosure {
     return &_klasses;
   }
 };
+
+void AOTLinkedClassBulkLoader::mark_initiating_loader(JavaThread* currentThread, oop loader) {
+  assert(!SystemDictionary::is_builtin_class_loader(loader), "does not work for built-in loaders");
+  ClassLoaderData* cl_data = java_lang_ClassLoader::loader_data(loader);
+  oop parent = java_lang_ClassLoader::parent(loader);
+  assert(parent != nullptr, "custom loader's parent loader cannot be null");
+  ClassLoaderData* parent_cl_data = java_lang_ClassLoader::loader_data(parent);
+  Dictionary* parent_dict = parent_cl_data->dictionary();
+  Dictionary* loader_dict = cl_data->dictionary();
+  DictionaryCopier copier(loader_dict);
+  parent_dict->all_entries_do(&copier);
+  GrowableArray<InstanceKlass*>* klasses = copier.klasses();
+  for (int i = 0; i < klasses->length(); i++) {
+    Symbol* name = klasses->at(i)->name();
+    if (loader_dict->find_class(currentThread, name) == nullptr) {
+      loader_dict->add_klass(currentThread, name, klasses->at(i));
+    }
+  }
+}
 
 void AOTLinkedClassBulkLoader::mark_initiating_loader(JavaThread* currentThread, oop loader, ResizeableHashTable<ClassLoaderData*, bool>& processed) {
   if (SystemDictionary::is_builtin_class_loader(loader)) {

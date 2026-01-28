@@ -28,6 +28,7 @@
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/finalImageRecipes.hpp"
+#include "cds/unregisteredClasses.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -257,6 +258,7 @@ void FinalImageRecipes::record_recipes_for_dynamic_proxies() {
 
 void FinalImageRecipes::load_all_classes(TRAPS) {
   assert(CDSConfig::is_dumping_final_static_archive(), "sanity");
+  UnregisteredClasses::initialize(CHECK);
   Handle class_loader(THREAD, SystemDictionary::java_system_loader());
   for (int i = 0; i < _all_klasses->length(); i++) {
     Klass* k = _all_klasses->at(i);
@@ -283,10 +285,16 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
           //assert(ik->class_loader() == nullptr, "supported only for boot classes for now");
           ik->initialize(CHECK);
         }
+      } else if (k->is_defined_by_aot_safe_custom_loader()) {
+        // Use UnregisteredClassLoader to load these classes
+        Handle unreg_class_loader = UnregisteredClasses::unregistered_class_loader(THREAD);
+        assert(unreg_class_loader.not_null(), "must be");
+        Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), unreg_class_loader, true, CHECK);
       }
     }
   }
 
+#if 0
   if (CDSConfig::supports_custom_loaders()) {
     // Custom Loaders must be marked with AOTSafeClassInitializer annotation.
     // They would have been created as part of running class initializer for custom loaders.
@@ -316,6 +324,7 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
       return true;
     });
   }
+#endif
 }
 
 void FinalImageRecipes::apply_recipes_for_reflection_data(JavaThread* current) {

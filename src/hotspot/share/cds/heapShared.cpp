@@ -696,8 +696,8 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
     ResourceMark rm;
     LogTarget(Debug, aot, heap) log;
     LogStream out(log);
-    out.print("Archived heap object " PTR_FORMAT " : %s ",
-              p2i(obj), obj->klass()->external_name());
+    out.print("Archived heap object " PTR_FORMAT " : %s, referrer: " PTR_FORMAT,
+              p2i(obj), obj->klass()->external_name(), p2i(referrer));
     if (java_lang_Class::is_instance(obj)) {
       Klass* k = java_lang_Class::as_Klass(obj);
       if (k != nullptr) {

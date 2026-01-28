@@ -44,13 +44,19 @@ class AOTLinkedClassTableForCustomLoader {
 private:
   Symbol* _loader_id;
   Array<InstanceKlass*>* _prelinked_classes;
+  bool _loaded;
 public:
+  void init(Symbol* aot_id, Array<InstanceKlass*>* class_list) {
+    _loader_id = aot_id;
+    _prelinked_classes = class_list;
+    _loaded = false;
+  }
   Symbol* loader_id() const { return _loader_id; }
   address* loader_id_addr() const { return (address*)&_loader_id; }
   Array<InstanceKlass*>* class_list() const { return _prelinked_classes; }
   address* class_list_addr() const { return (address*)&_prelinked_classes; }
-  void set_loader_id(Symbol* id) { _loader_id = id; }
-  void set_class_list(Array<InstanceKlass*>* list) { _prelinked_classes = list; }
+  void set_loaded(bool value) { _loaded = value; }
+  bool is_loaded() const { return _loaded; }
 };
 
 // AOTClassLinker is used during the AOTCache Assembly Phase.

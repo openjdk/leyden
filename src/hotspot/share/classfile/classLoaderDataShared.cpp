@@ -294,11 +294,13 @@ void ClassLoaderDataShared::allocate_archived_tables() {
   _archived_platform_loader_data.allocate(java_platform_loader_data_or_null());
   _archived_system_loader_data.allocate  (java_system_loader_data_or_null());
 
+#if 0
   _archived_cld_to_runtime_cld_map = new (mtClassShared) ArchivedCLDToCLDMap();
   if (CDSConfig::supports_custom_loaders()) {
     ArchiveAOTCompatibleLoaders archive_closure;
     ClassLoaderDataGraph::cld_do(&archive_closure);
   }
+#endif
 }
 
 void ClassLoaderDataShared::init_archived_tables() {
@@ -306,11 +308,11 @@ void ClassLoaderDataShared::init_archived_tables() {
   _archived_boot_loader_data.init_archived_entries    (null_class_loader_data());
   _archived_platform_loader_data.init_archived_entries(java_platform_loader_data_or_null());
   _archived_system_loader_data.init_archived_entries  (java_system_loader_data_or_null());
-
+#if 0
   _archived_cld_to_runtime_cld_map->iterate_all([&](ArchivedClassLoaderData* &archived_cld, ClassLoaderData* &cld) {
     archived_cld->init_archived_entries(cld);
   });
-
+#endif
   _archived_javabase_moduleEntry = ModuleEntry::get_archived_entry(ModuleEntryTable::javabase_moduleEntry());
 
   _platform_loader_root_index = HeapShared::append_root(SystemDictionary::java_platform_loader());
@@ -341,7 +343,7 @@ void ClassLoaderDataShared::serialize(SerializeClosure* f) {
   _archived_boot_loader_data.serialize(f);
   _archived_platform_loader_data.serialize(f);
   _archived_system_loader_data.serialize(f);
-  _aotid_to_archived_cld_map.serialize_header(f);
+  //_aotid_to_archived_cld_map.serialize_header(f);
   f->do_ptr(&_archived_javabase_moduleEntry);
   f->do_int(&_platform_loader_root_index);
   f->do_int(&_system_loader_root_index);
@@ -375,12 +377,14 @@ ModuleEntry* ClassLoaderDataShared::archived_unnamed_module(ClassLoaderData* loa
       } else if (loader_data->class_loader() == HeapShared::get_root(_system_loader_root_index)) {
         archived_module = _archived_system_loader_data.unnamed_module();
       }
+#if 0
     } else if (loader_data->aot_identity() != nullptr) {
       unsigned int hash = Symbol::symbol_hash(loader_data->aot_identity());
       ArchivedClassLoaderData* archived_cld = _aotid_to_archived_cld_map.lookup(loader_data->aot_identity(), hash, 0);
       if (archived_cld != nullptr) {
         archived_module = archived_cld->unnamed_module();
       }
+#endif
     }
   }
   return archived_module;
@@ -391,10 +395,11 @@ void ClassLoaderDataShared::clear_archived_oops() {
   _archived_boot_loader_data.clear_archived_oops();
   _archived_platform_loader_data.clear_archived_oops();
   _archived_system_loader_data.clear_archived_oops();
-
+#if 0
   _aotid_to_archived_cld_map.iterate([&](ArchivedClassLoaderData* archived_cld) {
     archived_cld->clear_archived_oops();
   });
+#endif
   if (_platform_loader_root_index >= 0) {
     HeapShared::clear_root(_platform_loader_root_index);
     HeapShared::clear_root(_system_loader_root_index);
@@ -455,12 +460,13 @@ void ClassLoaderDataShared::restore_archived_modules_for_preloading_classes(Java
   Handle h_platform_loader(current, HeapShared::get_root(_platform_loader_root_index));
   Handle h_system_loader(current, HeapShared::get_root(_system_loader_root_index));
   Modules::init_archived_modules(current, h_platform_loader, h_system_loader);
-
+#if 0
   _aotid_to_archived_cld_map.iterate([&](ArchivedClassLoaderData* archived_cld) {
     Handle h_loader(current, HeapShared::get_root(archived_cld->loader_obj_index()));
     ClassLoaderData* runtime_cld = SystemDictionary::register_loader(h_loader);
     ClassLoaderDataShared::restore_custom_loader_archived_data(runtime_cld);
   });
+#endif
 }
 
 void ClassLoaderDataShared::restore_custom_loader_archived_data(ClassLoaderData* loader_data) {

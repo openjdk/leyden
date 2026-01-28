@@ -37,6 +37,7 @@ public:
   static void initialize(TRAPS);
   // Returns true if the class is loaded internally for dumping unregistered classes.
   static bool check_for_exclusion(const InstanceKlass* k);
+  static Handle unregistered_class_loader(Thread* current);
 };
 
 #endif // SHARE_CDS_UNREGISTEREDCLASSES_HPP

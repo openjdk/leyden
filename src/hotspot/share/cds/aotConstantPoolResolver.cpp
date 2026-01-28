@@ -33,6 +33,7 @@
 #include "cds/finalImageRecipes.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
+#include "cds/unregisteredClasses.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/dictionary.hpp"
 #include "classfile/symbolTable.hpp"
@@ -190,7 +191,9 @@ Klass* AOTConstantPoolResolver::find_loaded_class(Thread* current, oop class_loa
   if (k != nullptr) {
     return k;
   }
-  if (h_loader() == SystemDictionary::java_system_loader()) {
+  if (h_loader() == UnregisteredClasses::unregistered_class_loader(current)()) {
+    return find_loaded_class(current, SystemDictionary::java_system_loader(), name);
+  } else if (h_loader() == SystemDictionary::java_system_loader()) {
     return find_loaded_class(current, SystemDictionary::java_platform_loader(), name);
   } else if (h_loader() == SystemDictionary::java_platform_loader()) {
     return find_loaded_class(current, nullptr, name);

@@ -316,12 +316,10 @@ protected:
   ClassLoaderData* class_loader_data() const               { return _class_loader_data; }
   void set_class_loader_data(ClassLoaderData* loader_data) {
     _class_loader_data = loader_data;
-    if (CDSConfig::supports_custom_loaders() && loader_data != nullptr) {
-      _cl_aot_identity = loader_data->aot_identity();
-    }
   }
 
   Symbol* cl_aot_identity() const { return _cl_aot_identity; }
+  void set_cl_aot_identity(Symbol* aot_id) { _cl_aot_identity = aot_id; }
   bool is_defined_by_aot_safe_custom_loader() const { return _cl_aot_identity != nullptr; }
 
   s2 shared_classpath_index() const   {

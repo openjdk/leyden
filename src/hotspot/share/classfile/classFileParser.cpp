@@ -5067,6 +5067,9 @@ void ClassFileParser::fill_instance_klass(InstanceKlass* ik,
 
   // Set name and CLD before adding to CLD
   ik->set_class_loader_data(_loader_data);
+  if (CDSConfig::supports_custom_loaders() && _loader_data != nullptr) {
+    ik->set_cl_aot_identity(_loader_data->aot_identity());
+  }
   ik->set_class_loader_type();
   ik->set_name(_class_name);
 

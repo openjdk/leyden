@@ -126,19 +126,24 @@ InstanceKlass* SystemDictionaryShared::load_shared_class_for_aot_safe_custom_loa
   InstanceKlass* ik = find_class_in_aot_safe_custom_loader_dict(class_name);
 
   if (ik != nullptr && !ik->shared_loading_failed()) {
-    oop aot_identity = java_lang_ClassLoader::aotIdentity(class_loader());
-    assert(aot_identity != nullptr, "must be");
-    Symbol* aot_identity_sym = java_lang_String::as_symbol(aot_identity);
-    if (aot_identity_sym->equals(ik->cl_aot_identity())) {
-      SharedClassLoadingMark slm(THREAD, ik);
-      PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
-      Handle protection_domain;
-      if (!class_name->starts_with("jdk/proxy")) // java/lang/reflect/Proxy$ProxyBuilder defines the proxy classes with a null protection domain.
-      {
-        protection_domain = CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK_NULL);
+    // In assembly phase the classes loaded by aot-safe loaders are loaded by CDS$UnregisteredClassLoader
+    // which doesn't have aot identity. So skip the aot-identity check.
+    if (class_loader() != UnregisteredClasses::unregistered_class_loader(THREAD)()) {
+      oop aot_identity = java_lang_ClassLoader::aotIdentity(class_loader());
+      assert(aot_identity != nullptr, "must be");
+      Symbol* aot_identity_sym = java_lang_String::as_symbol(aot_identity);
+      if (!aot_identity_sym->equals(ik->cl_aot_identity())) {
+        return nullptr;
       }
-      return load_shared_class(ik, class_loader, protection_domain, nullptr, pkg_entry, THREAD);
     }
+    SharedClassLoadingMark slm(THREAD, ik);
+    PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
+    Handle protection_domain;
+    if (!class_name->starts_with("jdk/proxy")) // java/lang/reflect/Proxy$ProxyBuilder defines the proxy classes with a null protection domain.
+    {
+      protection_domain = CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK_NULL);
+    }
+    return load_shared_class(ik, class_loader, protection_domain, nullptr, pkg_entry, THREAD);
   }
   return nullptr;
 }
@@ -668,11 +673,14 @@ InstanceKlass* SystemDictionaryShared::find_or_load_shared_class(
       }
 
       k = load_shared_class_for_builtin_loader(name, class_loader, THREAD);
-    } else if (CDSConfig::supports_custom_loaders() && java_lang_ClassLoader::aotIdentity(class_loader()) != nullptr) {
+    } else if (CDSConfig::supports_custom_loaders() &&
+               (class_loader() == UnregisteredClasses::unregistered_class_loader(THREAD)() || java_lang_ClassLoader::aotIdentity(class_loader()) != nullptr)) {
       ClassLoaderData *loader_data = register_loader(class_loader);
+#if 0
       if (CDSConfig::is_using_full_module_graph()) {
         ClassLoaderDataShared::restore_custom_loader_archived_data(loader_data);
       }
+#endif
       Dictionary* dictionary = loader_data->dictionary();
 
       // TODO: find_or_load_shared_class is called for

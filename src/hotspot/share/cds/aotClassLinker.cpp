@@ -261,8 +261,7 @@ public:
     AOTLinkedClassTableForCustomLoader* tableForLoader = (AOTLinkedClassTableForCustomLoader*)ArchiveBuilder::ro_region_alloc(sizeof(AOTLinkedClassTableForCustomLoader));
     assert(_builder->has_been_archived(loader_id), "must be");
     Symbol* buffered_sym = _builder->get_buffered_addr(loader_id);
-    tableForLoader->set_loader_id(buffered_sym);
-    tableForLoader->set_class_list(ArchiveUtils::archive_array(class_list));
+    tableForLoader->init(buffered_sym, ArchiveUtils::archive_array(class_list));
     ArchivePtrMarker::mark_pointer(tableForLoader->loader_id_addr());
     ArchivePtrMarker::mark_pointer(tableForLoader->class_list_addr());
     unsigned int hash = Symbol::symbol_hash(loader_id);

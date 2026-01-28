@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotClassLocation.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classFileParser.hpp"
@@ -191,8 +192,13 @@ ClassLoaderData* SystemDictionary::register_loader(Handle class_loader, bool cre
     // Add a new class loader data to the graph.
     return ClassLoaderDataGraph::add(class_loader, true);
   } else {
-    return (class_loader() == nullptr) ? ClassLoaderData::the_null_class_loader_data() :
-                                      ClassLoaderDataGraph::find_or_create(class_loader);
+    bool created = false;
+    ClassLoaderData* loader_data = (class_loader() == nullptr) ? ClassLoaderData::the_null_class_loader_data() :
+                                      ClassLoaderDataGraph::find_or_create(class_loader, created);
+    if (created && CDSConfig::is_using_aot_linked_classes() && CDSConfig::supports_custom_loaders()) {
+      AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, JavaThread::current());
+    }
+    return loader_data;
   }
 }
 
@@ -1172,7 +1178,7 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
 // - There's no need to call java.lang.ClassLoader::load_class() because the boot/platform/app
 //   loaders are well-behaved
 void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRAPS) {
-  precond(Universe::is_bootstrapping());
+  //precond(Universe::is_bootstrapping());
   precond(java_platform_loader() != nullptr && java_system_loader() != nullptr);
   precond(class_loader() == nullptr || class_loader() == java_platform_loader() ||class_loader() == java_system_loader() || ik->cl_aot_identity() != nullptr);
   precond(CDSConfig::is_using_aot_linked_classes());
@@ -1194,14 +1200,22 @@ void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRA
 #endif
 
   ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(class_loader());
-  oop java_mirror = ik->archived_java_mirror();
-  precond(java_mirror != nullptr);
-  //assert(java_lang_Class::module(java_mirror) != nullptr, "must have been archived");
+  Handle pd;
+  PackageEntry* pkg_entry = nullptr;
+  if (ik->has_archived_mirror_index()) {
+    oop java_mirror = ik->archived_java_mirror();
+    precond(java_mirror != nullptr);
+    //assert(java_lang_Class::module(java_mirror) != nullptr, "must have been archived");
 
-  Handle pd(THREAD, java_lang_Class::protection_domain(java_mirror));
-  PackageEntry* pkg_entry = ik->package();
-  assert(pkg_entry != nullptr || ClassLoader::package_from_class_name(ik->name()) == nullptr,
-         "non-empty packages must have been archived");
+    pd = Handle(THREAD, java_lang_Class::protection_domain(java_mirror));
+    pkg_entry = ik->package();
+    if (is_builtin_class_loader(class_loader())) {
+      assert(pkg_entry != nullptr || ClassLoader::package_from_class_name(ik->name()) == nullptr,
+             "non-empty packages for builtin loaders must have been archived");
+    } else if (ik->is_defined_by_aot_safe_custom_loader()) {
+      assert(pkg_entry == nullptr, "packages for aot-safe custom loaders are not archived");
+    }
+  }
 
   // TODO: the following assert requires JDK-8365580
   // assert(is_shared_class_visible(ik->name(), ik, pkg_entry, class_loader), "must be");
