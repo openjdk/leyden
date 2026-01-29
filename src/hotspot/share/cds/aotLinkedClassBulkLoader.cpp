@@ -141,6 +141,7 @@ void AOTLinkedClassBulkLoader::preload_classes_for_loader_impl(Handle loader_obj
   preload_classes_in_table(table->class_list(), aot_id->as_C_string(), loader_obj, CHECK);
   MonitorLocker mu1(SystemDictionary_lock);
   mark_initiating_loader(THREAD, loader_obj());
+  table->set_loaded(true);
 }
 
 class DictionaryCopier : public KlassClosure {

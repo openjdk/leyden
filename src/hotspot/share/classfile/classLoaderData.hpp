@@ -175,7 +175,6 @@ class ClassLoaderData : public CHeapObj<mtClass> {
   Symbol* _name;
   Symbol* _name_and_id;
   Symbol* _aot_identity;
-  bool _restored;
   JFR_ONLY(DEFINE_TRACE_ID_FIELD;)
 
   void set_next(ClassLoaderData* next);
@@ -331,7 +330,7 @@ private:
   void record_dependency(const Klass* to);
   PackageEntryTable* packages() { return _packages; }
   ModuleEntry* unnamed_module() { return _unnamed_module; }
-  ModuleEntryTable* modules(bool create_if_null = true);
+  ModuleEntryTable* modules();
   bool modules_defined() { return (_modules != nullptr); }
 
   // Offsets
@@ -361,8 +360,6 @@ private:
   const char* loader_name_and_id() const;
   Symbol* name_and_id() const { return _name_and_id; }
   Symbol* aot_identity() const { return _aot_identity; }
-  bool restored() const { return _restored; }
-  void set_restored(bool v) { _restored = v; }
 
   unsigned identity_hash() const {
     return (unsigned)((uintptr_t)this >> LogBytesPerWord);

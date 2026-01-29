@@ -151,7 +151,7 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
   _next(nullptr),
   _unloading_next(nullptr),
   _class_loader_klass(nullptr), _name(nullptr), _name_and_id(nullptr),
-  _aot_identity(nullptr), _restored(false) {
+  _aot_identity(nullptr) {
 
   if (!h_class_loader.is_null()) {
     _class_loader = _handles.add(h_class_loader());
@@ -180,16 +180,6 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
     }
     _dictionary = create_dictionary();
   }
-#if 0
-  /* This happens at a place where safepoint is not allowed. See NoSafepointVerifier in ClassLoaderDataGraph::add_to_graph().
-   * However, call to restore_archived_data() may create a new Module and acquire Module_lock which allows safepoint.
-   * So we hit assertion in JavaThread::check_possible_safepoint():
-   *  assert(false, "Possible safepoint reached by thread that does not allow it");
-   */
-  if (_aot_identity != nullptr && CDSConfig::is_using_full_module_graph()) {
-    ClassLoaderDataShared::restore_archived_data(this);
-  }
-#endif
 
   NOT_PRODUCT(_dependency_count = 0); // number of class loader dependencies
 
@@ -648,11 +638,11 @@ void ClassLoaderData::unload() {
   }
 }
 
-ModuleEntryTable* ClassLoaderData::modules(bool create_if_null) {
+ModuleEntryTable* ClassLoaderData::modules() {
   // Lazily create the module entry table at first request.
   // Lock-free access requires load_acquire.
   ModuleEntryTable* modules = AtomicAccess::load_acquire(&_modules);
-  if (modules == nullptr && create_if_null) {
+  if (modules == nullptr) {
     MutexLocker m1(Module_lock);
     // Check if _modules got allocated while we were waiting for this lock.
     if ((modules = _modules) == nullptr) {

@@ -47,9 +47,6 @@ GrowableArray<int>* FinalImageRecipes::_tmp_reflect_flags = nullptr;
 GrowableArray<FinalImageRecipes::TmpDynamicProxyClassInfo>* FinalImageRecipes::_tmp_dynamic_proxy_classes = nullptr;
 static FinalImageRecipes* _final_image_recipes = nullptr;
 
-using AOTIdentityToLoaderObjectMap = HashTable<Symbol*, OopHandle, 11, AnyObj::C_HEAP, mtClassShared, Symbol::symbol_hash, Symbol::symbol_equals>;
-static AOTIdentityToLoaderObjectMap* _aot_safe_custom_loaders_map = nullptr;
-
 void* FinalImageRecipes::operator new(size_t size) throw() {
   return ArchiveBuilder::current()->ro_region_alloc(size);
 }
@@ -293,38 +290,6 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
       }
     }
   }
-
-#if 0
-  if (CDSConfig::supports_custom_loaders()) {
-    // Custom Loaders must be marked with AOTSafeClassInitializer annotation.
-    // They would have been created as part of running class initializer for custom loaders.
-    // Objects of such custom loaders get registered with VM in ClassLoader::registerAsAOTCompatibleLoader().
-    // Use these objects to load additional classes not yet loaded.
-    for (int i = 0; i < _all_klasses->length(); i++) {
-      Klass* k = _all_klasses->at(i);
-      int flags = _flags->at(i);
-      if (k->is_instance_klass()) {
-        InstanceKlass* ik = InstanceKlass::cast(k);
-        Symbol* aot_identity = ik->cl_aot_identity();
-        if (ik->defined_by_other_loaders() && aot_identity != nullptr) {
-          OopHandle* loader_h_ptr = _aot_safe_custom_loaders_map->get(aot_identity);
-          if (loader_h_ptr != nullptr) {
-            OopHandle loader_h = *loader_h_ptr;
-            Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), Handle(THREAD, loader_h.resolve()), true, CHECK);
-          }
-        }
-      }
-    }
-    ResizeableHashTable<ClassLoaderData*, bool> processed(10, 100);
-    MonitorLocker mu1(SystemDictionary_lock);
-    _aot_safe_custom_loaders_map->iterate([&](Symbol* aot_id, OopHandle h_loader) {
-      ResourceMark rm;
-      oop loader = h_loader.resolve();;
-      AOTLinkedClassBulkLoader::mark_initiating_loader(THREAD, loader, processed);
-      return true;
-    });
-  }
-#endif
 }
 
 void FinalImageRecipes::apply_recipes_for_reflection_data(JavaThread* current) {
@@ -450,21 +415,4 @@ void FinalImageRecipes::apply_recipes_impl(TRAPS) {
 
 void FinalImageRecipes::serialize(SerializeClosure* soc) {
   soc->do_ptr((void**)&_final_image_recipes);
-}
-
-void FinalImageRecipes::add_aot_safe_custom_loader(oop loader, TRAPS) {
-  assert(!SystemDictionary::is_builtin_class_loader(loader), "should not be called for builtin loader");
-  if (CDSConfig::supports_custom_loaders()) {
-    ResourceMark rm;
-    if (_aot_safe_custom_loaders_map == nullptr) {
-      _aot_safe_custom_loaders_map = new (mtClassShared) AOTIdentityToLoaderObjectMap();
-    }
-
-    OopHandle loader_h(Universe::vm_global(), loader);
-    assert(java_lang_ClassLoader::aotIdentity(loader) != nullptr, "sanity check");
-    Symbol* aot_identity = java_lang_String::as_symbol(java_lang_ClassLoader::aotIdentity(loader));
-
-    log_info(cds)("Adding AOT compatible loader with aot identity=%s", aot_identity->as_C_string());
-    _aot_safe_custom_loaders_map->put(aot_identity, loader_h);
-  }
 }

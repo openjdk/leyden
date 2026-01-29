@@ -1902,7 +1902,7 @@ AnnotationCollector::annotation_index(const ClassLoaderData* loader_data,
     }
     case VM_SYMBOL_ENUM_NAME(jdk_internal_vm_annotation_AOTSafeClassInitializer_signature): {
       if (_location != _in_class)   break;  // only allow for classes
-      //if (!privileged)              break;  // only allow in privileged code
+      if (!privileged)              break;  // only allow in privileged code
       return _jdk_internal_vm_annotation_AOTSafeClassInitializer;
     }
     case VM_SYMBOL_ENUM_NAME(jdk_internal_vm_annotation_AOTRuntimeSetup_signature): {

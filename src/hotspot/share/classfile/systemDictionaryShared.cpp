@@ -105,7 +105,7 @@ InstanceKlass* SystemDictionaryShared::load_shared_class_for_builtin_loader(
   InstanceKlass* ik = find_builtin_class(class_name);
 
   if (ik != nullptr && !ik->shared_loading_failed()) {
-   if ((SystemDictionary::is_system_class_loader(class_loader()) && ik->defined_by_app_loader())  ||
+    if ((SystemDictionary::is_system_class_loader(class_loader()) && ik->defined_by_app_loader())  ||
        (SystemDictionary::is_platform_class_loader(class_loader()) && ik->defined_by_platform_loader())) {
       SharedClassLoadingMark slm(THREAD, ik);
       PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
@@ -676,11 +676,6 @@ InstanceKlass* SystemDictionaryShared::find_or_load_shared_class(
     } else if (CDSConfig::supports_custom_loaders() &&
                (class_loader() == UnregisteredClasses::unregistered_class_loader(THREAD)() || java_lang_ClassLoader::aotIdentity(class_loader()) != nullptr)) {
       ClassLoaderData *loader_data = register_loader(class_loader);
-#if 0
-      if (CDSConfig::is_using_full_module_graph()) {
-        ClassLoaderDataShared::restore_custom_loader_archived_data(loader_data);
-      }
-#endif
       Dictionary* dictionary = loader_data->dictionary();
 
       // TODO: find_or_load_shared_class is called for

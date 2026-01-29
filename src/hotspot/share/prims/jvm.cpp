@@ -2284,7 +2284,8 @@ JVM_ENTRY_PROF(jobject, JVM_AssertionStatusDirectives, JVM_AssertionStatusDirect
 JVM_END
 
 JVM_ENTRY_PROF(void, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCompatibleLoader(JNIEnv *env, jobject loader))
-  FinalImageRecipes::add_aot_safe_custom_loader(JNIHandles::resolve_non_null(loader), CHECK);
+  //FinalImageRecipes::add_aot_safe_custom_loader(JNIHandles::resolve_non_null(loader), CHECK);
+  //Nothing to do here for now
 JVM_END
 
 // Verification ////////////////////////////////////////////////////////////////////////////////

@@ -110,7 +110,6 @@ public:
 
   // Called when dumping final image
   static void apply_recipes(TRAPS);
-  static void add_aot_safe_custom_loader(oop loader, TRAPS);
 };
 
 #endif // SHARE_CDS_FINALIMAGERECIPES_HPP
