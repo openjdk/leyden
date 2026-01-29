@@ -46,6 +46,8 @@
 // The bootstrap loader (represented by null) also has a ClassLoaderData,
 // the singleton class the_null_class_loader_data().
 
+#include "cds/cdsConfig.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoaderDataGraph.inline.hpp"
 #include "classfile/classLoaderDataShared.hpp"
@@ -1130,4 +1132,18 @@ bool ClassLoaderData::contains_klass(Klass* klass) {
     if (k == klass) return true;
   }
   return false;
+}
+
+void ClassLoaderData::preload_classes() {
+  if (CDSConfig::is_using_aot_linked_classes() && CDSConfig::supports_custom_loaders()) {
+    JavaThread* thread = JavaThread::current();
+    AOTLinkedClassBulkLoader::preload_classes_for_loader(this, thread);
+    if (thread->has_pending_exception()) {
+      AOTLinkedClassBulkLoader::exit_on_exception(thread);
+    }
+    AOTLinkedClassBulkLoader::link_classes_for_loader(this, thread);
+    if (thread->has_pending_exception()) {
+      AOTLinkedClassBulkLoader::exit_on_exception(thread);
+    }
+  }
 }

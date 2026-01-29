@@ -195,9 +195,6 @@ ClassLoaderData* SystemDictionary::register_loader(Handle class_loader, bool cre
     bool created = false;
     ClassLoaderData* loader_data = (class_loader() == nullptr) ? ClassLoaderData::the_null_class_loader_data() :
                                       ClassLoaderDataGraph::find_or_create(class_loader, created);
-    if (created && CDSConfig::is_using_aot_linked_classes() && CDSConfig::supports_custom_loaders()) {
-      AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, JavaThread::current());
-    }
     return loader_data;
   }
 }

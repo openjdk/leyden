@@ -97,28 +97,6 @@ void AOTLinkedClassBulkLoader::preload_classes_impl(TRAPS) {
   initiate_loading(THREAD, "app", h_system_loader, table->boot2());
   initiate_loading(THREAD, "app", h_system_loader, table->platform());
   preload_classes_in_table(table->app(), "app", h_system_loader, CHECK);
-
-#if 0
-  // For each loader load all its classes, and then mark it as the initiating loader
-  // for the all the classes loaded by its ancentar loaders
-  GrowableArray<Handle> custom_loader_objs;
-  ClassLoaderDataShared::get_archived_custom_loader_objs(custom_loader_objs);
-  for (int i = 0; i < custom_loader_objs.length(); i++) {
-    ResourceMark rm;
-    Handle h_loader = custom_loader_objs.at(i);
-    Symbol* aot_id = java_lang_ClassLoader::loader_data(h_loader())->aot_identity();
-    AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
-    preload_classes_in_table(table->class_list(), aot_id->as_C_string(), h_loader, CHECK);
-  }
-
-  ResizeableHashTable<ClassLoaderData*, bool> processed(10, 100);
-  MonitorLocker mu1(SystemDictionary_lock);
-  for (int i = 0; i < custom_loader_objs.length(); i++) {
-    ResourceMark rm;
-    Handle h_loader = custom_loader_objs.at(i);
-    mark_initiating_loader(THREAD, h_loader(), processed);
-  }
-#endif
 }
 
 void AOTLinkedClassBulkLoader::preload_classes_for_loader(ClassLoaderData* loader_data, TRAPS) {
@@ -132,6 +110,9 @@ void AOTLinkedClassBulkLoader::preload_classes_for_loader_impl(Handle loader_obj
     return;
   }
   Symbol* aot_id = java_lang_ClassLoader::loader_data(loader_obj())->aot_identity();
+  if (aot_id == nullptr) {
+    return;
+  }
   AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
   if (table->is_loaded()) {
     return;
@@ -260,6 +241,28 @@ void AOTLinkedClassBulkLoader::link_classes_impl(TRAPS) {
   link_classes_in_table(table->boot2(), CHECK);
   link_classes_in_table(table->platform(), CHECK);
   link_classes_in_table(table->app(), CHECK);
+}
+
+void AOTLinkedClassBulkLoader::link_classes_for_loader(ClassLoaderData* loader_data, TRAPS) {
+  Handle h_loader(THREAD, loader_data->class_loader_handle().resolve());
+  link_classes_for_loader_impl(h_loader, CHECK);
+}
+
+void AOTLinkedClassBulkLoader::link_classes_for_loader_impl(Handle loader_obj, TRAPS) {
+  precond(CDSConfig::is_using_aot_linked_classes());
+  if (SystemDictionary::is_builtin_class_loader(loader_obj())) {
+    // classes for builtin loaders should have already been loaded during startup
+    return;
+  }
+
+  Symbol* aot_id = java_lang_ClassLoader::loader_data(loader_obj())->aot_identity();
+  if (aot_id == nullptr) {
+    return;
+  }
+  AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
+  oop parent = java_lang_ClassLoader::parent(loader_obj());
+  link_classes_for_loader_impl(Handle(THREAD, parent), CHECK);
+  link_classes_in_table(table->class_list(), CHECK);
 }
 
 void AOTLinkedClassBulkLoader::link_classes_in_table(Array<InstanceKlass*>* classes, TRAPS) {
