@@ -24,6 +24,7 @@
 
 #include "cds/aotClassInitializer.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotMetaspace.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
@@ -2283,9 +2284,17 @@ JVM_ENTRY_PROF(jobject, JVM_AssertionStatusDirectives, JVM_AssertionStatusDirect
   return JNIHandles::make_local(THREAD, asd);
 JVM_END
 
-JVM_ENTRY_PROF(void, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCompatibleLoader(JNIEnv *env, jobject loader))
+JVM_ENTRY_PROF(jboolean, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCompatibleLoader(JNIEnv *env, jobject loader))
   //FinalImageRecipes::add_aot_safe_custom_loader(JNIHandles::resolve_non_null(loader), CHECK);
   //Nothing to do here for now
+  if (CDSConfig::is_using_aot_linked_classes() && CDSConfig::supports_custom_loaders()) {
+    Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
+    ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
+    AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_false);
+    AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_false);
+    return JNI_TRUE;
+  }
+  return JNI_FALSE;
 JVM_END
 
 // Verification ////////////////////////////////////////////////////////////////////////////////

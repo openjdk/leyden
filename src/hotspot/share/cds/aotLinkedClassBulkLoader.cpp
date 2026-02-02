@@ -105,24 +105,15 @@ void AOTLinkedClassBulkLoader::preload_classes_for_loader(ClassLoaderData* loade
 }
 
 void AOTLinkedClassBulkLoader::preload_classes_for_loader_impl(Handle loader_obj, TRAPS) {
-  if (SystemDictionary::is_builtin_class_loader(loader_obj())) {
-    // classes for builtin loaders should have already been loaded during startup
-    return;
-  }
+  assert(!SystemDictionary::is_builtin_class_loader(loader_obj()), "must not be called for builtin loaders");
   Symbol* aot_id = java_lang_ClassLoader::loader_data(loader_obj())->aot_identity();
   if (aot_id == nullptr) {
     return;
   }
   AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
-  if (table->is_loaded()) {
-    return;
-  }
-  oop parent = java_lang_ClassLoader::parent(loader_obj());
-  preload_classes_for_loader_impl(Handle(THREAD, parent), CHECK);
   preload_classes_in_table(table->class_list(), aot_id->as_C_string(), loader_obj, CHECK);
   MonitorLocker mu1(SystemDictionary_lock);
   mark_initiating_loader(THREAD, loader_obj());
-  table->set_loaded(true);
 }
 
 class DictionaryCopier : public KlassClosure {
@@ -250,18 +241,13 @@ void AOTLinkedClassBulkLoader::link_classes_for_loader(ClassLoaderData* loader_d
 
 void AOTLinkedClassBulkLoader::link_classes_for_loader_impl(Handle loader_obj, TRAPS) {
   precond(CDSConfig::is_using_aot_linked_classes());
-  if (SystemDictionary::is_builtin_class_loader(loader_obj())) {
-    // classes for builtin loaders should have already been loaded during startup
-    return;
-  }
+  assert(!SystemDictionary::is_builtin_class_loader(loader_obj()), "must not be called for builtin loaders");
 
   Symbol* aot_id = java_lang_ClassLoader::loader_data(loader_obj())->aot_identity();
   if (aot_id == nullptr) {
     return;
   }
   AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
-  oop parent = java_lang_ClassLoader::parent(loader_obj());
-  link_classes_for_loader_impl(Handle(THREAD, parent), CHECK);
   link_classes_in_table(table->class_list(), CHECK);
 }
 

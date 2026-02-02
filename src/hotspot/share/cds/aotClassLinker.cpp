@@ -148,7 +148,7 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
   assert(is_initialized(), "sanity");
   assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
 
-  if (!SystemDictionaryShared::is_builtin(ik) && ik->cl_aot_identity() == nullptr) {
+  if (!SystemDictionaryShared::is_builtin(ik) && !ik->is_defined_by_aot_safe_custom_loader()) {
     // not loaded by a class loader which we know about
     return false;
   }

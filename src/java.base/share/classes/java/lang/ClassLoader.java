@@ -2675,7 +2675,7 @@ public abstract class ClassLoader {
         registerAsAOTCompatibleLoader();
     }
 
-    private native void registerAsAOTCompatibleLoader();
+    private native boolean registerAsAOTCompatibleLoader();
 }
 
 /*

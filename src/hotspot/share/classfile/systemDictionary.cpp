@@ -192,9 +192,8 @@ ClassLoaderData* SystemDictionary::register_loader(Handle class_loader, bool cre
     // Add a new class loader data to the graph.
     return ClassLoaderDataGraph::add(class_loader, true);
   } else {
-    bool created = false;
     ClassLoaderData* loader_data = (class_loader() == nullptr) ? ClassLoaderData::the_null_class_loader_data() :
-                                      ClassLoaderDataGraph::find_or_create(class_loader, created);
+                                      ClassLoaderDataGraph::find_or_create(class_loader);
     return loader_data;
   }
 }

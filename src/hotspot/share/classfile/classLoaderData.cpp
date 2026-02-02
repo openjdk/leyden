@@ -1133,17 +1133,3 @@ bool ClassLoaderData::contains_klass(Klass* klass) {
   }
   return false;
 }
-
-void ClassLoaderData::preload_classes() {
-  if (CDSConfig::is_using_aot_linked_classes() && CDSConfig::supports_custom_loaders()) {
-    JavaThread* thread = JavaThread::current();
-    AOTLinkedClassBulkLoader::preload_classes_for_loader(this, thread);
-    if (thread->has_pending_exception()) {
-      AOTLinkedClassBulkLoader::exit_on_exception(thread);
-    }
-    AOTLinkedClassBulkLoader::link_classes_for_loader(this, thread);
-    if (thread->has_pending_exception()) {
-      AOTLinkedClassBulkLoader::exit_on_exception(thread);
-    }
-  }
-}

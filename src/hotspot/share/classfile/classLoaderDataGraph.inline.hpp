@@ -32,14 +32,12 @@
 #include "runtime/atomicAccess.hpp"
 #include "runtime/orderAccess.hpp"
 
-inline ClassLoaderData *ClassLoaderDataGraph::find_or_create(Handle loader, bool& created) {
+inline ClassLoaderData *ClassLoaderDataGraph::find_or_create(Handle loader) {
   guarantee(loader() != nullptr && oopDesc::is_oop(loader()), "Loader must be oop");
   // Gets the class loader data out of the java/lang/ClassLoader object, if non-null
   // it's already in the loader_data, so no need to add
-  created = true;
   ClassLoaderData* loader_data = java_lang_ClassLoader::loader_data_acquire(loader());
   if (loader_data) {
-     created = false;
      return loader_data;
   }
   return ClassLoaderDataGraph::add(loader, false);

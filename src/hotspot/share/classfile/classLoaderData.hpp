@@ -360,7 +360,6 @@ private:
   const char* loader_name_and_id() const;
   Symbol* name_and_id() const { return _name_and_id; }
   Symbol* aot_identity() const { return _aot_identity; }
-  void preload_classes();
 
   unsigned identity_hash() const {
     return (unsigned)((uintptr_t)this >> LogBytesPerWord);

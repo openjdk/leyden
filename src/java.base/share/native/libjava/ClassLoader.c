@@ -36,7 +36,7 @@
 
 static JNINativeMethod methods[] = {
     {"retrieveDirectives",  "()Ljava/lang/AssertionStatusDirectives;", (void *)&JVM_AssertionStatusDirectives},
-    {"registerAsAOTCompatibleLoader", "()V", (void *)&JVM_RegisterAsAOTCompatibleLoader}
+    {"registerAsAOTCompatibleLoader", "()Z", (void *)&JVM_RegisterAsAOTCompatibleLoader}
 };
 
 JNIEXPORT void JNICALL

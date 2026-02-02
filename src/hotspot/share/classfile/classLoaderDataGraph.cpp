@@ -181,7 +181,6 @@ ClassLoaderData* ClassLoaderDataGraph::add_to_graph(Handle loader, bool has_clas
 ClassLoaderData* ClassLoaderDataGraph::add(Handle loader, bool has_class_mirror_holder) {
   MutexLocker ml(ClassLoaderDataGraph_lock);
   ClassLoaderData* loader_data = add_to_graph(loader, has_class_mirror_holder);
-  loader_data->preload_classes();
   return loader_data;
 }
 
