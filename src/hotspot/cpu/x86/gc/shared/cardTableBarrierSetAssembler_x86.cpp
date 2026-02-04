@@ -96,11 +96,7 @@ void CardTableBarrierSetAssembler::store_at(MacroAssembler* masm, DecoratorSet d
 
 void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembler* masm, DecoratorSet decorators,
                                                                     Register addr, Register count, Register tmp) {
-  BarrierSet *bs = BarrierSet::barrier_set();
-  CardTableBarrierSet* ctbs = barrier_set_cast<CardTableBarrierSet>(bs);
-  CardTable* ct = ctbs->card_table();
-  intptr_t byte_map_base = (intptr_t) ct->byte_map_base();
-  SHENANDOAHGC_ONLY(assert(!UseShenandoahGC, "Shenandoah byte_map_base is not constant.");)
+  CardTableBarrierSet* ctbs = CardTableBarrierSet::barrier_set();
 
   Label L_loop, L_done;
   const Register end = count;
@@ -122,7 +118,7 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
   } else
 #endif
   {
-    __ mov64(tmp, byte_map_base);
+    __ mov64(tmp, (intptr_t)ctbs->card_table_base_const());
   }
   __ addptr(addr, tmp);
 __ BIND(L_loop);
@@ -136,10 +132,7 @@ __ BIND(L_done);
 void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst, Register rscratch) {
   // Does a store check for the oop in register obj. The content of
   // register obj is destroyed afterwards.
-  BarrierSet* bs = BarrierSet::barrier_set();
-
-  CardTableBarrierSet* ctbs = barrier_set_cast<CardTableBarrierSet>(bs);
-  CardTable* ct = ctbs->card_table();
+  CardTableBarrierSet* ctbs = CardTableBarrierSet::barrier_set();
 
   __ shrptr(obj, CardTable::card_shift());
 
@@ -151,7 +144,7 @@ void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register ob
   // So this essentially converts an address to a displacement and it will
   // never need to be relocated. On 64bit however the value may be too
   // large for a 32bit displacement.
-  intptr_t byte_map_base = (intptr_t)ct->byte_map_base();
+  intptr_t byte_map_base = (intptr_t)ctbs->card_table_base_const();
 #if INCLUDE_CDS
   if (AOTCodeCache::is_on_for_dump()) {
     __ movptr(rscratch, ExternalAddress(AOTRuntimeConstants::card_table_address()));
