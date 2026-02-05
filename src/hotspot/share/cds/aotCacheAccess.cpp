@@ -79,7 +79,7 @@ int AOTCacheAccess::get_archived_object_permanent_index(oop obj) {
 }
 
 oop AOTCacheAccess::get_archived_object(int permanent_index) {
-  oop o = HeapShared::get_archived_object(permanent_index);
+  oop o = HeapShared::get_root(permanent_index);
   assert(oopDesc::is_oop_or_null(o), "sanity");
   return o;
 }

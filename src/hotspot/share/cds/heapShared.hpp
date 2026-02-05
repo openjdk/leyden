@@ -341,18 +341,24 @@ public:
 
     // One or more fields in this object are pointing to MetaspaceObj
     bool _has_native_pointers;
+
+    // >= 0 if this oop has been append to the list of roots
+    int _root_index;
   public:
     CachedOopInfo(OopHandle orig_referrer, bool has_oop_pointers)
       : _orig_referrer(orig_referrer),
         _buffer_offset(0),
         _has_oop_pointers(has_oop_pointers),
-        _has_native_pointers(false) {}
+        _has_native_pointers(false),
+        _root_index(-1) {}
     oop orig_referrer() const;
     void set_buffer_offset(size_t offset) { _buffer_offset = offset; }
     size_t buffer_offset()          const { return _buffer_offset;   }
     bool has_oop_pointers()         const { return _has_oop_pointers; }
     bool has_native_pointers()      const { return _has_native_pointers; }
     void set_has_native_pointers()        { _has_native_pointers = true; }
+    int  root_index()               const { return _root_index; }
+    void set_root_index(int i)            { _root_index = i; }
   };
 
 private:
@@ -604,14 +610,9 @@ private:
   static void initialize_test_class_from_archive(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 #endif
 
-  static void add_to_permanent_oop_table(oop obj, int offset);
-
   // AOT-compile time only: get a stable index for an archived object.
-  // Returns 0 if obj is not archived.
+  // Returns 0 if obj is not in the heap root set.
   static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
-  // Runtime only: get back the same object for an index returned by
-  // get_archived_object_permanent_index().
-  static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
 
   static void initialize_java_lang_invoke(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_classes_for_special_subgraph(Handle loader, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
@@ -634,14 +635,6 @@ private:
   static void log_oop_info(outputStream* st, oop source_oop, address archived_object_start, address archived_object_end);
   static void log_oop_info(outputStream* st, oop source_oop);
   static void log_oop_details(oop source_oop, address buffered_addr);
-};
-
-class CachedCodeDirectoryInternal {
-  int _permanent_oop_count;
-  int* _permanent_oop_offsets; // offset of each permanent object from the bottom of the archived heap
-public:
-  void dumptime_init_internal() NOT_CDS_JAVA_HEAP_RETURN;
-  void runtime_init_internal() NOT_CDS_JAVA_HEAP_RETURN;
 };
 
 #endif // SHARE_CDS_HEAPSHARED_HPP
