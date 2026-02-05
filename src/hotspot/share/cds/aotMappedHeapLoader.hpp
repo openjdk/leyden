@@ -182,7 +182,6 @@ public:
   }
 
   static oop get_root(int index);
-  static void clear_root(int index);
 
   static AOTMapLogger::OopDataIterator* oop_iterator(FileMapInfo* info, address buffer_start, address buffer_end);
 

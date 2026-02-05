@@ -145,18 +145,6 @@ void ArchivedClassLoaderData::restore(ClassLoaderData* loader_data, bool do_entr
   }
 }
 
-void ArchivedClassLoaderData::clear_archived_oops() {
-  assert(!CDSConfig::is_using_full_module_graph(), "must be");
-  if (_modules != nullptr) {
-    for (int i = 0; i < _modules->length(); i++) {
-      _modules->at(i)->clear_archived_oops();
-    }
-    if (_unnamed_module != nullptr) {
-      _unnamed_module->clear_archived_oops();
-    }
-  }
-}
-
 // ------------------------------
 
 void ClassLoaderDataShared::load_archived_platform_and_system_class_loaders() {
@@ -167,8 +155,8 @@ void ClassLoaderDataShared::load_archived_platform_and_system_class_loaders() {
   }
 
   // Ensure these class loaders are eagerly materialized before their CLDs are created.
-  HeapShared::get_root(_platform_loader_root_index, false /* clear */);
-  HeapShared::get_root(_system_loader_root_index, false /* clear */);
+  HeapShared::get_root(_platform_loader_root_index);
+  HeapShared::get_root(_system_loader_root_index);
 
   if (Universe::is_module_initialized() || !CDSConfig::is_using_full_module_graph()) {
     return;
@@ -273,17 +261,6 @@ ModuleEntry* ClassLoaderDataShared::archived_unnamed_module(ClassLoaderData* loa
   }
 
   return archived_module;
-}
-
-void ClassLoaderDataShared::clear_archived_oops() {
-  assert(!CDSConfig::is_using_full_module_graph(), "must be");
-  _archived_boot_loader_data.clear_archived_oops();
-  _archived_platform_loader_data.clear_archived_oops();
-  _archived_system_loader_data.clear_archived_oops();
-  if (_platform_loader_root_index >= 0) {
-    HeapShared::clear_root(_platform_loader_root_index);
-    HeapShared::clear_root(_system_loader_root_index);
-  }
 }
 
 // Must be done before ClassLoader::create_javabase()

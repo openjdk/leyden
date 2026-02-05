@@ -203,7 +203,6 @@ public:
   void load_from_archive(ClassLoaderData* loader_data);
   void preload_archived_oops();
   void restore_archived_oops(ClassLoaderData* loader_data);
-  void clear_archived_oops();
 #endif
 };
 

@@ -430,6 +430,7 @@ private:
       HeapShared::oop_hash> SeenObjectsTable;
 
   static SeenObjectsTable *_seen_objects_table;
+
   // The "special subgraph" contains all the archived objects that are reachable
   // from the following roots:
   //    - interned strings
@@ -439,7 +440,7 @@ private:
   static KlassSubGraphInfo* _dump_time_special_subgraph;              // for collecting info during dump time
   static ArchivedKlassSubGraphInfoRecord* _run_time_special_subgraph; // for initializing classes during run time.
 
-  static GrowableArrayCHeap<OopHandle, mtClassShared>* _pending_roots;
+  static GrowableArrayCHeap<oop, mtClassShared>* _pending_roots;
   static GrowableArrayCHeap<const char*, mtClassShared>* _context; // for debugging unarchivable objects
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
   static MetaspaceObjToOopHandleTable* _scratch_objects_table;
@@ -478,7 +479,6 @@ private:
 
   static void resolve_classes_for_subgraphs(JavaThread* current, ArchivableStaticFieldInfo fields[]);
   static void resolve_classes_for_subgraph_of(JavaThread* current, Klass* k);
-  static void clear_archived_roots_of(Klass* k);
   static const ArchivedKlassSubGraphInfoRecord*
                resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAPS);
   static void resolve_or_init(const char* klass_name, bool do_init, TRAPS);
@@ -570,15 +570,14 @@ private:
   // Dump-time only. Returns the index of the root, which can be used at run time to read
   // the root using get_root(index, ...).
   static int append_root(oop obj);
-  static GrowableArrayCHeap<OopHandle, mtClassShared>* pending_roots() { return _pending_roots; }
+  static GrowableArrayCHeap<oop, mtClassShared>* pending_roots() { return _pending_roots; }
 
   // Dump-time and runtime
   static objArrayOop root_segment(int segment_idx);
-  static oop get_root(int index, bool clear=false);
+  static oop get_root(int index);
 
-  // Run-time only
-  static void clear_root(int index);
   static void get_segment_indexes(int index, int& segment_index, int& internal_index);
+
   static void setup_test_class(const char* test_class_name) PRODUCT_RETURN;
 #endif // INCLUDE_CDS_JAVA_HEAP
 
@@ -629,6 +628,7 @@ private:
   static void scan_java_class(Klass* k);
   static void scan_java_mirror(oop orig_mirror);
   static void copy_and_rescan_aot_inited_mirror(InstanceKlass* ik);
+
   static void log_heap_roots();
 
   static intptr_t log_target_location(oop source_oop);

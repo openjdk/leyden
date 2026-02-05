@@ -232,7 +232,6 @@ public:
   static void materialize_thread_object();
   static oop materialize_root(int root_index);
   static oop get_root(int root_index);
-  static void clear_root(int index);
   static void materialize_objects();
   static void finish_materialize_objects();
   static bool is_in_use() { return _is_in_use; }

@@ -609,10 +609,7 @@ oop ConstantPoolCache::archived_references() {
 }
 
 void ConstantPoolCache::clear_archived_references() {
-  if (_archived_references_index >= 0) {
-    HeapShared::clear_root(_archived_references_index);
-    _archived_references_index = -1;
-  }
+  _archived_references_index = -1;
 }
 #endif
 

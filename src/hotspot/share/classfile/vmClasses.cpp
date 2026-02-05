@@ -152,10 +152,6 @@ void vmClasses::resolve_all(TRAPS) {
       // Mirrors are restored after java.lang.Class is loaded.
       AOTMappedHeapLoader::fixup_region();
     }
-    if (HeapShared::is_archived_heap_in_use() && !CDSConfig::is_using_full_module_graph()) {
-      // Need to remove all the archived java.lang.Module objects from HeapShared::roots().
-      ClassLoaderDataShared::clear_archived_oops();
-    }
 #endif // INCLUDE_CDS_JAVA_HEAP
     // Initialize the constant pool for the Object_class
     assert(Object_klass()->in_aot_cache(), "must be");

@@ -926,9 +926,6 @@ oop Klass::archived_java_mirror() {
 }
 
 void Klass::clear_archived_mirror_index() {
-  if (_archived_mirror_index >= 0) {
-    HeapShared::clear_root(_archived_mirror_index);
-  }
   _archived_mirror_index = -1;
 }
 #endif // INCLUDE_CDS_JAVA_HEAP

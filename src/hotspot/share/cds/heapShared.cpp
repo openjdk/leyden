@@ -209,7 +209,7 @@ static ArchivableStaticFieldInfo fmg_archive_subgraph_entry_fields[] = {
 
 KlassSubGraphInfo* HeapShared::_dump_time_special_subgraph;
 ArchivedKlassSubGraphInfoRecord* HeapShared::_run_time_special_subgraph;
-GrowableArrayCHeap<OopHandle, mtClassShared>* HeapShared::_pending_roots = nullptr;
+GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_pending_roots = nullptr;
 GrowableArrayCHeap<const char*, mtClassShared>* HeapShared::_context = nullptr;
 OopHandle HeapShared::_scratch_basic_type_mirrors[T_VOID+1];
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_objects_table = nullptr;
@@ -458,10 +458,12 @@ bool HeapShared::has_been_archived(oop obj) {
 }
 
 int HeapShared::append_root(oop obj) {
-  assert(SafepointSynchronize::is_at_safepoint() , "todo: need a lock when access outside of safepoint");
+  assert(SafepointSynchronize::is_at_safepoint(), "sanity");
   assert(CDSConfig::is_dumping_heap(), "dump-time only");
+  assert(_pending_roots != nullptr, "sanity");
+
   if (obj == nullptr) {
-    assert(_pending_roots->at(0).is_empty(), "root index 1 is always null");
+    assert(_pending_roots->at(0) == nullptr, "root index 1 is always null");
     return 0;
   }
   CachedOopInfo* obj_info = get_cached_oop_info(obj);
@@ -470,8 +472,7 @@ int HeapShared::append_root(oop obj) {
   if (obj_info->root_index() > 0) {
     return obj_info->root_index();
   } else {
-    OopHandle oh(Universe::vm_global(), obj);
-    int i = _pending_roots->append(oh);
+    int i = _pending_roots->append(obj);
     obj_info->set_root_index(i);
     return i;
   }
@@ -505,7 +506,7 @@ int HeapShared::get_archived_object_permanent_index(oop obj) {
   return -1;
 }
 
-oop HeapShared::get_root(int index, bool clear) {
+oop HeapShared::get_root(int index) {
   assert(index >= 0, "sanity");
   assert(is_archived_heap_in_use(), "getting roots into heap that is not used");
 
@@ -517,32 +518,12 @@ oop HeapShared::get_root(int index, bool clear) {
     result = AOTMappedHeapLoader::get_root(index);
   }
 
-  if (clear) {
-    //clear_root(index); FIXME -- cannot clear now, as the same index can be used in different places.
-  }
-
   return result;
 }
 
 void HeapShared::finish_materialize_objects() {
   if (AOTStreamedHeapLoader::is_in_use()) {
     AOTStreamedHeapLoader::finish_materialize_objects();
-  }
-}
-
-void HeapShared::clear_root(int index) {
-  assert(index >= 0, "sanity");
-  assert(CDSConfig::is_using_archive(), "must be");
-  if (is_archived_heap_in_use()) {
-    if (log_is_enabled(Debug, aot, heap)) {
-      log_debug(aot, heap)("Clearing root %d: was %zu", index, p2i(get_root(index, false /* clear */)));
-    }
-    if (HeapShared::is_loading_streaming_mode()) {
-      AOTStreamedHeapLoader::clear_root(index);
-    } else {
-      assert(HeapShared::is_loading_mapping_mode(), "must be");
-      AOTMappedHeapLoader::clear_root(index);
-    }
   }
 }
 
@@ -611,9 +592,8 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
         InstanceKlass* method_holder = m->method_holder();
         AOTArtifactFinder::add_cached_class(method_holder);
       }
-    }
-
-    if (java_lang_invoke_MethodHandle::is_instance(obj)) {
+    } else if (java_lang_invoke_MethodHandle::is_instance(obj)) {
+      // Needed by AOT compiler.
       append_root(obj);
     }
   }
@@ -684,8 +664,8 @@ objArrayOop HeapShared::scratch_resolved_references(ConstantPool* src) {
 
 void HeapShared::init_dumping() {
   _scratch_objects_table = new (mtClass)MetaspaceObjToOopHandleTable();
-  _pending_roots = new GrowableArrayCHeap<OopHandle, mtClassShared>(500);
-  _pending_roots->append(OopHandle()); // root index 0 represents a null oop
+  _pending_roots = new GrowableArrayCHeap<oop, mtClassShared>(500);
+  _pending_roots->append(nullptr); // root index 0 represents a null oop
 }
 
 void HeapShared::init_scratch_objects_for_basic_type_mirrors(TRAPS) {
@@ -964,24 +944,17 @@ void HeapShared::write_heap(ArchiveMappedHeapInfo* mapped_heap_info, ArchiveStre
 
   if (HeapShared::is_writing_mapping_mode()) {
     StringTable::write_shared_table();
-  }
-
-  GrowableArrayCHeap<oop, mtClassShared>* roots = new GrowableArrayCHeap<oop, mtClassShared>(_pending_roots->length());
-  for (int i = 0; i < _pending_roots->length(); i++) {
-    roots->append(_pending_roots->at(i).resolve());
-  }
-
-  if (HeapShared::is_writing_mapping_mode()) {
-    AOTMappedHeapWriter::write(roots, mapped_heap_info);
+    AOTMappedHeapWriter::write(_pending_roots, mapped_heap_info);
   } else {
     assert(HeapShared::is_writing_streaming_mode(), "are there more modes?");
-    AOTStreamedHeapWriter::write(roots, streamed_heap_info);
+    AOTStreamedHeapWriter::write(_pending_roots, streamed_heap_info);
   }
-
-  delete roots;
 
   ArchiveBuilder::OtherROAllocMark mark;
   write_subgraph_info_table();
+
+  delete _pending_roots;
+  _pending_roots = nullptr;
 }
 
 void HeapShared::scan_java_mirror(oop orig_mirror) {
@@ -1402,9 +1375,6 @@ void HeapShared::resolve_classes_for_subgraph_of(JavaThread* current, Klass* k) 
   if (HAS_PENDING_EXCEPTION) {
    CLEAR_PENDING_EXCEPTION;
   }
-  if (record == nullptr) {
-   clear_archived_roots_of(k);
-  }
 }
 
 static const char* java_lang_invoke_core_klasses[] = {
@@ -1637,7 +1607,7 @@ void HeapShared::init_archived_fields_for(Klass* k, const ArchivedKlassSubGraphI
       if (root_index < 0) {
         v = nullptr;
       } else {
-        v = get_root(root_index, /*clear=*/true);
+        v = get_root(root_index);
       }
       oop m = k->java_mirror();
       if (k->has_aot_initialized_mirror()) {
@@ -1659,22 +1629,6 @@ void HeapShared::init_archived_fields_for(Klass* k, const ArchivedKlassSubGraphI
   }
 
   verify_the_heap(k, "after ");
-}
-
-void HeapShared::clear_archived_roots_of(Klass* k) {
-  unsigned int hash = SystemDictionaryShared::hash_for_shared_dictionary_quick(k);
-  const ArchivedKlassSubGraphInfoRecord* record = _run_time_subgraph_info_table.lookup(k, hash, 0);
-  if (record != nullptr) {
-    Array<int>* entry_field_records = record->entry_field_records();
-    if (entry_field_records != nullptr) {
-      int efr_len = entry_field_records->length();
-      assert(efr_len % 2 == 0, "sanity");
-      for (int i = 0; i < efr_len; i += 2) {
-        int root_index = entry_field_records->at(i+1);
-        clear_root(root_index);
-      }
-    }
-  }
 }
 
 // Push all oop fields (or oop array elemenets in case of an objArray) in
