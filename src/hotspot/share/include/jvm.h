@@ -759,6 +759,8 @@ JVM_AssertionStatusDirectives(JNIEnv *env, jclass unused);
 JNIEXPORT jboolean JNICALL
 JVM_RegisterAsAOTCompatibleLoader(JNIEnv *env, jobject loader);
 
+JNIEXPORT jboolean JNICALL
+JVM_RegisterURLClassLoaderAsAOTSafeLoader(JNIEnv *env, jobject loader, jstring classpath);
 /*
  * java.lang.ref.Finalizer
  */

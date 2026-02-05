@@ -60,7 +60,8 @@ public:
     MODULES_IMAGE,
     BOOT_CLASSPATH,
     APP_CLASSPATH,
-    MODULE_PATH
+    MODULE_PATH,
+    URLCLASSLOADER_CLASSPATH
   };
 private:
   enum class FileType : int {
@@ -115,6 +116,23 @@ public:
   bool check(const char* runtime_path, bool has_aot_linked_classes) const;
 };
 
+using GrowableClassLocationArray = GrowableArrayCHeap<AOTClassLocation*, mtClassShared>;
+
+class URLClassLoaderClasspath {
+ private:
+  Symbol* _loader_id;
+  Array<AOTClassLocation*>* _class_locations;
+ public:
+  void init(Symbol* aot_id, Array<AOTClassLocation*>* class_locations) {
+    _loader_id = aot_id;
+    _class_locations = class_locations;
+  }
+  Symbol* loader_id() const { return _loader_id; }
+  address* loader_id_addr() const { return (address*)&_loader_id; }
+  Array<AOTClassLocation*>* class_locations() const { return _class_locations; }
+  address* class_locations_addr() const { return (address*)&_class_locations; }
+};
+
 // AOTClassLocationConfig
 //
 // Keep track of the set of AOTClassLocations used when an AOTCache is created.
@@ -134,7 +152,6 @@ public:
 
 class AOTClassLocationConfig : public CHeapObj<mtClassShared> {
   using Group = AOTClassLocation::Group;
-  using GrowableClassLocationArray = GrowableArrayCHeap<AOTClassLocation*, mtClassShared>;
 
   // Note: both of the following are non-null if we are dumping a dynamic archive.
   static AOTClassLocationConfig* _dumptime_instance;
@@ -277,5 +294,11 @@ public:
   static void print();
 };
 
+class URLClassLoaderClasspathSupport : AllStatic {
+public:
+  static Symbol* classpath_to_aotid(const char* classpath);
+  static void add_urlclassloader_classpath(ClassLoaderData* loader_data, const char* classpath);
+  static void archive_map();
+};
 
 #endif // SHARE_CDS_AOTCLASSLOCATION_HPP

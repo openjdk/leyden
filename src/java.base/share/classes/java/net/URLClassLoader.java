@@ -26,6 +26,7 @@
 package java.net;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.CodeSigner;
@@ -64,10 +65,11 @@ import jdk.internal.perf.PerfCounter;
  * @author  David Connelly
  * @since   1.2
  */
+@SuppressWarnings("this-escape")
 public class URLClassLoader extends SecureClassLoader implements Closeable {
     /* The search path for classes and resources */
     private final URLClassPath ucp;
-
+    private static final boolean DEBUG = Boolean.getBoolean("urlclassloader.debug");
     /**
      * Constructs a new URLClassLoader for the given URLs. The URLs will be
      * searched in the order specified for classes and resources after first
@@ -92,6 +94,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
     public URLClassLoader(URL[] urls, ClassLoader parent) {
         super(parent);
         this.ucp = new URLClassPath(urls);
+        registerAsAOTSafe(urls);
     }
 
     /**
@@ -111,6 +114,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
     public URLClassLoader(URL[] urls) {
         super();
         this.ucp = new URLClassPath(urls);
+        registerAsAOTSafe(urls);
     }
 
     /**
@@ -138,6 +142,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
                           URLStreamHandlerFactory factory) {
         super(parent);
         this.ucp = new URLClassPath(urls, factory);
+        registerAsAOTSafe(urls);
     }
 
 
@@ -171,6 +176,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
                           ClassLoader parent) {
         super(name, parent);
         this.ucp = new URLClassPath(urls);
+        registerAsAOTSafe(urls);
     }
 
     /**
@@ -202,6 +208,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
                           URLStreamHandlerFactory factory) {
         super(name, parent);
         this.ucp = new URLClassPath(urls, factory);
+        registerAsAOTSafe(urls);
     }
 
     /* A map (used as a set) to keep track of closeable local resources
@@ -639,4 +646,63 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
     static {
         ClassLoader.registerAsParallelCapable();
     }
+
+    // It is AOT-safe if only jar files are present in it the urls
+    private boolean canRegisterAsAOTSafe(final URL[] urls) {
+        boolean isAOTSafe = true;
+        for (URL url: urls) {
+            if (!url.getProtocol().equals("file")) {
+                isAOTSafe = false;
+                break;
+            }
+            if (!url.getPath().endsWith(".jar")) {
+                isAOTSafe = false;
+                break;
+            }
+        }
+        return isAOTSafe;
+    }
+
+    private String createClassPath(final URL[] urls) {
+        StringBuilder sb = new StringBuilder();
+        for (URL url: urls) {
+           String path = url.getPath();
+           sb.append(path);
+           sb.append(File.pathSeparator);
+        }
+        return sb.toString();
+    }
+
+    private String convertToAOTId(String classpath) {
+        return classpath;
+    }
+
+    private boolean registerAsAOTSafe(final URL[] urls) {
+        String classpath = createClassPath(urls);
+        if (!hasBuiltinLoaderAsParent() && getParent().getAOTIdentity() == null) {
+            if (DEBUG) {
+                System.out.println("DEBUG: URLClassLoader with classpath \"" + classpath + "\" cannot be registered as AOT-safe (reason=parent not aot-safe)");
+            }
+            return false;
+        }
+        if (canRegisterAsAOTSafe(urls)) {
+            setAOTIdentity(convertToAOTId(classpath));
+            boolean rc = registerAsAOTSafeImpl(classpath);
+            if (DEBUG) {
+                if (rc) {
+                    System.out.println("DEBUG: Registered URLClassLoader as AOT-safe with classpath " + classpath);
+                } else {
+                    System.out.println("DEBUG: Failed to register URLClassLoader as AOT-safe with classpath " + classpath);
+                }
+            }
+            return rc;
+        } else {
+            if (DEBUG) {
+                System.out.println("DEBUG: URLClassLoader with classpath \"" + classpath + "\" cannot be registered as AOT-safe (reason=urls contain non-jar files)");
+            }
+        }
+        return false;
+    }
+
+    private native boolean registerAsAOTSafeImpl(String classpath);
 }

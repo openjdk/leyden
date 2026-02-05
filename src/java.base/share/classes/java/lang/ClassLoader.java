@@ -2670,9 +2670,29 @@ public abstract class ClassLoader {
      * @param  id
      *         unique id of the classloader object.
      */
-    protected void setAOTIdentity(String id) {
+    public void setAOTIdentity(String id) {
         aotIdentity = id;
-        registerAsAOTCompatibleLoader();
+        //registerAsAOTCompatibleLoader();
+    }
+
+    /**
+     * Returns unique and repeatable ID of the classloader
+     *
+     * @return unique id of the classloader object.
+     */
+    public String getAOTIdentity() {
+        return aotIdentity;
+    }
+
+    /**
+     * Returns true if the parent is a builtin loader
+     *
+     * @return true if the parent is a builtin loader
+     */
+    @SuppressWarnings("this-escape")
+    public final boolean hasBuiltinLoaderAsParent() {
+        ClassLoader parent = getParent();
+        return parent == null || parent == getBuiltinPlatformClassLoader() || parent == getBuiltinAppClassLoader();
     }
 
     private native boolean registerAsAOTCompatibleLoader();

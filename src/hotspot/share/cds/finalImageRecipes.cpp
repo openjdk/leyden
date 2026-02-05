@@ -166,6 +166,9 @@ void FinalImageRecipes::apply_recipes_for_constantpool(JavaThread* current) {
     int flags = _flags->at(i);
     if (cp_indices != nullptr) {
       InstanceKlass* ik = InstanceKlass::cast(_all_klasses->at(i));
+      if (!strcmp(ik->external_name(), "org.openjdk.aot.testclass.Foo")) {
+        log_info(cds)("Applying constant pool recipes for %s", ik->external_name());
+      }
       if (ik->is_loaded()) {
         ResourceMark rm(current);
         ConstantPool* cp = ik->constants();
@@ -262,6 +265,9 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
     int flags = _flags->at(i);
     if (k->is_instance_klass()) {
       InstanceKlass* ik = InstanceKlass::cast(k);
+      if (!strcmp(ik->external_name(), "org/openjdk/aot/testclass/Foo")) {
+        log_info(cds)("FinalImageRecipes loading class %s", ik->external_name());
+      }
       if (ik->defined_by_other_loaders() && !k->is_defined_by_aot_safe_custom_loader()) {
         SystemDictionaryShared::init_dumptime_info(ik);
         SystemDictionaryShared::add_unregistered_class(THREAD, ik);
@@ -287,6 +293,15 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
         Handle unreg_class_loader = UnregisteredClasses::unregistered_class_loader(THREAD);
         assert(unreg_class_loader.not_null(), "must be");
         Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), unreg_class_loader, true, CHECK);
+        if (actual != ik) {
+          ResourceMark rm(THREAD);
+          log_error(aot)("Unable to resolve class from CDS archive: %s", ik->external_name());
+          log_error(aot)("Expected: " INTPTR_FORMAT ", actual: " INTPTR_FORMAT, p2i(ik), p2i(actual));
+          log_error(aot)("Please check if your VM command-line is the same as in the training run");
+          AOTMetaspace::unrecoverable_writing_error();
+        }
+        assert(ik->is_loaded(), "must be");
+        ik->link_class(CHECK);
       }
     }
   }

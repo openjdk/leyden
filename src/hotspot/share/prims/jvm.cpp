@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotClassInitializer.hpp"
+#include "cds/aotClassLocation.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotMetaspace.hpp"
@@ -2285,8 +2286,6 @@ JVM_ENTRY_PROF(jobject, JVM_AssertionStatusDirectives, JVM_AssertionStatusDirect
 JVM_END
 
 JVM_ENTRY_PROF(jboolean, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCompatibleLoader(JNIEnv *env, jobject loader))
-  //FinalImageRecipes::add_aot_safe_custom_loader(JNIHandles::resolve_non_null(loader), CHECK);
-  //Nothing to do here for now
   if (CDSConfig::is_using_aot_linked_classes() && CDSConfig::supports_custom_loaders()) {
     Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
     ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
@@ -2297,6 +2296,23 @@ JVM_ENTRY_PROF(jboolean, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCom
   return JNI_FALSE;
 JVM_END
 
+JVM_ENTRY_PROF(jboolean, JVM_RegisterURLClassLoaderAsAOTSafeLoader, JVM_RegisterURLClassLoaderAsAOTSafeLoader(JNIEnv *env, jobject loader, jstring classpath))
+  if (CDSConfig::supports_custom_loaders()) {
+    ResourceMark rm(THREAD);
+    Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
+    ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
+    assert(loader_data->aot_identity() != nullptr, "must be");
+    if (CDSConfig::is_dumping_preimage_static_archive()) {
+      const char *classpath_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(classpath));
+      URLClassLoaderClasspathSupport::add_urlclassloader_classpath(loader_data, classpath_str);
+    } else if (CDSConfig::is_using_aot_linked_classes()) {
+      AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_false);
+      AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_false);
+    }
+    return JNI_TRUE;
+  }
+  return JNI_FALSE;
+JVM_END
 // Verification ////////////////////////////////////////////////////////////////////////////////
 
 // Reflection for the verifier /////////////////////////////////////////////////////////////////
