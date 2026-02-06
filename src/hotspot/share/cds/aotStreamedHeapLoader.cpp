@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2026, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1077,9 +1077,20 @@ oop AOTStreamedHeapLoader::get_root(int index) {
     // Materialize root
     result = materialize_root(index);
   }
+  if (result == _roots.resolve()) {
+    // A self-reference to the roots array acts as a sentinel object for null,
+    // indicating that the root has been cleared.
+    result = nullptr;
+  }
   // Acquire the root transitive object payload
   OrderAccess::acquire();
   return result;
+}
+
+void AOTStreamedHeapLoader::clear_root(int index) {
+  // Self-reference to the roots array acts as a sentinel object for null,
+  // indicating that the root has been cleared.
+  objArrayOop(_roots.resolve())->obj_at_put(index, _roots.resolve());
 }
 
 void AOTStreamedHeapLoader::await_gc_enabled() {

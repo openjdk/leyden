@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 2026, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -151,6 +151,10 @@ void vmClasses::resolve_all(TRAPS) {
       // call. No mirror objects are accessed/restored in the above call.
       // Mirrors are restored after java.lang.Class is loaded.
       AOTMappedHeapLoader::fixup_region();
+    }
+    if (HeapShared::is_archived_heap_in_use() && !CDSConfig::is_using_full_module_graph()) {
+      // Need to remove all the archived java.lang.Module objects from HeapShared::roots().
+      ClassLoaderDataShared::clear_archived_oops();
     }
 #endif // INCLUDE_CDS_JAVA_HEAP
     // Initialize the constant pool for the Object_class

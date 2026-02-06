@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2026, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -232,6 +232,7 @@ public:
   static void materialize_thread_object();
   static oop materialize_root(int root_index);
   static oop get_root(int root_index);
+  static void clear_root(int index);
   static void materialize_objects();
   static void finish_materialize_objects();
   static bool is_in_use() { return _is_in_use; }

@@ -482,6 +482,7 @@ private:
 
   static void resolve_classes_for_subgraphs(JavaThread* current, ArchivableStaticFieldInfo fields[]);
   static void resolve_classes_for_subgraph_of(JavaThread* current, Klass* k);
+  static void clear_archived_roots_of(Klass* k);
   static const ArchivedKlassSubGraphInfoRecord*
                resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAPS);
   static void resolve_or_init(const char* klass_name, bool do_init, TRAPS);
@@ -579,10 +580,11 @@ private:
 
   // Dump-time and runtime
   static objArrayOop root_segment(int segment_idx);
-  static oop get_root(int index);
+  static oop get_root(int index, bool clear=false);
 
+  // Run-time only
+  static void clear_root(int index);
   static void get_segment_indexes(int index, int& segment_index, int& internal_index);
-
   static void setup_test_class(const char* test_class_name) PRODUCT_RETURN;
 #endif // INCLUDE_CDS_JAVA_HEAP
 

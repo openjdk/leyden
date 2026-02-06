@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -126,7 +126,7 @@ bool CDSEnumKlass::initialize_enum_klass(InstanceKlass* k, TRAPS) {
       int root_index = info->enum_klass_static_field_root_index_at(i++);
       fieldDescriptor& fd = fs.field_descriptor();
       assert(fd.field_type() == T_OBJECT || fd.field_type() == T_ARRAY, "must be");
-      oop root_object = HeapShared::get_root(root_index);
+      oop root_object = HeapShared::get_root(root_index, /*clear=*/true);
       k->java_mirror()->obj_field_put(fd.offset(), root_object);
     }
   }

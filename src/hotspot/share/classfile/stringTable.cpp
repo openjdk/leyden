@@ -76,7 +76,7 @@ const double CLEAN_DEAD_HIGH_WATER_MARK = 0.5;
 #if INCLUDE_CDS_JAVA_HEAP
 inline oop StringTable::read_string_from_compact_hashtable(address base_address, u4 index) {
   assert(AOTMappedHeapLoader::is_in_use(), "sanity");
-  oop s = HeapShared::get_root((int)index);
+  oop s = HeapShared::get_root((int)index, false);
   assert(java_lang_String::is_instance(s), "must be");
   return s;
 }

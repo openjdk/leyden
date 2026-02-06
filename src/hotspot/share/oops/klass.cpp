@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2026, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -926,6 +926,9 @@ oop Klass::archived_java_mirror() {
 }
 
 void Klass::clear_archived_mirror_index() {
+  if (_archived_mirror_index >= 0) {
+    HeapShared::clear_root(_archived_mirror_index);
+  }
   _archived_mirror_index = -1;
 }
 #endif // INCLUDE_CDS_JAVA_HEAP

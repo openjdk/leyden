@@ -406,6 +406,12 @@ oop AOTMappedHeapLoader::get_root(int index) {
   return result->obj_at(int_idx);
 }
 
+void AOTMappedHeapLoader::clear_root(int index) {
+  int seg_idx, int_idx;
+  get_segment_indexes(index, seg_idx, int_idx);
+  root_segment(seg_idx)->obj_at_put(int_idx, nullptr);
+}
+
 class VerifyLoadedHeapEmbeddedPointers: public BasicOopIterateClosure {
   HashTable<uintptr_t, bool>* _table;
 

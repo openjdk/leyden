@@ -461,12 +461,12 @@ void ModuleEntry::load_from_archive(ClassLoaderData* loader_data) {
 }
 
 void ModuleEntry::preload_archived_oops() {
-  (void)HeapShared::get_root(_archived_module_index);
+  (void)HeapShared::get_root(_archived_module_index, false /* clear */);
 }
 
 void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
   assert(CDSConfig::is_using_full_module_graph(), "runtime only");
-  Handle module_handle(Thread::current(), HeapShared::get_root(_archived_module_index));
+  Handle module_handle(Thread::current(), HeapShared::get_root(_archived_module_index, /*clear=*/true));
   assert(module_handle.not_null(), "huh");
   set_module_handle(loader_data->add_handle(module_handle));
 
@@ -483,6 +483,11 @@ void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
     ls.print("Restored from archive: ");
     print(&ls);
   }
+}
+
+void ModuleEntry::clear_archived_oops() {
+  assert(CDSConfig::is_using_archive() && !CDSConfig::is_using_full_module_graph(), "runtime only");
+  HeapShared::clear_root(_archived_module_index);
 }
 
 static int compare_module_by_name(ModuleEntry* a, ModuleEntry* b) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2026, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -609,7 +609,10 @@ oop ConstantPoolCache::archived_references() {
 }
 
 void ConstantPoolCache::clear_archived_references() {
-  _archived_references_index = -1;
+  if (_archived_references_index >= 0) {
+    HeapShared::clear_root(_archived_references_index);
+    _archived_references_index = -1;
+  }
 }
 #endif
 

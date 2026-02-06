@@ -52,6 +52,7 @@
 #include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/aotCodeCache.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/gcLocker.hpp"
 #include "gc/shared/gcVMOperations.hpp"
@@ -489,16 +490,22 @@ int HeapShared::append_root(oop obj) {
   if (obj == nullptr) {
     assert(_pending_roots->at(0) == nullptr, "root index 1 is always null");
     return 0;
-  }
-  CachedOopInfo* obj_info = get_cached_oop_info(obj);
-  assert(obj_info != nullptr, "must be archived");
+  } else if (CDSConfig::is_dumping_aot_linked_classes() && 0) {
+    // The AOT compiler may refer the same obj many times, so we
+    // should use the same index for this oop to avoid excessive entries
+    // in the roots array.
+    CachedOopInfo* obj_info = get_cached_oop_info(obj);
+    assert(obj_info != nullptr, "must be archived");
 
-  if (obj_info->root_index() > 0) {
-    return obj_info->root_index();
+    if (obj_info->root_index() > 0) {
+      return obj_info->root_index();
+    } else {
+      int i = _pending_roots->append(obj);
+      obj_info->set_root_index(i);
+      return i;
+    }
   } else {
-    int i = _pending_roots->append(obj);
-    obj_info->set_root_index(i);
-    return i;
+    return _pending_roots->append(obj);
   }
 }
 
@@ -530,7 +537,7 @@ int HeapShared::get_archived_object_permanent_index(oop obj) {
   return -1;
 }
 
-oop HeapShared::get_root(int index) {
+oop HeapShared::get_root(int index, bool clear) {
   assert(index >= 0, "sanity");
   assert(is_archived_heap_in_use(), "getting roots into heap that is not used");
 
@@ -542,12 +549,39 @@ oop HeapShared::get_root(int index) {
     result = AOTMappedHeapLoader::get_root(index);
   }
 
+  if (clear) {
+    clear_root(index);
+  }
+
   return result;
 }
 
 void HeapShared::finish_materialize_objects() {
   if (AOTStreamedHeapLoader::is_in_use()) {
     AOTStreamedHeapLoader::finish_materialize_objects();
+  }
+}
+
+void HeapShared::clear_root(int index) {
+  if (CDSConfig::is_using_aot_linked_classes() && 0) {
+    // When AOT linked classes are in use, all roots will be in use all
+    // the time, there's no benefit for clearing the roots. Also, we
+    // can't clear the roots as they can be shared.
+    return;
+  }
+
+  assert(index >= 0, "sanity");
+  assert(CDSConfig::is_using_archive(), "must be");
+  if (is_archived_heap_in_use()) {
+    if (log_is_enabled(Debug, aot, heap)) {
+      log_debug(aot, heap)("Clearing root %d: was %zu", index, p2i(get_root(index, false /* clear */)));
+    }
+    if (HeapShared::is_loading_streaming_mode()) {
+      AOTStreamedHeapLoader::clear_root(index);
+    } else {
+      assert(HeapShared::is_loading_mapping_mode(), "must be");
+      AOTMappedHeapLoader::clear_root(index);
+    }
   }
 }
 
@@ -616,7 +650,8 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
         InstanceKlass* method_holder = m->method_holder();
         AOTArtifactFinder::add_cached_class(method_holder);
       }
-    } else if (java_lang_invoke_MethodHandle::is_instance(obj) || is_interned_string(obj)) {
+    } else if (AOTCodeCache::is_dumping_code() &&
+               (java_lang_invoke_MethodHandle::is_instance(obj) || is_interned_string(obj))) {
       // Needed by AOT compiler.
       append_root(obj);
     }
@@ -1401,6 +1436,9 @@ void HeapShared::resolve_classes_for_subgraph_of(JavaThread* current, Klass* k) 
   if (HAS_PENDING_EXCEPTION) {
    CLEAR_PENDING_EXCEPTION;
   }
+  if (record == nullptr) {
+   clear_archived_roots_of(k);
+  }
 }
 
 static const char* java_lang_invoke_core_klasses[] = {
@@ -1633,7 +1671,7 @@ void HeapShared::init_archived_fields_for(Klass* k, const ArchivedKlassSubGraphI
       if (root_index < 0) {
         v = nullptr;
       } else {
-        v = get_root(root_index);
+        v = get_root(root_index, /*clear=*/true);
       }
       oop m = k->java_mirror();
       if (k->has_aot_initialized_mirror()) {
@@ -1655,6 +1693,22 @@ void HeapShared::init_archived_fields_for(Klass* k, const ArchivedKlassSubGraphI
   }
 
   verify_the_heap(k, "after ");
+}
+
+void HeapShared::clear_archived_roots_of(Klass* k) {
+  unsigned int hash = SystemDictionaryShared::hash_for_shared_dictionary_quick(k);
+  const ArchivedKlassSubGraphInfoRecord* record = _run_time_subgraph_info_table.lookup(k, hash, 0);
+  if (record != nullptr) {
+    Array<int>* entry_field_records = record->entry_field_records();
+    if (entry_field_records != nullptr) {
+      int efr_len = entry_field_records->length();
+      assert(efr_len % 2 == 0, "sanity");
+      for (int i = 0; i < efr_len; i += 2) {
+        int root_index = entry_field_records->at(i+1);
+        clear_root(root_index);
+      }
+    }
+  }
 }
 
 // Push all oop fields (or oop array elemenets in case of an objArray) in
