@@ -1102,15 +1102,34 @@ void AOTClassLocationConfig::print_on(outputStream* st) const {
 typedef ResizeableHashTable<Symbol*, GrowableClassLocationArray*, AnyObj::C_HEAP, mtClass> AOTIdToURLLoaderClasspath;
 static AOTIdToURLLoaderClasspath* _aot_id_to_classpath = nullptr;
 
-Symbol* URLClassLoaderClasspathSupport::classpath_to_aotid(const char* classpath) {
-  char* str = os::strdup(classpath, mtInternal);
-  return SymbolTable::new_symbol(str);
+static inline bool ucc_symbol_equals(URLClassLoaderClasspath* ucc, Symbol* loader_id, int len_unused) {
+  return ucc->loader_id()->equals(loader_id);
+}
+
+class ArchivedAOTIdToClasspathMap : public OffsetCompactHashtable<Symbol*, URLClassLoaderClasspath*,
+                                                                         ucc_symbol_equals> {};
+static ArchivedAOTIdToClasspathMap _archived_aot_id_to_classpath;
+
+void URLClassLoaderClasspathSupport::init() {
+  _aot_id_to_classpath = new (mtClass) AOTIdToURLLoaderClasspath(11, 1000);
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    reload_runtime_map();
+  }
+}
+
+void URLClassLoaderClasspathSupport::reload_runtime_map() {
+  _archived_aot_id_to_classpath.iterate([&](URLClassLoaderClasspath* ucc) {
+    GrowableClassLocationArray* locations = new GrowableClassLocationArray(ucc->num_entries());
+    for (int i = 0; i < ucc->num_entries(); i++) {
+      locations->append(ucc->class_location_at(i));
+      log_info(class, path)("path [%d] = %s", i, ucc->class_location_at(i)->path());
+    }
+    _aot_id_to_classpath->put(ucc->loader_id(), locations);
+  });
 }
 
 void URLClassLoaderClasspathSupport::add_urlclassloader_classpath(ClassLoaderData* loader_data, const char* classpath) {
-  if (_aot_id_to_classpath == nullptr) {
-    _aot_id_to_classpath = new (mtClass) AOTIdToURLLoaderClasspath(11, 1000);
-  }
+  assert(_aot_id_to_classpath != nullptr, "sanity check");
   Symbol* aot_id = loader_data->aot_identity();
   if (_aot_id_to_classpath->contains(aot_id)) {
     // cannot allow aot_id clash; return without doing anything
@@ -1127,14 +1146,6 @@ void URLClassLoaderClasspathSupport::add_urlclassloader_classpath(ClassLoaderDat
   _aot_id_to_classpath->put(aot_id, locations);
 }
 
-static inline bool ucc_symbol_equals(URLClassLoaderClasspath* ucc, Symbol* loader_id, int len_unused) {
-  return ucc->loader_id()->equals(loader_id);
-}
-
-class ArchivedAOTIdToClasspathMap : public OffsetCompactHashtable<Symbol*, URLClassLoaderClasspath*,
-                                                                         ucc_symbol_equals> {};
-static ArchivedAOTIdToClasspathMap _archived_aot_id_to_classpath;
-
 class URLClassLoaderClasspathArchiver : StackObj {
 private:
   CompactHashtableWriter* _writer;
@@ -1145,10 +1156,15 @@ public:
   {}
 
   bool do_entry(Symbol* loader_id, GrowableClassLocationArray* class_locations) {
+    Array<AOTClassLocation*>* archived_copy = ArchiveBuilder::new_ro_array<AOTClassLocation*>(class_locations->length());
+    for (int i = 0; i < class_locations->length(); i++) {
+      archived_copy->at_put(i, class_locations->at(i)->write_to_archive());
+      ArchivePtrMarker::mark_pointer((address*)archived_copy->adr_at(i));
+    }
     URLClassLoaderClasspath* ucc = (URLClassLoaderClasspath*)ArchiveBuilder::ro_region_alloc(sizeof(URLClassLoaderClasspath));
     assert(_builder->has_been_archived(loader_id), "must be");
     Symbol* buffered_sym = _builder->get_buffered_addr(loader_id);
-    ucc->init(buffered_sym, ArchiveUtils::archive_array(class_locations));
+    ucc->init(buffered_sym, archived_copy);
     ArchivePtrMarker::mark_pointer(ucc->loader_id_addr());
     ArchivePtrMarker::mark_pointer(ucc->class_locations_addr());
     unsigned int hash = Symbol::symbol_hash(loader_id);
@@ -1158,10 +1174,43 @@ public:
   }
 };
 
-void URLClassLoaderClasspathSupport::archive_map() {
+void URLClassLoaderClasspathSupport::archive_classpath_map() {
   CompactHashtableStats stats;
   CompactHashtableWriter writer(_aot_id_to_classpath->number_of_entries(), &stats);
   URLClassLoaderClasspathArchiver archiver(&writer);
   _aot_id_to_classpath->iterate(&archiver);
   writer.dump(&_archived_aot_id_to_classpath, "archived prelinked table");
+}
+
+void URLClassLoaderClasspathSupport::serialize_classpath_map_table_header(SerializeClosure* soc) {
+  _archived_aot_id_to_classpath.serialize_header(soc);
+}
+
+bool URLClassLoaderClasspathSupport::verify_archived_classpath(ClassLoaderData* loader_data, const char* classpath) {
+  ResourceMark rm;
+  Symbol* aot_id = loader_data->aot_identity();
+  assert(aot_id != nullptr, "sanity check");
+  const char* aot_id_str = aot_id->as_C_string();
+  unsigned int hash = Symbol::symbol_hash(aot_id);
+  URLClassLoaderClasspath* archived_classpath = _archived_aot_id_to_classpath.lookup(aot_id, hash, /*len*/0); // len is ignored
+  if (archived_classpath == nullptr) {
+    aot_log_warning(aot)("URLClassLoader (id=%s) classpath validation failed (reason: no archived entry found)", aot_id_str);
+    return false;
+  }
+  URLClassLoaderClassLocationStream uccs(classpath);
+  uccs.start();
+  for (int i = 0; i < archived_classpath->num_entries(); i++) {
+    AOTClassLocation* location = archived_classpath->class_location_at(i);
+    const char* archived_path = location->path();
+    if (!uccs.has_next()) {
+      aot_log_warning(aot)("URLClassLoader (id=%s) classpath validation failed (reason: classpath has fewer elements than expected)", aot_id_str);
+      return false;
+    }
+    const char* runtime_path = uccs.get_next();
+    if (!location->check(runtime_path, true)) {
+      aot_log_warning(aot)("URLClassLoader (id=%s) classpath validation failed", aot_id_str);
+      return false;
+    }
+  }
+  return true;
 }

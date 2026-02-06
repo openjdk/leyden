@@ -2289,8 +2289,8 @@ JVM_ENTRY_PROF(jboolean, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCom
   if (CDSConfig::is_using_aot_linked_classes() && CDSConfig::supports_custom_loaders()) {
     Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
     ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
-    AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_false);
-    AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_false);
+    AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
+    AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
     return JNI_TRUE;
   }
   return JNI_FALSE;
@@ -2302,12 +2302,15 @@ JVM_ENTRY_PROF(jboolean, JVM_RegisterURLClassLoaderAsAOTSafeLoader, JVM_Register
     Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
     ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
     assert(loader_data->aot_identity() != nullptr, "must be");
+    const char *classpath_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(classpath));
     if (CDSConfig::is_dumping_preimage_static_archive()) {
-      const char *classpath_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(classpath));
       URLClassLoaderClasspathSupport::add_urlclassloader_classpath(loader_data, classpath_str);
     } else if (CDSConfig::is_using_aot_linked_classes()) {
-      AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_false);
-      AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_false);
+      if (!URLClassLoaderClasspathSupport::verify_archived_classpath(loader_data, classpath_str)) {
+        return JNI_FALSE;
+      }
+      AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
+      AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
     }
     return JNI_TRUE;
   }

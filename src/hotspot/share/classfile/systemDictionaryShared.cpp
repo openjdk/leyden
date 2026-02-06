@@ -673,8 +673,8 @@ InstanceKlass* SystemDictionaryShared::find_or_load_shared_class(
       }
 
       k = load_shared_class_for_builtin_loader(name, class_loader, THREAD);
-    } else if (CDSConfig::supports_custom_loaders() &&
-               (class_loader() == UnregisteredClasses::unregistered_class_loader(THREAD)() || java_lang_ClassLoader::aotIdentity(class_loader()) != nullptr)) {
+    } else if (CDSConfig::supports_custom_loaders() && CDSConfig::is_dumping_final_static_archive() &&
+               class_loader() == UnregisteredClasses::unregistered_class_loader(THREAD)()) {
       ClassLoaderData *loader_data = register_loader(class_loader);
       Dictionary* dictionary = loader_data->dictionary();
 

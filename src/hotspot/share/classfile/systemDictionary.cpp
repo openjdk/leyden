@@ -1643,6 +1643,7 @@ void SystemDictionary::initialize(TRAPS) {
   SystemDictionaryShared::initialize();
   if (CDSConfig::is_dumping_archive()) {
     AOTClassLocationConfig::dumptime_init(THREAD);
+    URLClassLoaderClasspathSupport::init();
   }
 #endif
   // Resolve basic classes

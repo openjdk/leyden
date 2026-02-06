@@ -665,10 +665,13 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
 
     private String createClassPath(final URL[] urls) {
         StringBuilder sb = new StringBuilder();
-        for (URL url: urls) {
+        for (int i = 0; i < urls.length; i++) {
+           URL url = urls[i];
            String path = url.getPath();
            sb.append(path);
-           sb.append(File.pathSeparator);
+           if (i < urls.length-1) {
+             sb.append(File.pathSeparator);
+           }
         }
         return sb.toString();
     }

@@ -89,6 +89,7 @@ public:
   static AOTClassLocation* allocate(JavaThread* current, const char* path, int index, Group group,
                                     bool from_cpattr = false, bool is_jrt = false);
 
+  size_t path_length()               const { return _path_length; }
   size_t total_size()                const { return manifest_offset() + _manifest_length + 1; }
   const char* path()                 const { return ((const char*)this) + path_offset();  }
   size_t manifest_length()           const { return _manifest_length; }
@@ -131,6 +132,8 @@ class URLClassLoaderClasspath {
   address* loader_id_addr() const { return (address*)&_loader_id; }
   Array<AOTClassLocation*>* class_locations() const { return _class_locations; }
   address* class_locations_addr() const { return (address*)&_class_locations; }
+  AOTClassLocation* class_location_at(int i) { return _class_locations->at(i); }
+  int num_entries() { return _class_locations->length(); }
 };
 
 // AOTClassLocationConfig
@@ -296,9 +299,12 @@ public:
 
 class URLClassLoaderClasspathSupport : AllStatic {
 public:
-  static Symbol* classpath_to_aotid(const char* classpath);
+  static void init();
+  static void reload_runtime_map();
   static void add_urlclassloader_classpath(ClassLoaderData* loader_data, const char* classpath);
-  static void archive_map();
+  static void archive_classpath_map();
+  static void serialize_classpath_map_table_header(SerializeClosure* soc);
+  static bool verify_archived_classpath(ClassLoaderData* loader_data, const char* classpath);
 };
 
 #endif // SHARE_CDS_AOTCLASSLOCATION_HPP
