@@ -247,24 +247,31 @@ unsigned HeapShared::oop_hash(oop const& p) {
   return primitive_hash(cast_from_oop<intptr_t>(p));
 }
 
-unsigned int HeapShared::oop_handle_hash_raw(const OopHandle& oh) {
-  return oop_hash(oh.resolve());
-}
-
-unsigned int HeapShared::oop_handle_hash(const OopHandle& oh) {
-  oop o = oh.resolve();
-  if (o == nullptr) {
-    return 0;
-  } else {
-    return o->identity_hash();
-  }
-}
-
+// About the hashcode in the cached objects:
+// - If a source object has a hashcode, it must be copied into the cache.
+//   That's because some cached hashtables are laid out using this hashcode.
+// - If a source object doesn't have a hashcode, we avoid computing it while
+//   copying the objects into the cache. This will allow the hashcode to be
+//   dynamically and randomly computed in each production, which generally
+//   desirable for security reasons.
 unsigned HeapShared::archived_object_cache_hash(OopHandle const& oh) {
+  oop o = oh.resolve();
   if (_use_identity_hash_for_archived_object_cache) {
-    return oop_handle_hash(oh);
+    // This is called after all objects are copied. It's OK to update
+    // the object's hashcode.
+    //
+    // This may be called after we have left the AOT dumping safepoint.
+    // Objects in archived_object_cache() may be moved by the GC, so we
+    // can't use the address of o for computing the hash.
+    if (o == nullptr) {
+      return 0;
+    } else {
+      return o->identity_hash();
+    }
   } else {
-    return oop_handle_hash_raw(oh);
+    // This is called while we are copying the objects. Don't call o->identity_hash()
+    // as that will update the object header.
+    return oop_hash(o);
   }
 }
 
@@ -490,7 +497,7 @@ int HeapShared::append_root(oop obj) {
   if (obj == nullptr) {
     assert(_pending_roots->at(0) == nullptr, "root index 1 is always null");
     return 0;
-  } else if (CDSConfig::is_dumping_aot_linked_classes() && 0) {
+  } else if (CDSConfig::is_dumping_aot_linked_classes()) {
     // The AOT compiler may refer the same obj many times, so we
     // should use the same index for this oop to avoid excessive entries
     // in the roots array.
@@ -509,9 +516,7 @@ int HeapShared::append_root(oop obj) {
   }
 }
 
-int HeapShared::get_archived_object_permanent_index(oop obj) {
-  MutexLocker ml(ArchivedObjectTables_lock, Mutex::_no_safepoint_check_flag);
-
+int HeapShared::get_root_index(oop obj) {
   if (!CDSConfig::is_dumping_heap()) {
     return -1; // Called by the Leyden old workflow
   }

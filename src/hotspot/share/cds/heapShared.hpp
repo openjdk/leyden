@@ -319,12 +319,7 @@ private:
 public:
   static void debug_trace();
   static unsigned oop_hash(oop const& p);
-  static unsigned oop_handle_hash(OopHandle const& oh);
-  static unsigned oop_handle_hash_raw(OopHandle const& oh);
   static bool oop_handle_equals(const OopHandle& a, const OopHandle& b);
-  static unsigned string_oop_hash(oop const& string) {
-    return java_lang_String::hash_code(string);
-  }
 
   class CopyKlassSubGraphInfoToArchive;
 
@@ -576,6 +571,11 @@ private:
   // Dump-time only. Returns the index of the root, which can be used at run time to read
   // the root using get_root(index, ...).
   static int append_root(oop obj);
+
+  // AOT-compile time only.
+  // Returns -1 if obj is not in the heap root set.
+  static int get_root_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
+
   static GrowableArrayCHeap<oop, mtClassShared>* pending_roots() { return _pending_roots; }
 
   // Dump-time and runtime
@@ -615,10 +615,6 @@ private:
   static bool is_a_test_class_in_unnamed_module(Klass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static void initialize_test_class_from_archive(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 #endif
-
-  // AOT-compile time only: get a stable index for an archived object.
-  // Returns 0 if obj is not in the heap root set.
-  static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
 
   static void initialize_java_lang_invoke(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_classes_for_special_subgraph(Handle loader, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;

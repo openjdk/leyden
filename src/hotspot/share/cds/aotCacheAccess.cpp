@@ -75,7 +75,7 @@ uint AOTCacheAccess::convert_method_to_offset(Method* method) {
 
 #if INCLUDE_CDS_JAVA_HEAP
 int AOTCacheAccess::get_archived_object_permanent_index(oop obj) {
-  return HeapShared::get_archived_object_permanent_index(obj);
+  return HeapShared::get_root_index(obj); // -1 if obj is not a root.
 }
 
 oop AOTCacheAccess::get_archived_object(int permanent_index) {
