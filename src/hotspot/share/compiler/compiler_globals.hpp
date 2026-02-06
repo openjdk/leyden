@@ -444,6 +444,10 @@
           "Use preload code exclusively. This effectively disables most of "\
           "profiling and JIT compilation, running close to AOT-only mode.") \
                                                                             \
+  product(bool, PreloadAndC1Only, false, EXPERIMENTAL,                      \
+          "Use preload code and C1 compiles. This effectively disables any "\
+          "C2 use in production mode.")                                     \
+                                                                            \
 
 // end of COMPILER_FLAGS
 
