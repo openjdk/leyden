@@ -2025,7 +2025,7 @@ static void post_deoptimization_event(nmethod* nm,
 #endif // INCLUDE_JFR
 
 static void log_deopt(nmethod* nm, Method* tm, intptr_t pc, frame& fr, int trap_bci,
-                              const char* reason_name, const char* reason_action) {
+                      const char* reason_name, const char* reason_action, const char* class_name) {
   LogTarget(Debug, deoptimization) lt;
   if (lt.is_enabled()) {
     LogStream ls(lt);
@@ -2042,6 +2042,9 @@ static void log_deopt(nmethod* nm, Method* tm, intptr_t pc, frame& fr, int trap_
     }
     ls.print("%s ", reason_name);
     ls.print("%s ", reason_action);
+    if (class_name != nullptr) {
+      ls.print("%s ", class_name);
+    }
     ls.print_cr("pc=" INTPTR_FORMAT " relative_pc=" INTPTR_FORMAT,
              pc, fr.pc() - nm->code_begin());
   }
@@ -2150,10 +2153,29 @@ JRT_ENTRY_PROF(void, Deoptimization, uncommon_trap_inner, Deoptimization::uncomm
       intptr_t pc = p2i(fr.pc());
 
       JFR_ONLY(post_deoptimization_event(nm, tm, trap_bci, trap_bc, reason, action);)
-      log_deopt(nm, tm, pc, fr, trap_bci, reason_name, reason_action);
-      Events::log_deopt_message(current, "Uncommon trap: reason=%s action=%s pc=" INTPTR_FORMAT " method=%s @ %d %s %s",
+
+      ResourceMark rm;
+
+      const char* class_name = nullptr;
+      stringStream st;
+      if (unloaded_class_index >= 0) {
+        constantPoolHandle constants (current, tm->constants());
+        Symbol* class_symbol = nullptr;
+        if (constants->tag_at(unloaded_class_index).is_unresolved_klass()) {
+          class_symbol = constants->klass_name_at(unloaded_class_index);
+        } else if (constants->tag_at(unloaded_class_index).is_symbol()) {
+          class_symbol = constants->symbol_at(unloaded_class_index);
+        }
+        if (class_symbol != nullptr) {
+          class_symbol->print_symbol_on(&st);
+          class_name = st.freeze();
+        }
+      }
+
+      log_deopt(nm, tm, pc, fr, trap_bci, reason_name, reason_action, class_name);
+      Events::log_deopt_message(current, "Uncommon trap: reason=%s action=%s pc=" INTPTR_FORMAT " method=%s @ %d %s %s %s",
                                 reason_name, reason_action, pc,
-                                tm->name_and_sig_as_C_string(), trap_bci, nm->compiler_name(), nm_kind);
+                                tm->name_and_sig_as_C_string(), trap_bci, (class_name != nullptr ? class_name : ""), nm->compiler_name(), nm_kind);
     }
 
     // Print a bunch of diagnostics, if requested.

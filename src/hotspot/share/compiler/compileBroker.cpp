@@ -1399,6 +1399,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
 
   AOTCodeEntry* aot_code_entry = find_aot_code_entry(method, osr_bci, comp_level, compile_reason, requires_online_compilation);
   bool is_aot = (aot_code_entry != nullptr);
+  requires_online_compilation = !is_aot; // Request JIT compilation
 
   // Outputs from the following MutexLocker block:
   CompileTask* task = nullptr;
@@ -1733,7 +1734,7 @@ bool CompileBroker::compilation_is_complete(Method*                    method,
         return false;
       }
       bool same_level = (comp_level == result->comp_level());
-      if (result->has_clinit_barriers()) {
+      if (result->preloaded() || result->has_clinit_barriers()) {
         return !same_level; // Allow replace preloaded code with new code of the same level
       }
       return same_level;

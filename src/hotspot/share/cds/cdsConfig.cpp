@@ -791,15 +791,26 @@ void CDSConfig::setup_compiler_args() {
     // JEP 483 workflow -- assembly
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
-    AOTCodeCache::enable_caching(); // Generate AOT code during assembly phase.
+    // Generate AOT code only when training data enabled
+    if (AOTReplayTraining) {
+      AOTCodeCache::enable_caching();
+    } else {
+      AOTCodeCache::disable_caching();
+    }
     FLAG_SET_ERGO(UseAOTCodeLoadThread, false);
     disable_dumping_aot_code();     // Don't dump AOT code until metadata and heap are dumped.
   } else if (is_using_archive() && can_use_profile_and_compiled_code) {
     // JEP 483 workflow -- production
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
-    AOTCodeCache::enable_caching();
-    FLAG_SET_ERGO_IF_DEFAULT(UseAOTCodeLoadThread, true);
+    // Use AOT code only when training data enabled
+    if (AOTReplayTraining) {
+      AOTCodeCache::enable_caching();
+      FLAG_SET_ERGO_IF_DEFAULT(UseAOTCodeLoadThread, true);
+    } else {
+      AOTCodeCache::disable_caching();
+      FLAG_SET_ERGO(UseAOTCodeLoadThread, false);
+    }
   } else {
     FLAG_SET_ERGO(AOTReplayTraining, false);
     FLAG_SET_ERGO(AOTRecordTraining, false);

@@ -95,7 +95,7 @@ public:
   CardTable* card_table() const { return _card_table.load_relaxed(); }
 
   CardValue* card_table_base_const() const {
-    //assert(UseSerialGC || UseParallelGC, "Only these GCs have constant card table base");
+    assert(UseSerialGC || UseParallelGC, "Only these GCs have constant card table base");
     return card_table()->byte_map_base();
   }
 

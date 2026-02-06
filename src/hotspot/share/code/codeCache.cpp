@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotCacheAccess.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/codeHeapState.hpp"
@@ -226,6 +227,19 @@ void CodeCache::initialize_heaps() {
   size_t compiler_buffer_size = 0;
   COMPILER1_PRESENT(compiler_buffer_size += CompilationPolicy::c1_count() * Compiler::code_buffer_size());
   COMPILER2_PRESENT(compiler_buffer_size += CompilationPolicy::c2_count() * C2Compiler::initial_code_buffer_size());
+
+  // During AOT assembly phase more compiler threads are used
+  // and C2 temp buffer is bigger.
+  // But due to rounding issue the total code cache size could be smaller
+  // than during production run. We can not use AOT code in such case
+  // because branch and call instructions will be incorrect.
+  //
+  // Increase code cache size to guarantee that total size
+  // will be bigger during assembly phase.
+  if (AOTCodeCache::maybe_dumping_code()) {
+    cache_size += align_up(compiler_buffer_size, min_size);
+    cache_size = MIN2(cache_size, CODE_CACHE_SIZE_LIMIT);
+  }
 
   if (!non_nmethod.set) {
     non_nmethod.size += compiler_buffer_size;

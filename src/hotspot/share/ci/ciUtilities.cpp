@@ -27,7 +27,6 @@
 #include "gc/shared/cardTableBarrierSet.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/gc_globals.hpp"
-#include "memory/universe.hpp"
 
 // ciUtilities
 //
@@ -46,14 +45,4 @@ const char* basictype_to_str(BasicType t) {
 CardTable::CardValue* ci_card_table_address_const() {
   CardTableBarrierSet* ctbs = CardTableBarrierSet::barrier_set();
   return ctbs->card_table_base_const();
-}
-
-bool is_card_table_address(address adr) {
-  if (Universe::is_fully_initialized()) {
-    BarrierSet* bs = BarrierSet::barrier_set(); 
-    if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
-      return adr == ci_card_table_address_as<address>();
-    }
-  }
-  return false;
 }

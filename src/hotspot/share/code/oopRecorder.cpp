@@ -25,7 +25,6 @@
 #include "ci/ciEnv.hpp"
 #include "ci/ciInstance.hpp"
 #include "ci/ciMetadata.hpp"
-#include "ci/ciUtilities.hpp"
 #include "code/oopRecorder.inline.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "memory/allocation.inline.hpp"
@@ -301,9 +300,7 @@ void ExternalsRecorder::print_statistics() {
         address addr = at(index);
         tty->print("%d: %8d " INTPTR_FORMAT " :", j++, n, p2i(addr));
         if (addr != nullptr) {
-          if (is_card_table_address(addr)) {
-            tty->print(" card_table_base");
-          } else if (StubRoutines::contains(addr)) {
+          if (StubRoutines::contains(addr)) {
             StubCodeDesc* desc = StubCodeDesc::desc_for(addr);
             if (desc == nullptr) {
               desc = StubCodeDesc::desc_for(addr + frame::pc_return_offset);

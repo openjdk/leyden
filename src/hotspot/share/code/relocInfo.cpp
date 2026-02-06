@@ -22,8 +22,6 @@
  *
  */
 
-#include "ci/ciUtilities.hpp"
-#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/nmethod.hpp"
@@ -774,14 +772,6 @@ void external_word_Relocation::fix_relocation_after_move(const CodeBuffer* src, 
   // If target is nullptr, this is  an absolute embedded reference to an external
   // location, which means  there is nothing to fix here.  In either case, the
   // resulting target should be an "external" address.
-#ifdef ASSERT
-  if (AOTCodeCache::is_on()) {
-    // AOTCode needs relocation info for card table base which may point to CodeCache
-    if (is_card_table_address(target())) {
-      return;
-    }
-  }
-#endif
   postcond(src->section_index_of(target()) == CodeBuffer::SECT_NONE);
   postcond(dest->section_index_of(target()) == CodeBuffer::SECT_NONE);
 }

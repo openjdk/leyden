@@ -67,6 +67,7 @@
 #include "runtime/handles.inline.hpp"
 #include "runtime/java.hpp"
 #include "runtime/jniHandles.inline.hpp"
+#include "runtime/mountUnmountDisabler.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "runtime/os.inline.hpp"
 #include "runtime/sharedRuntime.hpp"
@@ -665,6 +666,7 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
     return false;
   }
 
+  // We don't need to cache CardTable::card_shift() if GCCardSizeInBytes stay the same
   if (_gcCardSize != (uint)GCCardSizeInBytes) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with GCCardSizeInBytes = %d vs current %d", _gcCardSize, GCCardSizeInBytes);
     return false;
@@ -3112,6 +3114,8 @@ void AOTCodeAddressTable::init_extrs() {
 #if INCLUDE_JVMTI
   SET_ADDRESS(_extrs, &JvmtiExport::_should_notify_object_alloc);
 #endif /* INCLUDE_JVMTI */
+  SET_ADDRESS(_extrs, MountUnmountDisabler::notify_jvmti_events_address());
+  SET_ADDRESS(_extrs, MountUnmountDisabler::global_vthread_transition_disable_count_address());
 
 #ifndef PRODUCT
   SET_ADDRESS(_extrs, &SharedRuntime::_partial_subtype_ctr);
@@ -3712,7 +3716,8 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
   }
   // Check card_table_base address first since it can point to any address
   BarrierSet* bs = BarrierSet::barrier_set();
-  guarantee(!bs->is_a(BarrierSet::CardTableBarrierSet) || addr != ci_card_table_address_as<address>(), "sanity");
+  bool is_const_card_table_base = !UseG1GC && !UseShenandoahGC && bs->is_a(BarrierSet::CardTableBarrierSet);
+  guarantee(!is_const_card_table_base || addr != ci_card_table_address_const(), "sanity");
 
   // Seach for C string
   id = id_for_C_string(addr);
@@ -3813,19 +3818,39 @@ AOTRuntimeConstants AOTRuntimeConstants::_aot_runtime_constants;
 
 void AOTRuntimeConstants::initialize_from_runtime() {
   BarrierSet* bs = BarrierSet::barrier_set();
+  address card_table_base = nullptr;
+  uint grain_shift = 0;
+#if INCLUDE_G1GC
+  if (bs->is_a(BarrierSet::G1BarrierSet)) {
+    grain_shift = G1HeapRegion::LogOfHRGrainBytes;
+  } else
+#endif
+#if INCLUDE_SHENANDOAHGC
+  if (bs->is_a(BarrierSet::ShenandoahBarrierSet)) {
+    grain_shift = 0;
+  } else
+#endif
   if (bs->is_a(BarrierSet::CardTableBarrierSet)) {
+    CardTable::CardValue* base = ci_card_table_address_const();
+    assert(base != nullptr, "unexpected byte_map_base");
+    card_table_base = base;
     CardTableBarrierSet* ctbs = barrier_set_cast<CardTableBarrierSet>(bs);
-    _aot_runtime_constants._card_table_address = ci_card_table_address_as<address>();
-    _aot_runtime_constants._grain_shift = ctbs->grain_shift();
+    grain_shift = ctbs->grain_shift();
   }
+  _aot_runtime_constants._card_table_address = card_table_base;
+  _aot_runtime_constants._grain_shift = grain_shift;
 }
 
 address AOTRuntimeConstants::_field_addresses_list[] = {
-  card_table_address(),
-  grain_shift_address(),
+  ((address)&_aot_runtime_constants._card_table_address),
+  ((address)&_aot_runtime_constants._grain_shift),
   nullptr
 };
 
+address AOTRuntimeConstants::card_table_address() {
+  assert(UseSerialGC || UseParallelGC, "Only these GCs have constant card table base");
+  return (address)&_aot_runtime_constants._card_table_address;
+}
 
 void AOTCodeCache::wait_for_no_nmethod_readers() {
   while (true) {
