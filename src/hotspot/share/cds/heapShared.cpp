@@ -568,7 +568,7 @@ void HeapShared::finish_materialize_objects() {
 }
 
 void HeapShared::clear_root(int index) {
-  if (CDSConfig::is_using_aot_linked_classes() && 0) {
+  if (CDSConfig::is_using_aot_linked_classes()) {
     // When AOT linked classes are in use, all roots will be in use all
     // the time, there's no benefit for clearing the roots. Also, we
     // can't clear the roots as they can be shared.
