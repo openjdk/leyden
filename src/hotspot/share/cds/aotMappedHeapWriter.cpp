@@ -76,8 +76,6 @@ GrowableArrayCHeap<AOTMappedHeapWriter::HeapObjOrder, mtClassShared>* AOTMappedH
 AOTMappedHeapWriter::BufferOffsetToSourceObjectTable*
 AOTMappedHeapWriter::_buffer_offset_to_source_obj_table = nullptr;
 
-DumpedInternedStrings *AOTMappedHeapWriter::_dumped_interned_strings = nullptr;
-
 typedef HashTable<
       size_t,    // offset of a filler from AOTMappedHeapWriter::buffer_bottom()
       size_t,    // size of this filler (in bytes)
@@ -92,7 +90,6 @@ void AOTMappedHeapWriter::init() {
     Universe::heap()->collect(GCCause::_java_lang_system_gc);
 
     _buffer_offset_to_source_obj_table = new (mtClassShared) BufferOffsetToSourceObjectTable(/*size (prime)*/36137, /*max size*/1 * M);
-    _dumped_interned_strings = new (mtClass)DumpedInternedStrings(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
     _fillers = new (mtClassShared) FillersTable();
     _requested_bottom = nullptr;
     _requested_top = nullptr;
@@ -146,9 +143,6 @@ int AOTMappedHeapWriter::narrow_oop_shift() {
 void AOTMappedHeapWriter::delete_tables_with_raw_oops() {
   delete _source_objs;
   _source_objs = nullptr;
-
-  delete _dumped_interned_strings;
-  _dumped_interned_strings = nullptr;
 }
 
 void AOTMappedHeapWriter::add_source_obj(oop src_obj) {
@@ -184,25 +178,6 @@ bool AOTMappedHeapWriter::is_too_large_to_archive(size_t size) {
   } else {
     return false;
   }
-}
-
-// Keep track of the contents of the archived interned string table. This table
-// is used only by CDSHeapVerifier.
-void AOTMappedHeapWriter::add_to_dumped_interned_strings(oop string) {
-  assert_at_safepoint(); // DumpedInternedStrings uses raw oops
-  assert(!is_string_too_large_to_archive(string), "must be");
-  bool created;
-  _dumped_interned_strings->put_if_absent(string, true, &created);
-  if (created) {
-    // Prevent string deduplication from changing the value field to
-    // something not in the archive.
-    java_lang_String::set_deduplication_forbidden(string);
-    _dumped_interned_strings->maybe_grow();
-  }
-}
-
-bool AOTMappedHeapWriter::is_dumped_interned_string(oop o) {
-  return _dumped_interned_strings->get(o) != nullptr;
 }
 
 // Various lookup functions between source_obj, buffered_obj and requested_obj

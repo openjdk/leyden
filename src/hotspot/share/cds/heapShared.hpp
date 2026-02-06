@@ -41,7 +41,6 @@
 #include "utilities/hashTable.hpp"
 
 #if INCLUDE_CDS_JAVA_HEAP
-class DumpedInternedStrings;
 class FileMapInfo;
 class KlassSubGraphInfo;
 class MetaspaceObjToOopHandleTable;
@@ -300,7 +299,7 @@ public:
   static void initialize_streaming() NOT_CDS_JAVA_HEAP_RETURN;
   static void enable_gc() NOT_CDS_JAVA_HEAP_RETURN;
   static void materialize_thread_object() NOT_CDS_JAVA_HEAP_RETURN;
-  static void add_to_dumped_interned_strings(oop string) NOT_CDS_JAVA_HEAP_RETURN;
+  static void archive_interned_string(oop string);
   static void finalize_initialization(FileMapInfo* static_mapinfo) NOT_CDS_JAVA_HEAP_RETURN;
 
 private:
@@ -364,10 +363,14 @@ public:
 private:
   static const int INITIAL_TABLE_SIZE = 15889; // prime number
   static const int MAX_TABLE_SIZE     = 1000000;
+  static bool _use_identity_hash_for_archived_object_cache;
+
+  static unsigned archived_object_cache_hash(OopHandle const& oh);
+
   typedef ResizeableHashTable<OopHandle, CachedOopInfo,
       AnyObj::C_HEAP,
       mtClassShared,
-      HeapShared::oop_handle_hash_raw,
+      HeapShared::archived_object_cache_hash,
       HeapShared::oop_handle_equals> ArchivedObjectCache;
   static ArchivedObjectCache* _archived_object_cache;
 
@@ -525,6 +528,7 @@ private:
     delete _archived_object_cache;
     _archived_object_cache = nullptr;
   }
+  static void make_archived_object_cache_gc_safe();
   static ArchivedObjectCache* archived_object_cache() {
     return _archived_object_cache;
   }
@@ -537,6 +541,7 @@ private:
                                              KlassSubGraphInfo* subgraph_info,
                                              oop orig_obj);
 
+  static bool is_interned_string(oop obj);
   static bool is_dumped_interned_string(oop o);
 
   static void track_scratch_object(oop orig_obj, oop scratch_obj);

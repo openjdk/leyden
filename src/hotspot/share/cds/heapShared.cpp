@@ -259,6 +259,14 @@ unsigned int HeapShared::oop_handle_hash(const OopHandle& oh) {
   }
 }
 
+unsigned HeapShared::archived_object_cache_hash(OopHandle const& oh) {
+  if (_use_identity_hash_for_archived_object_cache) {
+    return oop_handle_hash(oh);
+  } else {
+    return oop_handle_hash_raw(oh);
+  }
+}
+
 bool HeapShared::oop_handle_equals(const OopHandle& a, const OopHandle& b) {
   return a.resolve() == b.resolve();
 }
@@ -311,6 +319,7 @@ void HeapShared::reset_archived_object_states(TRAPS) {
 }
 
 HeapShared::ArchivedObjectCache* HeapShared::_archived_object_cache = nullptr;
+bool HeapShared::_use_identity_hash_for_archived_object_cache = false;
 
 bool HeapShared::is_archived_heap_in_use() {
   if (HeapShared::is_loading()) {
@@ -425,9 +434,8 @@ void HeapShared::materialize_thread_object() {
   }
 }
 
-void HeapShared::add_to_dumped_interned_strings(oop string) {
+void HeapShared::archive_interned_string(oop string) {
   assert(HeapShared::is_writing_mapping_mode(), "Only used by this mode");
-  AOTMappedHeapWriter::add_to_dumped_interned_strings(string);
   bool success = archive_reachable_objects_from(1, _dump_time_special_subgraph, string);
   assert(success, "shared strings array must not point to arrays or strings that are too large to archive");
 }
@@ -443,6 +451,22 @@ void HeapShared::finalize_initialization(FileMapInfo* static_mapinfo) {
       AOTMappedHeapLoader::finish_initialization(static_mapinfo);
     }
   }
+}
+
+void HeapShared::make_archived_object_cache_gc_safe() {
+  ArchivedObjectCache* new_cache = new (mtClass)ArchivedObjectCache(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
+
+  // It's safe to change the behavior of the hash function now, because iterate_all()
+  // doesn't call the hash function.
+  _use_identity_hash_for_archived_object_cache = true;
+
+  // Copy all CachedOopInfo into a new table using a different hashing algorithm
+  archived_object_cache()->iterate_all([&] (OopHandle oh, CachedOopInfo info) {
+      new_cache->put_when_absent(oh, info);
+    });
+
+  destroy_archived_object_cache();
+  _archived_object_cache = new_cache;
 }
 
 HeapShared::CachedOopInfo* HeapShared::get_cached_oop_info(oop obj) {
@@ -592,7 +616,7 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
         InstanceKlass* method_holder = m->method_holder();
         AOTArtifactFinder::add_cached_class(method_holder);
       }
-    } else if (java_lang_invoke_MethodHandle::is_instance(obj)) {
+    } else if (java_lang_invoke_MethodHandle::is_instance(obj) || is_interned_string(obj)) {
       // Needed by AOT compiler.
       append_root(obj);
     }
@@ -955,6 +979,8 @@ void HeapShared::write_heap(ArchiveMappedHeapInfo* mapped_heap_info, ArchiveStre
 
   delete _pending_roots;
   _pending_roots = nullptr;
+
+  make_archived_object_cache_gc_safe();
 }
 
 void HeapShared::scan_java_mirror(oop orig_mirror) {
@@ -2374,12 +2400,22 @@ void HeapShared::archive_object_subgraphs(ArchivableStaticFieldInfo fields[],
 #endif
 }
 
-bool HeapShared::is_dumped_interned_string(oop o) {
-  if (is_writing_mapping_mode()) {
-    return AOTMappedHeapWriter::is_dumped_interned_string(o);
-  } else {
-    return AOTStreamedHeapWriter::is_dumped_interned_string(o);
+bool HeapShared::is_interned_string(oop obj) {
+  if (!java_lang_String::is_instance(obj)) {
+    return false;
   }
+
+  ResourceMark rm;
+  int len;
+  jchar* name = java_lang_String::as_unicode_string_or_null(obj, len);
+  if (name == nullptr) {
+    fatal("Insufficient memory for dumping");
+  }
+  return StringTable::lookup(name, len) == obj;
+}
+
+bool HeapShared::is_dumped_interned_string(oop o) {
+  return is_interned_string(o) && has_been_archived(o);
 }
 
 // These tables should be used only within the CDS safepoint, so
