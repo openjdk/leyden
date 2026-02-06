@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -147,8 +147,6 @@ public:
     assert(buffered_addr != nullptr, "should not be null");
     return size_t(buffered_addr) - size_t(buffer_bottom());
   }
-
-  static bool is_dumped_interned_string(oop obj);
 
   static size_t source_obj_to_buffered_offset(oop src_obj);
   static address source_obj_to_buffered_addr(oop src_obj);

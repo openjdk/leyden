@@ -401,7 +401,7 @@ void AOTCodeCache::close() {
   }
 }
 
-class CachedCodeDirectory : public CachedCodeDirectoryInternal {
+class CachedCodeDirectory {
 public:
   uint _aot_code_size;
   char* _aot_code_data;
@@ -440,7 +440,6 @@ static CachedCodeDirectory* _aot_code_directory = nullptr;
 CachedCodeDirectory* CachedCodeDirectory::create() {
   assert(AOTCacheAccess::is_aot_code_region_empty(), "must be");
   CachedCodeDirectory* dir = (CachedCodeDirectory*)AOTCacheAccess::allocate_aot_code_region(sizeof(CachedCodeDirectory));
-  dir->dumptime_init_internal();
   return dir;
 }
 
@@ -486,7 +485,6 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
       return;
     }
     _aot_code_directory = (CachedCodeDirectory*)rs.base();
-    _aot_code_directory->runtime_init_internal();
 
     _load_size = _aot_code_directory->_aot_code_size;
     _load_buffer = _aot_code_directory->_aot_code_data;

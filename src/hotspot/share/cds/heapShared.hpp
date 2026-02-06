@@ -41,7 +41,6 @@
 #include "utilities/hashTable.hpp"
 
 #if INCLUDE_CDS_JAVA_HEAP
-class DumpedInternedStrings;
 class FileMapInfo;
 class KlassSubGraphInfo;
 class MetaspaceObjToOopHandleTable;
@@ -300,7 +299,7 @@ public:
   static void initialize_streaming() NOT_CDS_JAVA_HEAP_RETURN;
   static void enable_gc() NOT_CDS_JAVA_HEAP_RETURN;
   static void materialize_thread_object() NOT_CDS_JAVA_HEAP_RETURN;
-  static void add_to_dumped_interned_strings(oop string) NOT_CDS_JAVA_HEAP_RETURN;
+  static void archive_interned_string(oop string);
   static void finalize_initialization(FileMapInfo* static_mapinfo) NOT_CDS_JAVA_HEAP_RETURN;
 
 private:
@@ -320,12 +319,7 @@ private:
 public:
   static void debug_trace();
   static unsigned oop_hash(oop const& p);
-  static unsigned oop_handle_hash(OopHandle const& oh);
-  static unsigned oop_handle_hash_raw(OopHandle const& oh);
   static bool oop_handle_equals(const OopHandle& a, const OopHandle& b);
-  static unsigned string_oop_hash(oop const& string) {
-    return java_lang_String::hash_code(string);
-  }
 
   class CopyKlassSubGraphInfoToArchive;
 
@@ -341,27 +335,37 @@ public:
 
     // One or more fields in this object are pointing to MetaspaceObj
     bool _has_native_pointers;
+
+    // >= 0 if this oop has been append to the list of roots
+    int _root_index;
   public:
     CachedOopInfo(OopHandle orig_referrer, bool has_oop_pointers)
       : _orig_referrer(orig_referrer),
         _buffer_offset(0),
         _has_oop_pointers(has_oop_pointers),
-        _has_native_pointers(false) {}
+        _has_native_pointers(false),
+        _root_index(-1) {}
     oop orig_referrer() const;
     void set_buffer_offset(size_t offset) { _buffer_offset = offset; }
     size_t buffer_offset()          const { return _buffer_offset;   }
     bool has_oop_pointers()         const { return _has_oop_pointers; }
     bool has_native_pointers()      const { return _has_native_pointers; }
     void set_has_native_pointers()        { _has_native_pointers = true; }
+    int  root_index()               const { return _root_index; }
+    void set_root_index(int i)            { _root_index = i; }
   };
 
 private:
   static const int INITIAL_TABLE_SIZE = 15889; // prime number
   static const int MAX_TABLE_SIZE     = 1000000;
+  static bool _use_identity_hash_for_archived_object_cache;
+
+  static unsigned archived_object_cache_hash(OopHandle const& oh);
+
   typedef ResizeableHashTable<OopHandle, CachedOopInfo,
       AnyObj::C_HEAP,
       mtClassShared,
-      HeapShared::oop_handle_hash_raw,
+      HeapShared::archived_object_cache_hash,
       HeapShared::oop_handle_equals> ArchivedObjectCache;
   static ArchivedObjectCache* _archived_object_cache;
 
@@ -424,6 +428,7 @@ private:
       HeapShared::oop_hash> SeenObjectsTable;
 
   static SeenObjectsTable *_seen_objects_table;
+
   // The "special subgraph" contains all the archived objects that are reachable
   // from the following roots:
   //    - interned strings
@@ -433,7 +438,7 @@ private:
   static KlassSubGraphInfo* _dump_time_special_subgraph;              // for collecting info during dump time
   static ArchivedKlassSubGraphInfoRecord* _run_time_special_subgraph; // for initializing classes during run time.
 
-  static GrowableArrayCHeap<OopHandle, mtClassShared>* _pending_roots;
+  static GrowableArrayCHeap<oop, mtClassShared>* _pending_roots;
   static GrowableArrayCHeap<const char*, mtClassShared>* _context; // for debugging unarchivable objects
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
   static MetaspaceObjToOopHandleTable* _scratch_objects_table;
@@ -519,6 +524,7 @@ private:
     delete _archived_object_cache;
     _archived_object_cache = nullptr;
   }
+  static void make_archived_object_cache_gc_safe();
   static ArchivedObjectCache* archived_object_cache() {
     return _archived_object_cache;
   }
@@ -531,6 +537,7 @@ private:
                                              KlassSubGraphInfo* subgraph_info,
                                              oop orig_obj);
 
+  static bool is_interned_string(oop obj);
   static bool is_dumped_interned_string(oop o);
 
   static void track_scratch_object(oop orig_obj, oop scratch_obj);
@@ -564,7 +571,12 @@ private:
   // Dump-time only. Returns the index of the root, which can be used at run time to read
   // the root using get_root(index, ...).
   static int append_root(oop obj);
-  static GrowableArrayCHeap<OopHandle, mtClassShared>* pending_roots() { return _pending_roots; }
+
+  // AOT-compile time only.
+  // Returns -1 if obj is not in the heap root set.
+  static int get_root_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
+
+  static GrowableArrayCHeap<oop, mtClassShared>* pending_roots() { return _pending_roots; }
 
   // Dump-time and runtime
   static objArrayOop root_segment(int segment_idx);
@@ -604,15 +616,6 @@ private:
   static void initialize_test_class_from_archive(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 #endif
 
-  static void add_to_permanent_oop_table(oop obj, int offset);
-
-  // AOT-compile time only: get a stable index for an archived object.
-  // Returns 0 if obj is not archived.
-  static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
-  // Runtime only: get back the same object for an index returned by
-  // get_archived_object_permanent_index().
-  static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
-
   static void initialize_java_lang_invoke(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_classes_for_special_subgraph(Handle loader, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 
@@ -628,20 +631,13 @@ private:
   static void scan_java_class(Klass* k);
   static void scan_java_mirror(oop orig_mirror);
   static void copy_and_rescan_aot_inited_mirror(InstanceKlass* ik);
+
   static void log_heap_roots();
 
   static intptr_t log_target_location(oop source_oop);
   static void log_oop_info(outputStream* st, oop source_oop, address archived_object_start, address archived_object_end);
   static void log_oop_info(outputStream* st, oop source_oop);
   static void log_oop_details(oop source_oop, address buffered_addr);
-};
-
-class CachedCodeDirectoryInternal {
-  int _permanent_oop_count;
-  int* _permanent_oop_offsets; // offset of each permanent object from the bottom of the archived heap
-public:
-  void dumptime_init_internal() NOT_CDS_JAVA_HEAP_RETURN;
-  void runtime_init_internal() NOT_CDS_JAVA_HEAP_RETURN;
 };
 
 #endif // SHARE_CDS_HEAPSHARED_HPP

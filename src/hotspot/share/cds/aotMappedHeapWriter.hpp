@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -40,20 +40,6 @@
 class MemRegion;
 
 #if INCLUDE_CDS_JAVA_HEAP
-class DumpedInternedStrings :
-  public ResizeableHashTable<oop, bool,
-                           AnyObj::C_HEAP,
-                           mtClassShared,
-                           HeapShared::string_oop_hash>
-{
-public:
-  DumpedInternedStrings(unsigned size, unsigned max_size) :
-    ResizeableHashTable<oop, bool,
-                                AnyObj::C_HEAP,
-                                mtClassShared,
-                                HeapShared::string_oop_hash>(size, max_size) {}
-};
-
 class AOTMappedHeapWriter : AllStatic {
   friend class HeapShared;
   friend class AOTMappedHeapLoader;
@@ -131,7 +117,6 @@ private:
 
   static GrowableArrayCHeap<NativePointerInfo, mtClassShared>* _native_pointers;
   static GrowableArrayCHeap<oop, mtClassShared>* _source_objs;
-  static DumpedInternedStrings *_dumped_interned_strings;
 
   // We sort _source_objs_order to minimize the number of bits in ptrmap and oopmap.
   // See comments near the body of AOTMappedHeapWriter::compare_objs_by_oop_fields().
@@ -228,8 +213,6 @@ public:
   static bool is_too_large_to_archive(size_t size);
   static bool is_too_large_to_archive(oop obj);
   static bool is_string_too_large_to_archive(oop string);
-  static bool is_dumped_interned_string(oop o);
-  static void add_to_dumped_interned_strings(oop string);
   static void write(GrowableArrayCHeap<oop, mtClassShared>*, ArchiveMappedHeapInfo* heap_info);
   static address requested_address();  // requested address of the lowest achived heap object
   static size_t get_filler_size_at(address buffered_addr);
