@@ -99,7 +99,7 @@ void ArchivedClassLoaderData::allocate(ClassLoaderData* loader_data) {
     // So we store the packages/modules in Arrays. At runtime, we create
     // the hashtables using these arrays.
     _packages = loader_data->packages()->allocate_archived_entries();
-    _modules = loader_data->modules()->allocate_archived_entries();
+    _modules  = loader_data->modules()->allocate_archived_entries();
     _unnamed_module = loader_data->unnamed_module()->allocate_archived_entry();
   }
 }
@@ -153,7 +153,6 @@ void ArchivedClassLoaderData::clear_archived_oops() {
 // ------------------------------
 
 void ClassLoaderDataShared::load_archived_platform_and_system_class_loaders() {
-
 #if INCLUDE_CDS_JAVA_HEAP
   // The streaming object loader prefers loading the class loader related objects before
   //  the CLD constructor which has a NoSafepointVerifier.
@@ -258,20 +257,20 @@ ModuleEntry* ClassLoaderDataShared::archived_boot_unnamed_module() {
 ModuleEntry* ClassLoaderDataShared::archived_unnamed_module(ClassLoaderData* loader_data) {
   ModuleEntry* archived_module = nullptr;
 
-  if (CDSConfig::is_using_full_module_graph()) {
-    if (!Universe::is_module_initialized()) {
-      precond(_platform_loader_root_index >= 0);
-      precond(_system_loader_root_index >= 0);
+  if (!Universe::is_module_initialized() && CDSConfig::is_using_full_module_graph()) {
+    precond(_platform_loader_root_index >= 0);
+    precond(_system_loader_root_index >= 0);
 
-      if (loader_data->class_loader() == HeapShared::get_root(_platform_loader_root_index)) {
-        archived_module = _archived_platform_loader_data.unnamed_module();
-      } else if (loader_data->class_loader() == HeapShared::get_root(_system_loader_root_index)) {
-        archived_module = _archived_system_loader_data.unnamed_module();
-      }
+    if (loader_data->class_loader() == HeapShared::get_root(_platform_loader_root_index)) {
+      archived_module = _archived_platform_loader_data.unnamed_module();
+    } else if (loader_data->class_loader() == HeapShared::get_root(_system_loader_root_index)) {
+      archived_module = _archived_system_loader_data.unnamed_module();
     }
   }
+
   return archived_module;
 }
+
 
 void ClassLoaderDataShared::clear_archived_oops() {
   assert(!CDSConfig::is_using_full_module_graph(), "must be");

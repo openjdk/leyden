@@ -55,9 +55,6 @@ public:
   static ModuleEntry* archived_unnamed_module(ClassLoaderData* loader_data);
 #endif // INCLUDE_CDS_JAVA_HEAP
   static bool is_full_module_graph_loaded() { return _full_module_graph_loaded; }
-  static void write_cld_table();
-  static void restore_custom_loader_archived_data(ClassLoaderData* loader_data);
-  static void get_archived_custom_loader_objs(GrowableArray<Handle>& loader_obj_list);
 };
 
 #endif // SHARE_CLASSFILE_CLASSLOADERDATASHARED_HPP
