@@ -4563,8 +4563,8 @@ encode %{
       __ block_comment("call JVM_EnsureMaterializedForStackWalk (elided)");
     } else {
       int method_index = resolved_method_index(masm);
-      RelocationHolder rspec = _optimized_virtual ? opt_virtual_call_Relocation::spec(method_index)
-                                                  : static_call_Relocation::spec(method_index);
+      RelocationHolder rspec = _optimized_virtual ? opt_virtual_call_Relocation::spec(method_index, is_mhi())
+                                                  : static_call_Relocation::spec(method_index, is_mhi());
       address mark = __ pc();
       int call_offset = __ offset();
       __ call(AddressLiteral(CAST_FROM_FN_PTR(address, $meth$$method), rspec));
@@ -4586,7 +4586,7 @@ encode %{
   %}
 
   enc_class Java_Dynamic_Call(method meth) %{
-    __ ic_call((address)$meth$$method, resolved_method_index(masm));
+    __ ic_call((address)$meth$$method, resolved_method_index(masm), is_mhi());
     __ post_call_nop();
   %}
 

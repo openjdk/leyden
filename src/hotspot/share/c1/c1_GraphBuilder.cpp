@@ -2211,7 +2211,7 @@ void GraphBuilder::invoke(Bytecodes::Code code) {
     }
   }
 
-  Invoke* result = new Invoke(code, result_type, recv, args, target, state_before);
+  Invoke* result = new Invoke(code, result_type, recv, args, target, state_before, cha_monomorphic_target);
   // push result
   append_split(result);
 

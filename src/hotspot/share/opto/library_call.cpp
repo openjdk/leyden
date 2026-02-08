@@ -4739,6 +4739,9 @@ LibraryCallKit::generate_method_call(vmIntrinsicID method_id, bool is_virtual, b
     // about the method being invoked should be attached to the call site to
     // make resolution logic work (see SharedRuntime::resolve_{virtual,opt_virtual}_call_C).
     slow_call->set_override_symbolic_info(true);
+    slow_call->set_mhi(true);
+  } else if (!method->is_method_handle_intrinsic() && (is_static || !is_virtual)) {
+    slow_call->set_override_symbolic_info(true);
   }
   set_arguments_for_java_call(slow_call);
   set_edges_for_java_call(slow_call);
