@@ -253,7 +253,7 @@ unsigned HeapShared::oop_hash(oop const& p) {
 // - If a source object doesn't have a hashcode, we avoid computing it while
 //   copying the objects into the cache. This will allow the hashcode to be
 //   dynamically and randomly computed in each production, which generally
-//   desirable for security reasons.
+//   desirable.
 unsigned HeapShared::archived_object_cache_hash(OopHandle const& oh) {
   oop o = oh.resolve();
   if (_use_identity_hash_for_archived_object_cache) {
