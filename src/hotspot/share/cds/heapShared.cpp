@@ -2465,7 +2465,7 @@ bool HeapShared::is_interned_string(oop obj) {
   }
 
   ResourceMark rm;
-  int len;
+  int len = 0;
   jchar* name = java_lang_String::as_unicode_string_or_null(obj, len);
   if (name == nullptr) {
     fatal("Insufficient memory for dumping");
