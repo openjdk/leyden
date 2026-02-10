@@ -764,6 +764,7 @@ class MethodTrainingData : public TrainingData {
   MethodCounters* _final_counters;
   MethodData*     _final_profile;
 
+  int64_t _aot_code_invocation_limit; // C2 code invocations count during training
   int _invocation_count;
   int _backedge_count;
 
@@ -779,6 +780,7 @@ class MethodTrainingData : public TrainingData {
     _was_toplevel = false;
     _invocation_count = 0;
     _backedge_count = 0;
+    _aot_code_invocation_limit = 0;
   }
 
   static int level_mask(int level) {
@@ -801,6 +803,7 @@ class MethodTrainingData : public TrainingData {
   MethodData* final_profile() const { return _final_profile; }
   int invocation_count() const { return _invocation_count; }
   int backedge_count() const { return _backedge_count; }
+  int64_t  aot_code_invocation_limit() const { return _aot_code_invocation_limit;}
 
   Symbol* name() const {
     precond(has_holder());

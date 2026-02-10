@@ -421,6 +421,10 @@ ciMetadata* ciObjectFactory::create_new_metadata(Metadata* o) {
     // Hold methodHandle alive - might not be necessary ???
     methodHandle h_m(THREAD, ((MethodData*)o)->method());
     return new (arena()) ciMethodData((MethodData*)o);
+  } else if (o->is_methodCounters()) {
+    // Hold methodHandle alive - might not be necessary ???
+    methodHandle h_m(THREAD, ((MethodCounters*)o)->method());
+    return new (arena()) ciMetadata(o);
   }
 
   // The Metadata* is of some type not supported by the compiler interface.

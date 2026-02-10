@@ -34,6 +34,7 @@
 #include "compiler/cHeapStringHolder.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "compiler/compilerThread.hpp"
+#include "oops/methodCounters.hpp"
 #include "oops/methodData.hpp"
 #include "runtime/javaThread.hpp"
 
@@ -224,6 +225,10 @@ private:
   ciMethodData* get_method_data(MethodData* o) {
     if (o == nullptr) return nullptr;
     return get_metadata(o)->as_method_data();
+  }
+  ciMetadata* get_method_counters(MethodCounters* o) {
+    if (o == nullptr) return nullptr;
+    return get_metadata((Metadata*)o);
   }
 
   ciMethod* get_method_from_handle(Method* method);

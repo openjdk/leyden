@@ -359,6 +359,7 @@ void MethodTrainingData::prepare(Visitor& visitor) {
     assert(_final_profile == nullptr || _final_profile->method() == holder(), "");
     _invocation_count = holder()->invocation_count();
     _backedge_count = holder()->backedge_count();
+    _aot_code_invocation_limit = _final_counters->jit_code_invocation_count();
   }
   for (int i = 0; i < CompLevel_count - 1; i++) {
     CompileTrainingData* ctd = _last_toplevel_compiles[i];

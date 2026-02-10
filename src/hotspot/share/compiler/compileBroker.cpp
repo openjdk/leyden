@@ -1393,9 +1393,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
 
   // Tiered policy requires MethodCounters to exist before adding a method to
   // the queue. Create if we don't have them yet.
-  if (compile_reason != CompileTask::Reason_Preload) {
-    method->get_method_counters(thread);
-  }
+  method->get_method_counters(thread);
 
   AOTCodeEntry* aot_code_entry = find_aot_code_entry(method, osr_bci, comp_level, compile_reason, requires_online_compilation);
   bool is_aot = (aot_code_entry != nullptr);

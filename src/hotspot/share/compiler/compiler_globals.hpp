@@ -418,6 +418,17 @@
   product(uint, AOTCodePreloadStop, max_jint,                               \
           "The id of the last AOT code to preload")                         \
                                                                             \
+  product(double, AOTCodeInvokeBase, 100.0, DIAGNOSTIC,                     \
+          "AOT code invocation base limit")                                 \
+          range(1.0, DBL_MAX)                                               \
+                                                                            \
+  product(double, AOTCodeInvokeScale, 1.0, DIAGNOSTIC,                      \
+          "scale AOT code invocation limit")                                \
+          range(0.001, DBL_MAX)                                             \
+                                                                            \
+  product(bool, UseAOTCodeCounters, true, DIAGNOSTIC,                       \
+          "Use AOT code counter to trigger JIT compilation")                \
+                                                                            \
   product(bool, VerifyAOTCode, false, DIAGNOSTIC,                           \
           "Load AOT code but not publish")                                  \
                                                                             \

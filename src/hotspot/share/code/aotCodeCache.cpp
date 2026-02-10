@@ -909,6 +909,12 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
   if (!method->in_aot_cache()) {
     return nullptr;
   }
+
+  MethodCounters* mc = method->method_counters();
+  if (mc != nullptr && (mc->aot_code_recompile_requested() > 0)) {
+    return nullptr; // Already requested JIT compilation
+  }
+
   switch (comp_level) {
     case CompLevel_simple:
       if ((DisableAOTCode & (1 << 0)) != 0) {
@@ -3027,6 +3033,7 @@ void AOTCodeAddressTable::init_extrs() {
     SET_ADDRESS(_extrs, OptoRuntime::slow_arraycopy_C);
     SET_ADDRESS(_extrs, OptoRuntime::register_finalizer_C);
     SET_ADDRESS(_extrs, OptoRuntime::class_init_barrier_C);
+    SET_ADDRESS(_extrs, OptoRuntime::compile_method_C);
     SET_ADDRESS(_extrs, OptoRuntime::vthread_end_first_transition_C);
     SET_ADDRESS(_extrs, OptoRuntime::vthread_start_final_transition_C);
     SET_ADDRESS(_extrs, OptoRuntime::vthread_start_transition_C);
@@ -3493,6 +3500,7 @@ void AOTCodeAddressTable::init_c2() {
   SET_ADDRESS(_C2_blobs, OptoRuntime::slow_arraycopy_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::register_finalizer_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::class_init_barrier_Java());
+  SET_ADDRESS(_C2_blobs, OptoRuntime::compile_method_Java());
 #if INCLUDE_JVMTI
   SET_ADDRESS(_C2_blobs, OptoRuntime::vthread_end_first_transition_Java());
   SET_ADDRESS(_C2_blobs, OptoRuntime::vthread_start_final_transition_Java());

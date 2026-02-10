@@ -40,6 +40,9 @@ MethodCounters::MethodCounters(const methodHandle& mh) :
   _highest_comp_level(0),
   _highest_osr_comp_level(0)
 {
+  _jit_code_invocation_count = 0;
+  _aot_code_invocation_count = 0;
+  _aot_code_recompile_requested = 0;
   set_interpreter_throwout_count(0);
   JVMTI_ONLY(clear_number_of_breakpoints());
   invocation_counter()->init();
@@ -73,6 +76,9 @@ MethodCounters* MethodCounters::allocate_with_exception(const methodHandle& mh, 
 void MethodCounters::clear_counters() {
   invocation_counter()->reset();
   backedge_counter()->reset();
+  _jit_code_invocation_count = 0;
+  _aot_code_invocation_count = 0;
+  _aot_code_recompile_requested = 0;
   set_interpreter_throwout_count(0);
   set_prev_time(0);
   set_prev_event_count(0);
