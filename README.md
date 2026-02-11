@@ -61,7 +61,7 @@ The Leyden Repository can be built in the same way as the main-line JDK reposito
 Please use the "premain" branch. I.e., [https://github.com/openjdk/leyden/tree/premain](https://github.com/openjdk/leyden/tree/premain).
 
 For build instructions please see the
-[online documentation](https://openjdk.org/groups/build/doc/building.html),
+[online documentation](https://git.openjdk.org/jdk/blob/master/doc/building.md),
 or either of these files:
 
 - [doc/building.html](doc/building.html) (html version)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -565,7 +565,7 @@ void CDSConfig::check_aotmode_record() {
   bool has_output = !FLAG_IS_DEFAULT(AOTCacheOutput);
 
   if (!has_output && !has_config) {
-      vm_exit_during_initialization("At least one of AOTCacheOutput and AOTConfiguration must be specified when using -XX:AOTMode=record");
+    vm_exit_during_initialization("At least one of AOTCacheOutput and AOTConfiguration must be specified when using -XX:AOTMode=record");
   }
 
   if (has_output) {
@@ -595,7 +595,9 @@ void CDSConfig::check_aotmode_record() {
 
   // At VM exit, the module graph may be contaminated with program states.
   // We will rebuild the module graph when dumping the CDS final image.
-  disable_heap_dumping();
+  _is_using_optimized_module_handling = false;
+  _is_using_full_module_graph = false;
+  _is_dumping_full_module_graph = false;
 }
 
 void CDSConfig::check_aotmode_create() {
@@ -621,6 +623,7 @@ void CDSConfig::check_aotmode_create() {
   substitute_aot_filename(FLAG_MEMBER_ENUM(AOTCache));
 
   _is_dumping_final_static_archive = true;
+  _is_using_full_module_graph = false;
   UseSharedSpaces = true;
   RequireSharedSpaces = true;
 
@@ -676,7 +679,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
   if (AOTClassLinking) {
     // If AOTClassLinking is specified, enable all these optimizations by default.
     FLAG_SET_ERGO_IF_DEFAULT(AOTInvokeDynamicLinking, true);
-    FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, true);
+    FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, false); // FIXME-merge
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
 
@@ -771,16 +774,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     }
   }
 
-  if (AOTClassLinking) {
-    if (is_dumping_final_static_archive() && !is_dumping_full_module_graph()) {
-      if (bad_module_prop_key != nullptr) {
-        log_warning(cds)("optimized module handling/full module graph: disabled due to incompatible property: %s=%s",
-                         bad_module_prop_key, bad_module_prop_value);
-      }
-      vm_exit_during_initialization("AOT cache cannot be created because AOTClassLinking is enabled but full module graph is disabled");
-    }
-  }
-
   if (is_dumping_archive()) {
     set_custom_loaders_support(AOTCacheSupportForCustomLoader);
   }
@@ -803,15 +796,26 @@ void CDSConfig::setup_compiler_args() {
     // JEP 483 workflow -- assembly
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
-    AOTCodeCache::enable_caching(); // Generate AOT code during assembly phase.
+    // Generate AOT code only when training data enabled
+    if (AOTReplayTraining) {
+      AOTCodeCache::enable_caching();
+    } else {
+      AOTCodeCache::disable_caching();
+    }
     FLAG_SET_ERGO(UseAOTCodeLoadThread, false);
     disable_dumping_aot_code();     // Don't dump AOT code until metadata and heap are dumped.
   } else if (is_using_archive() && can_use_profile_and_compiled_code) {
     // JEP 483 workflow -- production
     FLAG_SET_ERGO(AOTRecordTraining, false);
     FLAG_SET_ERGO_IF_DEFAULT(AOTReplayTraining, true);
-    AOTCodeCache::enable_caching();
-    FLAG_SET_ERGO_IF_DEFAULT(UseAOTCodeLoadThread, true);
+    // Use AOT code only when training data enabled
+    if (AOTReplayTraining) {
+      AOTCodeCache::enable_caching();
+      FLAG_SET_ERGO_IF_DEFAULT(UseAOTCodeLoadThread, true);
+    } else {
+      AOTCodeCache::disable_caching();
+      FLAG_SET_ERGO(UseAOTCodeLoadThread, false);
+    }
   } else {
     FLAG_SET_ERGO(AOTReplayTraining, false);
     FLAG_SET_ERGO(AOTRecordTraining, false);
@@ -1040,7 +1044,9 @@ bool CDSConfig::are_vm_options_incompatible_with_dumping_heap() {
 }
 
 bool CDSConfig::is_dumping_heap() {
-  if (!(is_dumping_classic_static_archive() || is_dumping_final_static_archive())
+  // Note: when dumping preimage static archive, only a very limited set of oops
+  // are dumped.
+  if (!is_dumping_static_archive()
       || are_vm_options_incompatible_with_dumping_heap()
       || _disable_heap_dumping) {
     return false;
@@ -1050,6 +1056,26 @@ bool CDSConfig::is_dumping_heap() {
 
 bool CDSConfig::is_loading_heap() {
   return HeapShared::is_archived_heap_in_use();
+}
+
+bool CDSConfig::is_dumping_klass_subgraphs() {
+  if (is_dumping_classic_static_archive() || is_dumping_final_static_archive()) {
+    // KlassSubGraphs (see heapShared.cpp) is a legacy mechanism for archiving oops. It
+    // has been superceded by AOT class linking. This feature is used only when
+    // AOT class linking is disabled.
+    //
+    // KlassSubGraphs are disabled in the preimage static archive, which contains a very
+    // limited set of oops.
+    return is_dumping_heap() && !is_dumping_aot_linked_classes();
+  } else {
+    return false;
+  }
+}
+
+bool CDSConfig::is_using_klass_subgraphs() {
+  return (is_loading_heap() &&
+          !CDSConfig::is_using_aot_linked_classes() &&
+          !CDSConfig::is_dumping_final_static_archive());
 }
 
 bool CDSConfig::is_using_full_module_graph() {
@@ -1116,10 +1142,6 @@ void CDSConfig::set_has_aot_linked_classes(bool has_aot_linked_classes) {
   _has_aot_linked_classes |= has_aot_linked_classes;
 }
 
-bool CDSConfig::is_initing_classes_at_dump_time() {
-  return is_dumping_heap() && is_dumping_aot_linked_classes();
-}
-
 bool CDSConfig::is_dumping_invokedynamic() {
   // Requires is_dumping_aot_linked_classes(). Otherwise the classes of some archived heap
   // objects used by the archive indy callsites may be replaced at runtime.
@@ -1131,13 +1153,13 @@ bool CDSConfig::is_dumping_reflection_data() {
   return ArchiveReflectionData && is_dumping_invokedynamic();
 }
 
-// When we are dumping aot-linked classes and we are able to write archived heap objects, we automatically
-// enable the archiving of MethodHandles. This will in turn enable the archiving of MethodTypes and hidden
+// When we are dumping aot-linked classes, we automatically enable the archiving of MethodHandles.
+// This will in turn enable the archiving of MethodTypes and hidden
 // classes that are used in the implementation of MethodHandles.
 // Archived MethodHandles are required for higher-level optimizations such as AOT resolution of invokedynamic
 // and dynamic proxies.
 bool CDSConfig::is_dumping_method_handles() {
-  return is_initing_classes_at_dump_time();
+  return is_dumping_aot_linked_classes();
 }
 
 #endif // INCLUDE_CDS_JAVA_HEAP

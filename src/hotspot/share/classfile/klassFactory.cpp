@@ -38,7 +38,7 @@
 #include "runtime/handles.inline.hpp"
 #include "utilities/macros.hpp"
 #if INCLUDE_JFR
-#include "jfr/support/jfrKlassExtension.hpp"
+#include "jfr/jfr.hpp"
 #endif
 
 
@@ -99,6 +99,9 @@ InstanceKlass* KlassFactory::check_shared_class_file_load_hook(
       if (class_loader.is_null()) {
         new_ik->set_classpath_index(path_index);
       }
+
+
+      JFR_ONLY(Jfr::on_klass_creation(new_ik, parser, THREAD);)
 
       return new_ik;
     }
@@ -214,7 +217,7 @@ InstanceKlass* KlassFactory::create_from_stream(ClassFileStream* stream,
     result->set_cached_class_file(cached_class_file);
   }
 
-  JFR_ONLY(ON_KLASS_CREATION(result, parser, THREAD);)
+  JFR_ONLY(Jfr::on_klass_creation(result, parser, THREAD);)
 
 #if INCLUDE_CDS
   if (CDSConfig::is_dumping_archive()) {

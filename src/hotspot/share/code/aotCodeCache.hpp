@@ -635,12 +635,13 @@ public:
       }
 
       uint count = cache->_load_header->entries_count();
-      uint* search_entries = (uint*)cache->addr(cache->_load_header->entries_offset()); // [id, index]
-      AOTCodeEntry* load_entries = (AOTCodeEntry*)(search_entries + 2 * count);
+      AOTCodeEntry* load_entries = cache->_load_entries;
+      if (count == 0 || load_entries == nullptr) {
+        return;
+      }
 
       for (uint i = 0; i < count; i++) {
-        int index = search_entries[2*i + 1];
-        AOTCodeEntry* entry = &(load_entries[index]);
+        AOTCodeEntry* entry = &(load_entries[i]);
         function(entry);
       }
     }
@@ -847,7 +848,7 @@ class AOTRuntimeConstants {
     address hi = base + sizeof(AOTRuntimeConstants);
     return (base <= adr && adr < hi);
   }
-  static address card_table_address() { return (address)&_aot_runtime_constants._card_table_address; }
+  static address card_table_address();
   static address grain_shift_address() { return (address)&_aot_runtime_constants._grain_shift; }
   static address* field_addresses_list() {
     return _field_addresses_list;

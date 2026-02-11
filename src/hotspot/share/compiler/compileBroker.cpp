@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1399,6 +1399,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
 
   AOTCodeEntry* aot_code_entry = find_aot_code_entry(method, osr_bci, comp_level, compile_reason, requires_online_compilation);
   bool is_aot = (aot_code_entry != nullptr);
+  requires_online_compilation = !is_aot; // Request JIT compilation
 
   // Outputs from the following MutexLocker block:
   CompileTask* task = nullptr;
@@ -1733,7 +1734,7 @@ bool CompileBroker::compilation_is_complete(Method*                    method,
         return false;
       }
       bool same_level = (comp_level == result->comp_level());
-      if (result->has_clinit_barriers()) {
+      if (result->preloaded() || result->has_clinit_barriers()) {
         return !same_level; // Allow replace preloaded code with new code of the same level
       }
       return same_level;
@@ -2573,12 +2574,18 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
 
       /* Repeat compilation without installing code for profiling purposes */
       int repeat_compilation_count = task->is_aot_load() ? 0 : directive->RepeatCompilationOption;
-      while (repeat_compilation_count > 0) {
-        ResourceMark rm(thread);
-        task->print_ul("NO CODE INSTALLED");
-        thread->timeout()->reset();
-        comp->compile_method(&ci_env, target, osr_bci, false, directive);
-        repeat_compilation_count--;
+      if (repeat_compilation_count > 0) {
+        CHeapStringHolder failure_reason;
+        failure_reason.set(ci_env._failure_reason.get());
+        while (repeat_compilation_count > 0) {
+          ResourceMark rm(thread);
+          task->print_ul("NO CODE INSTALLED");
+          thread->timeout()->reset();
+          ci_env._failure_reason.clear();
+          comp->compile_method(&ci_env, target, osr_bci, false, directive);
+          repeat_compilation_count--;
+        }
+        ci_env._failure_reason.set(failure_reason.get());
       }
     }
 

@@ -1219,7 +1219,9 @@ void ciEnv::register_method(ciMethod* target,
     }
 
     assert(offsets->value(CodeOffsets::Deopt) != -1, "must have deopt entry");
-    assert(offsets->value(CodeOffsets::Exceptions) != -1, "must have exception entry");
+
+    assert(compiler->type() == compiler_c2 ||
+           offsets->value(CodeOffsets::Exceptions) != -1, "must have exception entry");
 
     if (install_code) {
       nm =  nmethod::new_nmethod(method,
@@ -1863,6 +1865,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       MethodTrainingData* mtd = nullptr;
       GUARDED_VM_ENTRY(mtd = MethodTrainingData::find(methodHandle(Thread::current(), task()->method())); )
       if (mtd != nullptr) {
+        TrainingData::TrainingDataLocker l;
         CompileTrainingData* ctd = mtd->last_toplevel_compile(task()->comp_level());
         if (ctd != nullptr) {
           for (int i = 0; i < ctd->init_dep_count(); i++) {

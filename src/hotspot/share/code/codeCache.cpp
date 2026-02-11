@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotCacheAccess.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeBlob.hpp"
 #include "code/codeCache.hpp"
 #include "code/codeHeapState.hpp"
@@ -227,13 +228,21 @@ void CodeCache::initialize_heaps() {
   COMPILER1_PRESENT(compiler_buffer_size += CompilationPolicy::c1_count() * Compiler::code_buffer_size());
   COMPILER2_PRESENT(compiler_buffer_size += CompilationPolicy::c2_count() * C2Compiler::initial_code_buffer_size());
 
+  // During AOT assembly phase more compiler threads are used
+  // and C2 temp buffer is bigger.
+  // But due to rounding issue the total code cache size could be smaller
+  // than during production run. We can not use AOT code in such case
+  // because branch and call instructions will be incorrect.
+  //
+  // Increase code cache size to guarantee that total size
+  // will be bigger during assembly phase.
+  if (AOTCodeCache::maybe_dumping_code()) {
+    cache_size += align_up(compiler_buffer_size, min_size);
+    cache_size = MIN2(cache_size, CODE_CACHE_SIZE_LIMIT);
+  }
+
   if (!non_nmethod.set) {
     non_nmethod.size += compiler_buffer_size;
-    // Further down, just before FLAG_SET_ERGO(), all segment sizes are
-    // aligned down to the next lower multiple of min_size. For large page
-    // sizes, this may result in (non_nmethod.size == 0) which is not acceptable.
-    // Therefore, force non_nmethod.size to at least min_size.
-    non_nmethod.size = MAX2(non_nmethod.size, min_size);
   }
 
   if (!profiled.set && !non_profiled.set) {
@@ -309,11 +318,10 @@ void CodeCache::initialize_heaps() {
 
   // Note: if large page support is enabled, min_size is at least the large
   // page size. This ensures that the code cache is covered by large pages.
-  non_profiled.size += non_nmethod.size & alignment_mask(min_size);
-  non_profiled.size += profiled.size & alignment_mask(min_size);
-  non_nmethod.size = align_down(non_nmethod.size, min_size);
-  profiled.size = align_down(profiled.size, min_size);
-  non_profiled.size = align_down(non_profiled.size, min_size);
+  non_nmethod.size = align_up(non_nmethod.size, min_size);
+  profiled.size = align_up(profiled.size, min_size);
+  non_profiled.size = align_up(non_profiled.size, min_size);
+  cache_size = non_nmethod.size + profiled.size + non_profiled.size;
 
   FLAG_SET_ERGO(NonNMethodCodeHeapSize, non_nmethod.size);
   FLAG_SET_ERGO(ProfiledCodeHeapSize, profiled.size);

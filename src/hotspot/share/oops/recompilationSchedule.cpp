@@ -45,7 +45,7 @@ void RecompilationSchedule::initialize() {
 }
 
 void RecompilationSchedule::prepare(TRAPS) {
-  if (TrainingData::assembling_data() && _schedule != nullptr) {
+  if (TrainingData::assembling_data() && !TrainingData::need_data() && _schedule != nullptr) {
     ClassLoaderData* loader_data = ClassLoaderData::the_null_class_loader_data();
     _schedule_for_dumping = MetadataFactory::new_array<MethodTrainingData*>(loader_data, _schedule->length(), CHECK);
     for (int i = 0; i < _schedule->length(); i++) {
