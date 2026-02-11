@@ -244,6 +244,7 @@ void AOTClassLinker::print_archived_custom_loader_prelinked_table() {
         InstanceKlass* ik = class_list->at(i);
         log_info(aot, link)("  %s", ik->external_name());
       }
+      return true;
     });
   }
 }

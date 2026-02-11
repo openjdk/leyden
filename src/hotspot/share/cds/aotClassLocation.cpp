@@ -1125,6 +1125,7 @@ void URLClassLoaderClasspathSupport::reload_runtime_map() {
       log_info(class, path)("path [%d] = %s", i, ucc->class_location_at(i)->path());
     }
     _aot_id_to_classpath->put(ucc->loader_id(), locations);
+    return true;
   });
 }
 

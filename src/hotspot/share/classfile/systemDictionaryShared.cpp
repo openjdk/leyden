@@ -1544,7 +1544,7 @@ void SystemDictionaryShared::get_all_archived_classes(bool is_static_archive, Gr
       classes->append(record->klass());
     });
 
-  get_archive(is_static_archive)->_aot_safe_custom_loader_dict.iterate([&] (const RunTimeClassInfo* record) {
+  get_archive(is_static_archive)->_aot_safe_custom_loader_dict.iterate_all([&] (const RunTimeClassInfo* record) {
       classes->append(record->klass());
     });
 
@@ -1579,7 +1579,7 @@ void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
   st->print_cr("%sShared Builtin Dictionary", prefix);
   _builtin_dictionary.iterate_all(&p);
   st->print_cr("%sShared AOT Compatible Custom Loaders Dictionary", prefix);
-  _aot_safe_custom_loader_dict.iterate(&p);
+  _aot_safe_custom_loader_dict.iterate_all(&p);
   st->print_cr("%sShared Unregistered Dictionary", prefix);
   _unregistered_dictionary.iterate_all(&p);
   LambdaProxyClassDictionary::print_on(prefix, st, p.index(), is_static_archive);
