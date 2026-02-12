@@ -418,9 +418,11 @@ ciMetadata* ciObjectFactory::create_new_metadata(Metadata* o) {
     ciInstanceKlass* holder = env->get_instance_klass(h_m()->method_holder());
     return new (arena()) ciMethod(h_m, holder);
   } else if (o->is_methodData()) {
-    // Hold methodHandle alive - might not be necessary ???
-    methodHandle h_m(THREAD, ((MethodData*)o)->method());
+    // Callers ciMethod::ensure_method_data() and ::method_data() have MH already.
     return new (arena()) ciMethodData((MethodData*)o);
+  } else if (o->is_methodCounters()) {
+    // Caller ciMethod::ensure_method_counters() has MH already.
+    return new (arena()) ciMetadata(o);
   }
 
   // The Metadata* is of some type not supported by the compiler interface.

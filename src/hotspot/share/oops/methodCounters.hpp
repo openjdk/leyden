@@ -45,6 +45,10 @@ class MethodCounters : public Metadata {
   InvocationCounter _invocation_counter;         // Incremented before each activation of the method - used to trigger frequency-based optimizations
   InvocationCounter _backedge_counter;           // Incremented before each backedge taken - used to trigger frequency-based optimizations
 
+  int64_t _jit_code_invocation_count;    // C2 code invocations count during training used as limit for AOT code invocation
+  int     _aot_code_invocation_count;    // C2 AOT code invocations count
+  int     _aot_code_recompile_requested; // Request for JIT compilation to replace AOT code was made
+
   // Back pointer to the Method*
   Method* _method;
 
@@ -130,6 +134,10 @@ class MethodCounters : public Metadata {
   InvocationCounter* invocation_counter() { return &_invocation_counter; }
   InvocationCounter* backedge_counter()   { return &_backedge_counter; }
 
+  int64_t jit_code_invocation_count() const      { return _jit_code_invocation_count; }
+  int     aot_code_invocation_count() const      { return _aot_code_invocation_count;}
+  int     aot_code_recompile_requested() const   { return _aot_code_recompile_requested;}
+
   static ByteSize invocation_counter_offset()    {
     return byte_offset_of(MethodCounters, _invocation_counter);
   }
@@ -144,6 +152,18 @@ class MethodCounters : public Metadata {
 
   static ByteSize backedge_mask_offset() {
     return byte_offset_of(MethodCounters, _backedge_mask);
+  }
+
+  static ByteSize jit_code_invocation_counter_offset()  {
+    return byte_offset_of(MethodCounters, _jit_code_invocation_count);
+  }
+
+  static ByteSize aot_code_invocation_counter_offset()  {
+    return byte_offset_of(MethodCounters, _aot_code_invocation_count);
+  }
+
+  static ByteSize aot_code_recompile_requested_offset() {
+    return byte_offset_of(MethodCounters, _aot_code_recompile_requested);
   }
 
   virtual const char* internal_name() const { return "{method counters}"; }

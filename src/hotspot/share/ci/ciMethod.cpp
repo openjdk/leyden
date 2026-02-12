@@ -1131,12 +1131,15 @@ ciMethodData* ciMethod::method_data_or_null() {
 // ------------------------------------------------------------------
 // ciMethod::ensure_method_counters
 //
-MethodCounters* ciMethod::ensure_method_counters() {
+ciMetadata* ciMethod::ensure_method_counters() {
   check_is_loaded();
   VM_ENTRY_MARK;
   methodHandle mh(THREAD, get_Method());
-  MethodCounters* method_counters = mh->get_method_counters(CHECK_NULL);
-  return method_counters;
+  MethodCounters* method_counters = mh->get_method_counters(THREAD);
+  if (method_counters != nullptr) {
+    return CURRENT_ENV->get_method_counters(method_counters);
+  }
+  return nullptr;
 }
 
 // ------------------------------------------------------------------
