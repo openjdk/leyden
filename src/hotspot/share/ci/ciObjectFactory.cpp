@@ -422,8 +422,7 @@ ciMetadata* ciObjectFactory::create_new_metadata(Metadata* o) {
     methodHandle h_m(THREAD, ((MethodData*)o)->method());
     return new (arena()) ciMethodData((MethodData*)o);
   } else if (o->is_methodCounters()) {
-    // Hold methodHandle alive - might not be necessary ???
-    methodHandle h_m(THREAD, ((MethodCounters*)o)->method());
+    // Caller ciMethod::ensure_method_counters() has MH already.
     return new (arena()) ciMetadata(o);
   }
 
