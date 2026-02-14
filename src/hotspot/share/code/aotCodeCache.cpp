@@ -3378,6 +3378,11 @@ void AOTCodeAddressTable::init_stubs() {
   for (int i = 0; i < 6; i++) {
     SET_ADDRESS(_stubs, StubRoutines::x86::vector_iota_indices() + i * 64);
   }
+#ifdef COMPILER2
+  for (int i = 0; i < 4; i++) {
+    SET_ADDRESS(_stubs, StubRoutines::_string_indexof_array[i]);
+  }
+#endif
 #endif
 #if defined(AARCH64) && !defined(ZERO)
   SET_ADDRESS(_stubs, StubRoutines::aarch64::zero_blocks());
