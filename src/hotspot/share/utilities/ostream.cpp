@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/cds_globals.hpp"
 #include "cds/classListWriter.hpp"
 #include "compiler/compileLog.hpp"
 #include "jvm.h"

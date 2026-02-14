@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/cds_globals.hpp"
 #include "cds/methodProfiler.hpp"
 #include "code/codeBlob.hpp"
 #include "code/nmethod.hpp"

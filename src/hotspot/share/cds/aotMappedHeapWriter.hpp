@@ -182,10 +182,10 @@ private:
   static int filler_array_length(size_t fill_bytes);
   static HeapWord* init_filler_array_at_buffer_top(int array_length, size_t fill_bytes);
 
-  static void set_requested_address_range(ArchiveMappedHeapInfo* info);
+  static void set_requested_address_range(AOTMappedHeapInfo* info);
   static void mark_native_pointers(oop orig_obj);
-  static void relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassShared>* roots, ArchiveMappedHeapInfo* info);
-  static void compute_ptrmap(ArchiveMappedHeapInfo *info);
+  static void relocate_embedded_oops(GrowableArrayCHeap<oop, mtClassShared>* roots, AOTMappedHeapInfo* info);
+  static void compute_ptrmap(AOTMappedHeapInfo *info);
   static bool is_in_requested_range(oop o);
   static oop requested_obj_from_buffer_offset(size_t offset);
 
@@ -213,7 +213,7 @@ public:
   static bool is_too_large_to_archive(size_t size);
   static bool is_too_large_to_archive(oop obj);
   static bool is_string_too_large_to_archive(oop string);
-  static void write(GrowableArrayCHeap<oop, mtClassShared>*, ArchiveMappedHeapInfo* heap_info);
+  static void write(GrowableArrayCHeap<oop, mtClassShared>*, AOTMappedHeapInfo* heap_info);
   static address requested_address();  // requested address of the lowest achived heap object
   static size_t get_filler_size_at(address buffered_addr);
 
@@ -224,7 +224,7 @@ public:
   static Klass* real_klass_of_buffered_oop(address buffered_addr);
   static size_t size_of_buffered_oop(address buffered_addr);
 
-  static AOTMapLogger::OopDataIterator* oop_iterator(ArchiveMappedHeapInfo* heap_info);
+  static AOTMapLogger::OopDataIterator* oop_iterator(AOTMappedHeapInfo* heap_info);
 };
 #endif // INCLUDE_CDS_JAVA_HEAP
 #endif // SHARE_CDS_AOTMAPPEDHEAPWRITER_HPP
