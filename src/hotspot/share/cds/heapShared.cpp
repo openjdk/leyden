@@ -99,17 +99,6 @@ struct ArchivableStaticFieldInfo {
   }
 };
 
-class HeapShared::ContextMark : public StackObj {
-  ResourceMark rm;
-public:
-  ContextMark(const char* c) : rm{} {
-    _context->push(c);
-  }
-  ~ContextMark() {
-    _context->pop();
-  }
-};
-
 HeapArchiveMode HeapShared::_heap_load_mode = HeapArchiveMode::_uninitialized;
 HeapArchiveMode HeapShared::_heap_write_mode = HeapArchiveMode::_uninitialized;
 
@@ -163,7 +152,6 @@ static ArchivableStaticFieldInfo fmg_archive_subgraph_entry_fields[] = {
 KlassSubGraphInfo* HeapShared::_dump_time_special_subgraph;
 ArchivedKlassSubGraphInfoRecord* HeapShared::_run_time_special_subgraph;
 GrowableArrayCHeap<oop, mtClassShared>* HeapShared::_pending_roots = nullptr;
-GrowableArrayCHeap<const char*, mtClassShared>* HeapShared::_context = nullptr;
 OopHandle HeapShared::_scratch_basic_type_mirrors[T_VOID+1];
 MetaspaceObjToOopHandleTable* HeapShared::_scratch_objects_table = nullptr;
 
@@ -469,10 +457,6 @@ int HeapShared::append_root(oop obj) {
 }
 
 int HeapShared::get_root_index(oop obj) {
-  if (!CDSConfig::is_dumping_heap()) {
-    return -1; // Called by the Leyden old workflow
-  }
-
   if (java_lang_Class::is_instance(obj)) {
     obj = scratch_java_mirror(obj);
   }
@@ -922,7 +906,6 @@ void HeapShared::start_scanning_for_oops() {
     // The special subgraph doesn't belong to any class. We use Object_klass() here just
     // for convenience.
     _dump_time_special_subgraph = init_subgraph_info(vmClasses::Object_klass(), false);
-    _context = new GrowableArrayCHeap<const char*, mtClassShared>(250);
 
     // Cache for recording where the archived objects are copied to
     create_archived_object_cache();
@@ -1770,20 +1753,6 @@ void HeapShared::init_box_classes(TRAPS) {
   }
 }
 
-void HeapShared::exit_on_error() {
-  if (_context != nullptr) {
-    ResourceMark rm;
-    LogStream ls(Log(cds, heap)::error());
-    ls.print_cr("Context");
-    for (int i = 0; i < _context->length(); i++) {
-      const char* s = _context->at(i);
-      ls.print_cr("- %s", s);
-    }
-  }
-  debug_trace();
-  AOTMetaspace::unrecoverable_writing_error();
-}
-
 // (1) If orig_obj has not been archived yet, archive it.
 // (2) If orig_obj has not been seen yet (since start_recording_subgraph() was called),
 //     trace all  objects that are reachable from it, and make sure these objects are archived.
@@ -2377,7 +2346,6 @@ void HeapShared::archive_object_subgraphs(ArchivableStaticFieldInfo fields[],
     const char* klass_name = info->klass_name;
     start_recording_subgraph(info->klass, klass_name, is_full_module_graph);
 
-    ContextMark cm(klass_name);
     // If you have specified consecutive fields of the same klass in
     // fields[], these will be archived in the same
     // {start_recording_subgraph ... done_recording_subgraph} pass to
@@ -2388,7 +2356,6 @@ void HeapShared::archive_object_subgraphs(ArchivableStaticFieldInfo fields[],
         break;
       }
 
-      ContextMark cm(f->field_name);
       archive_reachable_objects_from_static_field(f->klass, f->klass_name,
                                                   f->offset, f->field_name);
     }

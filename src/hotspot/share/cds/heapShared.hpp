@@ -26,7 +26,6 @@
 #define SHARE_CDS_HEAPSHARED_HPP
 
 #include "cds/aotMetaspace.hpp"
-#include "cds/cds_globals.hpp"
 #include "cds/dumpTimeClassInfo.hpp"
 #include "classfile/compactHashtable.hpp"
 #include "classfile/javaClasses.hpp"
@@ -316,7 +315,6 @@ private:
   static ArchivedKlassSubGraphInfoRecord* _run_time_special_subgraph; // for initializing classes during run time.
 
   static GrowableArrayCHeap<oop, mtClassShared>* _pending_roots;
-  static GrowableArrayCHeap<const char*, mtClassShared>* _context; // for debugging unarchivable objects
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
   static MetaspaceObjToOopHandleTable* _scratch_objects_table;
 
@@ -329,8 +327,6 @@ private:
     delete _seen_objects_table;
     _seen_objects_table = nullptr;
   }
-
-  class ContextMark;
 
   // Statistics (for one round of start_recording_subgraph ... done_recording_subgraph)
   static size_t _num_new_walked_objs;
@@ -391,7 +387,6 @@ private:
                               oop orig_obj, oop referrer);
 
  public:
-  static void exit_on_error();
   static void reset_archived_object_states(TRAPS);
   static void create_archived_object_cache() {
     _archived_object_cache =
@@ -416,8 +411,6 @@ private:
 
   static bool is_interned_string(oop obj);
   static bool is_dumped_interned_string(oop o);
-
-  static void track_scratch_object(oop orig_obj, oop scratch_obj);
 
   // Scratch objects for archiving Klass::java_mirror()
   static void set_scratch_java_mirror(Klass* k, oop mirror);
