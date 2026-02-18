@@ -156,14 +156,14 @@ void AOTLinkedClassBulkLoader::mark_initiating_loader(JavaThread* currentThread,
     //terminating condition: loader is builtin loader for which this computation has already been done
     return;
   }
-  ClassLoaderData* cl_data = java_lang_ClassLoader::loader_data(loader); 
+  ClassLoaderData* cl_data = java_lang_ClassLoader::loader_data(loader);
   if (processed.contains(cl_data)) {
     return;
   }
   oop parent = java_lang_ClassLoader::parent(loader);
   assert(parent != nullptr, "custom loader's parent loader cannot be null");
   mark_initiating_loader(currentThread, parent, processed);
-  ClassLoaderData* parent_cl_data = java_lang_ClassLoader::loader_data(parent); 
+  ClassLoaderData* parent_cl_data = java_lang_ClassLoader::loader_data(parent);
   Dictionary* parent_dict = parent_cl_data->dictionary();
   Dictionary* loader_dict = cl_data->dictionary();
   DictionaryCopier copier(loader_dict);
