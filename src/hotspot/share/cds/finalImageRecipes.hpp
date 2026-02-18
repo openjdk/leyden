@@ -62,8 +62,7 @@ private:
   Array<InstanceKlassRecipe>* _platform;
   Array<InstanceKlassRecipe>* _app;
 
-  Array<InstanceKlassRecipe>* _aot_safe_loader_classes;
-  Array<InstanceKlassRecipe>* _unregistered;
+  Array<InstanceKlassRecipe>* _custom_loader_classes;
 
   template<typename Function>
   void iterate_array(Function fn, Array<InstanceKlassRecipe>* array) {
@@ -78,21 +77,19 @@ public:
   FinalImageRecipeTable() :
     _boot1(nullptr), _boot2(nullptr),
     _platform(nullptr), _app(nullptr),
-    _aot_safe_loader_classes(nullptr), _unregistered(nullptr) {}
+    _custom_loader_classes(nullptr) {}
 
   Array<InstanceKlassRecipe>* boot1()    const { return _boot1;    }
   Array<InstanceKlassRecipe>* boot2()    const { return _boot2;    }
   Array<InstanceKlassRecipe>* platform() const { return _platform; }
   Array<InstanceKlassRecipe>* app()      const { return _app;      }
-  Array<InstanceKlassRecipe>* aot_safe_loader_classes() const { return _aot_safe_loader_classes; }
-  Array<InstanceKlassRecipe>* unregistered() const { return _unregistered; }
+  Array<InstanceKlassRecipe>* custom_loader_classes() const { return _custom_loader_classes; }
 
   void set_boot1   (Array<InstanceKlassRecipe>* value) { _boot1    = value; }
   void set_boot2   (Array<InstanceKlassRecipe>* value) { _boot2    = value; }
   void set_platform(Array<InstanceKlassRecipe>* value) { _platform = value; }
   void set_app     (Array<InstanceKlassRecipe>* value) { _app      = value; }
-  void set_aot_safe_loader_classes(Array<InstanceKlassRecipe>* value) { _aot_safe_loader_classes = value; }
-  void set_unregistered(Array<InstanceKlassRecipe>* value) { _unregistered = value; }
+  void set_custom_loader_classes(Array<InstanceKlassRecipe>* value) { _custom_loader_classes = value; }
 
   template<typename Function>
   void iterate_all(Function fn) {
@@ -100,8 +97,7 @@ public:
     iterate_array(fn, _boot2);
     iterate_array(fn, _platform);
     iterate_array(fn, _app);
-    iterate_array(fn, _aot_safe_loader_classes);
-    iterate_array(fn, _unregistered);
+    iterate_array(fn, _custom_loader_classes);
   }
   void mark_pointers();
 };
@@ -183,9 +179,7 @@ class FinalImageRecipes {
   void apply_recipes_for_reflection_data(JavaThread* current);
   void apply_recipes_for_dynamic_proxies(TRAPS);
 
-
-  Array<InstanceKlassRecipe>* write_builtin_loader_classes(oop class_loader, bool is_javabase);
-  Array<InstanceKlassRecipe>* write_custom_loader_classes(bool write_aot_safe_loader_classes);
+  Array<InstanceKlassRecipe>* write_classes(oop class_loader, bool is_javabase, bool is_builtin_loader);
 
   static void exit_on_exception(JavaThread* current);
 
