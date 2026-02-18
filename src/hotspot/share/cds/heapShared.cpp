@@ -1253,15 +1253,6 @@ void KlassSubGraphInfo::check_allowed_klass(InstanceKlass* ik) {
   const char* testcls_msg = "";
 #endif
 
-  if (CDSConfig::supports_custom_loaders()) {
-    if (ik->class_loader() == SystemDictionary::java_system_loader()) {
-      return;
-    }
-    if (ik->cl_aot_identity() != nullptr) {
-      return;
-    }
-  }
-
   ResourceMark rm;
   log_error(aot, heap)("Class %s not allowed in archive heap. Must be in java.base%s%s",
                        ik->external_name(), lambda_msg, testcls_msg);

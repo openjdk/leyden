@@ -40,7 +40,7 @@ import java.net.URI;
  * packages with minimal footprint and avoid constructing Package
  * object.
  */
-public class NamedPackage {
+class NamedPackage {
     private final String name;
     private final Module module;
 

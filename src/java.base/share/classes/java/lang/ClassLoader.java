@@ -346,7 +346,7 @@ public abstract class ClassLoader {
      *        module
      * @return NamedPackage
      */
-    protected NamedPackage getNamedPackage(String pn, Module m) {
+    private NamedPackage getNamedPackage(String pn, Module m) {
         NamedPackage p = packages.get(pn);
         if (p == null) {
             p = new NamedPackage(pn, m);
@@ -2656,10 +2656,6 @@ public abstract class ClassLoader {
         classes.trimToSize();
         classLoaderValueMap = null;
         libraries.clear();
-    }
-
-    ProtectionDomain getDefaultProtectionDomain() {
-        return defaultDomain;
     }
 
     private String aotIdentity = null;
