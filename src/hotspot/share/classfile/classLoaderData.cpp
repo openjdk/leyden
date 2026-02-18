@@ -161,10 +161,6 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
     oop aot_identity = java_lang_ClassLoader::aotIdentity(h_class_loader());
     if (aot_identity != nullptr) {
       _aot_identity = java_lang_String::as_symbol(aot_identity);
-      // keep aot-safe custom loaders alive during training run
-      if (CDSConfig::is_dumping_preimage_static_archive()) {
-        _keep_alive_ref_count = 1;
-      }
     }
     initialize_name(h_class_loader);
   }
