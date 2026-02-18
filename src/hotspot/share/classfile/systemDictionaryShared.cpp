@@ -120,34 +120,6 @@ InstanceKlass* SystemDictionaryShared::load_shared_class_for_builtin_loader(
   return nullptr;
 }
 
-InstanceKlass* SystemDictionaryShared::load_shared_class_for_aot_safe_custom_loader(
-                 Symbol* class_name, Handle class_loader, TRAPS) {
-  assert(CDSConfig::is_using_archive(), "must be");
-  InstanceKlass* ik = find_class_in_aot_safe_custom_loader_dict(class_name);
-
-  if (ik != nullptr && !ik->shared_loading_failed()) {
-    // In assembly phase the classes loaded by aot-safe loaders are loaded by CDS$UnregisteredClassLoader
-    // which doesn't have aot identity. So skip the aot-identity check.
-    if (class_loader() != UnregisteredClasses::unregistered_class_loader(THREAD)()) {
-      oop aot_identity = java_lang_ClassLoader::aotIdentity(class_loader());
-      assert(aot_identity != nullptr, "must be");
-      Symbol* aot_identity_sym = java_lang_String::as_symbol(aot_identity);
-      if (!aot_identity_sym->equals(ik->cl_aot_identity())) {
-        return nullptr;
-      }
-    }
-    SharedClassLoadingMark slm(THREAD, ik);
-    PackageEntry* pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
-    Handle protection_domain;
-    if (!class_name->starts_with("jdk/proxy")) // java/lang/reflect/Proxy$ProxyBuilder defines the proxy classes with a null protection domain.
-    {
-      protection_domain = CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK_NULL);
-    }
-    return load_shared_class(ik, class_loader, protection_domain, nullptr, pkg_entry, THREAD);
-  }
-  return nullptr;
-}
-
 // This function is called for loading only UNREGISTERED classes
 InstanceKlass* SystemDictionaryShared::lookup_from_stream(Symbol* class_name,
                                                           Handle class_loader,
@@ -673,24 +645,6 @@ InstanceKlass* SystemDictionaryShared::find_or_load_shared_class(
       }
 
       k = load_shared_class_for_builtin_loader(name, class_loader, THREAD);
-    } else if (CDSConfig::supports_custom_loaders() && CDSConfig::is_dumping_final_static_archive() &&
-               class_loader() == UnregisteredClasses::unregistered_class_loader(THREAD)()) {
-      ClassLoaderData *loader_data = register_loader(class_loader);
-      Dictionary* dictionary = loader_data->dictionary();
-
-      // TODO: find_or_load_shared_class is called for
-      // aot safe custom loader, which may or may not be parallel-capable loader.
-      // Should we acquire loader lock or not?
-      //assert(get_loader_lock_or_null(class_loader) == nullptr, "ObjectLocker not required");
-      {
-        MutexLocker mu(THREAD, SystemDictionary_lock);
-        InstanceKlass* check = dictionary->find_class(THREAD, name);
-        if (check != nullptr) {
-          return check;
-        }
-      }
-
-      k = load_shared_class_for_aot_safe_custom_loader(name, class_loader, THREAD);
     }
   }
 
@@ -1360,69 +1314,60 @@ unsigned int SystemDictionaryShared::hash_for_shared_dictionary(address ptr) {
 class CopySharedClassInfoToArchive : StackObj {
   CompactHashtableWriter* _writer;
   bool _is_builtin;
-  bool _is_defined_by_aot_safe_custom_loader;
   ArchiveBuilder *_builder;
 public:
   CopySharedClassInfoToArchive(CompactHashtableWriter* writer,
-                               bool is_builtin,
-                               bool is_defined_by_aot_safe_custom_loader)
-    : _writer(writer), _is_builtin(is_builtin), _is_defined_by_aot_safe_custom_loader(is_defined_by_aot_safe_custom_loader), _builder(ArchiveBuilder::current())
-    {
-      assert(!_is_builtin || !_is_defined_by_aot_safe_custom_loader, "both conditions cannot be true");
-    }
+                               bool is_builtin)
+    : _writer(writer), _is_builtin(is_builtin), _builder(ArchiveBuilder::current())
+    {}
 
   void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (!info.is_excluded()) {
-      if ((info.is_builtin() && _is_builtin) || (k->is_defined_by_aot_safe_custom_loader() && _is_defined_by_aot_safe_custom_loader) ||
-          (!info.is_builtin() && !_is_builtin && !k->is_defined_by_aot_safe_custom_loader() && !_is_defined_by_aot_safe_custom_loader)) {
-        size_t byte_size = info.runtime_info_bytesize();
-        RunTimeClassInfo* record;
-        record = (RunTimeClassInfo*)ArchiveBuilder::ro_region_alloc(byte_size);
-        record->init(info);
+    if (!info.is_excluded() && info.is_builtin() == _is_builtin) {
+      size_t byte_size = info.runtime_info_bytesize();
+      RunTimeClassInfo* record;
+      record = (RunTimeClassInfo*)ArchiveBuilder::ro_region_alloc(byte_size);
+      record->init(info);
 
-        unsigned int hash;
-        Symbol* name = info._klass->name();
-        name = ArchiveBuilder::current()->get_buffered_addr(name);
-        hash = SystemDictionaryShared::hash_for_shared_dictionary((address)name);
-        u4 delta = _builder->buffer_to_offset_u4((address)record);
-        if (_is_builtin && info._klass->is_hidden()) {
-          // skip
-        } else {
-          _writer->add(hash, delta);
-        }
-        if (log_is_enabled(Trace, aot, hashtables)) {
-          ResourceMark rm;
-          const char* dict_name = _is_builtin ? "builtin" : _is_defined_by_aot_safe_custom_loader ? "aot_safe_custom_loader_dict" : "unregistered";
-          log_trace(aot, hashtables)("%s dictionary: %s", dict_name, info._klass->external_name());
-        }
-
-        // Save this for quick runtime lookup of InstanceKlass* -> RunTimeClassInfo*
-        InstanceKlass* buffered_klass = ArchiveBuilder::current()->get_buffered_addr(info._klass);
-        RunTimeClassInfo::set_for(buffered_klass, record);
+      unsigned int hash;
+      Symbol* name = info._klass->name();
+      name = ArchiveBuilder::current()->get_buffered_addr(name);
+      hash = SystemDictionaryShared::hash_for_shared_dictionary((address)name);
+      u4 delta = _builder->buffer_to_offset_u4((address)record);
+      if (_is_builtin && info._klass->is_hidden()) {
+        // skip
+      } else {
+        _writer->add(hash, delta);
       }
+      if (log_is_enabled(Trace, aot, hashtables)) {
+        ResourceMark rm;
+        const char* dict_name = _is_builtin ? "builtin" : "unregistered";
+        log_trace(aot, hashtables)("%s dictionary: %s", dict_name, info._klass->external_name());
+      }
+
+      // Save this for quick runtime lookup of InstanceKlass* -> RunTimeClassInfo*
+      InstanceKlass* buffered_klass = ArchiveBuilder::current()->get_buffered_addr(info._klass);
+      RunTimeClassInfo::set_for(buffered_klass, record);
     }
   }
 };
 
 void SystemDictionaryShared::write_dictionary(RunTimeSharedDictionary* dictionary,
-                                              bool is_builtin,
-                                              bool is_defined_by_aot_safe_custom_loader) {
+                                              bool is_builtin) {
   CompactHashtableStats stats;
   dictionary->reset();
-  CompactHashtableWriter writer(_dumptime_table->count_of(is_builtin, is_defined_by_aot_safe_custom_loader), &stats);
-  CopySharedClassInfoToArchive copy(&writer, is_builtin, is_defined_by_aot_safe_custom_loader);
+  CompactHashtableWriter writer(_dumptime_table->count_of(is_builtin), &stats);
+  CopySharedClassInfoToArchive copy(&writer, is_builtin);
   assert_lock_strong(DumpTimeTable_lock);
   _dumptime_table->iterate_all_live_classes(&copy);
-  const char* dict_name = is_builtin ? "builtin" : is_defined_by_aot_safe_custom_loader ? "aot_safe_custom_loader_dict" : "unregistered";
+  const char* dict_name = is_builtin ? "builtin" : "unregistered";
   writer.dump(dictionary, dict_name);
 }
 
 void SystemDictionaryShared::write_to_archive(bool is_static_archive) {
   ArchiveInfo* archive = get_archive(is_static_archive);
 
-  write_dictionary(&archive->_builtin_dictionary, true, false);
-  write_dictionary(&archive->_aot_safe_custom_loader_dict, false, true);
-  write_dictionary(&archive->_unregistered_dictionary, false, false);
+  write_dictionary(&archive->_builtin_dictionary, true);
+  write_dictionary(&archive->_unregistered_dictionary, false);
   if (CDSConfig::is_dumping_lambdas_in_legacy_mode()) {
     LambdaProxyClassDictionary::write_dictionary(is_static_archive);
   } else {
@@ -1435,7 +1380,6 @@ void SystemDictionaryShared::serialize_dictionary_headers(SerializeClosure* soc,
   ArchiveInfo* archive = get_archive(is_static_archive);
 
   archive->_builtin_dictionary.serialize_header(soc);
-  archive->_aot_safe_custom_loader_dict.serialize_header(soc);
   archive->_unregistered_dictionary.serialize_header(soc);
   LambdaProxyClassDictionary::serialize(soc, is_static_archive);
 }
@@ -1497,24 +1441,6 @@ InstanceKlass* SystemDictionaryShared::find_builtin_class(Symbol* name) {
   }
 }
 
-InstanceKlass* SystemDictionaryShared::find_class_in_aot_safe_custom_loader_dict(Symbol* name) {
-  const RunTimeClassInfo* record = find_record(&_static_archive._aot_safe_custom_loader_dict,
-                                               &_dynamic_archive._aot_safe_custom_loader_dict,
-                                               name);
-  if (record != nullptr) {
-    assert(!record->klass()->is_hidden(), "hidden class cannot be looked up by name");
-    DEBUG_ONLY(check_klass_after_loading(record->klass());)
-    // We did not save the classfile data of the generated LambdaForm invoker classes,
-    // so we cannot support CLFH for such classes.
-    if (record->klass()->is_aot_generated_class() && JvmtiExport::should_post_class_file_load_hook()) {
-       return nullptr;
-    }
-    return record->klass();
-  } else {
-    return nullptr;
-  }
-}
-
 void SystemDictionaryShared::update_shared_entry(InstanceKlass* k, int id) {
   assert(CDSConfig::is_dumping_static_archive(), "class ID is used only for static dump (from classlist)");
   DumpTimeClassInfo* info = get_info(k);
@@ -1543,11 +1469,6 @@ void SystemDictionaryShared::get_all_archived_classes(bool is_static_archive, Gr
   get_archive(is_static_archive)->_builtin_dictionary.iterate_all([&] (const RunTimeClassInfo* record) {
       classes->append(record->klass());
     });
-
-  get_archive(is_static_archive)->_aot_safe_custom_loader_dict.iterate_all([&] (const RunTimeClassInfo* record) {
-      classes->append(record->klass());
-    });
-
   get_archive(is_static_archive)->_unregistered_dictionary.iterate_all([&] (const RunTimeClassInfo* record) {
       classes->append(record->klass());
     });
@@ -1578,8 +1499,6 @@ void SystemDictionaryShared::ArchiveInfo::print_on(const char* prefix,
   SharedDictionaryPrinter p(st);
   st->print_cr("%sShared Builtin Dictionary", prefix);
   _builtin_dictionary.iterate_all(&p);
-  st->print_cr("%sShared AOT Compatible Custom Loaders Dictionary", prefix);
-  _aot_safe_custom_loader_dict.iterate_all(&p);
   st->print_cr("%sShared Unregistered Dictionary", prefix);
   _unregistered_dictionary.iterate_all(&p);
   LambdaProxyClassDictionary::print_on(prefix, st, p.index(), is_static_archive);
@@ -1589,7 +1508,6 @@ void SystemDictionaryShared::ArchiveInfo::print_table_statistics(const char* pre
                                                                  outputStream* st,
                                                                  bool is_static_archive) {
   st->print_cr("%sArchve Statistics", prefix);
-  _aot_safe_custom_loader_dict.print_table_statistics(st, "AOT Compatible Loaders Dictionary");
   _unregistered_dictionary.print_table_statistics(st, "AOT Incompatible Loaders Dictionary");
   LambdaProxyClassDictionary::print_statistics(st, is_static_archive);
 }
@@ -1623,7 +1541,7 @@ void SystemDictionaryShared::print_table_statistics(outputStream* st) {
 bool SystemDictionaryShared::is_dumptime_table_empty() {
   assert_lock_strong(DumpTimeTable_lock);
   _dumptime_table->update_counts();
-  if (_dumptime_table->count_of(true, false) == 0 && _dumptime_table->count_of(false, true) == 0 && _dumptime_table->count_of(false, false) == 0) {
+  if (_dumptime_table->count_of(true) == 0 && _dumptime_table->count_of(false) == 0) {
     return true;
   }
   return false;

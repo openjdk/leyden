@@ -25,6 +25,7 @@
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/cdsProtectionDomain.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classFileParser.hpp"
 #include "classfile/classFileStream.hpp"
@@ -1169,8 +1170,8 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
 void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRAPS) {
   //precond(Universe::is_bootstrapping());
   precond(java_platform_loader() != nullptr && java_system_loader() != nullptr);
-  precond(class_loader() == nullptr || class_loader() == java_platform_loader() ||class_loader() == java_system_loader() || ik->cl_aot_identity() != nullptr);
-  precond(CDSConfig::is_using_aot_linked_classes());
+  //precond(class_loader() == nullptr || class_loader() == java_platform_loader() ||class_loader() == java_system_loader() || ik->cl_aot_identity() != nullptr);
+  //precond(CDSConfig::is_using_aot_linked_classes());
   precond(AOTMetaspace::in_aot_cache_static_region((void*)ik));
   precond(!ik->is_loaded());
 
@@ -1196,15 +1197,32 @@ void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRA
   if (ik->has_archived_mirror_index()) {
     oop java_mirror = ik->archived_java_mirror();
     precond(java_mirror != nullptr);
-    //assert(java_lang_Class::module(java_mirror) != nullptr, "must have been archived");
 
-    pd = Handle(THREAD, java_lang_Class::protection_domain(java_mirror));
-    pkg_entry = ik->package();
-    if (is_builtin_class_loader(class_loader())) {
-      assert(pkg_entry != nullptr || ClassLoader::package_from_class_name(ik->name()) == nullptr,
-             "non-empty packages for builtin loaders must have been archived");
-    } else if (ik->is_defined_by_aot_safe_custom_loader()) {
-      assert(pkg_entry == nullptr, "packages for aot-safe custom loaders are not archived");
+    if (CDSConfig::is_dumping_aot_linked_classes()) {
+      // in assembly phase
+      assert(java_lang_Class::module(java_mirror) == nullptr, "must not have been archived");
+      assert(ik->package() == nullptr, "must not have been archived");
+
+      pkg_entry = CDSProtectionDomain::get_package_entry_from_class(ik, class_loader);
+      // pd for classes loaded by boot loader is null
+      if (class_loader() != nullptr) {
+        if (!ik->name()->starts_with("jdk/proxy")) // java/lang/reflect/Proxy$ProxyBuilder defines the proxy classes with a null protection domain.
+        {
+          pd = CDSProtectionDomain::init_security_info(class_loader, ik, pkg_entry, CHECK);
+        }
+      }
+    } else {
+      // in production phase
+      assert(java_lang_Class::module(java_mirror) != nullptr, "must have been archived");
+
+      pd = Handle(THREAD, java_lang_Class::protection_domain(java_mirror));
+      pkg_entry = ik->package();
+      if (is_builtin_class_loader(class_loader())) {
+        assert(pkg_entry != nullptr || ClassLoader::package_from_class_name(ik->name()) == nullptr,
+               "non-empty packages for builtin loaders must have been archived");
+      } else if (ik->is_defined_by_aot_safe_custom_loader()) {
+        assert(pkg_entry == nullptr, "packages for aot-safe custom loaders are not archived");
+      }
     }
   }
 
@@ -1311,11 +1329,7 @@ InstanceKlass* SystemDictionary::load_instance_class_impl(Symbol* class_name, Ha
     {
       PerfTraceElapsedTime vmtimer(ClassLoader::perf_shared_classload_time());
       InstanceKlass* ik = nullptr;
-      if (SystemDictionary::is_builtin_class_loader(class_loader())) {
-        ik = SystemDictionaryShared::find_builtin_class(class_name);
-      } else if (CDSConfig::supports_custom_loaders()) {
-        ik = SystemDictionaryShared::find_class_in_aot_safe_custom_loader_dict(class_name);
-      }
+      ik = SystemDictionaryShared::find_builtin_class(class_name);
       if (ik != nullptr && ik->defined_by_boot_loader() && !ik->shared_loading_failed()) {
         SharedClassLoadingMark slm(THREAD, ik);
         k = load_shared_class(ik, class_loader, Handle(), nullptr,  pkg_entry, CHECK_NULL);
@@ -1741,7 +1755,7 @@ void SystemDictionary::update_dictionary(JavaThread* current,
 void SystemDictionary::add_to_initiating_loader(JavaThread* current,
                                                 InstanceKlass* k,
                                                 ClassLoaderData* loader_data) {
-  assert(CDSConfig::is_using_aot_linked_classes(), "must be");
+  //assert(CDSConfig::is_using_aot_linked_classes(), "must be");
   assert_locked_or_safepoint(SystemDictionary_lock);
   Symbol* name  = k->name();
   Dictionary* dictionary = loader_data->dictionary();

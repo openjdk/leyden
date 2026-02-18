@@ -140,7 +140,6 @@ class SystemDictionaryShared: public SystemDictionary {
 
   struct ArchiveInfo {
     RunTimeSharedDictionary _builtin_dictionary;
-    RunTimeSharedDictionary _aot_safe_custom_loader_dict;
     RunTimeSharedDictionary _unregistered_dictionary;
 
     void print_on(const char* prefix, outputStream* st, bool is_static_archive);
@@ -163,10 +162,6 @@ private:
                                                Symbol* class_name,
                                                Handle class_loader,
                                                TRAPS);
-  static InstanceKlass* load_shared_class_for_aot_safe_custom_loader(
-                                               Symbol* class_name,
-                                               Handle class_loader,
-                                               TRAPS);
   static InstanceKlass* acquire_class_for_current_thread(
                                  InstanceKlass *ik,
                                  Handle class_loader,
@@ -175,8 +170,7 @@ private:
                                  TRAPS);
 
 
-  static void write_dictionary(RunTimeSharedDictionary* dictionary,
-                               bool is_builtin, bool is_defined_by_aot_safe_custom_loader);
+  static void write_dictionary(RunTimeSharedDictionary* dictionary, bool is_builtin);
   static bool is_jfr_event_class(InstanceKlass *k);
   static void link_all_exclusion_check_candidates(InstanceKlass* ik);
   static bool should_be_excluded_impl(InstanceKlass* k, DumpTimeClassInfo* info);
@@ -215,7 +209,6 @@ public:
   static void set_has_archived_enum_objs(InstanceKlass* ik);
 
   static InstanceKlass* find_builtin_class(Symbol* name);
-  static InstanceKlass* find_class_in_aot_safe_custom_loader_dict(Symbol* class_name);
 
   static const RunTimeClassInfo* find_record(RunTimeSharedDictionary* static_dict,
                                                    RunTimeSharedDictionary* dynamic_dict,
