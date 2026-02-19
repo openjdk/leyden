@@ -1157,6 +1157,11 @@ public:
   {}
 
   bool do_entry(Symbol* loader_id, GrowableClassLocationArray* class_locations) {
+    // If the loader_id has not been archived yet, it implies no class was loaded using this loader.
+    // So there is no point to archive classpath for this loader_id.
+    if (!_builder->has_been_archived(loader_id)) {
+      return true;
+    }
     Array<AOTClassLocation*>* archived_copy = ArchiveBuilder::new_ro_array<AOTClassLocation*>(class_locations->length());
     for (int i = 0; i < class_locations->length(); i++) {
       archived_copy->at_put(i, class_locations->at(i)->write_to_archive());
