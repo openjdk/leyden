@@ -532,7 +532,7 @@ void AOTMetaspace::serialize(SerializeClosure* soc) {
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
   AOTLinkedClassBulkLoader::serialize(soc);
-  AOTClassLinker::serialize_prelinked_table_header(soc);
+  AOTClassLinker::serialize_prelinked_classes_map_header(soc);
   URLClassLoaderClasspathSupport::serialize_classpath_map_table_header(soc);
   FinalImageRecipes::serialize(soc);
   TrainingData::serialize(soc);

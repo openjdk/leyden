@@ -28,6 +28,7 @@
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotLinkedClassTable.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderDataShared.hpp"
@@ -110,7 +111,7 @@ void AOTLinkedClassBulkLoader::preload_classes_for_loader_impl(Handle loader_obj
   if (aot_id == nullptr) {
     return;
   }
-  AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
+  CustomLoaderClassTable* table = AOTClassLinker::get_archived_prelinked_table(aot_id);
   preload_classes_in_table(table->class_list(), aot_id->as_C_string(), loader_obj, CHECK);
   MonitorLocker mu1(SystemDictionary_lock);
   mark_initiating_loader(THREAD, loader_obj());
@@ -247,7 +248,7 @@ void AOTLinkedClassBulkLoader::link_classes_for_loader_impl(Handle loader_obj, T
   if (aot_id == nullptr) {
     return;
   }
-  AOTLinkedClassTableForCustomLoader* table = AOTClassLinker::get_prelinked_table(aot_id);
+  CustomLoaderClassTable* table = AOTClassLinker::get_archived_prelinked_table(aot_id);
   link_classes_in_table(table->class_list(), CHECK);
 }
 
