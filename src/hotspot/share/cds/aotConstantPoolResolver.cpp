@@ -29,7 +29,6 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/classListWriter.hpp"
 #include "cds/finalImageRecipes.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
@@ -782,20 +781,6 @@ Klass* AOTConstantPoolResolver::resolve_boot_class_or_fail(const char* class_nam
 void AOTConstantPoolResolver::trace_dynamic_proxy_class(oop loader, const char* proxy_name, objArrayOop interfaces, int access_flags) {
   if (interfaces->length() < 1) {
     return;
-  }
-  if (ClassListWriter::is_enabled()) {
-    const char* loader_name = ArchiveUtils::builtin_loader_name_or_null(loader);
-    if (loader_name != nullptr) {
-      stringStream ss;
-      ss.print("%s %s %d %d", loader_name, proxy_name, access_flags, interfaces->length());
-      for (int i = 0; i < interfaces->length(); i++) {
-        oop mirror = interfaces->obj_at(i);
-        Klass* k = java_lang_Class::as_Klass(mirror);
-        ss.print(" %s", k->name()->as_C_string());
-      }
-      ClassListWriter w; // This locks ClassListFile_lock
-      w.stream()->print_cr("@dynamic-proxy %s", ss.freeze());
-    }
   }
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     FinalImageRecipes::add_dynamic_proxy_class(loader, proxy_name, interfaces, access_flags);

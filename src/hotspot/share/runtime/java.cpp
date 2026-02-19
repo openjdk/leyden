@@ -546,7 +546,6 @@ void before_exit(JavaThread* thread, bool halt) {
 
 #if INCLUDE_CDS
   ClassListWriter::write_resolved_constants();
-  ClassListWriter::write_reflection_data();
   ClassListWriter::write_loader_negative_lookup_cache();
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     AOTMetaspace::dump_static_archive(thread);
