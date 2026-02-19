@@ -681,20 +681,11 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveDynamicProxies, false); // FIXME-merge
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveLoaderLookupCache, true);
     FLAG_SET_ERGO_IF_DEFAULT(ArchiveReflectionData, true);
-
-    // For simplicity, enable these by default only for new workflow
-    if (new_aot_flags_used()) {
-      // These flags will be removed when JDK-8350550 is merged from mainline
-      FLAG_SET_ERGO_IF_DEFAULT(ArchivePackages, true);
-      FLAG_SET_ERGO_IF_DEFAULT(ArchiveProtectionDomains, true);
-    }
   } else {
     // All of these *might* depend on AOTClassLinking. Better be safe than sorry.
     FLAG_SET_ERGO(AOTInvokeDynamicLinking, false);
     FLAG_SET_ERGO(ArchiveDynamicProxies, false);
     FLAG_SET_ERGO(ArchiveLoaderLookupCache, false);
-    FLAG_SET_ERGO(ArchivePackages, false);
-    FLAG_SET_ERGO(ArchiveProtectionDomains, false);
     FLAG_SET_ERGO(ArchiveReflectionData, false);
 
     if (CDSConfig::is_dumping_archive()) {
