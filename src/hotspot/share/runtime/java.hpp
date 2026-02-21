@@ -64,6 +64,8 @@ extern void perf_deoptimization_print_on(outputStream* st);
 
 extern void log_vm_init_stats();
 
+extern void print_statistics_before_exit();
+
 // This is defined in linkType.cpp due to linking restraints
 extern bool is_vm_statically_linked();
 

@@ -329,7 +329,7 @@ static void print_method_invocation_histogram() {}
 
 
 // General statistics printing (profiling ...)
-void print_statistics() {
+void print_statistics_before_exit() {
 #if INCLUDE_CDS
   if (AOTReplayTraining && AOTPrintTrainingInfo) {
     TrainingData::print_archived_training_data_on(tty);
@@ -608,7 +608,7 @@ void before_exit(JavaThread* thread, bool halt) {
   }
   #endif
 
-  print_statistics();
+  print_statistics_before_exit();
 
   { MutexLocker ml(BeforeExit_lock);
     _before_exit_status = BEFORE_EXIT_DONE;
