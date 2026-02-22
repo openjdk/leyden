@@ -1842,9 +1842,9 @@ bool ciEnv::is_precompile() {
 
 InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
   ASSERT_IN_VM;
-  assert(is_precompile(), "should be called only in assembly phase");
-  assert(!ik->is_in_error_state(), "there should not be any probelm with this klass");
   ResourceMark rm;
+  assert(is_precompile(), "should be called only for AOT compialtion in assembly phase");
+  assert(!ik->is_in_error_state(), "comp_id: %d, klass %s", task()->compile_id(), ik->external_name());
 
   if (!AOTCacheAccess::can_generate_aot_code_for(ik)) {
     log_debug(precompile)("%d: klass (%s) %s is not archived", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
@@ -1852,6 +1852,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
     return InstanceKlass::ClassState::initialization_error;
   }
   if (task()->method()->method_holder() == ik) {
+    log_trace(precompile)("%d: method_holder: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
     if (task()->method()->is_static_initializer()) { // Happens with -Xcomp
        return InstanceKlass::ClassState::being_initialized;
     } else {
@@ -1871,7 +1872,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
           for (int i = 0; i < ctd->init_dep_count(); i++) {
             KlassTrainingData* ktd = ctd->init_dep(i);
             if (ktd->has_holder() && (ktd->holder() == ik)) {
-              log_trace(precompile)("%d: init_dependency: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+              log_trace(precompile)("%d: init_dependency: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
               return InstanceKlass::ClassState::fully_initialized; // init dependency present
             }
           }
@@ -1883,6 +1884,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       // CI query should report their status as if in production run, otherwise AOT
       // code would have uncommon traps at invokedynamic calls.
       if (HeapShared::is_core_java_lang_invoke_klass(ik)) {
+        log_trace(precompile)("%d: core_java_lang_invoke: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
         return InstanceKlass::ClassState::fully_initialized;
       }
 
@@ -1895,10 +1897,12 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       // Preload AOT code does not depend on Training Data,
       // it has class init barriers to initialize class by
       // going into interpreter or directly calling runtime.
+      log_trace(precompile)("%d: for_preload: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
       return InstanceKlass::ClassState::fully_initialized;
     }
     default: fatal("%s", CompileTask::reason_name(task()->compile_reason()));
   }
+  log_debug(precompile)("%d: klass (%s) %s is not recorded for this compilation", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
   // Skip this class
   return InstanceKlass::ClassState::initialization_error;
 }

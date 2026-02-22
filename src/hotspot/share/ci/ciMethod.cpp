@@ -1072,13 +1072,14 @@ ciMethodData* ciMethod::method_data() {
       MethodTrainingData* mtd = MethodTrainingData::find(h_m);
       MethodData* mdo = (mtd != nullptr ? mtd->final_profile() : nullptr);
       DirectiveSet* directives = DirectivesStack::getMatchingDirective(h_m, CURRENT_ENV->task()->compiler());
+      int comp_id = CURRENT_ENV->task()->compile_id();
       if (mdo == nullptr || directives->IgnoreRecordedProfileOption) {
         if (directives->IgnoreRecordedProfileOption) {
           ResourceMark rm;
-          log_debug(precompile)("Ignore recorded profile for %s", h_m->name_and_sig_as_C_string());
+          log_debug(precompile)("%d: Ignore recorded profile for %s", comp_id, h_m->name_and_sig_as_C_string());
         } else {
           ResourceMark rm;
-          log_debug(precompile)("No profile for %s", h_m->name_and_sig_as_C_string());
+          log_debug(precompile)("%d: No profile for %s", comp_id, h_m->name_and_sig_as_C_string());
         }
         _method_data_recorded = CURRENT_ENV->get_empty_methodData();
       } else {
@@ -1093,7 +1094,7 @@ ciMethodData* ciMethod::method_data() {
         _method_data_recorded->load_data();
         {
           ResourceMark rm;
-          log_debug(precompile)("Recorded profile " PTR_FORMAT " for %s", p2i(mdo), h_m->name_and_sig_as_C_string());
+          log_debug(precompile)("%d: Recorded profile " PTR_FORMAT " for %s", comp_id, p2i(mdo), h_m->name_and_sig_as_C_string());
         }
       }
     }
