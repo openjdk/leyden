@@ -4,7 +4,7 @@
 #include "jvm.h"
 
 JNIEXPORT jboolean JNICALL
-Java_java_net_URLClassLoader_registerAsAOTSafeImpl(JNIEnv *env, jobject loader, jstring classpath)
+Java_java_net_URLClassLoader_registerAsAOTSafeImpl(JNIEnv *env, jobject loader, jstring aot_id, jstring classpath)
 {
-    return JVM_RegisterURLClassLoaderAsAOTSafeLoader(env, loader, classpath);
+    return JVM_RegisterURLClassLoaderAsAOTSafeLoader(env, loader, aot_id, classpath);
 }

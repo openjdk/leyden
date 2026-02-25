@@ -751,7 +751,7 @@ JNIEXPORT jboolean JNICALL
 JVM_RegisterAsAOTCompatibleLoader(JNIEnv *env, jobject loader);
 
 JNIEXPORT jboolean JNICALL
-JVM_RegisterURLClassLoaderAsAOTSafeLoader(JNIEnv *env, jobject loader, jstring classpath);
+JVM_RegisterURLClassLoaderAsAOTSafeLoader(JNIEnv *env, jobject loader, jstring aot_id, jstring classpath);
 /*
  * java.lang.ref.Finalizer
  */

@@ -710,5 +710,5 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
         return false;
     }
 
-    private native boolean registerAsAOTSafeImpl(String classpath);
+    private native boolean registerAsAOTSafeImpl(String aotId, String classpath);
 }
