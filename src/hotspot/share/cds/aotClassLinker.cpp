@@ -125,15 +125,7 @@ void AOTClassLinker::add_new_candidate(InstanceKlass* ik) {
   Symbol* loader_id;
   loader_id = ik->cl_aot_identity();
   if (loader_id != nullptr) {
-    ClassList** class_list_ptr = _custom_loader_prelinked_table->get(loader_id);
-    ClassList* class_list = nullptr;
-    if (class_list_ptr != nullptr) {
-      class_list = *class_list_ptr;
-    } else {
-      class_list = new ClassList(1000);
-      _custom_loader_prelinked_table->put(loader_id, class_list);
-    }
-    class_list->append(ik);
+    _custom_loader_prelinked_table->add_class(loader_id, ik);
   }
   if (log_is_enabled(Info, aot, link)) {
     ResourceMark rm;
@@ -212,7 +204,7 @@ void AOTClassLinker::add_candidates() {
   }
 }
 
-CustomLoaderClassTable* AOTClassLinker::get_archived_prelinked_table(Symbol* aot_id) {
+ArchivedCustomLoaderClassTable* AOTClassLinker::get_archived_prelinked_table(Symbol* aot_id) {
   return _archived_custom_loader_prelinked_classes_map.get_class_list(aot_id);
 }
 

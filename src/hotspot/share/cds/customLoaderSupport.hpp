@@ -7,7 +7,7 @@
 #include "utilities/growableArray.hpp"
 #include "utilities/resizableHashTable.hpp"
 
-class CustomLoaderClassTable {
+class ArchivedCustomLoaderClassTable {
 private:
   Symbol* _loader_id;
   Array<InstanceKlass*>* _class_list;
@@ -20,16 +20,21 @@ public:
   address* loader_id_addr() const { return (address*)&_loader_id; }
   Array<InstanceKlass*>* class_list() const { return _class_list; }
   address* class_list_addr() const { return (address*)&_class_list; }
+
+  void mark_pointers() {
+    ArchivePtrMarker::mark_pointer(loader_id_addr());
+    ArchivePtrMarker::mark_pointer(class_list_addr());
+  }
 };
 
-inline bool custom_loader_class_list_equals(CustomLoaderClassTable* table, Symbol* loader_id, int len_unused) {
+inline bool custom_loader_class_list_equals(ArchivedCustomLoaderClassTable* table, Symbol* loader_id, int len_unused) {
   return table->loader_id()->equals(loader_id);
 }
 
-class ArchivedCustomLoaderClassTableMap : public OffsetCompactHashtable<Symbol*, CustomLoaderClassTable*, custom_loader_class_list_equals>
+class ArchivedCustomLoaderClassTableMap : public OffsetCompactHashtable<Symbol*, ArchivedCustomLoaderClassTable*, custom_loader_class_list_equals>
 {
 public:
-  CustomLoaderClassTable* get_class_list(Symbol* aot_id) {
+  ArchivedCustomLoaderClassTable* get_class_list(Symbol* aot_id) {
     unsigned int hash = Symbol::symbol_hash(aot_id);
     return lookup(aot_id, hash, 0 /* ignored */);
   }
@@ -47,16 +52,15 @@ private:
     ArchiveBuilder* _builder;
   public:
     CopyClassTableToArchive(CompactHashtableWriter* writer) : _writer(writer),
-                                                                _builder(ArchiveBuilder::current())
+                                                              _builder(ArchiveBuilder::current())
     {}
 
     bool do_entry(Symbol* loader_id, ClassList* table) {
-      CustomLoaderClassTable* tableForLoader = (CustomLoaderClassTable*)ArchiveBuilder::ro_region_alloc(sizeof(CustomLoaderClassTable));
+      ArchivedCustomLoaderClassTable* tableForLoader = (ArchivedCustomLoaderClassTable*)ArchiveBuilder::ro_region_alloc(sizeof(ArchivedCustomLoaderClassTable));
       assert(_builder->has_been_archived(loader_id), "must be");
-      Symbol* buffered_sym = _builder->get_buffered_addr(loader_id);
-      tableForLoader->init(buffered_sym, ArchiveUtils::archive_array(table));
-      ArchivePtrMarker::mark_pointer(tableForLoader->loader_id_addr());
-      ArchivePtrMarker::mark_pointer(tableForLoader->class_list_addr());
+      Symbol* buffered_loader_id = _builder->get_buffered_addr(loader_id);
+      tableForLoader->init(buffered_loader_id, ArchiveUtils::archive_array(table));
+      tableForLoader->mark_pointers();
       unsigned int hash = Symbol::symbol_hash(loader_id);
       u4 delta = _builder->buffer_to_offset_u4((address)tableForLoader);
       _writer->add(hash, delta);
@@ -66,6 +70,19 @@ private:
 
 public:
   ClassLoaderIdToClassTableMap(unsigned size, unsigned max_size) : ResizeableHashTableBase(size, max_size) {}
+
+  void add_class(Symbol* loader_id, InstanceKlass* ik) {
+    assert(loader_id != nullptr, "sanity check");
+    ClassList** class_list_ptr = get(loader_id);
+    ClassList* class_list = nullptr;
+    if (class_list_ptr != nullptr) {
+      class_list = *class_list_ptr;
+    } else {
+      class_list = new ClassList(1000);
+      put(loader_id, class_list);
+    }
+    class_list->append(ik);
+  }
 
   void write_to_archive(ArchivedCustomLoaderClassTableMap* archived_map, const char* map_name) {
     CompactHashtableStats stats;

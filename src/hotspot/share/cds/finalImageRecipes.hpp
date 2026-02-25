@@ -62,7 +62,7 @@ private:
   Array<InstanceKlassRecipe>* _platform;
   Array<InstanceKlassRecipe>* _app;
 
-  Array<InstanceKlassRecipe>* _custom_loader_classes;
+  Array<InstanceKlassRecipe>* _aot_unsafe_custom_loader_classes;
 
   template<typename Function>
   void iterate_array(Function fn, Array<InstanceKlassRecipe>* array) {
@@ -77,27 +77,31 @@ public:
   FinalImageRecipeTable() :
     _boot1(nullptr), _boot2(nullptr),
     _platform(nullptr), _app(nullptr),
-    _custom_loader_classes(nullptr) {}
+    _aot_unsafe_custom_loader_classes(nullptr) {}
 
   Array<InstanceKlassRecipe>* boot1()    const { return _boot1;    }
   Array<InstanceKlassRecipe>* boot2()    const { return _boot2;    }
   Array<InstanceKlassRecipe>* platform() const { return _platform; }
   Array<InstanceKlassRecipe>* app()      const { return _app;      }
-  Array<InstanceKlassRecipe>* custom_loader_classes() const { return _custom_loader_classes; }
+  Array<InstanceKlassRecipe>* aot_unsafe_custom_loader_classes() const { return _aot_unsafe_custom_loader_classes; }
 
   void set_boot1   (Array<InstanceKlassRecipe>* value) { _boot1    = value; }
   void set_boot2   (Array<InstanceKlassRecipe>* value) { _boot2    = value; }
   void set_platform(Array<InstanceKlassRecipe>* value) { _platform = value; }
   void set_app     (Array<InstanceKlassRecipe>* value) { _app      = value; }
-  void set_custom_loader_classes(Array<InstanceKlassRecipe>* value) { _custom_loader_classes = value; }
+  void set_aot_unsafe_custom_loader_classes(Array<InstanceKlassRecipe>* value) { _aot_unsafe_custom_loader_classes = value; }
 
   template<typename Function>
-  void iterate_all(Function fn) {
+  void iterate_builtin_classes(Function fn) {
     iterate_array(fn, _boot1);
     iterate_array(fn, _boot2);
     iterate_array(fn, _platform);
     iterate_array(fn, _app);
-    iterate_array(fn, _custom_loader_classes);
+  }
+  template<typename Function>
+  void iterate_all_classes(Function fn) {
+    iterate_builtin_classes(fn);
+    iterate_array(fn, _aot_unsafe_custom_loader_classes);
   }
   void mark_pointers();
 };
@@ -158,6 +162,7 @@ class FinalImageRecipes {
 
   // Called when dumping preimage
   void record_all_classes();
+  void record_aot_safe_custom_loader_classes();
   Array<int>* record_recipe_for_constantpool(InstanceKlass* ik, int& flags);
   //void record_recipes_for_constantpool();
   void record_recipes_for_reflection_data();
@@ -165,7 +170,8 @@ class FinalImageRecipes {
 
   // Called when dumping final image
   void load_builtin_loader_classes(TRAPS);
-  void load_custom_loader_classes(TRAPS);
+  void load_aot_safe_custom_loader_classes(TRAPS);
+  void load_aot_unsafe_custom_loader_classes(TRAPS);
   void load_classes_in_table(Array<InstanceKlassRecipe>* classes, const char* category_name, Handle loader, TRAPS);
   void initiate_loading(JavaThread* current, const char* category_name, Handle initiating_loader, Array<InstanceKlassRecipe>* classes);
   void link_classes(JavaThread* current);
@@ -175,6 +181,7 @@ class FinalImageRecipes {
   void apply_recipes_impl(TRAPS);
   void load_and_link_all_classes(TRAPS);
   //void load_all_classes(TRAPS);
+  void apply_cp_recipes_for_class(JavaThread* current, InstanceKlassRecipe* ikr);
   void apply_recipes_for_constantpool(JavaThread* current);
   void apply_recipes_for_reflection_data(JavaThread* current);
   void apply_recipes_for_dynamic_proxies(TRAPS);

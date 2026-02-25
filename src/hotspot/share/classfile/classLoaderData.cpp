@@ -1133,3 +1133,9 @@ bool ClassLoaderData::contains_klass(Klass* klass) {
   }
   return false;
 }
+
+Symbol* ClassLoaderData::parent_aot_identity() const {
+  oop parent = java_lang_ClassLoader::parent(class_loader());
+  ClassLoaderData* parent_cld = java_lang_ClassLoader::loader_data(parent);
+  return parent_cld->aot_identity();
+}

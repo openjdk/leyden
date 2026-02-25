@@ -35,30 +35,11 @@
 #include "utilities/macros.hpp"
 
 class AOTLinkedClassTable;
-class CustomLoaderClassTable;
+class ArchivedCustomLoaderClassTable;
 class InstanceKlass;
 class SerializeClosure;
 template <typename T> class Array;
 enum class AOTLinkedClassCategory : int;
-
-class AOTLinkedClassTableForCustomLoader {
-private:
-  Symbol* _loader_id;
-  Array<InstanceKlass*>* _prelinked_classes;
-  bool _loaded;
-public:
-  void init(Symbol* aot_id, Array<InstanceKlass*>* class_list) {
-    _loader_id = aot_id;
-    _prelinked_classes = class_list;
-    _loaded = false;
-  }
-  Symbol* loader_id() const { return _loader_id; }
-  address* loader_id_addr() const { return (address*)&_loader_id; }
-  Array<InstanceKlass*>* class_list() const { return _prelinked_classes; }
-  address* class_list_addr() const { return (address*)&_prelinked_classes; }
-  void set_loaded(bool value) { _loaded = value; }
-  bool is_loaded() const { return _loaded; }
-};
 
 // AOTClassLinker is used during the AOTCache Assembly Phase.
 // It links eligible classes before they are written into the AOTCache
@@ -133,7 +114,7 @@ public:
 
   static void all_symbols_do(MetaspaceClosure* it);
   static void serialize_prelinked_classes_map_header(SerializeClosure* soc);
-  static CustomLoaderClassTable* get_archived_prelinked_table(Symbol* aot_id);
+  static ArchivedCustomLoaderClassTable* get_archived_prelinked_table(Symbol* aot_id);
 
   // Used in logging: "boot1", "boot2", "plat", "app" and "unreg";
   static const char* class_category_name(AOTLinkedClassCategory category);

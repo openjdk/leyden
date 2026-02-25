@@ -43,14 +43,13 @@
 #include "runtime/mutexLocker.hpp"
 #include "utilities/resizableHashTable.hpp"
 
+static const unsigned INITIAL_TABLE_SIZE = 997; // prime number
+static const unsigned MAX_TABLE_SIZE     = 10000;
+
 GrowableArray<InstanceKlass*>* FinalImageRecipes::_tmp_reflect_klasses = nullptr;
 GrowableArray<int>* FinalImageRecipes::_tmp_reflect_flags = nullptr;
 GrowableArray<FinalImageRecipes::TmpDynamicProxyClassInfo>* FinalImageRecipes::_tmp_dynamic_proxy_classes = nullptr;
 static FinalImageRecipes* _final_image_recipes = nullptr;
-
-void* FinalImageRecipes::operator new(size_t size) throw() {
-  return ArchiveBuilder::current()->ro_region_alloc(size);
-}
 
 static void mark_pointers_in_array(Array<InstanceKlassRecipe>* array) {
   if (array == nullptr) {
@@ -62,6 +61,102 @@ static void mark_pointers_in_array(Array<InstanceKlassRecipe>* array) {
   }
 }
 
+class ArchivedCustomLoaderClassRecipesTable {
+private:
+  Symbol* _loader_id;
+  Array<InstanceKlassRecipe>* _class_recipes_list;
+
+  address* loader_id_addr() const { return (address*)&_loader_id; }
+  address* class_recipes_list_addr() const { return (address*)&_class_recipes_list; }
+
+public:
+  void init(Symbol* aot_id, Array<InstanceKlassRecipe>* class_recipes_list) {
+    _loader_id = aot_id;
+    _class_recipes_list = class_recipes_list;
+  }
+  Symbol* loader_id() const { return _loader_id; }
+  Array<InstanceKlassRecipe>* class_recipes_list() const { return _class_recipes_list; }
+
+  void mark_pointers() {
+    ArchivePtrMarker::mark_pointer(loader_id_addr());
+    ArchivePtrMarker::mark_pointer(class_recipes_list_addr());
+    mark_pointers_in_array(_class_recipes_list);
+  }
+};
+
+inline bool custom_loader_class_recipes_equals(ArchivedCustomLoaderClassRecipesTable* table, Symbol* loader_id, int len_unused) {
+  return table->loader_id()->equals(loader_id);
+}
+
+class ArchivedCustomLoaderClassRecipesTableMap : public OffsetCompactHashtable<Symbol*, ArchivedCustomLoaderClassRecipesTable*, custom_loader_class_recipes_equals>
+{
+public:
+  ArchivedCustomLoaderClassRecipesTable* get_class_recipe_list(Symbol* aot_id) {
+    unsigned int hash = Symbol::symbol_hash(aot_id);
+    return lookup(aot_id, hash, 0 /* ignored */);
+  }
+};
+
+typedef GrowableArrayCHeap<InstanceKlassRecipe, mtClassShared> ClassRecipeList;
+
+class ClassLoaderIdToClassRecipesTableMap : public ResizeableHashTable<Symbol*, ClassRecipeList*, AnyObj::C_HEAP, mtClass>
+{
+  using ResizeableHashTableBase = ResizeableHashTable<Symbol*, ClassRecipeList*, AnyObj::C_HEAP, mtClass>;
+private:
+  class CopyClassRecipeTableToArchive : StackObj {
+  private:
+    CompactHashtableWriter* _writer;
+    ArchiveBuilder* _builder;
+  public:
+    CopyClassRecipeTableToArchive(CompactHashtableWriter* writer) : _writer(writer),
+                                                                    _builder(ArchiveBuilder::current())
+    {}
+
+    bool do_entry(Symbol* loader_id, ClassRecipeList* table) {
+      ArchivedCustomLoaderClassRecipesTable* tableForLoader = (ArchivedCustomLoaderClassRecipesTable*)ArchiveBuilder::ro_region_alloc(sizeof(ArchivedCustomLoaderClassRecipesTable));
+      assert(_builder->has_been_archived(loader_id), "must be");
+      Symbol* buffered_loader_id = _builder->get_buffered_addr(loader_id);
+      tableForLoader->init(buffered_loader_id, ArchiveUtils::archive_array(table));
+      tableForLoader->mark_pointers();
+      unsigned int hash = Symbol::symbol_hash(loader_id);
+      u4 delta = _builder->buffer_to_offset_u4((address)tableForLoader);
+      _writer->add(hash, delta);
+      return true;
+    }
+  };
+
+public:
+  ClassLoaderIdToClassRecipesTableMap(unsigned size, unsigned max_size) : ResizeableHashTableBase(size, max_size) {}
+
+  void add_class_recipe(Symbol* loader_id, InstanceKlassRecipe* ikr) {
+    assert(loader_id != nullptr, "sanity check");
+    ClassRecipeList** class_recipe_list_ptr = get(loader_id);
+    ClassRecipeList* class_recipe_list = nullptr;
+    if (class_recipe_list_ptr != nullptr) {
+      class_recipe_list = *class_recipe_list_ptr;
+    } else {
+      class_recipe_list = new ClassRecipeList(1000);
+      put(loader_id, class_recipe_list);
+    }
+    class_recipe_list->append(*ikr);
+  }
+
+  void write_to_archive(ArchivedCustomLoaderClassRecipesTableMap* archived_map, const char* map_name) {
+    CompactHashtableStats stats;
+    CompactHashtableWriter writer(number_of_entries(), &stats);
+    CopyClassRecipeTableToArchive archiver(&writer);
+    iterate(&archiver);
+    writer.dump(archived_map, map_name);
+  }
+};
+
+ClassLoaderIdToClassRecipesTableMap* _aot_safe_loader_classes_map;
+ArchivedCustomLoaderClassRecipesTableMap _archived_aot_safe_loader_classes_map;
+
+void* FinalImageRecipes::operator new(size_t size) throw() {
+  return ArchiveBuilder::current()->ro_region_alloc(size);
+}
+
 void FinalImageRecipeTable::mark_pointers() {
   ArchivePtrMarker::mark_pointer(&_boot1);
   mark_pointers_in_array(_boot1);
@@ -71,8 +166,8 @@ void FinalImageRecipeTable::mark_pointers() {
   mark_pointers_in_array(_platform);
   ArchivePtrMarker::mark_pointer(&_app);
   mark_pointers_in_array(_app);
-  ArchivePtrMarker::mark_pointer(&_custom_loader_classes);
-  mark_pointers_in_array(_custom_loader_classes);
+  ArchivePtrMarker::mark_pointer(&_aot_unsafe_custom_loader_classes);
+  mark_pointers_in_array(_aot_unsafe_custom_loader_classes);
 }
 
 void FinalImageRecipes::record_all_classes() {
@@ -82,8 +177,43 @@ void FinalImageRecipes::record_all_classes() {
   _class_table->set_boot2(write_classes(nullptr, false, true));
   _class_table->set_platform(write_classes(SystemDictionary::java_platform_loader(), false, true));
   _class_table->set_app(write_classes(SystemDictionary::java_system_loader(), false, true));
-  _class_table->set_custom_loader_classes(write_classes(nullptr, false, false));
+  _class_table->set_aot_unsafe_custom_loader_classes(write_classes(nullptr, false, false));
+  record_aot_safe_custom_loader_classes();
   _class_table->mark_pointers();
+}
+
+void FinalImageRecipes::record_aot_safe_custom_loader_classes() {
+  ResourceMark rm;
+  GrowableArray<Klass*>* all_classes = ArchiveBuilder::current()->klasses();
+  _aot_safe_loader_classes_map = new (mtClass) ClassLoaderIdToClassRecipesTableMap(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
+  for (int i = 0; i < all_classes->length(); i++) {
+    Klass* k = all_classes->at(i);
+    if (k->is_instance_klass()) {
+      InstanceKlass* ik = InstanceKlass::cast(k);
+      if (SystemDictionaryShared::is_builtin(ik) || !ik->is_defined_by_aot_safe_custom_loader()) {
+        continue;
+      }
+
+      int flags = 0;
+      Array<int>* cp_recipe = record_recipe_for_constantpool(ik, flags);
+      InstanceKlassRecipe ikr(ArchiveBuilder::current()->get_buffered_addr(ik), cp_recipe, flags);
+
+      Symbol* loader_id = ik->cl_aot_identity();
+      assert(loader_id != nullptr, "must be");
+      _aot_safe_loader_classes_map->add_class_recipe(loader_id, &ikr);
+    }
+  }
+  if (log_is_enabled(Info, aot, load)) {
+    _aot_safe_loader_classes_map->iterate_all([&](Symbol* loader_id, ClassRecipeList* table) {
+      ResourceMark rm;
+      for (int i = 0; i < table->length(); i++) {
+        InstanceKlassRecipe* ikr = table->adr_at(i);
+        InstanceKlass* ik = ikr->instance_klass();
+        log_info(aot, load)("category %s[%d] %s", loader_id->as_C_string(), i, ik->external_name());
+      }
+    });
+  }
+  _aot_safe_loader_classes_map->write_to_archive(&_archived_aot_safe_loader_classes_map, "archived custom loader classes map");
 }
 
 Array<InstanceKlassRecipe>* FinalImageRecipes::write_classes(oop class_loader, bool is_javabase, bool is_builtin_loader) {
@@ -104,7 +234,7 @@ Array<InstanceKlassRecipe>* FinalImageRecipes::write_classes(oop class_loader, b
         }
       } else {
         // skip builtin loader classes when writing custom loader classes
-        if (SystemDictionaryShared::is_builtin(ik)) {
+        if (SystemDictionaryShared::is_builtin(ik) || ik->is_defined_by_aot_safe_custom_loader()) {
           continue;
         }
       }
@@ -112,6 +242,8 @@ Array<InstanceKlassRecipe>* FinalImageRecipes::write_classes(oop class_loader, b
       Array<int>* cp_recipe = record_recipe_for_constantpool(ik, flags);
       InstanceKlassRecipe recipe(ArchiveBuilder::current()->get_buffered_addr(ik), cp_recipe, flags);
       list.append(recipe);
+      const char* category = AOTClassLinker::class_category_name(ik);
+      log_info(aot, load)("category %s[%d] %s", category, list.length()-1, ik->external_name());
     }
   }
 
@@ -119,7 +251,7 @@ Array<InstanceKlassRecipe>* FinalImageRecipes::write_classes(oop class_loader, b
     return nullptr;
   } else {
     const char* category = AOTClassLinker::class_category_name(list.adr_at(0)->instance_klass());
-    log_info(aot, link)("wrote %d class(es) for category %s", list.length(), category);
+    log_info(aot, link)("recorded %d class(es) for category %s", list.length(), category);
     return ArchiveUtils::archive_array(&list);
   }
 }
@@ -201,115 +333,39 @@ Array<int>* FinalImageRecipes::record_recipe_for_constantpool(InstanceKlass* ik,
   }
 }
 
-/*
-void FinalImageRecipes::record_recipes_for_constantpool() {
-  ResourceMark rm;
-
-  // The recipes are recorded regardless of CDSConfig::is_dumping_{invokedynamic,dynamic_proxies,reflection_data}().
-  // If some of these options are not enabled, the corresponding recipes will be
-  // ignored during the final image assembly.
-
-  GrowableArray<Array<int>*> tmp_cp_recipes;
-  GrowableArray<int> tmp_flags;
-
-  GrowableArray<Klass*>* klasses = ArchiveBuilder::current()->klasses();
-  for (int i = 0; i < klasses->length(); i++) {
-    GrowableArray<int> cp_indices;
-    int flags = 0;
-
-    Klass* k = klasses->at(i);
-    if (k->is_instance_klass()) {
-      InstanceKlass* ik = InstanceKlass::cast(k);
+void FinalImageRecipes::apply_cp_recipes_for_class(JavaThread* current, InstanceKlassRecipe* ikr) {
+  InstanceKlass* ik = ikr->instance_klass();
+  Array<int>* cp_indices = ikr->cp_recipe();
+  int flags = ikr->flags();
+  if (cp_indices != nullptr) {
+    if (!strcmp(ik->external_name(), "org.openjdk.aot.testclass.Foo")) {
+      log_info(cds)("Applying constant pool recipes for %s", ik->external_name());
+    }
+    if (ik->is_loaded()) {
+      ResourceMark rm(current);
       ConstantPool* cp = ik->constants();
-      ConstantPoolCache* cp_cache = cp->cache();
-
-      if (ik->is_initialized()) {
-        flags |= WAS_INITED;
+      GrowableArray<bool> preresolve_list(cp->length(), cp->length(), false);
+      for (int j = 0; j < cp_indices->length(); j++) {
+        preresolve_list.at_put(cp_indices->at(j), true);
       }
-
-      for (int cp_index = 1; cp_index < cp->length(); cp_index++) { // Index 0 is unused
-        if (cp->tag_at(cp_index).value() == JVM_CONSTANT_Class) {
-          Klass* k = cp->resolved_klass_at(cp_index);
-          if (k->is_instance_klass()) {
-            cp_indices.append(cp_index);
-            flags |= CP_RESOLVE_CLASS;
-          }
-        }
+      if ((flags & CP_RESOLVE_CLASS) != 0) {
+        AOTConstantPoolResolver::preresolve_class_cp_entries(current, ik, &preresolve_list);
       }
-
-      if (cp_cache != nullptr) {
-        Array<ResolvedFieldEntry>* field_entries = cp_cache->resolved_field_entries();
-        if (field_entries != nullptr) {
-          for (int i = 0; i < field_entries->length(); i++) {
-            ResolvedFieldEntry* rfe = field_entries->adr_at(i);
-            if (rfe->is_resolved(Bytecodes::_getstatic) ||
-                rfe->is_resolved(Bytecodes::_putstatic) ||
-                rfe->is_resolved(Bytecodes::_getfield) ||
-                rfe->is_resolved(Bytecodes::_putfield)) {
-              cp_indices.append(rfe->constant_pool_index());
-              flags |= CP_RESOLVE_FIELD_AND_METHOD;
-            }
-          }
-        }
-
-        Array<ResolvedMethodEntry>* method_entries = cp_cache->resolved_method_entries();
-        if (method_entries != nullptr) {
-          for (int i = 0; i < method_entries->length(); i++) {
-            ResolvedMethodEntry* rme = method_entries->adr_at(i);
-            if (rme->is_resolved(Bytecodes::_invokevirtual) ||
-                rme->is_resolved(Bytecodes::_invokespecial) ||
-                rme->is_resolved(Bytecodes::_invokeinterface) ||
-                rme->is_resolved(Bytecodes::_invokestatic) ||
-                rme->is_resolved(Bytecodes::_invokehandle)) {
-              cp_indices.append(rme->constant_pool_index());
-              flags |= CP_RESOLVE_FIELD_AND_METHOD;
-            }
-          }
-        }
-
-        Array<ResolvedIndyEntry>* indy_entries = cp_cache->resolved_indy_entries();
-        if (indy_entries != nullptr) {
-          for (int i = 0; i < indy_entries->length(); i++) {
-            ResolvedIndyEntry* rie = indy_entries->adr_at(i);
-            int cp_index = rie->constant_pool_index();
-            if (rie->is_resolved()) {
-              cp_indices.append(cp_index);
-              flags |= CP_RESOLVE_INDY;
-            }
-          }
-        }
+      if ((flags & CP_RESOLVE_FIELD_AND_METHOD) != 0) {
+        AOTConstantPoolResolver::preresolve_field_and_method_cp_entries(current, ik, &preresolve_list);
+      }
+      if ((flags & CP_RESOLVE_INDY) != 0) {
+        AOTConstantPoolResolver::preresolve_indy_cp_entries(current, ik, &preresolve_list);
       }
     }
-
-    if (cp_indices.length() > 0) {
-      LogStreamHandle(Trace, aot, resolve) log;
-      if (log.is_enabled()) {
-        log.print("ConstantPool entries for %s to be pre-resolved:", k->external_name());
-        for (int i = 0; i < cp_indices.length(); i++) {
-          log.print(" %d", cp_indices.at(i));
-        }
-        log.print("\n");
-      }
-      tmp_cp_recipes.append(ArchiveUtils::archive_array(&cp_indices));
-    } else {
-      tmp_cp_recipes.append(nullptr);
-    }
-    tmp_flags.append(flags);
   }
-
-  _cp_recipes = ArchiveUtils::archive_array(&tmp_cp_recipes);
-  ArchivePtrMarker::mark_pointer(&_cp_recipes);
-
-  _flags = ArchiveUtils::archive_array(&tmp_flags);
-  ArchivePtrMarker::mark_pointer(&_flags);
 }
-*/
 
 void FinalImageRecipes::apply_recipes_for_constantpool(JavaThread* current) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
 
-  //for (int i = 0; i < _all_klasses->length(); i++) {
-  _class_table->iterate_all([&](InstanceKlassRecipe* ikr) {
+  _class_table->iterate_builtin_classes([&](InstanceKlassRecipe* ikr) {
+    apply_cp_recipes_for_class(current, ikr);
     InstanceKlass* ik = ikr->instance_klass();
     Array<int>* cp_indices = ikr->cp_recipe();
     int flags = ikr->flags();
@@ -334,6 +390,13 @@ void FinalImageRecipes::apply_recipes_for_constantpool(JavaThread* current) {
           AOTConstantPoolResolver::preresolve_indy_cp_entries(current, ik, &preresolve_list);
         }
       }
+    }
+  });
+
+  _archived_aot_safe_loader_classes_map.iterate_all([&](ArchivedCustomLoaderClassRecipesTable* cl_table) {
+    Array<InstanceKlassRecipe>* recipes_list = cl_table->class_recipes_list();
+    for (int i = 0; i < recipes_list->length(); i++) {
+      apply_cp_recipes_for_class(current, recipes_list->adr_at(i));
     }
   });
 }
@@ -423,7 +486,26 @@ void FinalImageRecipes::load_builtin_loader_classes(TRAPS) {
   load_classes_in_table(_class_table->app(), "app", h_system_loader, CHECK);
 }
 
-void FinalImageRecipes::load_custom_loader_classes(TRAPS) {
+void FinalImageRecipes::load_aot_safe_custom_loader_classes(TRAPS) {
+  UnregisteredClasses::initialize(CHECK);
+  _archived_aot_safe_loader_classes_map.iterate_all([&](ArchivedCustomLoaderClassRecipesTable* cl_table) {
+    Handle unreg_class_loader = UnregisteredClasses::create_unregistered_loader(THREAD);
+    SystemDictionary::register_loader(unreg_class_loader);
+    assert(unreg_class_loader.not_null(), "must be");
+    ResourceMark rm;
+    char* loader_id_str = cl_table->loader_id()->as_C_string();
+
+    initiate_loading(THREAD, loader_id_str, unreg_class_loader, _class_table->boot1());
+    initiate_loading(THREAD, loader_id_str, unreg_class_loader, _class_table->boot2());
+    initiate_loading(THREAD, loader_id_str, unreg_class_loader, _class_table->platform());
+    initiate_loading(THREAD, loader_id_str, unreg_class_loader, _class_table->app());
+
+    Array<InstanceKlassRecipe>* recipes = cl_table->class_recipes_list();
+    load_classes_in_table(recipes, loader_id_str, unreg_class_loader, CHECK);
+  });
+}
+
+void FinalImageRecipes::load_aot_unsafe_custom_loader_classes(TRAPS) {
   precond(CDSConfig::is_dumping_aot_linked_classes());
   // Use UnregisteredClassLoader to load these classes
   UnregisteredClasses::initialize(CHECK);
@@ -431,11 +513,12 @@ void FinalImageRecipes::load_custom_loader_classes(TRAPS) {
   SystemDictionary::register_loader(unreg_class_loader);
   assert(unreg_class_loader.not_null(), "must be");
 
-  initiate_loading(THREAD, "app", unreg_class_loader, _class_table->boot1());
-  initiate_loading(THREAD, "app", unreg_class_loader, _class_table->boot2());
-  initiate_loading(THREAD, "app", unreg_class_loader, _class_table->platform());
-  initiate_loading(THREAD, "app", unreg_class_loader, _class_table->app());
-  load_classes_in_table(_class_table->custom_loader_classes(), "custom-loader", unreg_class_loader, CHECK);
+  initiate_loading(THREAD, "unreg", unreg_class_loader, _class_table->boot1());
+  initiate_loading(THREAD, "unreg", unreg_class_loader, _class_table->boot2());
+  initiate_loading(THREAD, "unreg", unreg_class_loader, _class_table->platform());
+  initiate_loading(THREAD, "unreg", unreg_class_loader, _class_table->app());
+
+  load_classes_in_table(_class_table->aot_unsafe_custom_loader_classes(), "unreg", unreg_class_loader, CHECK);
 }
 
 void FinalImageRecipes::load_classes_in_table(Array<InstanceKlassRecipe>* recipes,
@@ -478,9 +561,11 @@ void FinalImageRecipes::initiate_loading(JavaThread* current, const char* catego
     return;
   }
 
+#if 0
   assert(initiating_loader() == SystemDictionary::java_platform_loader() ||
          initiating_loader() == SystemDictionary::java_system_loader() ||
          initiating_loader() == UnregisteredClasses::unregistered_class_loader(current)(), "must be");
+#endif
   ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(initiating_loader());
   MonitorLocker mu1(SystemDictionary_lock);
 
@@ -534,7 +619,10 @@ void FinalImageRecipes::link_classes_impl(TRAPS) {
   link_classes_in_table(_class_table->boot2(), CHECK);
   link_classes_in_table(_class_table->platform(), CHECK);
   link_classes_in_table(_class_table->app(), CHECK);
-  link_classes_in_table(_class_table->custom_loader_classes(), CHECK);
+  link_classes_in_table(_class_table->aot_unsafe_custom_loader_classes(), CHECK);
+  _archived_aot_safe_loader_classes_map.iterate_all([&](ArchivedCustomLoaderClassRecipesTable* cl_table) {
+    link_classes_in_table(cl_table->class_recipes_list(), CHECK);
+  });
 }
 
 void FinalImageRecipes::link_classes_in_table(Array<InstanceKlassRecipe>* recipes, TRAPS) {
@@ -558,7 +646,8 @@ void FinalImageRecipes::load_and_link_all_classes(TRAPS) {
   /* Built-in loader classes come first */
   load_builtin_loader_classes(CHECK);
   /* Now load custom loader classes */
-  load_custom_loader_classes(CHECK);
+  load_aot_safe_custom_loader_classes(CHECK);
+  load_aot_unsafe_custom_loader_classes(CHECK);
   link_classes(THREAD);
 }
 
@@ -740,5 +829,8 @@ void FinalImageRecipes::apply_recipes_impl(TRAPS) {
 }
 
 void FinalImageRecipes::serialize(SerializeClosure* soc) {
+  if (CDSConfig::is_dumping_preimage_static_archive() || (CDSConfig::is_dumping_final_static_archive() && soc->reading())) {
+    _archived_aot_safe_loader_classes_map.serialize_header(soc);
+  }
   soc->do_ptr((void**)&_final_image_recipes);
 }
