@@ -65,7 +65,7 @@ address AOTMappedHeapWriter::_requested_bottom;
 address AOTMappedHeapWriter::_requested_top;
 
 static size_t _num_strings = 0;
-static size_t _string_bytes = 0; 
+static size_t _string_bytes = 0;
 static size_t _num_packages = 0;
 static size_t _num_protection_domains = 0;
 
@@ -900,10 +900,6 @@ void AOTMappedHeapWriter::compute_ptrmap(AOTMappedHeapInfo* heap_info) {
 
     guarantee(ArchiveBuilder::current()->has_been_archived((address)native_ptr),
               "Metadata %p should have been archived", native_ptr);
-
-    if (RegeneratedClasses::has_been_regenerated((address)native_ptr)) {
-      native_ptr = (Metadata*)RegeneratedClasses::get_regenerated_object((address)native_ptr);
-    }
 
     address buffered_native_ptr = ArchiveBuilder::current()->get_buffered_addr((address)native_ptr);
     address requested_native_ptr = ArchiveBuilder::current()->to_requested(buffered_native_ptr);
