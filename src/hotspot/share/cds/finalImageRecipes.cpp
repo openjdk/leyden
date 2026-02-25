@@ -651,61 +651,6 @@ void FinalImageRecipes::load_and_link_all_classes(TRAPS) {
   link_classes(THREAD);
 }
 
-#if 0
-void FinalImageRecipes::load_all_classes(TRAPS) {
-  assert(CDSConfig::is_dumping_final_static_archive(), "sanity");
-  UnregisteredClasses::initialize(CHECK);
-  Handle class_loader(THREAD, SystemDictionary::java_system_loader());
-  for (int i = 0; i < _all_klasses->length(); i++) {
-    Klass* k = _all_klasses->at(i);
-    int flags = _flags->at(i);
-    if (k->is_instance_klass()) {
-      InstanceKlass* ik = InstanceKlass::cast(k);
-      if (!strcmp(ik->external_name(), "org/openjdk/aot/testclass/Foo")) {
-        log_info(cds)("FinalImageRecipes loading class %s", ik->external_name());
-      }
-      if (ik->defined_by_other_loaders() && !k->is_defined_by_aot_safe_custom_loader()) {
-        SystemDictionaryShared::init_dumptime_info(ik);
-        SystemDictionaryShared::add_unregistered_class(THREAD, ik);
-        SystemDictionaryShared::copy_unregistered_class_size_and_crc32(ik);
-      } else if (!ik->is_hidden() && !ik->defined_by_other_loaders()) {
-        Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), class_loader, true, CHECK);
-        if (actual != ik) {
-          ResourceMark rm(THREAD);
-          log_error(aot)("Unable to resolve class from CDS archive: %s", ik->external_name());
-          log_error(aot)("Expected: " INTPTR_FORMAT ", actual: " INTPTR_FORMAT, p2i(ik), p2i(actual));
-          log_error(aot)("Please check if your VM command-line is the same as in the training run");
-          AOTMetaspace::unrecoverable_writing_error();
-        }
-        assert(ik->is_loaded(), "must be");
-        ik->link_class(CHECK);
-
-        if (ik->has_aot_safe_initializer() && (flags & WAS_INITED) != 0) {
-          assert(ik->class_loader() == nullptr, "supported only for boot classes for now");
-          ResourceMark rm(THREAD);
-          log_info(aot, init)("Initializing %s", ik->external_name());
-          ik->initialize(CHECK);
-        }
-      } else if (k->is_defined_by_aot_safe_custom_loader()) {
-        // Use UnregisteredClassLoader to load these classes
-        Handle unreg_class_loader = UnregisteredClasses::unregistered_class_loader(THREAD);
-        assert(unreg_class_loader.not_null(), "must be");
-        Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), unreg_class_loader, true, CHECK);
-        if (actual != ik) {
-          ResourceMark rm(THREAD);
-          log_error(aot)("Unable to resolve class from CDS archive: %s", ik->external_name());
-          log_error(aot)("Expected: " INTPTR_FORMAT ", actual: " INTPTR_FORMAT, p2i(ik), p2i(actual));
-          log_error(aot)("Please check if your VM command-line is the same as in the training run");
-          AOTMetaspace::unrecoverable_writing_error();
-        }
-        assert(ik->is_loaded(), "must be");
-        ik->link_class(CHECK);
-      }
-    }
-  }
-}
-#endif
-
 void FinalImageRecipes::apply_recipes_for_reflection_data(JavaThread* current) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
 

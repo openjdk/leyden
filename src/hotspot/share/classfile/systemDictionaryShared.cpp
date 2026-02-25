@@ -825,7 +825,7 @@ public:
   UnregisteredClassesDuplicationChecker() : _thread(Thread::current()) {}
 
   void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (!SystemDictionaryShared::is_builtin(k)) {
+    if (!SystemDictionaryShared::is_builtin(k) && !k->is_defined_by_aot_safe_custom_loader()) {
       _list.append(k);
     }
   }
@@ -958,7 +958,7 @@ bool SystemDictionaryShared::should_be_excluded(Klass* k) {
 
 void SystemDictionaryShared::finish_exclusion_checks() {
   assert_at_safepoint();
-  if (CDSConfig::is_dumping_dynamic_archive() || (CDSConfig::is_dumping_preimage_static_archive() && !CDSConfig::supports_custom_loaders())) {
+  if (CDSConfig::is_dumping_dynamic_archive() || CDSConfig::is_dumping_preimage_static_archive()) {
     // Do this first -- if a base class is excluded due to duplication,
     // all of its subclasses will also be excluded.
     ResourceMark rm;

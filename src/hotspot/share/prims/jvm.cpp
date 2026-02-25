@@ -2255,15 +2255,18 @@ JVM_ENTRY_PROF(jboolean, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCom
   return JNI_FALSE;
 JVM_END
 
-JVM_ENTRY_PROF(jboolean, JVM_RegisterURLClassLoaderAsAOTSafeLoader, JVM_RegisterURLClassLoaderAsAOTSafeLoader(JNIEnv *env, jobject loader, jstring classpath))
+JVM_ENTRY_PROF(jboolean, JVM_RegisterURLClassLoaderAsAOTSafeLoader, JVM_RegisterURLClassLoaderAsAOTSafeLoader(JNIEnv *env, jobject loader, jstring aot_id, jstring classpath))
   if (CDSConfig::supports_custom_loaders()) {
     ResourceMark rm(THREAD);
     Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
     ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
     assert(loader_data->aot_identity() != nullptr, "must be");
+    const char* aot_id_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(aot_id));
     const char *classpath_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(classpath));
     if (CDSConfig::is_dumping_preimage_static_archive()) {
-      URLClassLoaderClasspathSupport::add_urlclassloader_classpath(loader_data, classpath_str);
+      if (!URLClassLoaderClasspathSupport::add_urlclassloader_classpath(loader_data, classpath_str)) {
+        return JNI_FALSE;
+      }
     } else if (CDSConfig::is_using_aot_linked_classes()) {
       if (!URLClassLoaderClasspathSupport::verify_archived_classpath(loader_data, classpath_str)) {
         return JNI_FALSE;

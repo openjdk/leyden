@@ -180,7 +180,6 @@ class FinalImageRecipes {
 
   void apply_recipes_impl(TRAPS);
   void load_and_link_all_classes(TRAPS);
-  //void load_all_classes(TRAPS);
   void apply_cp_recipes_for_class(JavaThread* current, InstanceKlassRecipe* ikr);
   void apply_recipes_for_constantpool(JavaThread* current);
   void apply_recipes_for_reflection_data(JavaThread* current);

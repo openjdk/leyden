@@ -1129,12 +1129,12 @@ void URLClassLoaderClasspathSupport::reload_runtime_map() {
   });
 }
 
-void URLClassLoaderClasspathSupport::add_urlclassloader_classpath(ClassLoaderData* loader_data, const char* classpath) {
+bool URLClassLoaderClasspathSupport::add_urlclassloader_classpath(ClassLoaderData* loader_data, const char* aot_id_str, const char* classpath) {
   assert(_aot_id_to_classpath != nullptr, "sanity check");
-  Symbol* aot_id = loader_data->aot_identity();
+  Symbol* aot_id = SymbolTable::new_symbol(aot_id_str);
   if (_aot_id_to_classpath->contains(aot_id)) {
     // cannot allow aot_id clash; return without doing anything
-    return;
+    return false;
   }
   GrowableClassLocationArray* locations = new GrowableClassLocationArray(10);
   URLClassLoaderClassLocationStream css(classpath);
@@ -1145,6 +1145,7 @@ void URLClassLoaderClasspathSupport::add_urlclassloader_classpath(ClassLoaderDat
     locations->append(cs);
   }
   _aot_id_to_classpath->put(aot_id, locations);
+  return true;
 }
 
 class URLClassLoaderClasspathArchiver : StackObj {

@@ -689,12 +689,15 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
             return false;
         }
         if (canRegisterAsAOTSafe(urls)) {
-            setAOTIdentity(convertToAOTId(classpath));
-            boolean rc = registerAsAOTSafeImpl(classpath);
-            if (DEBUG) {
-                if (rc) {
+            String aotId = convertToAOTId(classpath);
+            boolean rc = registerAsAOTSafeImpl(aotId, classpath);
+            if (rc) {
+                setAOTIdentity(aotId);
+                if (DEBUG) {
                     System.out.println("DEBUG: Registered URLClassLoader as AOT-safe with classpath " + classpath);
-                } else {
+                }
+            } else {
+                if (DEBUG) {
                     System.out.println("DEBUG: Failed to register URLClassLoader as AOT-safe with classpath " + classpath);
                 }
             }
