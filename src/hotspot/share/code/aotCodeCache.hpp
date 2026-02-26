@@ -115,7 +115,14 @@ private:
   bool   _not_entrant; // Deoptimized
   bool   _load_fail;   // Failed to load due to some klass state
   address _dumptime_content_start_addr; // CodeBlob::content_begin() at dump time; used for applying relocations
-
+  union {
+    uint* _clinit_dependencies;  // list of initialized classes referenced during AOT compilation
+    struct { // Next values are used during production run
+      uint      _clinit_dependencies_offset;  // offset in common class init dependencies list
+      uint16_t  _clinit_dependencies_cnt;     // count of class init dependencies
+      uint16_t  _clinit_dependencies_left;    // left class init dependencies
+    };
+  };
 public:
   // this constructor is used only by AOTCodeEntry::Stub
   AOTCodeEntry(uint offset, uint size, uint name_offset, uint name_size,
@@ -132,6 +139,8 @@ public:
     _code_size    = code_size;
 
     _dumptime_content_start_addr = nullptr;
+    _clinit_dependencies = nullptr;
+
     _num_inlined_bytecodes = 0;
     _comp_level   = 0;
     _comp_id      = 0;
@@ -162,8 +171,9 @@ public:
     _code_size    = 0; // unused
 
     _dumptime_content_start_addr = dumptime_content_start_addr;
-    _num_inlined_bytecodes = 0;
+    _clinit_dependencies = nullptr;
 
+    _num_inlined_bytecodes = 0;
     _comp_level   = comp_level;
     _comp_id      = comp_id;
     _has_oop_maps = has_oop_maps;
@@ -215,6 +225,12 @@ public:
 
   bool load_fail()  const { return _load_fail; }
   void set_load_fail()    { _load_fail = true; }
+
+  void set_clinit_dependencies(uint* deps);
+  uint* record_clinit_dependencies(uint* buf, uint* start);
+
+  uint clinit_dependencies_left() const { return _clinit_dependencies_left; }
+  uint check_clinit_dependencies();
 
   void print(outputStream* st) const NOT_CDS_RETURN;
 
@@ -355,6 +371,8 @@ protected:
     uint   _entries_offset;  // offset of AOTCodeEntry array describing entries
     uint   _preload_entries_count; // entries for pre-loading code
     uint   _preload_entries_offset;
+    uint   _clinit_deps_count;
+    uint   _clinit_deps_offset;
     uint   _adapters_count;
     uint   _shared_blobs_count;
     uint   _C1_blobs_count;
@@ -367,6 +385,7 @@ protected:
               uint strings_count,  uint strings_offset,
               uint entries_count,  uint search_table_offset, uint entries_offset,
               uint preload_entries_count, uint preload_entries_offset,
+              uint clinit_deps_count, uint clinit_deps_offset,
               uint adapters_count, uint shared_blobs_count,
               uint C1_blobs_count, uint C2_blobs_count,
               uint stubs_count, uint cpu_features_offset) {
@@ -379,6 +398,8 @@ protected:
       _entries_offset = entries_offset;
       _preload_entries_count  = preload_entries_count;
       _preload_entries_offset = preload_entries_offset;
+      _clinit_deps_count  = clinit_deps_count;
+      _clinit_deps_offset = clinit_deps_offset;
       _adapters_count = adapters_count;
       _shared_blobs_count = shared_blobs_count;
       _C1_blobs_count = C1_blobs_count;
@@ -395,6 +416,8 @@ protected:
     uint entries_offset() const { return _entries_offset; }
     uint preload_entries_count()  const { return _preload_entries_count; }
     uint preload_entries_offset() const { return _preload_entries_offset; }
+    uint clinit_deps_count()  const     { return _clinit_deps_count; }
+    uint clinit_deps_offset() const     { return _clinit_deps_offset; }
     uint adapters_count() const { return _adapters_count; }
     uint shared_blobs_count()    const { return _shared_blobs_count; }
     uint C1_blobs_count() const { return _C1_blobs_count; }
@@ -440,6 +463,7 @@ private:
   AOTCodeEntry* _store_entries;  // Used when writing cache
   const char*   _C_strings_buf;  // Loaded buffer for _C_strings[] table
   uint          _store_entries_cnt;
+  uint          _clinit_deps_cnt; // total count
 
   uint _compile_id;
   uint _comp_level;
@@ -521,10 +545,14 @@ public:
     _store_entries -= 1;
     return _store_entries;
   }
+  void count_clinit_deps(int len) { _clinit_deps_cnt += len; }
+
   void preload_aot_code(TRAPS);
 
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
+
+  uint* clinit_deps() const { return (uint*)addr(_load_header->clinit_deps_offset()); }
 
   void store_cpu_features(char*& buffer, uint buffer_size);
 

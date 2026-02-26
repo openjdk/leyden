@@ -467,6 +467,7 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
   _store_entries(nullptr),
   _C_strings_buf(nullptr),
   _store_entries_cnt(0),
+  _clinit_deps_cnt(0),
   _compile_id(0),
   _comp_level(0)
 {
@@ -508,6 +509,7 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
 
     // Read strings
     load_strings();
+    log_info (aot, codecache, init)("Loaded %u AOT class initialization dependencies from AOT Code Cache", _load_header->clinit_deps_count());
   }
   if (_for_dump) {
     _C_store_buffer = NEW_C_HEAP_ARRAY(char, max_aot_code_size() + DATA_ALIGNMENT, mtCode);
@@ -961,26 +963,37 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
         const char* target_name = method->name_and_sig_as_C_string();
         log.print("Missing entry for '%s' (comp_level %d, id: " UINT32_FORMAT_X_0 ")", target_name, (uint)comp_level, id);
       }
-#ifdef ASSERT
     } else {
       ResourceMark rm;
       assert(method() == entry->method(), "AOTCodeCache: saved nmethod's method %p (name: %s id: " UINT32_FORMAT_X_0
              ") is different from the method %p (name: %s, id: " UINT32_FORMAT_X_0 " being looked up" ,
-             entry->method(), entry->method()->name_and_sig_as_C_string(), entry->id(), method(), method()->name_and_sig_as_C_string(), id);
-#endif
-    }
+             entry->method(), entry->method()->name_and_sig_as_C_string(), entry->id(), method(),
+             method()->name_and_sig_as_C_string(), id);
 
-    DirectiveSet* directives = DirectivesStack::getMatchingDirective(method, nullptr);
-    if (directives->IgnorePrecompiledOption) {
-      LogStreamHandle(Info, aot, codecache, compilation) log;
-      if (log.is_enabled()) {
-        log.print("Ignore AOT code entry on level %d for ", comp_level);
-        method->print_value_on(&log);
+      if (entry->clinit_dependencies_left() > 0) {
+        int deps_left = entry->check_clinit_dependencies();
+        if (deps_left > 0) {
+          LogStreamHandle(Info, aot, codecache, compilation) log;
+          if (log.is_enabled()) {
+            ResourceMark rm;
+            const char* target_name = method->name_and_sig_as_C_string();
+            log.print("Present %d class init dependencies '%s' (comp_level %d, id: " UINT32_FORMAT_X_0 ")", deps_left, target_name, (uint)comp_level, id);
+          }
+          return nullptr;
+        }
       }
-      return nullptr;
-    }
 
-    return entry;
+      DirectiveSet* directives = DirectivesStack::getMatchingDirective(method, nullptr);
+      if (directives->IgnorePrecompiledOption) {
+        LogStreamHandle(Info, aot, codecache, compilation) log;
+        if (log.is_enabled()) {
+          log.print("Ignore AOT code entry on level %d for ", comp_level);
+          method->print_value_on(&log);
+        }
+        return nullptr;
+      }
+      return entry;
+    }
   }
   return nullptr;
 }
@@ -993,6 +1006,86 @@ Method* AOTCodeEntry::method() {
 
 void* AOTCodeEntry::operator new(size_t x, AOTCodeCache* cache) {
   return (void*)(cache->add_entry());
+}
+
+void AOTCodeEntry::set_clinit_dependencies(uint* deps) {
+  _clinit_dependencies = deps;
+  if (deps != nullptr) {
+    precond(deps[0] > 0); // should not be empty
+    AOTCodeCache* cache = AOTCodeCache::cache();
+    assert(cache != nullptr, "sanity check");
+    cache->count_clinit_deps(deps[0]);
+  }
+}
+
+uint* AOTCodeEntry::record_clinit_dependencies(uint* buf, uint* start) {
+  uint* deps = _clinit_dependencies;
+  if (deps != nullptr) {
+    uint len = deps[0];
+    precond(len > 0);
+    uint nbytes = len * sizeof(uint);
+    copy_bytes((const char* )(deps + 1), (address)buf, nbytes);
+    FREE_C_HEAP_ARRAY(uint, deps);
+    _clinit_dependencies = nullptr;
+    _clinit_dependencies_offset = (buf - start); // offset
+    _clinit_dependencies_cnt    = (uint16_t)len;
+    _clinit_dependencies_left   = (uint16_t)len;
+    buf += len;
+  } else {
+    _clinit_dependencies_offset = 0; // no dependencies
+    _clinit_dependencies_cnt    = 0;
+    _clinit_dependencies_left   = 0;
+  }
+  return buf;
+}
+
+uint AOTCodeEntry::check_clinit_dependencies() {
+  // This method could be called concurrently. It is fine because returned
+  // value is calculated locally. The thread which gets 0 first will trigger
+  // AOT code load. After that compilation task creation to load code will be synchronized.
+  // The worst case is an other thread also looks through all dependencies
+  // if he reads _clinit_dependencies_cnt before it is updated by other thread.
+  // Eventually _clinit_dependencies_left will be set to 0 anyway when all
+  // depending classes are intialized.
+
+  AOTCodeCache* cache = AOTCodeCache::cache();
+  assert(cache != nullptr, "sanity check");
+  uint* all_clinit_deps = cache->clinit_deps();
+  uint* this_clinit_deps = all_clinit_deps + _clinit_dependencies_offset;
+  uint len = _clinit_dependencies_cnt;
+  uint16_t deps_left = 0; // count not initialized classes
+  LogStreamHandle(Debug, aot, codecache, compilation) log;
+  if (log.is_enabled()) {
+    ResourceMark rm;
+    const char* target_name = method()->name_and_sig_as_C_string();
+    log.print("Check %d (%d left) class init dependencies for `%s` (comp_level %d)",
+              len, (uint)_clinit_dependencies_left, target_name, comp_level());
+  }
+  if (_clinit_dependencies_left == 0) {
+    return 0; // Other thread already checked
+  }
+  for (uint i = 0; i < len; i++) {
+    uint klass_offset = this_clinit_deps[i];
+    Klass* k = AOTCacheAccess::convert_offset_to_klass(klass_offset);
+    if (!AOTMetaspace::in_aot_cache((address)k)) {
+      // Something changed in CDS
+      log_trace(aot, codecache, compilation)("Check %d (offset: %d) dependency on klass: " INTPTR_FORMAT " is not in CDS ", i, klass_offset, p2i((address)k));
+      deps_left++;
+    } else if (!k->is_instance_klass()) {
+      log_trace(aot, codecache, compilation)("Check %d (offset: %d) dependency on klass %s: is not instanceKlass", i, klass_offset, k->external_name());
+      deps_left++;
+    } else if (!InstanceKlass::cast(k)->is_initialized()) {
+      log_trace(aot, codecache, compilation)("Check %d (offset: %d) dependency on klass %s: is not initialized", i, klass_offset, k->external_name());
+      deps_left++;
+    } else {
+      log_trace(aot, codecache, compilation)("Check %d (offset: %d) dependency on klass %s: initialized", i, klass_offset, k->external_name());
+    }
+  }
+  if (_clinit_dependencies_left <= deps_left) {
+    return _clinit_dependencies_left;
+  }
+  _clinit_dependencies_left = deps_left;
+  return deps_left;
 }
 
 static bool check_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level, AOTCodeEntry* entry) {
@@ -1168,12 +1261,13 @@ bool AOTCodeCache::finish_write() {
     uint search_count = code_count * 2;
     uint search_size = search_count * sizeof(uint);
     uint entries_size = (uint)align_up(code_count * sizeof(AOTCodeEntry), DATA_ALIGNMENT); // In bytes
+    uint clinit_deps_size = _clinit_deps_cnt * sizeof(uint);
     // _write_position should include code and strings
     uint code_alignment = code_count * DATA_ALIGNMENT; // We align_up code size when storing it.
     uint cpu_features_size = VM_Version::cpu_features_size();
     uint total_cpu_features_size = sizeof(uint) + cpu_features_size; // sizeof(uint) to store cpu_features_size
     uint total_size = header_size + _write_position + code_alignment + search_size + entries_size +
-                      align_up(total_cpu_features_size, DATA_ALIGNMENT);
+                      clinit_deps_size + align_up(total_cpu_features_size, DATA_ALIGNMENT);
     assert(total_size < max_aot_code_size(), "AOT Code size (" UINT32_FORMAT " bytes) is greater than AOTCodeMaxSize(" UINT32_FORMAT " bytes).", total_size, max_aot_code_size());
 
     // Allocate in AOT Cache buffer
@@ -1188,6 +1282,10 @@ bool AOTCodeCache::finish_write() {
 
     // Create ordered search table for entries [id, index];
     uint* search = NEW_C_HEAP_ARRAY(uint, search_count, mtCode);
+
+    // Create class init dependencies tabel
+    uint* clinit_deps = NEW_C_HEAP_ARRAY(uint, _clinit_deps_cnt, mtCode);
+    uint* clinit_deps_current = clinit_deps;
 
     AOTCodeEntry* entries_address = _store_entries; // Pointer to latest entry
     AOTCodeStats stats;
@@ -1265,6 +1363,7 @@ bool AOTCodeCache::finish_write() {
       copy_bytes((_store_buffer + entry->offset()), (address)current, size);
       entry->set_offset(current - start); // New offset
       current += size;
+      clinit_deps_current = entry->record_clinit_dependencies(clinit_deps_current, clinit_deps);
     }
 
     if (preload_entries_cnt == 0 && entries_count == 0) {
@@ -1289,6 +1388,15 @@ bool AOTCodeCache::finish_write() {
     FREE_C_HEAP_ARRAY(uint, search);
     current += search_size;
 
+    // Store class init dependencies
+    uint clinit_deps_offset = current - start;
+    if (clinit_deps_size > 0) {
+      copy_bytes((const char*)clinit_deps, (address)current, clinit_deps_size);
+      FREE_C_HEAP_ARRAY(uint, clinit_deps);
+      current += clinit_deps_size;
+      log_info(aot, codecache, exit)("Wrote %d class initialization dependencies to AOT Code Cache", _clinit_deps_cnt);
+    }
+
     log_stats_on_exit(stats);
 
     uint size = (current - start);
@@ -1300,6 +1408,7 @@ bool AOTCodeCache::finish_write() {
     header->init(size, (uint)strings_count, strings_offset,
                  entries_count, search_table_offset, new_entries_offset,
                  preload_entries_cnt, preload_entries_offset,
+                 _clinit_deps_cnt,  clinit_deps_offset,
                  stats.entry_count(AOTCodeEntry::Adapter), stats.entry_count(AOTCodeEntry::SharedBlob),
                  stats.entry_count(AOTCodeEntry::C1Blob), stats.entry_count(AOTCodeEntry::C2Blob),
                  stats.entry_count(AOTCodeEntry::Stub), cpu_features_offset);

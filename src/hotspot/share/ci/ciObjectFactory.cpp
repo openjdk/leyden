@@ -43,6 +43,7 @@
 #include "ci/ciUtilities.inline.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/vmClasses.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/compiler_globals.hpp"
 #include "compiler/compileTask.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
@@ -154,8 +155,8 @@ void ciObjectFactory::init_shared_objects() {
   ciEnv::_null_object_instance = new (_arena) ciNullObject();
   init_ident_of(ciEnv::_null_object_instance);
 
-#define VM_CLASS_DEFN(name, ignore_s)                              \
-  if (vmClasses::name##_is_loaded()) \
+#define VM_CLASS_DEFN(name, ignore_s) \
+  if (vmClasses::name##_is_loaded())  \
     ciEnv::_##name = get_metadata(vmClasses::name())->as_instance_klass();
 
   VM_CLASSES_DO(VM_CLASS_DEFN)
@@ -172,7 +173,23 @@ void ciObjectFactory::init_shared_objects() {
       }
     }
   }
-
+#if INCLUDE_CDS
+  if (AOTCodeCache::is_dumping_code()) {
+    int init_cnt = 0;
+    int len = _ci_metadata.length();
+    ciEnv::_shared_init_classes = new (_arena) GrowableArray<ciInstanceKlass*>(_arena, len, 0, nullptr);
+    for (int i2 = 0; i2 < len; i2++) {
+      ciMetadata* obj = _ci_metadata.at(i2);
+      if (obj->is_loaded() && obj->is_instance_klass() && obj->as_instance_klass()->is_initialized()) {
+        ResourceMark rm;
+        ciEnv::_shared_init_classes->insert_sorted<ciEnv::cik_compare>(obj->as_instance_klass());
+        init_cnt++;
+        log_trace(aot, codecache, init)("CI: %s", obj->as_instance_klass()->external_name()); 
+      }
+    }
+    log_debug(aot, codecache, init)("CI: %d (from %d) initialized shared wellknown classes", init_cnt, len);
+  }
+#endif
   ciEnv::_unloaded_cisymbol = ciObjectFactory::get_symbol(vmSymbols::dummy_symbol());
   // Create dummy InstanceKlass and ObjArrayKlass object and assign them idents
   ciEnv::_unloaded_ciinstance_klass = new (_arena) ciInstanceKlass(ciEnv::_unloaded_cisymbol, nullptr);
@@ -258,8 +275,10 @@ ciObject* ciObjectFactory::get(oop key) {
 }
 
 void ciObjectFactory::notice_object_access(ciBaseObject* new_object) {
+#if INCLUDE_CDS
+  ciEnv* env = ciEnv::current();
+  env->record_aot_dependency(new_object);
   if (TrainingData::need_data()) {
-    ciEnv* env = ciEnv::current();
     if (env->task() != nullptr) {
       // Note: task will be null during init_compiler_runtime.
       CompileTrainingData* td = env->task()->training_data();
@@ -268,6 +287,7 @@ void ciObjectFactory::notice_object_access(ciBaseObject* new_object) {
       }
     }
   }
+#endif
 }
 
 int ciObjectFactory::metadata_compare(Metadata* const& key, ciMetadata* const& elt) {
