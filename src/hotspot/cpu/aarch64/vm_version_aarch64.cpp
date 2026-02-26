@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2026, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2015, 2020, Red Hat Inc. All rights reserved.
  * Copyright 2025 Arm Limited and/or its affiliates.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -661,6 +661,55 @@ void VM_Version::initialize() {
   _features_string = _cpu_info_string + features_offset;
 }
 
+void VM_Version::insert_features_names(uint64_t features, stringStream& ss) {
+  int i = 0;
+  ss.join([&]() {
+    const char* str = nullptr;
+    while ((i < MAX_CPU_FEATURES) && (str == nullptr)) {
+      if (supports_feature(features, (VM_Version::Feature_Flag)i)) {
+        str = _features_names[i];
+      }
+      i += 1;
+    }
+    return str;
+  }, ", ");
+}
+
+void VM_Version::get_cpu_features_name(void* features_buffer, stringStream& ss) {
+  uint64_t features = *(uint64_t*)features_buffer;
+  insert_features_names(features, ss);
+}
+
+void VM_Version::get_missing_features_name(void* features_set1, void* features_set2, stringStream& ss) {
+  uint64_t vm_features_set1 = *(uint64_t*)features_set1;
+  uint64_t vm_features_set2 = *(uint64_t*)features_set2;
+  int i = 0;
+  ss.join([&]() {
+    const char* str = nullptr;
+    while ((i < MAX_CPU_FEATURES) && (str == nullptr)) {
+      Feature_Flag flag = (Feature_Flag)i;
+      if (supports_feature(vm_features_set1, flag) && !supports_feature(vm_features_set2, flag)) {
+        str = _features_names[i];
+      }
+      i += 1;
+    }
+    return str;
+  }, ", ");
+}
+
+int VM_Version::cpu_features_size() {
+  return sizeof(_features);
+}
+
+void VM_Version::store_cpu_features(void* buf) {
+  *(uint64_t*)buf = _features;
+}
+
+bool VM_Version::supports_features(void* features_buffer) {
+  uint64_t features_to_test = *(uint64_t*)features_buffer;
+  return (_features & features_to_test) == features_to_test;
+}
+
 #if defined(LINUX)
 static bool check_info_file(const char* fpath,
                             const char* virt1, VirtualizationType vt1,
@@ -728,52 +777,4 @@ void VM_Version::initialize_cpu_information(void) {
   os::snprintf_checked(_cpu_desc + desc_len, CPU_DETAILED_DESC_BUF_SIZE - desc_len, " %s", _cpu_info_string);
 
   _initialized = true;
-}
-
-void VM_Version::insert_features_names(uint64_t features, stringStream& ss) {
-  int i = 0;
-  ss.join([&]() {
-    const char* str = nullptr;
-    while ((i < MAX_CPU_FEATURES) && (str == nullptr)) {
-      if (supports_feature((VM_Version::Feature_Flag)i)) {
-        str = _features_names[i];
-      }
-      i += 1;
-    }
-    return str;
-  }, ", ");
-}
-
-void VM_Version::get_cpu_features_name(void* features_buffer, stringStream& ss) {
-  uint64_t features = *(uint64_t*)features_buffer;
-  insert_features_names(features, ss);
-}
-
-void VM_Version::get_missing_features_name(void* features_buffer, stringStream& ss) {
-  uint64_t features_to_test = *(uint64_t*)features_buffer;
-  int i = 0;
-  ss.join([&]() {
-    const char* str = nullptr;
-    while ((i < MAX_CPU_FEATURES) && (str == nullptr)) {
-      Feature_Flag flag = (Feature_Flag)i;
-      if (supports_feature(features_to_test, flag) && !supports_feature(flag)) {
-        str = _features_names[i];
-      }
-      i += 1;
-    }
-    return str;
-  }, ", ");
-}
-
-int VM_Version::cpu_features_size() {
-  return sizeof(_features);
-}
-
-void VM_Version::store_cpu_features(void* buf) {
-  *(uint64_t*)buf = _features;
-}
-
-bool VM_Version::supports_features(void* features_buffer) {
-  uint64_t features_to_test = *(uint64_t*)features_buffer;
-  return (_features & features_to_test) == features_to_test;
 }

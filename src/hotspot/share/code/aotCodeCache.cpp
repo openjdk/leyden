@@ -69,6 +69,7 @@
 #include "runtime/jniHandles.inline.hpp"
 #include "runtime/mountUnmountDisabler.hpp"
 #include "runtime/mutexLocker.hpp"
+#include "runtime/objectMonitorTable.hpp"
 #include "runtime/os.inline.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stubCodeGenerator.hpp"
@@ -638,6 +639,46 @@ void AOTCodeCache::Config::record(uint cpu_features_offset) {
   _cpu_features_offset   = cpu_features_offset;
 }
 
+bool AOTCodeCache::Config::verify_cpu_features(AOTCodeCache* cache) const {
+  LogStreamHandle(Debug, aot, codecache, init) log;
+  uint offset = _cpu_features_offset;
+  uint cpu_features_size = *(uint *)cache->addr(offset);
+  assert(cpu_features_size == (uint)VM_Version::cpu_features_size(), "must be");
+  offset += sizeof(uint);
+
+  void* cached_cpu_features_buffer = (void *)cache->addr(offset);
+  if (log.is_enabled()) {
+    ResourceMark rm; // required for stringStream::as_string()
+    stringStream ss;
+    VM_Version::get_cpu_features_name(cached_cpu_features_buffer, ss);
+    log.print_cr("CPU features recorded in AOTCodeCache: %s", ss.as_string());
+  }
+
+  if (VM_Version::supports_features(cached_cpu_features_buffer)) {
+    if (log.is_enabled()) {
+      ResourceMark rm; // required for stringStream::as_string()
+      stringStream ss;
+      char* runtime_cpu_features = NEW_RESOURCE_ARRAY(char, VM_Version::cpu_features_size());
+      VM_Version::store_cpu_features(runtime_cpu_features);
+      VM_Version::get_missing_features_name(runtime_cpu_features, cached_cpu_features_buffer, ss);
+      if (!ss.is_empty()) {
+        log.print_cr("Additional runtime CPU features: %s", ss.as_string());
+      }
+    }
+  } else {
+    if (log.is_enabled()) {
+      ResourceMark rm; // required for stringStream::as_string()
+      stringStream ss;
+      char* runtime_cpu_features = NEW_RESOURCE_ARRAY(char, VM_Version::cpu_features_size());
+      VM_Version::store_cpu_features(runtime_cpu_features);
+      VM_Version::get_missing_features_name(cached_cpu_features_buffer, runtime_cpu_features, ss);
+      log.print_cr("AOT Code Cache disabled: required cpu features are missing: %s", ss.as_string());
+    }
+    return false;
+  }
+  return true;
+}
+
 bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   // First checks affect all cached AOT code
 #ifdef ASSERT
@@ -719,34 +760,6 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
     return false;
   }
 
-  LogStreamHandle(Debug, aot, codecache, init) log;
-  if (log.is_enabled()) {
-    log.print_cr("Available CPU features: %s", VM_Version::features_string());
-  }
-
-  uint offset = _cpu_features_offset;
-  uint cpu_features_size = *(uint *)cache->addr(offset);
-  assert(cpu_features_size == (uint)VM_Version::cpu_features_size(), "must be");
-  offset += sizeof(uint);
-
-  void* cached_cpu_features_buffer = (void *)cache->addr(offset);
-  if (log.is_enabled()) {
-    ResourceMark rm; // required for stringStream::as_string()
-    stringStream ss;
-    VM_Version::get_cpu_features_name(cached_cpu_features_buffer, ss);
-    log.print_cr("CPU features recorded in AOTCodeCache: %s", ss.as_string());
-  }
-
-  if (AOTCodeCPUFeatureCheck && !VM_Version::supports_features(cached_cpu_features_buffer)) {
-    if (log.is_enabled()) {
-      ResourceMark rm; // required for stringStream::as_string()
-      stringStream ss;
-      VM_Version::get_missing_features_name(cached_cpu_features_buffer, ss);
-      log.print_cr("AOT Code Cache disabled: required cpu features are missing: %s", ss.as_string());
-    }
-    return false;
-  }
-
   // Next affects only AOT nmethod
   if (((_flags & systemClassAssertions) != 0) != JavaAssertions::systemClassDefault()) {
     log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with JavaAssertions::systemClassDefault() = %s vs current %s", (JavaAssertions::systemClassDefault() ? "disabled" : "enabled"), (JavaAssertions::systemClassDefault() ? "enabled" : "disabled"));
@@ -757,6 +770,9 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
     FLAG_SET_ERGO(AOTCodeCaching, false);
   }
 
+  if (!verify_cpu_features(cache)) {
+    return false;
+  }
   return true;
 }
 
@@ -1156,8 +1172,7 @@ bool AOTCodeCache::finish_write() {
     uint code_alignment = code_count * DATA_ALIGNMENT; // We align_up code size when storing it.
     uint cpu_features_size = VM_Version::cpu_features_size();
     uint total_cpu_features_size = sizeof(uint) + cpu_features_size; // sizeof(uint) to store cpu_features_size
-    uint total_size = _write_position + header_size + code_alignment +
-                      search_size + entries_size +
+    uint total_size = header_size + _write_position + code_alignment + search_size + entries_size +
                       align_up(total_cpu_features_size, DATA_ALIGNMENT);
     assert(total_size < max_aot_code_size(), "AOT Code size (" UINT32_FORMAT " bytes) is greater than AOTCodeMaxSize(" UINT32_FORMAT " bytes).", total_size, max_aot_code_size());
 
@@ -3107,6 +3122,7 @@ void AOTCodeAddressTable::init_extrs() {
 
   SET_ADDRESS(_extrs, ThreadIdentifier::unsafe_offset());
   SET_ADDRESS(_extrs, Thread::current);
+  SET_ADDRESS(_extrs, ObjectMonitorTable::current_table_address());
 
   SET_ADDRESS(_extrs, os::javaTimeMillis);
   SET_ADDRESS(_extrs, os::javaTimeNanos);
@@ -3316,6 +3332,7 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::dilithiumNttMult());
   SET_ADDRESS(_stubs, StubRoutines::dilithiumMontMulByConstant());
   SET_ADDRESS(_stubs, StubRoutines::dilithiumDecomposePoly());
+  SET_ADDRESS(_stubs, StubRoutines::kyber12To16());
 
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32());
   SET_ADDRESS(_stubs, StubRoutines::updateBytesCRC32C());

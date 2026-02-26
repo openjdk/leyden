@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -336,6 +336,7 @@ protected:
 
   public:
     void record(uint cpu_features_offset);
+    bool verify_cpu_features(AOTCodeCache* cache) const;
     bool verify(AOTCodeCache* cache) const;
   };
 
@@ -383,7 +384,6 @@ protected:
       _C1_blobs_count = C1_blobs_count;
       _C2_blobs_count = C2_blobs_count;
       _stubs_count    = stubs_count;
-
       _config.record(cpu_features_offset);
     }
 

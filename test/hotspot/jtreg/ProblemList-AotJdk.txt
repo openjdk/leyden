@@ -67,6 +67,9 @@ gc/arguments/TestG1HeapSizeFlags.java 8366033 generic-all
 compiler/arguments/TestStressReflectiveCode.java 8323727 generic-all
 compiler/arraycopy/TestCloneWithStressReflectiveCode.java 8323727 generic-all
 
+# Test failed to parse PrintCompilation extended output format in premain
+compiler/inlining/TestSubtypeCheckTypeInfo.java 8377618 generic-all
+
 #############################################################################
 
 # Preview project specific failures go here at the end of the file.

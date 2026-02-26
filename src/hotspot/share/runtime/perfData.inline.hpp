@@ -1,5 +1,9 @@
 /*
+<<<<<<< HEAD
  * Copyright (c) 2002, 2024, Oracle and/or its affiliates. All rights reserved.
+=======
+ * Copyright (c) 2002, 2026, Oracle and/or its affiliates. All rights reserved.
+>>>>>>> master
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,6 +32,7 @@
 #include "runtime/perfData.hpp"
 
 #include "services/management.hpp"
+#include "utilities/globalCounter.inline.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/growableArray.hpp"
 
@@ -65,6 +70,24 @@ inline jlong PerfTickCounters::elapsed_counter_value_us() const {
 
 inline jlong PerfTickCounters::thread_counter_value_us() const {
   return Management::ticks_to_us(_thread_counter->get_value());
+}
+
+inline SafePerfTraceTime::SafePerfTraceTime(PerfLongCounter* timerp) : _timerp(timerp) {
+  GlobalCounter::CriticalSection cs(Thread::current());
+  if (!UsePerfData || !PerfDataManager::has_PerfData() || timerp == nullptr) {
+    return;
+  }
+  _t.start();
+}
+
+inline SafePerfTraceTime::~SafePerfTraceTime() {
+  GlobalCounter::CriticalSection cs(Thread::current());
+  if (!UsePerfData || !PerfDataManager::has_PerfData() || !_t.is_active()) {
+    return;
+  }
+
+  _t.stop();
+  _timerp->inc(_t.ticks());
 }
 
 #endif // SHARE_RUNTIME_PERFDATA_INLINE_HPP

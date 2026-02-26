@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -767,7 +767,8 @@ class PerfDataManager : AllStatic {
 
 // Utility Classes
 
-/* PerfTraceElapsedTime and PerfTraceThreadTime will administer a PerfCounter used as a time accumulator
+/*
+ * This class will administer a PerfCounter used as a time accumulator
  * for a basic block much like the TraceTime class.
  * PerfTraceElapsedTime uses elapsedTimer to measure time which reflects the elapsed time,
  * and PerfTraceThreadTime uses ThreadTimer which reflects thread cpu time.
@@ -784,6 +785,9 @@ class PerfDataManager : AllStatic {
  * Note: use of this class does not need to occur within a guarded
  * block. The UsePerfData guard is used with the implementation
  * of this class.
+ *
+ * But also note this class does not guard against shutdown races -
+ * see SafePerfTraceTime below.
  */
 
 class PerfTraceTimeBase : public StackObj {
@@ -886,7 +890,27 @@ class PerfPauseTimer : public StackObj {
                           _thread_timer_pause(timer != nullptr ? timer->thread_timer() : nullptr, is_on) {}
 };
 
-/* The PerfTraceElapsedTimeEvent class is responsible for counting the
+/* A variant of PerfTraceTime that guards against use during shutdown -
+ * see PerfDataManager::destroy.
+ */
+class SafePerfTraceTime : public StackObj {
+
+  protected:
+    elapsedTimer _t;
+    PerfLongCounter* _timerp;
+
+  public:
+    inline SafePerfTraceTime(PerfLongCounter* timerp);
+
+    const char* name() const {
+      assert(_timerp != nullptr, "sanity");
+      return _timerp->name();
+    }
+
+    inline ~SafePerfTraceTime();
+};
+
+/* The PerfTraceTimedEvent class is responsible for counting the
  * occurrence of some event and measuring the elapsed time of
  * the event in two separate PerfCounter instances.
  *
