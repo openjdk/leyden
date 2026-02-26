@@ -2262,15 +2262,18 @@ JVM_ENTRY_PROF(jboolean, JVM_RegisterURLClassLoaderAsAOTSafeLoader, JVM_Register
     ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
     assert(loader_data->aot_identity() == nullptr, "loader's aot identity should not be set");
     const char* aot_id_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(aot_id));
+    Symbol* aot_id_symbol = SymbolTable::new_symbol(aot_id_str);
     const char *classpath_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(classpath));
     if (CDSConfig::is_dumping_preimage_static_archive()) {
-      if (!URLClassLoaderClasspathSupport::add_urlclassloader_classpath(loader_data, aot_id_str, classpath_str)) {
+      if (!URLClassLoaderClasspathSupport::add_urlclassloader_classpath(loader_data, aot_id_symbol, classpath_str)) {
         return JNI_FALSE;
       }
+      loader_data->set_aot_identity(aot_id_symbol);
     } else if (CDSConfig::is_using_aot_linked_classes()) {
-      if (!URLClassLoaderClasspathSupport::verify_archived_classpath(loader_data, classpath_str)) {
+      if (!URLClassLoaderClasspathSupport::verify_archived_classpath(loader_data, aot_id_symbol, classpath_str)) {
         return JNI_FALSE;
       }
+      loader_data->set_aot_identity(aot_id_symbol);
       AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
       AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
     }

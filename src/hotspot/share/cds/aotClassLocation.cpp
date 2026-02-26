@@ -1129,9 +1129,8 @@ void URLClassLoaderClasspathSupport::reload_runtime_map() {
   });
 }
 
-bool URLClassLoaderClasspathSupport::add_urlclassloader_classpath(ClassLoaderData* loader_data, const char* aot_id_str, const char* classpath) {
+bool URLClassLoaderClasspathSupport::add_urlclassloader_classpath(ClassLoaderData* loader_data, Symbol* aot_id, const char* classpath) {
   assert(_aot_id_to_classpath != nullptr, "sanity check");
-  Symbol* aot_id = SymbolTable::new_symbol(aot_id_str);
   if (_aot_id_to_classpath->contains(aot_id)) {
     // cannot allow aot_id clash; return without doing anything
     return false;
@@ -1193,9 +1192,8 @@ void URLClassLoaderClasspathSupport::serialize_classpath_map_table_header(Serial
   _archived_aot_id_to_classpath.serialize_header(soc);
 }
 
-bool URLClassLoaderClasspathSupport::verify_archived_classpath(ClassLoaderData* loader_data, const char* classpath) {
+bool URLClassLoaderClasspathSupport::verify_archived_classpath(ClassLoaderData* loader_data, Symbol* aot_id, const char* classpath) {
   ResourceMark rm;
-  Symbol* aot_id = loader_data->aot_identity();
   assert(aot_id != nullptr, "sanity check");
   const char* aot_id_str = aot_id->as_C_string();
   unsigned int hash = Symbol::symbol_hash(aot_id);

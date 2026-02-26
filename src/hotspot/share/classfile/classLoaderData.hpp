@@ -360,6 +360,7 @@ private:
   const char* loader_name_and_id() const;
   Symbol* name_and_id() const { return _name_and_id; }
   Symbol* aot_identity() const { return _aot_identity; }
+  void set_aot_identity(Symbol* aot_id) { _aot_identity = aot_id; }
   Symbol* parent_aot_identity() const;
 
   unsigned identity_hash() const {

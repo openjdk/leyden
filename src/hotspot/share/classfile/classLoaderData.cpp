@@ -92,7 +92,6 @@ void ClassLoaderData::init_null_class_loader_data() {
   _the_null_class_loader_data = new ClassLoaderData(Handle(), false);
   ClassLoaderDataGraph::_head = _the_null_class_loader_data;
   assert(_the_null_class_loader_data->is_the_null_class_loader_data(), "Must be");
-  //_the_null_class_loader_data->_aot_identity = SymbolTable::new_symbol("BOOT");
   LogTarget(Trace, class, loader, data) lt;
   if (lt.is_enabled()) {
     ResourceMark rm;
@@ -158,10 +157,6 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
   if (!h_class_loader.is_null()) {
     _class_loader = _handles.add(h_class_loader());
     _class_loader_klass = h_class_loader->klass();
-    oop aot_identity = java_lang_ClassLoader::aotIdentity(h_class_loader());
-    if (aot_identity != nullptr) {
-      _aot_identity = java_lang_String::as_symbol(aot_identity);
-    }
     initialize_name(h_class_loader);
   }
 

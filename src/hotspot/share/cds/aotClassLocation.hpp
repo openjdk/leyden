@@ -301,10 +301,10 @@ class URLClassLoaderClasspathSupport : AllStatic {
 public:
   static void init();
   static void reload_runtime_map();
-  static bool add_urlclassloader_classpath(ClassLoaderData* loader_data, const char* aot_id, const char* classpath);
+  static bool add_urlclassloader_classpath(ClassLoaderData* loader_data, Symbol* aot_id, const char* classpath);
   static void archive_classpath_map();
   static void serialize_classpath_map_table_header(SerializeClosure* soc);
-  static bool verify_archived_classpath(ClassLoaderData* loader_data, const char* classpath);
+  static bool verify_archived_classpath(ClassLoaderData* loader_data, Symbol* aot_id, const char* classpath);
 };
 
 #endif // SHARE_CDS_AOTCLASSLOCATION_HPP
