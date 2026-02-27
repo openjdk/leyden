@@ -794,11 +794,11 @@ void internal_word_Relocation::fix_relocation_after_move(const CodeBuffer* src, 
   set_value(target);
 }
 
-void internal_word_Relocation::fix_relocation_after_aot_load(address orig_base_addr, address current_base_addr) {
+void internal_word_Relocation::fix_relocation_after_aot_load(address current_base_addr, int delta) {
   address target = _target;
   if (target == nullptr) {
     target = this->target();
-    target = current_base_addr + (target - orig_base_addr);
+    target = current_base_addr + delta;
   }
   set_value(target);
 }

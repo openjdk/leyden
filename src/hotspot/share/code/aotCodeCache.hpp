@@ -114,7 +114,6 @@ private:
   bool   _loaded;      // Code was loaded
   bool   _not_entrant; // Deoptimized
   bool   _load_fail;   // Failed to load due to some klass state
-  address _dumptime_content_start_addr; // CodeBlob::content_begin() at dump time; used for applying relocations
   union {
     uint* _clinit_dependencies;  // list of initialized classes referenced during AOT compilation
     struct { // Next values are used during production run
@@ -138,7 +137,6 @@ public:
     _code_offset  = code_offset;
     _code_size    = code_size;
 
-    _dumptime_content_start_addr = nullptr;
     _clinit_dependencies = nullptr;
 
     _num_inlined_bytecodes = 0;
@@ -170,7 +168,6 @@ public:
     _code_offset  = blob_offset;
     _code_size    = 0; // unused
 
-    _dumptime_content_start_addr = dumptime_content_start_addr;
     _clinit_dependencies = nullptr;
 
     _num_inlined_bytecodes = 0;
@@ -207,7 +204,6 @@ public:
   uint code_size()    const { return _code_size; }
 
   bool has_oop_maps() const { return _has_oop_maps; }
-  address dumptime_content_start_addr() const { return _dumptime_content_start_addr; }
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
   void set_inlined_bytecodes(int bytes) { _num_inlined_bytecodes = bytes; }
 

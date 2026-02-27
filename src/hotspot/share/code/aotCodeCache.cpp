@@ -2193,10 +2193,21 @@ bool AOTCodeCache::write_relocations(CodeBlob& code_blob, GrowableArray<Handle>*
         reloc_data.at_put(idx, id);
         break;
       }
-      case relocInfo::internal_word_type:
+      case relocInfo::internal_word_type: {
+        address target = ((internal_word_Relocation*)iter.reloc())->target();
+        // assert to make sure that delta fits into 32 bits
+        assert(CodeCache::contains((void *)target), "Wrong internal_word_type relocation");
+        uint delta = (uint)(target - code_blob.content_begin());
+        reloc_data.at_put(idx, delta);
         break;
-      case relocInfo::section_word_type:
+      }
+      case relocInfo::section_word_type: {
+        address target = ((section_word_Relocation*)iter.reloc())->target();
+        assert(CodeCache::contains((void *)target), "Wrong section_word_type relocation");
+        uint delta = (uint)(target - code_blob.content_begin());
+        reloc_data.at_put(idx, delta);
         break;
+      }
       case relocInfo::poll_type:
         break;
       case relocInfo::poll_return_type:
@@ -2316,13 +2327,15 @@ void AOTCodeReader::fix_relocations(CodeBlob* code_blob, GrowableArray<Handle>* 
         break;
       }
       case relocInfo::internal_word_type: {
+        uint delta = reloc_data[j];
         internal_word_Relocation* r = (internal_word_Relocation*)iter.reloc();
-        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), code_blob->content_begin());
+        r->fix_relocation_after_aot_load(code_blob->content_begin(), delta);
         break;
       }
       case relocInfo::section_word_type: {
+        uint delta = reloc_data[j];
         section_word_Relocation* r = (section_word_Relocation*)iter.reloc();
-        r->fix_relocation_after_aot_load(aot_code_entry()->dumptime_content_start_addr(), code_blob->content_begin());
+        r->fix_relocation_after_aot_load(code_blob->content_begin(), delta);
         break;
       }
       case relocInfo::poll_type:
