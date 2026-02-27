@@ -145,10 +145,15 @@ ciInstanceKlass::ciInstanceKlass(ciSymbol* name,
 
 // ------------------------------------------------------------------
 // ciInstanceKlass::compute_shared_is_initialized
-void ciInstanceKlass::compute_shared_init_state() {
+InstanceKlass::ClassState ciInstanceKlass::compute_shared_init_state() {
   GUARDED_VM_ENTRY(
     InstanceKlass* ik = get_instanceKlass();
+    ciEnv* env = CURRENT_ENV;
+    if (env != nullptr && env->is_precompile()) {
+      return env->compute_init_state_for_precompiled(ik);
+    }
     _init_state = compute_init_state(ik);
+    return _init_state;
   )
 }
 
