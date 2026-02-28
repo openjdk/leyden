@@ -243,5 +243,8 @@ compiler/compilercontrol/commands/OptionTest.java 8362195 generic-all
 serviceability/dcmd/compiler/CompilerQueueTest.java 8362194 generic-all
 compiler/tiered/Level2RecompilationTest.java 8362196 generic-all
 
+# Test failed to parse PrintCompilation extended output format in premain
+compiler/inlining/TestSubtypeCheckTypeInfo.java 8377618 generic-all
+
 # This is broken with Merge master 01-20-26
 runtime/cds/appcds/leyden/DynamicProxyTest.java
