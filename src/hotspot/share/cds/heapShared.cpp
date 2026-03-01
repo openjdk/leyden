@@ -1421,19 +1421,6 @@ void HeapShared::initialize_java_lang_invoke(TRAPS) {
   }
 }
 
-bool HeapShared::is_core_java_lang_invoke_klass(InstanceKlass* klass) {
-  // TODO: Crude, rewrite using Symbols or vmClasses instead
-  ResourceMark rm;
-  char* s2 = klass->name()->as_C_string();
-  int len = sizeof(java_lang_invoke_core_klasses)/sizeof(char*);
-  for (int i = 0; i < len; i++) {
-    if (strcmp(java_lang_invoke_core_klasses[i], s2) == 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Initialize the InstanceKlasses of objects that are reachable from the following roots:
 //   - interned strings
 //   - Klass::java_mirror() -- including aot-initialized mirrors such as those of Enum klasses.

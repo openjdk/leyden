@@ -1881,12 +1881,10 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
         }
       }
 
-      // Core java/lang/invoke classes are peculiar. They include LF invokers, which
-      // are initialized in production run, but they are not recorded as init dependencies.
-      // CI query should report their status as if in production run, otherwise AOT
-      // code would have uncommon traps at invokedynamic calls.
-      if (HeapShared::is_core_java_lang_invoke_klass(ik)) {
-        log_trace(precompile)("%d: core_java_lang_invoke: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+      // During AOT assembly and production runs CDS moves set of classes
+      // into fully_initialized state before execution of Java bytecodes.
+      if (AOTCacheAccess::is_early_aot_inited_class(ik)) {
+        log_trace(precompile)("%d: early_aot_inited_class: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
         return InstanceKlass::ClassState::fully_initialized;
       }
 
