@@ -73,15 +73,6 @@ private:
   char* _name_buffer;
   int   _name_buffer_len;
 
-#if INCLUDE_CDS
-  // Record initialized InstanceKlass used for AOT compilation
-  GrowableArray<ciInstanceKlass*>* _aot_class_init_deps;
-
-  // List of shared instance classes which are always initialized
-  // suring VM startup before compilers are initialized.
-  static GrowableArray<ciInstanceKlass*>* _shared_init_classes;
-#endif
-
   // Cache Jvmti state
   uint64_t _jvmti_redefinition_count;
   bool  _jvmti_can_hotswap_or_post_breakpoint;
@@ -554,20 +545,6 @@ public:
 
   bool is_precompile();
   InstanceKlass::ClassState compute_init_state_for_precompiled(InstanceKlass* ik);
-
-  // Record referenced initialized classes for AOT compilation
-#if INCLUDE_CDS
-  static int cik_compare(ciInstanceKlass* const& k1, ciInstanceKlass* const& k2) {
-    if ((intptr_t)k1 < (intptr_t)k2) {
-      return -1;
-    } else if ((intptr_t)k1 > (intptr_t)k2) {
-      return 1;
-    }
-    return 0;
-  }
-  void  record_aot_dependency(ciBaseObject* new_object);
-  uint* pack_aot_dependencies();
-#endif
 };
 
 #endif // SHARE_CI_CIENV_HPP

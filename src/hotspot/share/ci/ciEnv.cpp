@@ -107,10 +107,6 @@ ciSymbol*        ciEnv::_unloaded_cisymbol = nullptr;
 ciInstanceKlass* ciEnv::_unloaded_ciinstance_klass = nullptr;
 ciObjArrayKlass* ciEnv::_unloaded_ciobjarrayklass = nullptr;
 
-#if INCLUDE_CDS
-GrowableArray<ciInstanceKlass*>* ciEnv::_shared_init_classes = nullptr;
-#endif
-
 #ifndef PRODUCT
 static bool firstEnv = true;
 #endif /* PRODUCT */
@@ -150,13 +146,6 @@ ciEnv::ciEnv(CompileTask* task)
 
   _arena   = &_ciEnv_arena;
   _factory = new (_arena) ciObjectFactory(_arena, 128);
-
-#if INCLUDE_CDS
-  // Record class initialization dependencies for this AOT compilation
-  // (not for preload AOT code which has own class initialization checks).
-  bool aot_comp = (task != nullptr && task->compile_reason() == CompileTask::Reason_Precompile);
-  _aot_class_init_deps = aot_comp ? (new (_arena) GrowableArray<ciInstanceKlass*>(_arena, 16, 0, nullptr)) : nullptr;
-#endif
 
   // Preload commonly referenced system ciObjects.
 
@@ -288,8 +277,6 @@ ciEnv::ciEnv(Arena* arena) : _ciEnv_arena(mtCompiler, Arena::Tag::tag_cienv) {
 
   _arena   = arena;
   _factory = new (_arena) ciObjectFactory(_arena, 128);
-
-  CDS_ONLY( _aot_class_init_deps = nullptr; )
 
   // Preload commonly referenced system ciObjects.
 
@@ -1258,15 +1245,12 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_preloaded(false);
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
+
 #if INCLUDE_CDS
       if (task()->is_precompile()) {
-        uint* aot_deps = pack_aot_dependencies();
-        if (aot_deps != (uint*)badAddress) { // Reference classes only in AOT cache
-          AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
-          if (aot_code_entry != nullptr) {
-            aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
-            aot_code_entry->set_clinit_dependencies(aot_deps);
-          }
+        AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
+        if (aot_code_entry != nullptr) {
+          aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
         }
       }
 #endif
@@ -1924,69 +1908,3 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
   // Skip this class
   return InstanceKlass::ClassState::initialization_error;
 }
-
-#if INCLUDE_CDS
-void ciEnv::record_aot_dependency(ciBaseObject* new_object) {
-  if (_aot_class_init_deps == nullptr) {
-    return; // Not AOT compilation
-  }
-  ciMetadata* md = nullptr;
-  if (new_object->is_object()) {
-    md = new_object->as_object()->klass();
-  } else if (new_object->is_metadata()) {
-    md = new_object->as_metadata();
-  }
-  if (md != nullptr && md->is_loaded() && md->is_instance_klass()) {
-    ciInstanceKlass* cik = md->as_instance_klass();
-    if (!cik->can_be_instantiated() || !cik->is_initialized()) {
-      return; // exclude abstract, interface or not initialized
-    }
-    bool found = false;
-    int index = _shared_init_classes->find_sorted<ciInstanceKlass*, cik_compare>(cik, found);
-    if (found) {
-      return; // These classes are always initialized before any compilation
-    }
-    // Check CDT
-    InstanceKlass::ClassState state = compute_init_state_for_precompiled(cik->get_instanceKlass());
-    if (state == InstanceKlass::ClassState::fully_initialized) {
-      return; // CTD already has this dependency
-    }
-    LogTarget(Trace, precompile) lt;
-    if (lt.is_enabled()) {
-      ResourceMark rm;  
-      InstanceKlass* ik = cik->get_instanceKlass();
-      lt.print("%d: klass (%s) %s recorded state is different: %s", task()->compile_id(),
-               InstanceKlass::state2name(ik->init_state()), ik->external_name(), InstanceKlass::state2name(state));
-    }
-    // Check records
-    index = _aot_class_init_deps->find_sorted<ciInstanceKlass*, cik_compare>(cik, found);
-    if (!found) {
-      // Create new record
-      _aot_class_init_deps->insert_before(index, cik);
-    }
-  }
-}
-
-uint* ciEnv::pack_aot_dependencies() {
-  if (_aot_class_init_deps == nullptr || _aot_class_init_deps->is_empty()) {
-    return nullptr;
-  }
-  int len = _aot_class_init_deps->length();
-  uint* record = NEW_C_HEAP_ARRAY(uint, len + 1, mtCode);
-  record[0] = len;
-  for (int i = 0; i < len; i++) {
-    ciInstanceKlass* cik = _aot_class_init_deps->at(i);
-    InstanceKlass* ik = cik->get_instanceKlass();
-    if (AOTCacheAccess::can_generate_aot_code_for(ik)) {
-      uint klass_offset = AOTCacheAccess::delta_from_base_address((address)ik);
-      record[i + 1] = klass_offset;
-    } else {
-      log_debug(precompile)("%d: klass (%s) %s is not archived", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
-      FREE_C_HEAP_ARRAY(uint, record);
-      return (uint*)badAddress;
-    }
-  }
-  return record;
-}
-#endif
-
