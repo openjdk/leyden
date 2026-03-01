@@ -96,7 +96,15 @@ public:
   };
 
 private:
-  Kind   _kind;
+  Kind    _kind;
+  // Next field is exposed to external profilers - keep it as boolean.
+  bool    _for_preload;           // Code can be used for preload (before classes initialized)
+  uint8_t _has_clinit_barriers:1, // Generated code has class init checks (ony in for_preload code)
+          _has_oop_maps:1,
+          _loaded:1,              // Code was loaded for use
+          _load_fail,             // Failed to load due to some klass state
+          _not_entrant;           // Deoptimized
+
   uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or Method's offset in AOTCache for nmethod
   uint   _offset;      // Offset to entry
   uint   _size;        // Entry size
@@ -108,12 +116,6 @@ private:
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
-  bool   _has_oop_maps;
-  bool   _has_clinit_barriers; // Generated code has class init checks
-  bool   _for_preload; // Code can be used for preload
-  bool   _loaded;      // Code was loaded
-  bool   _not_entrant; // Deoptimized
-  bool   _load_fail;   // Failed to load due to some klass state
 public:
   // this constructor is used only by AOTCodeEntry::Stub
   AOTCodeEntry(uint offset, uint size, uint name_offset, uint name_size,
@@ -144,7 +146,6 @@ public:
                uint offset,       uint size,
                uint name_offset,  uint name_size,
                uint blob_offset,  bool has_oop_maps,
-               address dumptime_content_start_addr,
                uint comp_level = 0,
                uint comp_id = 0,
                bool has_clinit_barriers = false,
@@ -433,7 +434,7 @@ private:
   uint*         _search_entries; // sorted by ID table [id, index]
   AOTCodeEntry* _store_entries;  // Used when writing cache
   const char*   _C_strings_buf;  // Loaded buffer for _C_strings[] table
-  uint          _store_entries_cnt;
+  uint          _store_entries_cnt; // total entries count
 
   uint _compile_id;
   uint _comp_level;

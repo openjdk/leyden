@@ -963,6 +963,7 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
       }
 #ifdef ASSERT
     } else {
+      assert(!entry->has_clinit_barriers(), "only preload code should have clinit barriers");
       ResourceMark rm;
       assert(method() == entry->method(), "AOTCodeCache: saved nmethod's method %p (name: %s id: " UINT32_FORMAT_X_0
              ") is different from the method %p (name: %s, id: " UINT32_FORMAT_X_0 " being looked up" ,
@@ -1000,7 +1001,7 @@ static bool check_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level, AOTCo
     assert(entry->id() == id, "sanity");
     if (kind != AOTCodeEntry::Nmethod || // addapters and stubs have only one version
         // Look only for normal AOT code entry, preload code is handled separately
-        (!entry->not_entrant() && !entry->has_clinit_barriers() && (entry->comp_level() == comp_level))) {
+        (!entry->not_entrant() && (entry->comp_level() == comp_level))) {
       return true; // Found
     }
   }
@@ -1149,7 +1150,9 @@ bool AOTCodeCache::finish_write() {
   if (!align_write()) {
     return false;
   }
-  uint strings_offset = _write_position;
+  // End of AOT code
+  uint code_size = _write_position;
+  uint strings_offset = code_size;
   int strings_count = store_strings();
   if (strings_count < 0) {
     return false;
@@ -1293,7 +1296,13 @@ bool AOTCodeCache::finish_write() {
 
     uint size = (current - start);
     assert(size <= total_size, "%d > %d", size , total_size);
-    log_debug(aot, codecache, exit)("  AOT code cache size: %u bytes, max entry's size: %u bytes", size, max_size);
+    log_debug(aot, codecache, exit)("  AOT code cache size: %u bytes", size);
+    log_debug(aot, codecache, exit)("    header size:        %u", header_size);
+    log_debug(aot, codecache, exit)("    total code size:    %u (max code's size: %u)", code_size, max_size);
+    log_debug(aot, codecache, exit)("    entries size:       %u", entries_size);
+    log_debug(aot, codecache, exit)("    entry search table: %u", search_size);
+    log_debug(aot, codecache, exit)("    C strings size:     %u", strings_size);
+    log_debug(aot, codecache, exit)("    CPU features data:  %u", total_cpu_features_size);
 
     // Finalize header
     AOTCodeCache::Header* header = (AOTCodeCache::Header*)start;
@@ -1400,7 +1409,7 @@ bool AOTCodeCache::store_code_blob(CodeBlob& blob, AOTCodeEntry::Kind entry_kind
   uint entry_size = cache->_write_position - entry_position;
   AOTCodeEntry* entry = new(cache) AOTCodeEntry(entry_kind, encode_id(entry_kind, id),
                                                 entry_position, entry_size, name_offset, name_size,
-                                                blob_offset, has_oop_maps, blob.content_begin());
+                                                blob_offset, has_oop_maps);
   log_debug(aot, codecache, stubs)("Wrote code blob '%s' (id=%u, kind=%s) to AOT Code Cache", name, id, aot_code_entry_kind_name[entry_kind]);
   return true;
 }
@@ -1616,6 +1625,9 @@ AOTCodeEntry* AOTCodeCache::store_nmethod(nmethod* nm, AbstractCompiler* compile
   if (entry == nullptr) {
     log_info(aot, codecache, nmethod)("%d (L%d): nmethod store attempt failed", nm->compile_id(), comp_level);
   }
+  // Clean up fields which could be set here
+  cache->_for_preload = false;
+  cache->_has_clinit_barriers = false;
   return entry;
 }
 
@@ -1643,6 +1655,7 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
 
   _for_preload = for_preload;
   _has_clinit_barriers = nm->has_clinit_barriers();
+  assert(!_has_clinit_barriers || _for_preload, "only preload code has clinit barriers");
 
   if (!align_write()) {
     return nullptr;
@@ -1770,13 +1783,8 @@ AOTCodeEntry* AOTCodeCache::write_nmethod(nmethod* nm, bool for_preload) {
                                                 entry_position, entry_size,
                                                 name_offset, name_size,
                                                 blob_offset, has_oop_maps,
-                                                nm->content_begin(), comp_level, comp_id,
+                                                comp_level, comp_id,
                                                 nm->has_clinit_barriers(), for_preload);
-#ifdef ASSERT
-  if (nm->has_clinit_barriers() || for_preload) {
-    assert(for_preload, "sanity");
-  }
-#endif
   {
     ResourceMark rm;
     const char* name = nm->method()->name_and_sig_as_C_string();
