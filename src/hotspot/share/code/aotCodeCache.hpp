@@ -828,7 +828,7 @@ public:
 class AOTRuntimeConstants {
  friend class AOTCodeCache;
  private:
-  address _card_table_address;
+  address _card_table_base;
   uint    _grain_shift;
   static address _field_addresses_list[];
   static AOTRuntimeConstants _aot_runtime_constants;
@@ -843,7 +843,7 @@ class AOTRuntimeConstants {
     address hi = base + sizeof(AOTRuntimeConstants);
     return (base <= adr && adr < hi);
   }
-  static address card_table_address();
+  static address card_table_base_address();
   static address grain_shift_address() { return (address)&_aot_runtime_constants._grain_shift; }
   static address* field_addresses_list() {
     return _field_addresses_list;

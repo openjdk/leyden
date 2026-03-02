@@ -52,6 +52,7 @@
 #include "compiler/compileTask.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
 #include "gc/shared/barrierSetAssembler.hpp"
+#include "gc/shared/cardTableBarrierSet.hpp"
 #include "gc/shared/gcConfig.hpp"
 #include "logging/logStream.hpp"
 #include "memory/memoryReserver.hpp"
@@ -98,6 +99,7 @@
 #endif
 #if INCLUDE_G1GC
 #include "gc/g1/g1BarrierSetRuntime.hpp"
+#include "gc/g1/g1HeapRegion.hpp"
 #endif
 #if INCLUDE_SHENANDOAHGC
 #include "gc/shenandoah/shenandoahRuntime.hpp"
@@ -3408,6 +3410,7 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_short_shuffle_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_long_shuffle_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_long_sign_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_int_to_byte_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_int());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_short());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_long());
@@ -3886,19 +3889,19 @@ void AOTRuntimeConstants::initialize_from_runtime() {
     CardTableBarrierSet* ctbs = barrier_set_cast<CardTableBarrierSet>(bs);
     grain_shift = ctbs->grain_shift();
   }
-  _aot_runtime_constants._card_table_address = card_table_base;
+  _aot_runtime_constants._card_table_base = card_table_base;
   _aot_runtime_constants._grain_shift = grain_shift;
 }
 
 address AOTRuntimeConstants::_field_addresses_list[] = {
-  ((address)&_aot_runtime_constants._card_table_address),
+  ((address)&_aot_runtime_constants._card_table_base),
   ((address)&_aot_runtime_constants._grain_shift),
   nullptr
 };
 
-address AOTRuntimeConstants::card_table_address() {
+address AOTRuntimeConstants::card_table_base_address() {
   assert(UseSerialGC || UseParallelGC, "Only these GCs have constant card table base");
-  return (address)&_aot_runtime_constants._card_table_address;
+  return (address)&_aot_runtime_constants._card_table_base;
 }
 
 void AOTCodeCache::wait_for_no_nmethod_readers() {
