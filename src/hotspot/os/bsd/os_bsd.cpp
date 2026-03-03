@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -39,7 +39,7 @@
 #include "prims/jniFastGetField.hpp"
 #include "prims/jvm_misc.hpp"
 #include "runtime/arguments.hpp"
-#include "runtime/atomic.hpp"
+#include "runtime/atomicAccess.hpp"
 #include "runtime/globals.hpp"
 #include "runtime/globals_extension.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
@@ -114,7 +114,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 // global variables
-size_t os::Bsd::_physical_memory = 0;
+physical_memory_size_type os::Bsd::_physical_memory = 0;
 
 #ifdef __APPLE__
 mach_timebase_info_data_t os::Bsd::_timebase_info = {0, 0};
@@ -133,19 +133,27 @@ static volatile int processor_id_next = 0;
 ////////////////////////////////////////////////////////////////////////////////
 // utility functions
 
-bool os::available_memory(size_t& value) {
+bool os::available_memory(physical_memory_size_type& value) {
   return Bsd::available_memory(value);
 }
 
-bool os::free_memory(size_t& value) {
+bool os::Machine::available_memory(physical_memory_size_type& value) {
+  return Bsd::available_memory(value);
+}
+
+bool os::free_memory(physical_memory_size_type& value) {
+  return Bsd::available_memory(value);
+}
+
+bool os::Machine::free_memory(physical_memory_size_type& value) {
   return Bsd::available_memory(value);
 }
 
 // Available here means free. Note that this number is of no much use. As an estimate
 // for future memory pressure it is far too conservative, since MacOS will use a lot
 // of unused memory for caches, and return it willingly in case of needs.
-bool os::Bsd::available_memory(size_t& value) {
-  uint64_t available = static_cast<uint64_t>(physical_memory() >> 2);
+bool os::Bsd::available_memory(physical_memory_size_type& value) {
+  physical_memory_size_type available = physical_memory() >> 2;
 #ifdef __APPLE__
   mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
   vm_statistics64_data_t vmstat;
@@ -160,7 +168,7 @@ bool os::Bsd::available_memory(size_t& value) {
     return false;
   }
 #endif
-  value = static_cast<size_t>(available);
+  value = available;
   return true;
 }
 
@@ -180,35 +188,47 @@ void os::Bsd::print_uptime_info(outputStream* st) {
   }
 }
 
-bool os::total_swap_space(size_t& value) {
+bool os::total_swap_space(physical_memory_size_type& value) {
+  return Machine::total_swap_space(value);
+}
+
+bool os::Machine::total_swap_space(physical_memory_size_type& value) {
 #if defined(__APPLE__)
   struct xsw_usage vmusage;
   size_t size = sizeof(vmusage);
   if (sysctlbyname("vm.swapusage", &vmusage, &size, nullptr, 0) != 0) {
     return false;
   }
-  value = static_cast<size_t>(vmusage.xsu_total);
+  value = static_cast<physical_memory_size_type>(vmusage.xsu_total);
   return true;
 #else
   return false;
 #endif
 }
 
-bool os::free_swap_space(size_t& value) {
+bool os::free_swap_space(physical_memory_size_type& value) {
+  return Machine::free_swap_space(value);
+}
+
+bool os::Machine::free_swap_space(physical_memory_size_type& value) {
 #if defined(__APPLE__)
   struct xsw_usage vmusage;
   size_t size = sizeof(vmusage);
   if (sysctlbyname("vm.swapusage", &vmusage, &size, nullptr, 0) != 0) {
     return false;
   }
-  value = static_cast<size_t>(vmusage.xsu_avail);
+  value = static_cast<physical_memory_size_type>(vmusage.xsu_avail);
   return true;
 #else
   return false;
 #endif
 }
 
-size_t os::physical_memory() {
+physical_memory_size_type os::physical_memory() {
+  return Bsd::physical_memory();
+}
+
+physical_memory_size_type os::Machine::physical_memory() {
   return Bsd::physical_memory();
 }
 
@@ -231,8 +251,6 @@ size_t os::rss() {
 // Cpu architecture string
 #if   defined(ZERO)
 static char cpu_arch[] = ZERO_LIBARCH;
-#elif defined(IA32)
-static char cpu_arch[] = "i386";
 #elif defined(AMD64)
 static char cpu_arch[] = "amd64";
 #elif defined(ARM)
@@ -286,7 +304,7 @@ void os::Bsd::initialize_system_info() {
   len = sizeof(mem_val);
   if (sysctl(mib, 2, &mem_val, &len, nullptr, 0) != -1) {
     assert(len == sizeof(mem_val), "unexpected data size");
-    _physical_memory = static_cast<size_t>(mem_val);
+    _physical_memory = static_cast<physical_memory_size_type>(mem_val);
   } else {
     _physical_memory = 256 * 1024 * 1024;       // fallback (XXXBSD?)
   }
@@ -297,7 +315,7 @@ void os::Bsd::initialize_system_info() {
     // datasize rlimit restricts us anyway.
     struct rlimit limits;
     getrlimit(RLIMIT_DATA, &limits);
-    _physical_memory = MIN2(_physical_memory, static_cast<size_t>(limits.rlim_cur));
+    _physical_memory = MIN2(_physical_memory, static_cast<physical_memory_size_type>(limits.rlim_cur));
   }
 #endif
 }
@@ -610,7 +628,7 @@ static void *thread_native_entry(Thread *thread) {
   log_info(os, thread)("Thread finished (tid: %zu, pthread id: %zu).",
     os::current_thread_id(), (uintx) pthread_self());
 
-  return 0;
+  return nullptr;
 }
 
 bool os::create_thread(Thread* thread, ThreadType thr_type,
@@ -809,7 +827,7 @@ jlong os::javaTimeNanos() {
   if (now <= prev) {
     return prev;   // same or retrograde time;
   }
-  const uint64_t obsv = Atomic::cmpxchg(&Bsd::_max_abstime, prev, now);
+  const uint64_t obsv = AtomicAccess::cmpxchg(&Bsd::_max_abstime, prev, now);
   assert(obsv >= prev, "invariant");   // Monotonicity
   // If the CAS succeeded then we're done and return "now".
   // If the CAS failed and the observed value "obsv" is >= now then
@@ -823,6 +841,7 @@ jlong os::javaTimeNanos() {
   // We might also condition (c) on the magnitude of the delta between obsv and now.
   // Avoiding excessive CAS operations to hot RW locations is critical.
   // See https://blogs.oracle.com/dave/entry/cas_and_cache_trivia_invalidate
+  // https://web.archive.org/web/20131214182431/https://blogs.oracle.com/dave/entry/cas_and_cache_trivia_invalidate
   return (prev == obsv) ? now : obsv;
 }
 
@@ -862,6 +881,90 @@ pid_t os::Bsd::gettid() {
     return getpid();
   }
 }
+
+// Returns the uid of a process or -1 on error.
+uid_t os::Bsd::get_process_uid(pid_t pid) {
+  struct kinfo_proc kp;
+  size_t size = sizeof kp;
+  int mib_kern[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, pid};
+  if (sysctl(mib_kern, 4, &kp, &size, nullptr, 0) == 0) {
+    if (size > 0 && kp.kp_proc.p_pid == pid) {
+      return kp.kp_eproc.e_ucred.cr_uid;
+    }
+  }
+  return (uid_t)-1;
+}
+
+// Returns true if the process is running as root.
+bool os::Bsd::is_process_root(pid_t pid) {
+  uid_t uid = get_process_uid(pid);
+  return (uid != (uid_t)-1) ? os::Posix::is_root(uid) : false;
+}
+
+#ifdef __APPLE__
+
+// macOS has a secure per-user temporary directory.
+// Root can attach to a non-root process, hence it needs
+// to lookup /var/folders for the user specific temporary directory
+// of the form /var/folders/*/*/T, that contains PERFDATA_NAME_user
+// directory.
+static const char VAR_FOLDERS[] = "/var/folders/";
+int os::Bsd::get_user_tmp_dir_macos(const char* user, int vmid, char* output_path, int output_size) {
+
+  // read the var/folders directory
+  DIR* varfolders_dir = os::opendir(VAR_FOLDERS);
+  if (varfolders_dir != nullptr) {
+
+    // var/folders directory contains 2-characters subdirectories (buckets)
+    struct dirent* bucket_de;
+
+    // loop until the PERFDATA_NAME_user directory has been found
+    while ((bucket_de = os::readdir(varfolders_dir)) != nullptr) {
+      // skip over files and special "." and ".."
+      if (bucket_de->d_type != DT_DIR || bucket_de->d_name[0] == '.') {
+        continue;
+      }
+      // absolute path to the bucket
+      char bucket[PATH_MAX];
+      int b = os::snprintf(bucket, PATH_MAX, "%s%s/", VAR_FOLDERS, bucket_de->d_name);
+
+      // the total length of the absolute path must not exceed the buffer size
+      if (b >= PATH_MAX || b < 0) {
+        continue;
+      }
+      // each bucket contains next level subdirectories
+      DIR* bucket_dir = os::opendir(bucket);
+      if (bucket_dir == nullptr) {
+        continue;
+      }
+      // read each subdirectory, skipping over regular files
+      struct dirent* subbucket_de;
+      while ((subbucket_de = os::readdir(bucket_dir)) != nullptr) {
+        if (subbucket_de->d_type != DT_DIR || subbucket_de->d_name[0] == '.') {
+          continue;
+        }
+        // If the PERFDATA_NAME_user directory exists in the T subdirectory,
+        // this means the subdirectory is the temporary directory of the user.
+        char perfdata_path[PATH_MAX];
+        int p = os::snprintf(perfdata_path, PATH_MAX, "%s%s/T/%s_%s/", bucket, subbucket_de->d_name, PERFDATA_NAME, user);
+
+        // the total length must not exceed the output buffer size
+        if (p >= PATH_MAX || p < 0) {
+          continue;
+        }
+        // check if the subdirectory exists
+        if (os::file_exists(perfdata_path)) {
+          // the return value of snprintf is not checked for the second time
+          return os::snprintf(output_path, output_size, "%s%s/T", bucket, subbucket_de->d_name);
+        }
+      }
+      os::closedir(bucket_dir);
+    }
+    os::closedir(varfolders_dir);
+  }
+  return -1;
+}
+#endif
 
 intx os::current_thread_id() {
 #ifdef __APPLE__
@@ -1011,7 +1114,6 @@ bool os::dll_address_to_library_name(address addr, char* buf,
 // same architecture as Hotspot is running on
 
 void *os::Bsd::dlopen_helper(const char *filename, int mode, char *ebuf, int ebuflen) {
-#ifndef IA32
   bool ieee_handling = IEEE_subnormal_handling_OK();
   if (!ieee_handling) {
     Events::log_dll_message(nullptr, "IEEE subnormal handling check failed before loading %s", filename);
@@ -1034,14 +1136,11 @@ void *os::Bsd::dlopen_helper(const char *filename, int mode, char *ebuf, int ebu
   // numerical "accuracy", but we need to protect Java semantics first
   // and foremost. See JDK-8295159.
 
-  // This workaround is ineffective on IA32 systems because the MXCSR
-  // register (which controls flush-to-zero mode) is not stored in the
-  // legacy fenv.
-
   fenv_t default_fenv;
   int rtn = fegetenv(&default_fenv);
   assert(rtn == 0, "fegetenv must succeed");
-#endif // IA32
+
+  Events::log_dll_message(nullptr, "Attempting to load shared library %s", filename);
 
   void* result;
   JFR_ONLY(NativeLibraryLoadEvent load_event(filename, &result);)
@@ -1061,7 +1160,6 @@ void *os::Bsd::dlopen_helper(const char *filename, int mode, char *ebuf, int ebu
   } else {
     Events::log_dll_message(nullptr, "Loaded shared library %s", filename);
     log_info(os)("shared library load of %s was successful", filename);
-#ifndef IA32
     if (! IEEE_subnormal_handling_OK()) {
       // We just dlopen()ed a library that mangled the floating-point
       // flags. Silently fix things now.
@@ -1086,7 +1184,6 @@ void *os::Bsd::dlopen_helper(const char *filename, int mode, char *ebuf, int ebu
         assert(false, "fesetenv didn't work");
       }
     }
-#endif // IA32
   }
 
   return result;
@@ -1195,9 +1292,7 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen) {
     {EM_68K,         EM_68K,     ELFCLASS32, ELFDATA2MSB, (char*)"M68k"}
   };
 
-  #if  (defined IA32)
-  static  Elf32_Half running_arch_code=EM_386;
-  #elif   (defined AMD64)
+  #if    (defined AMD64)
   static  Elf32_Half running_arch_code=EM_X86_64;
   #elif  (defined __powerpc64__)
   static  Elf32_Half running_arch_code=EM_PPC64;
@@ -1219,7 +1314,7 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen) {
   static  Elf32_Half running_arch_code=EM_68K;
   #else
     #error Method os::dll_load requires that one of following is defined:\
-         IA32, AMD64, __powerpc__, ARM, S390, ALPHA, MIPS, MIPSEL, PARISC, M68K
+         AMD64, __powerpc__, ARM, S390, ALPHA, MIPS, MIPSEL, PARISC, M68K
   #endif
 
   // Identify compatibility class for VM's architecture and library's architecture
@@ -1326,7 +1421,7 @@ int os::get_loaded_modules_info(os::LoadedModulesCallbackFunc callback, void *pa
 #elif defined(__APPLE__)
   for (uint32_t i = 1; i < _dyld_image_count(); i++) {
     // Value for top_address is returned as 0 since we don't have any information about module size
-    if (callback(_dyld_get_image_name(i), (address)_dyld_get_image_header(i), (address)0, param)) {
+    if (callback(_dyld_get_image_name(i), (address)_dyld_get_image_header(i), nullptr, param)) {
       return 1;
     }
   }
@@ -1469,12 +1564,12 @@ void os::print_memory_info(outputStream* st) {
 
   st->print("Memory:");
   st->print(" %zuk page", os::vm_page_size()>>10);
-  size_t phys_mem = os::physical_memory();
-  st->print(", physical %zuk",
+  physical_memory_size_type phys_mem = os::physical_memory();
+  st->print(", physical " PHYS_MEM_TYPE_FORMAT "k",
             phys_mem >> 10);
-  size_t avail_mem = 0;
+  physical_memory_size_type avail_mem = 0;
   (void)os::available_memory(avail_mem);
-  st->print("(%zuk free)",
+  st->print("(" PHYS_MEM_TYPE_FORMAT "k free)",
             avail_mem >> 10);
 
   if((sysctlbyname("vm.swapusage", &swap_usage, &size, nullptr, 0) == 0) || (errno == ENOMEM)) {
@@ -1593,13 +1688,14 @@ size_t os::pd_pretouch_memory(void* first, void* last, size_t page_size) {
   return page_size;
 }
 
+void os::numa_set_thread_affinity(Thread *thread, int node) {
+}
+
 void os::numa_make_global(char *addr, size_t bytes) {
 }
 
 void os::numa_make_local(char *addr, size_t bytes, int lgrp_hint) {
 }
-
-bool os::numa_topology_changed()   { return false; }
 
 size_t os::numa_get_groups_num() {
   return 1;
@@ -1686,10 +1782,8 @@ bool os::pd_create_stack_guard_pages(char* addr, size_t size) {
   return os::commit_memory(addr, size, !ExecMem);
 }
 
-// If this is a growable mapping, remove the guard pages entirely by
-// munmap()ping them.  If not, just call uncommit_memory().
-bool os::remove_stack_guard_pages(char* addr, size_t size) {
-  return os::uncommit_memory(addr, size);
+void os::remove_stack_guard_pages(char* addr, size_t size) {
+  os::uncommit_memory(addr, size);
 }
 
 // 'requested_addr' is only treated as a hint, the return value may or
@@ -1789,11 +1883,6 @@ void os::large_page_init() {
 char* os::pd_reserve_memory_special(size_t bytes, size_t alignment, size_t page_size, char* req_addr, bool exec) {
   fatal("os::reserve_memory_special should not be called on BSD.");
   return nullptr;
-}
-
-bool os::pd_release_memory_special(char* base, size_t bytes) {
-  fatal("os::release_memory_special should not be called on BSD.");
-  return false;
 }
 
 size_t os::large_page_size() {
@@ -2114,6 +2203,10 @@ int os::active_processor_count() {
     return ActiveProcessorCount;
   }
 
+  return Machine::active_processor_count();
+}
+
+int os::Machine::active_processor_count() {
   return _processor_count;
 }
 
@@ -2135,14 +2228,14 @@ uint os::processor_id() {
   __asm__ ("cpuid\n\t" : "+a" (eax), "+b" (ebx), "+c" (ecx), "+d" (edx) : );
 
   uint apic_id = (ebx >> 24) & (processor_id_map_size - 1);
-  int processor_id = Atomic::load(&processor_id_map[apic_id]);
+  int processor_id = AtomicAccess::load(&processor_id_map[apic_id]);
 
   while (processor_id < 0) {
     // Assign processor id to APIC id
-    processor_id = Atomic::cmpxchg(&processor_id_map[apic_id], processor_id_unassigned, processor_id_assigning);
+    processor_id = AtomicAccess::cmpxchg(&processor_id_map[apic_id], processor_id_unassigned, processor_id_assigning);
     if (processor_id == processor_id_unassigned) {
-      processor_id = Atomic::fetch_then_add(&processor_id_next, 1) % os::processor_count();
-      Atomic::store(&processor_id_map[apic_id], processor_id);
+      processor_id = AtomicAccess::fetch_then_add(&processor_id_next, 1) % os::processor_count();
+      AtomicAccess::store(&processor_id_map[apic_id], processor_id);
     }
   }
 
@@ -2286,8 +2379,8 @@ int os::open(const char *path, int oflag, int mode) {
 
     if (ret != -1) {
       if ((st_mode & S_IFMT) == S_IFDIR) {
-        errno = EISDIR;
         ::close(fd);
+        errno = EISDIR;
         return -1;
       }
     } else {
@@ -2497,7 +2590,7 @@ bool os::pd_dll_unload(void* libhandle, char* ebuf, int ebuflen) {
       error_report = "dlerror returned no error description";
     }
     if (ebuf != nullptr && ebuflen > 0) {
-      os::snprintf_checked(ebuf, ebuflen - 1, "%s", error_report);
+      os::snprintf_checked(ebuf, ebuflen, "%s", error_report);
     }
   }
 

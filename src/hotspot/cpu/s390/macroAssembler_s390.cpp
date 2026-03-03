@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2026, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2016, 2024 SAP SE. All rights reserved.
  * Copyright 2024 IBM Corporation. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -44,6 +44,7 @@
 #include "runtime/icache.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/objectMonitor.hpp"
+#include "runtime/objectMonitorTable.hpp"
 #include "runtime/os.hpp"
 #include "runtime/safepoint.hpp"
 #include "runtime/safepointMechanism.hpp"
@@ -6138,11 +6139,11 @@ void MacroAssembler::zap_from_to(Register low, Register high, Register val, Regi
 }
 #endif // !PRODUCT
 
-// Implements lightweight-locking.
+// Implements fast-locking.
 //  - obj: the object to be locked, contents preserved.
 //  - temp1, temp2: temporary registers, contents destroyed.
 //  Note: make sure Z_R1 is not manipulated here when C2 compiler is in play
-void MacroAssembler::lightweight_lock(Register basic_lock, Register obj, Register temp1, Register temp2, Label& slow) {
+void MacroAssembler::fast_lock(Register basic_lock, Register obj, Register temp1, Register temp2, Label& slow) {
 
   assert_different_registers(basic_lock, obj, temp1, temp2);
 
@@ -6203,11 +6204,11 @@ void MacroAssembler::lightweight_lock(Register basic_lock, Register obj, Registe
   z_alsi(in_bytes(ls_top_offset), Z_thread, oopSize);
 }
 
-// Implements lightweight-unlocking.
+// Implements fast-unlocking.
 // - obj: the object to be unlocked
 // - temp1, temp2: temporary registers, will be destroyed
 // - Z_R1_scratch: will be killed in case of Interpreter & C1 Compiler
-void MacroAssembler::lightweight_unlock(Register obj, Register temp1, Register temp2, Label& slow) {
+void MacroAssembler::fast_unlock(Register obj, Register temp1, Register temp2, Label& slow) {
 
   assert_different_registers(obj, temp1, temp2);
 
@@ -6264,7 +6265,7 @@ void MacroAssembler::lightweight_unlock(Register obj, Register temp1, Register t
   NearLabel not_unlocked;
   z_tmll(mark, markWord::unlocked_value);
   z_braz(not_unlocked);
-  stop("lightweight_unlock already unlocked");
+  stop("fast_unlock already unlocked");
   bind(not_unlocked);
 #endif // ASSERT
 
@@ -6289,7 +6290,7 @@ void MacroAssembler::lightweight_unlock(Register obj, Register temp1, Register t
   bind(unlocked);
 }
 
-void MacroAssembler::compiler_fast_lock_lightweight_object(Register obj, Register box, Register tmp1, Register tmp2) {
+void MacroAssembler::compiler_fast_lock_object(Register obj, Register box, Register tmp1, Register tmp2) {
   assert_different_registers(obj, box, tmp1, tmp2, Z_R0_scratch);
 
   // Handle inflated monitor.
@@ -6314,8 +6315,8 @@ void MacroAssembler::compiler_fast_lock_lightweight_object(Register obj, Registe
   const int mark_offset        = oopDesc::mark_offset_in_bytes();
   const ByteSize ls_top_offset = JavaThread::lock_stack_top_offset();
 
-  BLOCK_COMMENT("compiler_fast_lightweight_locking {");
-  { // lightweight locking
+  BLOCK_COMMENT("compiler_fast_locking {");
+  { // Fast locking
 
     // Push lock to the lock stack and finish successfully. MUST reach to with flag == EQ
     NearLabel push;
@@ -6362,9 +6363,9 @@ void MacroAssembler::compiler_fast_lock_lightweight_object(Register obj, Registe
     z_cgr(obj, obj); // set the CC to EQ, as it could be changed by alsi
     z_bru(locked);
   }
-  BLOCK_COMMENT("} compiler_fast_lightweight_locking");
+  BLOCK_COMMENT("} compiler_fast_locking");
 
-  BLOCK_COMMENT("handle_inflated_monitor_lightweight_locking {");
+  BLOCK_COMMENT("handle_inflated_monitor_locking {");
   { // Handle inflated monitor.
     bind(inflated);
 
@@ -6372,45 +6373,55 @@ void MacroAssembler::compiler_fast_lock_lightweight_object(Register obj, Registe
     if (!UseObjectMonitorTable) {
       assert(tmp1_monitor == mark, "should be the same here");
     } else {
+      const Register tmp1_bucket = tmp1;
+      const Register hash  = Z_R0_scratch;
       NearLabel monitor_found;
 
-      // load cache address
-      z_la(tmp1, Address(Z_thread, JavaThread::om_cache_oops_offset()));
+      // Save the mark, we might need it to extract the hash.
+      z_lgr(hash, mark);
 
-      const int num_unrolled = 2;
+      // Look for the monitor in the om_cache.
+
+      ByteSize cache_offset   = JavaThread::om_cache_oops_offset();
+      ByteSize monitor_offset = OMCache::oop_to_monitor_difference();
+      const int num_unrolled  = OMCache::CAPACITY;
       for (int i = 0; i < num_unrolled; i++) {
-        z_cg(obj, Address(tmp1));
+        z_lg(tmp1_monitor, Address(Z_thread, cache_offset + monitor_offset));
+        z_cg(obj, Address(Z_thread, cache_offset));
         z_bre(monitor_found);
-        add2reg(tmp1, in_bytes(OMCache::oop_to_oop_difference()));
+        cache_offset = cache_offset + OMCache::oop_to_oop_difference();
       }
 
-      NearLabel loop;
-      // Search for obj in cache
+      // Get the hash code.
+      z_srlg(hash, hash, markWord::hash_shift);
 
-      bind(loop);
+      // Get the table and calculate the bucket's address.
+      load_const_optimized(tmp2, ObjectMonitorTable::current_table_address());
+      z_lg(tmp2, Address(tmp2));
+      z_ng(hash, Address(tmp2, ObjectMonitorTable::table_capacity_mask_offset()));
+      z_lg(tmp1_bucket, Address(tmp2, ObjectMonitorTable::table_buckets_offset()));
+      z_sllg(hash, hash, LogBytesPerWord);
+      z_agr(tmp1_bucket, hash);
 
-      // check for match.
-      z_cg(obj, Address(tmp1));
-      z_bre(monitor_found);
+      // Read the monitor from the bucket.
+      z_lg(tmp1_monitor, Address(tmp1_bucket));
 
-      // search until null encountered, guaranteed _null_sentinel at end.
-      add2reg(tmp1, in_bytes(OMCache::oop_to_oop_difference()));
-      z_cghsi(0, tmp1, 0);
-      z_brne(loop); // if not EQ to 0, go for another loop
+      // Check if the monitor in the bucket is special (empty, tombstone or removed).
+      z_clgfi(tmp1_monitor, ObjectMonitorTable::SpecialPointerValues::below_is_special);
+      z_brl(slow_path);
 
-      // we reached to the end, cache miss
-      z_ltgr(obj, obj); // set CC to NE
-      z_bru(slow_path);
+      // Check if object matches.
+      z_lg(tmp2, Address(tmp1_monitor, ObjectMonitor::object_offset()));
+      BarrierSetAssembler* bs_asm = BarrierSet::barrier_set()->barrier_set_assembler();
+      bs_asm->try_resolve_weak_handle_in_c2(this, tmp2, Z_R0_scratch, slow_path);
+      z_cgr(obj, tmp2);
+      z_brne(slow_path);
 
-      // cache hit
       bind(monitor_found);
-      z_lg(tmp1_monitor, Address(tmp1, OMCache::oop_to_monitor_difference()));
     }
     NearLabel monitor_locked;
     // lock the monitor
 
-    // mark contains the tagged ObjectMonitor*.
-    const Register tagged_monitor = mark;
     const Register zero           = tmp2;
 
     const ByteSize monitor_tag = in_ByteSize(UseObjectMonitorTable ? 0 : checked_cast<int>(markWord::monitor_value));
@@ -6441,7 +6452,7 @@ void MacroAssembler::compiler_fast_lock_lightweight_object(Register obj, Registe
     // set the CC now
     z_cgr(obj, obj);
   }
-  BLOCK_COMMENT("} handle_inflated_monitor_lightweight_locking");
+  BLOCK_COMMENT("} handle_inflated_monitor_locking");
 
   bind(locked);
 
@@ -6464,7 +6475,7 @@ void MacroAssembler::compiler_fast_lock_lightweight_object(Register obj, Registe
   // C2 uses the value of flag (NE vs EQ) to determine the continuation.
 }
 
-void MacroAssembler::compiler_fast_unlock_lightweight_object(Register obj, Register box, Register tmp1, Register tmp2) {
+void MacroAssembler::compiler_fast_unlock_object(Register obj, Register box, Register tmp1, Register tmp2) {
   assert_different_registers(obj, box, tmp1, tmp2);
 
   // Handle inflated monitor.
@@ -6479,8 +6490,8 @@ void MacroAssembler::compiler_fast_unlock_lightweight_object(Register obj, Regis
   const int mark_offset        = oopDesc::mark_offset_in_bytes();
   const ByteSize ls_top_offset = JavaThread::lock_stack_top_offset();
 
-  BLOCK_COMMENT("compiler_fast_lightweight_unlock {");
-  { // Lightweight Unlock
+  BLOCK_COMMENT("compiler_fast_unlock {");
+  { // Fast Unlock
     NearLabel push_and_slow_path;
 
     // Check if obj is top of lock-stack.
@@ -6525,7 +6536,7 @@ void MacroAssembler::compiler_fast_unlock_lightweight_object(Register obj, Regis
     NearLabel not_unlocked;
     z_tmll(mark, markWord::unlocked_value);
     z_braz(not_unlocked);
-    stop("lightweight_unlock already unlocked");
+    stop("fast_unlock already unlocked");
     bind(not_unlocked);
 #endif // ASSERT
 
@@ -6546,7 +6557,7 @@ void MacroAssembler::compiler_fast_unlock_lightweight_object(Register obj, Regis
     z_ltgr(obj, obj); // object is not null here
     z_bru(slow_path);
   }
-  BLOCK_COMMENT("} compiler_fast_lightweight_unlock");
+  BLOCK_COMMENT("} compiler_fast_unlock");
 
   { // Handle inflated monitor.
 

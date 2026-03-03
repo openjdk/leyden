@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2026, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2018, 2025 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -193,14 +193,19 @@ void BarrierSetAssembler::nmethod_entry_barrier(MacroAssembler* masm, Register t
 
   // Low order half of 64 bit value is currently used.
   __ ld(R0, in_bytes(bs_nm->thread_disarmed_guard_value_offset()), R16_thread);
-  __ cmpw(CR0, R0, tmp);
 
-  // Load stub address using toc (fixed instruction size, unlike load_const_optimized)
-  __ calculate_address_from_global_toc(tmp, StubRoutines::method_entry_barrier(),
-                                       true, true, false); // 2 instructions
-  __ mtctr(tmp);
+  if (TrapBasedNMethodEntryBarriers) {
+    __ tw(Assembler::traptoLessThanUnsigned | Assembler::traptoGreaterThanUnsigned, R0, tmp);
+  } else {
+    __ cmpw(CR0, R0, tmp);
 
-  __ bnectrl(CR0);
+    // Load stub address using toc (fixed instruction size, unlike load_const_optimized)
+    __ calculate_address_from_global_toc(tmp, StubRoutines::method_entry_barrier(),
+                                         true, true, false); // 2 instructions
+    __ mtctr(tmp);
+
+    __ bnectrl(CR0);
+  }
 
   // Oops may have been changed. Make those updates observable.
   // "isync" can serve both, data and instruction patching.
@@ -268,6 +273,11 @@ OptoReg::Name BarrierSetAssembler::refine_register(const Node* node, OptoReg::Na
   }
 
   return opto_reg;
+}
+
+void BarrierSetAssembler::try_resolve_weak_handle_in_c2(MacroAssembler* masm, Register obj, Register tmp, Label& slow_path) {
+  // Load the oop from the weak handle.
+  __ ld(obj, 0, obj);
 }
 
 #undef __

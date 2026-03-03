@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -24,12 +24,11 @@
 
 #include "cds/aotArtifactFinder.hpp"
 #include "cds/aotClassLinker.hpp"
-#include "cds/aotLinkedClassBulkLoader.hpp"
+#include "cds/aotCompressedPointers.hpp"
 #include "cds/aotLogging.hpp"
 #include "cds/aotMapLogger.hpp"
 #include "cds/aotMetaspace.hpp"
 #include "cds/archiveBuilder.hpp"
-#include "cds/archiveHeapWriter.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/cppVtables.hpp"
@@ -177,10 +176,10 @@ ArchiveBuilder::ArchiveBuilder() :
   _mapped_static_archive_bottom(nullptr),
   _mapped_static_archive_top(nullptr),
   _buffer_to_requested_delta(0),
-  _pz_region("pz", MAX_SHARED_DELTA), // protection zone -- used only during dumping; does NOT exist in cds archive.
-  _rw_region("rw", MAX_SHARED_DELTA),
-  _ro_region("ro", MAX_SHARED_DELTA),
-  _ac_region("ac", MAX_SHARED_DELTA),
+  _pz_region("pz"), // protection zone -- used only during dumping; does NOT exist in cds archive.
+  _rw_region("rw"),
+  _ro_region("ro"),
+  _ac_region("ac"),
   _ptrmap(mtClassShared),
   _rw_ptrmap(mtClassShared),
   _ro_ptrmap(mtClassShared),
@@ -245,7 +244,7 @@ bool ArchiveBuilder::gather_klass_and_symbol(MetaspaceClosure::Ref* ref, bool re
   if (get_follow_mode(ref) != make_a_copy) {
     return false;
   }
-  if (ref->msotype() == MetaspaceObj::ClassType) {
+  if (ref->type() == MetaspaceClosureType::ClassType) {
     Klass* klass = (Klass*)ref->obj();
     assert(klass->is_klass(), "must be");
     if (!is_excluded(klass)) {
@@ -254,7 +253,7 @@ bool ArchiveBuilder::gather_klass_and_symbol(MetaspaceClosure::Ref* ref, bool re
         assert(klass->is_instance_klass(), "must be");
       }
     }
-  } else if (ref->msotype() == MetaspaceObj::SymbolType) {
+  } else if (ref->type() == MetaspaceClosureType::SymbolType) {
     // Make sure the symbol won't be GC'ed while we are dumping the archive.
     Symbol* sym = (Symbol*)ref->obj();
     sym->increment_refcount();
@@ -273,11 +272,6 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
   aot_log_info(aot)("Gathering classes and symbols ... ");
   GatherKlassesAndSymbols doit(this);
   iterate_roots(&doit);
-#if INCLUDE_CDS_JAVA_HEAP
-  if (CDSConfig::is_dumping_full_module_graph()) {
-    ClassLoaderDataShared::iterate_symbols(&doit);
-  }
-#endif
   doit.finish();
 
   if (CDSConfig::is_dumping_static_archive()) {
@@ -327,8 +321,10 @@ void ArchiveBuilder::sort_klasses() {
 }
 
 address ArchiveBuilder::reserve_buffer() {
-  // AOTCodeCache::max_aot_code_size() accounts for aot code region.
-  size_t buffer_size = LP64_ONLY(CompressedClassSpaceSize) NOT_LP64(256 * M) + AOTCodeCache::max_aot_code_size();
+  // On 64-bit: reserve address space for archives up to the max encoded offset limit.
+  // On 32-bit: use 256MB + AOT code size due to limited virtual address space.
+  size_t buffer_size = LP64_ONLY(AOTCompressedPointers::MaxMetadataOffsetBytes)
+                       NOT_LP64(256 * M + AOTCodeCache::max_aot_code_size());
   ReservedSpace rs = MemoryReserver::reserve(buffer_size,
                                              AOTMetaspace::core_region_alignment(),
                                              os::vm_page_size(),
@@ -448,14 +444,14 @@ bool ArchiveBuilder::gather_one_source_obj(MetaspaceClosure::Ref* ref, bool read
   }
 
 #ifdef ASSERT
-  if (ref->msotype() == MetaspaceObj::MethodType) {
+  if (ref->type() == MetaspaceClosureType::MethodType) {
     Method* m = (Method*)ref->obj();
     assert(!RegeneratedClasses::has_been_regenerated((address)m->method_holder()),
            "Should not archive methods in a class that has been regenerated");
   }
 #endif
 
-  if (ref->msotype() == MetaspaceObj::MethodDataType) {
+  if (ref->type() == MetaspaceClosureType::MethodDataType) {
     MethodData* md = (MethodData*)ref->obj();
     md->clean_method_data(false /* always_clean */);
   }
@@ -556,16 +552,16 @@ ArchiveBuilder::FollowMode ArchiveBuilder::get_follow_mode(MetaspaceClosure::Ref
   if (CDSConfig::is_dumping_dynamic_archive() && AOTMetaspace::in_aot_cache(obj)) {
     // Don't dump existing shared metadata again.
     return point_to_it;
-  } else if (ref->msotype() == MetaspaceObj::MethodDataType ||
-             ref->msotype() == MetaspaceObj::MethodCountersType ||
-             ref->msotype() == MetaspaceObj::KlassTrainingDataType ||
-             ref->msotype() == MetaspaceObj::MethodTrainingDataType ||
-             ref->msotype() == MetaspaceObj::CompileTrainingDataType) {
+  } else if (ref->type() == MetaspaceClosureType::MethodDataType ||
+             ref->type() == MetaspaceClosureType::MethodCountersType ||
+             ref->type() == MetaspaceClosureType::KlassTrainingDataType ||
+             ref->type() == MetaspaceClosureType::MethodTrainingDataType ||
+             ref->type() == MetaspaceClosureType::CompileTrainingDataType) {
     return (TrainingData::need_data() || TrainingData::assembling_data()) ? make_a_copy : set_to_null;
-  } else if (ref->msotype() == MetaspaceObj::AdapterHandlerEntryType) {
+  } else if (ref->type() == MetaspaceClosureType::AdapterHandlerEntryType) {
     return CDSConfig::is_dumping_adapters() ? make_a_copy : set_to_null;
   } else {
-    if (ref->msotype() == MetaspaceObj::ClassType) {
+    if (ref->type() == MetaspaceClosureType::ClassType) {
       Klass* klass = (Klass*)ref->obj();
       assert(klass->is_klass(), "must be");
       if (RegeneratedClasses::has_been_regenerated(klass)) {
@@ -573,7 +569,12 @@ ArchiveBuilder::FollowMode ArchiveBuilder::get_follow_mode(MetaspaceClosure::Ref
       }
       if (is_excluded(klass)) {
         ResourceMark rm;
-        log_debug(cds, dynamic)("Skipping class (excluded): %s", klass->external_name());
+        aot_log_trace(aot)("pointer set to null: class (excluded): %s", klass->external_name());
+        return set_to_null;
+      }
+      if (klass->is_array_klass() && CDSConfig::is_dumping_dynamic_archive()) {
+        ResourceMark rm;
+        aot_log_trace(aot)("pointer set to null: array class not supported in dynamic region: %s", klass->external_name());
         return set_to_null;
       }
     }
@@ -617,15 +618,6 @@ void ArchiveBuilder::dump_rw_metadata() {
   ResourceMark rm;
   aot_log_info(aot)("Allocating RW objects ... ");
   make_shallow_copies(&_rw_region, &_rw_src_objs);
-
-#if INCLUDE_CDS_JAVA_HEAP
-  if (CDSConfig::is_dumping_full_module_graph()) {
-    // Archive the ModuleEntry's and PackageEntry's of the 3 built-in loaders
-    char* start = rw_region()->top();
-    ClassLoaderDataShared::allocate_archived_tables();
-    alloc_stats()->record_modules(rw_region()->top() - start, /*read_only*/false);
-  }
-#endif
 }
 
 void ArchiveBuilder::dump_ro_metadata() {
@@ -634,15 +626,6 @@ void ArchiveBuilder::dump_ro_metadata() {
 
   start_dump_region(&_ro_region);
   make_shallow_copies(&_ro_region, &_ro_src_objs);
-
-#if INCLUDE_CDS_JAVA_HEAP
-  if (CDSConfig::is_dumping_full_module_graph()) {
-    char* start = ro_region()->top();
-    ClassLoaderDataShared::init_archived_tables();
-    alloc_stats()->record_modules(ro_region()->top() - start, /*read_only*/true);
-  }
-#endif
-
   RegeneratedClasses::record_regenerated_objects();
 }
 
@@ -656,13 +639,11 @@ void ArchiveBuilder::make_shallow_copies(DumpRegion *dump_region,
 
 void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* src_info) {
   address src = src_info->source_addr();
-  int bytes = src_info->size_in_bytes();
-  char* dest;
-  char* oldtop;
-  char* newtop;
+  int bytes = src_info->size_in_bytes(); // word-aligned
+  size_t alignment = SharedSpaceObjectAlignment; // alignment for the dest pointer
 
-  oldtop = dump_region->top();
-  if (src_info->msotype() == MetaspaceObj::ClassType) {
+  char* oldtop = dump_region->top();
+  if (src_info->type() == MetaspaceClosureType::ClassType) {
     // Allocate space for a pointer directly in front of the future InstanceKlass, so
     // we can do a quick lookup from InstanceKlass* -> RunTimeClassInfo*
     // without building another hashtable. See RunTimeClassInfo::get_for()
@@ -672,25 +653,23 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
       SystemDictionaryShared::validate_before_archiving(InstanceKlass::cast(klass));
       dump_region->allocate(sizeof(address));
     }
-    // Allocate space for the future InstanceKlass with proper alignment
-    const size_t alignment =
 #ifdef _LP64
-      UseCompressedClassPointers ?
-        nth_bit(ArchiveBuilder::precomputed_narrow_klass_shift()) :
-        SharedSpaceObjectAlignment;
-#else
-      SharedSpaceObjectAlignment;
+    // More strict alignments needed for UseCompressedClassPointers
+    if (UseCompressedClassPointers) {
+      alignment = nth_bit(ArchiveBuilder::precomputed_narrow_klass_shift());
+    }
 #endif
-    dest = dump_region->allocate(bytes, alignment);
-  } else {
-    dest = dump_region->allocate(bytes);
+  } else if (src_info->type() == MetaspaceClosureType::SymbolType) {
+    // Symbols may be allocated by using AllocateHeap, so their sizes
+    // may be less than size_in_bytes() indicates.
+    bytes = ((Symbol*)src)->byte_size();
   }
-  newtop = dump_region->top();
 
+  char* dest = dump_region->allocate(bytes, alignment);
   memcpy(dest, src, bytes);
 
   // Update the hash of buffered sorted symbols for static dump so that the symbols have deterministic contents
-  if (CDSConfig::is_dumping_static_archive() && (src_info->msotype() == MetaspaceObj::SymbolType)) {
+  if (CDSConfig::is_dumping_static_archive() && (src_info->type() == MetaspaceClosureType::SymbolType)) {
     Symbol* buffered_symbol = (Symbol*)dest;
     assert(((Symbol*)src)->is_permanent(), "archived symbols must be permanent");
     buffered_symbol->update_identity_hash();
@@ -705,7 +684,7 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
     }
   }
 
-  intptr_t* archived_vtable = CppVtables::get_archived_vtable(src_info->msotype(), (address)dest);
+  intptr_t* archived_vtable = CppVtables::get_archived_vtable(src_info->type(), (address)dest);
   if (archived_vtable != nullptr) {
     *(address*)dest = (address)archived_vtable;
     ArchivePtrMarker::mark_pointer((address*)dest);
@@ -714,7 +693,8 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
   log_trace(aot)("Copy: " PTR_FORMAT " ==> " PTR_FORMAT " %d", p2i(src), p2i(dest), bytes);
   src_info->set_buffered_addr((address)dest);
 
-  _alloc_stats.record(src_info->msotype(), int(newtop - oldtop), src_info->read_only());
+  char* newtop = dump_region->top();
+  _alloc_stats.record(src_info->type(), int(newtop - oldtop), src_info->read_only());
 
   DEBUG_ONLY(_alloc_stats.verify((int)dump_region->used(), src_info->read_only()));
 }
@@ -937,7 +917,7 @@ void ArchiveBuilder::make_klasses_shareable() {
         ADD_COUNT(num_enum_klasses);
       }
 
-      if (!ik->can_be_verified_at_dumptime()) {
+      if (CDSConfig::is_old_class_for_verifier(ik)) {
         ADD_COUNT(num_old_klasses);
         old = " old";
       }
@@ -956,7 +936,7 @@ void ArchiveBuilder::make_klasses_shareable() {
         }
       }
 
-      AOTMetaspace::rewrite_nofast_bytecodes_and_calculate_fingerprints(Thread::current(), ik);
+      AOTMetaspace::rewrite_bytecodes_and_calculate_fingerprints(Thread::current(), ik);
       ik->remove_unshareable_info();
     }
 
@@ -989,8 +969,6 @@ void ArchiveBuilder::make_klasses_shareable() {
 
 #undef STATS_FORMAT
 #undef STATS_PARAMS
-
-  DynamicArchive::make_array_klasses_shareable();
 }
 
 void ArchiveBuilder::make_training_data_shareable() {
@@ -999,15 +977,15 @@ void ArchiveBuilder::make_training_data_shareable() {
       return;
     }
 
-    if (info.msotype() == MetaspaceObj::KlassTrainingDataType ||
-        info.msotype() == MetaspaceObj::MethodTrainingDataType ||
-        info.msotype() == MetaspaceObj::CompileTrainingDataType) {
+    if (info.type() == MetaspaceClosureType::KlassTrainingDataType ||
+        info.type() == MetaspaceClosureType::MethodTrainingDataType ||
+        info.type() == MetaspaceClosureType::CompileTrainingDataType) {
       TrainingData* buffered_td = (TrainingData*)info.buffered_addr();
       buffered_td->remove_unshareable_info();
-    } else if (info.msotype() == MetaspaceObj::MethodDataType) {
+    } else if (info.type() == MetaspaceClosureType::MethodDataType) {
       MethodData* buffered_mdo = (MethodData*)info.buffered_addr();
       buffered_mdo->remove_unshareable_info();
-    } else if (info.msotype() == MetaspaceObj::MethodCountersType) {
+    } else if (info.type() == MetaspaceClosureType::MethodCountersType) {
       MethodCounters* buffered_mc = (MethodCounters*)info.buffered_addr();
       buffered_mc->remove_unshareable_info();
     }
@@ -1015,23 +993,15 @@ void ArchiveBuilder::make_training_data_shareable() {
   _src_obj_table.iterate_all(clean_td);
 }
 
-void ArchiveBuilder::serialize_dynamic_archivable_items(SerializeClosure* soc) {
-  SymbolTable::serialize_shared_table_header(soc, false);
-  SystemDictionaryShared::serialize_dictionary_headers(soc, false);
-  DynamicArchive::serialize_array_klasses(soc);
-  AOTLinkedClassBulkLoader::serialize(soc, false);
-}
-
-uintx ArchiveBuilder::buffer_to_offset(address p) const {
+size_t ArchiveBuilder::buffer_to_offset(address p) const {
   address requested_p = to_requested(p);
-  assert(requested_p >= _requested_static_archive_bottom, "must be");
-  return requested_p - _requested_static_archive_bottom;
+  return pointer_delta(requested_p, _requested_static_archive_bottom, 1);
 }
 
-uintx ArchiveBuilder::any_to_offset(address p) const {
+size_t ArchiveBuilder::any_to_offset(address p) const {
   if (is_in_mapped_static_archive(p)) {
     assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
-    return p - _mapped_static_archive_bottom;
+    return pointer_delta(p, _mapped_static_archive_bottom, 1);
   }
   if (!is_in_buffer_space(p)) {
     // p must be a "source" address
@@ -1040,7 +1010,7 @@ uintx ArchiveBuilder::any_to_offset(address p) const {
   return buffer_to_offset(p);
 }
 
-address ArchiveBuilder::offset_to_buffered_address(u4 offset) const {
+address ArchiveBuilder::offset_to_buffered_address(size_t offset) const {
   address requested_addr = _requested_static_archive_bottom + offset;
   address buffered_addr = requested_addr - _buffer_to_requested_delta;
   assert(is_in_buffer_space(buffered_addr), "bad offset");
@@ -1186,10 +1156,12 @@ void ArchiveBuilder::print_stats() {
   _alloc_stats.print_stats(int(_ro_region.used()), int(_rw_region.used()));
 }
 
-void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, ArchiveHeapInfo* heap_info) {
+void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, AOTMappedHeapInfo* mapped_heap_info, AOTStreamedHeapInfo* streamed_heap_info) {
   // Make sure NUM_CDS_REGIONS (exported in cds.h) agrees with
   // AOTMetaspace::n_regions (internal to hotspot).
   assert(NUM_CDS_REGIONS == AOTMetaspace::n_regions, "sanity");
+
+  ResourceMark rm;
 
   write_region(mapinfo, AOTMetaspace::rw, &_rw_region, /*read_only=*/false,/*allow_exec=*/false);
   write_region(mapinfo, AOTMetaspace::ro, &_ro_region, /*read_only=*/true, /*allow_exec=*/false);
@@ -1199,14 +1171,19 @@ void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, ArchiveHeapInfo* heap_i
   ArchivePtrMarker::initialize_rw_ro_maps(&_rw_ptrmap, &_ro_ptrmap);
 
   size_t bitmap_size_in_bytes;
-  char* bitmap = mapinfo->write_bitmap_region(ArchivePtrMarker::rw_ptrmap(), ArchivePtrMarker::ro_ptrmap(), heap_info,
+  char* bitmap = mapinfo->write_bitmap_region(ArchivePtrMarker::rw_ptrmap(),
+                                              ArchivePtrMarker::ro_ptrmap(),
+                                              mapped_heap_info,
+                                              streamed_heap_info,
                                               bitmap_size_in_bytes);
 
-  if (heap_info->is_used()) {
-    _total_heap_region_size = mapinfo->write_heap_region(heap_info);
+  if (mapped_heap_info != nullptr && mapped_heap_info->is_used()) {
+    _total_heap_region_size = mapinfo->write_mapped_heap_region(mapped_heap_info);
+  } else if (streamed_heap_info != nullptr && streamed_heap_info->is_used()) {
+    _total_heap_region_size = mapinfo->write_streamed_heap_region(streamed_heap_info);
   }
 
-  print_region_stats(mapinfo, heap_info);
+  print_region_stats(mapinfo, mapped_heap_info, streamed_heap_info);
 
   mapinfo->set_requested_base((char*)AOTMetaspace::requested_base_address());
   mapinfo->set_header_crc(mapinfo->compute_header_crc());
@@ -1221,7 +1198,7 @@ void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, ArchiveHeapInfo* heap_i
   }
 
   if (log_is_enabled(Info, aot, map)) {
-    AOTMapLogger::dumptime_log(this, mapinfo, heap_info, bitmap, bitmap_size_in_bytes);
+    AOTMapLogger::dumptime_log(this, mapinfo, mapped_heap_info, streamed_heap_info, bitmap, bitmap_size_in_bytes);
   }
   CDS_JAVA_HEAP_ONLY(HeapShared::destroy_archived_object_cache());
   FREE_C_HEAP_ARRAY(char, bitmap);
@@ -1237,7 +1214,9 @@ void ArchiveBuilder::count_relocated_pointer(bool tagged, bool nulled) {
   _relocated_ptr_info._num_nulled_ptrs += nulled ? 1 : 0;
 }
 
-void ArchiveBuilder::print_region_stats(FileMapInfo *mapinfo, ArchiveHeapInfo* heap_info) {
+void ArchiveBuilder::print_region_stats(FileMapInfo *mapinfo,
+                                        AOTMappedHeapInfo* mapped_heap_info,
+                                        AOTStreamedHeapInfo* streamed_heap_info) {
   // Print statistics of all the regions
   const size_t bitmap_used = mapinfo->region_at(AOTMetaspace::bm)->used();
   const size_t bitmap_reserved = mapinfo->region_at(AOTMetaspace::bm)->used_aligned();
@@ -1255,22 +1234,22 @@ void ArchiveBuilder::print_region_stats(FileMapInfo *mapinfo, ArchiveHeapInfo* h
 
   print_bitmap_region_stats(bitmap_used, total_reserved);
 
-  if (heap_info->is_used()) {
-    print_heap_region_stats(heap_info, total_reserved);
+  if (mapped_heap_info != nullptr && mapped_heap_info->is_used()) {
+    print_heap_region_stats(mapped_heap_info->buffer_start(), mapped_heap_info->buffer_byte_size(), total_reserved);
+  } else if (streamed_heap_info != nullptr && streamed_heap_info->is_used()) {
+    print_heap_region_stats(streamed_heap_info->buffer_start(), streamed_heap_info->buffer_byte_size(), total_reserved);
   }
 
   aot_log_debug(aot)("total   : %9zu [100.0%% of total] out of %9zu bytes [%5.1f%% used]",
-                 total_bytes, total_reserved, total_u_perc);
+                     total_bytes, total_reserved, total_u_perc);
 }
 
 void ArchiveBuilder::print_bitmap_region_stats(size_t size, size_t total_size) {
   aot_log_debug(aot)("bm space: %9zu [ %4.1f%% of total] out of %9zu bytes [100.0%% used]",
-                 size, size/double(total_size)*100.0, size);
+                     size, size/double(total_size)*100.0, size);
 }
 
-void ArchiveBuilder::print_heap_region_stats(ArchiveHeapInfo *info, size_t total_size) {
-  char* start = info->buffer_start();
-  size_t size = info->buffer_byte_size();
+void ArchiveBuilder::print_heap_region_stats(char* start, size_t size, size_t total_size) {
   char* top = start + size;
   aot_log_debug(aot)("hp space: %9zu [ %4.1f%% of total] out of %9zu bytes [100.0%% used] at " INTPTR_FORMAT,
                      size, size/double(total_size)*100.0, size, p2i(start));

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotClassFilter.hpp"
+#include "cds/aotCompressedPointers.hpp"
 #include "cds/aotMetaspace.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
@@ -52,7 +53,8 @@
 #include "runtime/mutexLocker.hpp"
 
 GrowableArrayCHeap<char*, mtClassShared>* LambdaFormInvokers::_lambdaform_lines = nullptr;
-Array<u4>*  LambdaFormInvokers::_static_archive_invokers = nullptr;
+Array<AOTCompressedPointers::narrowPtr>*  LambdaFormInvokers::_static_archive_invokers = nullptr;
+static bool _stop_appending = false;
 
 #define NUM_FILTER 4
 static const char* filter[NUM_FILTER] = {"java.lang.invoke.Invokers$Holder",
@@ -71,7 +73,12 @@ static bool should_be_archived(char* line) {
 #undef NUM_FILTER
 
 void LambdaFormInvokers::append(char* line) {
+  // This function can be called by concurrent Java threads, even after
+  // LambdaFormInvokers::regenerate_holder_classes() has been called.
   MutexLocker ml(Thread::current(), LambdaFormInvokers_lock);
+  if (_stop_appending) {
+    return;
+  }
   if (_lambdaform_lines == nullptr) {
     _lambdaform_lines = new GrowableArrayCHeap<char*, mtClassShared>(150);
   }
@@ -112,12 +119,6 @@ void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
     return;
   }
 
-  PrintLambdaFormMessage plm;
-  if (_lambdaform_lines == nullptr || _lambdaform_lines->length() == 0) {
-    log_info(aot)("Nothing to regenerate for holder classes");
-    return;
-  }
-
   ResourceMark rm(THREAD);
 
   // Filter out AOT tooling classes like java.lang.invoke.GenerateJLIClassesHelper, etc.
@@ -127,18 +128,27 @@ void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
   Klass*  cds_klass = SystemDictionary::resolve_or_null(cds_name, THREAD);
   guarantee(cds_klass != nullptr, "jdk/internal/misc/CDS must exist!");
 
+  assert(CDSConfig::current_thread_is_dumper(), "not supposed to be called from other threads");
+  {
+    // Stop other threads from recording into _lambdaform_lines.
+    MutexLocker ml(Thread::current(), LambdaFormInvokers_lock);
+    _stop_appending = true;
+  }
+
+  PrintLambdaFormMessage plm;
+  if (_lambdaform_lines == nullptr || _lambdaform_lines->length() == 0) {
+    log_info(aot)("Nothing to regenerate for lambda form holder classes");
+    return;
+  }
+
   HandleMark hm(THREAD);
   int len = _lambdaform_lines->length();
-  objArrayHandle list_lines;
-  {
-    MutexLocker ml(Thread::current(), LambdaFormInvokers_lock);
-    list_lines = oopFactory::new_objArray_handle(vmClasses::String_klass(), len, CHECK);
-    for (int i = 0; i < len; i++) {
-      Handle h_line = java_lang_String::create_from_str(_lambdaform_lines->at(i), CHECK);
-      list_lines->obj_at_put(i, h_line());
-    }
-  } // Before calling into java, release vm lock.
-  //
+  objArrayHandle list_lines = oopFactory::new_objArray_handle(vmClasses::String_klass(), len, CHECK);
+  for (int i = 0; i < len; i++) {
+    Handle h_line = java_lang_String::create_from_str(_lambdaform_lines->at(i), CHECK);
+    list_lines->obj_at_put(i, h_line());
+  }
+
   // Object[] CDS.generateLambdaFormHolderClasses(String[] lines)
   // the returned Object[] layout:
   //   name, byte[], name, byte[] ....
@@ -191,7 +201,7 @@ void LambdaFormInvokers::regenerate_holder_classes(TRAPS) {
       // make a copy of class bytes so GC will not affect us.
       char *buf = NEW_RESOURCE_ARRAY(char, len);
       memcpy(buf, (char*)h_bytes->byte_at_addr(0), len);
-      ClassFileStream st((u1*)buf, len, nullptr);
+      ClassFileStream st((u1*)buf, len, "jrt:/java.base");
       regenerate_class(class_name, st, CHECK);
     }
   }
@@ -232,6 +242,7 @@ void LambdaFormInvokers::regenerate_class(char* class_name, ClassFileStream& st,
 }
 
 void LambdaFormInvokers::dump_static_archive_invokers() {
+  assert(SafepointSynchronize::is_at_safepoint(), "no concurrent update to _lambdaform_lines");
   if (_lambdaform_lines != nullptr && _lambdaform_lines->length() > 0) {
     int count = 0;
     int len   = _lambdaform_lines->length();
@@ -242,7 +253,7 @@ void LambdaFormInvokers::dump_static_archive_invokers() {
       }
     }
     if (count > 0) {
-      _static_archive_invokers = ArchiveBuilder::new_ro_array<u4>(count);
+      _static_archive_invokers = ArchiveBuilder::new_ro_array<narrowPtr>(count);
       int index = 0;
       for (int i = 0; i < len; i++) {
         char* str = _lambdaform_lines->at(i);
@@ -251,7 +262,7 @@ void LambdaFormInvokers::dump_static_archive_invokers() {
           Array<char>* line = ArchiveBuilder::new_ro_array<char>((int)str_len);
           strncpy(line->adr_at(0), str, str_len);
 
-          _static_archive_invokers->at_put(index, ArchiveBuilder::current()->any_to_offset_u4(line));
+          _static_archive_invokers->at_put(index, AOTCompressedPointers::encode_not_null(line));
           index++;
         }
       }
@@ -264,8 +275,8 @@ void LambdaFormInvokers::dump_static_archive_invokers() {
 void LambdaFormInvokers::read_static_archive_invokers() {
   if (_static_archive_invokers != nullptr) {
     for (int i = 0; i < _static_archive_invokers->length(); i++) {
-      u4 offset = _static_archive_invokers->at(i);
-      Array<char>* line = ArchiveUtils::offset_to_archived_address<Array<char>*>(offset);
+      narrowPtr encoded = _static_archive_invokers->at(i);
+      Array<char>* line = AOTCompressedPointers::decode_not_null<Array<char>*>(encoded);
       char* str = line->adr_at(0);
       append(str);
     }

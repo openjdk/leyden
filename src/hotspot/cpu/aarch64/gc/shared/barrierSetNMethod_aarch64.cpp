@@ -112,22 +112,22 @@ public:
   }
 
   int get_value() {
-    return Atomic::load_acquire(guard_addr());
+    return AtomicAccess::load_acquire(guard_addr());
   }
 
   void set_value(int value, int bit_mask) {
     if (bit_mask == ~0) {
-      Atomic::release_store(guard_addr(), value);
+      AtomicAccess::release_store(guard_addr(), value);
       return;
     }
     assert((value & ~bit_mask) == 0, "trying to set bits outside the mask");
     value &= bit_mask;
-    int old_value = Atomic::load(guard_addr());
+    int old_value = AtomicAccess::load(guard_addr());
     while (true) {
       // Only bits in the mask are changed
       int new_value = value | (old_value & ~bit_mask);
       if (new_value == old_value) break;
-      int v = Atomic::cmpxchg(guard_addr(), old_value, new_value, memory_order_release);
+      int v = AtomicAccess::cmpxchg(guard_addr(), old_value, new_value, memory_order_release);
       if (v == old_value) break;
       old_value = v;
     }
@@ -208,6 +208,10 @@ void BarrierSetNMethod::set_guard_value(nmethod* nm, int value, int bit_mask) {
     BarrierSetAssembler* bs_asm = BarrierSet::barrier_set()->barrier_set_assembler();
     bs_asm->increment_patching_epoch();
   }
+
+  // Enable WXWrite: the function is called directly from nmethod_entry_barrier
+  // stub.
+  MACOS_AARCH64_ONLY(ThreadWXEnable wx(WXWrite, Thread::current()));
 
   NativeNMethodBarrier barrier(nm);
   barrier.set_value(value, bit_mask);

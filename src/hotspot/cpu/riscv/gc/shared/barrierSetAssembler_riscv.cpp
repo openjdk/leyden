@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2026, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2020, 2023, Huawei Technologies Co., Ltd. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -217,7 +217,7 @@ address BarrierSetAssembler::patching_epoch_addr() {
 }
 
 void BarrierSetAssembler::increment_patching_epoch() {
-  Atomic::inc(&_patching_epoch);
+  AtomicAccess::inc(&_patching_epoch);
 }
 
 void BarrierSetAssembler::clear_patching_epoch() {
@@ -367,6 +367,11 @@ OptoReg::Name BarrierSetAssembler::refine_register(const Node* node, OptoReg::Na
   }
 
   return opto_reg;
+}
+
+void BarrierSetAssembler::try_resolve_weak_handle_in_c2(MacroAssembler* masm, Register obj, Register tmp, Label& slow_path) {
+  // Load the oop from the weak handle.
+  __ ld(obj, Address(obj));
 }
 
 #undef __

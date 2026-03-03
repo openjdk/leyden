@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2002, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,6 +30,7 @@
 #include "gc/shared/gcPolicyCounters.hpp"
 #include "gc/shared/gcUtil.hpp"
 #include "logging/log.hpp"
+#include "runtime/atomicAccess.hpp"
 #include "runtime/timer.hpp"
 #include "utilities/align.hpp"
 
@@ -87,7 +88,7 @@ size_t PSAdaptiveSizePolicy::compute_desired_eden_size(bool is_survivor_overflow
   double min_gc_distance = MinGCDistanceSecond;
 
   // Get a local copy and use it inside gc-pause in case the global var gets updated externally.
-  const uint local_GCTimeRatio = Atomic::load(&GCTimeRatio);
+  const uint local_GCTimeRatio = AtomicAccess::load(&GCTimeRatio);
   const double throughput_goal = calculate_throughput_goal(local_GCTimeRatio);
 
   if (mutator_time_percent() < throughput_goal) {

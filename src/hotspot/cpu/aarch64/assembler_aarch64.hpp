@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2026, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2014, 2024, Red Hat Inc. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -27,12 +27,12 @@
 #define CPU_AARCH64_ASSEMBLER_AARCH64_HPP
 
 #include "asm/register.hpp"
+#include "cppstdlib/type_traits.hpp"
 #include "metaprogramming/enableIf.hpp"
 #include "utilities/checkedCast.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/macros.hpp"
-#include <type_traits>
 
 #ifdef __GNUC__
 
@@ -2658,6 +2658,8 @@ template<typename R, typename... Rx>
   INSN(uminv,  1, 0b011011, false); // accepted arrangements: T8B, T16B, T4H, T8H, T2S, T4S
   INSN(smaxp,  0, 0b101001, false); // accepted arrangements: T8B, T16B, T4H, T8H, T2S, T4S
   INSN(sminp,  0, 0b101011, false); // accepted arrangements: T8B, T16B, T4H, T8H, T2S, T4S
+  INSN(umaxp,  1, 0b101001, false); // accepted arrangements: T8B, T16B, T4H, T8H, T2S, T4S
+  INSN(uminp,  1, 0b101011, false); // accepted arrangements: T8B, T16B, T4H, T8H, T2S, T4S
   INSN(sqdmulh,0, 0b101101, false); // accepted arrangements: T4H, T8H, T2S, T4S
   INSN(shsubv, 0, 0b001001, false); // accepted arrangements: T8B, T16B, T4H, T8H, T2S, T4S
 
@@ -3486,10 +3488,13 @@ public:
   INSN(sve_smaxv, 0b00000100, 0b001000001); // signed maximum reduction to scalar
   INSN(sve_smin,  0b00000100, 0b001010000); // signed minimum vectors
   INSN(sve_sminv, 0b00000100, 0b001010001); // signed minimum reduction to scalar
+  INSN(sve_splice,0b00000101, 0b101100100); // splice two vectors under predicate control, destructive
   INSN(sve_sub,   0b00000100, 0b000001000); // vector sub
   INSN(sve_uaddv, 0b00000100, 0b000001001); // unsigned add reduction to scalar
   INSN(sve_umax,  0b00000100, 0b001001000); // unsigned maximum vectors
+  INSN(sve_umaxv, 0b00000100, 0b001001001); // unsigned maximum reduction to scalar
   INSN(sve_umin,  0b00000100, 0b001011000); // unsigned minimum vectors
+  INSN(sve_uminv, 0b00000100, 0b001011001); // unsigned minimum reduction to scalar
 #undef INSN
 
 // SVE floating-point arithmetic - predicate
@@ -4068,6 +4073,13 @@ public:
   INSN(sve_brkb, 0b10); // Break before first true condition
 #undef INSN
 
+  // SVE move prefix (unpredicated)
+  void sve_movprfx(FloatRegister Zd, FloatRegister Zn) {
+    starti;
+    f(0b00000100, 31, 24), f(0b00, 23, 22), f(0b1, 21), f(0b00000, 20, 16);
+    f(0b101111, 15, 10), rf(Zn, 5), rf(Zd, 0);
+  }
+
 // Element count and increment scalar (SVE)
 #define INSN(NAME, TYPE)                                                             \
   void NAME(Register Xdn, unsigned imm4 = 1, int pattern = 0b11111) {                \
@@ -4317,6 +4329,7 @@ public:
 #undef INSN
 
   Assembler(CodeBuffer* code) : AbstractAssembler(code) {
+    MACOS_AARCH64_ONLY(os::thread_wx_enable_write());
   }
 
   // Stack overflow checking

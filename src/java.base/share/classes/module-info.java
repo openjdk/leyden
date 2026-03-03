@@ -190,6 +190,8 @@ module java.base {
         jdk.jlink;
     exports jdk.internal.logger to
         java.logging;
+    exports jdk.internal.net.quic to
+        java.net.http;
     exports jdk.internal.org.xml.sax to
         jdk.jfr;
     exports jdk.internal.org.xml.sax.helpers to
@@ -272,7 +274,8 @@ module java.base {
         jdk.httpserver,
         jdk.jlink,
         jdk.jpackage,
-        jdk.net;
+        jdk.net,
+        jdk.security.auth;
     exports sun.net to
         java.net.http,
         jdk.naming.dns;

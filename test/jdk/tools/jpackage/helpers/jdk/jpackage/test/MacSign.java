@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -42,6 +42,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateNotYetValidException;
@@ -59,10 +60,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import javax.naming.ldap.LdapName;
 import javax.naming.ldap.Rdn;
+import jdk.jpackage.internal.util.MemoizingSupplier;
 import jdk.jpackage.internal.util.function.ExceptionBox;
 import jdk.jpackage.internal.util.function.ThrowingConsumer;
 import jdk.jpackage.internal.util.function.ThrowingSupplier;
@@ -277,7 +282,14 @@ public final class MacSign {
             return sb.toString();
         }
 
+        public static Builder build() {
+            return new Builder();
+        }
+
         public static final class Builder {
+
+            private Builder() {
+            }
 
             public Builder name(String v) {
                 keychainBuilder.name(v);
@@ -303,8 +315,8 @@ public final class MacSign {
                 return new KeychainWithCertsSpec(keychain, List.copyOf(certs));
             }
 
-            private Keychain.Builder keychainBuilder = new Keychain.Builder();
-            private List<CertificateRequest> certs = new ArrayList<>();
+            private final Keychain.Builder keychainBuilder = Keychain.build();
+            private final List<CertificateRequest> certs = new ArrayList<>();
         }
     }
 
@@ -323,7 +335,14 @@ public final class MacSign {
             }
         }
 
+        public static Builder build() {
+            return new Builder();
+        }
+
         public static final class Builder {
+
+            private Builder() {
+            }
 
             public Builder name(String v) {
                 name = v;
@@ -350,6 +369,52 @@ public final class MacSign {
             private String name;
             private String password;
         }
+
+        public static final class UsageBuilder {
+
+            UsageBuilder(Collection<Keychain> keychains) {
+                this.keychains = List.copyOf(keychains);
+            }
+
+            public void run(Runnable runnable) {
+                Objects.requireNonNull(runnable);
+
+                final Optional<List<Path>> oldKeychains;
+                if (addToSearchList) {
+                    oldKeychains = Optional.ofNullable(activeKeychainFiles());
+                    Keychain.addToSearchList(keychains);
+                } else {
+                    oldKeychains = Optional.empty();
+                }
+
+                try {
+                    // Ensure keychains to be used for signing are unlocked.
+                    // When the codesign command operates on a locked keychain in a ssh session
+                    // it emits cryptic "errSecInternalComponent" error without other details.
+                    keychains.forEach(Keychain::unlock);
+                    runnable.run();
+                } finally {
+                    oldKeychains.ifPresent(restoreKeychains -> {
+                        security("list-keychains", "-d", "user", "-s")
+                                .addArguments(restoreKeychains.stream().map(Path::toString).toList())
+                                .execute();
+                    });
+                }
+            }
+
+            public UsageBuilder addToSearchList(boolean v) {
+                addToSearchList = v;
+                return this;
+            }
+
+            public UsageBuilder addToSearchList() {
+                return addToSearchList(true);
+            }
+
+            private final Collection<Keychain> keychains;
+            private boolean addToSearchList;
+        }
+
 
         Keychain create() {
             final var exec = createExecutor("create-keychain");
@@ -415,22 +480,10 @@ public final class MacSign {
             return certs;
         }
 
-        public static void addToSearchList(Collection<Keychain> keychains) {
+        static void addToSearchList(Collection<Keychain> keychains) {
             security("list-keychains", "-d", "user", "-s", "login.keychain")
                     .addArguments(keychains.stream().map(Keychain::name).toList())
                     .execute();
-        }
-
-        public static void withAddedKeychains(Collection<Keychain> keychains, Runnable runnable) {
-            final var curKeychains = activeKeychainFiles();
-            addToSearchList(keychains);
-            try {
-                runnable.run();
-            } finally {
-                security("list-keychains", "-d", "user", "-s")
-                        .addArguments(curKeychains.stream().map(Path::toString).toList())
-                        .execute();
-            }
         }
 
         private static List<Path> activeKeychainFiles() {
@@ -491,7 +544,7 @@ public final class MacSign {
 
     private record CertificateStats(List<ResolvedCertificateRequest> allResolvedCertificateRequests,
             List<CertificateRequest> knownCertificateRequests,
-            Map<X509Certificate, Throwable> unmappedCertificates) {
+            Map<X509Certificate, Exception> unmappedCertificates) {
 
         static CertificateStats get(KeychainWithCertsSpec spec) {
             return CACHE.computeIfAbsent(spec, CertificateStats::create);
@@ -525,7 +578,7 @@ public final class MacSign {
         private static CertificateStats create(KeychainWithCertsSpec spec) {
             final var allCertificates = spec.keychain().findCertificates();
             final List<ResolvedCertificateRequest> allResolvedCertificateRequests = new ArrayList<>();
-            final Map<X509Certificate, Throwable> unmappedCertificates = new HashMap<>();
+            final Map<X509Certificate, Exception> unmappedCertificates = new HashMap<>();
 
             withTempDirectory(workDir -> {
                 for (final var cert : allCertificates) {
@@ -533,13 +586,7 @@ public final class MacSign {
                     try {
                         resolvedCertificateRequest = new ResolvedCertificateRequest(cert);
                     } catch (RuntimeException ex) {
-                        final Throwable t;
-                        if (ex instanceof ExceptionBox) {
-                            t = ex.getCause();
-                        } else {
-                            t = ex;
-                        }
-                        unmappedCertificates.put(cert, t);
+                        unmappedCertificates.put(cert, ExceptionBox.unbox(ex));
                         continue;
                     }
 
@@ -568,12 +615,7 @@ public final class MacSign {
 
         @Override
         public String toString() {
-            final var sb = new StringBuilder();
-            sb.append(frame("BEGIN " + label));
-            sb.append(ENCODER.encodeToString(data));
-            sb.append("\n");
-            sb.append(frame("END " + label));
-            return sb.toString();
+            return PemDataFormatter.format(label, data);
         }
 
         static PemData of(X509Certificate cert) {
@@ -588,6 +630,21 @@ public final class MacSign {
                 throw new UncheckedIOException(ex);
             }
         }
+    }
+
+    private final class PemDataFormatter {
+
+        static String format(String label, byte[] data) {
+            Objects.requireNonNull(label);
+            Objects.requireNonNull(data);
+
+            final var sb = new StringBuilder();
+            sb.append(frame("BEGIN " + label));
+            sb.append(ENCODER.encodeToString(data));
+            sb.append("\n");
+            sb.append(frame("END " + label));
+            return sb.toString();
+        }
 
         private static String frame(String str) {
             return String.format("-----%s-----\n", Objects.requireNonNull(str));
@@ -596,17 +653,22 @@ public final class MacSign {
         private static final Base64.Encoder ENCODER = Base64.getMimeEncoder(64, "\n".getBytes());
     }
 
+    public static String formatX509Certificate(X509Certificate cert) {
+        Objects.requireNonNull(cert);
+        return PemDataFormatter.format("CERTIFICATE", toSupplier(cert::getEncoded).get());
+    }
+
     public enum DigestAlgorithm {
         SHA1(20, () -> MessageDigest.getInstance("SHA-1")),
         SHA256(32, () -> MessageDigest.getInstance("SHA-256"));
 
-        DigestAlgorithm(int hashLength, ThrowingSupplier<MessageDigest> createDigest) {
+        DigestAlgorithm(int hashLength, ThrowingSupplier<MessageDigest, NoSuchAlgorithmException> createDigest) {
             this.hashLength = hashLength;
             this.createDigest = createDigest;
         }
 
         final int hashLength;
-        final ThrowingSupplier<MessageDigest> createDigest;
+        final ThrowingSupplier<MessageDigest, NoSuchAlgorithmException> createDigest;
     }
 
     public record CertificateHash(byte[] value, DigestAlgorithm alg) {
@@ -681,7 +743,7 @@ public final class MacSign {
     }
 
     public enum StandardCertificateNamePrefix {
-        CODE_SIGND("Developer ID Application: "),
+        CODE_SIGN("Developer ID Application: "),
         INSTALLER("Developer ID Installer: ");
 
         StandardCertificateNamePrefix(String value) {
@@ -742,7 +804,14 @@ public final class MacSign {
             return COMPARATOR.compare(this, o);
         }
 
+        public static Builder build() {
+            return new Builder();
+        }
+
         public static final class Builder {
+
+            private Builder() {
+            }
 
             public Builder userName(String v) {
                 userName = v;
@@ -794,7 +863,7 @@ public final class MacSign {
                 return Optional.ofNullable(subjectCommonName).orElseGet(() -> {
                     switch (type) {
                         case CODE_SIGN -> {
-                            return StandardCertificateNamePrefix.CODE_SIGND.value() + validatedUserName();
+                            return StandardCertificateNamePrefix.CODE_SIGN.value() + validatedUserName();
                         }
                         case INSTALLER -> {
                             return StandardCertificateNamePrefix.INSTALLER.value() + validatedUserName();
@@ -1037,28 +1106,137 @@ public final class MacSign {
         return !missingKeychain && !missingCertificates && !invalidCertificates;
     }
 
+    /**
+     * Creates an empty keychain with unique name in the work directory of the current test.
+     */
+    public static Keychain createEmptyKeychain() {
+        return Keychain.build()
+                .name(TKit.createUniquePath(TKit.workDir().resolve("empty.keychain")).toAbsolutePath().toString())
+                .create().create();
+    }
+
+    public static Keychain.UsageBuilder withKeychains(KeychainWithCertsSpec... keychains) {
+        return withKeychains(Stream.of(keychains).map(KeychainWithCertsSpec::keychain).toArray(Keychain[]::new));
+    }
+
+    public static Keychain.UsageBuilder withKeychains(Keychain... keychains) {
+        return new Keychain.UsageBuilder(List.of(keychains));
+    }
+
+    public static void withKeychains(Runnable runnable, Consumer<Keychain.UsageBuilder> mutator, Keychain... keychains) {
+        Objects.requireNonNull(runnable);
+        var builder = withKeychains(keychains);
+        mutator.accept(builder);
+        builder.run(runnable);
+    }
+
+    public static void withKeychains(Runnable runnable, Keychain... keychains) {
+        withKeychains(runnable, _ -> {}, keychains);
+    }
+
+    public static void withKeychain(Consumer<Keychain> consumer, Consumer<Keychain.UsageBuilder> mutator, Keychain keychain) {
+        Objects.requireNonNull(consumer);
+        withKeychains(() -> {
+            consumer.accept(keychain);
+        }, mutator, keychain);
+    }
+
+    public static void withKeychain(Consumer<Keychain> consumer, Keychain keychain) {
+        withKeychain(consumer, _ -> {}, keychain);
+    }
+
+    public static void withKeychain(Consumer<ResolvedKeychain> consumer, Consumer<Keychain.UsageBuilder> mutator, ResolvedKeychain keychain) {
+        Objects.requireNonNull(consumer);
+        Objects.requireNonNull(mutator);
+        if (keychain.isMock()) {
+            consumer.accept(keychain);
+        } else {
+            withKeychains(() -> {
+                consumer.accept(keychain);
+            }, mutator, keychain.spec().keychain());
+        }
+    }
+
+    public static void withKeychain(Consumer<ResolvedKeychain> consumer, ResolvedKeychain keychain) {
+        withKeychain(consumer, _ -> {}, keychain);
+    }
+
     public static final class ResolvedKeychain {
         public ResolvedKeychain(KeychainWithCertsSpec spec) {
+            isMock = false;
             this.spec = Objects.requireNonNull(spec);
+            certMapSupplier = MemoizingSupplier.runOnce(() -> {
+                return MacSign.mapCertificateRequests(spec);
+            });
+        }
+
+        public static ResolvedKeychain createMock(String name, Map<CertificateRequest, X509Certificate> certs) {
+            return new ResolvedKeychain(name, certs);
         }
 
         public KeychainWithCertsSpec spec() {
             return spec;
         }
 
-        public Map<CertificateRequest, X509Certificate> mapCertificateRequests() {
-            if (certMap == null) {
-                synchronized (this) {
-                    if (certMap == null) {
-                        certMap = MacSign.mapCertificateRequests(spec);
-                    }
-                }
-            }
-            return certMap;
+        public String name() {
+            return spec.keychain().name();
         }
 
+        public boolean isMock() {
+            return isMock;
+        }
+
+        public ResolvedKeychain toMock(Map<CertificateRequest, X509Certificate> signEnv) {
+            if (isMock) {
+                throw new UnsupportedOperationException("Already a mock");
+            }
+
+            var comm = Comm.compare(Set.copyOf(spec.certificateRequests()), signEnv.keySet());
+            if (!comm.unique1().isEmpty()) {
+                throw new IllegalArgumentException(String.format(
+                        "Signing environment missing %s certificate request mappings in [%s] keychain",
+                        comm.unique1(), name()));
+            }
+
+            var certs = new HashMap<>(signEnv);
+            certs.keySet().retainAll(comm.common());
+
+            return createMock(name(), certs);
+        }
+
+        public Map<CertificateRequest, X509Certificate> mapCertificateRequests() {
+            return certMapSupplier.get();
+        }
+
+        public Function<CertificateRequest, X509Certificate> asCertificateResolver() {
+            return certRequest -> {
+                if (!spec.certificateRequests().contains(certRequest)) {
+                    throw new IllegalArgumentException(String.format(
+                            "Certificate request %s not found in [%s] keychain",
+                            certRequest, name()));
+                } else {
+                    return Objects.requireNonNull(mapCertificateRequests().get(certRequest));
+                }
+            };
+        }
+
+        private ResolvedKeychain(String name, Map<CertificateRequest, X509Certificate> certs) {
+
+            var keychainBuilder = KeychainWithCertsSpec.build().name(Objects.requireNonNull(name));
+            certs.keySet().forEach(keychainBuilder::addCert);
+
+            var certsCopy = Map.copyOf(Objects.requireNonNull(certs));
+
+            isMock = true;
+            spec = keychainBuilder.create();
+            certMapSupplier = MemoizingSupplier.runOnce(() -> {
+                return certsCopy;
+            });
+        }
+
+        private final boolean isMock;
         private final KeychainWithCertsSpec spec;
-        private volatile Map<CertificateRequest, X509Certificate> certMap;
+        private final Supplier<Map<CertificateRequest, X509Certificate>> certMapSupplier;
     }
 
     private static Map<CertificateRequest, X509Certificate> mapCertificateRequests(KeychainWithCertsSpec spec) {
@@ -1097,7 +1275,7 @@ public final class MacSign {
                     "-c", certFile.normalize().toString(),
                     "-k", keychain.name(),
                     "-p", resolvedCertificateRequest.installed().type().verifyPolicy()).saveOutput(!quite).executeWithoutExitCodeCheck();
-            if (result.exitCode() == 0) {
+            if (result.getExitCode() == 0) {
                 return VerifyStatus.VERIFY_OK;
             }
         }
@@ -1143,7 +1321,7 @@ public final class MacSign {
         }).map(KeychainWithCertsSpec::keychain);
     }
 
-    private static void withTempDirectory(ThrowingConsumer<Path> callback) {
+    private static void withTempDirectory(ThrowingConsumer<Path, ? extends Exception> callback) {
         try {
             final var dir = Files.createTempDirectory("jdk.jpackage.test");
             try {

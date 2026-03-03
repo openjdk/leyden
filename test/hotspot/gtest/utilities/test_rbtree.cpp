@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -114,6 +114,16 @@ struct ArrayAllocator {
 
   using IntrusiveTreeInt = IntrusiveRBTree<int, IntrusiveCmp>;
   using IntrusiveCursor = IntrusiveTreeInt::Cursor;
+
+  struct DestructionTracker {
+    static int destructed_count;
+    int value;
+
+    DestructionTracker(int value) : value(value) {}
+    ~DestructionTracker() { destructed_count++; }
+
+    static void reset() { destructed_count = 0; }
+  };
 
 public:
   void inserting_duplicates_results_in_one_value() {
@@ -607,6 +617,55 @@ public:
     }
   }
 
+  void test_remove_destructs() {
+    using Tree = RBTreeCHeap<int, DestructionTracker, Cmp, mtTest>;
+    using Node = RBNode<int, DestructionTracker>;
+    using Cursor = Tree::Cursor;
+
+    Tree tree;
+
+    // Test the 3 ways of removing a single node
+    tree.upsert(0, DestructionTracker(0));
+    tree.upsert(1, DestructionTracker(1));
+    tree.upsert(2, DestructionTracker(2));
+
+    DestructionTracker::reset();
+
+    tree.remove(0);
+
+    Node* n = tree.find_node(1);
+    tree.remove(n);
+
+    Cursor remove_cursor = tree.cursor(2);
+    tree.remove_at_cursor(remove_cursor);
+
+    EXPECT_EQ(3, DestructionTracker::destructed_count);
+
+    // Test clearing the tree
+    constexpr int num_nodes = 10;
+    for (int n = 0; n < num_nodes; n++) {
+      tree.upsert(n, DestructionTracker(n));
+    }
+
+    DestructionTracker::reset();
+
+    tree.remove_all();
+    EXPECT_EQ(num_nodes, DestructionTracker::destructed_count);
+
+    // Test replacing a node
+    tree.upsert(0, DestructionTracker(0));
+    Cursor replace_cursor = tree.cursor(0);
+    Node* new_node = tree.allocate_node(1, DestructionTracker(1));
+
+    DestructionTracker::reset();
+
+    tree.replace_at_cursor(new_node, replace_cursor);
+    EXPECT_EQ(1, DestructionTracker::destructed_count);
+
+    tree.remove_at_cursor(replace_cursor);
+    EXPECT_EQ(2, DestructionTracker::destructed_count);
+  }
+
   void test_cursor() {
     constexpr int num_nodes = 10;
     RBTreeInt tree;
@@ -971,6 +1030,11 @@ TEST_VM_F(RBTreeTest, NodeHints) {
   this->test_node_hints();
 }
 
+int RBTreeTest::DestructionTracker::destructed_count = 0;
+TEST_VM_F(RBTreeTest, RemoveDestructs) {
+  this->test_remove_destructs();
+}
+
 TEST_VM_F(RBTreeTest, CursorFind) {
   this->test_cursor();
 }
@@ -1200,6 +1264,46 @@ TEST_VM_F(RBTreeTest, VerifyItThroughStressTest) {
   }
 }
 
+TEST_VM_F(RBTreeTest, TestCopyInto) {
+  {
+    RBTreeInt rbtree1;
+    RBTreeInt rbtree2;
+
+    rbtree1.copy_into(rbtree2);
+    rbtree2.verify_self();
+  }
+
+  RBTreeInt rbtree1;
+  RBTreeInt rbtree2;
+
+  int size = 1000;
+  for (int i = 0; i < size; i++) {
+    rbtree1.upsert(i, i);
+  }
+
+  rbtree1.copy_into(rbtree2);
+  rbtree2.verify_self();
+
+  ResourceMark rm;
+  GrowableArray<int> allocations(size);
+  int size1 = 0;
+  rbtree1.visit_in_order([&](RBTreeIntNode* node) {
+    size1++;
+    allocations.append(node->key());
+    return true;
+  });
+
+  int size2 = 0;
+  rbtree2.visit_in_order([&](RBTreeIntNode* node) {
+    EXPECT_EQ(node->key(), allocations.at(size2++));
+    return true;
+  });
+
+  EXPECT_EQ(size1, size2);
+  EXPECT_EQ(rbtree1.size(), rbtree2.size());
+  EXPECT_EQ(size2, static_cast<int>(rbtree2.size()));
+}
+
 struct OomAllocator {
   void* allocate(size_t sz) {
     return nullptr;
@@ -1211,4 +1315,18 @@ TEST_VM_F(RBTreeTest, AllocatorMayReturnNull) {
   bool success = rbtree.upsert(5, 5);
   EXPECT_EQ(false, success);
   // The test didn't exit the VM, so it was succesful.
+}
+
+TEST_VM_F(RBTreeTest, ArenaAllocator) {
+  Arena arena(mtTest);
+  RBTreeArena<int, int, Cmp> rbtree(&arena);
+  bool success = rbtree.upsert(5, 5);
+  ASSERT_EQ(true, success);
+}
+
+TEST_VM_F(RBTreeTest, ResourceAreaAllocator) {
+  ResourceArea area(mtTest);
+  RBTreeResourceArea<int, int, Cmp> rbtree(&area);
+  bool success = rbtree.upsert(5, 5);
+  ASSERT_EQ(true, success);
 }

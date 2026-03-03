@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2026, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2017, 2024 SAP SE. All rights reserved.
  * Copyright (c) 2023, 2025, Red Hat, Inc. and/or its affiliates.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -43,7 +43,7 @@
 #include "oops/compressedOops.hpp"
 #include "prims/whitebox.hpp"
 #include "runtime/arguments.hpp"
-#include "runtime/atomic.hpp"
+#include "runtime/atomicAccess.hpp"
 #include "runtime/flags/jvmFlag.hpp"
 #include "runtime/frame.inline.hpp"
 #include "runtime/init.hpp"
@@ -60,6 +60,7 @@
 #include "runtime/vm_version.hpp"
 #include "runtime/vmOperations.hpp"
 #include "runtime/vmThread.hpp"
+#include "sanitizers/address.hpp"
 #include "sanitizers/ub.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/decoder.hpp"
@@ -559,24 +560,24 @@ jlong VMError::get_current_timestamp() {
 
 void VMError::record_reporting_start_time() {
   const jlong now = get_current_timestamp();
-  Atomic::store(&_reporting_start_time, now);
+  AtomicAccess::store(&_reporting_start_time, now);
 }
 
 jlong VMError::get_reporting_start_time() {
-  return Atomic::load(&_reporting_start_time);
+  return AtomicAccess::load(&_reporting_start_time);
 }
 
 void VMError::record_step_start_time() {
   const jlong now = get_current_timestamp();
-  Atomic::store(&_step_start_time, now);
+  AtomicAccess::store(&_step_start_time, now);
 }
 
 jlong VMError::get_step_start_time() {
-  return Atomic::load(&_step_start_time);
+  return AtomicAccess::load(&_step_start_time);
 }
 
 void VMError::clear_step_start_time() {
-  return Atomic::store(&_step_start_time, (jlong)0);
+  return AtomicAccess::store(&_step_start_time, (jlong)0);
 }
 
 // This is the main function to report a fatal error. Only one thread can
@@ -663,6 +664,7 @@ void VMError::report(outputStream* st, bool _verbose) {
   BEGIN
   if (MemTracker::enabled() &&
       NmtVirtualMemory_lock != nullptr &&
+      _thread != nullptr &&
       NmtVirtualMemory_lock->owned_by_self()) {
     // Manually unlock to avoid reentrancy due to mallocs in detailed mode.
     NmtVirtualMemory_lock->unlock();
@@ -910,7 +912,16 @@ void VMError::report(outputStream* st, bool _verbose) {
   STEP_IF("printing date and time", _verbose)
     os::print_date_and_time(st, buf, sizeof(buf));
 
-  STEP_IF("printing thread", _verbose)
+#ifdef ADDRESS_SANITIZER
+  STEP_IF("printing ASAN error information", _verbose && Asan::had_error())
+    st->cr();
+    st->print_cr("------------------  A S A N ----------------");
+    st->cr();
+    Asan::report(st);
+    st->cr();
+#endif // ADDRESS_SANITIZER
+
+    STEP_IF("printing thread", _verbose)
     st->cr();
     st->print_cr("---------------  T H R E A D  ---------------");
     st->cr();
@@ -955,10 +966,15 @@ void VMError::report(outputStream* st, bool _verbose) {
     frame fr = _context ? os::fetch_frame_from_context(_context)
                         : os::current_frame();
 
-    if (fr.sp()) {
-      st->print(",  sp=" PTR_FORMAT, p2i(fr.sp()));
-      size_t free_stack_size = pointer_delta(fr.sp(), stack_bottom, 1024);
-      st->print(",  free space=%zuk", free_stack_size);
+    address sp = (address)fr.sp();
+    if (sp != nullptr) {
+      st->print(",  sp=" PTR_FORMAT, p2i(sp));
+      if (sp >= stack_bottom && sp < stack_top) {
+        size_t free_stack_size = pointer_delta(sp, stack_bottom, 1024);
+        st->print(",  free space=%zuk", free_stack_size);
+      } else {
+        st->print(" **OUTSIDE STACK**.");
+      }
     }
 
     st->cr();
@@ -1143,9 +1159,11 @@ void VMError::report(outputStream* st, bool _verbose) {
     }
 
   STEP_IF("printing registered callbacks", _verbose && _thread != nullptr);
+    size_t count = 0;
     for (VMErrorCallback* callback = _thread->_vm_error_callbacks;
         callback != nullptr;
         callback = callback->_next) {
+      st->print_cr("VMErrorCallback %zu:", ++count);
       callback->call(st);
       st->cr();
     }
@@ -1293,7 +1311,7 @@ void VMError::report(outputStream* st, bool _verbose) {
     os::print_signal_handlers(st, buf, sizeof(buf));
     st->cr();
 
-  STEP_IF("Native Memory Tracking", _verbose)
+  STEP_IF("Native Memory Tracking", _verbose && _thread != nullptr)
     MemTracker::error_report(st);
     st->cr();
 
@@ -1341,21 +1359,21 @@ void VMError::report(outputStream* st, bool _verbose) {
 void VMError::set_handshake_timed_out_thread(Thread* thread) {
   // Only preserve the first thread to time-out this way. The atomic operation ensures
   // visibility to the target thread.
-  Atomic::replace_if_null(&_handshake_timed_out_thread, thread);
+  AtomicAccess::replace_if_null(&_handshake_timed_out_thread, thread);
 }
 
 void VMError::set_safepoint_timed_out_thread(Thread* thread) {
   // Only preserve the first thread to time-out this way. The atomic operation ensures
   // visibility to the target thread.
-  Atomic::replace_if_null(&_safepoint_timed_out_thread, thread);
+  AtomicAccess::replace_if_null(&_safepoint_timed_out_thread, thread);
 }
 
 Thread* VMError::get_handshake_timed_out_thread() {
-  return Atomic::load(&_handshake_timed_out_thread);
+  return AtomicAccess::load(&_handshake_timed_out_thread);
 }
 
 Thread* VMError::get_safepoint_timed_out_thread() {
-  return Atomic::load(&_safepoint_timed_out_thread);
+  return AtomicAccess::load(&_safepoint_timed_out_thread);
 }
 
 // Report for the vm_info_cmd. This prints out the information above omitting
@@ -1691,7 +1709,7 @@ void VMError::report_and_die(int id, const char* message, const char* detail_fmt
 
   intptr_t mytid = os::current_thread_id();
   if (_first_error_tid == -1 &&
-      Atomic::cmpxchg(&_first_error_tid, (intptr_t)-1, mytid) == -1) {
+      AtomicAccess::cmpxchg(&_first_error_tid, (intptr_t)-1, mytid) == -1) {
 
     if (SuppressFatalErrorMessage) {
       os::abort(CreateCoredumpOnCrash);
@@ -1885,7 +1903,7 @@ void VMError::report_and_die(int id, const char* message, const char* detail_fmt
     log.set_fd(-1);
   }
 
-  JFR_ONLY(Jfr::on_vm_shutdown(static_cast<VMErrorType>(_id) == OOM_JAVA_HEAP_FATAL, true);)
+  JFR_ONLY(Jfr::on_vm_shutdown(true, false, static_cast<VMErrorType>(_id) == OOM_JAVA_HEAP_FATAL);)
 
   if (PrintNMTStatistics) {
     fdStream fds(fd_out);
@@ -2183,6 +2201,14 @@ void VMError::controlled_crash(int how) {
         ThreadsListHandle tlh2;
         fatal("Force crash with a nested ThreadsListHandle.");
       }
+    }
+    case 18: {
+      // Trigger an error that should cause ASAN to report a double free or use-after-free.
+      // Please note that this is not 100% bullet-proof since it assumes that this block
+      // is not immediately repurposed by some other thread after free.
+      void* const p = os::malloc(4096, mtTest);
+      os::free(p);
+      os::free(p);
     }
     default:
       // If another number is given, give a generic crash.
