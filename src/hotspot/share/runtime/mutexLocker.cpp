@@ -81,8 +81,8 @@ Monitor* CompileTaskWait_lock         = nullptr;
 Monitor* MethodCompileQueue_lock      = nullptr;
 Monitor* MethodCompileQueueC1_lock    = nullptr;
 Monitor* MethodCompileQueueC2_lock    = nullptr;
-Monitor* MethodCompileQueueSC1_lock   = nullptr;
-Monitor* MethodCompileQueueSC2_lock   = nullptr;
+Monitor* MethodCompileQueueAC1_lock   = nullptr;
+Monitor* MethodCompileQueueAC2_lock   = nullptr;
 Monitor* CompileThread_lock           = nullptr;
 Monitor* Compilation_lock             = nullptr;
 Mutex*   CompileStatistics_lock       = nullptr;
@@ -271,13 +271,13 @@ void mutex_init() {
   if (UseGlobalCompileQueueLock) {
     MethodCompileQueueC1_lock  = MethodCompileQueue_lock;
     MethodCompileQueueC2_lock  = MethodCompileQueue_lock;
-    MethodCompileQueueSC1_lock = MethodCompileQueue_lock;
-    MethodCompileQueueSC2_lock = MethodCompileQueue_lock;
+    MethodCompileQueueAC1_lock = MethodCompileQueue_lock;
+    MethodCompileQueueAC2_lock = MethodCompileQueue_lock;
   } else {
     MUTEX_DEFN(MethodCompileQueueC1_lock     , PaddedMonitor, safepoint);
     MUTEX_DEFN(MethodCompileQueueC2_lock     , PaddedMonitor, safepoint);
-    MUTEX_DEFN(MethodCompileQueueSC1_lock    , PaddedMonitor, safepoint);
-    MUTEX_DEFN(MethodCompileQueueSC2_lock    , PaddedMonitor, safepoint);
+    MUTEX_DEFN(MethodCompileQueueAC1_lock    , PaddedMonitor, safepoint);
+    MUTEX_DEFN(MethodCompileQueueAC2_lock    , PaddedMonitor, safepoint);
   }
   MUTEX_DEFN(TrainingData_lock               , PaddedMutex  , nosafepoint);
   MUTEX_DEFN(TrainingReplayQueue_lock        , PaddedMonitor, safepoint);

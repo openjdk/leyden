@@ -617,7 +617,6 @@ public:
   bool has_compiled_code() const;
 
   bool needs_clinit_barrier() const;
-  bool code_has_clinit_barriers() const;
 
   // sizing
   static int header_size()                       {

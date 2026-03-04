@@ -974,11 +974,6 @@ bool Method::needs_clinit_barrier() const {
   return is_static() && !method_holder()->is_initialized();
 }
 
-bool Method::code_has_clinit_barriers() const {
-  nmethod* nm = code();
-  return (nm != nullptr) && nm->has_clinit_barriers();
-}
-
 bool Method::is_object_wait0() const {
   return klass_name() == vmSymbols::java_lang_Object()
          && name() == vmSymbols::wait_name();

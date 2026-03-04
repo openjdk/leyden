@@ -1097,10 +1097,10 @@ void CompileBroker::init_compiler_threads() {
 
   if (_ac_count > 0) {
     if (_c1_count > 0) { // C1 is present
-      _ac1_compile_queue  = new CompileQueue("C1 AOT code compile queue", MethodCompileQueueSC1_lock);
+      _ac1_compile_queue  = new CompileQueue("C1 AOT code compile queue", MethodCompileQueueAC1_lock);
     }
     if (_c2_count > 0) { // C2 is present
-      _ac2_compile_queue  = new CompileQueue("C2 AOT code compile queue", MethodCompileQueueSC2_lock);
+      _ac2_compile_queue  = new CompileQueue("C2 AOT code compile queue", MethodCompileQueueAC2_lock);
     }
     _ac_objects = NEW_C_HEAP_ARRAY(jobject, _ac_count, mtCompiler);
     _ac_logs = NEW_C_HEAP_ARRAY(CompileLog*, _ac_count, mtCompiler);
@@ -1360,7 +1360,15 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     }
     tty->cr();
   }
-
+  LogStreamHandle(Debug, aot, codecache, compilation) log;
+  if (log.is_enabled()) {
+    ResourceMark rm;
+    const char* name = method->name_and_sig_as_C_string();
+    const char* aotn = (compile_reason == CompileTask::Reason_Preload) ? "AP" :
+                       (!requires_online_compilation ? "A" : "");
+    const char* osrn = (osr_bci != InvocationEntryBci) ? "% " : "";
+    log.print_cr("request: %s%d %s %s%s", aotn, comp_level, CompileTask::reason_name(compile_reason), osrn, name);
+  }
   // A request has been made for compilation.  Before we do any
   // real work, check to see if the method has been compiled
   // in the meantime with a definitive result.
@@ -1732,7 +1740,7 @@ bool CompileBroker::compilation_is_complete(Method*                    method,
         return false;
       }
       bool same_level = (comp_level == result->comp_level());
-      if (result->preloaded() || result->has_clinit_barriers()) {
+      if (result->preloaded()) {
         return !same_level; // Allow replace preloaded code with new code of the same level
       }
       return same_level;
@@ -3099,7 +3107,7 @@ void CompileBroker::print_times(bool per_compiler, bool aggregate) {
       }
     }
     if (_aot_stats._standard._count > 0) {
-      print_times("SC", &_aot_stats);
+      print_times("AC", &_aot_stats);
     }
     if (aggregate) {
       tty->cr();

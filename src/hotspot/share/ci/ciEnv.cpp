@@ -1103,6 +1103,8 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
   }
 }
 
+#if INCLUDE_CDS
+// Register method loaded from AOT code cache
 nmethod* ciEnv::register_aot_method(JavaThread* thread,
                                 ciMethod* target,
                                 AbstractCompiler* compiler,
@@ -1159,6 +1161,7 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
 
     if (nm != nullptr) {
       aot_code_entry->set_loaded();
+      nm->set_has_clinit_barriers(aot_code_entry->has_clinit_barriers());
       make_code_usable(thread, target, preload, InvocationEntryBci, aot_code_entry, nm);
     }
   }
@@ -1175,9 +1178,10 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
   return nm;
   // safepoints are allowed again
 }
+#endif
 
 // ------------------------------------------------------------------
-// ciEnv::register_method
+// Register the result of a compilation including AOT compilation
 void ciEnv::register_method(ciMethod* target,
                             int entry_bci,
                             CodeOffsets* offsets,
@@ -1251,6 +1255,11 @@ void ciEnv::register_method(ciMethod* target,
         AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
         if (aot_code_entry != nullptr) {
           aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
+          if (for_preload) {
+            // Set preload AOT code so we can check if it has `has_clinit_barriers` off
+            // so we may skip normal AOT compilation which would have the same code.
+            method->set_preload_code(nm);
+          }
         }
       }
 #endif

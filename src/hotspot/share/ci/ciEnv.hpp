@@ -376,6 +376,7 @@ public:
   int comp_level();   // task()->comp_level()
   int compile_id();  // task()->compile_id()
 
+#if INCLUDE_CDS
   // Register method loaded from AOT code cache
   nmethod* register_aot_method(JavaThread* thread,
                                ciMethod* target,
@@ -389,7 +390,7 @@ public:
                                GrowableArray<Handle>& reloc_imm_oop_list,
                                GrowableArray<Metadata*>& reloc_imm_metadata_list,
                                AOTCodeReader* aot_code_reader);
-
+#endif
   // Register the result of a compilation.
   void register_method(ciMethod*                 target,
                        int                       entry_bci,

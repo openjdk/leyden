@@ -3989,7 +3989,11 @@ void AOTCodeCache::log_stats_on_exit(AOTCodeStats& stats) {
       log.print_cr("  %s: total=%u", aot_code_entry_kind_name[kind], stats.entry_count(kind));
       if (kind == AOTCodeEntry::Nmethod) {
         for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
-          log.print_cr("    Tier %d: total=%u", lvl, stats.nmethod_count(lvl));
+          log.print("    Tier %d: total=%u", lvl, stats.nmethod_count(lvl));
+          if (lvl == AOTCompLevel_count-1) { // AOT Preload
+            log.print(", has_clinit_barriers=%u", stats.clinit_barriers_count());
+          }
+          log.cr();
         }
       }
     }
