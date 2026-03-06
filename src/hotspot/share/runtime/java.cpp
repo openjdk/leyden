@@ -213,7 +213,7 @@ void log_vm_init_stats() {
     }
 
     if (AOTCodeCache::is_on_for_use()) {
-      log.print_cr("Startup Code Cache: ");
+      log.print_cr("AOT Code Cache: ");
       AOTCodeCache::print_statistics_on(&log);
       log.cr();
       AOTCodeCache::print_timers_on(&log);

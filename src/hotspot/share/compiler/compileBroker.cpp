@@ -633,7 +633,7 @@ void CompileQueue::mark_on_stack() {
 
 
 CompileQueue* CompileBroker::compile_queue(int comp_level, bool is_aot) {
-  if (is_c2_compile(comp_level)) return ((is_aot  && (_ac_count > 0)) ? _ac2_compile_queue : _c2_compile_queue);
+  if (is_c2_compile(comp_level)) return ((is_aot && (_ac_count > 0)) ? _ac2_compile_queue : _c2_compile_queue);
   if (is_c1_compile(comp_level)) return ((is_aot && (_ac_count > 0)) ? _ac1_compile_queue : _c1_compile_queue);
   return nullptr;
 }
@@ -1363,11 +1363,22 @@ void CompileBroker::compile_method_base(const methodHandle& method,
   LogStreamHandle(Debug, aot, codecache, compilation) log;
   if (log.is_enabled()) {
     ResourceMark rm;
+    MethodTrainingData* mtd = MethodTrainingData::have_data() ? MethodTrainingData::find_fast(method) : nullptr;
+    MethodCounters* mc = method->method_counters();
     const char* name = method->name_and_sig_as_C_string();
     const char* aotn = (compile_reason == CompileTask::Reason_Preload) ? "AP" :
-                       (!requires_online_compilation ? "A" : "");
+                       (!requires_online_compilation ? " A" : "  ");
     const char* osrn = (osr_bci != InvocationEntryBci) ? "% " : "";
-    log.print_cr("request: %s%d %s %s%s", aotn, comp_level, CompileTask::reason_name(compile_reason), osrn, name);
+    log.print("request: %s%d %16s %s%s", aotn, comp_level, CompileTask::reason_name(compile_reason), osrn, name);
+    if (mtd != nullptr) {
+      log.print(" (MTD invoke: %d, backedge: %d, aot_limit: %d)", mtd->invocation_count(),
+                   mtd->backedge_count(), (int)mtd->aot_code_invocation_limit());
+    }
+    if (mc != nullptr) {
+      log.print(" (MC invoke: %d, backedge: %d, aot_cnt: %d, aot_recomp: %d)", mc->invocation_counter()->count(),
+                   mc->backedge_counter()->count(), mc->aot_code_invocation_count(), mc->aot_code_recompile_requested());
+    }
+    log.cr();
   }
   // A request has been made for compilation.  Before we do any
   // real work, check to see if the method has been compiled
@@ -1517,11 +1528,6 @@ void CompileBroker::compile_method_base(const methodHandle& method,
                                osr_bci, comp_level,
                                hot_count, aot_code_entry, compile_reason,
                                requires_online_compilation, blocking);
-
-    if (task->is_aot_load() && (_ac_count > 0)) {
-      // Put it on AOT code caching queue
-      queue = is_c1_compile(comp_level) ? _ac1_compile_queue : _ac2_compile_queue;
-    }
 
     if (UseLockFreeCompileQueues) {
       assert(queue->lock()->owned_by_self() == false, "");

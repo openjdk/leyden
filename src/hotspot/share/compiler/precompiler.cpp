@@ -49,8 +49,9 @@ public:
     assert(TrainingData::have_data(), "sanity");
   }
 
-  bool include(Method* m) {
-    if (m->is_native() || m->is_abstract()) {
+  bool include(MethodTrainingData* mtd) {
+    Method* m = mtd->holder();
+    if (m->is_native() || m->is_abstract() || !m->method_holder()->is_linked()) {
       return false;
     }
     DirectiveSet* directives = DirectivesStack::getMatchingDirective(methodHandle(_thread, m), nullptr);
@@ -60,7 +61,7 @@ public:
     if (directives->PrecompileRecordedOption > 0) {
       return true;
     }
-    int high_top_level = highest_top_level(m);
+    int high_top_level = mtd->highest_top_level();
     switch (_comp_level) {
       case CompLevel_simple:
       case CompLevel_full_optimization:
@@ -84,7 +85,7 @@ public:
   void apply(TrainingData* td) {
     if (td->is_MethodTrainingData()) {
       MethodTrainingData* mtd = td->as_MethodTrainingData();
-      if (mtd->has_holder() && include(mtd->holder())) {
+      if (mtd->has_holder() && include(mtd)) {
         _methods.push(mtd->holder());
       }
     }
@@ -95,14 +96,6 @@ public:
       return MethodTrainingData::find(methodHandle(Thread::current(), m));
     }
     return nullptr;
-  }
-
-  static int highest_top_level(Method* m) {
-    MethodTrainingData* mtd = method_training_data(m);
-    if (mtd != nullptr) {
-      return mtd->highest_top_level();
-    }
-    return 0;
   }
 
   // We sort methods by compile ID, presuming the methods that compiled earlier

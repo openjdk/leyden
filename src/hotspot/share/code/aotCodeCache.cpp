@@ -4118,7 +4118,7 @@ void AOTCodeCache::print_on(outputStream* st) {
       uint name_offset = entry->name_offset() + entry_position;
       const char* saved_name = opened_cache->addr(name_offset);
 
-      st->print_cr("%4u: %10s Id:%u L%u size=%u '%s' %s%s%s",
+      st->print_cr("%4u: %10s Id:%u AP%u size=%u '%s' %s%s%s",
                    i, aot_code_entry_kind_name[entry->kind()], entry->id(), entry->comp_level(),
                    entry->size(),  saved_name,
                    entry->has_clinit_barriers() ? " has_clinit_barriers" : "",
@@ -4144,11 +4144,9 @@ void AOTCodeCache::print_on(outputStream* st) {
       uint name_offset = entry->name_offset() + entry_position;
       const char* saved_name = opened_cache->addr(name_offset);
 
-      st->print_cr("%4u: %10s idx:%4u Id:%u L%u size=%u '%s' %s%s%s%s",
+      st->print_cr("%4u: %10s idx:%4u Id:%u A%u size=%u '%s' %s%s",
                    i, aot_code_entry_kind_name[entry->kind()], index, entry->id(), entry->comp_level(),
                    entry->size(),  saved_name,
-                   entry->has_clinit_barriers() ? " has_clinit_barriers" : "",
-                   entry->for_preload()         ? " for_preload"         : "",
                    entry->is_loaded()           ? " loaded"              : "",
                    entry->not_entrant()         ? " not_entrant"         : "");
 

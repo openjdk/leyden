@@ -99,23 +99,23 @@ private:
   Kind    _kind;
   // Next field is exposed to external profilers - keep it as boolean.
   bool    _for_preload;           // Code can be used for preload (before classes initialized)
-  uint8_t _has_clinit_barriers:1, // Generated code has class init checks (ony in for_preload code)
+  uint8_t _has_clinit_barriers:1, // Generated code has class init checks (only in for_preload code)
           _has_oop_maps:1,
           _loaded:1,              // Code was loaded for use
-          _load_fail,             // Failed to load due to some klass state
-          _not_entrant;           // Deoptimized
+          _load_fail:1,           // Failed to load due to some klass state
+          _not_entrant:1;         // Deoptimized
 
   uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or Method's offset in AOTCache for nmethod
   uint   _offset;      // Offset to entry
   uint   _size;        // Entry size
   uint   _name_offset; // Method's or intrinsic name
   uint   _name_size;
-  uint   _num_inlined_bytecodes;
   uint   _code_offset; // Start of code in cache
   uint   _code_size;   // Total size of all code sections
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
+  uint   _num_inlined_bytecodes;
 public:
   // this constructor is used only by AOTCodeEntry::Stub
   AOTCodeEntry(uint offset, uint size, uint name_offset, uint name_size,
@@ -123,6 +123,14 @@ public:
                Kind kind, uint id) {
     assert(kind == AOTCodeEntry::Stub, "sanity check");
     _kind         = kind;
+
+    _for_preload  = false;
+    _has_clinit_barriers = false;
+    _has_oop_maps = false; // unused here
+    _loaded       = false;
+    _load_fail    = false;
+    _not_entrant  = false;
+
     _id           = id;
     _offset       = offset;
     _size         = size;
@@ -131,15 +139,9 @@ public:
     _code_offset  = code_offset;
     _code_size    = code_size;
 
-    _num_inlined_bytecodes = 0;
     _comp_level   = 0;
     _comp_id      = 0;
-    _has_oop_maps = false; // unused here
-    _has_clinit_barriers = false;
-    _for_preload  = false;
-    _loaded       = false;
-    _not_entrant  = false;
-    _load_fail    = false;
+    _num_inlined_bytecodes = 0;
   }
 
   AOTCodeEntry(Kind kind,         uint id,
@@ -151,6 +153,14 @@ public:
                bool has_clinit_barriers = false,
                bool for_preload = false) {
     _kind         = kind;
+
+    _for_preload  = for_preload;
+    _has_clinit_barriers = has_clinit_barriers;
+    _has_oop_maps = has_oop_maps;
+    _loaded       = false;
+    _load_fail    = false;
+    _not_entrant  = false;
+
     _id           = id;
     _offset       = offset;
     _size         = size;
@@ -159,19 +169,9 @@ public:
     _code_offset  = blob_offset;
     _code_size    = 0; // unused
 
-    _num_inlined_bytecodes = 0;
     _comp_level   = comp_level;
     _comp_id      = comp_id;
-    _has_oop_maps = has_oop_maps;
-    _has_clinit_barriers = has_clinit_barriers;
-    _for_preload  = for_preload;
-    _loaded       = false;
-    _not_entrant  = false;
-    _load_fail    = false;
-
-    _loaded       = false;
-    _not_entrant  = false;
-    _load_fail    = false;
+    _num_inlined_bytecodes = 0;
   }
 
   void* operator new(size_t x, AOTCodeCache* cache);
