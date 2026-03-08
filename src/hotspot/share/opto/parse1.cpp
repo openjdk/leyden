@@ -1212,6 +1212,9 @@ static int scale_limit(int64_t limit) {
  return (int)(AOTCodeInvokeBase + limit / (1.0 + limit / (1000000.0 * AOTCodeInvokeScale)));
 }
 
+#define AOT_COUNT_INC 2
+#define AOT_RECOMPILE_BIT 1
+
 void Parse::count_aot_code_calls() {
   bool is_aot_compilation = C->env()->is_precompile();
   if (UseAOTCodeCounters && (depth() == 1) && is_aot_compilation) {
@@ -1231,11 +1234,11 @@ void Parse::count_aot_code_calls() {
     MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
     precond(mtd != nullptr);
     int64_t limit = mtd->invocation_count();
-    int scaled_limit = scale_limit(limit);
+    int scaled_limit = AOT_COUNT_INC * scale_limit(limit);
 
     // Count AOT compiled code invocations (use 32 bits because scaled limit fits into 32 bits)
     intptr_t offset = in_bytes(MethodCounters::aot_code_invocation_counter_offset());
-    int step = 1;
+    int step = AOT_COUNT_INC;
     Node* cnt_adr = basic_plus_adr(C->top(), mc, offset);
     Node* ctrl = control();
     Node* cnt  = make_load(ctrl, cnt_adr, TypeInt::INT, T_INT, MemNode::unordered);
@@ -1265,18 +1268,9 @@ void Parse::count_aot_code_calls() {
     Node* needs_call = _gvn.transform(new IfFalseNode(iff));
     set_control(needs_call);
 
-    // Check if we already requested compilation.
-    ByteSize flag_offset = MethodCounters::aot_code_recompile_requested_offset();
-    Node* flag_adr = basic_plus_adr(C->top(), mc, in_bytes(flag_offset));
-
-    // Load old value to check and store new (+1) unconditionally.
-    // It is fine if few threads see initial 0 value and request compilation:
-    // CompileBroker checks if such compilation is already in compilation queue.
-    Node* old_val = make_load(control(), flag_adr, TypeInt::INT, T_INT, MemNode::unordered);
-    Node* new_val = _gvn.transform(new AddINode(old_val, intcon(1)));
-    store_to_memory(control(), flag_adr, new_val, T_INT, MemNode::unordered);
-
-    Node* chk2 = _gvn.transform( new CmpINode(old_val, intcon(0)) );
+    Node* recomp_bit = intcon(AOT_RECOMPILE_BIT);
+    Node* rbit = _gvn.transform( new AndINode(incr, recomp_bit) );
+    Node* chk2 = _gvn.transform( new CmpINode(rbit, intcon(0)) );
     Node* tst2 = _gvn.transform( new BoolNode(chk2, BoolTest::ne) );
     IfNode* iff2 = create_and_map_if(control(), tst2, PROB_FAIR, COUNT_UNKNOWN);
 
@@ -1286,6 +1280,9 @@ void Parse::count_aot_code_calls() {
     Node* needs_call2 = _gvn.transform(new IfFalseNode(iff2));
     set_control(needs_call2);
 
+    Node* new_val = _gvn.transform(new OrINode(incr, recomp_bit));
+    store_to_memory(control(), cnt_adr, new_val, T_INT, MemNode::unordered);
+
     const TypePtr* m_type = TypeMetadataPtr::make(method());
     Node* m = makecon(m_type);
     Node* call = make_runtime_call(RC_NO_LEAF | RC_UNCOMMON,
@@ -1294,10 +1291,8 @@ void Parse::count_aot_code_calls() {
                           "compile_method", TypePtr::BOTTOM, m);
 
     // State before call
-    Node* in_io  = call->in(TypeFunc::I_O);
-    Node* in_mem = call->in(TypeFunc::Memory);
-    io_phi ->init_req(2, in_io);
-    mem_phi->init_req(2, in_mem);
+    io_phi ->init_req(2, in1_io);
+    mem_phi->init_req(2, in1_mem);
 
     // State after call
     result_rgn->init_req(3, control());
@@ -1309,6 +1304,10 @@ void Parse::count_aot_code_calls() {
     set_control(    _gvn.transform(result_rgn) );
   }
 }
+
+#undef AOT_COUNT_INC
+#undef AOT_RECOMPILE_BIT
+
 #endif
 
 //-----------------------------do_method_entry--------------------------------

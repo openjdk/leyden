@@ -929,7 +929,7 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
   }
 
   MethodCounters* mc = method->method_counters();
-  if (mc != nullptr && (mc->aot_code_recompile_requested() > 0)) {
+  if (mc != nullptr && mc->aot_code_recompile_requested()) {
     return nullptr; // Already requested JIT compilation
   }
 

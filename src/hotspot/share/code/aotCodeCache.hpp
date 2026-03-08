@@ -116,6 +116,7 @@ private:
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
   uint   _num_inlined_bytecodes;
+  uint   _inline_instructions_size; // size from training run
 public:
   // this constructor is used only by AOTCodeEntry::Stub
   AOTCodeEntry(uint offset, uint size, uint name_offset, uint name_size,
@@ -142,6 +143,7 @@ public:
     _comp_level   = 0;
     _comp_id      = 0;
     _num_inlined_bytecodes = 0;
+    _inline_instructions_size = 0;
   }
 
   AOTCodeEntry(Kind kind,         uint id,
@@ -172,6 +174,7 @@ public:
     _comp_level   = comp_level;
     _comp_id      = comp_id;
     _num_inlined_bytecodes = 0;
+    _inline_instructions_size = 0;
   }
 
   void* operator new(size_t x, AOTCodeCache* cache);
@@ -195,6 +198,9 @@ public:
   bool has_oop_maps() const { return _has_oop_maps; }
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
   void set_inlined_bytecodes(int bytes) { _num_inlined_bytecodes = bytes; }
+
+  uint inline_instructions_size() const { return _inline_instructions_size; }
+  void set_inline_instructions_size(int size) { _inline_instructions_size = size; }
 
   uint comp_level()   const { return _comp_level; }
   uint comp_id()      const { return _comp_id; }

@@ -1374,8 +1374,9 @@ void CompileBroker::compile_method_base(const methodHandle& method,
       log.print(" (MTD invoke: %d, backedge: %d)", mtd->invocation_count(), mtd->backedge_count());
     }
     if (mc != nullptr) {
-      log.print(" (MC invoke: %d, backedge: %d, aot_cnt: %d, aot_recomp: %d)", mc->invocation_counter()->count(),
-                   mc->backedge_counter()->count(), mc->aot_code_invocation_count(), mc->aot_code_recompile_requested());
+      log.print(" (MC invoke: %d, backedge: %d, aot_cnt: %d, aot_recomp: %s)", mc->invocation_counter()->count(),
+                   mc->backedge_counter()->count(), mc->aot_code_invocation_count(),
+                  (mc->aot_code_recompile_requested() ? "yes" : "no"));
     }
     log.cr();
   }

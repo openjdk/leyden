@@ -34,6 +34,7 @@
 #include "ci/ciSymbol.hpp"
 #include "ci/ciSymbols.hpp"
 #include "ci/ciUtilities.inline.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/compilerOracle.hpp"
@@ -1215,11 +1216,11 @@ int ciMethod::inline_instructions_size() {
   if (_inline_instructions_size == -1) {
     if (TrainingData::have_data()) {
       GUARDED_VM_ENTRY(
-        CompLevel level = static_cast<CompLevel>(CURRENT_ENV->comp_level());
+        CompLevel level = static_cast<CompLevel>(CURRENT_ENV->task()->comp_level());
         methodHandle top_level_mh(Thread::current(), CURRENT_ENV->task()->method());
         MethodTrainingData* mtd = MethodTrainingData::find(top_level_mh);
         if (mtd != nullptr) {
-          CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
+          CompileTrainingData* ctd = mtd->compile_data_for_aot_code(level);
           if (ctd != nullptr) {
             methodHandle mh(Thread::current(), get_Method());
             MethodTrainingData* this_mtd = MethodTrainingData::find(mh);
@@ -1237,8 +1238,9 @@ int ciMethod::inline_instructions_size() {
   if (_inline_instructions_size == -1) {
     GUARDED_VM_ENTRY(
       nmethod* code = get_Method()->code();
-      if (code != nullptr && !code->is_aot() && (code->comp_level() == CompLevel_full_optimization)) {
-        int isize = code->insts_end() - code->verified_entry_point() - code->skipped_instructions_size();
+      if (code != nullptr && (code->comp_level() == CompLevel_full_optimization)) {
+        int isize = code->is_aot() ? code->aot_code_entry()->inline_instructions_size()
+                                   : code->inline_instructions_size();
         _inline_instructions_size = isize > 0 ? isize : 0;
       } else {
         _inline_instructions_size = 0;

@@ -1255,6 +1255,17 @@ void ciEnv::register_method(ciMethod* target,
         if (aot_code_entry != nullptr) {
           nm->set_aot_code_entry(aot_code_entry);
           aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
+          // Inline size was recorded during training.
+          CompileTrainingData* ctd = nullptr;
+          {
+            TrainingData::TrainingDataLocker l;
+            MethodTrainingData* mtd = MethodTrainingData::find(method);
+            precond(mtd != nullptr);
+            ctd = mtd->compile_data_for_aot_code(nm->comp_level());
+          }
+          precond(ctd != nullptr);
+          int inline_size = ctd->inline_instructions_size();
+          aot_code_entry->set_inline_instructions_size(inline_size);
           if (for_preload) {
             // To have reference from method to AOT preload code
             // during assembly phase.
@@ -1879,7 +1890,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       GUARDED_VM_ENTRY(mtd = MethodTrainingData::find(methodHandle(Thread::current(), task()->method())); )
       if (mtd != nullptr) {
         TrainingData::TrainingDataLocker l;
-        CompileTrainingData* ctd = mtd->last_toplevel_compile(task()->comp_level());
+        CompileTrainingData* ctd = mtd->compile_data_for_aot_code(task()->comp_level());
         if (ctd != nullptr) {
           for (int i = 0; i < ctd->init_dep_count(); i++) {
             KlassTrainingData* ktd = ctd->init_dep(i);

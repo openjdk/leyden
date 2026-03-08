@@ -103,12 +103,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, MethodTrainin
   CompLevel next_level = trained_transition(m, cur_level, mtd, THREAD);
   if ((next_level != cur_level || recompile) && can_be_compiled(m, next_level) && !CompileBroker::compilation_is_in_queue(m)) {
     // We are here becasue some of CTD have all init deps satisifed.
-    CompileTrainingData* ctd = mtd->last_toplevel_compile(next_level);
-    // CTD could be created for Tier3 and not for Tier2 compialtion.
-    // But we compile A2 for Tier3 CTD. Check such case.
-    if (ctd == nullptr && next_level == CompLevel_limited_profile) {
-      ctd = mtd->last_toplevel_compile(CompLevel_full_profile);
-    }
+    CompileTrainingData* ctd = mtd->compile_data_for_aot_code(next_level);
     bool requires_online_compilation = true;
     if (ctd != nullptr) {
       // Can't load normal AOT code - not all dependancies are ready,
