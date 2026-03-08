@@ -1209,111 +1209,104 @@ SafePointNode* Parse::create_entry_map() {
 static int scale_limit(int64_t limit) {
  // To scale invocation limit a hyperbolic saturation curve formula
  // is used with upper limit 100K.
- return (int)(AOTCodeInvokeBase + limit / (1.0 + limit / (100000.0 * AOTCodeInvokeScale)));
+ return (int)(AOTCodeInvokeBase + limit / (1.0 + limit / (1000000.0 * AOTCodeInvokeScale)));
 }
 
 void Parse::count_aot_code_calls() {
   bool is_aot_compilation = C->env()->is_precompile();
-  if (UseAOTCodeCounters && (depth() == 1) && (AOTRecordTraining || is_aot_compilation)) {
-    // Count nmethod invocations during training run and compare to
-    // invocations of AOT code during production run to trigger JIT compilation
-    // and replace AOT code with normal JITed code.
+  if (UseAOTCodeCounters && (depth() == 1) && is_aot_compilation) {
+    // Clear out dead values from the debug info in following runtime call
+    kill_dead_locals();
+
+    // Use method invocations count during training run and compare
+    // to invocations of AOT code during production run to trigger JIT
+    // compilation and replace AOT code with normal JITed code.
     ciMetadata* mcp = method()->ensure_method_counters();
     precond(mcp != nullptr);
     const TypePtr* mc_type = TypeMetadataPtr::make(TypePtr::Constant, mcp, 0);
     Node* mc = makecon(mc_type);
-    if (!is_aot_compilation) { // training
-      // Count C2 compiled code invocations (use 64 bits)
-      Node* cnt_adr = basic_plus_adr(C->top(), mc, in_bytes(MethodCounters::jit_code_invocation_counter_offset()));
-      Node* ctrl = control();
-      Node* cnt  = make_load(ctrl, cnt_adr, TypeLong::LONG, T_LONG, MemNode::unordered);
-      Node* incr = _gvn.transform(new AddLNode(cnt, longcon(1)));
-      store_to_memory(ctrl, cnt_adr, incr, T_LONG, MemNode::unordered);
 
-    } else { // assembly phase
-      // Clear out dead values from the debug info in following runtime call
-      kill_dead_locals();
+    precond(MethodTrainingData::have_data());
+    methodHandle mh(Thread::current(), method()->get_Method());
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
+    precond(mtd != nullptr);
+    int64_t limit = mtd->invocation_count();
+    int scaled_limit = scale_limit(limit);
 
-      precond(MethodTrainingData::have_data());
-      methodHandle mh(Thread::current(), method()->get_Method());
-      MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
-      precond(mtd != nullptr);
-      int64_t limit = mtd->aot_code_invocation_limit();
-      int scaled_limit = scale_limit(limit);
-      Node* lim = intcon(scaled_limit);
+    // Count AOT compiled code invocations (use 32 bits because scaled limit fits into 32 bits)
+    intptr_t offset = in_bytes(MethodCounters::aot_code_invocation_counter_offset());
+    int step = 1;
+    Node* cnt_adr = basic_plus_adr(C->top(), mc, offset);
+    Node* ctrl = control();
+    Node* cnt  = make_load(ctrl, cnt_adr, TypeInt::INT, T_INT, MemNode::unordered);
+    Node* incr = _gvn.transform(new AddINode(cnt, intcon(step)));
+    store_to_memory(ctrl, cnt_adr, incr, T_INT, MemNode::unordered);
+    // Preserve memory for Phi node below
+    Node* st_mem = MergeMemNode::make(map()->memory());
+    _gvn.set_type_bottom(st_mem);
 
-      // Count AOT compiled code invocations (use 32 bits because scaled limit fits into 32 bits)
-      Node* cnt_adr = basic_plus_adr(C->top(), mc, in_bytes(MethodCounters::aot_code_invocation_counter_offset()));
-      Node* ctrl = control();
-      Node* cnt  = make_load(ctrl, cnt_adr, TypeInt::INT, T_INT, MemNode::unordered);
-      Node* incr = _gvn.transform(new AddINode(cnt, intcon(1)));
-      store_to_memory(ctrl, cnt_adr, incr, T_INT, MemNode::unordered);
-      // Preserve memory for Phi node below
-      Node* st_mem = MergeMemNode::make(map()->memory());
-      _gvn.set_type_bottom(st_mem);
+    Node* lim = intcon(scaled_limit);
+    Node* chk = _gvn.transform( new CmpINode(incr, lim) );
+    Node* tst = _gvn.transform( new BoolNode(chk, BoolTest::lt) );
+    IfNode* iff = create_and_map_if(control(), tst, PROB_ALWAYS, (float)limit);
 
-      Node* chk = _gvn.transform( new CmpINode(incr, lim) );
-      Node* tst = _gvn.transform( new BoolNode(chk, BoolTest::lt) );
-      IfNode* iff = create_and_map_if(control(), tst, PROB_ALWAYS, (float)limit);
+    RegionNode* result_rgn = new RegionNode(4);
+    record_for_igvn(result_rgn);
 
-      RegionNode* result_rgn = new RegionNode(4);
-      record_for_igvn(result_rgn);
+    Node*  skip_call = _gvn.transform(new IfTrueNode(iff));
+    result_rgn->init_req(1, skip_call);
 
-      Node*  skip_call = _gvn.transform(new IfTrueNode(iff));
-      result_rgn->init_req(1, skip_call);
+    Node* in1_io  = i_o();
+    Node* in1_mem = st_mem;
+    // These two phis are pre-filled with copies of the fast IO and Memory
+    Node* io_phi   = PhiNode::make(result_rgn, in1_io,  Type::ABIO);
+    Node* mem_phi  = PhiNode::make(result_rgn, in1_mem, Type::MEMORY, TypePtr::BOTTOM);
 
-      Node* in1_io  = i_o();
-      Node* in1_mem = st_mem;
-      // These two phis are pre-filled with copies of the fast IO and Memory
-      Node* io_phi   = PhiNode::make(result_rgn, in1_io,  Type::ABIO);
-      Node* mem_phi  = PhiNode::make(result_rgn, in1_mem, Type::MEMORY, TypePtr::BOTTOM);
+    Node* needs_call = _gvn.transform(new IfFalseNode(iff));
+    set_control(needs_call);
 
-      Node* needs_call = _gvn.transform(new IfFalseNode(iff));
-      set_control(needs_call);
+    // Check if we already requested compilation.
+    ByteSize flag_offset = MethodCounters::aot_code_recompile_requested_offset();
+    Node* flag_adr = basic_plus_adr(C->top(), mc, in_bytes(flag_offset));
 
-      // Check if we already requested compilation.
-      ByteSize flag_offset = MethodCounters::aot_code_recompile_requested_offset();
-      Node* flag_adr = basic_plus_adr(C->top(), mc, in_bytes(flag_offset));
+    // Load old value to check and store new (+1) unconditionally.
+    // It is fine if few threads see initial 0 value and request compilation:
+    // CompileBroker checks if such compilation is already in compilation queue.
+    Node* old_val = make_load(control(), flag_adr, TypeInt::INT, T_INT, MemNode::unordered);
+    Node* new_val = _gvn.transform(new AddINode(old_val, intcon(1)));
+    store_to_memory(control(), flag_adr, new_val, T_INT, MemNode::unordered);
 
-      // Load old value to check and store new (+1) unconditionally.
-      // It is fine if few threads see initial 0 value and request compilation:
-      // CompileBroker checks if such compilation is already in compilation queue.
-      Node* old_val = make_load(control(), flag_adr, TypeInt::INT, T_INT, MemNode::unordered);
-      Node* new_val = _gvn.transform(new AddINode(old_val, intcon(1)));
-      store_to_memory(control(), flag_adr, new_val, T_INT, MemNode::unordered);
+    Node* chk2 = _gvn.transform( new CmpINode(old_val, intcon(0)) );
+    Node* tst2 = _gvn.transform( new BoolNode(chk2, BoolTest::ne) );
+    IfNode* iff2 = create_and_map_if(control(), tst2, PROB_FAIR, COUNT_UNKNOWN);
 
-      Node* chk2 = _gvn.transform( new CmpINode(old_val, intcon(0)) );
-      Node* tst2 = _gvn.transform( new BoolNode(chk2, BoolTest::ne) );
-      IfNode* iff2 = create_and_map_if(control(), tst2, PROB_FAIR, COUNT_UNKNOWN);
+    Node*  skip_call2 = _gvn.transform(new IfTrueNode(iff2));
+    result_rgn->init_req(2, skip_call2);
 
-      Node*  skip_call2 = _gvn.transform(new IfTrueNode(iff2));
-      result_rgn->init_req(2, skip_call2);
+    Node* needs_call2 = _gvn.transform(new IfFalseNode(iff2));
+    set_control(needs_call2);
 
-      Node* needs_call2 = _gvn.transform(new IfFalseNode(iff2));
-      set_control(needs_call2);
-
-      const TypePtr* m_type = TypeMetadataPtr::make(method());
-      Node* m = makecon(m_type);
-      Node* call = make_runtime_call(RC_NO_LEAF | RC_UNCOMMON,
+    const TypePtr* m_type = TypeMetadataPtr::make(method());
+    Node* m = makecon(m_type);
+    Node* call = make_runtime_call(RC_NO_LEAF | RC_UNCOMMON,
                           OptoRuntime::compile_method_Type(),
                           OptoRuntime::compile_method_Java(),
                           "compile_method", TypePtr::BOTTOM, m);
 
-      // State before call
-      Node* in_io  = call->in(TypeFunc::I_O);
-      Node* in_mem = call->in(TypeFunc::Memory);
-      io_phi ->init_req(2, in_io);
-      mem_phi->init_req(2, in_mem);
+    // State before call
+    Node* in_io  = call->in(TypeFunc::I_O);
+    Node* in_mem = call->in(TypeFunc::Memory);
+    io_phi ->init_req(2, in_io);
+    mem_phi->init_req(2, in_mem);
 
-      // State after call
-      result_rgn->init_req(3, control());
-      io_phi ->init_req(3, i_o());
-      mem_phi->init_req(3, reset_memory());
+    // State after call
+    result_rgn->init_req(3, control());
+    io_phi ->init_req(3, i_o());
+    mem_phi->init_req(3, reset_memory());
 
-      set_all_memory( _gvn.transform(mem_phi) );
-      set_i_o(        _gvn.transform(io_phi) );
-      set_control(    _gvn.transform(result_rgn) );
-    }
+    set_all_memory( _gvn.transform(mem_phi) );
+    set_i_o(        _gvn.transform(io_phi) );
+    set_control(    _gvn.transform(result_rgn) );
   }
 }
 #endif

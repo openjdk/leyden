@@ -40,7 +40,6 @@ MethodCounters::MethodCounters(const methodHandle& mh) :
   _highest_comp_level(0),
   _highest_osr_comp_level(0)
 {
-  _jit_code_invocation_count = 0;
   _aot_code_invocation_count = 0;
   _aot_code_recompile_requested = 0;
   set_interpreter_throwout_count(0);
@@ -76,7 +75,6 @@ MethodCounters* MethodCounters::allocate_with_exception(const methodHandle& mh, 
 void MethodCounters::clear_counters() {
   invocation_counter()->reset();
   backedge_counter()->reset();
-  _jit_code_invocation_count = 0;
   _aot_code_invocation_count = 0;
   _aot_code_recompile_requested = 0;
   set_interpreter_throwout_count(0);

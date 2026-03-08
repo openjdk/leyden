@@ -1371,8 +1371,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
     const char* osrn = (osr_bci != InvocationEntryBci) ? "% " : "";
     log.print("request: %s%d %16s %s%s", aotn, comp_level, CompileTask::reason_name(compile_reason), osrn, name);
     if (mtd != nullptr) {
-      log.print(" (MTD invoke: %d, backedge: %d, aot_limit: %d)", mtd->invocation_count(),
-                   mtd->backedge_count(), (int)mtd->aot_code_invocation_limit());
+      log.print(" (MTD invoke: %d, backedge: %d)", mtd->invocation_count(), mtd->backedge_count());
     }
     if (mc != nullptr) {
       log.print(" (MC invoke: %d, backedge: %d, aot_cnt: %d, aot_recomp: %d)", mc->invocation_counter()->count(),
