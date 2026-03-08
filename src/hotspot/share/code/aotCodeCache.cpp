@@ -3411,6 +3411,7 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_long_shuffle_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_long_sign_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_int_to_byte_mask());
+  SET_ADDRESS(_stubs, StubRoutines::x86::vector_int_to_short_mask());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_int());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_short());
   SET_ADDRESS(_stubs, StubRoutines::x86::vector_reverse_byte_perm_mask_long());
@@ -3988,7 +3989,7 @@ void AOTCodeCache::log_stats_on_exit(AOTCodeStats& stats) {
     for (uint kind = AOTCodeEntry::None; kind < AOTCodeEntry::Kind_count; kind++) {
       log.print_cr("  %s: total=%u", aot_code_entry_kind_name[kind], stats.entry_count(kind));
       if (kind == AOTCodeEntry::Nmethod) {
-        for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
+        for (uint lvl = CompLevel_simple; lvl < AOTCompLevel_count; lvl++) {
           log.print("    Tier %d: total=%u", lvl, stats.nmethod_count(lvl));
           if (lvl == AOTCompLevel_count-1) { // AOT Preload
             log.print(", has_clinit_barriers=%u", stats.clinit_barriers_count());
@@ -4038,7 +4039,7 @@ void AOTCodeCache::print_statistics_on(outputStream* st) {
         st->cr();
       }
       if (kind == AOTCodeEntry::Nmethod) {
-        for (uint lvl = CompLevel_none; lvl < AOTCompLevel_count; lvl++) {
+        for (uint lvl = CompLevel_simple; lvl < AOTCompLevel_count; lvl++) {
           if (stats.nmethod_count(lvl) > 0) {
             st->print("    AOT Code T%d", lvl);
             print_helper1(st, "total", stats.nmethod_count(lvl));

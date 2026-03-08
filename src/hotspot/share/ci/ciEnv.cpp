@@ -989,7 +989,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool inst
   methodHandle method(thread, target->get_Method());
 
   // We require method counters to store some method state (max compilation levels) required by the compilation policy.
-  if (!preload && method->get_method_counters(thread) == nullptr) {
+  if (method->get_method_counters(thread) == nullptr) {
     record_failure("can't create method counters");
     return false;
   }
@@ -1006,7 +1006,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool inst
     record_failure("DTrace flags change invalidated dependencies");
   }
 
-  if (!preload && !failing() && target->needs_clinit_barrier() &&
+  if (!failing() && target->needs_clinit_barrier() &&
       target->holder()->is_in_error_state()) {
     record_failure("method holder is in error state");
   }
@@ -1079,12 +1079,12 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
         }
       }
 #endif // ASSERT
-      if (preload) {
-        nm->set_preloaded(true);
-        method->set_preload_code(nm);
-      }
-      if (!preload || target->holder()->is_linked()) {
+      if (!preload || method->method_holder()->is_linked()) {
         method->set_code(method, nm);
+      }
+      if (preload) {
+        method->set_preload_code(nm);
+        nm->set_preloaded(true);
       }
     }
   } else {
@@ -1246,7 +1246,6 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_wide_vectors(has_wide_vectors);
       nm->set_has_monitors(has_monitors);
       nm->set_has_scoped_access(has_scoped_access);
-      nm->set_preloaded(false);
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
@@ -1254,11 +1253,13 @@ void ciEnv::register_method(ciMethod* target,
       if (task()->is_precompile()) {
         AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
         if (aot_code_entry != nullptr) {
+          nm->set_aot_code_entry(aot_code_entry);
           aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
           if (for_preload) {
-            // Set preload AOT code so we can check if it has `has_clinit_barriers` off
-            // so we may skip normal AOT compilation which would have the same code.
+            // To have reference from method to AOT preload code
+            // during assembly phase.
             method->set_preload_code(nm);
+            nm->set_preloaded(true);
           }
         }
       }

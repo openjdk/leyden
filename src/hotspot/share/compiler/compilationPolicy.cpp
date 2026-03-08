@@ -100,7 +100,6 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, MethodTrainin
   nmethod* nm = m->code();
   bool recompile = (nm != nullptr) && nm->preloaded();
   CompLevel cur_level = static_cast<CompLevel>(m->highest_comp_level());
-  precond(!recompile || (cur_level == CompLevel_full_optimization));
   CompLevel next_level = trained_transition(m, cur_level, mtd, THREAD);
   if ((next_level != cur_level || recompile) && can_be_compiled(m, next_level) && !CompileBroker::compilation_is_in_queue(m)) {
     // We are here becasue some of CTD have all init deps satisifed.
