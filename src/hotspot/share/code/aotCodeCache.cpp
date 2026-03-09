@@ -638,6 +638,12 @@ void AOTCodeCache::Config::record(uint cpu_features_offset) {
   _objectAlignment       = ObjectAlignmentInBytes;
   _gcCardSize            = GCCardSizeInBytes;
   _gc                    = (uint)Universe::heap()->kind();
+  _maxVectorSize         = MaxVectorSize;
+  _arrayOperationPartialInlineSize = ArrayOperationPartialInlineSize;
+  _allocatePrefetchLines           = AllocatePrefetchLines;
+  _allocateInstancePrefetchLines   = AllocateInstancePrefetchLines;
+  _allocatePrefetchDistance        = AllocatePrefetchDistance;
+  _allocatePrefetchStepSize        = AllocatePrefetchStepSize;
   _cpu_features_offset   = cpu_features_offset;
 }
 
@@ -719,11 +725,11 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   }
 
   if (((_flags & enableContendedPadding) != 0) != EnableContended) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with EnableContended = %s vs current %s", (EnableContended ? "false" : "true"), (EnableContended ? "true" : "false"));
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with EnableContended = %s vs current %s", (enableContendedPadding ? "false" : "true"), (EnableContended ? "true" : "false"));
     return false;
   }
   if (((_flags & restrictContendedPadding) != 0) != RestrictContended) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with RestrictContended = %s vs current %s", (RestrictContended ? "false" : "true"), (RestrictContended ? "true" : "false"));
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with RestrictContended = %s vs current %s", (restrictContendedPadding ? "false" : "true"), (RestrictContended ? "true" : "false"));
     return false;
   }
   if (_contendedPaddingWidth != (uint)ContendedPaddingWidth) {
@@ -732,12 +738,12 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   }
 
   if (((_flags & preserveFramePointer) != 0) != PreserveFramePointer) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with PreserveFramePointer = %s vs current %s", (PreserveFramePointer ? "false" : "true"), (PreserveFramePointer ? "true" : "false"));
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with PreserveFramePointer = %s vs current %s", (preserveFramePointer ? "false" : "true"), (PreserveFramePointer ? "true" : "false"));
     return false;
   }
 
   if (((_flags & compressedClassPointers) != 0) != UseCompressedClassPointers) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseCompressedClassPointers = %s vs current %s", (UseCompressedClassPointers ? "false" : "true"), (UseCompressedClassPointers ? "true" : "false"));
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseCompressedClassPointers = %s vs current %s", (compressedClassPointers ? "false" : "true"), (UseCompressedClassPointers ? "true" : "false"));
     return false;
   }
   if (_compressedKlassShift != (uint)CompressedKlassPointers::shift()) {
@@ -750,7 +756,7 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   }
 
   if (((_flags & compressedOops) != 0) != UseCompressedOops) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseCompressedOops = %s vs current %s", (UseCompressedOops ? "false" : "true"), (UseCompressedOops ? "true" : "false"));
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseCompressedOops = %s vs current %s", (compressedOops ? "false" : "true"), (UseCompressedOops ? "true" : "false"));
     return false;
   }
   if (_compressedOopShift != (uint)CompressedOops::shift()) {
@@ -762,18 +768,51 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
     return false;
   }
 
+  // Some of the following checked flags depend on CPU features. Check CPU first.
+  if (!verify_cpu_features(cache)) {
+    return false;
+  }
+
+  // TLAB related flags
+  if (((_flags & useTLAB) != 0) != UseTLAB) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with UseTLAB = %s vs current %s", (useTLAB ? "false" : "true"), (UseTLAB ? "true" : "false"));
+    return false;
+  }
+  if (_allocatePrefetchLines != (uint)AllocatePrefetchLines) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with AllocatePrefetchLines = %d vs current %d", _allocatePrefetchLines, AllocatePrefetchLines);
+    return false;
+  }
+  if (_allocateInstancePrefetchLines != (uint)AllocateInstancePrefetchLines) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with AllocateInstancePrefetchLines = %d vs current %d", _allocateInstancePrefetchLines, AllocateInstancePrefetchLines);
+    return false;
+  }
+  if (_allocatePrefetchDistance != (uint)AllocatePrefetchDistance) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with AllocatePrefetchDistance = %d vs current %d", _allocatePrefetchDistance, AllocatePrefetchDistance);
+    return false;
+  }
+  if (_allocatePrefetchStepSize != (uint)AllocatePrefetchStepSize) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with AllocatePrefetchStepSize = %d vs current %d", _allocatePrefetchStepSize, AllocatePrefetchStepSize);
+    return false;
+  }
+
+  // Vectorization and intrinsics related flags
+  if (_maxVectorSize != (uint)MaxVectorSize) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with MaxVectorSize = %d vs current %d", _maxVectorSize, (uint)MaxVectorSize);
+    return false;
+  }
+  if (_arrayOperationPartialInlineSize != (uint)ArrayOperationPartialInlineSize) {
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with ArrayOperationPartialInlineSize = %d vs current %d", _arrayOperationPartialInlineSize, (uint)ArrayOperationPartialInlineSize);
+    return false;
+  }
+
   // Next affects only AOT nmethod
   if (((_flags & systemClassAssertions) != 0) != JavaAssertions::systemClassDefault()) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with JavaAssertions::systemClassDefault() = %s vs current %s", (JavaAssertions::systemClassDefault() ? "disabled" : "enabled"), (JavaAssertions::systemClassDefault() ? "enabled" : "disabled"));
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with JavaAssertions::systemClassDefault() = %s vs current %s", (systemClassAssertions ? "disabled" : "enabled"), (JavaAssertions::systemClassDefault() ? "enabled" : "disabled"));
      FLAG_SET_ERGO(AOTCodeCaching, false);
   }
   if (((_flags & userClassAssertions) != 0) != JavaAssertions::userClassDefault()) {
-    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with JavaAssertions::userClassDefault() = %s vs current %s", (JavaAssertions::userClassDefault() ? "disabled" : "enabled"), (JavaAssertions::userClassDefault() ? "enabled" : "disabled"));
+    log_debug(aot, codecache, init)("AOT Code Cache disabled: it was created with JavaAssertions::userClassDefault() = %s vs current %s", (userClassAssertions ? "disabled" : "enabled"), (JavaAssertions::userClassDefault() ? "enabled" : "disabled"));
     FLAG_SET_ERGO(AOTCodeCaching, false);
-  }
-
-  if (!verify_cpu_features(cache)) {
-    return false;
   }
   return true;
 }

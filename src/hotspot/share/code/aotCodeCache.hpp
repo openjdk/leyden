@@ -320,6 +320,12 @@ protected:
     uint _objectAlignment;
     uint _gcCardSize;
     uint _gc;
+    uint _maxVectorSize;
+    uint _arrayOperationPartialInlineSize;
+    uint _allocatePrefetchLines;
+    uint _allocateInstancePrefetchLines;
+    uint _allocatePrefetchDistance;
+    uint _allocatePrefetchStepSize;
     enum Flags {
       none                     = 0,
       debugVM                  = 2,
