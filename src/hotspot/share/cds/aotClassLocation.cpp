@@ -44,6 +44,7 @@
 #include "oops/array.hpp"
 #include "oops/objArrayKlass.hpp"
 #include "runtime/arguments.hpp"
+#include "runtime/mutexLocker.hpp"
 #include "utilities/classpathStream.hpp"
 #include "utilities/formatBuffer.hpp"
 #include "utilities/resizableHashTable.hpp"
@@ -1192,16 +1193,27 @@ void URLClassLoaderClasspathSupport::serialize_classpath_map_table_header(Serial
   _archived_aot_id_to_classpath.serialize_header(soc);
 }
 
-bool URLClassLoaderClasspathSupport::verify_archived_classpath(ClassLoaderData* loader_data, Symbol* aot_id, const char* classpath) {
+bool URLClassLoaderClasspathSupport::claim_and_verify_archived_classpath(ClassLoaderData* loader_data, Symbol* aot_id, const char* classpath) {
   ResourceMark rm;
   assert(aot_id != nullptr, "sanity check");
   const char* aot_id_str = aot_id->as_C_string();
   unsigned int hash = Symbol::symbol_hash(aot_id);
   URLClassLoaderClasspath* archived_classpath = _archived_aot_id_to_classpath.lookup(aot_id, hash, /*len*/0); // len is ignored
   if (archived_classpath == nullptr) {
-    aot_log_warning(aot)("URLClassLoader (id=%s) classpath validation failed (reason: no archived entry found)", aot_id_str);
+    aot_log_trace(aot)("No archived entry found for URLClassLoader (id=%s)", aot_id_str);
     return false;
   }
+
+  {
+    // Acquire lock before loader_data claims the archived_classpath
+    MutexLocker mu(URLClassLoaderClasspath_lock, Mutex::_no_safepoint_check_flag);
+    if (archived_classpath->cld_owner() != nullptr) {
+      aot_log_warning(aot)("Duplicate URLClassLoader with same classpath found");
+      return false;
+    }
+    archived_classpath->set_cld_owner(loader_data);
+  }
+
   URLClassLoaderClassLocationStream uccs(classpath);
   uccs.start();
   for (int i = 0; i < archived_classpath->num_entries(); i++) {

@@ -2270,7 +2270,7 @@ JVM_ENTRY_PROF(jboolean, JVM_RegisterURLClassLoaderAsAOTSafeLoader, JVM_Register
       }
       loader_data->set_aot_identity(aot_id_symbol);
     } else if (CDSConfig::is_using_aot_linked_classes()) {
-      if (!URLClassLoaderClasspathSupport::verify_archived_classpath(loader_data, aot_id_symbol, classpath_str)) {
+      if (!URLClassLoaderClasspathSupport::claim_and_verify_archived_classpath(loader_data, aot_id_symbol, classpath_str)) {
         return JNI_FALSE;
       }
       loader_data->set_aot_identity(aot_id_symbol);

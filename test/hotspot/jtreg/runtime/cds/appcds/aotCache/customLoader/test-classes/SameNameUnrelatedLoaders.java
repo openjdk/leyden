@@ -28,33 +28,29 @@ import java.net.URLClassLoader;
 import jdk.test.whitebox.WhiteBox;
 
 public class SameNameUnrelatedLoaders {
-    static URLClassLoader ldr01, ldr02;
+    static URLClassLoader loader1, loader2;
 
     public static void main(String args[]) throws Exception {
-        if (args.length < 2) {
+        if (args.length < 3) {
             throw new RuntimeException("insufficient arguments");
         }
-        String path = args[0];
-        URL url = new File(path).toURI().toURL();
-        URL[] ldr01_urls = new URL[] {url};
+        URL commonJarUrl = new File(args[0]).toURI().toURL();
+        URL jar1Url = new File(args[1]).toURI().toURL();
+        URL jar2Url = new File(args[2]).toURI().toURL();
 
-        path = args[1];
-        url = new File(path).toURI().toURL();
-        URL[] ldr02_urls = new URL[] {url};
+        loader1 = new URLClassLoader(new URL[]{commonJarUrl, jar1Url});
+        loader2 = new URLClassLoader(new URL[]{commonJarUrl, jar2Url});
 
-        ldr01 = new URLClassLoader(ldr01_urls);
-        ldr02 = new URLClassLoader(ldr02_urls);
-
-        Class class01 = ldr01.loadClass("CustomLoadee");
-        Class class02 = ldr02.loadClass("CustomLoadee");
+        Class class01 = loader1.loadClass("CustomLoadee");
+        Class class02 = loader2.loadClass("CustomLoadee");
 
         System.out.println("class01 = " + class01);
         System.out.println("class02 = " + class02);
 
-        if (class01.getClassLoader() != ldr01) {
+        if (class01.getClassLoader() != loader1) {
             throw new RuntimeException("class01 loaded by wrong loader");
         }
-        if (class02.getClassLoader() != ldr02) {
+        if (class02.getClassLoader() != loader2) {
             throw new RuntimeException("class02 loaded by wrong loader");
         }
 
@@ -75,15 +71,26 @@ public class SameNameUnrelatedLoaders {
         }
 
         WhiteBox wb = WhiteBox.getWhiteBox();
+
+        if (!wb.isAOTSafeCustomLoader(loader1)) {
+            throw new RuntimeException("loader1 should be marked as aot-safe");
+        }
+        if (!wb.isAOTSafeCustomLoader(loader2)) {
+            throw new RuntimeException("loader2 should be marked as aot-safe");
+        }
+
         if (wb.isSharedClass(SameNameUnrelatedLoaders.class)) {
-            boolean class1Shared = wb.isSharedClass(class01);
-            boolean class2Shared = wb.isSharedClass(class02);
-            if (!class1Shared) {
+            if (!wb.isSharedClass(class01)) {
                 throw new RuntimeException("first class is not shared");
             }
-
-            if (!class2Shared) {
+            if (!wb.isSharedClass(class02)) {
                 throw new RuntimeException("second class is not shared");
+            }
+            if (!wb.isLoadedByAOTSafeCustomLoader(class01)) {
+                throw new RuntimeException("first class should have been loaded by AOT-safe loader");
+            }
+            if (!wb.isLoadedByAOTSafeCustomLoader(class02)) {
+                throw new RuntimeException("second class should have been loaded by AOT-safe loader");
             }
         }
     }

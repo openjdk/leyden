@@ -24,9 +24,7 @@
 
 /*
  * @test
- * @summary Testing the loading of a class with the same name in two different instances of URLClassLoader
- *          with partially overlapping classpaths. The test is run with support for URLClassLoader enabled
- *          in AOTCache.
+ * @summary Test for multiple instances of URLClassLoader with same classpath.
  *
  * @requires vm.cds
  * @requires vm.cds.custom.loaders
@@ -35,10 +33,10 @@
  * @compile test-classes/CustomLoadee.java
  *     test-classes/CustomLoadee3.java
  *     test-classes/CustomLoadee5.java
- *     test-classes/SameNameUnrelatedLoaders.java
+ *     test-classes/MultipleURLClassLoadersSameClasspath.java
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar WhiteBox.jar jdk.test.whitebox.WhiteBox
- * @run driver SameNameInTwoLoadersTest
+ * @run driver MultipleURLClassLoadersWithSameClasspathTest
  */
 
 import jdk.test.lib.cds.CDSAppTester;
@@ -49,8 +47,7 @@ import jdk.test.whitebox.WhiteBox;
 
 public class MultipleURLClassLoadersWithSameClasspathTest {
     private static String appJar;
-    private static String customJar1;
-    private static String customJar2;
+    private static String customJar;
     private static final String mainClass = "MultipleURLClassLoadersSameClasspath";
 
     public static void main(String[] args) throws Exception {

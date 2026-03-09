@@ -2230,6 +2230,34 @@ WB_ENTRY(jboolean, WB_IsSharedClass(JNIEnv* env, jobject wb, jclass clazz))
   return (jboolean)AOTMetaspace::in_aot_cache(java_lang_Class::as_Klass(JNIHandles::resolve_non_null(clazz)));
 WB_END
 
+WB_ENTRY(jboolean, WB_IsLoadedByBuiltinLoader(JNIEnv* env, jobject wb, jclass clazz))
+  Klass* klass = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(clazz));
+  assert(klass->is_instance_klass(), "must be InstanceKlass");
+  return InstanceKlass::cast(klass)->defined_by_builtin_loader();
+WB_END
+
+WB_ENTRY(jboolean, WB_IsLoadedByAOTSafeCustomLoader(JNIEnv* env, jobject wb, jclass clazz))
+  Klass* klass = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(clazz));
+  assert(klass->is_instance_klass(), "must be InstanceKlass");
+  return InstanceKlass::cast(klass)->is_defined_by_aot_safe_custom_loader();
+WB_END
+
+WB_ENTRY(jboolean, WB_IsLoadedByAOTUnsafeCustomLoader(JNIEnv* env, jobject wb, jclass clazz))
+  Klass* klass = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(clazz));
+  assert(klass->is_instance_klass(), "must be InstanceKlass");
+  InstanceKlass* ik = InstanceKlass::cast(klass);
+  return !ik->defined_by_builtin_loader() && !ik->is_defined_by_aot_safe_custom_loader();
+WB_END
+
+WB_ENTRY(jboolean, WB_IsAOTSafeCustomLoader(JNIEnv* env, jobject wb, jobject loader))
+  oop class_loader_oop = JNIHandles::resolve(loader);
+  if (SystemDictionary::is_builtin_class_loader(class_loader_oop)) {
+    return false;
+  }
+  ClassLoaderData* cld = java_lang_ClassLoader::loader_data_acquire(class_loader_oop);
+  return cld->aot_identity() != nullptr;
+WB_END
+
 WB_ENTRY(jboolean, WB_AreSharedStringsMapped(JNIEnv* env))
   return AOTMappedHeapLoader::is_mapped();
 WB_END
@@ -3060,6 +3088,10 @@ static JNINativeMethod methods[] = {
   {CC"isSharingEnabled",   CC"()Z",                   (void*)&WB_IsSharingEnabled},
   {CC"isSharedInternedString", CC"(Ljava/lang/String;)Z", (void*)&WB_IsSharedInternedString },
   {CC"isSharedClass",      CC"(Ljava/lang/Class;)Z",  (void*)&WB_IsSharedClass },
+  {CC"isLoadedByBuiltinLoader",   CC"(Ljava/lang/Class;)Z",  (void*)&WB_IsLoadedByBuiltinLoader},
+  {CC"isLoadedByAOTSafeCustomLoader",   CC"(Ljava/lang/Class;)Z",  (void*)&WB_IsLoadedByAOTSafeCustomLoader},
+  {CC"isLoadedByAOTUnsafeCustomLoader", CC"(Ljava/lang/Class;)Z",  (void*)&WB_IsLoadedByAOTUnsafeCustomLoader},
+  {CC"isAOTSafeCustomLoader", CC"(Ljava/lang/ClassLoader;)Z", (void*)&WB_IsAOTSafeCustomLoader},
   {CC"areSharedStringsMapped",            CC"()Z",    (void*)&WB_AreSharedStringsMapped },
   {CC"linkClass",          CC"(Ljava/lang/Class;)V",  (void*)&WB_LinkClass},
   {CC"areOpenArchiveHeapObjectsMapped",   CC"()Z",    (void*)&WB_AreOpenArchiveHeapObjectsMapped},

@@ -441,6 +441,7 @@ void ConstantPool::remove_unshareable_info() {
   }
 
   bool update_resolved_reference = true;
+#if 0
   if (CDSConfig::is_dumping_final_static_archive()) {
     ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
     InstanceKlass* src_holder = src_cp->pool_holder();
@@ -453,7 +454,7 @@ void ConstantPool::remove_unshareable_info() {
       update_resolved_reference = false;
     }
   }
-
+#endif
   // resolved_references(): remember its length. If it cannot be restored
   // from the archived heap objects at run time, we need to dynamically allocate it.
   if (update_resolved_reference && cache() != nullptr) {

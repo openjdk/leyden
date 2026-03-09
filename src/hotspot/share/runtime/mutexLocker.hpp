@@ -142,6 +142,7 @@ extern Mutex*   LambdaFormInvokers_lock;         // Protecting LambdaFormInvoker
 extern Mutex*   ScratchObjects_lock;             // Protecting _scratch_xxx_table in heapShared.cpp
 extern Mutex*   ArchivedObjectTables_lock;       // Protecting the table used by HeapShared::get_archived_object_permanent_index()
 extern Mutex*   FinalImageRecipes_lock;          // Protecting the tables used by FinalImageRecipes.
+extern Mutex*   URLClassLoaderClasspath_lock;
 #endif // INCLUDE_CDS
 #if INCLUDE_JFR
 extern Mutex*   JfrStacktrace_lock;              // used to guard access to the JFR stacktrace table

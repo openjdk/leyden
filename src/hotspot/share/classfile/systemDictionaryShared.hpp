@@ -212,7 +212,7 @@ public:
 
   static const RunTimeClassInfo* find_record(RunTimeSharedDictionary* static_dict,
                                                    RunTimeSharedDictionary* dynamic_dict,
-                                                   Symbol* name);
+                                                   Symbol* name, bool is_aot_unsafe_loader_class = false);
 
   static bool has_platform_or_app_classes();
 

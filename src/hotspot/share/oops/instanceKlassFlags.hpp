@@ -102,6 +102,10 @@ class InstanceKlassFlags {
   IK_FLAGS_DO(IK_FLAGS_GET_SET)
 #undef IK_FLAGS_GET_SET
 
+  bool defined_by_builtin_loader() const {
+    return (_flags & builtin_loader_type_bits()) != 0;
+  }
+
   bool defined_by_other_loaders() const {
     return (_flags & builtin_loader_type_bits()) == 0;
   }

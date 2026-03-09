@@ -141,7 +141,7 @@ InstanceKlass* SystemDictionaryShared::lookup_from_stream(Symbol* class_name,
 
   const RunTimeClassInfo* record = find_record(&_static_archive._unregistered_dictionary,
                                                &_dynamic_archive._unregistered_dictionary,
-                                               class_name);
+                                               class_name, /*is_aot_unsafe_loader_class*/ true);
   if (record == nullptr) {
     return nullptr;
   }
@@ -697,8 +697,9 @@ void SystemDictionaryShared::copy_unregistered_class_size_and_crc32(InstanceKlas
   precond(klass->in_aot_cache());
 
   // A shared class must have a RunTimeClassInfo record
-  const RunTimeClassInfo* record = find_record(&_static_archive._unregistered_dictionary,
-                                               nullptr, klass->name());
+  //const RunTimeClassInfo* record = find_record(&_static_archive._unregistered_dictionary,
+  //                                             nullptr, klass->name());
+  const RunTimeClassInfo* record = RunTimeClassInfo::get_for(klass);
   precond(record != nullptr);
   precond(record->klass() == klass);
 
@@ -774,6 +775,10 @@ void SystemDictionaryShared::init_dumptime_info_from_preimage(InstanceKlass* k) 
     AOTClassLocationConfig::dumptime_set_has_platform_classes();
   } else if (SystemDictionary::is_system_class_loader(k->class_loader())) {
     AOTClassLocationConfig::dumptime_set_has_app_classes();
+  }
+
+  if (k->defined_by_other_loaders() && !k->is_defined_by_aot_safe_custom_loader()) {
+    SystemDictionaryShared::copy_unregistered_class_size_and_crc32(k);
   }
 }
 
@@ -1391,7 +1396,7 @@ void SystemDictionaryShared::serialize_vm_classes(SerializeClosure* soc) {
 }
 
 const RunTimeClassInfo*
-SystemDictionaryShared::find_record(RunTimeSharedDictionary* static_dict, RunTimeSharedDictionary* dynamic_dict, Symbol* name) {
+SystemDictionaryShared::find_record(RunTimeSharedDictionary* static_dict, RunTimeSharedDictionary* dynamic_dict, Symbol* name, bool is_aot_unsafe_loader_class) {
   if (!CDSConfig::is_using_archive() || !name->in_aot_cache()) {
     // The names of all shared classes must also be a shared Symbol.
     return nullptr;
@@ -1413,11 +1418,11 @@ SystemDictionaryShared::find_record(RunTimeSharedDictionary* static_dict, RunTim
   if (!AOTMetaspace::in_aot_cache_dynamic_region(name)) {
     // The names of all shared classes in the static dict must also be in the
     // static archive
-    record = static_dict->lookup(name, hash, 0);
+    record = static_dict->lookup(name, hash, (int)is_aot_unsafe_loader_class);
   }
 
   if (record == nullptr && DynamicArchive::is_mapped()) {
-    record = dynamic_dict->lookup(name, hash, 0);
+    record = dynamic_dict->lookup(name, hash, (int)is_aot_unsafe_loader_class);
   }
 
   return record;
@@ -1426,7 +1431,7 @@ SystemDictionaryShared::find_record(RunTimeSharedDictionary* static_dict, RunTim
 InstanceKlass* SystemDictionaryShared::find_builtin_class(Symbol* name) {
   const RunTimeClassInfo* record = find_record(&_static_archive._builtin_dictionary,
                                                &_dynamic_archive._builtin_dictionary,
-                                               name);
+                                               name, /*is_aot_unsafe_loader_class*/ false);
   if (record != nullptr) {
     assert(!record->klass()->is_hidden(), "hidden class cannot be looked up by name");
     DEBUG_ONLY(check_klass_after_loading(record->klass());)

@@ -49,6 +49,7 @@ import jdk.test.whitebox.WhiteBox;
 
 public class SameNameInTwoLoadersTest {
     private static String appJar;
+    private static String commonJar;
     private static String customJar1;
     private static String customJar2;
     private static final String mainClass = "SameNameUnrelatedLoaders";
@@ -56,8 +57,9 @@ public class SameNameInTwoLoadersTest {
     public static void main(String[] args) throws Exception {
         appJar = JarBuilder.build("SameNameInTwoLoadersTest", "SameNameUnrelatedLoaders");
 
-        customJar1 = JarBuilder.build("SameNameInTwoLoadersTest_customjar1", "CustomLoadee", "CustomLoadee3");
-        customJar2 = JarBuilder.build("SameNameInTwoLoadersTest_customjar2", "CustomLoadee", "CustomLoadee5");
+        commonJar = JarBuilder.build("SameNameInTwoLoadersTest_commonjar", "CustomLoadee");
+        customJar1 = JarBuilder.build("SameNameInTwoLoadersTest_customjar1", "CustomLoadee3");
+        customJar2 = JarBuilder.build("SameNameInTwoLoadersTest_customjar2", "CustomLoadee5");
 
         Tester tester = new Tester();
         tester.runAOTWorkflow("AOT", "--two-step-training");
@@ -86,6 +88,7 @@ public class SameNameInTwoLoadersTest {
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
                 mainClass,
+                commonJar,
                 customJar1,
                 customJar2
             };

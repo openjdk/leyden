@@ -25,6 +25,7 @@
 /*
  * @test
  * @summary Testing the loading of a class with an instances of URLClassLoader.
+ *          URLClassLoader instance has system loader as its parent, and shares its classpath with the parent.
  *          The test is run with support for URLClassLoader enabled in AOTCache.
  *          It verifies the class is stored in AOTCache and loaded from the AOTCache in production run.
  *

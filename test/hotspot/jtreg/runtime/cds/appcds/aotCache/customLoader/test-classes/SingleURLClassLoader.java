@@ -57,14 +57,23 @@ public class SingleURLClassLoader {
         }
 
         WhiteBox wb = WhiteBox.getWhiteBox();
+
+        if (!wb.isAOTSafeCustomLoader(loader)) {
+            throw new RuntimeException("loader should be marked as aot-safe");
+        }
+
         if (wb.isSharedClass(SingleURLClassLoader.class)) {
-            boolean class1Shared = wb.isSharedClass(class01);
-            if (!class1Shared) {
+            if (!wb.isSharedClass(class01)) {
                 throw new RuntimeException("CustomLoadee class is not shared");
             }
-            boolean class2Shared = wb.isSharedClass(class02);
-            if (!class2Shared) {
+            if (!wb.isSharedClass(class02)) {
                 throw new RuntimeException("CustomLoadee3 class is not shared");
+            }
+            if (!wb.isLoadedByBuiltinLoader(class01)) {
+                throw new RuntimeException("CustomLoadee should be loaded by builtin loader");
+            }
+            if (!wb.isLoadedByAOTSafeCustomLoader(class02)) {
+                throw new RuntimeException("CustomLoadee3 should be loaded by aot-safe loader");
             }
         }
     }
