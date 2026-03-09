@@ -197,48 +197,50 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
                              const char* msg, bool short_form, bool cr,
                              jlong time_created, jlong time_queued, jlong time_started, jlong time_finished,
                              jlong aot_load_start, jlong aot_load_finish) {
+  // Use stringStream to avoid breaking the line
+  stringStream sst;
   if (!short_form) {
     {
       stringStream ss;
       ss.print(UINT64_FORMAT, (uint64_t) tty->time_stamp().milliseconds());
-      st->print("%7s ", ss.freeze());
+      sst.print("%7s ", ss.freeze());
     }
     { // Time waiting to be put on queue
       stringStream ss;
       if (time_created != 0 && time_queued != 0) {
         ss.print("W%.1f", TimeHelper::counter_to_millis(time_queued - time_created));
       }
-      st->print("%7s ", ss.freeze());
+      sst.print("%7s ", ss.freeze());
     }
     { // Time in queue
       stringStream ss;
       if (time_queued != 0 && time_started != 0) {
         ss.print("Q%.1f", TimeHelper::counter_to_millis(time_started - time_queued));
       }
-      st->print("%7s ", ss.freeze());
+      sst.print("%7s ", ss.freeze());
     }
     { // Time in compilation
       stringStream ss;
       if (time_started != 0 && time_finished != 0) {
         ss.print("C%.1f", TimeHelper::counter_to_millis(time_finished - time_started));
       }
-      st->print("%7s ", ss.freeze());
+      sst.print("%7s ", ss.freeze());
     }
     { // Time to load from AOT code cache
       stringStream ss;
       if (aot_load_start != 0 && aot_load_finish != 0) {
         ss.print("A%.1f", TimeHelper::counter_to_millis(aot_load_finish - aot_load_start));
       }
-      st->print("%7s ", ss.freeze());
+      sst.print("%7s ", ss.freeze());
     }
-    st->print("  ");
+    sst.print("  ");
   }
 
   // print compiler name if requested
   if (CIPrintCompilerName) {
-    st->print("%s:", compiler_name);
+    sst.print("%s:", compiler_name);
   }
-  st->print("%4d ", compile_id);    // print compilation number
+  sst.print("%4d ", compile_id);    // print compilation number
 
   bool is_synchronized = false;
   bool has_exception_handler = false;
@@ -258,33 +260,34 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
   const char preload_char   = is_preload                      ? 'P' : ' ';
 
   // print method attributes
-  st->print("%c%c%c%c%c%c%c ", compile_type, sync_char, exception_char, blocking_char, native_char, aot_char, preload_char);
+  sst.print("%c%c%c%c%c%c%c ", compile_type, sync_char, exception_char, blocking_char, native_char, aot_char, preload_char);
 
   if (TieredCompilation) {
-    if (comp_level != -1)  st->print("%d ", comp_level);
-    else                   st->print("- ");
+    if (comp_level != -1)  sst.print("%d ", comp_level);
+    else                   sst.print("- ");
   }
-  st->print("     ");  // more indent
+  sst.print("     ");  // more indent
 
   if (method == nullptr) {
-    st->print("(method)");
+    sst.print("(method)");
   } else {
-    method->print_short_name(st);
+    method->print_short_name(&sst);
     if (is_osr_method) {
-      st->print(" @ %d", osr_bci);
+      sst.print(" @ %d", osr_bci);
     }
     if (method->is_native())
-      st->print(" (native)");
+      sst.print(" (native)");
     else
-      st->print(" (%d bytes)", method->code_size());
+      sst.print(" (%d bytes)", method->code_size());
   }
 
   if (msg != nullptr) {
-    st->print("   %s", msg);
+    sst.print("   %s", msg);
   }
   if (cr) {
-    st->cr();
+    sst.cr();
   }
+  st->print("%s",sst.freeze());
 }
 
 // ------------------------------------------------------------------

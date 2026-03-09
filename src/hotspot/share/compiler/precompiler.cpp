@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -49,8 +49,9 @@ public:
     assert(TrainingData::have_data(), "sanity");
   }
 
-  bool include(Method* m) {
-    if (m->is_native() || m->is_abstract()) {
+  bool include(MethodTrainingData* mtd) {
+    Method* m = mtd->holder();
+    if (m->is_native() || m->is_abstract() || !m->method_holder()->is_linked()) {
       return false;
     }
     DirectiveSet* directives = DirectivesStack::getMatchingDirective(methodHandle(_thread, m), nullptr);
@@ -60,7 +61,7 @@ public:
     if (directives->PrecompileRecordedOption > 0) {
       return true;
     }
-    int high_top_level = highest_top_level(m);
+    int high_top_level = mtd->highest_top_level();
     switch (_comp_level) {
       case CompLevel_simple:
       case CompLevel_full_optimization:
@@ -81,10 +82,10 @@ public:
     return false;
   }
 
-  void operator()(TrainingData* td) {
+  void apply(TrainingData* td) {
     if (td->is_MethodTrainingData()) {
       MethodTrainingData* mtd = td->as_MethodTrainingData();
-      if (mtd->has_holder() && include(mtd->holder())) {
+      if (mtd->has_holder() && include(mtd)) {
         _methods.push(mtd->holder());
       }
     }
@@ -95,14 +96,6 @@ public:
       return MethodTrainingData::find(methodHandle(Thread::current(), m));
     }
     return nullptr;
-  }
-
-  static int highest_top_level(Method* m) {
-    MethodTrainingData* mtd = method_training_data(m);
-    if (mtd != nullptr) {
-      return mtd->highest_top_level();
-    }
-    return 0;
   }
 
   // We sort methods by compile ID, presuming the methods that compiled earlier
@@ -192,7 +185,9 @@ public:
 void Precompiler::compile_aot_code(CompLevel comp_level, bool for_preload, TRAPS) {
   ResourceMark rm;
   PrecompileIterator pi(comp_level, for_preload, THREAD);
-  TrainingData::iterate(pi);
+  TrainingData::iterate([&](TrainingData* td) {
+    pi.apply(td);
+  });
   pi.precompile((ArchiveBuilder*)nullptr, THREAD);
 }
 
@@ -239,13 +234,17 @@ void Precompiler::compile_aot_code(ArchiveBuilder* builder, TRAPS) {
     CompLevel highest_level = CompilationPolicy::highest_compile_level();
     if (highest_level >= CompLevel_full_optimization && ClassInitBarrierMode > 0) {
       PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, THREAD);
-      TrainingData::iterate(pi);
+      TrainingData::iterate([&](TrainingData* td) {
+        pi.apply(td);
+      });
       pi.precompile(builder, THREAD);
     }
 
     for (int level = CompLevel_simple; level <= highest_level; level++) {
       PrecompileIterator pi((CompLevel)level, false /*for_preload*/, THREAD);
-      TrainingData::iterate(pi);
+      TrainingData::iterate([&](TrainingData* td) {
+        pi.apply(td);
+      });
       pi.precompile(builder, THREAD);
     }
   }

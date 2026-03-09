@@ -668,8 +668,8 @@ void AOTMetaspace::rewrite_bytecodes_and_calculate_fingerprints(Thread* thread, 
 
 class VM_PopulateDumpSharedSpace : public VM_Operation {
 private:
-  ArchiveMappedHeapInfo _mapped_heap_info;
-  ArchiveStreamedHeapInfo _streamed_heap_info;
+  AOTMappedHeapInfo _mapped_heap_info;
+  AOTStreamedHeapInfo _streamed_heap_info;
   FileMapInfo* _map_info;
   StaticArchiveBuilder& _builder;
 
@@ -689,8 +689,8 @@ public:
   bool skip_operation() const { return false; }
 
   VMOp_Type type() const { return VMOp_PopulateDumpSharedSpace; }
-  ArchiveMappedHeapInfo* mapped_heap_info()  { return &_mapped_heap_info; }
-  ArchiveStreamedHeapInfo* streamed_heap_info()  { return &_streamed_heap_info; }
+  AOTMappedHeapInfo* mapped_heap_info()  { return &_mapped_heap_info; }
+  AOTStreamedHeapInfo* streamed_heap_info()  { return &_streamed_heap_info; }
   void doit();   // outline because gdb sucks
   bool allow_nested_vm_operations() const { return true; }
 }; // class VM_PopulateDumpSharedSpace
@@ -1001,6 +1001,8 @@ void AOTMetaspace::dump_static_archive(TRAPS) {
       } else {
         tty->print_cr("AOTCache creation is complete: %s " INT64_FORMAT " bytes", AOTCache, (int64_t)(st.st_size));
       }
+      print_statistics_before_exit();
+      ostream_exit(); // finalize VM log
       vm_direct_exit(0);
     }
   }
@@ -1163,7 +1165,7 @@ void AOTMetaspace::dump_static_archive_impl(StaticArchiveBuilder& builder, TRAPS
     if (CDSConfig::is_dumping_full_module_graph()) {
       ClassLoaderDataShared::ensure_module_entry_tables_exist();
       ClassLoaderDataShared::build_tables(CHECK);
-      HeapShared::reset_archived_object_states(CHECK);
+      HeapShared::prepare_for_archiving(CHECK);
     }
 
     if (ArchiveLoaderLookupCache) {
@@ -1245,8 +1247,8 @@ void AOTMetaspace::dump_static_archive_impl(StaticArchiveBuilder& builder, TRAPS
 
 bool AOTMetaspace::write_static_archive(ArchiveBuilder* builder,
                                         FileMapInfo* map_info,
-                                        ArchiveMappedHeapInfo* mapped_heap_info,
-                                        ArchiveStreamedHeapInfo* streamed_heap_info) {
+                                        AOTMappedHeapInfo* mapped_heap_info,
+                                        AOTStreamedHeapInfo* streamed_heap_info) {
   // relocate the data so that it can be mapped to AOTMetaspace::requested_base_address()
   // without runtime relocation.
   builder->relocate_to_requested();
@@ -2149,7 +2151,7 @@ MapArchiveResult AOTMetaspace::map_archive(FileMapInfo* mapinfo, char* mapped_ba
     // Currently, only static archive uses early serialized data.
     char* buffer = mapinfo->early_serialized_data();
     intptr_t* array = (intptr_t*)buffer;
-    ReadClosure rc(&array, (intptr_t)mapped_base_address);
+    ReadClosure rc(&array, (address)mapped_base_address);
     early_serialize(&rc);
   }
 
@@ -2195,7 +2197,7 @@ void AOTMetaspace::initialize_shared_spaces() {
   // shared string/symbol tables.
   char* buffer = static_mapinfo->serialized_data();
   intptr_t* array = (intptr_t*)buffer;
-  ReadClosure rc(&array, (intptr_t)SharedBaseAddress);
+  ReadClosure rc(&array, (address)SharedBaseAddress);
   serialize(&rc);
 
   // Finish initializing the heap dump mode used in the archive
@@ -2207,7 +2209,7 @@ void AOTMetaspace::initialize_shared_spaces() {
 
   if (dynamic_mapinfo != nullptr) {
     intptr_t* buffer = (intptr_t*)dynamic_mapinfo->serialized_data();
-    ReadClosure rc(&buffer, (intptr_t)SharedBaseAddress);
+    ReadClosure rc(&buffer, (address)SharedBaseAddress);
     DynamicArchive::serialize(&rc);
   }
 

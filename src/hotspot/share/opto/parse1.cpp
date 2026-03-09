@@ -26,6 +26,7 @@
 #include "interpreter/linkResolver.hpp"
 #include "memory/resourceArea.hpp"
 #include "oops/method.hpp"
+#include "oops/trainingData.hpp"
 #include "opto/addnode.hpp"
 #include "opto/c2compiler.hpp"
 #include "opto/castnode.hpp"
@@ -1204,6 +1205,111 @@ SafePointNode* Parse::create_entry_map() {
   return entry_map;
 }
 
+#if INCLUDE_CDS
+static int scale_limit(int64_t limit) {
+ // To scale invocation limit a hyperbolic saturation curve formula
+ // is used with upper limit 100K.
+ return (int)(AOTCodeInvokeBase + limit / (1.0 + limit / (1000000.0 * AOTCodeInvokeScale)));
+}
+
+#define AOT_COUNT_INC 2
+#define AOT_RECOMPILE_BIT 1
+
+void Parse::count_aot_code_calls() {
+  bool is_aot_compilation = C->env()->is_precompile();
+  if (UseAOTCodeCounters && (depth() == 1) && is_aot_compilation) {
+    // Clear out dead values from the debug info in following runtime call
+    kill_dead_locals();
+
+    // Use method invocations count during training run and compare
+    // to invocations of AOT code during production run to trigger JIT
+    // compilation and replace AOT code with normal JITed code.
+    ciMetadata* mcp = method()->ensure_method_counters();
+    precond(mcp != nullptr);
+    const TypePtr* mc_type = TypeMetadataPtr::make(TypePtr::Constant, mcp, 0);
+    Node* mc = makecon(mc_type);
+
+    precond(MethodTrainingData::have_data());
+    methodHandle mh(Thread::current(), method()->get_Method());
+    MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
+    precond(mtd != nullptr);
+    int64_t limit = mtd->invocation_count();
+    int scaled_limit = AOT_COUNT_INC * scale_limit(limit);
+
+    // Count AOT compiled code invocations (use 32 bits because scaled limit fits into 32 bits)
+    intptr_t offset = in_bytes(MethodCounters::aot_code_invocation_counter_offset());
+    int step = AOT_COUNT_INC;
+    Node* cnt_adr = basic_plus_adr(C->top(), mc, offset);
+    Node* ctrl = control();
+    Node* cnt  = make_load(ctrl, cnt_adr, TypeInt::INT, T_INT, MemNode::unordered);
+    Node* incr = _gvn.transform(new AddINode(cnt, intcon(step)));
+    store_to_memory(ctrl, cnt_adr, incr, T_INT, MemNode::unordered);
+    // Preserve memory for Phi node below
+    Node* st_mem = MergeMemNode::make(map()->memory());
+    _gvn.set_type_bottom(st_mem);
+
+    Node* lim = intcon(scaled_limit);
+    Node* chk = _gvn.transform( new CmpINode(incr, lim) );
+    Node* tst = _gvn.transform( new BoolNode(chk, BoolTest::lt) );
+    IfNode* iff = create_and_map_if(control(), tst, PROB_ALWAYS, (float)limit);
+
+    RegionNode* result_rgn = new RegionNode(4);
+    record_for_igvn(result_rgn);
+
+    Node*  skip_call = _gvn.transform(new IfTrueNode(iff));
+    result_rgn->init_req(1, skip_call);
+
+    Node* in1_io  = i_o();
+    Node* in1_mem = st_mem;
+    // These two phis are pre-filled with copies of the fast IO and Memory
+    Node* io_phi   = PhiNode::make(result_rgn, in1_io,  Type::ABIO);
+    Node* mem_phi  = PhiNode::make(result_rgn, in1_mem, Type::MEMORY, TypePtr::BOTTOM);
+
+    Node* needs_call = _gvn.transform(new IfFalseNode(iff));
+    set_control(needs_call);
+
+    Node* recomp_bit = intcon(AOT_RECOMPILE_BIT);
+    Node* rbit = _gvn.transform( new AndINode(incr, recomp_bit) );
+    Node* chk2 = _gvn.transform( new CmpINode(rbit, intcon(0)) );
+    Node* tst2 = _gvn.transform( new BoolNode(chk2, BoolTest::ne) );
+    IfNode* iff2 = create_and_map_if(control(), tst2, PROB_FAIR, COUNT_UNKNOWN);
+
+    Node*  skip_call2 = _gvn.transform(new IfTrueNode(iff2));
+    result_rgn->init_req(2, skip_call2);
+
+    Node* needs_call2 = _gvn.transform(new IfFalseNode(iff2));
+    set_control(needs_call2);
+
+    Node* new_val = _gvn.transform(new OrINode(incr, recomp_bit));
+    store_to_memory(control(), cnt_adr, new_val, T_INT, MemNode::unordered);
+
+    const TypePtr* m_type = TypeMetadataPtr::make(method());
+    Node* m = makecon(m_type);
+    Node* call = make_runtime_call(RC_NO_LEAF | RC_UNCOMMON,
+                          OptoRuntime::compile_method_Type(),
+                          OptoRuntime::compile_method_Java(),
+                          "compile_method", TypePtr::BOTTOM, m);
+
+    // State before call
+    io_phi ->init_req(2, in1_io);
+    mem_phi->init_req(2, in1_mem);
+
+    // State after call
+    result_rgn->init_req(3, control());
+    io_phi ->init_req(3, i_o());
+    mem_phi->init_req(3, reset_memory());
+
+    set_all_memory( _gvn.transform(mem_phi) );
+    set_i_o(        _gvn.transform(io_phi) );
+    set_control(    _gvn.transform(result_rgn) );
+  }
+}
+
+#undef AOT_COUNT_INC
+#undef AOT_RECOMPILE_BIT
+
+#endif
+
 //-----------------------------do_method_entry--------------------------------
 // Emit any code needed in the pseudo-block before BCI zero.
 // The main thing to do is lock the receiver of a synchronized method.
@@ -1276,6 +1382,8 @@ void Parse::do_method_entry() {
   // Feed profiling data for parameters to the type system so it can
   // propagate it as speculative types
   record_profiled_parameters_for_speculation();
+
+  CDS_ONLY( count_aot_code_calls(); )
 }
 
 //------------------------------init_blocks------------------------------------

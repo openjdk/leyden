@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -39,6 +39,8 @@ class ReservedSpace;
 class AOTCacheAccess : AllStatic {
 private:
   static bool can_generate_aot_code(address addr) NOT_CDS_RETURN_(false);
+  static bool class_or_super_has_runtime_setup(InstanceKlass *ik) ;
+
 public:
   static bool can_generate_aot_code(Method* m) {
     return can_generate_aot_code((address)m);
@@ -48,6 +50,12 @@ public:
     return can_generate_aot_code((address)k);
   }
   static bool can_generate_aot_code_for(InstanceKlass* ik) NOT_CDS_RETURN_(false);
+
+  /*
+   * Will this class be moved into fully_initialized state before execution
+   * of Java bytecodes? This function can be called during assembly or production.
+   */
+  static bool is_early_aot_inited_class(InstanceKlass* ik) NOT_CDS_RETURN_(false);
 
   /*
    * Used during an assembly run to compute the offset of the metadata object in the AOT Cache.

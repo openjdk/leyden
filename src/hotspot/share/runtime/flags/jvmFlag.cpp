@@ -695,7 +695,7 @@ void JVMFlag::printFlags(outputStream* out, bool withComments, bool printRanges,
   // The last entry is the null entry.
   constexpr size_t length = (sizeof(flagTable) / sizeof(JVMFlag)) - 1;
 
-  const char* tag = 0;
+  const char* tag = nullptr;
   if (xtty_owns(out))
     xtty->head("%s", tag = !Universe::is_fully_initialized()
                ? "vm_flags_initial" : "vm_flags_final");

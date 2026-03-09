@@ -154,10 +154,10 @@ void ciObjectFactory::init_shared_objects() {
   ciEnv::_null_object_instance = new (_arena) ciNullObject();
   init_ident_of(ciEnv::_null_object_instance);
 
-#define VM_CLASS_DEFN(name, ignore_s)                              \
-  if (vmClasses::name##_is_loaded()) \
-    ciEnv::_##name = get_metadata(vmClasses::name())->as_instance_klass();
-
+#define VM_CLASS_DEFN(name, ignore_s)  \
+  if (vmClasses::name##_is_loaded()) { \
+    ciEnv::_##name = get_metadata(vmClasses::name())->as_instance_klass(); \
+  }
   VM_CLASSES_DO(VM_CLASS_DEFN)
 #undef VM_CLASS_DEFN
 
@@ -257,6 +257,7 @@ ciObject* ciObjectFactory::get(oop key) {
   return new_object;
 }
 
+#if INCLUDE_CDS
 void ciObjectFactory::notice_object_access(ciBaseObject* new_object) {
   if (TrainingData::need_data()) {
     ciEnv* env = ciEnv::current();
@@ -269,6 +270,7 @@ void ciObjectFactory::notice_object_access(ciBaseObject* new_object) {
     }
   }
 }
+#endif
 
 int ciObjectFactory::metadata_compare(Metadata* const& key, ciMetadata* const& elt) {
   Metadata* value = elt->constant_encoding();
@@ -418,9 +420,11 @@ ciMetadata* ciObjectFactory::create_new_metadata(Metadata* o) {
     ciInstanceKlass* holder = env->get_instance_klass(h_m()->method_holder());
     return new (arena()) ciMethod(h_m, holder);
   } else if (o->is_methodData()) {
-    // Hold methodHandle alive - might not be necessary ???
-    methodHandle h_m(THREAD, ((MethodData*)o)->method());
+    // Callers ciMethod::ensure_method_data() and ::method_data() have MH already.
     return new (arena()) ciMethodData((MethodData*)o);
+  } else if (o->is_methodCounters()) {
+    // Caller ciMethod::ensure_method_counters() has MH already.
+    return new (arena()) ciMetadata(o);
   }
 
   // The Metadata* is of some type not supported by the compiler interface.

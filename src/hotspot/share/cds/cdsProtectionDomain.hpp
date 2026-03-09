@@ -42,7 +42,6 @@ class CDSProtectionDomain : AllStatic {
   static OopHandle _shared_jar_urls;
   static OopHandle _shared_jar_manifests;
 
-  static Handle get_archived_protection_domain(JavaThread* current, InstanceKlass* klass);
 public:
   // Package handling:
   //

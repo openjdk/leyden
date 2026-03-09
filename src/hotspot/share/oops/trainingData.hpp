@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -218,11 +218,7 @@ public:
       return *prior;
     }
     template<typename Function>
-    void iterate(const Function& fn) const { // lambda enabled API
-      iterate(const_cast<Function&>(fn));
-    }
-    template<typename Function>
-    void iterate(Function& fn) const { // lambda enabled API
+    void iterate(Function fn) const { // lambda enabled API
       return _table.iterate_all([&](const TrainingData::Key* k, TrainingData* td) { fn(td); });
     }
     int size() const { return _table.number_of_entries(); }
@@ -305,10 +301,7 @@ private:
   }
 
   template<typename Function>
-  static void iterate(const Function& fn) { iterate(const_cast<Function&>(fn)); }
-
-  template<typename Function>
-  static void iterate(Function& fn) { // lambda enabled API
+  static void iterate(Function fn) { // lambda enabled API
     TrainingDataLocker l;
     if (have_data() && !need_data()) {
       archived_training_data_dictionary()->iterate_all([&](TrainingData* td) { fn(td); });
@@ -554,6 +547,9 @@ class CompileTrainingData : public TrainingData {
   const short _level;
   const int _compile_id;
 
+  // Size of nmethod code during training
+  int _inline_instructions_size;
+
   // classes that should be initialized before this JIT task runs
   DepList<KlassTrainingData*> _init_deps;
   // Number of uninitialized classes left, when it's 0, all deps are satisfied
@@ -670,7 +666,7 @@ private:
                       int level,
                       int compile_id)
       : TrainingData(),  // empty key
-        _method(mtd), _level(level), _compile_id(compile_id), _init_deps_left(0) { }
+        _method(mtd), _level(level), _compile_id(compile_id), _inline_instructions_size(0), _init_deps_left(0) { }
 public:
   ciRecords& ci_records() { return _ci_records; }
   static CompileTrainingData* make(CompileTask* task) NOT_CDS_RETURN_(nullptr);
@@ -682,6 +678,9 @@ public:
   int level() const { return _level; }
 
   int compile_id() const { return _compile_id; }
+
+  int inline_instructions_size() const { return _inline_instructions_size; }
+  void set_inline_instructions_size(int size) { _inline_instructions_size = size; }
 
   int init_dep_count() const {
     TrainingDataLocker::assert_locked();
@@ -816,6 +815,15 @@ class MethodTrainingData : public TrainingData {
       return _last_toplevel_compiles[level - 1];
     }
     return nullptr;
+  }
+
+  CompileTrainingData* compile_data_for_aot_code(int level) const {
+    CompileTrainingData* ctd = last_toplevel_compile(level);
+    if (ctd == nullptr && level == CompLevel_limited_profile) {
+      // We compile CompLevel_limited_profile AOT code for CompLevel_full_profile
+      ctd = _last_toplevel_compiles[CompLevel_full_profile - 1];
+    }
+    return ctd;
   }
 
   void notice_compilation(int level, bool inlined = false) {

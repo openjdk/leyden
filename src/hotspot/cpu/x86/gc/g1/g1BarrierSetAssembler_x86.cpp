@@ -269,13 +269,15 @@ void G1BarrierSetAssembler::g1_write_barrier_pre(MacroAssembler* masm,
   __ bind(done);
 }
 
-// return a register that differs from reg1, reg2, reg3 and is not rcx
+#if INCLUDE_CDS
+// return a register that differs from reg1, reg2, reg3 and reg4
 
 static Register pick_different_reg(Register reg1, Register reg2 = noreg, Register reg3= noreg, Register reg4 = noreg) {
   RegSet available = (RegSet::of(rscratch1, rscratch2, rax, rbx) + rdx -
                       RegSet::of(reg1, reg2, reg3, reg4));
   return *(available.begin());
 }
+#endif // INCLUDE_CDS
 
 static void generate_post_barrier(MacroAssembler* masm,
                                   const Register store_addr,
@@ -302,18 +304,17 @@ static void generate_post_barrier(MacroAssembler* masm,
     __ xorptr(save, new_val);
     __ push(rcx);
     __ lea(rcx, ExternalAddress(grain_shift_addr));
-    __ movptr(rcx, Address(rcx, 0));
+    __ movl(rcx, Address(rcx, 0));
     __ shrptr(save);
     __ pop(rcx);
-    __ mov(tmp1, save);
     __ pop(save);
-    __ jccb(Assembler::equal, L_done);
+    __ jcc(Assembler::equal, L_done);
   } else
 #endif // INCLUDE_CDS
   {
-    __ movptr(tmp1, store_addr);                                  // tmp1 := store address
-    __ xorptr(tmp1, new_val);                                     // tmp1 := store address ^ new value
-    __ shrptr(tmp1, G1HeapRegion::LogOfHRGrainBytes);             // ((store address ^ new value) >> LogOfHRGrainBytes) == 0?
+    __ movptr(tmp1, store_addr);                                    // tmp1 := store address
+    __ xorptr(tmp1, new_val);                                       // tmp1 := store address ^ new value
+    __ shrptr(tmp1, G1HeapRegion::LogOfHRGrainBytes);               // ((store address ^ new value) >> LogOfHRGrainBytes) == 0?
     __ jccb(Assembler::equal, L_done);
   }
 

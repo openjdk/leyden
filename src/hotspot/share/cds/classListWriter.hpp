@@ -45,8 +45,6 @@ class ClassListWriter {
   static bool has_id(const InstanceKlass* k);
   static void assert_locked() { assert_lock_strong(ClassListFile_lock); }
   static void write_resolved_constants_for(InstanceKlass* klass);
-  static void write_array_info_for(InstanceKlass* klass);
-  static void write_reflection_data_for(InstanceKlass* klass);
   static void write_loader_negative_lookup_cache_for(oop loader, const char* loader_type);
 public:
   ClassListWriter() : _locker(Thread::current(), ClassListFile_lock, Mutex::_no_safepoint_check_flag) {}
@@ -73,7 +71,6 @@ public:
   static void write(const InstanceKlass* k, const ClassFileStream* cfs) NOT_CDS_RETURN;
   static void write_to_stream(const InstanceKlass* k, outputStream* stream, const ClassFileStream* cfs = nullptr) NOT_CDS_RETURN;
   static void write_resolved_constants() NOT_CDS_RETURN;
-  static void write_reflection_data() NOT_CDS_RETURN;
   static void write_loader_negative_lookup_cache() NOT_CDS_RETURN;
   static void delete_classlist() NOT_CDS_RETURN;
 };

@@ -2655,7 +2655,6 @@ public abstract class ClassLoader {
         classes.clear();
         classes.trimToSize();
         classLoaderValueMap = null;
-        libraries.clear();
     }
 
     private String aotIdentity = null;

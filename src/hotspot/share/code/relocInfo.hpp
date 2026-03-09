@@ -1394,7 +1394,7 @@ class internal_word_Relocation : public DataRelocation {
   void unpack_data() override;
 
   void fix_relocation_after_move(const CodeBuffer* src, CodeBuffer* dest) override;
-  void fix_relocation_after_aot_load(address orig_base_addr, address current_base_addr);
+  void fix_relocation_after_aot_load(address current_base_addr, int delta);
 
   address  target();        // if _target==nullptr, fetch addr from code stream
   int      section()        { return _section;   }

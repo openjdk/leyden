@@ -217,6 +217,8 @@ class nmethod : public CodeBlob {
 
   CompiledICData* _compiled_ic_data;
 
+  AOTCodeEntry* _aot_code_entry;
+
   // offsets for entry points
   address  _osr_entry_point;       // entry point for on stack replacement
   uint16_t _entry_offset;          // entry point with class check
@@ -265,8 +267,6 @@ class nmethod : public CodeBlob {
   int          _compile_id;            // which compilation made this nmethod
   CompLevel    _comp_level;            // compilation level (s1)
   CompilerType _compiler_type;         // which compiler made this nmethod (u1)
-
-  AOTCodeEntry* _aot_code_entry;
 
   bool _used; // has this nmethod ever been invoked?
 
@@ -740,6 +740,8 @@ public:
   // entry points
   address entry_point() const          { return code_begin() + _entry_offset;          } // normal entry point
   address verified_entry_point() const { return code_begin() + _verified_entry_offset; } // if klass is correct
+
+  int inline_instructions_size() const { return insts_end() - verified_entry_point() - skipped_instructions_size(); }
 
   enum : signed char { not_installed = -1, // in construction, only the owner doing the construction is
                                            // allowed to advance state

@@ -158,7 +158,8 @@ static void print_method_profiling_data() {
           ss.fill_to(2);
           m->method_data()->parameters_type_data()->print_data_on(&ss);
         }
-        m->print_codes_on(&ss);
+        // Buffering to a stringStream, disable internal buffering so it's not done twice.
+        m->print_codes_on(&ss, 0, false);
         tty->print("%s", ss.as_string()); // print all at once
         total_size += m->method_data()->size_in_bytes();
       }
@@ -212,7 +213,7 @@ void log_vm_init_stats() {
     }
 
     if (AOTCodeCache::is_on_for_use()) {
-      log.print_cr("Startup Code Cache: ");
+      log.print_cr("AOT Code Cache: ");
       AOTCodeCache::print_statistics_on(&log);
       log.cr();
       AOTCodeCache::print_timers_on(&log);
@@ -329,7 +330,7 @@ static void print_method_invocation_histogram() {}
 
 
 // General statistics printing (profiling ...)
-void print_statistics() {
+void print_statistics_before_exit() {
 #if INCLUDE_CDS
   if (AOTReplayTraining && AOTPrintTrainingInfo) {
     TrainingData::print_archived_training_data_on(tty);
@@ -546,7 +547,6 @@ void before_exit(JavaThread* thread, bool halt) {
 
 #if INCLUDE_CDS
   ClassListWriter::write_resolved_constants();
-  ClassListWriter::write_reflection_data();
   ClassListWriter::write_loader_negative_lookup_cache();
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     AOTMetaspace::dump_static_archive(thread);
@@ -609,7 +609,7 @@ void before_exit(JavaThread* thread, bool halt) {
   }
   #endif
 
-  print_statistics();
+  print_statistics_before_exit();
 
   { MutexLocker ml(BeforeExit_lock);
     _before_exit_status = BEFORE_EXIT_DONE;

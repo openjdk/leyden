@@ -78,8 +78,8 @@ extern Mutex*   Compile_lock;                    // a lock held when Compilation
 extern Monitor* MethodCompileQueue_lock;         // a lock held when method compilations are enqueued, dequeued
 extern Monitor* MethodCompileQueueC1_lock;       // a lock held when method compilations are enqueued, dequeued
 extern Monitor* MethodCompileQueueC2_lock;       // a lock held when method compilations are enqueued, dequeued
-extern Monitor* MethodCompileQueueSC1_lock;      // a lock held when method compilations are enqueued, dequeued
-extern Monitor* MethodCompileQueueSC2_lock;      // a lock held when method compilations are enqueued, dequeued
+extern Monitor* MethodCompileQueueAC1_lock;      // a lock held when AOT C1 code loads are enqueued, dequeued
+extern Monitor* MethodCompileQueueAC2_lock;      // a lock held when AOT C2 code loads are enqueued, dequeued
 extern Monitor* CompileThread_lock;              // a lock held by compile threads during compilation system initialization
 extern Monitor* Compilation_lock;                // a lock used to pause compilation
 extern Mutex*   TrainingData_lock;               // a lock used when accessing training records
@@ -140,7 +140,6 @@ extern Mutex*   ClassListFile_lock;              // ClassListWriter()
 extern Mutex*   UnregisteredClassesTable_lock;   // UnregisteredClassesTableTable
 extern Mutex*   LambdaFormInvokers_lock;         // Protecting LambdaFormInvokers::_lambdaform_lines
 extern Mutex*   ScratchObjects_lock;             // Protecting _scratch_xxx_table in heapShared.cpp
-extern Mutex*   ArchivedObjectTables_lock;       // Protecting the table used by HeapShared::get_archived_object_permanent_index()
 extern Mutex*   FinalImageRecipes_lock;          // Protecting the tables used by FinalImageRecipes.
 extern Mutex*   URLClassLoaderClasspath_lock;
 #endif // INCLUDE_CDS

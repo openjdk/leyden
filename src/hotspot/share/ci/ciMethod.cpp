@@ -34,6 +34,7 @@
 #include "ci/ciSymbol.hpp"
 #include "ci/ciSymbols.hpp"
 #include "ci/ciUtilities.inline.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/abstractCompiler.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
 #include "compiler/compilerOracle.hpp"
@@ -1072,13 +1073,14 @@ ciMethodData* ciMethod::method_data() {
       MethodTrainingData* mtd = MethodTrainingData::find(h_m);
       MethodData* mdo = (mtd != nullptr ? mtd->final_profile() : nullptr);
       DirectiveSet* directives = DirectivesStack::getMatchingDirective(h_m, CURRENT_ENV->task()->compiler());
+      int comp_id = CURRENT_ENV->task()->compile_id();
       if (mdo == nullptr || directives->IgnoreRecordedProfileOption) {
         if (directives->IgnoreRecordedProfileOption) {
           ResourceMark rm;
-          log_debug(precompile)("Ignore recorded profile for %s", h_m->name_and_sig_as_C_string());
+          log_debug(precompile)("%d: Ignore recorded profile for %s", comp_id, h_m->name_and_sig_as_C_string());
         } else {
           ResourceMark rm;
-          log_debug(precompile)("No profile for %s", h_m->name_and_sig_as_C_string());
+          log_debug(precompile)("%d: No profile for %s", comp_id, h_m->name_and_sig_as_C_string());
         }
         _method_data_recorded = CURRENT_ENV->get_empty_methodData();
       } else {
@@ -1093,7 +1095,7 @@ ciMethodData* ciMethod::method_data() {
         _method_data_recorded->load_data();
         {
           ResourceMark rm;
-          log_debug(precompile)("Recorded profile " PTR_FORMAT " for %s", p2i(mdo), h_m->name_and_sig_as_C_string());
+          log_debug(precompile)("%d: Recorded profile " PTR_FORMAT " for %s", comp_id, p2i(mdo), h_m->name_and_sig_as_C_string());
         }
       }
     }
@@ -1131,12 +1133,15 @@ ciMethodData* ciMethod::method_data_or_null() {
 // ------------------------------------------------------------------
 // ciMethod::ensure_method_counters
 //
-MethodCounters* ciMethod::ensure_method_counters() {
+ciMetadata* ciMethod::ensure_method_counters() {
   check_is_loaded();
   VM_ENTRY_MARK;
   methodHandle mh(THREAD, get_Method());
-  MethodCounters* method_counters = mh->get_method_counters(CHECK_NULL);
-  return method_counters;
+  MethodCounters* method_counters = mh->get_method_counters(THREAD);
+  if (method_counters != nullptr) {
+    return CURRENT_ENV->get_method_counters(method_counters);
+  }
+  return nullptr;
 }
 
 // ------------------------------------------------------------------
@@ -1211,11 +1216,11 @@ int ciMethod::inline_instructions_size() {
   if (_inline_instructions_size == -1) {
     if (TrainingData::have_data()) {
       GUARDED_VM_ENTRY(
-        CompLevel level = static_cast<CompLevel>(CURRENT_ENV->comp_level());
+        CompLevel level = static_cast<CompLevel>(CURRENT_ENV->task()->comp_level());
         methodHandle top_level_mh(Thread::current(), CURRENT_ENV->task()->method());
         MethodTrainingData* mtd = MethodTrainingData::find(top_level_mh);
         if (mtd != nullptr) {
-          CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
+          CompileTrainingData* ctd = mtd->compile_data_for_aot_code(level);
           if (ctd != nullptr) {
             methodHandle mh(Thread::current(), get_Method());
             MethodTrainingData* this_mtd = MethodTrainingData::find(mh);
@@ -1233,8 +1238,9 @@ int ciMethod::inline_instructions_size() {
   if (_inline_instructions_size == -1) {
     GUARDED_VM_ENTRY(
       nmethod* code = get_Method()->code();
-      if (code != nullptr && !code->is_aot() && (code->comp_level() == CompLevel_full_optimization)) {
-        int isize = code->insts_end() - code->verified_entry_point() - code->skipped_instructions_size();
+      if (code != nullptr && (code->comp_level() == CompLevel_full_optimization)) {
+        int isize = code->is_aot() ? code->aot_code_entry()->inline_instructions_size()
+                                   : code->inline_instructions_size();
         _inline_instructions_size = isize > 0 ? isize : 0;
       } else {
         _inline_instructions_size = 0;

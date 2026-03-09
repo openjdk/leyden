@@ -172,9 +172,7 @@ class BytecodePrinter {
     }
     _next_pc = is_wide() ? bcp+2 : bcp+1;
     print_attributes(bci, st);
-    if (ClassPrinter::has_mode(_flags, ClassPrinter::PRINT_PROFILE)) {
-      bytecode_epilog(bci, st);
-    }
+    bytecode_epilog(bci, st);
   }
 };
 
@@ -188,7 +186,9 @@ static Method* _method_currently_being_printed = nullptr;
 void BytecodeTracer::trace_interpreter(const methodHandle& method, address bcp, uintptr_t tos, uintptr_t tos2, outputStream* st) {
   if (TraceBytecodes && BytecodeCounter::counter_value() >= TraceBytecodesAt) {
     BytecodePrinter printer(AtomicAccess::load_acquire(&_method_currently_being_printed));
-    printer.trace(method, bcp, tos, tos2, st);
+    stringStream buf;
+    printer.trace(method, bcp, tos, tos2, &buf);
+    st->print("%s", buf.freeze());
     // Save method currently being printed to detect when method printing changes.
     AtomicAccess::release_store(&_method_currently_being_printed, method());
   }

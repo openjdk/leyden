@@ -989,7 +989,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool inst
   methodHandle method(thread, target->get_Method());
 
   // We require method counters to store some method state (max compilation levels) required by the compilation policy.
-  if (!preload && method->get_method_counters(thread) == nullptr) {
+  if (method->get_method_counters(thread) == nullptr) {
     record_failure("can't create method counters");
     return false;
   }
@@ -1006,7 +1006,7 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool inst
     record_failure("DTrace flags change invalidated dependencies");
   }
 
-  if (!preload && !failing() && target->needs_clinit_barrier() &&
+  if (!failing() && target->needs_clinit_barrier() &&
       target->holder()->is_in_error_state()) {
     record_failure("method holder is in error state");
   }
@@ -1071,21 +1071,17 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
     // Allow the code to be executed
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     if (nm->make_in_use()) {
-#ifdef ASSERT
-      BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
-      if (bs_nm != nullptr && bs_nm->supports_entry_barrier(nm)) {
-        if (!bs_nm->is_armed(nm)) {
-          log_info(init)("nmethod %d %d not armed", nm->compile_id(), nm->comp_level());
-        }
-      }
-#endif // ASSERT
-      if (preload) {
-        nm->set_preloaded(true);
-        method->set_preload_code(nm);
-      }
-      if (!preload || target->holder()->is_linked()) {
+      if (!preload || method->method_holder()->is_linked()) {
         method->set_code(method, nm);
       }
+#if INCLUDE_CDS
+      if (preload) {
+        MethodCounters* mc = method->get_method_counters(thread);
+        precond(mc != nullptr);
+        mc->set_aot_preload_code_entry(aot_code_entry);
+        nm->set_preloaded(true);
+      }
+#endif
     }
   } else {
     LogTarget(Info, nmethod, install) lt;
@@ -1103,6 +1099,8 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
   }
 }
 
+#if INCLUDE_CDS
+// Register method loaded from AOT code cache
 nmethod* ciEnv::register_aot_method(JavaThread* thread,
                                 ciMethod* target,
                                 AbstractCompiler* compiler,
@@ -1159,6 +1157,7 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
 
     if (nm != nullptr) {
       aot_code_entry->set_loaded();
+      nm->set_has_clinit_barriers(aot_code_entry->has_clinit_barriers());
       make_code_usable(thread, target, preload, InvocationEntryBci, aot_code_entry, nm);
     }
   }
@@ -1175,9 +1174,10 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
   return nm;
   // safepoints are allowed again
 }
+#endif
 
 // ------------------------------------------------------------------
-// ciEnv::register_method
+// Register the result of a compilation including AOT compilation
 void ciEnv::register_method(ciMethod* target,
                             int entry_bci,
                             CodeOffsets* offsets,
@@ -1242,16 +1242,37 @@ void ciEnv::register_method(ciMethod* target,
       nm->set_has_wide_vectors(has_wide_vectors);
       nm->set_has_monitors(has_monitors);
       nm->set_has_scoped_access(has_scoped_access);
-      nm->set_preloaded(false);
       nm->set_has_clinit_barriers(has_clinit_barriers);
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
+#if INCLUDE_CDS
       if (task()->is_precompile()) {
         AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
         if (aot_code_entry != nullptr) {
+          nm->set_aot_code_entry(aot_code_entry);
           aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
+          // Inline size was recorded during training.
+          CompileTrainingData* ctd = nullptr;
+          {
+            TrainingData::TrainingDataLocker l;
+            MethodTrainingData* mtd = MethodTrainingData::find(method);
+            precond(mtd != nullptr);
+            ctd = mtd->compile_data_for_aot_code(nm->comp_level());
+          }
+          precond(ctd != nullptr);
+          int inline_size = ctd->inline_instructions_size();
+          aot_code_entry->set_inline_instructions_size(inline_size);
+          if (for_preload) {
+            // To have reference from method to AOT preload code
+            // during assembly phase.
+            MethodCounters* mc = method->get_method_counters(thread);
+            precond(mc != nullptr);
+            mc->set_aot_preload_code_entry(aot_code_entry);
+            nm->set_preloaded(true);
+          }
         }
       }
+#endif
       make_code_usable(THREAD, target, /* preload */ false, entry_bci, /* aot_code_entry */ nullptr, nm);
     }
   }
@@ -1842,9 +1863,9 @@ bool ciEnv::is_precompile() {
 
 InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
   ASSERT_IN_VM;
-  assert(is_precompile(), "should be called only in assembly phase");
-  assert(!ik->is_in_error_state(), "there should not be any probelm with this klass");
   ResourceMark rm;
+  assert(is_precompile(), "should be called only for AOT compialtion in assembly phase");
+  assert(!ik->is_in_error_state(), "comp_id: %d, klass %s", task()->compile_id(), ik->external_name());
 
   if (!AOTCacheAccess::can_generate_aot_code_for(ik)) {
     log_debug(precompile)("%d: klass (%s) %s is not archived", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
@@ -1852,6 +1873,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
     return InstanceKlass::ClassState::initialization_error;
   }
   if (task()->method()->method_holder() == ik) {
+    log_trace(precompile)("%d: method_holder: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
     if (task()->method()->is_static_initializer()) { // Happens with -Xcomp
        return InstanceKlass::ClassState::being_initialized;
     } else {
@@ -1866,23 +1888,22 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       GUARDED_VM_ENTRY(mtd = MethodTrainingData::find(methodHandle(Thread::current(), task()->method())); )
       if (mtd != nullptr) {
         TrainingData::TrainingDataLocker l;
-        CompileTrainingData* ctd = mtd->last_toplevel_compile(task()->comp_level());
+        CompileTrainingData* ctd = mtd->compile_data_for_aot_code(task()->comp_level());
         if (ctd != nullptr) {
           for (int i = 0; i < ctd->init_dep_count(); i++) {
             KlassTrainingData* ktd = ctd->init_dep(i);
             if (ktd->has_holder() && (ktd->holder() == ik)) {
-              log_trace(precompile)("%d: init_dependency: %s: %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+              log_trace(precompile)("%d: init_dependency: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
               return InstanceKlass::ClassState::fully_initialized; // init dependency present
             }
           }
         }
       }
 
-      // Core java/lang/invoke classes are peculiar. They include LF invokers, which
-      // are initialized in production run, but they are not recorded as init dependencies.
-      // CI query should report their status as if in production run, otherwise AOT
-      // code would have uncommon traps at invokedynamic calls.
-      if (HeapShared::is_core_java_lang_invoke_klass(ik)) {
+      // During AOT assembly and production runs CDS moves set of classes
+      // into fully_initialized state before execution of Java bytecodes.
+      if (AOTCacheAccess::is_early_aot_inited_class(ik)) {
+        log_trace(precompile)("%d: early_aot_inited_class: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
         return InstanceKlass::ClassState::fully_initialized;
       }
 
@@ -1895,10 +1916,12 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       // Preload AOT code does not depend on Training Data,
       // it has class init barriers to initialize class by
       // going into interpreter or directly calling runtime.
+      log_trace(precompile)("%d: for_preload: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
       return InstanceKlass::ClassState::fully_initialized;
     }
     default: fatal("%s", CompileTask::reason_name(task()->compile_reason()));
   }
+  log_debug(precompile)("%d: klass (%s) %s is not recorded for this compilation", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
   // Skip this class
   return InstanceKlass::ClassState::initialization_error;
 }

@@ -26,7 +26,6 @@
 #define SHARE_CDS_HEAPSHARED_HPP
 
 #include "cds/aotMetaspace.hpp"
-#include "cds/cds_globals.hpp"
 #include "cds/dumpTimeClassInfo.hpp"
 #include "classfile/compactHashtable.hpp"
 #include "classfile/javaClasses.hpp"
@@ -41,7 +40,6 @@
 #include "utilities/hashTable.hpp"
 
 #if INCLUDE_CDS_JAVA_HEAP
-class DumpedInternedStrings;
 class FileMapInfo;
 class KlassSubGraphInfo;
 class MetaspaceObjToOopHandleTable;
@@ -143,129 +141,6 @@ enum class HeapArchiveMode {
   _streaming
 };
 
-class ArchiveMappedHeapHeader {
-  size_t           _ptrmap_start_pos; // The first bit in the ptrmap corresponds to this position in the heap.
-  size_t           _oopmap_start_pos; // The first bit in the oopmap corresponds to this position in the heap.
-  HeapRootSegments _root_segments;    // Heap root segments info
-
-public:
-  ArchiveMappedHeapHeader();
-  ArchiveMappedHeapHeader(size_t ptrmap_start_pos,
-                          size_t oopmap_start_pos,
-                          HeapRootSegments root_segments);
-
-  size_t ptrmap_start_pos() const { return _ptrmap_start_pos; }
-  size_t oopmap_start_pos() const { return _oopmap_start_pos; }
-  HeapRootSegments root_segments() const { return _root_segments; }
-
-  // This class is trivially copyable and assignable.
-  ArchiveMappedHeapHeader(const ArchiveMappedHeapHeader&) = default;
-  ArchiveMappedHeapHeader& operator=(const ArchiveMappedHeapHeader&) = default;
-};
-
-
-class ArchiveStreamedHeapHeader {
-  size_t _forwarding_offset;                      // Offset of forwarding information in the heap region.
-  size_t _roots_offset;                           // Start position for the roots
-  size_t _root_highest_object_index_table_offset; // Offset of root dfs depth information
-  size_t _num_roots;                              // Number of embedded roots
-  size_t _num_archived_objects;                   // The number of archived heap objects
-
-public:
-  ArchiveStreamedHeapHeader();
-  ArchiveStreamedHeapHeader(size_t forwarding_offset,
-                            size_t roots_offset,
-                            size_t num_roots,
-                            size_t root_highest_object_index_table_offset,
-                            size_t num_archived_objects);
-
-  size_t forwarding_offset() const { return _forwarding_offset; }
-  size_t roots_offset() const { return _roots_offset; }
-  size_t num_roots() const { return _num_roots; }
-  size_t root_highest_object_index_table_offset() const { return _root_highest_object_index_table_offset; }
-  size_t num_archived_objects() const { return _num_archived_objects; }
-
-  // This class is trivially copyable and assignable.
-  ArchiveStreamedHeapHeader(const ArchiveStreamedHeapHeader&) = default;
-  ArchiveStreamedHeapHeader& operator=(const ArchiveStreamedHeapHeader&) = default;
-};
-
-class ArchiveMappedHeapInfo {
-  MemRegion _buffer_region;             // Contains the archived objects to be written into the CDS archive.
-  CHeapBitMap _oopmap;
-  CHeapBitMap _ptrmap;
-  HeapRootSegments _root_segments;
-  size_t _oopmap_start_pos;             // How many zeros were removed from the beginning of the bit map?
-  size_t _ptrmap_start_pos;             // How many zeros were removed from the beginning of the bit map?
-
-public:
-  ArchiveMappedHeapInfo() :
-    _buffer_region(),
-    _oopmap(128, mtClassShared),
-    _ptrmap(128, mtClassShared),
-    _root_segments(),
-    _oopmap_start_pos(),
-    _ptrmap_start_pos() {}
-  bool is_used() { return !_buffer_region.is_empty(); }
-
-  MemRegion buffer_region() { return _buffer_region; }
-  void set_buffer_region(MemRegion r) { _buffer_region = r; }
-
-  char* buffer_start() { return (char*)_buffer_region.start(); }
-  size_t buffer_byte_size() { return _buffer_region.byte_size();    }
-
-  CHeapBitMap* oopmap() { return &_oopmap; }
-  CHeapBitMap* ptrmap() { return &_ptrmap; }
-
-  void set_oopmap_start_pos(size_t start_pos) { _oopmap_start_pos = start_pos; }
-  void set_ptrmap_start_pos(size_t start_pos) { _ptrmap_start_pos = start_pos; }
-
-  void set_root_segments(HeapRootSegments segments) { _root_segments = segments; };
-  HeapRootSegments root_segments() { return _root_segments; }
-
-  ArchiveMappedHeapHeader create_header();
-};
-
-class ArchiveStreamedHeapInfo {
-  MemRegion _buffer_region;             // Contains the archived objects to be written into the CDS archive.
-  CHeapBitMap _oopmap;
-  size_t _roots_offset;                 // Offset of the HeapShared::roots() object, from the bottom
-                                        // of the archived heap objects, in bytes.
-  size_t _num_roots;
-
-  size_t _forwarding_offset;            // Offset of forwarding information from the bottom
-  size_t _root_highest_object_index_table_offset; // Offset to root dfs depth information
-  size_t _num_archived_objects;         // The number of archived objects written into the CDS archive.
-
-public:
-  ArchiveStreamedHeapInfo()
-    : _buffer_region(),
-      _oopmap(128, mtClassShared),
-      _roots_offset(),
-      _forwarding_offset(),
-      _root_highest_object_index_table_offset(),
-      _num_archived_objects() {}
-
-  bool is_used() { return !_buffer_region.is_empty(); }
-
-  void set_buffer_region(MemRegion r) { _buffer_region = r; }
-  MemRegion buffer_region() { return _buffer_region; }
-  char* buffer_start() { return (char*)_buffer_region.start(); }
-  size_t buffer_byte_size() { return _buffer_region.byte_size();    }
-
-  CHeapBitMap* oopmap() { return &_oopmap; }
-  void set_roots_offset(size_t n) { _roots_offset = n; }
-  size_t roots_offset() { return _roots_offset; }
-  void set_num_roots(size_t n) { _num_roots = n; }
-  size_t num_roots() { return _num_roots; }
-  void set_forwarding_offset(size_t n) { _forwarding_offset = n; }
-  void set_root_highest_object_index_table_offset(size_t n) { _root_highest_object_index_table_offset = n; }
-  void set_num_archived_objects(size_t n) { _num_archived_objects = n; }
-  size_t num_archived_objects() { return _num_archived_objects; }
-
-  ArchiveStreamedHeapHeader create_header();
-};
-
 class HeapShared: AllStatic {
   friend class VerifySharedOopClosure;
 
@@ -300,7 +175,7 @@ public:
   static void initialize_streaming() NOT_CDS_JAVA_HEAP_RETURN;
   static void enable_gc() NOT_CDS_JAVA_HEAP_RETURN;
   static void materialize_thread_object() NOT_CDS_JAVA_HEAP_RETURN;
-  static void add_to_dumped_interned_strings(oop string) NOT_CDS_JAVA_HEAP_RETURN;
+  static void archive_interned_string(oop string);
   static void finalize_initialization(FileMapInfo* static_mapinfo) NOT_CDS_JAVA_HEAP_RETURN;
 
 private:
@@ -320,12 +195,7 @@ private:
 public:
   static void debug_trace();
   static unsigned oop_hash(oop const& p);
-  static unsigned oop_handle_hash(OopHandle const& oh);
-  static unsigned oop_handle_hash_raw(OopHandle const& oh);
   static bool oop_handle_equals(const OopHandle& a, const OopHandle& b);
-  static unsigned string_oop_hash(oop const& string) {
-    return java_lang_String::hash_code(string);
-  }
 
   class CopyKlassSubGraphInfoToArchive;
 
@@ -341,27 +211,37 @@ public:
 
     // One or more fields in this object are pointing to MetaspaceObj
     bool _has_native_pointers;
+
+    // >= 0 if this oop has been append to the list of roots
+    int _root_index;
   public:
     CachedOopInfo(OopHandle orig_referrer, bool has_oop_pointers)
       : _orig_referrer(orig_referrer),
         _buffer_offset(0),
         _has_oop_pointers(has_oop_pointers),
-        _has_native_pointers(false) {}
+        _has_native_pointers(false),
+        _root_index(-1) {}
     oop orig_referrer() const;
     void set_buffer_offset(size_t offset) { _buffer_offset = offset; }
     size_t buffer_offset()          const { return _buffer_offset;   }
     bool has_oop_pointers()         const { return _has_oop_pointers; }
     bool has_native_pointers()      const { return _has_native_pointers; }
     void set_has_native_pointers()        { _has_native_pointers = true; }
+    int  root_index()               const { return _root_index; }
+    void set_root_index(int i)            { _root_index = i; }
   };
 
 private:
   static const int INITIAL_TABLE_SIZE = 15889; // prime number
   static const int MAX_TABLE_SIZE     = 1000000;
+  static bool _use_identity_hash_for_archived_object_cache;
+
+  static unsigned archived_object_cache_hash(OopHandle const& oh);
+
   typedef ResizeableHashTable<OopHandle, CachedOopInfo,
       AnyObj::C_HEAP,
       mtClassShared,
-      HeapShared::oop_handle_hash_raw,
+      HeapShared::archived_object_cache_hash,
       HeapShared::oop_handle_equals> ArchivedObjectCache;
   static ArchivedObjectCache* _archived_object_cache;
 
@@ -424,6 +304,7 @@ private:
       HeapShared::oop_hash> SeenObjectsTable;
 
   static SeenObjectsTable *_seen_objects_table;
+
   // The "special subgraph" contains all the archived objects that are reachable
   // from the following roots:
   //    - interned strings
@@ -433,8 +314,7 @@ private:
   static KlassSubGraphInfo* _dump_time_special_subgraph;              // for collecting info during dump time
   static ArchivedKlassSubGraphInfoRecord* _run_time_special_subgraph; // for initializing classes during run time.
 
-  static GrowableArrayCHeap<OopHandle, mtClassShared>* _pending_roots;
-  static GrowableArrayCHeap<const char*, mtClassShared>* _context; // for debugging unarchivable objects
+  static GrowableArrayCHeap<oop, mtClassShared>* _pending_roots;
   static OopHandle _scratch_basic_type_mirrors[T_VOID+1];
   static MetaspaceObjToOopHandleTable* _scratch_objects_table;
 
@@ -447,8 +327,6 @@ private:
     delete _seen_objects_table;
     _seen_objects_table = nullptr;
   }
-
-  class ContextMark;
 
   // Statistics (for one round of start_recording_subgraph ... done_recording_subgraph)
   static size_t _num_new_walked_objs;
@@ -508,9 +386,10 @@ private:
   static bool walk_one_object(PendingOopStack* stack, int level, KlassSubGraphInfo* subgraph_info,
                               oop orig_obj, oop referrer);
 
- public:
-  static void exit_on_error();
   static void reset_archived_object_states(TRAPS);
+  static void ensure_determinism(TRAPS);
+ public:
+  static void prepare_for_archiving(TRAPS);
   static void create_archived_object_cache() {
     _archived_object_cache =
       new (mtClass)ArchivedObjectCache(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
@@ -519,6 +398,7 @@ private:
     delete _archived_object_cache;
     _archived_object_cache = nullptr;
   }
+  static void make_archived_object_cache_gc_safe();
   static ArchivedObjectCache* archived_object_cache() {
     return _archived_object_cache;
   }
@@ -531,9 +411,8 @@ private:
                                              KlassSubGraphInfo* subgraph_info,
                                              oop orig_obj);
 
+  static bool is_interned_string(oop obj);
   static bool is_dumped_interned_string(oop o);
-
-  static void track_scratch_object(oop orig_obj, oop scratch_obj);
 
   // Scratch objects for archiving Klass::java_mirror()
   static void set_scratch_java_mirror(Klass* k, oop mirror);
@@ -564,7 +443,12 @@ private:
   // Dump-time only. Returns the index of the root, which can be used at run time to read
   // the root using get_root(index, ...).
   static int append_root(oop obj);
-  static GrowableArrayCHeap<OopHandle, mtClassShared>* pending_roots() { return _pending_roots; }
+
+  // AOT-compile time only.
+  // Returns -1 if obj is not in the heap root set.
+  static int get_root_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
+
+  static GrowableArrayCHeap<oop, mtClassShared>* pending_roots() { return _pending_roots; }
 
   // Dump-time and runtime
   static objArrayOop root_segment(int segment_idx);
@@ -579,7 +463,7 @@ private:
  public:
   static void finish_materialize_objects() NOT_CDS_JAVA_HEAP_RETURN;
 
-  static void write_heap(ArchiveMappedHeapInfo* mapped_heap_info, ArchiveStreamedHeapInfo* streamed_heap_info) NOT_CDS_JAVA_HEAP_RETURN;
+  static void write_heap(AOTMappedHeapInfo* mapped_heap_info, AOTStreamedHeapInfo* streamed_heap_info) NOT_CDS_JAVA_HEAP_RETURN;
   static objArrayOop scratch_resolved_references(ConstantPool* src);
   static void add_scratch_resolved_references(ConstantPool* src, objArrayOop dest) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_dumping() NOT_CDS_JAVA_HEAP_RETURN;
@@ -604,19 +488,9 @@ private:
   static void initialize_test_class_from_archive(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 #endif
 
-  static void add_to_permanent_oop_table(oop obj, int offset);
-
-  // AOT-compile time only: get a stable index for an archived object.
-  // Returns 0 if obj is not archived.
-  static int get_archived_object_permanent_index(oop obj) NOT_CDS_JAVA_HEAP_RETURN_(-1);
-  // Runtime only: get back the same object for an index returned by
-  // get_archived_object_permanent_index().
-  static oop get_archived_object(int permanent_index) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
-
   static void initialize_java_lang_invoke(TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static void init_classes_for_special_subgraph(Handle loader, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
 
-  static bool is_core_java_lang_invoke_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_lambda_form_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_lambda_proxy_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool is_string_concat_klass(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);
@@ -628,20 +502,13 @@ private:
   static void scan_java_class(Klass* k);
   static void scan_java_mirror(oop orig_mirror);
   static void copy_and_rescan_aot_inited_mirror(InstanceKlass* ik);
+
   static void log_heap_roots();
 
   static intptr_t log_target_location(oop source_oop);
   static void log_oop_info(outputStream* st, oop source_oop, address archived_object_start, address archived_object_end);
   static void log_oop_info(outputStream* st, oop source_oop);
   static void log_oop_details(oop source_oop, address buffered_addr);
-};
-
-class CachedCodeDirectoryInternal {
-  int _permanent_oop_count;
-  int* _permanent_oop_offsets; // offset of each permanent object from the bottom of the archived heap
-public:
-  void dumptime_init_internal() NOT_CDS_JAVA_HEAP_RETURN;
-  void runtime_init_internal() NOT_CDS_JAVA_HEAP_RETURN;
 };
 
 #endif // SHARE_CDS_HEAPSHARED_HPP

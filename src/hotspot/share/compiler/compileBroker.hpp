@@ -311,6 +311,7 @@ private:
   static void collect_statistics(CompilerThread* thread, elapsedTimer time, CompileTask* task);
 
   static void compile_method_base(const methodHandle& method,
+                                  AOTCodeEntry* aot_code_entry,
                                   int osr_bci,
                                   int comp_level,
                                   int hot_count,
@@ -324,8 +325,7 @@ private:
   static void shutdown_compiler_runtime(AbstractCompiler* comp, CompilerThread* thread);
 
   static AOTCodeEntry* find_aot_code_entry(const methodHandle& method, int osr_bci, int comp_level,
-                                           CompileTask::CompileReason compile_reason,
-                                           bool requires_online_compilation);
+                                           CompileTask::CompileReason compile_reason);
 
 public:
   enum {
@@ -356,6 +356,9 @@ public:
                                  int hot_count,
                                  bool requires_online_compilation,
                                  CompileTask::CompileReason compile_reason,
+                                 TRAPS);
+  static void preload_aot_method(const methodHandle& method,
+                                 AOTCodeEntry* aot_code_entry,
                                  TRAPS);
   static CompileQueue* c1_compile_queue();
   static CompileQueue* c2_compile_queue();

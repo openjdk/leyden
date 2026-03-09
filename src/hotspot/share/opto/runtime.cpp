@@ -24,6 +24,7 @@
 
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
 #include "code/nmethod.hpp"
@@ -202,6 +203,7 @@ const TypeFunc* OptoRuntime::_fast_arraycopy_Type                 = nullptr;
 const TypeFunc* OptoRuntime::_checkcast_arraycopy_Type            = nullptr;
 const TypeFunc* OptoRuntime::_generic_arraycopy_Type              = nullptr;
 const TypeFunc* OptoRuntime::_slow_arraycopy_Type                 = nullptr;
+const TypeFunc* OptoRuntime::_compile_method_Type                 = nullptr;
 const TypeFunc* OptoRuntime::_unsafe_setmemory_Type               = nullptr;
 const TypeFunc* OptoRuntime::_array_fill_Type                     = nullptr;
 const TypeFunc* OptoRuntime::_array_sort_Type                     = nullptr;
@@ -296,6 +298,15 @@ void OptoRuntime::complete_monitor_locking_C(oopDesc* obj, BasicLock* lock, Java
   SharedRuntime::complete_monitor_locking_C(obj, lock, current);
 }
 
+JRT_ENTRY(void, OptoRuntime::compile_method_C(Method* method, JavaThread* current))
+  methodHandle m(current, method);
+  CompLevel level = CompLevel_full_optimization;
+  bool jit_compilation = true;
+  CompileBroker::compile_method(m, InvocationEntryBci, level, 0, jit_compilation, CompileTask::Reason_MustBeCompiled, current);
+  if (HAS_PENDING_EXCEPTION) {
+    CLEAR_PENDING_EXCEPTION;
+  }
+JRT_END
 
 //=============================================================================
 // Opto compiler runtime routines
@@ -683,6 +694,18 @@ static const TypeFunc* make_uncommon_trap_Type() {
   fields = TypeTuple::fields(0);
   const TypeTuple *range = TypeTuple::make(TypeFunc::Parms+0, fields);
 
+  return TypeFunc::make(domain, range);
+}
+
+static const TypeFunc* make_compile_method_Type() {
+  // create input type (domain)
+  const Type** fields = TypeTuple::fields(1);
+  fields[TypeFunc::Parms+0] = TypePtr::NOTNULL; // method to be compiled
+  const TypeTuple *domain = TypeTuple::make(TypeFunc::Parms+1, fields);
+
+  // create result type (range)
+  fields = TypeTuple::fields(0);
+  const TypeTuple* range = TypeTuple::make(TypeFunc::Parms+0,fields);
   return TypeFunc::make(domain, range);
 }
 
@@ -1874,6 +1897,8 @@ JRT_ENTRY_NO_ASYNC_PROF(address, OptoRuntime, handle_exception_C_helper, OptoRun
   // has updated oops.
   StackWatermarkSet::after_unwind(current);
 
+  MACOS_AARCH64_ONLY(os::thread_wx_enable_write());
+
   // Do not confuse exception_oop with pending_exception. The exception_oop
   // is only used to pass arguments into the method. Not for general
   // exception handling.  DO NOT CHANGE IT to use pending_exception, since
@@ -2336,6 +2361,7 @@ void OptoRuntime::initialize_types() {
   _checkcast_arraycopy_Type           = make_arraycopy_Type(ac_checkcast);
   _generic_arraycopy_Type             = make_arraycopy_Type(ac_generic);
   _slow_arraycopy_Type                = make_arraycopy_Type(ac_slow);
+  _compile_method_Type                = make_compile_method_Type();
   _unsafe_setmemory_Type              = make_setmemory_Type();
   _array_fill_Type                    = make_array_fill_Type();
   _array_sort_Type                    = make_array_sort_Type();

@@ -23,7 +23,9 @@
  */
 
 #include "cds/aotArtifactFinder.hpp"
+#include "cds/aotCacheAccess.hpp"
 #include "cds/aotClassLinker.hpp"
+#include "cds/aotCompressedPointers.hpp"
 #include "cds/aotLogging.hpp"
 #include "cds/aotMapLogger.hpp"
 #include "cds/aotMetaspace.hpp"
@@ -177,10 +179,10 @@ ArchiveBuilder::ArchiveBuilder() :
   _mapped_static_archive_bottom(nullptr),
   _mapped_static_archive_top(nullptr),
   _buffer_to_requested_delta(0),
-  _pz_region("pz", MAX_SHARED_DELTA), // protection zone -- used only during dumping; does NOT exist in cds archive.
-  _rw_region("rw", MAX_SHARED_DELTA),
-  _ro_region("ro", MAX_SHARED_DELTA),
-  _ac_region("ac", MAX_SHARED_DELTA),
+  _pz_region("pz"), // protection zone -- used only during dumping; does NOT exist in cds archive.
+  _rw_region("rw"),
+  _ro_region("ro"),
+  _ac_region("ac"),
   _ptrmap(mtClassShared),
   _rw_ptrmap(mtClassShared),
   _ro_ptrmap(mtClassShared),
@@ -361,8 +363,10 @@ GrowableArray<Klass*>* ArchiveBuilder::sort_klasses_by_hierarchy() {
 }
 
 address ArchiveBuilder::reserve_buffer() {
-  // AOTCodeCache::max_aot_code_size() accounts for aot code region.
-  size_t buffer_size = LP64_ONLY(CompressedClassSpaceSize) NOT_LP64(256 * M) + AOTCodeCache::max_aot_code_size();
+  // On 64-bit: reserve address space for archives up to the max encoded offset limit.
+  // On 32-bit: use 256MB + AOT code size due to limited virtual address space.
+  size_t buffer_size = LP64_ONLY(AOTCompressedPointers::MaxMetadataOffsetBytes)
+                       NOT_LP64(256 * M + AOTCodeCache::max_aot_code_size());
   ReservedSpace rs = MemoryReserver::reserve(buffer_size,
                                              AOTMetaspace::core_region_alignment(),
                                              os::vm_page_size(),
@@ -864,6 +868,7 @@ void ArchiveBuilder::make_klasses_shareable() {
     const char* generated = "";
     const char* aotlinked_msg = "";
     const char* inited_msg = "";
+    const char* early_init_msg = "";
     Klass* k = get_buffered_addr(klasses()->at(i));
     bool inited = false;
     k->remove_java_mirror();
@@ -972,6 +977,9 @@ void ArchiveBuilder::make_klasses_shareable() {
         } else {
           inited_msg = " inited";
         }
+        if (AOTCacheAccess::is_early_aot_inited_class(ik)) {
+          early_init_msg = " early";
+        }
       }
 
       AOTMetaspace::rewrite_bytecodes_and_calculate_fingerprints(Thread::current(), ik);
@@ -980,9 +988,9 @@ void ArchiveBuilder::make_klasses_shareable() {
 
     if (aot_log_is_enabled(Debug, aot, class)) {
       ResourceMark rm;
-      aot_log_debug(aot, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s%s%s", i,
+      aot_log_debug(aot, class)("klasses[%5d] = " PTR_FORMAT " %-5s %s%s%s%s%s%s%s%s%s", i,
                             p2i(to_requested(k)), type, k->external_name(),
-                            kind, hidden, old, unlinked, generated, aotlinked_msg, inited_msg);
+                            kind, hidden, old, unlinked, generated, aotlinked_msg, early_init_msg, inited_msg);
     }
   }
 
@@ -1031,16 +1039,15 @@ void ArchiveBuilder::make_training_data_shareable() {
   _src_obj_table.iterate_all(clean_td);
 }
 
-uintx ArchiveBuilder::buffer_to_offset(address p) const {
+size_t ArchiveBuilder::buffer_to_offset(address p) const {
   address requested_p = to_requested(p);
-  assert(requested_p >= _requested_static_archive_bottom, "must be");
-  return requested_p - _requested_static_archive_bottom;
+  return pointer_delta(requested_p, _requested_static_archive_bottom, 1);
 }
 
-uintx ArchiveBuilder::any_to_offset(address p) const {
+size_t ArchiveBuilder::any_to_offset(address p) const {
   if (is_in_mapped_static_archive(p)) {
     assert(CDSConfig::is_dumping_dynamic_archive(), "must be");
-    return p - _mapped_static_archive_bottom;
+    return pointer_delta(p, _mapped_static_archive_bottom, 1);
   }
   if (!is_in_buffer_space(p)) {
     // p must be a "source" address
@@ -1049,7 +1056,7 @@ uintx ArchiveBuilder::any_to_offset(address p) const {
   return buffer_to_offset(p);
 }
 
-address ArchiveBuilder::offset_to_buffered_address(u4 offset) const {
+address ArchiveBuilder::offset_to_buffered_address(size_t offset) const {
   address requested_addr = _requested_static_archive_bottom + offset;
   address buffered_addr = requested_addr - _buffer_to_requested_delta;
   assert(is_in_buffer_space(buffered_addr), "bad offset");
@@ -1195,7 +1202,7 @@ void ArchiveBuilder::print_stats() {
   _alloc_stats.print_stats(int(_ro_region.used()), int(_rw_region.used()));
 }
 
-void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, ArchiveMappedHeapInfo* mapped_heap_info, ArchiveStreamedHeapInfo* streamed_heap_info) {
+void ArchiveBuilder::write_archive(FileMapInfo* mapinfo, AOTMappedHeapInfo* mapped_heap_info, AOTStreamedHeapInfo* streamed_heap_info) {
   // Make sure NUM_CDS_REGIONS (exported in cds.h) agrees with
   // AOTMetaspace::n_regions (internal to hotspot).
   assert(NUM_CDS_REGIONS == AOTMetaspace::n_regions, "sanity");
@@ -1255,8 +1262,8 @@ void ArchiveBuilder::count_relocated_pointer(bool tagged, bool nulled) {
 }
 
 void ArchiveBuilder::print_region_stats(FileMapInfo *mapinfo,
-                                        ArchiveMappedHeapInfo* mapped_heap_info,
-                                        ArchiveStreamedHeapInfo* streamed_heap_info) {
+                                        AOTMappedHeapInfo* mapped_heap_info,
+                                        AOTStreamedHeapInfo* streamed_heap_info) {
   // Print statistics of all the regions
   const size_t bitmap_used = mapinfo->region_at(AOTMetaspace::bm)->used();
   const size_t bitmap_reserved = mapinfo->region_at(AOTMetaspace::bm)->used_aligned();

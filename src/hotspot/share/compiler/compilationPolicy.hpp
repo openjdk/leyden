@@ -343,7 +343,7 @@ class CompilationPolicy : AllStatic {
 
   // m must be compiled before executing it
   static bool must_be_compiled(const methodHandle& m, int comp_level = CompLevel_any);
-  static void maybe_compile_early(const methodHandle& m, TRAPS);
+  static void maybe_compile_early(const methodHandle& m, MethodTrainingData* mtd, TRAPS);
   static void replay_training_at_init_impl(InstanceKlass* klass, JavaThread* current);
  public:
   static int min_invocations() { return Tier4MinInvocationThreshold; }

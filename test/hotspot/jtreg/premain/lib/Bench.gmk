@@ -56,8 +56,8 @@ _mainline_vs_premain:
 #
 # Note: you can also use the same build, but use different option to enable/disable certain features. E.g.
 #
-# make PM_OLD=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:-ArchivePackages \
-#      PM_NEW=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:+ArchivePackages \
+# make PM_OLD=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:-AOTAdapterCaching \
+#      PM_NEW=/repo/leyden/build/linux-x64/images/jdk PM_OPTS_NEW=-XX:+AOTAdapterCaching \
 #      BLDJDK_HOME=/my/jdk/21/home
 #      compare_premain_builds
 #

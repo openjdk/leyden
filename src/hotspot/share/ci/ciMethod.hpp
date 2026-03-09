@@ -320,7 +320,7 @@ class ciMethod : public ciMetadata {
   bool is_klass_loaded(int refinfo_index, Bytecodes::Code bc, bool must_be_resolved) const;
   bool check_call(int refinfo_index, bool is_static) const;
   bool ensure_method_data(bool training_data_only = false);  // make sure it exists in the VM also
-  MethodCounters* ensure_method_counters();
+  ciMetadata* ensure_method_counters();
 
   int inline_instructions_size();
   int scale_count(int count, float prof_factor = 1.);  // make MDO count commensurate with IIC

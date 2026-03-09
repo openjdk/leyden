@@ -89,47 +89,38 @@ bool CompilationPolicy::must_be_compiled(const methodHandle& m, int comp_level) 
          (AlwaysCompileLoopMethods && m->has_loops() && CompileBroker::should_compile_new_jobs()); // eagerly compile loop methods
 }
 
-void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
+void CompilationPolicy::maybe_compile_early(const methodHandle& m, MethodTrainingData* mtd, TRAPS) {
   if (m->method_holder()->is_not_initialized()) {
     // 'is_not_initialized' means not only '!is_initialized', but also that
     // initialization has not been started yet ('!being_initialized')
     // Do not force compilation of methods in uninitialized classes.
     return;
   }
-  if (!m->is_native() && MethodTrainingData::have_data()) {
-    MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
-    if (mtd == nullptr) {
-      return;              // there is no training data recorded for m
+  // Consider replacing conservatively compiled AOT Preload code with faster AOT code
+  nmethod* nm = m->code();
+  bool recompile = (nm != nullptr) && nm->preloaded();
+  CompLevel cur_level = static_cast<CompLevel>(m->highest_comp_level());
+  CompLevel next_level = trained_transition(m, cur_level, mtd, THREAD);
+  if ((next_level != cur_level || recompile) && can_be_compiled(m, next_level) && !CompileBroker::compilation_is_in_queue(m)) {
+    // We are here becasue some of CTD have all init deps satisifed.
+    CompileTrainingData* ctd = mtd->compile_data_for_aot_code(next_level);
+    bool requires_online_compilation = true;
+    if (ctd != nullptr) {
+      // Can't load normal AOT code - not all dependancies are ready,
+      // request normal compilation
+      requires_online_compilation = (ctd->init_deps_left_acquire() > 0);
     }
-    // Consider replacing conservatively compiled AOT Preload code with faster AOT code
-    nmethod* nm = m->code();
-    bool recompile = (nm != nullptr) && nm->preloaded();
-    CompLevel cur_level = static_cast<CompLevel>(m->highest_comp_level());
-    CompLevel next_level = trained_transition(m, cur_level, mtd, THREAD);
-    if ((next_level != cur_level || recompile) && can_be_compiled(m, next_level) && !CompileBroker::compilation_is_in_queue(m)) {
-      bool requires_online_compilation = false;
-      CompileTrainingData* ctd = mtd->last_toplevel_compile(next_level);
-      if (ctd != nullptr) {
-        // Can't load normal AOT code - not all dependancies are ready,
-        // request normal compilation
-        requires_online_compilation = (ctd->init_deps_left_acquire() > 0);
-      }
-      if (requires_online_compilation && recompile) {
-        // Wait when dependencies are ready to load normal AOT code
-        // if AOT Preload code is used now.
-        //
-        // FIXME. We may never (or it take long time) get all dependencies
-        // be ready to replace AOT Preload code. Consider using time and how many
-        // dependencies left to allow normal JIT compilation for replacement.
-        return;
-      }
-      if (PrintTieredEvents) {
-        print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, next_level);
-      }
-      CompileBroker::compile_method(m, InvocationEntryBci, next_level, 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
-      if (HAS_PENDING_EXCEPTION) {
-        CLEAR_PENDING_EXCEPTION;
-      }
+    // Skip compilation if next_level doesn't have CDT or CDT
+    // does not have all class init dependencies satisfied.
+    if (requires_online_compilation) {
+      return;
+    }
+    if (PrintTieredEvents) {
+      print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, next_level);
+    }
+    CompileBroker::compile_method(m, InvocationEntryBci, next_level, 0, requires_online_compilation, CompileTask::Reason_MustBeCompiled, THREAD);
+    if (HAS_PENDING_EXCEPTION) {
+      CLEAR_PENDING_EXCEPTION;
     }
   }
 }
@@ -157,7 +148,7 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
       print_event(FORCE_COMPILE, m(), m(), InvocationEntryBci, level);
     }
     // Test AOT code too
-    bool requires_online_compilation = false;
+    bool requires_online_compilation = true;
     if (TrainingData::have_data()) {
       MethodTrainingData* mtd = MethodTrainingData::find_fast(m);
       if (mtd != nullptr) {
@@ -192,10 +183,10 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, JavaT
             }
           }
         });
-       for (int i = 0; i < mtds.length(); i++) {
+        for (int i = 0; i < mtds.length(); i++) {
           MethodTrainingData* mtd = mtds.at(i);
           const methodHandle mh(current, const_cast<Method*>(mtd->holder()));
-          CompilationPolicy::maybe_compile_early(mh, current);
+          CompilationPolicy::maybe_compile_early(mh, mtd, current);
         }
       }
     }
@@ -1019,7 +1010,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
     }
     int hot_count = (bci == InvocationEntryBci) ? mh->invocation_count() : mh->backedge_count();
     update_rate(nanos_to_millis(os::javaTimeNanos()), mh);
-    bool requires_online_compilation = false;
+    bool requires_online_compilation = true;
     if (TrainingData::have_data()) {
       MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
       if (mtd != nullptr) {

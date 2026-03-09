@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -96,26 +96,27 @@ public:
   };
 
 private:
-  Kind   _kind;
+  Kind    _kind;
+  // Next field is exposed to external profilers - keep it as boolean.
+  bool    _for_preload;           // Code can be used for preload (before classes initialized)
+  uint8_t _has_clinit_barriers:1, // Generated code has class init checks (only in for_preload code)
+          _has_oop_maps:1,
+          _loaded:1,              // Code was loaded for use
+          _load_fail:1,           // Failed to load due to some klass state
+          _not_entrant:1;         // Deoptimized
+
   uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or Method's offset in AOTCache for nmethod
   uint   _offset;      // Offset to entry
   uint   _size;        // Entry size
   uint   _name_offset; // Method's or intrinsic name
   uint   _name_size;
-  uint   _num_inlined_bytecodes;
   uint   _code_offset; // Start of code in cache
   uint   _code_size;   // Total size of all code sections
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
-  bool   _has_oop_maps;
-  bool   _has_clinit_barriers; // Generated code has class init checks
-  bool   _for_preload; // Code can be used for preload
-  bool   _loaded;      // Code was loaded
-  bool   _not_entrant; // Deoptimized
-  bool   _load_fail;   // Failed to load due to some klass state
-  address _dumptime_content_start_addr; // CodeBlob::content_begin() at dump time; used for applying relocations
-
+  uint   _num_inlined_bytecodes;
+  uint   _inline_instructions_size; // size from training run
 public:
   // this constructor is used only by AOTCodeEntry::Stub
   AOTCodeEntry(uint offset, uint size, uint name_offset, uint name_size,
@@ -123,6 +124,14 @@ public:
                Kind kind, uint id) {
     assert(kind == AOTCodeEntry::Stub, "sanity check");
     _kind         = kind;
+
+    _for_preload  = false;
+    _has_clinit_barriers = false;
+    _has_oop_maps = false; // unused here
+    _loaded       = false;
+    _load_fail    = false;
+    _not_entrant  = false;
+
     _id           = id;
     _offset       = offset;
     _size         = size;
@@ -131,28 +140,29 @@ public:
     _code_offset  = code_offset;
     _code_size    = code_size;
 
-    _dumptime_content_start_addr = nullptr;
-    _num_inlined_bytecodes = 0;
     _comp_level   = 0;
     _comp_id      = 0;
-    _has_oop_maps = false; // unused here
-    _has_clinit_barriers = false;
-    _for_preload  = false;
-    _loaded       = false;
-    _not_entrant  = false;
-    _load_fail    = false;
+    _num_inlined_bytecodes = 0;
+    _inline_instructions_size = 0;
   }
 
   AOTCodeEntry(Kind kind,         uint id,
                uint offset,       uint size,
                uint name_offset,  uint name_size,
                uint blob_offset,  bool has_oop_maps,
-               address dumptime_content_start_addr,
                uint comp_level = 0,
                uint comp_id = 0,
                bool has_clinit_barriers = false,
                bool for_preload = false) {
     _kind         = kind;
+
+    _for_preload  = for_preload;
+    _has_clinit_barriers = has_clinit_barriers;
+    _has_oop_maps = has_oop_maps;
+    _loaded       = false;
+    _load_fail    = false;
+    _not_entrant  = false;
+
     _id           = id;
     _offset       = offset;
     _size         = size;
@@ -161,21 +171,10 @@ public:
     _code_offset  = blob_offset;
     _code_size    = 0; // unused
 
-    _dumptime_content_start_addr = dumptime_content_start_addr;
-    _num_inlined_bytecodes = 0;
-
     _comp_level   = comp_level;
     _comp_id      = comp_id;
-    _has_oop_maps = has_oop_maps;
-    _has_clinit_barriers = has_clinit_barriers;
-    _for_preload  = for_preload;
-    _loaded       = false;
-    _not_entrant  = false;
-    _load_fail    = false;
-
-    _loaded       = false;
-    _not_entrant  = false;
-    _load_fail    = false;
+    _num_inlined_bytecodes = 0;
+    _inline_instructions_size = 0;
   }
 
   void* operator new(size_t x, AOTCodeCache* cache);
@@ -197,9 +196,11 @@ public:
   uint code_size()    const { return _code_size; }
 
   bool has_oop_maps() const { return _has_oop_maps; }
-  address dumptime_content_start_addr() const { return _dumptime_content_start_addr; }
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
   void set_inlined_bytecodes(int bytes) { _num_inlined_bytecodes = bytes; }
+
+  uint inline_instructions_size() const { return _inline_instructions_size; }
+  void set_inline_instructions_size(int size) { _inline_instructions_size = size; }
 
   uint comp_level()   const { return _comp_level; }
   uint comp_id()      const { return _comp_id; }
@@ -336,6 +337,7 @@ protected:
 
   public:
     void record(uint cpu_features_offset);
+    bool verify_cpu_features(AOTCodeCache* cache) const;
     bool verify(AOTCodeCache* cache) const;
   };
 
@@ -383,7 +385,6 @@ protected:
       _C1_blobs_count = C1_blobs_count;
       _C2_blobs_count = C2_blobs_count;
       _stubs_count    = stubs_count;
-
       _config.record(cpu_features_offset);
     }
 
@@ -439,7 +440,7 @@ private:
   uint*         _search_entries; // sorted by ID table [id, index]
   AOTCodeEntry* _store_entries;  // Used when writing cache
   const char*   _C_strings_buf;  // Loaded buffer for _C_strings[] table
-  uint          _store_entries_cnt;
+  uint          _store_entries_cnt; // total entries count
 
   uint _compile_id;
   uint _comp_level;
@@ -833,7 +834,7 @@ public:
 class AOTRuntimeConstants {
  friend class AOTCodeCache;
  private:
-  address _card_table_address;
+  address _card_table_base;
   uint    _grain_shift;
   static address _field_addresses_list[];
   static AOTRuntimeConstants _aot_runtime_constants;
@@ -848,7 +849,7 @@ class AOTRuntimeConstants {
     address hi = base + sizeof(AOTRuntimeConstants);
     return (base <= adr && adr < hi);
   }
-  static address card_table_address();
+  static address card_table_base_address();
   static address grain_shift_address() { return (address)&_aot_runtime_constants._grain_shift; }
   static address* field_addresses_list() {
     return _field_addresses_list;

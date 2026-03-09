@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -58,6 +58,29 @@ bool AOTCacheAccess::can_generate_aot_code_for(InstanceKlass* ik) {
   return true;
 }
 
+bool AOTCacheAccess::is_early_aot_inited_class(InstanceKlass* ik) {
+  return ik->has_aot_initialized_mirror() && !class_or_super_has_runtime_setup(ik);
+}
+
+bool AOTCacheAccess::class_or_super_has_runtime_setup(InstanceKlass *ik) {
+  if (ik->is_runtime_setup_required()) {
+    return true;
+  }
+  if (ik->super() != nullptr && class_or_super_has_runtime_setup(ik->super())) {
+    return true;
+  }
+
+  Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+  int num_interfaces = interfaces->length();
+  for (int i = 0; i < num_interfaces; i++) {
+    if (class_or_super_has_runtime_setup(interfaces->at(i))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 uint AOTCacheAccess::delta_from_base_address(address addr) {
   assert(CDSConfig::is_dumping_final_static_archive(), "must be");
   assert(ArchiveBuilder::is_active(), "must be");
@@ -75,11 +98,11 @@ uint AOTCacheAccess::convert_method_to_offset(Method* method) {
 
 #if INCLUDE_CDS_JAVA_HEAP
 int AOTCacheAccess::get_archived_object_permanent_index(oop obj) {
-  return HeapShared::get_archived_object_permanent_index(obj);
+  return HeapShared::get_root_index(obj); // -1 if obj is not a root.
 }
 
 oop AOTCacheAccess::get_archived_object(int permanent_index) {
-  oop o = HeapShared::get_archived_object(permanent_index);
+  oop o = HeapShared::get_root(permanent_index);
   assert(oopDesc::is_oop_or_null(o), "sanity");
   return o;
 }

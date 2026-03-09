@@ -64,7 +64,6 @@ class ConstMethod;
 class InlineTableSizes;
 class nmethod;
 class InterpreterOopMap;
-class AOTCodeEntry;
 
 class Method : public Metadata {
  friend class VMStructs;
@@ -102,9 +101,6 @@ class Method : public Metadata {
   // null only at safepoints (because of a de-opt).
   nmethod* volatile _code;                   // Points to the corresponding piece of native code
   volatile address  _from_interpreted_entry; // Cache of _code ? _adapter->i2c_entry() : _i2i_entry
-
-  nmethod*  _preload_code;       // preloaded AOT code
-  AOTCodeEntry* _aot_code_entry; // AOT Code Cache entry for pre-loading code
 
   // Constructor
   Method(ConstMethod* xconst, AccessFlags access_flags, Symbol* name);
@@ -390,19 +386,6 @@ public:
     _from_compiled_entry =  entry;
   }
 
-  void set_preload_code(nmethod* code) {
-    _preload_code = code;
-  }
-  nmethod* preload_code() const {
-    return _preload_code;
-  }
-  void set_aot_code_entry(AOTCodeEntry* entry) {
-    _aot_code_entry = entry;
-  }
-  AOTCodeEntry* aot_code_entry() const {
-    return _aot_code_entry;
-  }
-
   address get_i2c_entry();
   address get_c2i_entry();
   address get_c2i_unverified_entry();
@@ -482,7 +465,7 @@ public:
   bool    contains(address bcp) const { return constMethod()->contains(bcp); }
 
   // prints byte codes
-  void print_codes(int flags = 0) const { print_codes_on(tty, flags); }
+  void print_codes(int flags = 0, bool buffered = true) const { print_codes_on(tty, flags, buffered); }
   void print_codes_on(outputStream* st, int flags = 0, bool buffered = true) const;
   void print_codes_on(int from, int to, outputStream* st, int flags = 0, bool buffered = true) const;
 
@@ -617,7 +600,6 @@ public:
   bool has_compiled_code() const;
 
   bool needs_clinit_barrier() const;
-  bool code_has_clinit_barriers() const;
 
   // sizing
   static int header_size()                       {

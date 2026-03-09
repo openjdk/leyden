@@ -22,6 +22,7 @@
  *
  */
 
+#include "cds/cds_globals.hpp"
 #include "code/nmethod.hpp"
 #include "memory/allocation.hpp"
 #include "memory/allocation.inline.hpp"

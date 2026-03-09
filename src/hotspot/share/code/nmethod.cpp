@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -57,6 +57,7 @@
 #include "oops/method.inline.hpp"
 #include "oops/methodData.hpp"
 #include "oops/oop.inline.hpp"
+#include "oops/trainingData.hpp"
 #include "oops/weakHandle.inline.hpp"
 #include "prims/jvmtiImpl.hpp"
 #include "prims/jvmtiThreadState.hpp"
@@ -939,7 +940,8 @@ address nmethod::continuation_for_implicit_exception(address pc, bool for_div0_c
     stringStream ss;
     ss.print_cr("implicit exception happened at " INTPTR_FORMAT, p2i(pc));
     print_on(&ss);
-    method()->print_codes_on(&ss);
+    // Buffering to a stringStream, disable internal buffering so it's not done twice.
+    method()->print_codes_on(&ss, 0, false);
     print_code_on(&ss);
     print_pcs_on(&ss);
     tty->print("%s", ss.as_string()); // print all at once
@@ -1335,6 +1337,7 @@ void nmethod::init_defaults(CodeBuffer *code_buffer, CodeOffsets* offsets) {
   _gc_data                    = nullptr;
   _oops_do_mark_link          = nullptr;
   _compiled_ic_data           = nullptr;
+  _aot_code_entry             = nullptr;
 
   _is_unloading_state         = 0;
   _state                      = not_installed;
@@ -1421,7 +1424,6 @@ nmethod::nmethod(
     // Native wrappers do not have deopt handlers. Make the values
     // something that will never match a pc like the nmethod vtable entry
     _deopt_handler_entry_offset    = 0;
-    _aot_code_entry          = nullptr;
     _method_profiling_count  = 0;
     _unwind_handler_offset   = 0;
 
@@ -1547,6 +1549,7 @@ nmethod::nmethod(const nmethod &nm) : CodeBlob(nm._name, nm._kind, nm._size, nm.
   _oops_do_mark_nmethods        = nullptr;
   _oops_do_mark_link            = nullptr;
   _compiled_ic_data             = nullptr;
+  _aot_code_entry               = nm._aot_code_entry;
 
   if (nm._osr_entry_point != nullptr) {
     _osr_entry_point            = (nm._osr_entry_point - (address) &nm) + (address) this;
@@ -1600,6 +1603,8 @@ nmethod::nmethod(const nmethod &nm) : CodeBlob(nm._name, nm._kind, nm._size, nm.
   _has_flushed_dependencies     = nm._has_flushed_dependencies;
   _is_unlinked                  = nm._is_unlinked;
   _load_reported                = nm._load_reported;
+  _preloaded                    = nm._preloaded;
+  _has_clinit_barriers          = nm._has_clinit_barriers;
 
   _deoptimization_status        = nm._deoptimization_status;
 
@@ -1816,7 +1821,6 @@ nmethod::nmethod(
     assert_locked_or_safepoint(CodeCache_lock);
 
     init_defaults(code_buffer, offsets);
-    _aot_code_entry          = nullptr; // runtime compiled nmethod does not have AOTCodeEntry
     _method_profiling_count  = 0;
 
     _osr_entry_point = code_begin() + offsets->value(CodeOffsets::OSR_Entry);
@@ -2288,6 +2292,9 @@ void nmethod::make_deoptimized() {
   ResourceMark rm;
   RelocIterator iter(this, oops_reloc_begin());
 
+  // Assume there will be some calls to make deoptimized.
+  MACOS_AARCH64_ONLY(os::thread_wx_enable_write());
+
   while (iter.next()) {
 
     switch (iter.type()) {
@@ -2364,6 +2371,7 @@ void nmethod::verify_clean_inline_caches() {
 }
 
 void nmethod::mark_as_maybe_on_stack() {
+  MACOS_AARCH64_ONLY(os::thread_wx_enable_write());
   AtomicAccess::store(&_gc_epoch, CodeCache::gc_epoch());
 }
 
@@ -2463,6 +2471,8 @@ bool nmethod::make_not_entrant(InvalidationReason invalidation_reason, bool keep
     // No need for fencing either.
     return false;
   }
+
+  MACOS_AARCH64_ONLY(os::thread_wx_enable_write());
 
   {
     // Enter critical section.  Does not block for safepoint.
@@ -2676,6 +2686,15 @@ void nmethod::post_compiled_method(CompileTask* task) {
   task->set_nm_content_size(content_size());
   task->set_nm_insts_size(insts_size());
   task->set_nm_total_size(total_size());
+
+  CompileTrainingData* ctd = task->training_data();
+  if (ctd != nullptr) {
+    // Record inline code size during training to help inlining during production run
+    precond(TrainingData::need_data()); // training run
+    int inline_size = inline_instructions_size();
+    if (inline_size < 0) inline_size = 0;
+    ctd->set_inline_instructions_size(inline_size);
+  }
 
   // task->is_aot_load() is true only for loaded AOT code.
   // nmethod::_aot_code_entry is set for loaded and stored AOT code
@@ -2913,6 +2932,8 @@ bool nmethod::is_unloading() {
   state_unloading_cycle = current_cycle;
   state_is_unloading = IsUnloadingBehaviour::is_unloading(this);
   uint8_t new_state = IsUnloadingState::create(state_is_unloading, state_unloading_cycle);
+
+  MACOS_AARCH64_ONLY(os::thread_wx_enable_write());
 
   // Note that if an nmethod has dead oops, everyone will agree that the
   // nmethod is_unloading. However, the is_cold heuristics can yield

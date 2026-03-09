@@ -583,6 +583,9 @@ class Parse : public GraphKit {
   // helper function for call statistics
   void count_compiled_calls(bool at_method_entry, bool is_inline) PRODUCT_RETURN;
 
+  // AOT compiled code invocations count
+  void count_aot_code_calls() NOT_CDS_RETURN;
+
   Node_Notes* make_node_notes(Node_Notes* caller_nn);
 
   // Helper functions for handling normal and abnormal exits.
