@@ -28,7 +28,7 @@
  *          and another URLClassLoader L2 delegating to L1 (L2 --> L1 --> SL).
  *          Classes loaded by L1 should get full AOTCache support but
  *          classes loaded by L2 would be added to "unregistered" category.
- *          Only those URLClassLoaders with builtin loader as the parent are currently fully 
+ *          Only those URLClassLoaders with builtin loader as the parent are currently fully
  *          supported in AOTCache.
  *
  * @requires vm.cds

@@ -39,7 +39,7 @@
  *     test-classes/SingleURLClassLoader.java
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar WhiteBox.jar jdk.test.whitebox.WhiteBox
- * @run driver SingleURLClassLoaderTest 
+ * @run driver SingleURLClassLoaderTest
  */
 
 import jdk.test.lib.cds.CDSAppTester;

@@ -777,5 +777,5 @@ void FinalImageRecipes::serialize(SerializeClosure* soc) {
   if (CDSConfig::is_dumping_preimage_static_archive() || (CDSConfig::is_dumping_final_static_archive() && soc->reading())) {
     _archived_aot_safe_loader_classes_map.serialize_header(soc);
   }
-  soc->do_ptr((void**)&_final_image_recipes);
+soc->do_ptr((void**)&_final_image_recipes);
 }

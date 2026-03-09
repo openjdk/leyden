@@ -44,7 +44,7 @@ typedef GrowableArrayCHeap<InstanceKlass*, mtClassShared> ClassList;
 
 class ClassLoaderIdToClassTableMap : public ResizeableHashTable<Symbol*, ClassList*, AnyObj::C_HEAP, mtClass>
 {
-  using ResizeableHashTableBase = ResizeableHashTable<Symbol*, ClassList*, AnyObj::C_HEAP, mtClass>; 
+  using ResizeableHashTableBase = ResizeableHashTable<Symbol*, ClassList*, AnyObj::C_HEAP, mtClass>;
 private:
   class CopyClassTableToArchive : StackObj {
   private:

@@ -50,7 +50,7 @@ public class SingleURLClassLoader {
         System.out.println("class02 = " + class02);
 
         if (class01.getClassLoader() != ClassLoader.getSystemClassLoader()) {
-            throw new RuntimeException("CustomLoadee loaded by wrong loader"); 
+            throw new RuntimeException("CustomLoadee loaded by wrong loader");
         }
         if (class02.getClassLoader() != loader) {
             throw new RuntimeException("CustomLoadee3 loaded by wrong loader");
