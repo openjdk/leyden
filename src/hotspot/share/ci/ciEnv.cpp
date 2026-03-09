@@ -1071,21 +1071,17 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
     // Allow the code to be executed
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     if (nm->make_in_use()) {
-#ifdef ASSERT
-      BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
-      if (bs_nm != nullptr && bs_nm->supports_entry_barrier(nm)) {
-        if (!bs_nm->is_armed(nm)) {
-          log_info(init)("nmethod %d %d not armed", nm->compile_id(), nm->comp_level());
-        }
-      }
-#endif // ASSERT
       if (!preload || method->method_holder()->is_linked()) {
         method->set_code(method, nm);
       }
+#if INCLUDE_CDS
       if (preload) {
-        method->set_preload_code(nm);
+        MethodCounters* mc = method->get_method_counters(thread);
+        precond(mc != nullptr);
+        mc->set_aot_preload_code_entry(aot_code_entry);
         nm->set_preloaded(true);
       }
+#endif
     }
   } else {
     LogTarget(Info, nmethod, install) lt;
@@ -1269,7 +1265,9 @@ void ciEnv::register_method(ciMethod* target,
           if (for_preload) {
             // To have reference from method to AOT preload code
             // during assembly phase.
-            method->set_preload_code(nm);
+            MethodCounters* mc = method->get_method_counters(thread);
+            precond(mc != nullptr);
+            mc->set_aot_preload_code_entry(aot_code_entry);
             nm->set_preloaded(true);
           }
         }

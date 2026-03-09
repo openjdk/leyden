@@ -974,7 +974,7 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
     }
 
     DirectiveSet* directives = DirectivesStack::getMatchingDirective(method, nullptr);
-    if (directives->IgnorePrecompiledOption) {
+    if (directives->IgnorePrecompiledOption || directives->ExcludeOption) {
       LogStreamHandle(Info, aot, codecache, compilation) log;
       if (log.is_enabled()) {
         log.print("Ignore AOT code entry on level %d for ", comp_level);
@@ -1123,10 +1123,13 @@ void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
     // We can still use normal AOT code if preload code is
     // invalidated - normal AOT code has less restrictions.
     Method* method = entry->method();
-    AOTCodeEntry* preload_entry = method->aot_code_entry();
-    if (preload_entry != nullptr) {
-      assert(preload_entry->for_preload(), "expecting only such entries here");
-      invalidate_entry(preload_entry);
+    MethodCounters* mc = entry->method()->method_counters();
+    if (mc != nullptr && mc->aot_preload_code_entry() != nullptr) {
+      AOTCodeEntry* preload_entry = mc->aot_preload_code_entry();
+      if (preload_entry != nullptr) {
+        assert(preload_entry->for_preload(), "expecting only such entries here");
+        invalidate_entry(preload_entry);
+      }
     }
   }
 }
@@ -1930,7 +1933,7 @@ bool skip_preload(methodHandle mh) {
     return true;
   }
   DirectiveSet* directives = DirectivesStack::getMatchingDirective(mh, nullptr);
-  if (directives->DontPreloadOption) {
+  if (directives->DontPreloadOption || directives->ExcludeOption) {
     LogStreamHandle(Info, aot, codecache, init) log;
     if (log.is_enabled()) {
       log.print("Exclude preloading code for ");
@@ -1945,6 +1948,12 @@ void AOTCodeCache::preload_code(JavaThread* thread) {
   if (!is_using_code()) {
     return;
   }
+  AbstractCompiler* comp = CompileBroker::compiler(CompLevel_full_optimization);
+  if (comp == nullptr) {
+    log_debug(aot, codecache, init)("AOT preload code skipped: C2 compiler disabled");
+    return;
+  }
+
   if ((DisableAOTCode & (1 << 3)) != 0) {
     return; // no preloaded code (level 5);
   }
@@ -1977,28 +1986,12 @@ void AOTCodeCache::preload_aot_code(TRAPS) {
       }
       assert(mh->method_holder()->is_loaded(), "");
       if (!mh->method_holder()->is_linked()) {
-        assert(!HAS_PENDING_EXCEPTION, "");
-        mh->method_holder()->link_class(THREAD);
-        if (HAS_PENDING_EXCEPTION) {
-          LogStreamHandle(Info, aot, codecache) log;
-          if (log.is_enabled()) {
-            ResourceMark rm;
-            log.print("Linkage failed for %s: ", mh->method_holder()->external_name());
-            THREAD->pending_exception()->print_value_on(&log);
-            if (log_is_enabled(Debug, aot, codecache)) {
-              THREAD->pending_exception()->print_on(&log);
-            }
-          }
-          CLEAR_PENDING_EXCEPTION;
-        }
+        ResourceMark rm;
+        log_debug(aot, codecache, init)("Preload AOT code for %s skipped: method holder is not linked",
+                                        mh->name_and_sig_as_C_string());
+        continue; // skip
       }
-      if (mh->aot_code_entry() != nullptr) {
-        // Second C2 compilation of the same method could happen for
-        // different reasons without marking first entry as not entrant.
-        continue; // Keep old entry to avoid issues
-      }
-      mh->set_aot_code_entry(entry);
-      CompileBroker::compile_method(mh, InvocationEntryBci, CompLevel_full_optimization, 0, false, CompileTask::Reason_Preload, CHECK);
+      CompileBroker::preload_aot_method(mh, entry, CHECK);
     }
   }
 }
