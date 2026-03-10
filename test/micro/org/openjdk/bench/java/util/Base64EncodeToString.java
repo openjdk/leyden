@@ -1,5 +1,5 @@
 /*
- * Copyright Amazon.com Inc. or its affiliates. All Rights Reserved.
+ * Copyright (c) 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,33 +19,37 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
- *
  */
+package org.openjdk.micro.bench.java.util;
 
-#ifndef SHARE_GC_SHENANDOAH_SHENANDOAHCOLLECTIONSETPRESELECTOR_HPP
-#define SHARE_GC_SHENANDOAH_SHENANDOAHCOLLECTIONSETPRESELECTOR_HPP
+import org.openjdk.jmh.annotations.*;
 
-#include "gc/shenandoah/shenandoahCollectionSet.hpp"
-#include "memory/resourceArea.hpp"
+import java.util.Base64;
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
-class ShenandoahCollectionSetPreselector : public StackObj {
-  ShenandoahCollectionSet* _cset;
-  bool* _pset;
-  ResourceMark _rm;
+@State(Scope.Benchmark)
+@Warmup(iterations = 5, time = 2)
+@Measurement(iterations = 5, time = 2)
+@Fork(value = 2)
+@OutputTimeUnit(TimeUnit.MILLISECONDS)
+public class Base64EncodeToString {
 
-public:
-  ShenandoahCollectionSetPreselector(ShenandoahCollectionSet* cset, size_t num_regions):
-    _cset(cset) {
-    _pset = NEW_RESOURCE_ARRAY(bool, num_regions);
-    for (unsigned int i = 0; i < num_regions; i++) {
-        _pset[i] = false;
+    private byte[] input;
+
+    @Param({"10", "100", "1000", "10000"})
+    private int inputSize;
+
+    @Setup
+    public void setup() {
+        Random r = new Random(1123);
+        input = new byte[inputSize];
+        r.nextBytes(input);
     }
-    _cset->establish_preselected(_pset);
-  }
 
-  ~ShenandoahCollectionSetPreselector() {
-    _cset->abandon_preselected();
-  }
-};
+    @Benchmark
+    public String testEncodeToString() {
+        return Base64.getEncoder().encodeToString(input);
+    }
+}
 
-#endif // SHARE_GC_SHENANDOAH_SHENANDOAHCOLLECTIONSETPRESELECTOR_HPP
