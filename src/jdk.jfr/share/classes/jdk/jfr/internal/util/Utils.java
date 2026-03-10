@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import jdk.internal.misc.JavaHome;
 import jdk.internal.module.Checks;
 import jdk.jfr.Event;
 import jdk.jfr.EventType;
@@ -445,8 +446,8 @@ public final class Utils {
         if (path == null) {
             return null;
         }
-        File file = subPath == null ? new File(path) : new File(path, subPath);
-        return file.toPath().toAbsolutePath();
+        return subPath == null ? JavaHome.getJDKResource(path) :
+                                 JavaHome.getJDKResource(path, subPath);
     }
 
 
