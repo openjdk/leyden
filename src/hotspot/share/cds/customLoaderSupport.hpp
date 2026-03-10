@@ -62,8 +62,7 @@ private:
       tableForLoader->init(buffered_loader_id, ArchiveUtils::archive_array(table));
       tableForLoader->mark_pointers();
       unsigned int hash = Symbol::symbol_hash(loader_id);
-      u4 delta = _builder->buffer_to_offset_u4((address)tableForLoader);
-      _writer->add(hash, delta);
+      _writer->add(hash, AOTCompressedPointers::encode_not_null((address)tableForLoader));
       return true;
     }
   };
