@@ -355,6 +355,7 @@ class AddressLiteral {
 
 
   AddressLiteral(address target, relocInfo::relocType rtype);
+  AddressLiteral(address target, relocInfo::relocType rtype, int method_index, bool is_mhi);
 
   AddressLiteral(address target, RelocationHolder const& rspec)
     : _rspec(rspec),

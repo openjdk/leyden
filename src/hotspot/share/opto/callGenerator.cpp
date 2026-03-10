@@ -157,6 +157,9 @@ JVMState* DirectCallGenerator::generate(JVMState* jvms) {
     // to the call site to make resolution logic work
     // (see SharedRuntime::resolve_static_call_C).
     call->set_override_symbolic_info(true);
+    call->set_mhi(true);
+  } else if (!method()->is_method_handle_intrinsic()) {
+    call->set_override_symbolic_info(true);
   }
   _call_node = call;  // Save the call node in case we need it later
   if (!is_static) {
@@ -265,6 +268,7 @@ JVMState* VirtualCallGenerator::generate(JVMState* jvms) {
     // about the method being invoked should be attached to the call site to
     // make resolution logic work (see SharedRuntime::resolve_{virtual,opt_virtual}_call_C).
     call->set_override_symbolic_info(true);
+    call->set_mhi(true);
   }
   _call_node = call;  // Save the call node in case we need it later
 
