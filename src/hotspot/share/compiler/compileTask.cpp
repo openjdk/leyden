@@ -296,9 +296,9 @@ void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool
   bool is_osr_method = osr_bci() != InvocationEntryBci;
   bool is_aot = is_aot_load();
   bool is_preload = preload();
-  if (is_precompile()) {
+  if (is_aot_compile()) {
     // Tag aot compilation too
-    is_preload = (compile_reason() == Reason_PrecompileForPreload);
+    is_preload = (compile_reason() == Reason_AOTCompileForPreload);
     is_aot = !is_preload;
   }
   print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot, is_preload,

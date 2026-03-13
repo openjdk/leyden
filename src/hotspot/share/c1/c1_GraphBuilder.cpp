@@ -1713,7 +1713,7 @@ void GraphBuilder::access_field(Bytecodes::Code code) {
                               PatchALot;
 
   ValueStack* state_before = nullptr;
-  if (!holder->is_initialized() || needs_patching || compilation()->env()->is_precompile()) {
+  if (!holder->is_initialized() || needs_patching || compilation()->env()->is_aot_compile()) {
     // save state before instruction for debug info when
     // deoptimization happens during patching
     state_before = copy_state_before();
@@ -2122,7 +2122,7 @@ void GraphBuilder::invoke(Bytecodes::Code code) {
 
     // callee is known => check if we have static binding
     if ((code == Bytecodes::_invokestatic && klass->is_initialized() &&
-        !compilation()->env()->is_precompile()) || // invokestatic involves an initialization barrier on declaring class
+        !compilation()->env()->is_aot_compile()) || // invokestatic involves an initialization barrier on declaring class
         code == Bytecodes::_invokespecial ||
         (code == Bytecodes::_invokevirtual && target->is_final_method()) ||
         code == Bytecodes::_invokedynamic) {
@@ -3867,7 +3867,7 @@ bool GraphBuilder::try_inline_full(ciMethod* callee, bool holder_known, bool ign
   if (!callee->holder()->is_linked())      INLINE_BAILOUT("callee's klass not linked yet");
   if (bc == Bytecodes::_invokestatic &&
       (!callee->holder()->is_initialized() ||
-       compilation()->env()->is_precompile())) INLINE_BAILOUT("callee's klass not initialized yet");
+       compilation()->env()->is_aot_compile())) INLINE_BAILOUT("callee's klass not initialized yet");
   if (!callee->has_balanced_monitors())    INLINE_BAILOUT("callee's monitors do not match");
 
   // Proper inlining of methods with jsrs requires a little more work.

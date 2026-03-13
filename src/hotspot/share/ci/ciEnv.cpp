@@ -832,7 +832,7 @@ ciMethod* ciEnv::get_method_by_index_impl(const constantPoolHandle& cpool,
     ResolvedIndyEntry* indy_info = cpool->resolved_indy_entry_at(index);
     Method* adapter = indy_info->method();
 #if INCLUDE_CDS
-    if (is_precompile() && !AOTConstantPoolResolver::is_resolution_deterministic(cpool(), indy_info->constant_pool_index())) {
+    if (is_aot_compile() && !AOTConstantPoolResolver::is_resolution_deterministic(cpool(), indy_info->constant_pool_index())) {
       // This is an indy callsite that was resolved as a side effect of VM bootstrap, but
       // it cannot be cached in the resolved state, so AOT code should not reference it.
       adapter = nullptr;
@@ -1246,7 +1246,7 @@ void ciEnv::register_method(ciMethod* target,
       assert(!method->is_synchronized() || nm->has_monitors(), "");
 
 #if INCLUDE_CDS
-      if (task()->is_precompile()) {
+      if (task()->is_aot_compile()) {
         AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
         if (aot_code_entry != nullptr) {
           nm->set_aot_code_entry(aot_code_entry);
@@ -1857,23 +1857,23 @@ void ciEnv::dump_replay_data_version(outputStream* out) {
   out->print_cr("version %d", REPLAY_VERSION);
 }
 
-bool ciEnv::is_precompile() {
-  return (task() != nullptr) && task()->is_precompile();
+bool ciEnv::is_aot_compile() {
+  return (task() != nullptr) && task()->is_aot_compile();
 }
 
-InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlass* ik) {
+InstanceKlass::ClassState ciEnv::compute_init_state_for_aot_compile(InstanceKlass* ik) {
   ASSERT_IN_VM;
   ResourceMark rm;
-  assert(is_precompile(), "should be called only for AOT compialtion in assembly phase");
+  assert(is_aot_compile(), "should be called only for AOT compialtion in assembly phase");
   assert(!ik->is_in_error_state(), "comp_id: %d, klass %s", task()->compile_id(), ik->external_name());
 
   if (!AOTCacheAccess::can_generate_aot_code_for(ik)) {
-    log_debug(precompile)("%d: klass (%s) %s is not archived", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+    log_debug(aot, compilation)("%d: klass (%s) %s is not archived", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
     // Skip this class
     return InstanceKlass::ClassState::initialization_error;
   }
   if (task()->method()->method_holder() == ik) {
-    log_trace(precompile)("%d: method_holder: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+    log_trace(aot, compilation)("%d: method_holder: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
     if (task()->method()->is_static_initializer()) { // Happens with -Xcomp
        return InstanceKlass::ClassState::being_initialized;
     } else {
@@ -1882,7 +1882,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
   }
 
   switch (task()->compile_reason()) {
-    case CompileTask::Reason_Precompile: {
+    case CompileTask::Reason_AOTCompile: {
       // Check init dependencies
       MethodTrainingData* mtd = nullptr;
       GUARDED_VM_ENTRY(mtd = MethodTrainingData::find(methodHandle(Thread::current(), task()->method())); )
@@ -1893,7 +1893,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
           for (int i = 0; i < ctd->init_dep_count(); i++) {
             KlassTrainingData* ktd = ctd->init_dep(i);
             if (ktd->has_holder() && (ktd->holder() == ik)) {
-              log_trace(precompile)("%d: init_dependency: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+              log_trace(aot, compilation)("%d: init_dependency: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
               return InstanceKlass::ClassState::fully_initialized; // init dependency present
             }
           }
@@ -1903,7 +1903,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       // During AOT assembly and production runs CDS moves set of classes
       // into fully_initialized state before execution of Java bytecodes.
       if (AOTCacheAccess::is_early_aot_inited_class(ik)) {
-        log_trace(precompile)("%d: early_aot_inited_class: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+        log_trace(aot, compilation)("%d: early_aot_inited_class: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
         return InstanceKlass::ClassState::fully_initialized;
       }
 
@@ -1912,16 +1912,16 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_precompiled(InstanceKlas
       // was updated after this method was compiled during training.
       break;
     }
-    case CompileTask::Reason_PrecompileForPreload: {
+    case CompileTask::Reason_AOTCompileForPreload: {
       // Preload AOT code does not depend on Training Data,
       // it has class init barriers to initialize class by
       // going into interpreter or directly calling runtime.
-      log_trace(precompile)("%d: for_preload: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+      log_trace(aot, compilation)("%d: for_preload: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
       return InstanceKlass::ClassState::fully_initialized;
     }
     default: fatal("%s", CompileTask::reason_name(task()->compile_reason()));
   }
-  log_debug(precompile)("%d: klass (%s) %s is not recorded for this compilation", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+  log_debug(aot, compilation)("%d: klass (%s) %s is not recorded for this compilation", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
   // Skip this class
   return InstanceKlass::ClassState::initialization_error;
 }

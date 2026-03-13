@@ -1216,7 +1216,7 @@ static int scale_limit(int64_t limit) {
 #define AOT_RECOMPILE_BIT 1
 
 void Parse::count_aot_code_calls() {
-  bool is_aot_compilation = C->env()->is_precompile();
+  bool is_aot_compilation = C->env()->is_aot_compile();
   if (UseAOTCodeCounters && (depth() == 1) && is_aot_compilation) {
     // Clear out dead values from the debug info in following runtime call
     kill_dead_locals();

@@ -62,8 +62,8 @@
 #include "classfile/vmSymbols.hpp"
 #include "code/aotCodeCache.hpp"
 #include "code/codeCache.hpp"
+#include "compiler/aotCompileBroker.hpp"
 #include "compiler/compileBroker.hpp"
-#include "compiler/precompiler.hpp"
 #include "gc/shared/gcVMOperations.hpp"
 #include "interpreter/bytecodes.hpp"
 #include "interpreter/bytecodeStream.hpp"
@@ -1213,7 +1213,7 @@ void AOTMetaspace::dump_static_archive_impl(StaticArchiveBuilder& builder, TRAPS
         if (AOTCodeCache::is_dumping_code()) {
           CDSConfig::enable_dumping_aot_code();
           log_info(aot)("Compiling AOT code");
-          Precompiler::compile_aot_code(&builder, CHECK);
+          AOTCompileBroker::compile_aot_code(&builder, CHECK);
           log_info(aot)("Finished compiling AOT code");
           CDSConfig::disable_dumping_aot_code();
         }

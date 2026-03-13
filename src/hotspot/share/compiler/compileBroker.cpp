@@ -1345,8 +1345,7 @@ void CompileBroker::compile_method_base(const methodHandle& method,
          "sanity check");
   assert(!method->method_holder()->is_not_initialized()   ||
          compile_reason == CompileTask::Reason_Preload    ||
-         compile_reason == CompileTask::Reason_Precompile ||
-         compile_reason == CompileTask::Reason_PrecompileForPreload, "method holder must be initialized");
+         CompileTask::reason_is_aot_compile(compile_reason), "method holder must be initialized");
   assert(!method->is_method_handle_intrinsic(), "do not enqueue these guys");
 
   if (CIPrintRequests) {
@@ -1648,12 +1647,11 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
   assert(!method->is_abstract() && (osr_bci == InvocationEntryBci || !method->is_native()), "cannot compile abstract/native methods");
   assert(!method->method_holder()->is_not_initialized()   ||
          compile_reason == CompileTask::Reason_Preload    ||
-         compile_reason == CompileTask::Reason_Precompile ||
-         compile_reason == CompileTask::Reason_PrecompileForPreload, "method holder must be initialized");
+         CompileTask::reason_is_aot_compile(compile_reason), "method holder must be initialized");
   // return quickly if possible
   bool aot_compilation = (PrecompileCode && PrecompileOnlyAndExit) ||
                          CDSConfig::is_dumping_aot_code();
-  if (aot_compilation && !CompileTask::reason_is_precompile(compile_reason)) {
+  if (aot_compilation && !CompileTask::reason_is_aot_compile(compile_reason)) {
     // Skip normal compilations when compiling AOT code
     return nullptr;
   }
@@ -1687,7 +1685,7 @@ nmethod* CompileBroker::compile_method(const methodHandle& method, int osr_bci,
   assert(!HAS_PENDING_EXCEPTION, "No exception should be present");
   // some prerequisites that are compiler specific
   if (compile_reason != CompileTask::Reason_Preload &&
-      !CompileTask::reason_is_precompile(compile_reason) &&
+      !CompileTask::reason_is_aot_compile(compile_reason) &&
      (comp->is_c2() || comp->is_jvmci())) {
     InternalOOMEMark iom(THREAD);
     method->constants()->resolve_string_constants(CHECK_AND_CLEAR_NONASYNC_NULL);
@@ -1768,8 +1766,7 @@ bool CompileBroker::compilation_is_complete(Method*                    method,
                                             int                        comp_level,
                                             bool                       online_only,
                                             CompileTask::CompileReason compile_reason) {
-  if (compile_reason == CompileTask::Reason_Precompile ||
-      compile_reason == CompileTask::Reason_PrecompileForPreload) {
+  if (CompileTask::reason_is_aot_compile(compile_reason)) {
     return false; // FIXME: any restrictions?
   }
   bool is_osr = (osr_bci != standard_entry_bci);
@@ -2648,7 +2645,7 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
     }
 
 
-    if (!ci_env.failing() && !task->is_success() && !task->is_precompile()) {
+    if (!ci_env.failing() && !task->is_success() && !task->is_aot_compile()) {
       assert(ci_env.failure_reason() != nullptr, "expect failure reason");
       assert(false, "compiler should always document failure: %s", ci_env.failure_reason());
       // The compiler elected, without comment, not to register a result.

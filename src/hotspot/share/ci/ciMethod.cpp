@@ -1066,7 +1066,7 @@ bool ciMethod::ensure_method_data(bool training_data_only) {
 // ciMethod::method_data
 //
 ciMethodData* ciMethod::method_data() {
-  if (CURRENT_ENV->task()->is_precompile() && CURRENT_ENV->task()->comp_level() == CompLevel_full_optimization) {
+  if (CURRENT_ENV->task()->is_aot_compile() && CURRENT_ENV->task()->comp_level() == CompLevel_full_optimization) {
     if (_method_data_recorded == nullptr) {
       VM_ENTRY_MARK;
       methodHandle h_m(thread, get_Method());
@@ -1077,10 +1077,10 @@ ciMethodData* ciMethod::method_data() {
       if (mdo == nullptr || directives->IgnoreRecordedProfileOption) {
         if (directives->IgnoreRecordedProfileOption) {
           ResourceMark rm;
-          log_debug(precompile)("%d: Ignore recorded profile for %s", comp_id, h_m->name_and_sig_as_C_string());
+          log_debug(aot, compilation)("%d: Ignore recorded profile for %s", comp_id, h_m->name_and_sig_as_C_string());
         } else {
           ResourceMark rm;
-          log_debug(precompile)("%d: No profile for %s", comp_id, h_m->name_and_sig_as_C_string());
+          log_debug(aot, compilation)("%d: No profile for %s", comp_id, h_m->name_and_sig_as_C_string());
         }
         _method_data_recorded = CURRENT_ENV->get_empty_methodData();
       } else {
@@ -1095,7 +1095,7 @@ ciMethodData* ciMethod::method_data() {
         _method_data_recorded->load_data();
         {
           ResourceMark rm;
-          log_debug(precompile)("%d: Recorded profile " PTR_FORMAT " for %s", comp_id, p2i(mdo), h_m->name_and_sig_as_C_string());
+          log_debug(aot, compilation)("%d: Recorded profile " PTR_FORMAT " for %s", comp_id, p2i(mdo), h_m->name_and_sig_as_C_string());
         }
       }
     }

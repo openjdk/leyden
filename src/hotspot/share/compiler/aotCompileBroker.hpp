@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,15 +22,15 @@
  *
  */
 
-#ifndef SHARE_COMPILER_PRECOMPILER_HPP
-#define SHARE_COMPILER_PRECOMPILER_HPP
+#ifndef SHARE_COMPILER_AOTCOMPILEBROKER_HPP
+#define SHARE_COMPILER_AOTCOMPILEBROKER_HPP
 
 #include "memory/allStatic.hpp"
 #include "utilities/exceptions.hpp"
 
 class ArchiveBuilder;
 
-class Precompiler : AllStatic  {
+class AOTCompileBroker : AllStatic  {
 private:
   static int _total_count;
 
@@ -40,4 +40,4 @@ public:
   static void compile_aot_code(ArchiveBuilder* builder, TRAPS);
 };
 
-#endif // SHARE_COMPILER_PRECOMPILER_HPP
+#endif // SHARE_COMPILER_AOTCOMPILEBROKER_HPP

@@ -569,7 +569,7 @@ void Compile::print_compile_messages() {
   if( PrintOpto ) {
     if (is_osr_compilation()) {
       tty->print("[OSR]");
-    } else if (env()->task()->is_precompile()) {
+    } else if (env()->task()->is_aot_compile()) {
       if (for_preload()) {
         tty->print("[PRE]");
       } else {

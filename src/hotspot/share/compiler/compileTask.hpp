@@ -67,8 +67,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
       Reason_MustBeCompiled,   // Used for -Xcomp or AlwaysCompileLoopMethods (see CompilationPolicy::must_be_compiled())
       Reason_Bootstrap,        // JVMCI bootstrap
       Reason_Preload,          // pre-load AOT code
-      Reason_Precompile,
-      Reason_PrecompileForPreload,
+      Reason_AOTCompile,
+      Reason_AOTCompileForPreload,
       Reason_Count
   };
 
@@ -83,15 +83,15 @@ class CompileTask : public CHeapObj<mtCompiler> {
       "must_be_compiled",
       "bootstrap",
       "preload",
-      "precompile",
-      "precompile_for_preload",
+      "aot_compile",
+      "aot_compile_for_preload",
     };
     return reason_names[compile_reason];
   }
 
-  static bool reason_is_precompile(CompileTask::CompileReason compile_reason) {
-    return (compile_reason == CompileTask::Reason_Precompile) ||
-           (compile_reason == CompileTask::Reason_PrecompileForPreload);
+  static bool reason_is_aot_compile(CompileTask::CompileReason compile_reason) {
+    return (compile_reason == CompileTask::Reason_AOTCompile) ||
+           (compile_reason == CompileTask::Reason_AOTCompileForPreload);
   }
 
  private:
@@ -195,8 +195,8 @@ class CompileTask : public CHeapObj<mtCompiler> {
   }
 #endif
 
-  bool is_precompile() {
-    return reason_is_precompile(compile_reason());
+  bool is_aot_compile() {
+    return reason_is_aot_compile(compile_reason());
   }
 
   CompileQueue* compile_queue() const            { return _compile_queue; }

@@ -1830,7 +1830,7 @@ void PhaseOutput::fill_buffer(C2_MacroAssembler* masm, uint* blk_starts) {
                    C->is_osr_compilation() ? " compile_kind='osr'" :
                    (C->for_preload() ? " compile_kind='AP'" : ""));
       }
-      const char* is_aot = C->env()->is_precompile() ? (C->for_preload() ? "(AP) " : "(A) -") : "-----";
+      const char* is_aot = C->env()->is_aot_compile() ? (C->for_preload() ? "(AP) " : "(A) -") : "-----";
       if (C->method() != nullptr) {
         tty->print_cr("----------------------- MetaData before Compile_id = %d %s-------------------", C->compile_id(), is_aot);
         tty->print_raw(method_metadata_str.freeze());

@@ -27,24 +27,24 @@
 #include "cds/cdsConfig.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "code/aotCodeCache.hpp"
+#include "compiler/aotCompileBroker.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compiler_globals.hpp"
-#include "compiler/precompiler.hpp"
 #include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
 
-class PrecompileIterator : StackObj {
+class AOTCompileIterator : StackObj {
 private:
   CompLevel _comp_level;
-  bool _for_preload;
-  Thread* _thread;
+  bool      _for_preload;
+  Thread*   _thread;
   GrowableArray<Method*> _methods;
 
 public:
-  PrecompileIterator(CompLevel comp_level, bool for_preload, JavaThread* thread)
+  AOTCompileIterator(CompLevel comp_level, bool for_preload, JavaThread* thread)
   : _comp_level(comp_level), _for_preload(for_preload), _thread(thread) {
     assert(TrainingData::have_data(), "sanity");
   }
@@ -55,10 +55,10 @@ public:
       return false;
     }
     DirectiveSet* directives = DirectivesStack::getMatchingDirective(methodHandle(_thread, m), nullptr);
-    if (directives->DontPrecompileOption) {
+    if (directives->DontAOTCompileOption) {
       return false;
     }
-    if (directives->PrecompileRecordedOption > 0) {
+    if (directives->AOTCompileRecordedOption > 0) {
       return true;
     }
     int high_top_level = mtd->highest_top_level();
@@ -138,7 +138,7 @@ public:
       CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level,
                                     0,
                                     true /*requires_online_comp*/,
-                                    _for_preload ? CompileTask::Reason_PrecompileForPreload : CompileTask::Reason_Precompile,
+                                    _for_preload ? CompileTask::Reason_AOTCompileForPreload : CompileTask::Reason_AOTCompile,
                                     THREAD);
       if (HAS_PENDING_EXCEPTION) {
         CLEAR_PENDING_EXCEPTION;
@@ -147,6 +147,10 @@ public:
   }
 
   void print_compilation_status(ArchiveBuilder* builder) {
+    LogStreamHandle(Info, aot, compilation) logi;
+    if (!logi.is_enabled()) {
+      return;
+    }
     int success_count = 0;
     const int log_comp_level = _comp_level + (_for_preload ? 1 : 0);
 
@@ -158,7 +162,7 @@ public:
         success_count++;
       }
 
-      LogStreamHandle(Info, precompile) log;
+      LogStreamHandle(Debug, aot, compilation) log;
       if (log.is_enabled()) {
         ResourceMark rm;
         log.print("[%4d] T%d Compiled %s [%p", i, log_comp_level, m->external_name(), m);
@@ -166,15 +170,15 @@ public:
           Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
           log.print(" -> %p", requested_m);
         }
-        log.print("] {%d} [%d] (%s)", compile_id(m), AOTCodeCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
+        log.print_cr("] {%d} [%d] (%s)", compile_id(m), AOTCodeCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
       }
     }
 
-    log_info(precompile)("Precompilation for level %d finished (%d successful out of %d total)",
-      log_comp_level, success_count, _methods.length());
+    logi.print_cr("AOT Compilation for level %d finished (%d successful out of %d total)",
+                  log_comp_level, success_count, _methods.length());
   }
 
-  void precompile(ArchiveBuilder* builder, TRAPS) {
+  void compile(ArchiveBuilder* builder, TRAPS) {
     _methods.sort(&compare_methods);
     schedule_compilations(THREAD);
     CompileBroker::wait_for_no_active_tasks();
@@ -182,20 +186,20 @@ public:
   }
 };
 
-void Precompiler::compile_aot_code(CompLevel comp_level, bool for_preload, TRAPS) {
+void AOTCompileBroker::compile_aot_code(CompLevel comp_level, bool for_preload, TRAPS) {
   ResourceMark rm;
-  PrecompileIterator pi(comp_level, for_preload, THREAD);
+  AOTCompileIterator aci(comp_level, for_preload, THREAD);
   TrainingData::iterate([&](TrainingData* td) {
-    pi.apply(td);
+    aci.apply(td);
   });
-  pi.precompile((ArchiveBuilder*)nullptr, THREAD);
+  aci.compile((ArchiveBuilder*)nullptr, THREAD);
 }
 
-void Precompiler::compile_aot_code(TRAPS) {
+void AOTCompileBroker::compile_aot_code(TRAPS) {
   if (!AOTCodeCache::is_dumping_code()) {
     return;
   }
-  log_info(precompile)("Precompilation started");
+  log_info(aot, compilation)("AOT compilation started");
   if (TrainingData::have_data()) {
     TrainingData::iterate([&](TrainingData* td) {
       if (td->is_KlassTrainingData()) {
@@ -204,7 +208,7 @@ void Precompiler::compile_aot_code(TRAPS) {
           assert(!HAS_PENDING_EXCEPTION, "");
           ktd->holder()->link_class(THREAD);
           if (HAS_PENDING_EXCEPTION) {
-            LogStreamHandle(Warning, precompile) log;
+            LogStreamHandle(Warning, aot, compilation) log;
             if (log.is_enabled()) {
               ResourceMark rm;
               log.print("Linkage failed for %s: ", ktd->holder()->external_name());
@@ -226,26 +230,25 @@ void Precompiler::compile_aot_code(TRAPS) {
   }
 }
 
-// New workflow only
-void Precompiler::compile_aot_code(ArchiveBuilder* builder, TRAPS) {
+void AOTCompileBroker::compile_aot_code(ArchiveBuilder* builder, TRAPS) {
   assert(AOTCodeCache::is_dumping_code(), "sanity");
   if (TrainingData::have_data()) {
     ResourceMark rm;
     CompLevel highest_level = CompilationPolicy::highest_compile_level();
     if (highest_level >= CompLevel_full_optimization && ClassInitBarrierMode > 0) {
-      PrecompileIterator pi(CompLevel_full_optimization, true /*for_preload*/, THREAD);
+      AOTCompileIterator aci(CompLevel_full_optimization, true /*for_preload*/, THREAD);
       TrainingData::iterate([&](TrainingData* td) {
-        pi.apply(td);
+        aci.apply(td);
       });
-      pi.precompile(builder, THREAD);
+      aci.compile(builder, THREAD);
     }
 
     for (int level = CompLevel_simple; level <= highest_level; level++) {
-      PrecompileIterator pi((CompLevel)level, false /*for_preload*/, THREAD);
+      AOTCompileIterator aci((CompLevel)level, false /*for_preload*/, THREAD);
       TrainingData::iterate([&](TrainingData* td) {
-        pi.apply(td);
+        aci.apply(td);
       });
-      pi.precompile(builder, THREAD);
+      aci.compile(builder, THREAD);
     }
   }
 }

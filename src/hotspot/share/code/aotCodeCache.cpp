@@ -248,8 +248,8 @@ bool AOTCodeCache::is_code_load_thread_on() {
 bool AOTCodeCache::allow_const_field(ciConstant& value) {
   ciEnv* env = CURRENT_ENV;
   precond(env != nullptr);
-  assert(!env->is_precompile() || is_dumping_code(), "AOT compilation should be enabled");
-  return !env->is_precompile() // Restrict only when we generate AOT code
+  assert(!env->is_aot_compile() || is_dumping_code(), "AOT compilation should be enabled");
+  return !env->is_aot_compile() // Restrict only when we generate AOT code
         // Can not trust primitive too   || !is_reference_type(value.basic_type())
         // May disable this too for now  || is_reference_type(value.basic_type()) && value.as_object()->should_be_constant()
         ;
@@ -1013,7 +1013,7 @@ AOTCodeEntry* AOTCodeCache::find_code_entry(const methodHandle& method, uint com
     }
 
     DirectiveSet* directives = DirectivesStack::getMatchingDirective(method, nullptr);
-    if (directives->IgnorePrecompiledOption || directives->ExcludeOption) {
+    if (directives->IgnoreAOTCompiledOption || directives->ExcludeOption) {
       LogStreamHandle(Info, aot, codecache, compilation) log;
       if (log.is_enabled()) {
         log.print("Ignore AOT code entry on level %d for ", comp_level);

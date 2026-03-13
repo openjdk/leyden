@@ -93,10 +93,10 @@ NOT_PRODUCT(option(TraceMergeStores, "TraceMergeStores", Ccstrlist)) \
   option(CloneMapDebug, "CloneMapDebug", Bool) \
   option(IncrementalInlineForceCleanup, "IncrementalInlineForceCleanup", Bool) \
   option(MaxNodeLimit, "MaxNodeLimit", Intx)  \
-  option(PrecompileRecorded, "PrecompileRecorded", Uintx) \
-  option(DontPrecompile, "DontPrecompile", Bool) \
+  option(AOTCompileRecorded, "AOTCompileRecorded", Uintx) \
+  option(DontAOTCompile, "DontAOTCompile", Bool) \
   option(DontPreload, "DontPreload", Bool) \
-  option(IgnorePrecompiled, "IgnorePrecompiled", Bool) \
+  option(IgnoreAOTCompiled, "IgnoreAOTCompiled", Bool) \
   option(IgnoreRecordedProfile, "IgnoreRecordedProfile", Bool) \
   option(TooManyTrapsAtBCI, "TooManyTrapsAtBCI", Ccstrlist) \
 NOT_PRODUCT(option(TestOptionInt,    "TestOptionInt",    Intx)) \

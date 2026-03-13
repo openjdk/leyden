@@ -38,11 +38,11 @@
 #include "classfile/vmClasses.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "code/aotCodeCache.hpp"
+#include "compiler/aotCompileBroker.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compilerThread.hpp"
 #include "compiler/compileTask.hpp"
-#include "compiler/precompiler.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetNMethod.hpp"
 #include "gc/shared/gcVMOperations.hpp"
@@ -883,11 +883,11 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
 #if INCLUDE_CDS
   if (PrecompileCode) {
-    Precompiler::compile_aot_code(CHECK_JNI_ERR);
+    AOTCompileBroker::compile_aot_code(CHECK_JNI_ERR);
     if (PrecompileOnlyAndExit) {
       AOTCodeCache::close();
       log_vm_init_stats();
-      vm_direct_exit(0, "Code precompiation is over");
+      vm_direct_exit(0, "AOT code compiation is over");
     }
   }
 #endif

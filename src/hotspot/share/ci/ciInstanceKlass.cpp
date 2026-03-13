@@ -149,8 +149,8 @@ InstanceKlass::ClassState ciInstanceKlass::compute_shared_init_state() {
   GUARDED_VM_ENTRY(
     InstanceKlass* ik = get_instanceKlass();
     ciEnv* env = CURRENT_ENV;
-    if (env != nullptr && env->is_precompile()) {
-      return env->compute_init_state_for_precompiled(ik);
+    if (env != nullptr && env->is_aot_compile()) {
+      return env->compute_init_state_for_aot_compile(ik);
     }
     _init_state = compute_init_state(ik);
     return _init_state;
@@ -160,8 +160,8 @@ InstanceKlass::ClassState ciInstanceKlass::compute_shared_init_state() {
 InstanceKlass::ClassState ciInstanceKlass::compute_init_state(InstanceKlass* ik) {
   ASSERT_IN_VM;
   ciEnv* env = CURRENT_ENV;
-  if (env != nullptr && env->is_precompile()) {
-    return env->compute_init_state_for_precompiled(ik);
+  if (env != nullptr && env->is_aot_compile()) {
+    return env->compute_init_state_for_aot_compile(ik);
   } else {
     return ik->init_state();
   }

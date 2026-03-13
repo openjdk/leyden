@@ -544,8 +544,8 @@ public:
   void process_invokehandle(const constantPoolHandle &cp, int index, JavaThread* thread);
   void find_dynamic_call_sites();
 
-  bool is_precompile();
-  InstanceKlass::ClassState compute_init_state_for_precompiled(InstanceKlass* ik);
+  bool is_aot_compile();
+  InstanceKlass::ClassState compute_init_state_for_aot_compile(InstanceKlass* ik);
 };
 
 #endif // SHARE_CI_CIENV_HPP

@@ -156,7 +156,7 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
   bool do_superword = UseSuperWord;
-  bool gen_preload = (task->compile_reason() == CompileTask::Reason_PrecompileForPreload);
+  bool gen_preload = (task->compile_reason() == CompileTask::Reason_AOTCompileForPreload);
   assert(!gen_preload || (AOTCodeCache::is_dumping_code() && (ClassInitBarrierMode > 0)), "sanity");
   while (!env->failing()) {
     ResourceMark rm;
