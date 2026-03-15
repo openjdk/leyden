@@ -26,6 +26,7 @@
 #include "cds/aotLogging.hpp"
 #include "cds/aotMetaspace.hpp"
 #include "cds/archiveBuilder.hpp"
+#include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
@@ -33,6 +34,8 @@
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/javaClasses.hpp"
+#include "classfile/compactHashtable.hpp"
+#include "classfile/symbolTable.hpp"
 #include "logging/log.hpp"
 #include "logging/logStream.hpp"
 #include "memory/metadataFactory.hpp"
@@ -41,8 +44,10 @@
 #include "oops/array.hpp"
 #include "oops/objArrayKlass.hpp"
 #include "runtime/arguments.hpp"
+#include "runtime/mutexLocker.hpp"
 #include "utilities/classpathStream.hpp"
 #include "utilities/formatBuffer.hpp"
+#include "utilities/resizableHashTable.hpp"
 #include "utilities/stringUtils.hpp"
 
 #include <errno.h>
@@ -153,6 +158,13 @@ public:
   AllClassLocationStreams() : _boot_cp(), _app_cp(), _module_path(), _boot_and_app_cp() {
     _boot_and_app_cp.add(_boot_cp);
     _boot_and_app_cp.add(_app_cp);
+  }
+};
+
+class URLClassLoaderClassLocationStream : public ClassLocationStream {
+public:
+  URLClassLoaderClassLocationStream(const char* classpath) : ClassLocationStream() {
+    add_paths_in_classpath(classpath);
   }
 };
 
@@ -1094,4 +1106,135 @@ void AOTClassLocationConfig::print_on(outputStream* st) const {
     }
     st->print_cr("(%-6s) [%d] = %s", type, i, path);
   }
+}
+
+typedef ResizeableHashTable<Symbol*, GrowableClassLocationArray*, AnyObj::C_HEAP, mtClass> AOTIdToURLLoaderClasspath;
+static AOTIdToURLLoaderClasspath* _aot_id_to_classpath = nullptr;
+
+static inline bool ucc_symbol_equals(URLClassLoaderClasspath* ucc, Symbol* loader_id, int len_unused) {
+  return ucc->loader_id()->equals(loader_id);
+}
+
+class ArchivedAOTIdToClasspathMap : public OffsetCompactHashtable<Symbol*, URLClassLoaderClasspath*,
+                                                                         ucc_symbol_equals> {};
+static ArchivedAOTIdToClasspathMap _archived_aot_id_to_classpath;
+
+void URLClassLoaderClasspathSupport::init() {
+  _aot_id_to_classpath = new (mtClass) AOTIdToURLLoaderClasspath(11, 1000);
+  if (CDSConfig::is_dumping_final_static_archive()) {
+    reload_runtime_map();
+  }
+}
+
+void URLClassLoaderClasspathSupport::reload_runtime_map() {
+  _archived_aot_id_to_classpath.iterate([&](URLClassLoaderClasspath* ucc) {
+    GrowableClassLocationArray* locations = new GrowableClassLocationArray(ucc->num_entries());
+    for (int i = 0; i < ucc->num_entries(); i++) {
+      locations->append(ucc->class_location_at(i));
+      log_info(class, path)("path [%d] = %s", i, ucc->class_location_at(i)->path());
+    }
+    _aot_id_to_classpath->put(ucc->loader_id(), locations);
+    return true;
+  });
+}
+
+bool URLClassLoaderClasspathSupport::add_urlclassloader_classpath(ClassLoaderData* loader_data, Symbol* aot_id, const char* classpath) {
+  assert(_aot_id_to_classpath != nullptr, "sanity check");
+  if (_aot_id_to_classpath->contains(aot_id)) {
+    // cannot allow aot_id clash; return without doing anything
+    return false;
+  }
+  GrowableClassLocationArray* locations = new GrowableClassLocationArray(10);
+  URLClassLoaderClassLocationStream css(classpath);
+  for (css.start(); css.has_next(); ) {
+    const char* path = css.get_next();
+    AOTClassLocation* cs = AOTClassLocation::allocate(JavaThread::current(), path, locations->length(), AOTClassLocation::Group::URLCLASSLOADER_CLASSPATH, false);
+    log_info(class, path)("path [%d] = %s", locations->length(), path);
+    locations->append(cs);
+  }
+  _aot_id_to_classpath->put(aot_id, locations);
+  return true;
+}
+
+class URLClassLoaderClasspathArchiver : StackObj {
+private:
+  CompactHashtableWriter* _writer;
+  ArchiveBuilder* _builder;
+public:
+  URLClassLoaderClasspathArchiver(CompactHashtableWriter* writer) : _writer(writer),
+                                                              _builder(ArchiveBuilder::current())
+  {}
+
+  bool do_entry(Symbol* loader_id, GrowableClassLocationArray* class_locations) {
+    // If the loader_id has not been archived yet, it implies no class was loaded using this loader.
+    // So there is no point to archive classpath for this loader_id.
+    if (!_builder->has_been_archived(loader_id)) {
+      return true;
+    }
+    Array<AOTClassLocation*>* archived_copy = ArchiveBuilder::new_ro_array<AOTClassLocation*>(class_locations->length());
+    for (int i = 0; i < class_locations->length(); i++) {
+      archived_copy->at_put(i, class_locations->at(i)->write_to_archive());
+      ArchivePtrMarker::mark_pointer((address*)archived_copy->adr_at(i));
+    }
+    URLClassLoaderClasspath* ucc = (URLClassLoaderClasspath*)ArchiveBuilder::ro_region_alloc(sizeof(URLClassLoaderClasspath));
+    assert(_builder->has_been_archived(loader_id), "must be");
+    Symbol* buffered_sym = _builder->get_buffered_addr(loader_id);
+    ucc->init(buffered_sym, archived_copy);
+    ArchivePtrMarker::mark_pointer(ucc->loader_id_addr());
+    ArchivePtrMarker::mark_pointer(ucc->class_locations_addr());
+    unsigned int hash = Symbol::symbol_hash(loader_id);
+    _writer->add(hash, AOTCompressedPointers::encode_not_null((address)ucc));
+    return true;
+  }
+};
+
+void URLClassLoaderClasspathSupport::archive_classpath_map() {
+  CompactHashtableStats stats;
+  CompactHashtableWriter writer(_aot_id_to_classpath->number_of_entries(), &stats);
+  URLClassLoaderClasspathArchiver archiver(&writer);
+  _aot_id_to_classpath->iterate(&archiver);
+  writer.dump(&_archived_aot_id_to_classpath, "archived prelinked table");
+}
+
+void URLClassLoaderClasspathSupport::serialize_classpath_map_table_header(SerializeClosure* soc) {
+  _archived_aot_id_to_classpath.serialize_header(soc);
+}
+
+bool URLClassLoaderClasspathSupport::claim_and_verify_archived_classpath(ClassLoaderData* loader_data, Symbol* aot_id, const char* classpath) {
+  ResourceMark rm;
+  assert(aot_id != nullptr, "sanity check");
+  const char* aot_id_str = aot_id->as_C_string();
+  unsigned int hash = Symbol::symbol_hash(aot_id);
+  URLClassLoaderClasspath* archived_classpath = _archived_aot_id_to_classpath.lookup(aot_id, hash, /*len*/0); // len is ignored
+  if (archived_classpath == nullptr) {
+    aot_log_trace(aot)("No archived entry found for URLClassLoader (id=%s)", aot_id_str);
+    return false;
+  }
+
+  {
+    // Acquire lock before loader_data claims the archived_classpath
+    MutexLocker mu(URLClassLoaderClasspath_lock, Mutex::_no_safepoint_check_flag);
+    if (archived_classpath->cld_owner() != nullptr) {
+      aot_log_warning(aot)("Duplicate URLClassLoader with same classpath found");
+      return false;
+    }
+    archived_classpath->set_cld_owner(loader_data);
+  }
+
+  URLClassLoaderClassLocationStream uccs(classpath);
+  uccs.start();
+  for (int i = 0; i < archived_classpath->num_entries(); i++) {
+    AOTClassLocation* location = archived_classpath->class_location_at(i);
+    const char* archived_path = location->path();
+    if (!uccs.has_next()) {
+      aot_log_warning(aot)("URLClassLoader (id=%s) classpath validation failed (reason: classpath has fewer elements than expected)", aot_id_str);
+      return false;
+    }
+    const char* runtime_path = uccs.get_next();
+    if (!location->check(runtime_path, true)) {
+      aot_log_warning(aot)("URLClassLoader (id=%s) classpath validation failed", aot_id_str);
+      return false;
+    }
+  }
+  return true;
 }

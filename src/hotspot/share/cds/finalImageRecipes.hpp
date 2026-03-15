@@ -34,6 +34,78 @@ class Klass;
 template <typename T> class GrowableArray;
 template <typename T> class Array;
 
+class InstanceKlassRecipe {
+private:
+  InstanceKlass* _ik;
+  Array<int>* _cp_recipe;
+  int _flags;
+public:
+  InstanceKlassRecipe() : _ik(nullptr), _cp_recipe(nullptr), _flags(0) {} // required by GrowableArray
+  InstanceKlassRecipe(InstanceKlass* ik, Array<int>* cp_recipe, int flags) :
+    _ik(ik), _cp_recipe(cp_recipe), _flags(flags) {}
+
+  InstanceKlass* instance_klass() const { return _ik; }
+  Array<int>* cp_recipe() const { return _cp_recipe; }
+  int flags() const { return _flags; }
+
+  void mark_pointers() {
+    ArchivePtrMarker::mark_pointer(&_ik);
+    ArchivePtrMarker::mark_pointer(&_cp_recipe);
+  }
+};
+
+class FinalImageRecipeTable {
+private:
+  Array<InstanceKlassRecipe>* _boot1; // boot classes in java.base module
+  Array<InstanceKlassRecipe>* _boot2; // boot classes in all other (named and unnamed) modules,
+                                 // including classes from -Xbootclasspath/a
+  Array<InstanceKlassRecipe>* _platform;
+  Array<InstanceKlassRecipe>* _app;
+
+  Array<InstanceKlassRecipe>* _aot_unsafe_custom_loader_classes;
+
+  template<typename Function>
+  void iterate_array(Function fn, Array<InstanceKlassRecipe>* array) {
+    if (array != nullptr) {
+      for (int i = 0; i < array->length(); i++) {
+        fn(array->adr_at(i));
+      }
+    }
+  }
+
+public:
+  FinalImageRecipeTable() :
+    _boot1(nullptr), _boot2(nullptr),
+    _platform(nullptr), _app(nullptr),
+    _aot_unsafe_custom_loader_classes(nullptr) {}
+
+  Array<InstanceKlassRecipe>* boot1()    const { return _boot1;    }
+  Array<InstanceKlassRecipe>* boot2()    const { return _boot2;    }
+  Array<InstanceKlassRecipe>* platform() const { return _platform; }
+  Array<InstanceKlassRecipe>* app()      const { return _app;      }
+  Array<InstanceKlassRecipe>* aot_unsafe_custom_loader_classes() const { return _aot_unsafe_custom_loader_classes; }
+
+  void set_boot1   (Array<InstanceKlassRecipe>* value) { _boot1    = value; }
+  void set_boot2   (Array<InstanceKlassRecipe>* value) { _boot2    = value; }
+  void set_platform(Array<InstanceKlassRecipe>* value) { _platform = value; }
+  void set_app     (Array<InstanceKlassRecipe>* value) { _app      = value; }
+  void set_aot_unsafe_custom_loader_classes(Array<InstanceKlassRecipe>* value) { _aot_unsafe_custom_loader_classes = value; }
+
+  template<typename Function>
+  void iterate_builtin_classes(Function fn) {
+    iterate_array(fn, _boot1);
+    iterate_array(fn, _boot2);
+    iterate_array(fn, _platform);
+    iterate_array(fn, _app);
+  }
+  template<typename Function>
+  void iterate_all_classes(Function fn) {
+    iterate_builtin_classes(fn);
+    iterate_array(fn, _aot_unsafe_custom_loader_classes);
+  }
+  void mark_pointers();
+};
+
 // This class is used for transferring information from the AOTConfiguration file (aka the "preimage")
 // to the JVM that creates the AOTCache (aka the "final image").
 //   - The recipes are recorded when CDSConfig::is_dumping_preimage_static_archive() is true.
@@ -49,7 +121,8 @@ class FinalImageRecipes {
 
   // A list of all the archived classes from the preimage. We want to transfer all of these
   // into the final image.
-  Array<Klass*>* _all_klasses;
+  //Array<Klass*>* _all_klasses;
+  FinalImageRecipeTable* _class_table;
 
   // For each klass k _all_klasses->at(i): _cp_recipes->at(i) lists all the {klass,field,method,indy}
   // cp indices that were resolved for k during the training run; _flags->at(i) has extra info about k.
@@ -81,7 +154,7 @@ class FinalImageRecipes {
 
   static GrowableArray<TmpDynamicProxyClassInfo>* _tmp_dynamic_proxy_classes;
 
-  FinalImageRecipes() : _all_klasses(nullptr), _cp_recipes(nullptr), _flags(nullptr),
+  FinalImageRecipes() : _class_table(nullptr), _cp_recipes(nullptr), _flags(nullptr),
                         _reflect_klasses(nullptr), _reflect_flags(nullptr),
                         _dynamic_proxy_classes(nullptr) {}
 
@@ -89,16 +162,32 @@ class FinalImageRecipes {
 
   // Called when dumping preimage
   void record_all_classes();
-  void record_recipes_for_constantpool();
+  void record_aot_safe_custom_loader_classes();
+  Array<int>* record_recipe_for_constantpool(InstanceKlass* ik, int& flags);
+  //void record_recipes_for_constantpool();
   void record_recipes_for_reflection_data();
   void record_recipes_for_dynamic_proxies();
 
   // Called when dumping final image
+  void load_builtin_loader_classes(TRAPS);
+  void load_aot_safe_custom_loader_classes(TRAPS);
+  void load_aot_unsafe_custom_loader_classes(TRAPS);
+  void load_classes_in_table(Array<InstanceKlassRecipe>* classes, const char* category_name, Handle loader, TRAPS);
+  void initiate_loading(JavaThread* current, const char* category_name, Handle initiating_loader, Array<InstanceKlassRecipe>* classes);
+  void link_classes(JavaThread* current);
+  void link_classes_impl(TRAPS);
+  void link_classes_in_table(Array<InstanceKlassRecipe>* classes, TRAPS);
+
   void apply_recipes_impl(TRAPS);
-  void load_all_classes(TRAPS);
+  void load_and_link_all_classes(TRAPS);
+  void apply_cp_recipes_for_class(JavaThread* current, InstanceKlassRecipe* ikr);
   void apply_recipes_for_constantpool(JavaThread* current);
   void apply_recipes_for_reflection_data(JavaThread* current);
   void apply_recipes_for_dynamic_proxies(TRAPS);
+
+  Array<InstanceKlassRecipe>* write_classes(oop class_loader, bool is_javabase, bool is_builtin_loader);
+
+  static void exit_on_exception(JavaThread* current);
 
 public:
   static void serialize(SerializeClosure* soc);

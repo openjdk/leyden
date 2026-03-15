@@ -279,6 +279,7 @@ private:
 
   void iterate_sorted_roots(MetaspaceClosure* it);
   void sort_klasses();
+  GrowableArray<Klass*>* sort_klasses_by_hierarchy();
   static int compare_symbols_by_address(Symbol** a, Symbol** b);
   static int compare_klass_by_name(Klass** a, Klass** b);
   void update_hidden_class_loader_type(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN;

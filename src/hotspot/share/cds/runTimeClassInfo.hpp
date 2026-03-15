@@ -268,12 +268,16 @@ public:
 
   // Used by RunTimeSharedDictionary to implement OffsetCompactHashtable::EQUALS
   static inline bool EQUALS(
-       const RunTimeClassInfo* value, Symbol* key, int len_unused) {
+       const RunTimeClassInfo* value, Symbol* key, int is_aot_unsafe_loader_class) {
 #if INCLUDE_CDS
-    return (value->klass()->name() == key);
-#else
-    return false;
+    if (value->klass()->name() == key) {
+      if (is_aot_unsafe_loader_class) {
+        return !value->klass()->is_defined_by_aot_safe_custom_loader();
+      }
+      return true;
+    }
 #endif
+    return false;
   }
 };
 

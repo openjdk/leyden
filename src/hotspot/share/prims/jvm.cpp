@@ -23,12 +23,15 @@
  */
 
 #include "cds/aotClassInitializer.hpp"
+#include "cds/aotClassLocation.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotMetaspace.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/dynamicArchive.hpp"
+#include "cds/finalImageRecipes.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.hpp"
 #include "cds/lambdaProxyClassDictionary.hpp"
@@ -2241,6 +2244,43 @@ JVM_ENTRY_PROF(jobject, JVM_AssertionStatusDirectives, JVM_AssertionStatusDirect
   return JNIHandles::make_local(THREAD, asd);
 JVM_END
 
+JVM_ENTRY_PROF(jboolean, JVM_RegisterAsAOTCompatibleLoader, JVM_RegisterAsAOTCompatibleLoader(JNIEnv *env, jobject loader))
+  if (CDSConfig::is_using_aot_linked_classes() && CDSConfig::supports_custom_loaders()) {
+    Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
+    ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
+    AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
+    AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
+    return JNI_TRUE;
+  }
+  return JNI_FALSE;
+JVM_END
+
+JVM_ENTRY_PROF(jboolean, JVM_RegisterURLClassLoaderAsAOTSafeLoader, JVM_RegisterURLClassLoaderAsAOTSafeLoader(JNIEnv *env, jobject loader, jstring aot_id, jstring classpath))
+  if (CDSConfig::supports_custom_loaders()) {
+    ResourceMark rm(THREAD);
+    Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
+    ClassLoaderData *loader_data = SystemDictionary::register_loader(h_loader);
+    assert(loader_data->aot_identity() == nullptr, "loader's aot identity should not be set");
+    const char* aot_id_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(aot_id));
+    Symbol* aot_id_symbol = SymbolTable::new_symbol(aot_id_str);
+    const char *classpath_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(classpath));
+    if (CDSConfig::is_dumping_preimage_static_archive()) {
+      if (!URLClassLoaderClasspathSupport::add_urlclassloader_classpath(loader_data, aot_id_symbol, classpath_str)) {
+        return JNI_FALSE;
+      }
+      loader_data->set_aot_identity(aot_id_symbol);
+    } else if (CDSConfig::is_using_aot_linked_classes()) {
+      if (!URLClassLoaderClasspathSupport::claim_and_verify_archived_classpath(loader_data, aot_id_symbol, classpath_str)) {
+        return JNI_FALSE;
+      }
+      loader_data->set_aot_identity(aot_id_symbol);
+      AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
+      AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, CHECK_AND_CLEAR_(JNI_FALSE));
+    }
+    return JNI_TRUE;
+  }
+  return JNI_FALSE;
+JVM_END
 // Verification ////////////////////////////////////////////////////////////////////////////////
 
 // Reflection for the verifier /////////////////////////////////////////////////////////////////

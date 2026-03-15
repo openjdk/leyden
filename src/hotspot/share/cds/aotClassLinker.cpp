@@ -28,6 +28,7 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classLoader.hpp"
@@ -45,6 +46,12 @@ AOTClassLinker::ClassesTable* AOTClassLinker::_vm_classes = nullptr;
 AOTClassLinker::ClassesTable* AOTClassLinker::_candidates = nullptr;
 GrowableArrayCHeap<InstanceKlass*, mtClassShared>* AOTClassLinker::_sorted_candidates = nullptr;
 
+static const unsigned INITIAL_TABLE_SIZE = 997; // prime number
+static const unsigned MAX_TABLE_SIZE     = 10000;
+
+ClassLoaderIdToClassTableMap * _custom_loader_prelinked_table;
+ArchivedCustomLoaderClassTableMap _archived_custom_loader_prelinked_classes_map;
+
 #ifdef ASSERT
 bool AOTClassLinker::is_initialized() {
   assert(CDSConfig::is_dumping_archive(), "AOTClassLinker is for CDS dumping only");
@@ -58,6 +65,8 @@ void AOTClassLinker::initialize() {
   _vm_classes = new (mtClass)ClassesTable();
   _candidates = new (mtClass)ClassesTable();
   _sorted_candidates = new GrowableArrayCHeap<InstanceKlass*, mtClassShared>(1000);
+
+  _custom_loader_prelinked_table = new (mtClass) ClassLoaderIdToClassTableMap(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
 
   for (auto id : EnumRange<vmClassID>{}) {
     add_vm_class(vmClasses::klass_at(id));
@@ -113,6 +122,11 @@ void AOTClassLinker::add_new_candidate(InstanceKlass* ik) {
   _candidates->put_when_absent(ik, true);
   _sorted_candidates->append(ik);
 
+  Symbol* loader_id;
+  loader_id = ik->cl_aot_identity();
+  if (loader_id != nullptr) {
+    _custom_loader_prelinked_table->add_class(loader_id, ik);
+  }
   if (log_is_enabled(Info, aot, link)) {
     ResourceMark rm;
     log_info(aot, link)("%s %s %p", class_category_name(ik), ik->external_name(), ik);
@@ -127,7 +141,7 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
   assert(is_initialized(), "sanity");
   assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
 
-  if (!SystemDictionaryShared::is_builtin(ik)) {
+  if (!SystemDictionaryShared::is_builtin(ik) && !ik->is_defined_by_aot_safe_custom_loader()) {
     // not loaded by a class loader which we know about
     return false;
   }
@@ -190,6 +204,20 @@ void AOTClassLinker::add_candidates() {
   }
 }
 
+ArchivedCustomLoaderClassTable* AOTClassLinker::get_archived_prelinked_table(Symbol* aot_id) {
+  return _archived_custom_loader_prelinked_classes_map.get_class_list(aot_id);
+}
+
+void AOTClassLinker::all_symbols_do(MetaspaceClosure* it) {
+  _custom_loader_prelinked_table->iterate_all([&](Symbol*& loader_id, ClassList*& class_list) {
+    it->push(&loader_id);
+  });
+}
+
+void AOTClassLinker::serialize_prelinked_classes_map_header(SerializeClosure* soc) {
+  _archived_custom_loader_prelinked_classes_map.serialize_header(soc);
+}
+
 void AOTClassLinker::write_to_archive() {
   assert(is_initialized(), "sanity");
   assert_at_safepoint();
@@ -200,6 +228,19 @@ void AOTClassLinker::write_to_archive() {
     table->set_boot2(write_classes(nullptr, false));
     table->set_platform(write_classes(SystemDictionary::java_platform_loader(), false));
     table->set_app(write_classes(SystemDictionary::java_system_loader(), false));
+
+    _custom_loader_prelinked_table->write_to_archive(&_archived_custom_loader_prelinked_classes_map, "archived prelinked table");
+
+    if (log_is_enabled(Info, aot, link)) {
+      ResourceMark rm;
+      _custom_loader_prelinked_table->iterate_all([&](Symbol* loader_id, ClassList* class_list) {
+        log_info(aot, link)("Class loader \"%s\" has %d classes in prelinked table", loader_id->as_C_string(), class_list->length());
+        for (int i = 0; i < class_list->length(); i++) {
+          InstanceKlass* ik = class_list->at(i);
+          log_info(aot, link)("  %s", ik->external_name());
+        }
+      });
+    }
   }
 }
 
@@ -281,6 +322,8 @@ const char* AOTClassLinker::class_category_name(Klass* k) {
         return "plat";
       } else if (loader == SystemDictionary::java_system_loader()) {
         return "app";
+      } else if (k->cl_aot_identity() != nullptr) {
+        return "aotsafe_custom_lodaer";
       } else {
         return "unreg";
       }

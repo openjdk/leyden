@@ -322,6 +322,44 @@ int ArchiveBuilder::compare_klass_by_name(Klass** a, Klass** b) {
 void ArchiveBuilder::sort_klasses() {
   aot_log_info(aot)("Sorting classes ... ");
   _klasses->sort(compare_klass_by_name);
+  GrowableArray<Klass*>* unused = _klasses;
+  _klasses = sort_klasses_by_hierarchy();
+  delete unused;
+}
+
+static const int INITIAL_TABLE_SIZE = 15889;
+using ClassesTable = HashTable<Klass*, bool, INITIAL_TABLE_SIZE, AnyObj::C_HEAP, mtClassShared>;
+ClassesTable* _classes_added = nullptr;
+
+static void add_to_sorted_list(GrowableArray<Klass*>* sorted_list, Klass* k) {
+  if (k == nullptr) {
+    return;
+  }
+  if (_classes_added->get(k) != nullptr) {
+    return;
+  }
+  add_to_sorted_list(sorted_list, k->super());
+
+  if (k->is_instance_klass()) {
+    InstanceKlass* ik = (InstanceKlass*)k;
+    Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+    int num_interfaces = interfaces->length();
+    for (int index = 0; index < num_interfaces; index++) {
+      InstanceKlass* intf = interfaces->at(index);
+      add_to_sorted_list(sorted_list, intf);
+    }
+  }
+  _classes_added->put_when_absent(k, true);
+  sorted_list->append(k);
+}
+
+GrowableArray<Klass*>* ArchiveBuilder::sort_klasses_by_hierarchy() {
+  GrowableArray<Klass*>* sorted_by_hierarchy = new (mtClassShared) GrowableArray<Klass*>(_klasses->length(), mtClassShared);
+  _classes_added = new (mtClass)ClassesTable();
+  for (int i = 0; i < _klasses->length(); i++) {
+    add_to_sorted_list(sorted_by_hierarchy, _klasses->at(i));
+  }
+  return sorted_by_hierarchy;
 }
 
 address ArchiveBuilder::reserve_buffer() {

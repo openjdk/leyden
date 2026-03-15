@@ -337,8 +337,14 @@ public abstract class ClassLoader {
     private final ConcurrentHashMap<String, NamedPackage> packages
             = new ConcurrentHashMap<>();
 
-    /*
+    /**
      * Returns a named package for the given module.
+     *
+     * @param pn
+     *        package name
+     * @param m
+     *        module
+     * @return NamedPackage
      */
     private NamedPackage getNamedPackage(String pn, Module m) {
         NamedPackage p = packages.get(pn);
@@ -2650,6 +2656,41 @@ public abstract class ClassLoader {
         classes.trimToSize();
         classLoaderValueMap = null;
     }
+
+    private String aotIdentity = null;
+
+    /**
+     * Set unique and repeatable ID of the classloader
+     *
+     * @param  id
+     *         unique id of the classloader object.
+     */
+    public void setAOTIdentity(String id) {
+        aotIdentity = id;
+        //registerAsAOTCompatibleLoader();
+    }
+
+    /**
+     * Returns unique and repeatable ID of the classloader
+     *
+     * @return unique id of the classloader object.
+     */
+    public String getAOTIdentity() {
+        return aotIdentity;
+    }
+
+    /**
+     * Returns true if the parent is a builtin loader
+     *
+     * @return true if the parent is a builtin loader
+     */
+    @SuppressWarnings("this-escape")
+    public final boolean hasBuiltinLoaderAsParent() {
+        ClassLoader parent = getParent();
+        return parent == null || parent == getBuiltinPlatformClassLoader() || parent == getBuiltinAppClassLoader();
+    }
+
+    private native boolean registerAsAOTCompatibleLoader();
 }
 
 /*

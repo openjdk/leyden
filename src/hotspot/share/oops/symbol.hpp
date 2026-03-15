@@ -197,6 +197,10 @@ class Symbol : public MetaspaceObj {
 
   int utf8_length() const { return length(); }
 
+  bool equals(const Symbol* sym) {
+    return equals((const char*)sym->bytes(), sym->utf8_length());
+  }
+
   // Compares the symbol with a string.
   bool equals(const char* str, int len) const {
     int l = utf8_length();
@@ -325,6 +329,9 @@ class Symbol : public MetaspaceObj {
 
   static size_t _total_count;
 #endif
+
+  static unsigned symbol_hash(Symbol* const& sym);
+  static bool symbol_equals(Symbol* const& sym1, Symbol* const& sym2);
 };
 
 // Note: this comparison is used for vtable sorting only; it doesn't matter

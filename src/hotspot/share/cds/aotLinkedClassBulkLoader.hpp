@@ -76,6 +76,13 @@ public:
   static bool is_initializing_classes_early();
   static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;
   static void print_counters_on(outputStream* st) NOT_CDS_RETURN;
+  static void mark_initiating_loader(JavaThread* currentThread, oop loader, ResizeableHashTable<ClassLoaderData*, bool>& processed);
+
+  static void preload_classes_for_loader(ClassLoaderData* loader_data, TRAPS);
+  static void preload_classes_for_loader_impl(Handle loader_obj, TRAPS);
+  static void mark_initiating_loader(JavaThread* currentThread, oop loader);
+  static void link_classes_for_loader(ClassLoaderData* loader_data, TRAPS);
+  static void link_classes_for_loader_impl(Handle loader_obj, TRAPS);
 };
 
 #endif // SHARE_CDS_AOTLINKEDCLASSBULKLOADER_HPP
