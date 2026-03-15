@@ -1349,7 +1349,7 @@ CodeBuffer* PhaseOutput::init_buffer() {
   // class HandlerImpl is platform-specific and defined in the *.ad files.
   int deopt_handler_req     = HandlerImpl::size_deopt_handler()     + MAX_stubs_size; // add marginal slop for handler
   stub_req += MAX_stubs_size;   // ensure per-stub margin
-  code_req += max_inst_size();  // ensure per-instruction margin
+  code_req += MAX_inst_size;    // ensure per-instruction margin
 
   if (StressCodeBuffers)
     code_req = const_req = stub_req = deopt_handler_req = 0x10;  // force expansion
@@ -1525,7 +1525,7 @@ void PhaseOutput::fill_buffer(C2_MacroAssembler* masm, uint* blk_starts) {
           last_inst++;
           C->cfg()->map_node_to_block(nop, block);
           // Ensure enough space.
-          masm->code()->insts()->maybe_expand_to_ensure_remaining(max_inst_size());
+          masm->code()->insts()->maybe_expand_to_ensure_remaining(MAX_inst_size);
           if ((masm->code()->blob() == nullptr) || (!CompileBroker::should_compile_new_jobs())) {
             C->record_failure("CodeCache is full");
             return;
@@ -1651,7 +1651,7 @@ void PhaseOutput::fill_buffer(C2_MacroAssembler* masm, uint* blk_starts) {
       }
 
       // Verify that there is sufficient space remaining
-      masm->code()->insts()->maybe_expand_to_ensure_remaining(max_inst_size());
+      masm->code()->insts()->maybe_expand_to_ensure_remaining(MAX_inst_size);
       if ((masm->code()->blob() == nullptr) || (!CompileBroker::should_compile_new_jobs())) {
         C->record_failure("CodeCache is full");
         return;
@@ -3116,7 +3116,7 @@ uint PhaseOutput::scratch_emit_size(const Node* n) {
   // expensive, since it has to grab the code cache lock.
   BufferBlob* blob = this->scratch_buffer_blob();
   assert(blob != nullptr, "Initialize BufferBlob at start");
-  assert(blob->size() > max_inst_size(), "sanity");
+  assert(blob->size() > MAX_inst_size, "sanity");
   relocInfo* locs_buf = scratch_locs_memory();
   address blob_begin = blob->content_begin();
   address blob_end   = (address)locs_buf;
@@ -3400,17 +3400,3 @@ void PhaseOutput::print_statistics() {
   Scheduling::print_statistics();
 }
 #endif
-
-int PhaseOutput::max_inst_size() {
-  if (AOTCodeCache::maybe_dumping_code()) {
-    // See the comment in output.hpp.
-    return 16384;
-  } else {
-    return mainline_MAX_inst_size;
-  }
-}
-
-int PhaseOutput::max_inst_gcstub_size() {
-  assert(mainline_MAX_inst_size <= max_inst_size(), "Sanity");
-  return mainline_MAX_inst_size;
-}
