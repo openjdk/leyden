@@ -61,9 +61,6 @@ CompileTask::CompileTask(int compile_id,
   _is_complete = false;
   _is_success = false;
 
-  _next = nullptr;
-  _prev = nullptr;
-
   _hot_count = hot_count;
   _time_created = os::elapsed_counter();
   _time_queued = 0;
@@ -189,17 +186,36 @@ void CompileTask::print_tty() {
   print(tty);
 }
 
+void CompileTask::print_post(outputStream* st) {
+  bool is_osr_method = osr_bci() != InvocationEntryBci;
+  bool is_aot = is_aot_load();
+  bool is_preload = preload();
+  if (is_aot_compile()) {
+    // Tag aot compilation too
+    is_aot = true;
+    is_preload = (compile_reason() == Reason_AOTCompileForPreload);
+  }
+  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(),
+             is_osr_method, osr_bci(), is_blocking(), is_aot, is_preload,
+             compiler()->name(), nullptr, false /* short_form */, true /* cr */,
+             true /* after_compile_details */,
+             _num_inlined_bytecodes, _nm_total_size, _nm_insts_size,
+             _time_created, _time_queued, _time_started, _time_finished,
+             _aot_load_start, _aot_load_finish);
+}
+
 // ------------------------------------------------------------------
 // CompileTask::print_impl
 void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, int comp_level,
                              bool is_osr_method, int osr_bci, bool is_blocking, bool is_aot, bool is_preload,
                              const char* compiler_name,
-                             const char* msg, bool short_form, bool cr,
+                             const char* msg, bool short_form, bool cr, bool after_compile_details,
+                             int inlined_bytecodes, int nm_total_size, int nm_insts_size,
                              jlong time_created, jlong time_queued, jlong time_started, jlong time_finished,
                              jlong aot_load_start, jlong aot_load_finish) {
   // Use stringStream to avoid breaking the line
   stringStream sst;
-  if (!short_form) {
+  if (after_compile_details) {
     {
       stringStream ss;
       ss.print(UINT64_FORMAT, (uint64_t) tty->time_stamp().milliseconds());
@@ -233,7 +249,17 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
       }
       sst.print("%7s ", ss.freeze());
     }
-    sst.print("  ");
+  } else if (!short_form) {
+    // Print current time
+    sst.print(UINT64_FORMAT " ", (uint64_t) tty->time_stamp().milliseconds());
+    if (Verbose && time_queued != 0) {
+      // Print time in queue and time being processed by compiler thread
+      jlong now = os::elapsed_counter();
+      sst.print("%.0f ", TimeHelper::counter_to_millis(now-time_queued));
+      if (time_started != 0) {
+        sst.print("%.0f ", TimeHelper::counter_to_millis(now-time_started));
+      }
+    }
   }
 
   // print compiler name if requested
@@ -271,14 +297,23 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
   if (method == nullptr) {
     sst.print("(method)");
   } else {
-    method->print_short_name(&sst);
+    if (after_compile_details) {
+      sst.print("%s", method->name_and_sig_as_C_string());
+    } else {
+      method->print_short_name(&sst);
+    }
     if (is_osr_method) {
       sst.print(" @ %d", osr_bci);
     }
-    if (method->is_native())
+    if (method->is_native()) {
       sst.print(" (native)");
-    else
+    } else {
       sst.print(" (%d bytes)", method->code_size());
+    }
+  }
+  if (after_compile_details) {
+    sst.print(" (inlined %d)", inlined_bytecodes);
+    sst.print(" (size %d/%d)", nm_total_size, nm_insts_size);
   }
 
   if (msg != nullptr) {
@@ -298,11 +333,12 @@ void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool
   bool is_preload = preload();
   if (is_aot_compile()) {
     // Tag aot compilation too
+    is_aot = true;
     is_preload = (compile_reason() == Reason_AOTCompileForPreload);
-    is_aot = !is_preload;
   }
-  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot, is_preload,
-             compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished, _aot_load_start, _aot_load_finish);
+  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(),
+             is_osr_method, osr_bci(), is_blocking(), is_aot, is_preload,
+             compiler()->name(), msg, short_form, cr);
 }
 
 // ------------------------------------------------------------------

@@ -2479,6 +2479,10 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   elapsedTimer time;
 
   DirectiveSet* directive = task->directive();
+  if (directive->PrintCompilationOption) {
+    ResourceMark rm;
+    task->print_tty();
+  }
 
   CompilerThread* thread = CompilerThread::current();
   ResourceMark rm(thread);
@@ -2493,7 +2497,6 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   bool is_osr = (osr_bci != standard_entry_bci);
   bool should_log = (thread->log() != nullptr);
   bool should_break = false;
-  bool should_print_compilation = PrintCompilation || directive->PrintCompilationOption;
   const int task_level = task->comp_level();
   AbstractCompiler* comp = task->compiler();
   {
@@ -2694,14 +2697,9 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
 
   collect_statistics(thread, time, task);
 
-  if (PrintCompilation && PrintCompilation2) {
-    tty->print("%7d ", (int) tty->time_stamp().milliseconds());  // print timestamp
-    tty->print("%4d ", compile_id);    // print compilation number
-    tty->print("%s ", (is_osr ? "%" : (task->is_aot_load() ? (task->preload() ? "P" : "A") : " ")));
-    if (task->is_success()) {
-      tty->print("size: %d(%d) ", task->nm_total_size(), task->nm_insts_size());
-    }
-    tty->print_cr("time: %d inlined: %d bytes", (int)time.milliseconds(), task->num_inlined_bytecodes());
+  if (PrintCompilation2) {
+    ResourceMark rm;
+    task->print_post(tty);
   }
 
   Log(compilation, codecache) log;
@@ -2737,11 +2735,6 @@ void CompileBroker::invoke_compiler_on_method(CompileTask* task) {
   // only after the setting of the bits. See also 14012000 above.
   method->clear_queued_for_compilation();
   method->set_pending_queue_processed(false);
-
-  if (should_print_compilation) {
-    ResourceMark rm;
-    task->print_tty();
-  }
 }
 
 /**
@@ -3098,24 +3091,6 @@ static void print_queue_info(outputStream* st, CompileQueue* queue) {
       }
     }
     st->cr();
-
-//    for (JavaThread* jt : *ThreadsSMRSupport::get_java_thread_list()) {
-//      guarantee(jt != nullptr, "");
-//      if (jt->is_Compiler_thread()) {
-//        CompilerThread* ct = (CompilerThread*)jt;
-//
-//        guarantee(ct != nullptr, "");
-//        if (ct->queue() == queue) {
-//          ResourceMark rm;
-//          CompileTask* task = ct->task();
-//          st->print("    %s: ", ct->name_raw());
-//          if (task != nullptr) {
-//            task->print(st, nullptr, true /*short_form*/, false /*cr*/);
-//          }
-//          st->cr();
-//        }
-//      }
-//    }
   }
 }
 void CompileBroker::print_statistics_on(outputStream* st) {

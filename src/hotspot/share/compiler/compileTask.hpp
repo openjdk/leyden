@@ -243,7 +243,10 @@ private:
                                       bool is_aot = false, bool is_preload = false,
                                       const char* compiler_name = nullptr,
                                       const char* msg = nullptr, bool short_form = false, bool cr = true,
-                                      jlong time_created = 0, jlong time_queued = 0, jlong time_started = 0, jlong time_finished = 0,
+                                      bool after_compile_details = false,
+                                      int inlined_bytecodes = 0, int nm_total_size = 0, int nm_insts_size = 0,
+                                      jlong time_created = 0, jlong time_queued = 0,
+                                      jlong time_started = 0, jlong time_finished = 0,
                                       jlong aot_load_start = 0, jlong aot_load_finish = 0);
 
 public:
@@ -263,6 +266,7 @@ public:
   static void  print_inline_indent(int inline_level, outputStream* st = tty);
 
   void         print_tty();
+  void         print_post(outputStream* st);
   void         print_line_on_error(outputStream* st, char* buf, int buflen);
 
   void         log_task(xmlStream* log);
