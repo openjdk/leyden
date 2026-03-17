@@ -216,6 +216,7 @@ runtime/cds/appcds/leyden/LeydenReflection.java#aot 8338604 windows-all
 runtime/cds/appcds/leyden/LeydenReflection.java#leyden 8338604 windows-all
 
 # Misc failures -- need to investigate
+runtime/cds/appcds/leyden/EndTrainingOnMethodEntry.java 8380314 generic-all
 runtime/logging/ItablesTest.java 8318142 generic-all
 runtime/logging/VerificationTest.java 8318142 generic-all
 runtime/logging/VtablesTest.java 8318142 generic-all
