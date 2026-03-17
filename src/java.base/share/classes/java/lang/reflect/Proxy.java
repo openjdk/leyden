@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,6 +25,7 @@
 
 package java.lang.reflect;
 
+import java.lang.classfile.ClassFile;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -481,7 +482,7 @@ public class Proxy implements java.io.Serializable {
                                     ? proxyClassNamePrefix
                                     : context.packageName() + "." + proxyClassNamePrefix;
             ClassLoader loader = context.module().getClassLoader();
-            int accessFlags = context.accessFlags() | Modifier.FINAL;
+            int accessFlags = context.accessFlags() | Modifier.FINAL | ClassFile.ACC_SUPER;
 
             if (archivedData != null) {
                 Class<?> pc = archivedData.getArchivedProxyClass(loader, packagePrefix, interfaces);

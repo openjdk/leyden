@@ -55,7 +55,6 @@
 #include "prims/jvmtiExport.hpp"
 #include "prims/methodHandles.hpp"
 #include "prims/nativeLookup.hpp"
-#include "runtime/atomicAccess.hpp"
 #include "runtime/continuation.hpp"
 #include "runtime/deoptimization.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
@@ -77,6 +76,7 @@
 #include "utilities/checkedCast.hpp"
 #include "utilities/copy.hpp"
 #include "utilities/events.hpp"
+#include "utilities/exceptions.hpp"
 #if INCLUDE_JFR
 #include "jfr/jfr.inline.hpp"
 #endif
@@ -472,7 +472,7 @@ JRT_ENTRY_PROF(void, InterpreterRuntime, throw_StackOverflowError,
                                  vmClasses::StackOverflowError_klass(),
                                  CHECK);
   // Increment counter for hs_err file reporting
-  AtomicAccess::inc(&Exceptions::_stack_overflow_errors);
+  Exceptions::increment_stack_overflow_errors();
   // Remove the ScopedValue bindings in case we got a StackOverflowError
   // while we were trying to manipulate ScopedValue bindings.
   current->clear_scopedValueBindings();
@@ -487,7 +487,7 @@ JRT_ENTRY_PROF(void, InterpreterRuntime, throw_delayed_StackOverflowError,
   java_lang_Throwable::set_message(exception(),
           Universe::delayed_stack_overflow_error_message());
   // Increment counter for hs_err file reporting
-  AtomicAccess::inc(&Exceptions::_stack_overflow_errors);
+  Exceptions::increment_stack_overflow_errors();
   // Remove the ScopedValue bindings in case we got a StackOverflowError
   // while we were trying to manipulate ScopedValue bindings.
   current->clear_scopedValueBindings();
@@ -858,9 +858,7 @@ void InterpreterRuntime::resolve_get_put(Bytecodes::Code bytecode, int field_ind
   }
 
   ResolvedFieldEntry* entry = pool->resolved_field_entry_at(field_index);
-  entry->set_flags(info.access_flags().is_final(), info.access_flags().is_volatile());
-  entry->fill_in(info.field_holder(), info.offset(),
-                 checked_cast<u2>(info.index()), checked_cast<u1>(state),
+  entry->fill_in(info, checked_cast<u1>(state),
                  static_cast<u1>(get_code), static_cast<u1>(put_code));
 }
 
@@ -1370,10 +1368,9 @@ JRT_LEAF_PROF(void, InterpreterRuntime, at_unwind, InterpreterRuntime::at_unwind
 JRT_END
 
 JRT_ENTRY_PROF(void, InterpreterRuntime, post_field_access, InterpreterRuntime::post_field_access(JavaThread* current, oopDesc* obj,
-                                                                               ResolvedFieldEntry *entry))
+                                                                               ResolvedFieldEntry* entry))
 
   // check the access_flags for the field in the klass
-
   InstanceKlass* ik = entry->field_holder();
   int index = entry->field_index();
   if (!ik->field_status(index).is_access_watched()) return;
@@ -1393,11 +1390,10 @@ JRT_ENTRY_PROF(void, InterpreterRuntime, post_field_access, InterpreterRuntime::
 JRT_END
 
 JRT_ENTRY_PROF(void, InterpreterRuntime, post_field_modification, InterpreterRuntime::post_field_modification(JavaThread* current, oopDesc* obj,
-                                                                                           ResolvedFieldEntry *entry, jvalue *value))
-
-  InstanceKlass* ik = entry->field_holder();
+                                                                                           ResolvedFieldEntry* entry, jvalue* value))
 
   // check the access_flags for the field in the klass
+  InstanceKlass* ik = entry->field_holder();
   int index = entry->field_index();
   // bail out if field modifications are not watched
   if (!ik->field_status(index).is_modification_watched()) return;
