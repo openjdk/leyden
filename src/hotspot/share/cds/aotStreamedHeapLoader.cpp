@@ -798,8 +798,10 @@ void AOTStreamedHeapLoader::cleanup() {
   }
 
   FREE_C_HEAP_ARRAY(void*, _object_index_to_heap_object_table);
+  // Leyden: Temp fix for JDK-8371655 {
   _object_index_to_heap_object_table = nullptr;
   _roots_archive = nullptr;
+  // }
 
   // Unmap regions
   FileMapInfo::current_info()->unmap_region(AOTMetaspace::hp);
