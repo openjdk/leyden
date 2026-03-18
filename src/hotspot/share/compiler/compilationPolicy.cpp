@@ -877,7 +877,7 @@ CompileTask* CompilationPolicy::select_task(CompileQueue* compile_queue, JavaThr
     max_task->set_comp_level(CompLevel_limited_profile);
 
     if (CompileBroker::compilation_is_complete(max_method_h(), max_task->osr_bci(), CompLevel_limited_profile,
-                                               false /* requires_online_compilation */,
+                                               true /* requires_online_compilation */,
                                                CompileTask::Reason_None)) {
       if (PrintTieredEvents) {
         print_event(REMOVE_FROM_QUEUE, max_method, max_method, max_task->osr_bci(), (CompLevel)max_task->comp_level());
@@ -1105,7 +1105,7 @@ bool CompilationPolicy::compare_methods(Method* x, Method* y) {
 
 bool CompilationPolicy::compare_tasks(CompileTask* x, CompileTask* y) {
   assert(!x->is_aot_load() && !y->is_aot_load(), "AOT code caching tasks are not expected here");
-  if (x->compile_reason() != y->compile_reason() && y->compile_reason() == CompileTask::Reason_MustBeCompiled) {
+  if (x->compile_reason() != y->compile_reason() && x->compile_reason() == CompileTask::Reason_MustBeCompiled) {
     return true;
   }
   return false;

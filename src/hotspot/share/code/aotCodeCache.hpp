@@ -861,10 +861,10 @@ class AOTRuntimeConstants {
     return _field_addresses_list;
   }
 #else
-  static bool contains(address adr)      { return false; }
-  static address card_table_address()    { return nullptr; }
-  static address grain_shift_address()   { return nullptr; }
-  static address* field_addresses_list() { return nullptr; }
+  static bool contains(address adr)        { return false; }
+  static address card_table_base_address() { return nullptr; }
+  static address grain_shift_address()     { return nullptr; }
+  static address* field_addresses_list()   { return nullptr; }
 #endif
 };
 

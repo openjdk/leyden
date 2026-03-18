@@ -1892,6 +1892,7 @@ int CompileBroker::assign_compile_id(const methodHandle& method, int osr_bci) {
 //
 // Public wrapper for assign_compile_id that acquires the needed locks
 int CompileBroker::assign_compile_id_unlocked(Thread* thread, const methodHandle& method, int osr_bci) {
+  MutexLocker locker(thread, MethodCompileQueue_lock);
   return assign_compile_id(method, osr_bci);
 }
 

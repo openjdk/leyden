@@ -390,11 +390,11 @@
                                                                             \
   /* AOT Code Caching flags */                                              \
                                                                             \
-  product(uint, DisableAOTCode, 0,                                          \
+  product(uint, DisableAOTCode, 0, DIAGNOSTIC,                              \
           "Disable AOT code on some compilation levels "                    \
           "(T1=1; T2=2; T4=4; T5/preload=8")                                \
                                                                             \
-  product(uint, ClassInitBarrierMode, 0,                                    \
+  product(uint, ClassInitBarrierMode, 0, DIAGNOSTIC,                        \
           "Produce AOT preload code which could be called on first "        \
           "method invocation, add class initialization barriers, "          \
           "other checks and constrains if needed "                          \
@@ -403,19 +403,13 @@
   product(bool, StressClassInitBarriers, false, DIAGNOSTIC,                 \
           "Force slow path in class initialization barriers")               \
                                                                             \
-  product(bool, UseAOTCodeLoadThread, false,                                \
+  product(bool, UseAOTCodeLoadThread, false, DIAGNOSTIC,                    \
           "Use separate thread for AOT code load")                          \
                                                                             \
-  product(uint, AOTCodeLoadStart, 0,                                        \
-          "The id of the first AOT code to load")                           \
-                                                                            \
-  product(uint, AOTCodeLoadStop, max_jint,                                  \
-          "The id of the last AOT code to load")                            \
-                                                                            \
-  product(uint, AOTCodePreloadStart, 0,                                     \
+  product(uint, AOTCodePreloadStart, 0, DIAGNOSTIC,                         \
           "The id of the first AOT code to preload")                        \
                                                                             \
-  product(uint, AOTCodePreloadStop, max_jint,                               \
+  product(uint, AOTCodePreloadStop, max_jint, DIAGNOSTIC,                   \
           "The id of the last AOT code to preload")                         \
                                                                             \
   product(double, AOTCodeInvokeBase, 100.0, DIAGNOSTIC,                     \
@@ -432,16 +426,16 @@
   product(bool, VerifyAOTCode, false, DIAGNOSTIC,                           \
           "Load AOT code but not publish")                                  \
                                                                             \
-  product(bool, UseGlobalCompileQueueLock, false,                           \
+  product(bool, UseGlobalCompileQueueLock, false, DIAGNOSTIC,               \
           "Use a global lock for all compilation queues")                   \
                                                                             \
-  product(bool, UseLockFreeCompileQueues, true,                             \
+  product(bool, UseLockFreeCompileQueues, true, DIAGNOSTIC,                 \
           "Use lock free compile queues")                                   \
                                                                             \
-  product(bool, PrecompileCode, false,                                      \
+  product(bool, PrecompileCode, false, DIAGNOSTIC,                          \
           "Precompile code")                                                \
                                                                             \
-  product(bool, PrecompileOnlyAndExit, false,                               \
+  product(bool, PrecompileOnlyAndExit, false, DIAGNOSTIC,                   \
           "Exit after precompilation step is over")                         \
                                                                             \
   product(bool, PreloadBlocking, false, DIAGNOSTIC,                         \

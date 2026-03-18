@@ -35,9 +35,9 @@ private:
   static int _total_count;
 
 public:
-  static void compile_aot_code(CompLevel comp_level, bool for_preload, TRAPS);
-  static void compile_aot_code(TRAPS);
-  static void compile_aot_code(ArchiveBuilder* builder, TRAPS);
+  static void compile_aot_code(CompLevel comp_level, bool for_preload, TRAPS) NOT_CDS_RETURN;
+  static void compile_aot_code(TRAPS) NOT_CDS_RETURN;
+  static void compile_aot_code(ArchiveBuilder* builder, TRAPS) NOT_CDS_RETURN;
 };
 
 #endif // SHARE_COMPILER_AOTCOMPILEBROKER_HPP

@@ -148,10 +148,6 @@ ciInstanceKlass::ciInstanceKlass(ciSymbol* name,
 InstanceKlass::ClassState ciInstanceKlass::compute_shared_init_state() {
   GUARDED_VM_ENTRY(
     InstanceKlass* ik = get_instanceKlass();
-    ciEnv* env = CURRENT_ENV;
-    if (env != nullptr && env->is_aot_compile()) {
-      return env->compute_init_state_for_aot_compile(ik);
-    }
     _init_state = compute_init_state(ik);
     return _init_state;
   )

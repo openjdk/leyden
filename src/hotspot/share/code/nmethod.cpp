@@ -1020,7 +1020,7 @@ const char* nmethod::compile_kind() const {
     }
     return "c2n";
   }
-  return nullptr;
+  return "";
 }
 
 const char* nmethod::compiler_name() const {
@@ -1954,7 +1954,7 @@ void nmethod::log_identity(xmlStream* log) const {
   assert(log->inside_attrs_or_error(), "printing attributes");
   log->print(" compile_id='%d'", compile_id());
   const char* nm_kind = compile_kind();
-  if (nm_kind != nullptr)  log->print(" compile_kind='%s'", nm_kind);
+  log->print(" compile_kind='%s'", nm_kind);
   log->print(" compiler='%s'", compiler_name());
   if (TieredCompilation) {
     log->print(" compile_level='%d'", comp_level());
