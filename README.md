@@ -143,7 +143,7 @@ Generated source code for 51 classes and compiled them in 423 ms
 By default, training runs end when the application terminates.  You have two other options to end training runs:
 
 - `-XX:AOTEndTrainingOnMethodEntry=<method1,method2,...>[,count=100]`
-- `jcmd <pid> AOT.end_training`
+- `jcmd <pid> AOT.end_recording`
 
 Note that `-XX:AOTEndTrainingOnMethodEntry` uses the same format as `-XX:CompileOnly` and the default count is 1.
 
