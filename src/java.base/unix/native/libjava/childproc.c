@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,32 +27,71 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
+#include <stdbool.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <limits.h>
 #include <sys/types.h>
-#include <sys/stat.h>
 
 #include "childproc.h"
+#include "childproc_errorcodes.h"
 #include "jni_util.h"
 
 const char * const *parentPathv;
 
+#ifdef DEBUG
+bool fdIsValid(int fd) {
+    return fcntl(fd, F_GETFD) != -1;
+}
+bool fdIsPipe(int fd) {
+    struct stat buf;
+    errno = 0;
+    return fstat(fd, &buf) != -1 && S_ISFIFO(buf.st_mode);
+}
+bool fdIsCloexec(int fd) {
+    errno = 0;
+    const int flags = fcntl(fd, F_GETFD);
+    return flags != -1 && (flags & FD_CLOEXEC);
+}
+#endif // DEBUG
+
 static int
-restartableDup2(int fd_from, int fd_to)
+restartableDup2(int fd_from, int fd_to, errcode_t* errcode)
+/* All functions taking an errcode_t* as output behave the same: upon error, they populate
+ * errcode_t::hint and errcode_t::errno, but leave errcode_t::step as ESTEP_UNKNOWN since
+ * this information will be provided by the outer caller */
 {
     int err;
     RESTARTABLE(dup2(fd_from, fd_to), err);
-    return err;
+    if (err == -1) {
+        /* use fd_to (the destination descriptor) as hint: it is a bit more telling
+         * than fd_from in our case */
+        buildErrorCode(errcode, ESTEP_UNKNOWN, fd_to, errno);
+        return false;
+    }
+    return true;
 }
 
 int
 closeSafely(int fd)
 {
     return (fd == -1) ? 0 : close(fd);
+}
+
+/* Like closeSafely, but sets errcode (hint = fd, errno) on error and returns false */
+static bool
+closeSafely2(int fd, errcode_t* errcode) {
+    if (closeSafely(fd) == -1) {
+        buildErrorCode(errcode, ESTEP_UNKNOWN, fd, errno);
+        return false;
+    }
+    return true;
 }
 
 int
@@ -131,15 +170,19 @@ markDescriptorsCloseOnExec(void)
     return 0;
 }
 
-static int
-moveDescriptor(int fd_from, int fd_to)
+static bool
+moveDescriptor(int fd_from, int fd_to, errcode_t* errcode)
 {
     if (fd_from != fd_to) {
-        if ((restartableDup2(fd_from, fd_to) == -1) ||
-            (close(fd_from) == -1))
-            return -1;
+        if (!restartableDup2(fd_from, fd_to, errcode)) {
+            return false;
+        }
+        if (close(fd_from) == -1) {
+            buildErrorCode(errcode, ESTEP_UNKNOWN, fd_from, errno);
+            return false;
+        }
     }
-    return 0;
+    return true;
 }
 
 int
@@ -370,54 +413,81 @@ int
 childProcess(void *arg)
 {
     const ChildStuff* p = (const ChildStuff*) arg;
-    int fail_pipe_fd = p->fail[1];
 
-    if (p->sendAlivePing) {
-        /* Child shall signal aliveness to parent at the very first
-         * moment. */
-        int code = CHILD_IS_ALIVE;
-        if (writeFully(fail_pipe_fd, &code, sizeof(code)) != sizeof(code)) {
-            goto WhyCantJohnnyExec;
-        }
+    int fail_pipe_fd = (p->mode == MODE_POSIX_SPAWN) ?
+        FAIL_FILENO : /* file descriptors already set up by posix_spawn(). */
+        p->fail[1];
+
+    /* error information for WhyCantJohnnyExec */
+    errcode_t errcode;
+
+    /* Child shall signal aliveness to parent at the very first
+     * moment. */
+    if (p->sendAlivePing && !sendAlivePing(fail_pipe_fd)) {
+        buildErrorCode(&errcode, ESTEP_SENDALIVE_FAIL, fail_pipe_fd, errno);
+        goto WhyCantJohnnyExec;
     }
 
 #ifdef DEBUG
     jtregSimulateCrash(0, 6);
 #endif
-    /* Close the parent sides of the pipes.
-       Closing pipe fds here is redundant, since markDescriptorsCloseOnExec()
-       would do it anyways, but a little paranoia is a good thing. */
-    if ((closeSafely(p->in[1])   == -1) ||
-        (closeSafely(p->out[0])  == -1) ||
-        (closeSafely(p->err[0])  == -1) ||
-        (closeSafely(p->childenv[0])  == -1) ||
-        (closeSafely(p->childenv[1])  == -1) ||
-        (closeSafely(p->fail[0]) == -1))
-        goto WhyCantJohnnyExec;
 
-    /* Give the child sides of the pipes the right fileno's. */
-    /* Note: it is possible for in[0] == 0 */
-    if ((moveDescriptor(p->in[0] != -1 ?  p->in[0] : p->fds[0],
-                        STDIN_FILENO) == -1) ||
-        (moveDescriptor(p->out[1]!= -1 ? p->out[1] : p->fds[1],
-                        STDOUT_FILENO) == -1))
-        goto WhyCantJohnnyExec;
+    /* File descriptor setup for non-Posix-spawn mode */
+    if (p->mode != MODE_POSIX_SPAWN) {
 
-    if (p->redirectErrorStream) {
-        if ((closeSafely(p->err[1]) == -1) ||
-            (restartableDup2(STDOUT_FILENO, STDERR_FILENO) == -1))
+        /* Close the parent sides of the pipes.
+           Closing pipe fds here is redundant, since markDescriptorsCloseOnExec()
+           would do it anyways, but a little paranoia is a good thing. */
+        if (!closeSafely2(p->in[1], &errcode)  ||
+            !closeSafely2(p->out[0], &errcode) ||
+            !closeSafely2(p->err[0], &errcode) ||
+            !closeSafely2(p->childenv[0], &errcode) ||
+            !closeSafely2(p->childenv[1], &errcode) ||
+            !closeSafely2(p->fail[0], &errcode))
+        {
+            errcode.step = ESTEP_PIPECLOSE_FAIL;
             goto WhyCantJohnnyExec;
-    } else {
-        if (moveDescriptor(p->err[1] != -1 ? p->err[1] : p->fds[2],
-                           STDERR_FILENO) == -1)
+        }
+
+        /* Give the child sides of the pipes the right fileno's. */
+        /* Note: it is possible for in[0] == 0 */
+        if (!moveDescriptor(p->in[0] != -1 ?  p->in[0] : p->fds[0],
+                                    STDIN_FILENO, &errcode)) {
+            errcode.step = ESTEP_DUP2_STDIN_FAIL;
             goto WhyCantJohnnyExec;
-    }
+        }
 
-    if (moveDescriptor(fail_pipe_fd, FAIL_FILENO) == -1)
-        goto WhyCantJohnnyExec;
+        if (!moveDescriptor(p->out[1] != -1 ?  p->out[1] : p->fds[1],
+                                    STDOUT_FILENO, &errcode)) {
+            errcode.step = ESTEP_DUP2_STDOUT_FAIL;
+            goto WhyCantJohnnyExec;
+        }
 
-    /* We moved the fail pipe fd */
-    fail_pipe_fd = FAIL_FILENO;
+        if (p->redirectErrorStream) {
+            if (!closeSafely2(p->err[1], &errcode) ||
+                !restartableDup2(STDOUT_FILENO, STDERR_FILENO, &errcode)) {
+                errcode.step = ESTEP_DUP2_STDERR_REDIRECT_FAIL;
+                goto WhyCantJohnnyExec;
+            }
+        } else {
+            if (!moveDescriptor(p->err[1] != -1 ? p->err[1] : p->fds[2],
+                                        STDERR_FILENO, &errcode)) {
+                errcode.step = ESTEP_DUP2_STDERR_REDIRECT_FAIL;
+                goto WhyCantJohnnyExec;
+            }
+        }
+
+        if (!moveDescriptor(fail_pipe_fd, FAIL_FILENO, &errcode)) {
+            errcode.step = ESTEP_DUP2_FAILPIPE_FAIL;
+            goto WhyCantJohnnyExec;
+        }
+
+        /* We moved the fail pipe fd */
+        fail_pipe_fd = FAIL_FILENO;
+
+    } /* end: FORK/VFORK mode */
+
+    assert(fail_pipe_fd == FAIL_FILENO);
 
     /* For AIX: The code in markDescriptorsCloseOnExec() relies on the current
      * semantic of this function. When this point here is reached only the
@@ -427,14 +497,19 @@ childProcess(void *arg)
     if (markDescriptorsCloseOnExec() == -1) { /* failed,  close the old way */
         int max_fd = (int)sysconf(_SC_OPEN_MAX);
         int fd;
-        for (fd = STDERR_FILENO + 1; fd < max_fd; fd++)
-            if (markCloseOnExec(fd) == -1 && errno != EBADF)
+        for (fd = STDERR_FILENO + 1; fd < max_fd; fd++) {
+            if (markCloseOnExec(fd) == -1 && errno != EBADF) {
+                buildErrorCode(&errcode, ESTEP_CLOEXEC_FAIL, fd, errno);
                 goto WhyCantJohnnyExec;
+            }
+        }
     }
 
     /* change to the new working directory */
-    if (p->pdir != NULL && chdir(p->pdir) < 0)
+    if (p->pdir != NULL && chdir(p->pdir) < 0) {
+        buildErrorCode(&errcode, ESTEP_CHDIR_FAIL, 0, errno);
         goto WhyCantJohnnyExec;
+    }
 
     // Reset any mask signals from parent, but not in VFORK mode
     if (p->mode != MODE_VFORK) {
@@ -445,10 +520,14 @@ childProcess(void *arg)
 
     // Children should be started with default signal disposition for SIGPIPE
     if (signal(SIGPIPE, SIG_DFL) == SIG_ERR) {
+        buildErrorCode(&errcode, ESTEP_SET_SIGPIPE, 0, errno);
         goto WhyCantJohnnyExec;
     }
 
     JDK_execvpe(p->mode, p->argv[0], p->argv, p->envv);
+
+    /* Still here. Hmm. */
+    buildErrorCode(&errcode, ESTEP_EXEC_FAIL, 0, errno);
 
  WhyCantJohnnyExec:
     /* We used to go to an awful lot of trouble to predict whether the
@@ -456,17 +535,17 @@ childProcess(void *arg)
      * success of an operation without *trying* it, and there's no way
      * to try a chdir or exec in the parent.  Instead, all we need is a
      * way to communicate any failure back to the parent.  Easy; we just
-     * send the errno back to the parent over a pipe in case of failure.
+     * send the errorcode back to the parent over a pipe in case of failure.
      * The tricky thing is, how do we communicate the *success* of exec?
      * We use FD_CLOEXEC together with the fact that a read() on a pipe
      * yields EOF when the write ends (we have two of them!) are closed.
      */
-    {
-        int errnum = errno;
-        writeFully(fail_pipe_fd, &errnum, sizeof(errnum));
+    if (!sendErrorCode(fail_pipe_fd, errcode)) {
+        printf("childproc fail: " ERRCODE_FORMAT "\n", ERRCODE_FORMAT_ARGS(errcode));
     }
+    int exitcode = exitCodeFromErrorCode(errcode);
     close(fail_pipe_fd);
-    _exit(-1);
+    _exit(exitcode);
     return 0;  /* Suppress warning "no return value from function" */
 }
 
@@ -493,36 +572,34 @@ extern int errno;
     void *mptr; \
     mptr = malloc (Y); \
     if (mptr == 0) { \
-        error (fdout, ERR_MALLOC); \
+        sendErrorCodeAndExit (fdout, ESTEP_JSPAWN_ALLOC_FAILED, (int)Y, errno); \
     } \
     X = mptr; \
 }
-
-#define ERR_MALLOC 1
-#define ERR_PIPE 2
-#define ERR_ARGS 3
 
 #ifndef VERSION_STRING
 #error VERSION_STRING must be defined
 #endif
 
-static void error (int fd, int err) {
-    if (write (fd, &err, sizeof(err)) != sizeof(err)) {
-        /* Not sure what to do here. I have no one to speak to. */
-        exit(0x80 + err);
+/* Attempts to send an error code to the parent (which may or may not
+ * work depending on whether the fail pipe exists); then exits with an
+ * error code corresponding to the fail step. */
+void sendErrorCodeAndExit(int failpipe_fd, int step, int hint, int errno_) {
+    errcode_t errcode;
+    buildErrorCode(&errcode, step, hint, errno_);
+    if (failpipe_fd == -1 || !sendErrorCode(failpipe_fd, errcode)) {
+        /* Write error code to stdout, in the hope someone reads this. */
+        printf("jspawnhelper fail: " ERRCODE_FORMAT "\n", ERRCODE_FORMAT_ARGS(errcode));
     }
-    exit (1);
+    exit(exitCodeFromErrorCode(errcode));
 }
 
-void shutItDown() {
-    fprintf(stdout, "jspawnhelper version %s\n", VERSION_STRING);
-    fprintf(stdout, "This command is not for general use and should ");
-    fprintf(stdout, "only be run as the result of a call to\n");
-    fprintf(stdout, "ProcessBuilder.start() or Runtime.exec() in a java ");
-    fprintf(stdout, "application\n");
-    fflush(stdout);
-    _exit(1);
-}
+static const char* usageErrorText =
+    "jspawnhelper version " VERSION_STRING "\n"
+    "This command is not for general use and should "
+    "only be run as the result of a call to\n"
+    "ProcessBuilder.start() or Runtime.exec() in a java "
+    "application\n";
 
 /*
  * read the following off the pipefd
@@ -538,20 +615,31 @@ void initChildStuff (int fdin, int fdout, ChildStuff *c) {
     int res;
 
     res = readFully (fdin, &magic, sizeof(magic));
-    if (res != 4 || magic != magicNumber()) {
-        error (fdout, ERR_PIPE);
+    const int step = ESTEP_JSPAWN_RCV_CHILDSTUFF_COMM_FAIL;
+    int substep = 0;
+
+    res = readFully (fdin, &magic, sizeof(magic));
+    if (res != 4) {
+        sendErrorCodeAndExit(fdout, step, substep, errno);
+    }
+
+    substep ++;
+    if (magic != magicNumber()) {
+        sendErrorCodeAndExit(fdout, step, substep, errno);
     }
 
 #ifdef DEBUG
     jtregSimulateCrash(0, 5);
 #endif
 
+    substep ++;
     if (readFully (fdin, c, sizeof(*c)) != sizeof(*c)) {
-        error (fdout, ERR_PIPE);
+        sendErrorCodeAndExit(fdout, step, substep, errno);
     }
 
+    substep ++;
     if (readFully (fdin, &sp, sizeof(sp)) != sizeof(sp)) {
-        error (fdout, ERR_PIPE);
+        sendErrorCodeAndExit(fdout, step, substep, errno);
     }
 
     bufsize = sp.argvBytes + sp.envvBytes +
@@ -559,8 +647,10 @@ void initChildStuff (int fdin, int fdout, ChildStuff *c) {
 
     ALLOC(buf, bufsize);
 
+
+    substep++;
     if (readFully (fdin, buf, bufsize) != bufsize) {
-        error (fdout, ERR_PIPE);
+        sendErrorCodeAndExit(fdout, step, substep, errno);
     }
 
     /* Initialize argv[] */
@@ -591,56 +681,64 @@ void initChildStuff (int fdin, int fdout, ChildStuff *c) {
     offset += sp.parentPathvBytes;
 }
 
+#ifdef DEBUG
+static void checkIsValid(int fd) {
+    if (!fdIsValid(fd)) {
+        puts(usageErrorText);
+        sendErrorCodeAndExit(-1, ESTEP_JSPAWN_INVALID_FD, fd, errno);
+    }
+}
+static void checkIsPipe(int fd) {
+    checkIsValid(fd);
+    if (!fdIsPipe(fd)) {
+        puts(usageErrorText);
+        sendErrorCodeAndExit(-1, ESTEP_JSPAWN_NOT_A_PIPE, fd, errno);
+    }
+}
+static void checkFileDescriptorSetup() {
+    checkIsValid(STDIN_FILENO);
+    checkIsValid(STDOUT_FILENO);
+    checkIsValid(STDERR_FILENO);
+    checkIsPipe(FAIL_FILENO);
+    checkIsPipe(CHILDENV_FILENO);
+}
+#endif // DEBUG
+
 JNIEXPORT int JNICALL
 JDK_spawn_process(int argc, char *argv[]) {
     ChildStuff c;
-    struct stat buf;
-    /* argv[1] contains the fd number to read all the child info */
-    int r, fdinr, fdinw, fdout;
-    sigset_t unblock_signals;
 
 #ifdef DEBUG
     jtregSimulateCrash(0, 4);
 #endif
 
-    if (argc != 3) {
-        fprintf(stdout, "Incorrect number of arguments: %d\n", argc);
-        shutItDown();
+    if (argc != 2) {
+        printf("Incorrect number of arguments: %d\n", argc);
+        puts(usageErrorText);
+        sendErrorCodeAndExit(-1, ESTEP_JSPAWN_ARG_ERROR, 0, 0);
     }
 
     if (strcmp(argv[1], VERSION_STRING) != 0) {
-        fprintf(stdout, "Incorrect Java version: %s\n", argv[1]);
-        shutItDown();
+        printf("Incorrect Java version: %s\n", argv[1]);
+        puts(usageErrorText);
+        sendErrorCodeAndExit(-1, ESTEP_JSPAWN_VERSION_ERROR, 0, 0);
     }
 
-    r = sscanf (argv[2], "%d:%d:%d", &fdinr, &fdinw, &fdout);
-    if (r == 3 && fcntl(fdinr, F_GETFD) != -1 && fcntl(fdinw, F_GETFD) != -1) {
-        fstat(fdinr, &buf);
-        if (!S_ISFIFO(buf.st_mode)) {
-            fprintf(stdout, "Incorrect input pipe\n");
-            shutItDown();
-        }
-    } else {
-        fprintf(stdout, "Incorrect FD array data: %s\n", argv[2]);
-        shutItDown();
-    }
+#ifdef DEBUG
+    /* Check expected file descriptors */
+    checkFileDescriptorSetup();
+#endif
 
-    // Reset any mask signals from parent
-    sigemptyset(&unblock_signals);
-    sigprocmask(SIG_SETMASK, &unblock_signals, NULL);
+    initChildStuff(CHILDENV_FILENO, FAIL_FILENO, &c);
 
-    // Close the writing end of the pipe we use for reading from the parent.
-    // We have to do this before we start reading from the parent to avoid
-    // blocking in the case the parent exits before we finished reading from it.
-    close(fdinw); // Deliberately ignore errors (see https://lwn.net/Articles/576478/).
-    initChildStuff (fdinr, fdout, &c);
-    // Now set the file descriptor for the pipe's writing end to -1
-    // for the case that somebody tries to close it again.
-    assert(c.childenv[1] == fdinw);
-    c.childenv[1] = -1;
-    // The file descriptor for reporting errors back to our parent we got on the command
-    // line should be the same like the one in the ChildStuff struct we've just read.
-    assert(c.fail[1] == fdout);
+#ifdef DEBUG
+    /* Not needed in spawn mode */
+    assert(c.in[0] == -1 && c.in[1] == -1 &&
+           c.out[0] == -1 && c.out[1] == -1 &&
+           c.err[0] == -1 && c.err[1] == -1 &&
+           c.fail[0] == -1 && c.fail[1] == -1 &&
+           c.fds[0] == -1 && c.fds[1] == -1 && c.fds[2] == -1);
+#endif
 
     childProcess (&c);
     return 0; /* NOT REACHED */
