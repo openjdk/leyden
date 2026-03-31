@@ -1251,6 +1251,7 @@ nmethod* nmethod::restore(address code_cache_buffer,
   nmethod* nm = (nmethod*)code_cache_buffer;
   nm->set_method(method());
   nm->_compile_id = compile_id;
+  nm->_gc_epoch = CodeCache::gc_epoch();
   nm->set_immutable_data(immutable_data);
   nm->copy_values(&oop_list);
   nm->copy_values(&metadata_list);
@@ -1373,6 +1374,7 @@ void nmethod::post_init() {
 
   finalize_relocations();
 
+  // This will disarm entry barrier.
   Universe::heap()->register_nmethod(this);
   DEBUG_ONLY(Universe::heap()->verify_nmethod(this));
 
