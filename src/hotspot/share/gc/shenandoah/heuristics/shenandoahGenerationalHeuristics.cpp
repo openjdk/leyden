@@ -84,7 +84,7 @@ void ShenandoahGenerationalHeuristics::choose_collection_set(ShenandoahCollectio
   // Choose the collection set
   filter_regions(collection_set);
 
-  if (!collection_set->is_empty() && _generation->is_global()) {
+  if (_generation->is_global()) {
     // We have just chosen a collection set for a global cycle. The mark bitmap covering old regions is complete, so
     // the remembered set scan can use that to avoid walking into garbage. When the next old mark begins, we will
     // use the mark bitmap to make the old regions parsable by coalescing and filling any unmarked objects. Thus,
@@ -94,7 +94,7 @@ void ShenandoahGenerationalHeuristics::choose_collection_set(ShenandoahCollectio
     // coalesce those regions. Only the old regions which are not part of the collection set at this point are
     // eligible for coalescing. As implemented now, this has the side effect of possibly initiating mixed-evacuations
     // after a global cycle for old regions that were not included in this collection set.
-    heap->old_generation()->prepare_for_mixed_collections_after_global_gc();
+    heap->old_generation()->transition_old_generation_after_global_gc();
   }
 }
 
@@ -498,7 +498,11 @@ void ShenandoahGenerationalHeuristics::adjust_evacuation_budgets(ShenandoahHeap*
   size_t young_evacuated = collection_set->get_live_bytes_in_untenurable_regions();
   size_t young_evacuated_reserve_used = (size_t) (ShenandoahEvacWaste * double(young_evacuated));
 
+  // In top_off_collection_set(), we shrunk planned future reserve by _add_regions_to_old * region_size_bytes, but we
+  // didn't shrink available. The current reserve is not affected by the planned future reserve. Current available is
+  // larger than planned available by the planned adjustment amount.
   size_t total_young_available = young_generation->available_with_reserve() - _add_regions_to_old * region_size_bytes;
+
   assert(young_evacuated_reserve_used <= total_young_available, "Cannot evacuate (%zu) more than is available in young (%zu)",
          young_evacuated_reserve_used, total_young_available);
   young_generation->set_evacuation_reserve(young_evacuated_reserve_used);
