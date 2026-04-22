@@ -93,6 +93,7 @@
 #endif // COMPILER1
 #ifdef COMPILER2
 #include "opto/runtime.hpp"
+#include "opto/parse.hpp"
 #endif
 #if INCLUDE_JVMCI
 #include "jvmci/jvmci.hpp"
@@ -3108,6 +3109,7 @@ void AOTCodeAddressTable::init_extrs() {
     SET_ADDRESS(_extrs, OptoRuntime::vthread_start_final_transition_C);
     SET_ADDRESS(_extrs, OptoRuntime::vthread_start_transition_C);
     SET_ADDRESS(_extrs, OptoRuntime::vthread_end_transition_C);
+    SET_ADDRESS(_extrs, Parse::trap_stress_counter_address());
 #if defined(AMD64)
     // Use by C2 intinsic
     SET_ADDRESS(_extrs, StubRoutines::x86::arrays_hashcode_powers_of_31());
