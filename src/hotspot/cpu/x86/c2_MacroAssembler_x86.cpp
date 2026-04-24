@@ -589,7 +589,7 @@ void C2_MacroAssembler::fast_unlock(Register obj, Register reg_rax, Register t, 
   // C2 uses the value of ZF to determine the continuation.
 }
 
-static void abort_verify_int_in_range(uint idx, jint val, jint lo, jint hi) {
+void C2_MacroAssembler::abort_verify_int_in_range(uint idx, jint val, jint lo, jint hi) {
   fatal("Invalid CastII, idx: %u, val: %d, lo: %d, hi: %d", idx, val, lo, hi);
 }
 
@@ -652,7 +652,7 @@ void C2_MacroAssembler::verify_int_in_range(uint idx, const TypeInt* t, Register
   BLOCK_COMMENT("} // CastII");
 }
 
-static void abort_verify_long_in_range(uint idx, jlong val, jlong lo, jlong hi) {
+void C2_MacroAssembler::abort_verify_long_in_range(uint idx, jlong val, jlong lo, jlong hi) {
   fatal("Invalid CastLL, idx: %u, val: " JLONG_FORMAT ", lo: " JLONG_FORMAT ", hi: " JLONG_FORMAT, idx, val, lo, hi);
 }
 

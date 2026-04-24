@@ -92,8 +92,9 @@
 #include "gc/z/c1/zBarrierSetC1.hpp"
 #endif // COMPILER1
 #ifdef COMPILER2
-#include "opto/runtime.hpp"
+#include "opto/c2_MacroAssembler.hpp"
 #include "opto/parse.hpp"
+#include "opto/runtime.hpp"
 #endif
 #if INCLUDE_JVMCI
 #include "jvmci/jvmci.hpp"
@@ -3118,6 +3119,7 @@ void AOTCodeAddressTable::init_extrs() {
 #endif // COMPILER2
 #if INCLUDE_G1GC
   SET_ADDRESS(_extrs, G1BarrierSetRuntime::write_ref_field_pre_entry);
+  SET_ADDRESS(_extrs, G1BarrierSetRuntime::clone_addr());
 #endif
 
 #if INCLUDE_SHENANDOAHGC
@@ -3204,6 +3206,10 @@ void AOTCodeAddressTable::init_extrs() {
 #if defined(AMD64) || defined(AARCH64) || defined(RISCV64)
   SET_ADDRESS(_extrs, MacroAssembler::debug64);
 #endif
+#if defined(AMD64) || defined(AARCH64)
+  SET_ADDRESS(_extrs, C2_MacroAssembler::abort_verify_int_in_range);
+  SET_ADDRESS(_extrs, C2_MacroAssembler::abort_verify_long_in_range);
+#endif // defined(AMD64) || defined(AARCH64)
 #if defined(AARCH64)
   SET_ADDRESS(_extrs, JavaThread::aarch64_get_thread_helper);
 #endif
