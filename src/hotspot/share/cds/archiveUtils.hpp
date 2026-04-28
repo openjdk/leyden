@@ -279,20 +279,20 @@ public:
 };
 
 class ArchiveUtils {
-  template <typename T> static Array<T>* archive_non_ptr_array(GrowableArray<T>* tmp_array);
-  template <typename T> static Array<T>* archive_ptr_array(GrowableArray<T>* tmp_array);
+  template <typename T> static Array<T>* archive_non_ptr_array(GrowableArrayView<T>* tmp_array);
+  template <typename T> static Array<T>* archive_ptr_array(GrowableArrayView<T>* tmp_array);
 
 public:
   static void log_to_classlist(BootstrapInfo* bootstrap_specifier, TRAPS) NOT_CDS_RETURN;
   static bool has_aot_initialized_mirror(InstanceKlass* src_ik);
 
   template <typename T, ENABLE_IF(!std::is_pointer<T>::value)>
-  static Array<T>* archive_array(GrowableArray<T>* tmp_array) {
+  static Array<T>* archive_array(GrowableArrayView<T>* tmp_array) {
     return archive_non_ptr_array(tmp_array);
   }
 
   template <typename T, ENABLE_IF(std::is_pointer<T>::value)>
-  static Array<T>* archive_array(GrowableArray<T>* tmp_array) {
+  static Array<T>* archive_array(GrowableArrayView<T>* tmp_array) {
     return archive_ptr_array(tmp_array);
   }
 

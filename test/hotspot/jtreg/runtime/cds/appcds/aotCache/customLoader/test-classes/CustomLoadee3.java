@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,23 +22,8 @@
  *
  */
 
-#ifndef SHARE_CDS_UNREGISTEREDCLASSES_HPP
-#define SHARE_CDS_UNREGISTEREDCLASSES_HPP
-
-#include "memory/allStatic.hpp"
-#include "runtime/handles.hpp"
-
-class InstanceKlass;
-class Symbol;
-
-class UnregisteredClasses: AllStatic {
-public:
-  static InstanceKlass* load_class(Symbol* name, const char* path, TRAPS);
-  static void initialize(TRAPS);
-  static Handle create_unregistered_loader(TRAPS);
-  // Returns true if the class is loaded internally for dumping unregistered classes.
-  static bool check_for_exclusion(const InstanceKlass* k);
-  static Handle unregistered_class_loader(Thread* current);
-};
-
-#endif // SHARE_CDS_UNREGISTEREDCLASSES_HPP
+public class CustomLoadee3 {
+    public String toString() {
+        return "this is CustomLoadee3";
+    }
+}

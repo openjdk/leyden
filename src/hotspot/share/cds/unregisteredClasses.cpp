@@ -38,6 +38,7 @@
 static InstanceKlass* _UnregisteredClassLoader_klass;
 static InstanceKlass* _UnregisteredClassLoader_Source_klass;
 static OopHandle _unregistered_class_loader;
+static GrowableArray<OopHandle>* _unregistered_class_loader_list;
 
 void UnregisteredClasses::initialize(TRAPS) {
   if (_UnregisteredClassLoader_klass != nullptr) {
@@ -61,6 +62,20 @@ void UnregisteredClasses::initialize(TRAPS) {
   const Handle cl = JavaCalls::construct_new_instance(_UnregisteredClassLoader_klass,
                                                       vmSymbols::void_method_signature(), CHECK);
   _unregistered_class_loader = OopHandle(Universe::vm_global(), cl());
+  _unregistered_class_loader_list = new (mtClassShared)GrowableArray<OopHandle>(10, mtClassShared);
+}
+
+Handle UnregisteredClasses::create_unregistered_loader(TRAPS) {
+  assert(_UnregisteredClassLoader_klass != nullptr, "missing call to UnregisteredClasses::initialize");
+  const Handle cl = JavaCalls::construct_new_instance(_UnregisteredClassLoader_klass,
+                                                      vmSymbols::void_method_signature(), CHECK_NH);
+  OopHandle cl_handle = OopHandle(Universe::vm_global(), cl());
+  _unregistered_class_loader_list->append(cl_handle);
+  return cl;
+}
+
+Handle UnregisteredClasses::unregistered_class_loader(Thread* current) {
+  return Handle(current, _unregistered_class_loader.resolve());
 }
 
 // Load the class of the given name from the location given by path. The path is specified by

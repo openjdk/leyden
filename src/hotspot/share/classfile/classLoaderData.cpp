@@ -46,8 +46,11 @@
 // The bootstrap loader (represented by null) also has a ClassLoaderData,
 // the singleton class the_null_class_loader_data().
 
+#include "cds/cdsConfig.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoaderDataGraph.inline.hpp"
+#include "classfile/classLoaderDataShared.hpp"
 #include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/moduleEntry.hpp"
@@ -89,7 +92,6 @@ void ClassLoaderData::init_null_class_loader_data() {
   _the_null_class_loader_data = new ClassLoaderData(Handle(), false);
   ClassLoaderDataGraph::_head = _the_null_class_loader_data;
   assert(_the_null_class_loader_data->is_the_null_class_loader_data(), "Must be");
-
   LogTarget(Trace, class, loader, data) lt;
   if (lt.is_enabled()) {
     ResourceMark rm;
@@ -149,7 +151,8 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
   _deallocate_list(nullptr),
   _next(nullptr),
   _unloading_next(nullptr),
-  _class_loader_klass(nullptr), _name(nullptr), _name_and_id(nullptr) {
+  _class_loader_klass(nullptr), _name(nullptr), _name_and_id(nullptr),
+  _aot_identity(nullptr) {
 
   if (!h_class_loader.is_null()) {
     _class_loader = _handles.add(h_class_loader());
@@ -1124,4 +1127,10 @@ bool ClassLoaderData::contains_klass(Klass* klass) {
     if (k == klass) return true;
   }
   return false;
+}
+
+Symbol* ClassLoaderData::parent_aot_identity() const {
+  oop parent = java_lang_ClassLoader::parent(class_loader());
+  ClassLoaderData* parent_cld = java_lang_ClassLoader::loader_data(parent);
+  return parent_cld->aot_identity();
 }

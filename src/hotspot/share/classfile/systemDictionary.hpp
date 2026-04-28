@@ -77,6 +77,7 @@ template <class E> class GrowableArray;
 
 class SystemDictionary : AllStatic {
   friend class AOTLinkedClassBulkLoader;
+  friend class FinalImageRecipes;
   friend class BootstrapInfo;
   friend class LambdaProxyClassDictionary;
   friend class vmClasses;

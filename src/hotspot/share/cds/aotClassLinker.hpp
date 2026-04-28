@@ -35,6 +35,7 @@
 #include "utilities/macros.hpp"
 
 class AOTLinkedClassTable;
+class ArchivedCustomLoaderClassTable;
 class InstanceKlass;
 class SerializeClosure;
 template <typename T> class Array;
@@ -110,6 +111,10 @@ public:
 
   static int num_app_initiated_classes();
   static int num_platform_initiated_classes();
+
+  static void all_symbols_do(MetaspaceClosure* it);
+  static void serialize_prelinked_classes_map_header(SerializeClosure* soc);
+  static ArchivedCustomLoaderClassTable* get_archived_prelinked_table(Symbol* aot_id);
 
   // Used in logging: "boot1", "boot2", "plat", "app" and "unreg";
   static const char* class_category_name(AOTLinkedClassCategory category);

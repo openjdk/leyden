@@ -417,3 +417,13 @@ bool Symbol::is_valid_id(vmSymbolID vm_symbol_id) {
   return vmSymbols::is_valid_id(vm_symbol_id);
 }
 #endif
+
+unsigned Symbol::symbol_hash(Symbol* const& sym) {
+  ResourceMark rm;
+  char* str = sym->as_C_string();
+  return java_lang_String::hash_code(str, strlen(str));
+}
+
+bool Symbol::symbol_equals(Symbol* const& sym1, Symbol* const& sym2) {
+  return sym1->equals(sym2);
+}

@@ -170,8 +170,7 @@ private:
                                  TRAPS);
 
 
-  static void write_dictionary(RunTimeSharedDictionary* dictionary,
-                               bool is_builtin);
+  static void write_dictionary(RunTimeSharedDictionary* dictionary, bool is_builtin);
   static bool is_jfr_event_class(InstanceKlass *k);
   static void link_all_exclusion_check_candidates(InstanceKlass* ik);
   static bool should_be_excluded_impl(InstanceKlass* k, DumpTimeClassInfo* info);
@@ -209,11 +208,11 @@ public:
   static bool has_archived_enum_objs(InstanceKlass* ik);
   static void set_has_archived_enum_objs(InstanceKlass* ik);
 
-  static InstanceKlass* find_builtin_class(Symbol* class_name);
+  static InstanceKlass* find_builtin_class(Symbol* name);
 
   static const RunTimeClassInfo* find_record(RunTimeSharedDictionary* static_dict,
                                                    RunTimeSharedDictionary* dynamic_dict,
-                                                   Symbol* name);
+                                                   Symbol* name, bool is_aot_unsafe_loader_class = false);
 
   static bool has_platform_or_app_classes();
 

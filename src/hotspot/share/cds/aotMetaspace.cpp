@@ -532,6 +532,8 @@ void AOTMetaspace::serialize(SerializeClosure* soc) {
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
   AOTLinkedClassBulkLoader::serialize(soc);
+  AOTClassLinker::serialize_prelinked_classes_map_header(soc);
+  URLClassLoaderClasspathSupport::serialize_classpath_map_table_header(soc);
   FinalImageRecipes::serialize(soc);
   TrainingData::serialize(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
@@ -721,6 +723,7 @@ public:
     for (int i = 0; i < _pending_method_handle_intrinsics->length(); i++) {
       it->push(_pending_method_handle_intrinsics->adr_at(i));
     }
+    AOTClassLinker::all_symbols_do(it);
   }
 };
 
@@ -742,6 +745,7 @@ char* VM_PopulateDumpSharedSpace::dump_read_only_tables(AOTClassLocationConfig*&
   SystemDictionaryShared::write_to_archive();
   cl_config = AOTClassLocationConfig::dumptime()->write_to_archive();
   AOTClassLinker::write_to_archive();
+  URLClassLoaderClasspathSupport::archive_classpath_map();
   if (CDSConfig::is_dumping_preimage_static_archive()) {
     FinalImageRecipes::record_recipes();
   }

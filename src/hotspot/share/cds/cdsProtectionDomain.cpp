@@ -119,7 +119,7 @@ PackageEntry* CDSProtectionDomain::get_package_entry_from_class(InstanceKlass* i
   PackageEntry* pkg_entry = ik->package();
   if (CDSConfig::is_using_full_module_graph() && ik->in_aot_cache() && pkg_entry != nullptr) {
     assert(AOTMetaspace::in_aot_cache(pkg_entry), "must be");
-    assert(!ik->defined_by_other_loaders(), "unexpected archived package entry for an unregistered class");
+    assert(!ik->defined_by_other_loaders() || ik->cl_aot_identity() != nullptr, "unexpected archived package entry for an unregistered class");
     return pkg_entry;
   }
   TempNewSymbol pkg_name = ClassLoader::package_from_class_name(ik->name());

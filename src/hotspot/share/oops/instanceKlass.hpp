@@ -327,6 +327,7 @@ class InstanceKlass: public Klass {
   bool defined_by_boot_loader() const      { return _misc_flags.defined_by_boot_loader(); }
   bool defined_by_platform_loader() const  { return _misc_flags.defined_by_platform_loader(); }
   bool defined_by_app_loader() const       { return _misc_flags.defined_by_app_loader(); }
+  bool defined_by_builtin_loader() const   { return _misc_flags.defined_by_builtin_loader(); }
   bool defined_by_other_loaders() const    { return _misc_flags.defined_by_other_loaders(); }
   void set_class_loader_type()             { _misc_flags.set_class_loader_type(_class_loader_data); }
 

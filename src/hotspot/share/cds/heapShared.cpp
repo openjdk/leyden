@@ -633,8 +633,8 @@ bool HeapShared::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgra
     ResourceMark rm;
     LogTarget(Debug, aot, heap) log;
     LogStream out(log);
-    out.print("Archived heap object " PTR_FORMAT " : %s ",
-              p2i(obj), obj->klass()->external_name());
+    out.print("Archived heap object " PTR_FORMAT " : %s, referrer: " PTR_FORMAT,
+              p2i(obj), obj->klass()->external_name(), p2i(referrer));
     if (java_lang_Class::is_instance(obj)) {
       Klass* k = java_lang_Class::as_Klass(obj);
       if (k != nullptr) {
@@ -1095,12 +1095,16 @@ void KlassSubGraphInfo::add_subgraph_object_klass(Klass* orig_k) {
 #ifdef ASSERT
     InstanceKlass* ik = InstanceKlass::cast(orig_k);
     if (CDSConfig::is_dumping_method_handles()) {
-      // -XX:AOTInitTestClass must be used carefully in regression tests to
-      // include only classes that are safe to aot-initialize.
-      assert(ik->class_loader() == nullptr ||
-             HeapShared::is_lambda_proxy_klass(ik) ||
-             AOTClassInitializer::has_test_class(),
-            "we can archive only instances of boot classes or lambda proxy classes");
+      // TODO: When custom loaders are supported, the custom loader instance needs to be stored in AOTCache
+      // which is loaded by app or system class loader. So the assert does not hold true.
+      if (!CDSConfig::supports_custom_loaders()) {
+        // -XX:AOTInitTestClass must be used carefully in regression tests to
+        // include only classes that are safe to aot-initialize.
+        assert(ik->class_loader() == nullptr ||
+               HeapShared::is_lambda_proxy_klass(ik) ||
+               AOTClassInitializer::has_test_class(),
+              "we can archive only instances of boot classes or lambda proxy classes");
+      }
     } else {
       assert(ik->class_loader() == nullptr, "must be boot class");
     }

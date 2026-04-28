@@ -25,6 +25,8 @@
 #ifndef SHARE_OOPS_KLASS_HPP
 #define SHARE_OOPS_KLASS_HPP
 
+#include "cds/cdsConfig.hpp"
+#include "classfile/classLoaderData.hpp"
 #include "oops/klassFlags.hpp"
 #include "oops/markWord.hpp"
 #include "oops/metadata.hpp"
@@ -134,6 +136,7 @@ class Klass : public Metadata {
   // Class name.  Instance classes: java/lang/String, etc.  Array classes: [I,
   // [Ljava/lang/String;, etc.  Set to zero for all other kinds of classes.
   Symbol*     _name;
+  Symbol*     _cl_aot_identity;
 
   // Cache of last observed secondary supertype
   Klass*      _secondary_super_cache;
@@ -309,7 +312,13 @@ protected:
 
   // class loader data
   ClassLoaderData* class_loader_data() const               { return _class_loader_data; }
-  void set_class_loader_data(ClassLoaderData* loader_data) {  _class_loader_data = loader_data; }
+  void set_class_loader_data(ClassLoaderData* loader_data) {
+    _class_loader_data = loader_data;
+  }
+
+  Symbol* cl_aot_identity() const { return _cl_aot_identity; }
+  void set_cl_aot_identity(Symbol* aot_id) { _cl_aot_identity = aot_id; }
+  bool is_defined_by_aot_safe_custom_loader() const { return _cl_aot_identity != nullptr; }
 
   s2 shared_classpath_index() const   {
     return _shared_class_path_index;

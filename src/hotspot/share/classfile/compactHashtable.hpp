@@ -37,7 +37,7 @@ template <
   typename K,
   typename V,
   V (*DECODE)(address base_address, u4 encoded_value),
-  bool (*EQUALS)(V value, K key, int len)
+  bool (*EQUALS)(V value, K key, int user_data)
   >
 class CompactHashtable;
 class NumberSeq;
@@ -260,7 +260,7 @@ template <
   typename K,
   typename V,
   V (*DECODE)(address base_address, u4 encoded_value),
-  bool (*EQUALS)(V value, K key, int len)
+  bool (*EQUALS)(V value, K key, int user_data)
   >
 class CompactHashtable : public SimpleCompactHashtable {
 
@@ -270,7 +270,7 @@ class CompactHashtable : public SimpleCompactHashtable {
 
 public:
   // Lookup a value V from the compact table using key K
-  inline V lookup(K key, unsigned int hash, int len) const {
+  inline V lookup(K key, unsigned int hash, int user_data) const {
     if (_entry_count > 0) {
       int index = hash % _bucket_count;
       u4 bucket_info = _buckets[index];
@@ -280,7 +280,7 @@ public:
 
       if (bucket_type == VALUE_ONLY_BUCKET_TYPE) {
         V value = decode(entry[0]);
-        if (EQUALS(value, key, len)) {
+        if (EQUALS(value, key, user_data)) {
           return value;
         }
       } else {
@@ -292,7 +292,7 @@ public:
           unsigned int h = (unsigned int)(entry[0]);
           if (h == hash) {
             V value = decode(entry[1]);
-            if (EQUALS(value, key, len)) {
+            if (EQUALS(value, key, user_data)) {
               return value;
             }
           }
@@ -385,7 +385,7 @@ inline V read_value_from_compact_hashtable(address base_address, u4 narrowp) {
 template <
   typename K,
   typename V,
-  bool (*EQUALS)(V value, K key, int len)
+  bool (*EQUALS)(V value, K key, int user_data)
   >
 class OffsetCompactHashtable : public CompactHashtable<
     K, V, read_value_from_compact_hashtable<V>, EQUALS> {

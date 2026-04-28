@@ -416,7 +416,7 @@ void ModuleEntry::metaspace_pointers_do(MetaspaceClosure* it) {
 
 #if INCLUDE_CDS_JAVA_HEAP
 bool ModuleEntry::should_be_archived() const {
-  return SystemDictionaryShared::is_builtin_loader(loader_data());
+  return SystemDictionaryShared::is_builtin_loader(loader_data()) || loader_data()->aot_identity() != nullptr;
 }
 
 void ModuleEntry::remove_unshareable_info() {
