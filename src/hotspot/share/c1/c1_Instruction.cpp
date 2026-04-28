@@ -322,12 +322,13 @@ void BlockBegin::state_values_do(ValueVisitor* f) {
 
 
 Invoke::Invoke(Bytecodes::Code code, ValueType* result_type, Value recv, Values* args,
-               ciMethod* target, ValueStack* state_before)
+               ciMethod* target, ValueStack* state_before, ciMethod* cha_monomorphic_target)
   : StateSplit(result_type, state_before)
   , _code(code)
   , _recv(recv)
   , _args(args)
   , _target(target)
+  , _cha_monomorphic_target(cha_monomorphic_target)
 {
   set_flag(TargetIsLoadedFlag,   target->is_loaded());
   set_flag(TargetIsFinalFlag,    target_is_loaded() && target->is_final_method());
