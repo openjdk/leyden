@@ -29,6 +29,7 @@
 #include "cds/aotStreamedHeapWriter.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/filemap.hpp"
+#include "code/aotCodeCache.hpp"
 #include "classfile/moduleEntry.hpp"
 #include "classfile/packageEntry.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -114,8 +115,47 @@ void AOTMapLogger::dumptime_log(ArchiveBuilder* builder, FileMapInfo* mapinfo,
   }
 #endif
 
+  log_ac_region();
+
   log_info(aot, map)("[End of AOT cache map]");
 }
+
+void AOTMapLogger::log_ac_region() {
+  ResourceMark rm;
+  AOTCodeCache::enable_caching();
+
+  if (AOTCodeCache::open_cache(/*is_dumping*/ true, /* is_using*/ false)) {
+    AOTCodeCache* cache = AOTCodeCache::open_for_dump();
+    if (cache != nullptr) {
+      AOTCodeEntry* entries = cache->_store_entries; // Pointer to latest entry
+      uint code_count = cache->_store_entries_cnt;
+
+      for (int i = code_count - 1; i >= 0; i--) {
+        AOTCodeEntry* entry = &entries[i];
+        if (entry == nullptr || entry->load_fail()) {
+          continue;
+        }
+
+        uint name_offset = entry->offset() + entry->name_offset();
+        const char* name = cache-> _store_buffer + name_offset;
+
+        switch (entry->kind()) {
+          case  AOTCodeEntry::Kind::Nmethod:
+            log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %d %s",
+              p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
+              entry->size(), entry->comp_level(), entry->comp_id(), name);
+            break;
+          default:
+            log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %s",
+              p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
+              entry->size(), entry->id(), name);
+            break;
+        }
+      }
+    }
+  }
+}
+
 
 // This class is used to find the location and type of all the
 // archived metaspace objects.
