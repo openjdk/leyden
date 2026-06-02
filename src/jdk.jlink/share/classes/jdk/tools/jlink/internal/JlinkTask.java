@@ -376,22 +376,23 @@ public class JlinkTask {
         plugins = plugins == null ? new PluginsConfiguration() : plugins;
 
         // First create the image provider
-        ImageProvider imageProvider =
-                createImageProvider(config,
-                                    null,
-                                    IGNORE_SIGNING_DEFAULT,
-                                    false,
-                                    null,
-                                    false,
-                                    false, /* hermetic */
-                                    new OptionsValues(),
-                                    null);
+        try (ImageHelper imageProvider =
+                     createImageProvider(config,
+                             null,
+                             IGNORE_SIGNING_DEFAULT,
+                             false,
+                             null,
+                             false,
+                             false, /* hermetic */
+                             new OptionsValues(),
+                             null)) {
 
-        // Then create the Plugin Stack
-        ImagePluginStack stack = ImagePluginConfiguration.parseConfiguration(plugins);
+            // Then create the Plugin Stack
+            ImagePluginStack stack = ImagePluginConfiguration.parseConfiguration(plugins);
 
-        //Ask the stack to proceed;
-        stack.operate(imageProvider);
+            // Ask the stack to proceed;
+            stack.operate(imageProvider);
+        }
     }
 
     // the token for "all modules on the module path"
@@ -515,23 +516,26 @@ public class JlinkTask {
         }
 
         // First create the image provider
-        ImageHelper imageProvider = createImageProvider(config,
-                                                        options.packagedModulesPath,
-                                                        options.ignoreSigning,
-                                                        options.bindServices,
-                                                        options.endian,
-                                                        options.verbose,
-                                                        options.hermetic,
-                                                        options,
-                                                        log);
+        try (ImageHelper imageProvider = createImageProvider(config,
+                options.packagedModulesPath,
+                options.ignoreSigning,
+                options.bindServices,
+                options.endian,
+                options.verbose,
+                options.hermetic,
+                options,
+                log)) {
+            // Then create the Plugin Stack
+            ImagePluginStack stack = ImagePluginConfiguration.parseConfiguration(
+                    taskHelper.getPluginsConfig(
+                            options.output,
+                            options.launchers,
+                            imageProvider.targetPlatform,
+                            options.hermetic));
 
-        // Then create the Plugin Stack
-        ImagePluginStack stack = ImagePluginConfiguration.parseConfiguration(
-            taskHelper.getPluginsConfig(options.output, options.launchers,
-                    imageProvider.targetPlatform, options.hermetic));
-
-        //Ask the stack to proceed
-        stack.operate(imageProvider);
+            //Ask the stack to proceed
+            stack.operate(imageProvider);
+        }
     }
 
     /**
@@ -1061,11 +1065,12 @@ public class JlinkTask {
         return sb.toString();
     }
 
-    private static record ImageHelper(Set<Archive> archives,
-                                      Platform targetPlatform,
-                                      Path packagedModulesPath,
-                                      boolean generateRuntimeImage,
-                                      boolean hermetic) implements ImageProvider {
+    private record ImageHelper(Set<Archive> archives,
+                               Platform targetPlatform,
+                               Path packagedModulesPath,
+                               boolean generateRuntimeImage,
+                               boolean hermetic)
+            implements ImageProvider, AutoCloseable {
         @Override
         public ExecutableImage retrieve(ImagePluginStack stack) throws IOException {
             ExecutableImage image = ImageFileCreator.create(archives,
@@ -1080,6 +1085,26 @@ public class JlinkTask {
                 }
             }
             return image;
+        }
+
+        @Override
+        public void close() throws IOException {
+            List<IOException> thrown = null;
+            for (Archive archive : archives) {
+                try {
+                    archive.close();
+                } catch (IOException ex) {
+                    if (thrown == null) {
+                        thrown = new ArrayList<>();
+                    }
+                    thrown.add(ex);
+                }
+            }
+            if (thrown != null) {
+                IOException ex = new IOException("Archives could not be closed", thrown.getFirst());
+                thrown.subList(1, thrown.size()).forEach(ex::addSuppressed);
+                throw ex;
+            }
         }
     }
 }

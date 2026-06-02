@@ -371,8 +371,8 @@ u4 ImageFileReader::find_location_index(const char* path, u8 *size) const {
         ImageLocation location(data);
         // Make sure result is not a false positive.
         if (verify_location(location, path)) {
-                *size = (jlong)location.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED);
-                return offset;
+            *size = (jlong)location.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED);
+            return offset;
         }
     }
     return 0;            // not found
@@ -403,7 +403,7 @@ bool ImageFileReader::verify_location(ImageLocation& location, const char* path)
     }
     // Get base name string.
     const char* base = location.get_attribute(ImageLocation::ATTRIBUTE_BASE, strings);
-    // Compare with basne name.
+    // Compare with base name.
     if (!(next = ImageStrings::starts_with(next, base))) return false;
     // Get extension string.
     const char* extension = location.get_attribute(ImageLocation::ATTRIBUTE_EXTENSION, strings);

@@ -97,6 +97,7 @@ class outputStream;
   LOG_TAG(heapdump) \
   NOT_PRODUCT(LOG_TAG(heapsampling)) \
   LOG_TAG(hermetic) \
+  COMPILER2_PRESENT(LOG_TAG(hotcode)) \
   LOG_TAG(humongous) \
   LOG_TAG(ihop) \
   LOG_TAG(iklass) \
@@ -111,7 +112,6 @@ class outputStream;
   LOG_TAG(jit) \
   LOG_TAG(jmethod) \
   LOG_TAG(jni) \
-  LOG_TAG(jvmci) \
   LOG_TAG(jvmti) \
   LOG_TAG(lambda) \
   LOG_TAG(library) \
