@@ -122,37 +122,35 @@ void AOTMapLogger::dumptime_log(ArchiveBuilder* builder, FileMapInfo* mapinfo,
 
 void AOTMapLogger::log_ac_region() {
   ResourceMark rm;
-  AOTCodeCache::enable_caching();
 
-  if (AOTCodeCache::open_cache(/*is_dumping*/ true, /* is_using*/ false)) {
-    AOTCodeCache* cache = AOTCodeCache::open_for_dump();
-    if (cache != nullptr) {
-      AOTCodeEntry* entries = cache->_store_entries; // Pointer to latest entry
-      uint code_count = cache->_store_entries_cnt;
+  AOTCodeCache* cache = AOTCodeCache::open_for_dump();
+  if (cache != nullptr) {
+    AOTCodeEntry* entries = cache->_store_entries; // Pointer to latest entry
+    uint code_count = cache->_store_entries_cnt;
 
-      for (int i = code_count - 1; i >= 0; i--) {
-        AOTCodeEntry* entry = &entries[i];
-        if (entry == nullptr || entry->load_fail()) {
-          continue;
-        }
+    for (int i = code_count - 1; i >= 0; i--) {
+      AOTCodeEntry* entry = &entries[i];
+      if (entry == nullptr || entry->load_fail()) {
+        continue;
+      }
 
-        uint name_offset = entry->offset() + entry->name_offset();
-        const char* name = cache-> _store_buffer + name_offset;
+      uint name_offset = entry->offset() + entry->name_offset();
+      const char* name = cache-> _store_buffer + name_offset;
 
-        switch (entry->kind()) {
-          case  AOTCodeEntry::Kind::Nmethod:
-            log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %d %s",
-              p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
-              entry->size(), entry->comp_level(), entry->comp_id(), name);
-            break;
-          default:
-            log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %s",
-              p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
-              entry->size(), entry->id(), name);
-            break;
-        }
+      switch (entry->kind()) {
+        case  AOTCodeEntry::Kind::Nmethod:
+          log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %d %s",
+            p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
+            entry->size(), entry->comp_level(), entry->comp_id(), name);
+          break;
+        default:
+          log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %s",
+            p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
+            entry->size(), entry->id(), name);
+          break;
       }
     }
+
   }
 }
 
