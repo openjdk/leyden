@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,30 +28,18 @@ import java.lang.instrument.IllegalClassFormatException;
 import java.lang.instrument.Instrumentation;
 import java.security.ProtectionDomain;
 
-// This class is available on the classpath so it can be accessed by JavaAgentApp
-public class JavaAgentTransformer  implements ClassFileTransformer {
-    private static Instrumentation savedInstrumentation;
-    private static final System.Logger LOGGER = System.getLogger(JavaAgentTransformer.class.getName());
+public class SimpleAgent implements ClassFileTransformer {
+    private static final System.Logger LOGGER = System.getLogger(SimpleAgent.class.getName());
 
     public static void premain(String agentArguments, Instrumentation instrumentation) {
-        System.out.println("JavaAgentTransformer.premain() is called");
-        instrumentation.addTransformer(new JavaAgentTransformer(), /*canRetransform=*/true);
-        savedInstrumentation = instrumentation;
-
-        LOGGER.log(Level.WARNING, "JavaAgentTransformer::premain() is finished");
-    }
-
-    public static Instrumentation getInstrumentation() {
-        return savedInstrumentation;
-    }
-
-    public static void agentmain(String args, Instrumentation inst) throws Exception {
-        premain(args, inst);
+        System.out.println("SimpleAgent.premain() is called");
+        instrumentation.addTransformer(new SimpleAgent(), /*canRetransform=*/true);
+        LOGGER.log(Level.WARNING, "SimpleAgent::premain() is finished");
     }
 
     public byte[] transform(ClassLoader loader, String name, Class<?> classBeingRedefined,
                             ProtectionDomain pd, byte[] buffer) throws IllegalClassFormatException {
-        if (name.equals("JavaAgentApp$ShouldBeTransformed")) {
+        if (name.equals("SimpleTestApp$ShouldBeTransformed")) {
             System.out.println("Transforming: " + name + "; Class<?> = " + classBeingRedefined);
             try {
                 replace(buffer, "XXXX", "YYYY");

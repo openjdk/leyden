@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -29,9 +29,9 @@
  * @summary -javaagent is not allowed when creating static CDS archive
  * @requires vm.cds.supports.aot.class.linking
  * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds/test-classes
- * @build JavaAgent JavaAgentTransformer Util
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar JavaAgentApp JavaAgentApp$ShouldBeTransformed
- * @run driver JavaAgent STATIC
+ * @build SimpleTest SimpleAgent Util
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar SimpleTestApp SimpleTestApp$ShouldBeTransformed
+ * @run driver SimpleTest STATIC
  */
 
 /**
@@ -40,11 +40,11 @@
  * @summary -javaagent is not allowed when creating dynamic CDS archive
  * @requires vm.cds.supports.aot.class.linking
  * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds/test-classes
- * @build JavaAgent JavaAgentTransformer Util
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar JavaAgentApp JavaAgentApp$ShouldBeTransformed
+ * @build SimpleTest SimpleAgent Util
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar SimpleTestApp SimpleTestApp$ShouldBeTransformed
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
- * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. JavaAgent DYNAMIC
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. SimpleTest DYNAMIC
  */
 
 /*
@@ -53,28 +53,28 @@
  *          be cached.
  * @requires vm.cds.supports.aot.class.linking
  * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds/test-classes
- * @build JavaAgent JavaAgentTransformer Util
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar JavaAgentApp JavaAgentApp$ShouldBeTransformed
- * @run driver JavaAgent AOT
+ * @build SimpleTest SimpleAgent Util
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar SimpleTestApp SimpleTestApp$ShouldBeTransformed
+ * @run driver SimpleTest AOT
  */
 
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.process.OutputAnalyzer;
 import jdk.test.lib.helpers.ClassFileInstaller;
 
-public class JavaAgent {
+public class SimpleTest {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
-    static final String mainClass = "JavaAgentApp";
+    static final String mainClass = "SimpleTestApp";
 
     public static String agentClasses[] = {
-        "JavaAgentTransformer",
+        "SimpleAgent",
         "Util",
     };
     static String agentJar;
 
     public static void main(String... args) throws Exception {
         agentJar = ClassFileInstaller.writeJar("agent.jar",
-                                        ClassFileInstaller.Manifest.fromSourceFile("JavaAgentTransformer.mf"),
+                                        ClassFileInstaller.Manifest.fromSourceFile("SimpleAgent.mf"),
                                         agentClasses);
 
         Tester t = new Tester();
@@ -123,14 +123,14 @@ public class JavaAgent {
             }
         }
 
-        static String agentLoadedMsg = "JavaAgentTransformer.premain() is called";
-        static String agentPremainFinished = "JavaAgentTransformer::premain() is finished";
+        static String agentLoadedMsg = "SimpleAgent.premain() is called";
+        static String agentPremainFinished = "SimpleAgent::premain() is finished";
 
         public void checkExecutionForAOTWorkflow(OutputAnalyzer out, RunMode runMode) throws Exception {
 
             if (runMode.isApplicationExecuted()) {
                 out.shouldContain(agentLoadedMsg);
-                out.shouldContain("Transforming: JavaAgentApp$ShouldBeTransformed; Class<?> = null");
+                out.shouldContain("Transforming: SimpleTestApp$ShouldBeTransformed; Class<?> = null");
                 out.shouldContain("Result: YYYY"); // "XXXX" has been changed to "YYYY" by the agent
             } else {
                 out.shouldNotContain(agentLoadedMsg);
@@ -139,8 +139,8 @@ public class JavaAgent {
             switch (runMode) {
             case RunMode.TRAINING:
                 out.shouldContain(agentPremainFinished);
-                out.shouldContain("Skipping JavaAgentApp$ShouldBeTransformed: From ClassFileLoadHook");
-                out.shouldContain("Skipping JavaAgentTransformer: Unsupported location");
+                out.shouldContain("Skipping SimpleTestApp$ShouldBeTransformed: From ClassFileLoadHook");
+                out.shouldContain("Skipping SimpleAgent: Unsupported location");
                 break;
             case RunMode.ASSEMBLY:
                 out.shouldContain("Disabled all JVMTI agents during -XX:AOTMode=create");
@@ -182,7 +182,7 @@ public class JavaAgent {
     }
 }
 
-class JavaAgentApp {
+class SimpleTestApp {
     public static void main(String[] args) {
         System.out.println("Result: " + (new ShouldBeTransformed()));
     }
