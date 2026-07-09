@@ -468,6 +468,7 @@ private:
   static void init_heap_writer() NOT_CDS_JAVA_HEAP_RETURN;
   static void write_subgraph_info_table() NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize_tables(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
+  static void load_cached_resolved_methods() NOT_CDS_JAVA_HEAP_RETURN;
 
 #ifndef PRODUCT
   static bool is_a_test_class_in_unnamed_module(Klass* ik) NOT_CDS_JAVA_HEAP_RETURN_(false);

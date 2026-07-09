@@ -34,7 +34,7 @@
  *                 JavacBenchApp$ClassFile
  *                 JavacBenchApp$FileManager
  *                 JavacBenchApp$SourceFile
- * @run driver RedefineAllTest AOT
+ * @run driver/timeout=240 RedefineAllTest AOT
  */
 
 import jdk.test.lib.cds.CDSAppTester;
@@ -54,13 +54,21 @@ public class RedefineAllTest {
         agentJar = ClassFileInstaller.writeJar("agent.jar",
                                         ClassFileInstaller.Manifest.fromSourceFile("RedefineAllAgent.mf"),
                                         agentClasses);
-        Tester t = new Tester();
+        run(args, false);
+        run(args, true);
+    }
+
+    static void run(String[] args, boolean compressedOops) throws Exception {
+        Tester t = new Tester(compressedOops);
         t.run(args);
     }
 
     static class Tester extends CDSAppTester {
-        public Tester() {
+        boolean compressedOops;
+
+        public Tester(boolean compressedOops) {
             super(mainClass);
+            this.compressedOops = compressedOops;
         }
 
         @Override
@@ -70,12 +78,16 @@ public class RedefineAllTest {
 
         @Override
         public String[] vmArgs(RunMode runMode) {
+            String mode = "-XX:" + (compressedOops ? "+" : "-") + "UseCompressedOops";
+
             if (runMode == RunMode.PRODUCTION) {
                 return new String[] {
+                    mode,
                     "-javaagent:" + agentJar,
                 };
             } else {
                 return new String[] {
+                    mode,
                     // This is needed for using the agent in production run.
                     "--add-modules=java.instrument",
                 };
