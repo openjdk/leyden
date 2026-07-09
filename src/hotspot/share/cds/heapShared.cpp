@@ -1326,7 +1326,6 @@ void HeapShared::serialize_tables(SerializeClosure* soc) {
 void HeapShared::load_cached_resolved_methods() {
   precond(CDSConfig::is_using_aot_linked_classes());
   if (_runtime_resolved_methods != nullptr) {
-    NoSafepointVerifier nsv;
     JavaThread* current = JavaThread::current();
     HandleMark hm(current);
     for (int i = 0; i < _runtime_resolved_methods->length(); i++) {
