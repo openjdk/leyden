@@ -39,6 +39,14 @@ public class RedefineAllAgent implements ClassFileTransformer {
         for (Class c : inst.getAllLoadedClasses()) {
             if (!c.isArray() && !c.isHidden() && inst.isModifiableClass(c)) {
                 try {
+                    // Note: we cannot use test/lib/RedefineClassHelper.java because we may
+                    // have a regenerated class (see regeneratedClasses.cpp) such as
+                    // java/lang/invoke/DirectMethodHandle$Holder, whose bytecodes are different than
+                    // the DirectMethodHandle$Holder.class file stored in the JDK's modules file.
+                    //
+                    // Therefore, we cannot use RedefineClassHelper.getBytecodes(). We must call into
+                    // inst.retransformClasses(), which will give us the correct bytecodes using
+                    // JvmtiClassFileReconstituter.
                     inst.retransformClasses(c);
                     System.out.println("========= Success: " + c.getName());
                 } catch (UnmodifiableClassException e) {

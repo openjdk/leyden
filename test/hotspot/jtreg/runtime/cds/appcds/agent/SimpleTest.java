@@ -28,9 +28,10 @@
  * @bug 8361725
  * @summary -javaagent is not allowed when creating static CDS archive
  * @requires vm.cds.supports.aot.class.linking
- * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds/test-classes
- * @build SimpleTest SimpleAgent Util
+ * @library /test/lib /test/hotspot/jtreg/serviceability/jvmti/RedefineClasses
+ * @build SimpleTest RedefineClassHelper
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar SimpleTestApp SimpleTestApp$ShouldBeTransformed
+ * @run main RedefineClassHelper
  * @run driver SimpleTest STATIC
  */
 
@@ -39,11 +40,12 @@
  * @bug 8362561
  * @summary -javaagent is not allowed when creating dynamic CDS archive
  * @requires vm.cds.supports.aot.class.linking
- * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds/test-classes
- * @build SimpleTest SimpleAgent Util
+ * @library /test/lib /test/hotspot/jtreg/serviceability/jvmti/RedefineClasses
+ * @build SimpleTest RedefineClassHelper
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar SimpleTestApp SimpleTestApp$ShouldBeTransformed
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
+ * @run main RedefineClassHelper
  * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. SimpleTest DYNAMIC
  */
 
@@ -52,11 +54,16 @@
  * @summary -javaagent should be allowed in AOT workflow. However, classes transformed/redefined by agents will not
  *          be cached.
  * @requires vm.cds.supports.aot.class.linking
- * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds/test-classes
- * @build SimpleTest SimpleAgent Util
+ * @library /test/lib /test/hotspot/jtreg/serviceability/jvmti/RedefineClasses
+ * @build SimpleTest RedefineClassHelper
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar SimpleTestApp SimpleTestApp$ShouldBeTransformed
+ * @run main RedefineClassHelper
  * @run driver SimpleTest AOT
  */
+
+import java.lang.classfile.CodeBuilder;
+import java.lang.classfile.CodeElement;
+import java.lang.classfile.MethodModel;
 
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.process.OutputAnalyzer;
@@ -70,13 +77,9 @@ public class SimpleTest {
         "SimpleAgent",
         "Util",
     };
-    static String agentJar;
+    static String agentJar = "redefineagent.jar";
 
     public static void main(String... args) throws Exception {
-        agentJar = ClassFileInstaller.writeJar("agent.jar",
-                                        ClassFileInstaller.Manifest.fromSourceFile("SimpleAgent.mf"),
-                                        agentClasses);
-
         Tester t = new Tester();
         if (args[0].equals("STATIC") || args[0].equals("DYNAMIC")) {
             // Some child processes may have non-zero exits. These are checked by
@@ -123,28 +126,18 @@ public class SimpleTest {
             }
         }
 
-        static String agentLoadedMsg = "SimpleAgent.premain() is called";
-        static String agentPremainFinished = "SimpleAgent::premain() is finished";
-
         public void checkExecutionForAOTWorkflow(OutputAnalyzer out, RunMode runMode) throws Exception {
-
             if (runMode.isApplicationExecuted()) {
-                out.shouldContain(agentLoadedMsg);
-                out.shouldContain("Transforming: SimpleTestApp$ShouldBeTransformed; Class<?> = null");
                 out.shouldContain("Result: YYYY"); // "XXXX" has been changed to "YYYY" by the agent
-            } else {
-                out.shouldNotContain(agentLoadedMsg);
             }
 
             switch (runMode) {
             case RunMode.TRAINING:
-                out.shouldContain(agentPremainFinished);
-                out.shouldContain("Skipping SimpleTestApp$ShouldBeTransformed: From ClassFileLoadHook");
-                out.shouldContain("Skipping SimpleAgent: Unsupported location");
+                out.shouldContain("Skipping SimpleTestApp$ShouldBeTransformed: Has been redefined");
+                out.shouldContain("Skipping RedefineClassHelper: Unsupported location");
                 break;
             case RunMode.ASSEMBLY:
                 out.shouldContain("Disabled all JVMTI agents during -XX:AOTMode=create");
-                out.shouldNotContain(agentPremainFinished);
                 break;
             }
 
@@ -153,7 +146,6 @@ public class SimpleTest {
         public void checkExecutionForStaticWorkflow(OutputAnalyzer out, RunMode runMode) throws Exception {
             switch (runMode) {
             case RunMode.TRAINING:
-                out.shouldContain(agentPremainFinished);
                 out.shouldHaveExitValue(0);
                 break;
             case RunMode.DUMP_STATIC:
@@ -183,13 +175,19 @@ public class SimpleTest {
 }
 
 class SimpleTestApp {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        RedefineClassHelper.redefineMethodBodies(ShouldBeTransformed.class,
+                                                 (MethodModel method) -> method.methodName().equalsString("toString"),
+                                                 (CodeBuilder builder, CodeElement element) -> {
+                                                     builder.ldc("YYYY");
+                                                     builder.areturn();
+                                                 });
         System.out.println("Result: " + (new ShouldBeTransformed()));
     }
 
     static class ShouldBeTransformed {
         public String toString() {
-            return "XXXX"; // Will be changed to YYYY by the agent
+            return "XXXX"; // Will be changed to "YYYY" with class redefinition
         }
     }
 }

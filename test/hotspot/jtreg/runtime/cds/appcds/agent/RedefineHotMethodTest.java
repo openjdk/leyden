@@ -27,11 +27,16 @@
  * @test
  * @summary The agent is loaded in production run. It redefines RedefineHotMethodApp::increment() to return 34.
  * @requires vm.cds.supports.aot.class.linking
- * @library /test/lib /test/setup_aot
- * @build RedefineHotMethodTest RedefineHotMethodAgent
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar RedefineHotMethodApp
+ * @library /test/lib /test/hotspot/jtreg/serviceability/jvmti/RedefineClasses
+ * @build RedefineHotMethodTest RedefineClassHelper
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar RedefineHotMethodApp RedefineClassHelper
+ * @run main RedefineClassHelper
  * @run driver RedefineHotMethodTest AOT
  */
+
+import java.lang.classfile.CodeBuilder;
+import java.lang.classfile.CodeElement;
+import java.lang.classfile.MethodModel;
 
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.process.OutputAnalyzer;
@@ -44,12 +49,9 @@ public class RedefineHotMethodTest {
     public static String agentClasses[] = {
         "RedefineHotMethodAgent",
     };
-    static String agentJar;
+    static String agentJar = "redefineagent.jar";
 
     public static void main(String... args) throws Exception {
-        agentJar = ClassFileInstaller.writeJar("agent.jar",
-                                        ClassFileInstaller.Manifest.fromSourceFile("RedefineHotMethodAgent.mf"),
-                                        agentClasses);
         Tester t = new Tester();
         t.run(args);
     }
@@ -82,36 +84,51 @@ public class RedefineHotMethodTest {
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
                 mainClass,
+                runMode.toString(),
             };
         }
 
         @Override
         public void checkExecution(OutputAnalyzer out, RunMode runMode) throws Exception {
             if (runMode == RunMode.TRAINING) {
-                out.shouldContain("counter = 12000000");
+                out.shouldContain("counter = 120000001");
             } else if (runMode == RunMode.PRODUCTION) {
-                out.shouldContain("counter = 34000000");
+                out.shouldContain("counter = 340000001");
             }
         }
     }
 }
 
 class RedefineHotMethodApp {
-    volatile static int counter;
+    volatile static long counter;
 
-    public static void main(String args[]) {
+    public static void main(String args[]) throws Exception {
+        if (args[0].equals("PRODUCTION")) {
+            redefineIncrementMethod();
+        }
         doLoop();
+        counter ++;
         System.out.println("counter = " + counter);
     }
 
     static void doLoop() {
         for (int i = 0; i < 1000 * 1000; i++) {
-            counter += increment();
+            for (int j = 0; j < 10; j++) {
+                counter += increment();
+            }
         }
     }
 
-    // This method will be redefined by the agent to return 34 instead. This
-    // happens before RedefineHotMethodApp.main() is entered.
+    static void redefineIncrementMethod() throws Exception {
+        RedefineClassHelper.redefineMethodBodies(RedefineHotMethodApp.class,
+                                                 (MethodModel method) -> method.methodName().equalsString("increment"),
+                                                 (CodeBuilder builder, CodeElement element) -> {
+                                                     builder.loadConstant(34);
+                                                     builder.ireturn();
+                                                 });
+    }
+
+    // This method will be redefined in redefineIncrementMethod() to return 34 instead.
     //
     // Any AOT-compiled methods that use the original version of this method
     // must not be used.
