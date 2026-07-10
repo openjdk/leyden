@@ -127,7 +127,7 @@ public class RedefineClassHelper {
      *                                              builder.areturn();
      *                                          });
      */
-    public static void redefineMethodBodies(Class clazz, Predicate<MethodModel> filter, CodeTransform xform) throws Exception {
+    public static void redefineMethodBodies(Class<?> clazz, Predicate<MethodModel> filter, CodeTransform xform) throws Exception {
         byte[] bytecodes = RedefineClassHelper.getBytecodes(clazz);
         ClassFile cf = ClassFile.of();
         ClassModel model = cf.parse(bytecodes);

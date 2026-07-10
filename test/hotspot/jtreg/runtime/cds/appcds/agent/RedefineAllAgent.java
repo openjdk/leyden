@@ -36,7 +36,7 @@ public class RedefineAllAgent implements ClassFileTransformer {
     public static void premain(String agentArguments, Instrumentation inst) {
         inst.addTransformer(new RedefineAllAgent(), /*canRetransform=*/true);
 
-        for (Class c : inst.getAllLoadedClasses()) {
+        for (Class<?> c : inst.getAllLoadedClasses()) {
             if (!c.isArray() && !c.isHidden() && inst.isModifiableClass(c)) {
                 try {
                     // Note: we cannot use test/lib/RedefineClassHelper.java because we may
