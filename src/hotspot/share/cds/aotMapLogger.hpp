@@ -33,6 +33,8 @@
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/growableArray.hpp"
 
+class AOTCodeCache;
+class AOTCodeEntry;
 class AOTMappedHeapInfo;
 class AOTStreamedHeapInfo;
 class CompileTrainingData;
@@ -160,6 +162,7 @@ private:
   static void log_method_training_data(MethodTrainingData* mtd, address requested_addr, const char* type_name, int bytes, Thread* current);
   static void log_compile_training_data(CompileTrainingData* ctd, address requested_addr, const char* type_name, int bytes, Thread* current);
   static void log_ac_region();
+  static void log_embedded_stubs(const AOTCodeCache* cache, const AOTCodeEntry* entry);
 
 #if INCLUDE_CDS_JAVA_HEAP
   static void dumptime_log_mapped_heap_region(AOTMappedHeapInfo* mapped_heap_info);

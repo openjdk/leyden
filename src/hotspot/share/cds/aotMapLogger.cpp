@@ -120,6 +120,65 @@ void AOTMapLogger::dumptime_log(ArchiveBuilder* builder, FileMapInfo* mapinfo,
   log_info(aot, map)("[End of AOT cache map]");
 }
 
+void AOTMapLogger::log_embedded_stubs(const AOTCodeCache* cache, const AOTCodeEntry* entry) {
+
+  //start at the beginning of our AOT cache
+  const char* buf  = cache->store_buffer();
+
+  //pos now points at the beginning of the StubGenBlob
+  uint pos = entry->offset() + entry->code_offset();
+
+  // The first part is the CodeBlob which we are not going to log
+  const CodeBlob* blob = (const CodeBlob*)(buf + pos);
+  pos += blob->size();
+
+  // Then we have the relocation data records (aligned to HeapWordSize)
+  // we are not interested in logging this either
+  int reloc_count = *(int*)(buf + pos);
+  pos += sizeof(int);
+  pos = align_up(pos, (uint)HeapWordSize);
+  pos += reloc_count * (uint)sizeof(relocInfo);
+
+  // Then we have an optional OopMapSet
+  if (entry->has_oop_maps()) {
+    pos = align_up(pos, (uint)sizeof(int));
+    int oopmaps_size = *(int*)(buf + pos);  pos += sizeof(int);
+    pos += oopmaps_size;
+  }
+  pos = align_up(pos, (uint)sizeof(int));
+
+  // Now we can get the information we wanted to log (embedded stubs)
+  // get the first embedded stub id
+  StubId stub_id = *(StubId*)(buf + pos);
+  pos += sizeof(StubId);
+
+  // Embedded StubGenBlobs are assumed to have the following structure
+  // [ StubId | offset | size | N | offset_1 | offset_2 | ... | offset_N ]
+
+  // loop until we run out of stubs (no stubid)
+  while (stub_id != StubId::NO_STUBID) {
+    uint offset = *(uint*)(buf + pos);
+    pos += sizeof(uint);
+    uint size = *(uint*)(buf + pos);
+    pos += sizeof(uint);
+
+    // Log the embedded stub
+    log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %d %s",
+      p2i(buf + entry->offset() + entry->code_offset() + offset),
+      "EmbeddedStub", size, entry->id(), (int) stub_id, StubInfo::name(stub_id));
+
+    //Get the number of secondary/extra entry offsets
+    int n = *(int*) (buf + pos);
+    pos += sizeof(int);
+    //to skip them and prepare for the following stub (if exists)
+    pos += n * sizeof(uint);
+
+    // position ourselves in the potential following stub
+    stub_id = *(StubId*)(buf + pos);
+    pos += sizeof(StubId);
+  }
+}
+
 void AOTMapLogger::log_ac_region() {
   ResourceMark rm;
 
@@ -143,7 +202,20 @@ void AOTMapLogger::log_ac_region() {
             p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
             entry->size(), entry->comp_level(), entry->comp_id(), name);
           break;
-        default:
+        case  AOTCodeEntry::Kind::StubGenBlob:
+          {
+            BlobId blob_id = (BlobId) entry->id();
+
+            //First we log the stub blob
+            log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %s",
+              p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
+              entry->size(), entry->id(), StubInfo::name(blob_id));
+
+            //Now we log each stub embedded inside the blob
+            log_embedded_stubs(cache, entry);
+          }
+            break;
+          default:
           log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %s",
             p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
             entry->size(), entry->id(), name);
