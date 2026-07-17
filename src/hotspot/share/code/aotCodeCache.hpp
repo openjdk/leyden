@@ -603,7 +603,7 @@ public:
   AOTCodeCache(bool is_dumping, bool is_using);
 
   const char* cache_buffer() const { return _load_buffer; }
-  const char* store_buffer()      const { return _store_buffer; }
+  const char* store_buffer() const { return _store_buffer; }
   bool failed() const { return _failed; }
   void set_failed()   { _failed = true; }
 
