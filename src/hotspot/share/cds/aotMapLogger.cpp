@@ -123,31 +123,12 @@ void AOTMapLogger::dumptime_log(ArchiveBuilder* builder, FileMapInfo* mapinfo,
 void AOTMapLogger::log_embedded_stubs(const AOTCodeCache* cache, const AOTCodeEntry* entry) {
 
   //start at the beginning of our AOT cache
-  const char* buf  = cache->store_buffer();
+  const char* buf = cache->store_buffer();
 
-  //pos now points at the beginning of the StubGenBlob
-  uint pos = entry->offset() + entry->code_offset();
+  // jump to the embedded stubs section
+  uint pos = entry->offset() + entry->embedded_stub_offset();
 
-  // The first part is the CodeBlob which we are not going to log
-  const CodeBlob* blob = (const CodeBlob*)(buf + pos);
-  pos += blob->size();
-
-  // Then we have the relocation data records (aligned to HeapWordSize)
-  // we are not interested in logging this either
-  int reloc_count = *(int*)(buf + pos);
-  pos += sizeof(int);
-  pos = align_up(pos, (uint)HeapWordSize);
-  pos += reloc_count * (uint)sizeof(relocInfo);
-
-  // Then we have an optional OopMapSet
-  if (entry->has_oop_maps()) {
-    pos = align_up(pos, (uint)sizeof(int));
-    int oopmaps_size = *(int*)(buf + pos);  pos += sizeof(int);
-    pos += oopmaps_size;
-  }
-  pos = align_up(pos, (uint)sizeof(int));
-
-  // Now we can get the information we wanted to log (embedded stubs)
+  // Now we can get the information we want to log (embedded stubs)
   // get the first embedded stub id
   StubId stub_id = *(StubId*)(buf + pos);
   pos += sizeof(StubId);

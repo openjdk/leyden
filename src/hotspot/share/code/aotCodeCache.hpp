@@ -107,6 +107,7 @@ private:
   uint   _name_offset; // Method's or intrinsic name
   uint   _name_size;
   uint   _code_offset; // Start of code in cache
+  uint   _embedded_stub_offset; // Start of embedded stubs in StubGenBlobs
 
   uint   _comp_level;  // compilation level
   uint   _comp_id;     // compilation id
@@ -136,6 +137,7 @@ public:
     _name_offset  = name_offset;
     _name_size    = name_size;
     _code_offset  = code_offset;
+    _embedded_stub_offset = 0;
 
     _comp_level   = comp_level;
     _comp_id      = comp_id;
@@ -159,6 +161,9 @@ public:
   uint name_offset()  const { return _name_offset; }
   uint name_size()    const { return _name_size; }
   uint code_offset()  const { return _code_offset; }
+
+  void set_embedded_stub_offset(const uint off) { _embedded_stub_offset = off; }
+  uint embedded_stub_offset()  const { return _embedded_stub_offset; }
 
   bool has_oop_maps() const { return _has_oop_maps; }
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
@@ -663,7 +668,7 @@ public:
   bool write_metadata(Metadata* m);
   bool write_oops(nmethod* nm);
   bool write_metadata(nmethod* nm);
-  bool write_stub_data(CodeBlob& blob, AOTStubData *stub_data);
+  bool write_stub_data(CodeBlob& blob, AOTStubData *stub_data, uint* stubs_offset = nullptr);
 
 #ifndef PRODUCT
   bool write_asm_remarks(AsmRemarks& asm_remarks, bool use_string_table);
