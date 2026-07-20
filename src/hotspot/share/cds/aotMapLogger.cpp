@@ -138,6 +138,8 @@ void AOTMapLogger::log_embedded_stubs(const AOTCodeCache* cache, const AOTCodeEn
 
   // loop until we run out of stubs (no stubid)
   while (stub_id != StubId::NO_STUBID) {
+    assert(stub_id > StubId::NO_STUBID && stub_id < StubId::NUM_STUBIDS, "Embedded Stub ID is not valid.");
+    assert(StubInfo::blob(stub_id) == entry->id(), "We found an embedded stub that doesn't belong here.");
     uint offset = *(uint*)(buf + pos);
     pos += sizeof(uint);
     uint size = *(uint*)(buf + pos);
@@ -153,6 +155,8 @@ void AOTMapLogger::log_embedded_stubs(const AOTCodeCache* cache, const AOTCodeEn
     pos += sizeof(int);
     //to skip them and prepare for the following stub (if exists)
     pos += n * sizeof(uint);
+    // the entry+extras count for the stub read from the file should exceed the declared entry count
+    assert(n >= StubInfo::entry_count(stub_id) - 1, "We are missing entries on this stub.");
 
     // position ourselves in the potential following stub
     stub_id = *(StubId*)(buf + pos);
