@@ -144,9 +144,9 @@ void AOTMapLogger::log_embedded_stubs(const AOTCodeCache* cache, const AOTCodeEn
     pos += sizeof(uint);
 
     // Log the embedded stub
-    log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d %d %d %s",
+    log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d id=%d blob=%d %s",
       p2i(buf + entry->offset() + entry->code_offset() + offset),
-      "EmbeddedStub", size, entry->id(), (int) stub_id, StubInfo::name(stub_id));
+      "EmbeddedStub", size, (int) stub_id, entry->id(), StubInfo::name(stub_id));
 
     //Get the number of secondary/extra entry offsets
     int n = *(int*) (buf + pos);
