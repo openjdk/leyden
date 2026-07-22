@@ -432,6 +432,48 @@ void AOTCodeCache::dump() {
   }
 }
 
+//This is a helper function that executes a function over each embedded stub available
+void AOTCodeCache::loop_over_embedded_stubs(const AOTCodeEntry* entry, const embedded_stub_func func) {
+  assert(entry->kind() == StubGen, "invalid call");
+  // jump to the embedded stubs section
+  uint pos = entry->offset() + entry->embedded_stub_offset();
+
+  // Now we can get the information we want to log (embedded stubs)
+  // get the first embedded stub id
+  StubId stub_id = *(StubId*)(_store_buffer + pos);
+  pos += sizeof(StubId);
+
+  // Embedded StubGenBlobs are assumed to have the following structure
+  // [ StubId | offset | size | N | offset_1 | offset_2 | ... | offset_N ]
+
+  // loop until we run out of stubs (no stubid)
+  while (stub_id != StubId::NO_STUBID) {
+    assert(stub_id > StubId::NO_STUBID && stub_id < StubId::NUM_STUBIDS, "Embedded Stub ID is not valid.");
+    assert(StubInfo::blob(stub_id) == (BlobId) entry->id(), "We found an embedded stub that doesn't belong here.");
+    uint offset = *(uint*)(_store_buffer + pos);
+    pos += sizeof(uint);
+    uint size = *(uint*)(_store_buffer + pos);
+    pos += sizeof(uint);
+
+    //Call the function on the embedded stub
+    (*func)(p2i(_store_buffer + entry->offset() + entry->code_offset() + offset),
+      size, (uint) stub_id, StubInfo::name(stub_id), (uint) entry->id());
+
+    //Get the number of secondary/extra entry offsets
+    int n = *(int*) (_store_buffer + pos);
+    pos += sizeof(int);
+    //to skip them and prepare for the following stub (if exists)
+    pos += n * sizeof(uint);
+    // the entry+extras count for the stub read from the file should exceed the declared entry count
+    assert(n >= StubInfo::entry_count(stub_id) - 1, "We are missing entries on this stub.");
+
+    // position ourselves in the potential following stub
+    stub_id = *(StubId*)(_store_buffer + pos);
+    pos += sizeof(StubId);
+  }
+}
+
+
 class CachedCodeDirectory {
 public:
   uint _aot_code_size;

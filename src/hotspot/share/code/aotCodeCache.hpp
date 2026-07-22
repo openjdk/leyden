@@ -790,6 +790,9 @@ public:
   static void print_on(outputStream* st) NOT_CDS_RETURN;
   static void print_statistics_on(outputStream* st) NOT_CDS_RETURN;
   static void print_timers_on(outputStream* st) NOT_CDS_RETURN;
+
+  typedef void (*embedded_stub_func)(intptr_t pointer, uint size, uint stub_id, const char* stub_name, uint entry_id) ;
+  void loop_over_embedded_stubs(const AOTCodeEntry *entry, embedded_stub_func func);
 };
 
 // Concurent AOT code reader

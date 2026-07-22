@@ -120,48 +120,10 @@ void AOTMapLogger::dumptime_log(ArchiveBuilder* builder, FileMapInfo* mapinfo,
   log_info(aot, map)("[End of AOT cache map]");
 }
 
-void AOTMapLogger::log_embedded_stubs(const AOTCodeCache* cache, const AOTCodeEntry* entry) {
 
-  //start at the beginning of our AOT cache
-  const char* buf = cache->store_buffer();
-
-  // jump to the embedded stubs section
-  uint pos = entry->offset() + entry->embedded_stub_offset();
-
-  // Now we can get the information we want to log (embedded stubs)
-  // get the first embedded stub id
-  StubId stub_id = *(StubId*)(buf + pos);
-  pos += sizeof(StubId);
-
-  // Embedded StubGenBlobs are assumed to have the following structure
-  // [ StubId | offset | size | N | offset_1 | offset_2 | ... | offset_N ]
-
-  // loop until we run out of stubs (no stubid)
-  while (stub_id != StubId::NO_STUBID) {
-    assert(stub_id > StubId::NO_STUBID && stub_id < StubId::NUM_STUBIDS, "Embedded Stub ID is not valid.");
-    assert(StubInfo::blob(stub_id) == (BlobId) entry->id(), "We found an embedded stub that doesn't belong here.");
-    uint offset = *(uint*)(buf + pos);
-    pos += sizeof(uint);
-    uint size = *(uint*)(buf + pos);
-    pos += sizeof(uint);
-
-    // Log the embedded stub
-    log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d id=%d blob=%d %s",
-      p2i(buf + entry->offset() + entry->code_offset() + offset),
-      "EmbeddedStub", size, (int) stub_id, entry->id(), StubInfo::name(stub_id));
-
-    //Get the number of secondary/extra entry offsets
-    int n = *(int*) (buf + pos);
-    pos += sizeof(int);
-    //to skip them and prepare for the following stub (if exists)
-    pos += n * sizeof(uint);
-    // the entry+extras count for the stub read from the file should exceed the declared entry count
-    assert(n >= StubInfo::entry_count(stub_id) - 1, "We are missing entries on this stub.");
-
-    // position ourselves in the potential following stub
-    stub_id = *(StubId*)(buf + pos);
-    pos += sizeof(StubId);
-  }
+static void log_embedded_stub(const intptr_t pointer, const uint size, const uint stub_id, const char* stub_name, const uint entry_id) {
+  log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d id=%d blob=%d %s",
+    pointer, "EmbeddedStub", size, stub_id, entry_id, stub_name);
 }
 
 void AOTMapLogger::log_ac_region() {
@@ -197,7 +159,7 @@ void AOTMapLogger::log_ac_region() {
               entry->size(), entry->id(), StubInfo::name(blob_id));
 
             //Now we log each stub embedded inside the blob
-            log_embedded_stubs(cache, entry);
+            cache->loop_over_embedded_stubs(entry,  log_embedded_stub);
           }
             break;
           default:
