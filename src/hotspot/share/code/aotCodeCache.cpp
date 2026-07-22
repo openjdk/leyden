@@ -434,7 +434,7 @@ void AOTCodeCache::dump() {
 
 //This is a helper function that executes a function over each embedded stub available
 void AOTCodeCache::loop_over_embedded_stubs(const AOTCodeEntry* entry, const embedded_stub_func func) {
-  assert(entry->kind() == StubGen, "invalid call");
+  assert(entry->kind() == AOTCodeEntry::Kind::StubGenBlob, "invalid call");
   // jump to the embedded stubs section
   uint pos = entry->offset() + entry->embedded_stub_offset();
 
