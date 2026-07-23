@@ -143,7 +143,7 @@ public:
     if (_kind == StubGenBlob) {
       _embedded_stub_offset = 0;
     } else {
-      _comp_level   = comp_level;
+      _comp_level = comp_level;
     }
 
     _comp_id      = comp_id;
@@ -168,8 +168,14 @@ public:
   uint name_size()    const { return _name_size; }
   uint code_offset()  const { return _code_offset; }
 
-  void set_embedded_stub_offset(const uint off) { _embedded_stub_offset = off; }
-  uint embedded_stub_offset()  const { return _embedded_stub_offset; }
+  void set_embedded_stub_offset(const uint off) {
+    precond(_kind == StubGenBlob);
+    _embedded_stub_offset = off;
+  }
+  uint embedded_stub_offset()  const {
+    precond(_kind == StubGenBlob);
+    return _embedded_stub_offset;
+  }
 
   bool has_oop_maps() const { return _has_oop_maps; }
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
@@ -178,7 +184,10 @@ public:
   uint inline_instructions_size() const { return _inline_instructions_size; }
   void set_inline_instructions_size(int size) { _inline_instructions_size = size; }
 
-  uint comp_level()   const { return _comp_level; }
+  uint comp_level()   const {
+    precond(_kind != StubGenBlob);
+    return _comp_level;
+  }
   uint comp_id()      const { return _comp_id; }
 
   bool has_clinit_barriers() const { return _has_clinit_barriers; }
@@ -798,7 +807,7 @@ public:
   static void print_timers_on(outputStream* st) NOT_CDS_RETURN;
 
   typedef void (*embedded_stub_func)(intptr_t pointer, uint size, uint stub_id, const char* stub_name, uint entry_id) ;
-  void loop_over_embedded_stubs(const AOTCodeEntry *entry, embedded_stub_func func);
+  void iterate_embedded_stubs(const AOTCodeEntry *entry, embedded_stub_func func);
 };
 
 // Concurent AOT code reader
