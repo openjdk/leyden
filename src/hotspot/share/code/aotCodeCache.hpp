@@ -107,9 +107,11 @@ private:
   uint   _name_offset; // Method's or intrinsic name
   uint   _name_size;
   uint   _code_offset; // Start of code in cache
-  uint   _embedded_stub_offset; // Start of embedded stubs in StubGenBlobs
 
-  uint   _comp_level;  // compilation level
+  union {
+    uint   _embedded_stub_offset; // Start of embedded stubs in StubGenBlobs
+    uint   _comp_level;           // compilation level (not needed in StubGenBlobs)
+  };
   uint   _comp_id;     // compilation id
   uint   _num_inlined_bytecodes;
   uint   _inline_instructions_size; // size from training run
@@ -137,9 +139,13 @@ public:
     _name_offset  = name_offset;
     _name_size    = name_size;
     _code_offset  = code_offset;
-    _embedded_stub_offset = 0;
 
-    _comp_level   = comp_level;
+    if (_kind == StubGenBlob) {
+      _embedded_stub_offset = 0;
+    } else {
+      _comp_level   = comp_level;
+    }
+
     _comp_id      = comp_id;
     _num_inlined_bytecodes = 0;
     _inline_instructions_size = 0;
