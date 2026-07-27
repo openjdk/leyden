@@ -108,7 +108,10 @@ private:
   uint   _name_size;
   uint   _code_offset; // Start of code in cache
 
-  uint   _comp_level;  // compilation level
+  union {
+    uint   _embedded_stub_offset; // Start of embedded stubs in StubGenBlobs
+    uint   _comp_level;           // compilation level (not needed in StubGenBlobs)
+  };
   uint   _comp_id;     // compilation id
   uint   _num_inlined_bytecodes;
   uint   _inline_instructions_size; // size from training run
@@ -137,7 +140,12 @@ public:
     _name_size    = name_size;
     _code_offset  = code_offset;
 
-    _comp_level   = comp_level;
+    if (_kind == StubGenBlob) {
+      _embedded_stub_offset = 0;
+    } else {
+      _comp_level = comp_level;
+    }
+
     _comp_id      = comp_id;
     _num_inlined_bytecodes = 0;
     _inline_instructions_size = 0;
@@ -160,6 +168,15 @@ public:
   uint name_size()    const { return _name_size; }
   uint code_offset()  const { return _code_offset; }
 
+  void set_embedded_stub_offset(const uint off) {
+    precond(_kind == StubGenBlob);
+    _embedded_stub_offset = off;
+  }
+  uint embedded_stub_offset()  const {
+    precond(_kind == StubGenBlob);
+    return _embedded_stub_offset;
+  }
+
   bool has_oop_maps() const { return _has_oop_maps; }
   uint num_inlined_bytecodes() const { return _num_inlined_bytecodes; }
   void set_inlined_bytecodes(int bytes) { _num_inlined_bytecodes = bytes; }
@@ -167,7 +184,10 @@ public:
   uint inline_instructions_size() const { return _inline_instructions_size; }
   void set_inline_instructions_size(int size) { _inline_instructions_size = size; }
 
-  uint comp_level()   const { return _comp_level; }
+  uint comp_level()   const {
+    precond(_kind != StubGenBlob);
+    return _comp_level;
+  }
   uint comp_id()      const { return _comp_id; }
 
   bool has_clinit_barriers() const { return _has_clinit_barriers; }
@@ -604,6 +624,7 @@ public:
   AOTCodeCache(bool is_dumping, bool is_using);
 
   const char* cache_buffer() const { return _load_buffer; }
+  const char* store_buffer() const { return _store_buffer; }
   bool failed() const { return _failed; }
   void set_failed()   { _failed = true; }
 
@@ -663,7 +684,7 @@ public:
   bool write_metadata(Metadata* m);
   bool write_oops(nmethod* nm);
   bool write_metadata(nmethod* nm);
-  bool write_stub_data(CodeBlob& blob, AOTStubData *stub_data);
+  bool write_stub_data(CodeBlob& blob, AOTStubData *stub_data, uint* stubs_offset = nullptr);
 
 #ifndef PRODUCT
   bool write_asm_remarks(AsmRemarks& asm_remarks, bool use_string_table);
@@ -785,6 +806,9 @@ public:
   static void print_on(outputStream* st) NOT_CDS_RETURN;
   static void print_statistics_on(outputStream* st) NOT_CDS_RETURN;
   static void print_timers_on(outputStream* st) NOT_CDS_RETURN;
+
+  typedef void (*embedded_stub_func)(intptr_t pointer, uint size, uint stub_id, const char* stub_name, uint entry_id) ;
+  void iterate_embedded_stubs(const AOTCodeEntry *entry, embedded_stub_func func);
 };
 
 // Concurent AOT code reader
