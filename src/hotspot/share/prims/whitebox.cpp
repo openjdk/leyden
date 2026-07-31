@@ -2308,6 +2308,12 @@ WB_ENTRY(jboolean, WB_IsSharedClass(JNIEnv* env, jobject wb, jclass clazz))
   return (jboolean)AOTMetaspace::in_aot_cache(java_lang_Class::as_Klass(JNIHandles::resolve_non_null(clazz)));
 WB_END
 
+WB_ENTRY(jboolean, WB_IsAOTSafeCustomLoader(JNIEnv* env, jobject wb, jobject loader))
+  oop class_loader_oop = JNIHandles::resolve(loader);
+  ClassLoaderData* cld = java_lang_ClassLoader::loader_data_acquire(class_loader_oop);
+return cld->is_aot_safe_custom_loader();
+WB_END
+
 WB_ENTRY(void, WB_LinkClass(JNIEnv* env, jobject wb, jclass clazz))
   Klass *k = java_lang_Class::as_Klass(JNIHandles::resolve_non_null(clazz));
   if (!k->is_instance_klass()) {
@@ -3124,6 +3130,7 @@ static JNINativeMethod methods[] = {
   {CC"getCurrentCDSVersion",              CC"()I",    (void*)&WB_GetCDSCurrentVersion},
   {CC"isSharingEnabled",   CC"()Z",                   (void*)&WB_IsSharingEnabled},
   {CC"isSharedClass",      CC"(Ljava/lang/Class;)Z",  (void*)&WB_IsSharedClass },
+  {CC"isAOTSafeCustomLoader", CC"(Ljava/lang/ClassLoader;)Z", (void*)&WB_IsAOTSafeCustomLoader },
   {CC"linkClass",          CC"(Ljava/lang/Class;)V",  (void*)&WB_LinkClass},
   {CC"areOpenArchiveHeapObjectsMapped",   CC"()Z",    (void*)&WB_AreOpenArchiveHeapObjectsMapped},
   {CC"isCDSIncluded",                     CC"()Z",    (void*)&WB_IsCDSIncluded },

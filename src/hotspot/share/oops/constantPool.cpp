@@ -334,7 +334,7 @@ refArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
   }
 
   InstanceKlass *ik = pool_holder();
-  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data())) {
+  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->defined_by_aot_safe_custom_loader()) {
     // Archiving resolved references for classes from non-builtin loaders
     // is not yet supported.
     return nullptr;
@@ -449,7 +449,7 @@ void ConstantPool::remove_unshareable_info() {
   if (CDSConfig::is_dumping_final_static_archive()) {
     ConstantPool* src_cp = ArchiveBuilder::current()->get_source_addr(this);
     InstanceKlass* src_holder = src_cp->pool_holder();
-    if (src_holder->defined_by_other_loaders()) {
+    if (src_holder->defined_by_other_loaders() && !src_holder->defined_by_aot_safe_custom_loader()) {
       // Unregistered classes are not loaded in the AOT assembly phase. The resolved reference length
       // is already saved during the training run.
       precond(!src_holder->is_loaded());

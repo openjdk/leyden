@@ -26,6 +26,7 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderData.inline.hpp"
@@ -274,7 +275,8 @@ ModuleEntry::ModuleEntry(Handle module_handle,
     _has_default_read_edges(false),
     _must_walk_reads(false),
     _is_open(is_open),
-    _is_patched(false) {
+    _is_patched(false),
+    _archived_module_index(-1) {
 
   // Initialize fields specific to a ModuleEntry
   if (_name == nullptr) {
@@ -409,7 +411,7 @@ void ModuleEntry::metaspace_pointers_do(MetaspaceClosure* it) {
 
 #if INCLUDE_CDS_JAVA_HEAP
 bool ModuleEntry::should_be_archived() const {
-  return SystemDictionaryShared::is_builtin_loader(loader_data());
+  return SystemDictionaryShared::is_builtin_loader(loader_data()) || loader_data()->is_aot_safe_custom_loader();
 }
 
 void ModuleEntry::remove_unshareable_info() {
@@ -462,8 +464,18 @@ void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
   // because it may be affected by archive relocation.
   java_lang_Module::set_module_entry(module_handle(), this);
 
-  assert(java_lang_Module::loader(module_handle()) == loader_data->class_loader(),
-         "must be set in dump time");
+  // For AOT-safe custom loaders java.lang.Module would point to the scratch java.lang.ClassLoader object
+  // created during the assembly phase. Now that we jave the correct java.lang.ClassLoader object
+  // update java.lang.Module object to point to it.
+  if (loader_data->is_aot_safe_custom_loader()) {
+    assert(CustomLoaderSupport::is_scratch_loader(java_lang_Module::loader(module_handle())),
+	   "Module's loader must be the scratch loader created in the assembly phase");
+    // Change Module's loader from scratch loader to the real loader object
+    java_lang_Module::set_loader(module_handle(), loader_data->class_loader());
+  } else {
+    assert(java_lang_Module::loader(module_handle()) == loader_data->class_loader(),
+           "must be set in dump time");
+  }
 
   if (log_is_enabled(Info, aot, module)) {
     ResourceMark rm;

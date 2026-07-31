@@ -27,9 +27,11 @@
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotLinkedClassTable.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderDataShared.hpp"
+#include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/javaStackTraceClasses.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -88,6 +90,19 @@ void AOTLinkedClassBulkLoader::preload_classes_impl(TRAPS) {
 
   // Do this after all boot/platform/app classes are loaded, but before bytecode execution.
   HeapShared::load_cached_resolved_methods();
+}
+
+void AOTLinkedClassBulkLoader::preload_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS) {
+  Handle h_loader(THREAD, loader_data->class_loader());
+  precond(!SystemDictionary::is_builtin_class_loader(h_loader()));
+  precond(cl_info != nullptr);
+  initiate_loading(THREAD, h_loader);
+  preload_classes_in_table(cl_info->class_list(), cl_info->aot_id()->as_C_string(), h_loader, CHECK);
+}
+
+void AOTLinkedClassBulkLoader::initiate_loading(JavaThread* current, Handle initiating_loader) {
+  MonitorLocker mu(SystemDictionary_lock);
+  SystemDictionary::mark_as_initiating_loader_of_parent_classes(current, initiating_loader);
 }
 
 void AOTLinkedClassBulkLoader::preload_classes_in_table(Array<InstanceKlass*>* classes,
@@ -159,6 +174,14 @@ void AOTLinkedClassBulkLoader::link_classes_impl(TRAPS) {
   init_classes_for_loader(Handle(), AOTLinkedClassTable::get()->app(), /*early_only=*/true, CHECK);
 
   log_info(aot, init)("------ finished early class init");
+}
+
+void AOTLinkedClassBulkLoader::link_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS) {
+  Handle h_loader(THREAD, loader_data->class_loader());
+  precond(CDSConfig::is_using_aot_linked_classes());
+  precond(!SystemDictionary::is_builtin_class_loader(h_loader()));
+  precond(cl_info != nullptr);
+  link_classes_in_table(cl_info->class_list(), CHECK);
 }
 
 void AOTLinkedClassBulkLoader::link_classes_in_table(Array<InstanceKlass*>* classes, TRAPS) {

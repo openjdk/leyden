@@ -817,12 +817,12 @@ void Klass::remove_java_mirror() {
     if (orig_mirror == nullptr) {
       assert(CDSConfig::is_dumping_final_static_archive(), "sanity");
       if (is_instance_klass()) {
-        assert(InstanceKlass::cast(this)->defined_by_other_loaders(), "sanity");
+        assert(InstanceKlass::cast(this)->defined_by_other_loaders() && !InstanceKlass::cast(this)->defined_by_aot_safe_custom_loader(), "sanity");
       } else {
         precond(is_objArray_klass());
         Klass *k = ObjArrayKlass::cast(this)->bottom_klass();
         precond(k->is_instance_klass());
-        assert(InstanceKlass::cast(k)->defined_by_other_loaders(), "sanity");
+        assert(InstanceKlass::cast(k)->defined_by_other_loaders() && !InstanceKlass::cast(k)->defined_by_aot_safe_custom_loader(), "sanity");
       }
     } else {
       oop scratch_mirror = HeapShared::scratch_java_mirror(orig_mirror);

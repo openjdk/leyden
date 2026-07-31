@@ -55,7 +55,7 @@ inline bool SharedDataRelocator::do_bit(size_t offset) {
 
 // Returns the address of an Array<T> that's allocated in the ArchiveBuilder "buffer" space.
 template <typename T>
-Array<T>* ArchiveUtils::archive_non_ptr_array(GrowableArray<T>* tmp_array) {
+Array<T>* ArchiveUtils::archive_non_ptr_array(GrowableArrayView<T>* tmp_array) {
   ArchiveBuilder* builder = ArchiveBuilder::current();
 
   Array<T>* archived_array = ArchiveBuilder::new_ro_array<T>(tmp_array->length());
@@ -72,7 +72,7 @@ Array<T>* ArchiveUtils::archive_non_ptr_array(GrowableArray<T>* tmp_array) {
 //    - a source object that has been archived; or
 //    - (only when dumping dynamic archive) an object in the static archive.
 template <typename T>
-Array<T>* ArchiveUtils::archive_ptr_array(GrowableArray<T>* tmp_array) {
+Array<T>* ArchiveUtils::archive_ptr_array(GrowableArrayView<T>* tmp_array) {
   ArchiveBuilder* builder = ArchiveBuilder::current();
   const bool is_dynamic_dump = CDSConfig::is_dumping_dynamic_archive();
 

@@ -412,7 +412,7 @@ bool SystemDictionaryShared::check_self_exclusion(InstanceKlass* k) {
 
 const char* SystemDictionaryShared::check_self_exclusion_helper(InstanceKlass* k, bool& log_warning) {
   assert_lock_strong(DumpTimeTable_lock);
-  if (CDSConfig::is_dumping_final_static_archive() && k->defined_by_other_loaders()
+  if (CDSConfig::is_dumping_final_static_archive() && k->defined_by_other_loaders() && !k->defined_by_aot_safe_custom_loader()
       && k->in_aot_cache()) {
     return nullptr; // Do not exclude: unregistered classes are passed from preimage to final image.
   }
@@ -807,6 +807,10 @@ void SystemDictionaryShared::init_dumptime_info_from_preimage(InstanceKlass* k) 
   } else if (SystemDictionary::is_system_class_loader(k->class_loader())) {
     AOTClassLocationConfig::dumptime_set_has_app_classes();
   }
+
+  if (k->defined_by_other_loaders() && !k->defined_by_aot_safe_custom_loader()) {
+    SystemDictionaryShared::copy_unregistered_class_size_and_crc32(k);
+  }
 }
 
 // Check if a class or any of its supertypes has been redefined.
@@ -835,15 +839,12 @@ void SystemDictionaryShared::validate_before_archiving(InstanceKlass* k) {
   assert(!class_loading_may_happen(), "class loading must be disabled");
   guarantee(info != nullptr, "Class %s must be entered into _dumptime_table", name);
   guarantee(!info->is_excluded(), "Should not attempt to archive excluded class %s", name);
-  if (is_builtin(k)) {
+  if (k->defined_by_builtin_loader() || k->defined_by_aot_safe_custom_loader()) {
     if (k->is_hidden()) {
       if (CDSConfig::is_dumping_lambdas_in_legacy_mode()) {
         assert(LambdaProxyClassDictionary::is_registered_lambda_proxy_class(k), "unexpected hidden class %s", name);
       }
     }
-    guarantee(!k->defined_by_other_loaders(),
-              "Class loader type must be set for BUILTIN class %s", name);
-
   } else {
     guarantee(k->defined_by_other_loaders(),
               "Class loader type must not be set for UNREGISTERED class %s", name);
@@ -857,7 +858,7 @@ public:
   UnregisteredClassesDuplicationChecker() : _thread(Thread::current()) {}
 
   void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (!SystemDictionaryShared::is_builtin(k)) {
+    if (!SystemDictionaryShared::is_builtin(k) && !k->defined_by_aot_safe_custom_loader()) {
       _list.append(k);
     }
   }
@@ -1036,7 +1037,7 @@ void SystemDictionaryShared::dumptime_classes_do(MetaspaceClosure* it) {
 
   auto do_klass = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
     if (CDSConfig::is_dumping_final_static_archive() && !k->is_loaded()) {
-      assert(k->defined_by_other_loaders(), "must be");
+      assert(k->defined_by_other_loaders() && !k->defined_by_aot_safe_custom_loader(), "must be");
       info.metaspace_pointers_do(it);
     } else if (k->is_loader_alive() && !info.is_excluded()) {
       info.metaspace_pointers_do(it);
@@ -1324,26 +1325,26 @@ public:
     : _writer(writer), _is_builtin(is_builtin) {}
 
   void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (!info.is_excluded() && info.is_builtin() == _is_builtin) {
+    if (!info.is_excluded() && (info.is_builtin() == _is_builtin)) {
       size_t byte_size = info.runtime_info_bytesize();
       RunTimeClassInfo* record;
       record = (RunTimeClassInfo*)ArchiveBuilder::ro_region_alloc(byte_size);
       record->init(info);
 
-      unsigned int hash;
-      Symbol* name = info._klass->name();
-      name = ArchiveBuilder::current()->get_buffered_addr(name);
-      hash = SystemDictionaryShared::hash_for_shared_dictionary((address)name);
-      if (_is_builtin && info._klass->is_hidden()) {
-        // skip
+      // Skip classes loaded by aot-safe custom loaders
+      if ((_is_builtin && info._klass->is_hidden()) || info._klass->defined_by_aot_safe_custom_loader()) {
+        // skip it
       } else {
+        unsigned int hash;
+        Symbol* name = info._klass->name();
+        name = ArchiveBuilder::current()->get_buffered_addr(name);
+        hash = SystemDictionaryShared::hash_for_shared_dictionary((address)name);
         _writer->add(hash, AOTCompressedPointers::encode_not_null(record));
+        if (log_is_enabled(Trace, aot, hashtables)) {
+          ResourceMark rm;
+          log_trace(aot, hashtables)("%s dictionary: %s", (_is_builtin ? "builtin" : "unregistered"), info._klass->external_name());
+        }
       }
-      if (log_is_enabled(Trace, aot, hashtables)) {
-        ResourceMark rm;
-        log_trace(aot, hashtables)("%s dictionary: %s", (_is_builtin ? "builtin" : "unregistered"), info._klass->external_name());
-      }
-
       // Save this for quick runtime lookup of InstanceKlass* -> RunTimeClassInfo*
       InstanceKlass* buffered_klass = ArchiveBuilder::current()->get_buffered_addr(info._klass);
       RunTimeClassInfo::set_for(buffered_klass, record);
@@ -1457,6 +1458,8 @@ const char* SystemDictionaryShared::loader_type_for_shared_class(Klass* k) {
     return "platform_loader";
   } else if (ik->defined_by_app_loader()) {
     return "app_loader";
+  } else if (ik->defined_by_aot_safe_custom_loader()) {
+    return "aot-safe custom loader";
   } else if (ik->defined_by_other_loaders()) {
     return "unregistered_loader";
   } else {

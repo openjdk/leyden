@@ -23,10 +23,12 @@
  */
 
 #include "cds/aotClassInitializer.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotMetaspace.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.hpp"
@@ -3525,6 +3527,52 @@ JVM_ENTRY(jobject, JVM_NewInstanceFromConstructor(JNIEnv *env, jobject c, jobjec
     JvmtiExport::post_vm_object_alloc(thread, result);
   }
   return res;
+JVM_END
+
+JVM_ENTRY(jboolean, JVM_RegisterURLClassLoaderForAOTLinking(JNIEnv *env, jobject loader, jobject parent, jstring classpath))
+  if (CDSConfig::supports_custom_loaders()) {
+    ResourceMark rm(THREAD);
+    Symbol* parent_aot_id;
+    if (parent == nullptr) { // parent is boot loader
+      parent_aot_id = ClassLoaderData::the_null_class_loader_data()->aot_identity();
+    } else {
+      Handle h_parent(THREAD, JNIHandles::resolve_non_null(parent));
+      parent_aot_id = java_lang_ClassLoader::loader_data(h_parent())->aot_identity();
+    }
+    assert(parent_aot_id != nullptr, "parent's aot id must be set");
+
+    // create aot id by concatenating parent's aot id and classpath using path separator
+    const char* classpath_str = java_lang_String::as_utf8_string(JNIHandles::resolve_non_null(classpath));
+    size_t len = parent_aot_id->utf8_length() + strlen(os::path_separator()) + strlen(classpath_str) + 1; // for null-character
+    stringStream ss(len);
+    ss.print("%s%s%s", parent_aot_id->as_C_string(), os::path_separator(), classpath_str);
+    const char* aot_id = ss.as_string();
+
+    Symbol* aot_id_sym = SymbolTable::new_symbol(aot_id);
+
+    if (!ClassLoaderAotIdTable::reserve_id(aot_id_sym)) {
+      return false;
+    }
+
+    Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
+    if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
+      ClassLoaderData* loader_data = SystemDictionary::register_loader(h_loader, aot_id_sym);
+      loader_data->set_classpath(classpath_str);
+    } else if (CDSConfig::is_using_aot_linked_classes()) {
+      CustomLoaderInfo* cl_info = CustomLoaderSupport::find_loader_info(aot_id_sym, classpath_str);
+      if (cl_info == nullptr) {
+        ClassLoaderAotIdTable::unreserve_id(aot_id_sym);
+	return JNI_FALSE;
+      }
+      // successfully found archived ClassLoaderInfo for the class loader id
+      ClassLoaderData* loader_data = SystemDictionary::register_loader(h_loader, aot_id_sym);
+      ClassLoaderDataShared::restore_custom_loader_data_from_archive(loader_data, cl_info);
+      AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, cl_info, CHECK_AND_CLEAR_(JNI_FALSE));
+      AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, cl_info, CHECK_AND_CLEAR_(JNI_FALSE));
+    }
+    return JNI_TRUE;
+  }
+  return JNI_FALSE;
 JVM_END
 
 JVM_ENTRY(void, JVM_InitializeFromArchive(JNIEnv* env, jclass cls))

@@ -213,7 +213,7 @@ void AOTConstantPoolResolver::resolve_string(constantPoolHandle cp, int cp_index
 #endif
 
 void AOTConstantPoolResolver::preresolve_class_cp_entries(JavaThread* current, InstanceKlass* ik, GrowableArray<bool>* preresolve_list) {
-  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data())) {
+  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->defined_by_aot_safe_custom_loader()) {
     return;
   }
 
@@ -455,9 +455,12 @@ bool AOTConstantPoolResolver::check_methodtype_signature(ConstantPool* cp, Symbo
       }
 
       // cp->pool_holder() must be able to resolve k in production run
+      // TODO (Ashu): can first two precond be moved out of the for loop?
+      // TODO (Ashu): Should the precond check if the pool_holder or k is loaded by aot-safe loader?
       precond(CDSConfig::is_dumping_aot_linked_classes());
-      precond(SystemDictionaryShared::is_builtin_loader(cp->pool_holder()->class_loader_data()));
-      precond(SystemDictionaryShared::is_builtin_loader(k->class_loader_data()));
+      precond(SystemDictionaryShared::is_builtin_loader(cp->pool_holder()->class_loader_data()) || cp->pool_holder()->defined_by_aot_safe_custom_loader());
+      precond(SystemDictionaryShared::is_builtin_loader(k->class_loader_data()) ||
+              (k->is_instance_klass() && InstanceKlass::cast(k)->defined_by_aot_safe_custom_loader()));
 
       if (ss.at_return_type() && return_type_ret != nullptr) {
         *return_type_ret = k;
@@ -550,8 +553,9 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_methodhandle_arg(Constant
 
     // cp->pool_holder() must be able to resolve k in production run
     precond(CDSConfig::is_dumping_aot_linked_classes());
-    precond(SystemDictionaryShared::is_builtin_loader(cp->pool_holder()->class_loader_data()));
-    precond(SystemDictionaryShared::is_builtin_loader(k->class_loader_data()));
+    precond(SystemDictionaryShared::is_builtin_loader(cp->pool_holder()->class_loader_data()) || cp->pool_holder()->defined_by_aot_safe_custom_loader());
+    precond(SystemDictionaryShared::is_builtin_loader(k->class_loader_data()) ||
+            (k->is_instance_klass() && InstanceKlass::cast(k)->defined_by_aot_safe_custom_loader()));
   }
 
   return check_methodtype_signature(cp, sig);
@@ -564,7 +568,7 @@ bool AOTConstantPoolResolver::is_indy_resolution_deterministic(ConstantPool* cp,
   }
 
   InstanceKlass* pool_holder = cp->pool_holder();
-  if (!SystemDictionaryShared::is_builtin(pool_holder)) {
+  if (!SystemDictionaryShared::is_builtin(pool_holder) && !pool_holder->defined_by_aot_safe_custom_loader()) {
     return false;
   }
 

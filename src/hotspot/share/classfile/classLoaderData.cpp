@@ -46,6 +46,8 @@
 // The bootstrap loader (represented by null) also has a ClassLoaderData,
 // the singleton class the_null_class_loader_data().
 
+#include "cds/aotClassLocation.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoaderDataGraph.inline.hpp"
@@ -88,10 +90,13 @@ void ClassLoaderData::init_null_class_loader_data() {
   assert(_the_null_class_loader_data == nullptr, "cannot initialize twice");
   assert(ClassLoaderDataGraph::_head == nullptr, "cannot initialize twice");
 
-  _the_null_class_loader_data = new ClassLoaderData(Handle(), false);
+  Symbol* aot_id = nullptr;
+  if (CDSConfig::supports_custom_loaders()) {
+    aot_id = SymbolTable::new_symbol("BOOT");
+  }
+  _the_null_class_loader_data = new ClassLoaderData(Handle(), false, aot_id);
   ClassLoaderDataGraph::_head = _the_null_class_loader_data;
   assert(_the_null_class_loader_data->is_the_null_class_loader_data(), "Must be");
-
   LogTarget(Trace, class, loader, data) lt;
   if (lt.is_enabled()) {
     ResourceMark rm;
@@ -135,7 +140,7 @@ void ClassLoaderData::initialize_name(Handle class_loader) {
   _name_and_id = SymbolTable::new_symbol(cl_instance_name_and_id);
 }
 
-ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_holder) :
+ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_holder, Symbol* aot_id) :
   _metaspace(nullptr),
   _metaspace_lock(new Mutex(Mutex::nosafepoint-2, "MetaspaceAllocation_lock")),
   _unloading(false), _has_class_mirror_holder(has_class_mirror_holder),
@@ -151,7 +156,9 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
   _deallocate_list(nullptr),
   _next(nullptr),
   _unloading_next(nullptr),
-  _class_loader_klass(nullptr), _name(nullptr), _name_and_id(nullptr) {
+  _class_loader_klass(nullptr), _name(nullptr), _name_and_id(nullptr),
+  _aot_identity(aot_id),
+  _aot_locations(nullptr) {
 
   if (!h_class_loader.is_null()) {
     _class_loader = _handles.add(h_class_loader());
@@ -163,6 +170,19 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
     // The holder is initialized later for non-strong hidden classes,
     // and before calling anything that call class_loader().
     initialize_holder(h_class_loader);
+
+    if (CDSConfig::supports_custom_loaders()) {
+      if (SystemDictionary::is_platform_class_loader(h_class_loader())) {
+        assert(_aot_identity == nullptr, "should not be set");
+        _aot_identity = SymbolTable::new_symbol("PLATFORM");
+      } else if (SystemDictionary::is_system_class_loader(h_class_loader())) {
+        assert(_aot_identity == nullptr, "should not be set");
+        _aot_identity = SymbolTable::new_symbol("SYSTEM");
+      }
+      if (_aot_identity != nullptr) {
+        ClassLoaderAotIdTable::add_entry(_aot_identity, this);
+      }
+    }
 
     // A ClassLoaderData created solely for a non-strong hidden class should never
     // have a ModuleEntryTable or PackageEntryTable created for it.
@@ -181,6 +201,52 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
 
   JFR_ONLY(INIT_ID(this);)
 }
+
+#if INCLUDE_CDS
+
+void ClassLoaderData::set_aot_identity(Symbol* aot_id) {
+  assert(aot_id != nullptr, "must not be null");
+  _aot_identity = aot_id;
+  _aot_identity->increment_refcount();
+}
+
+Symbol* ClassLoaderData::parent_aot_id() const {
+  if (is_the_null_class_loader_data()) {
+    return nullptr;
+  }
+  oop parent = java_lang_ClassLoader::parent(class_loader());
+  if (parent == nullptr) {
+    // bootloader is the parent
+    return the_null_class_loader_data()->aot_identity();
+  } else {
+    ClassLoaderData* parent_cld = java_lang_ClassLoader::loader_data(parent);
+    return parent_cld->aot_identity();
+  }
+}
+
+bool ClassLoaderData::is_aot_safe_custom_loader() const {
+  if (!SystemDictionary::is_builtin_class_loader(class_loader()) && aot_identity() != nullptr) {
+    return true;
+  }
+  return false;
+}
+
+void ClassLoaderData::set_classpath(const char* classpath) {
+  assert(classpath != nullptr, "must not be null");
+  set_aot_locations(classpath);
+}
+
+void ClassLoaderData::set_aot_locations(const char* classpath) {
+  GrowableArrayCHeap<AOTClassLocation*, mtClassShared>* locations = new GrowableArrayCHeap<AOTClassLocation*, mtClassShared>(10);
+  URLClassLoaderClassLocationStream stream(classpath);
+  for (stream.start(); stream.has_next(); ) {
+    const char* path = stream.get_next();
+    AOTClassLocation* cs = AOTClassLocation::allocate(JavaThread::current(), path, locations->length(), AOTClassLocation::Group::URLCLASSLOADER_CLASSPATH, false);
+    locations->append(cs);
+  }
+  _aot_locations = locations;
+}
+#endif /* INCLUDE_CDS */
 
 ClassLoaderData::ChunkedHandleList::~ChunkedHandleList() {
   Chunk* c = _head;
@@ -776,6 +842,15 @@ ClassLoaderData::~ClassLoaderData() {
   }
   if (_name_and_id != nullptr) {
     _name_and_id->decrement_refcount();
+  }
+  if (_aot_locations != nullptr) {
+    for (int i = 0; i < _aot_locations->length(); i++) {
+      // AOTClassLocation is allocated using os::malloc() in AOTClassLocation::allocate(),
+      // so use os::free() to free the memory
+      os::free(_aot_locations->at(i));
+    }
+    delete _aot_locations;
+    _aot_locations = nullptr;
   }
 }
 

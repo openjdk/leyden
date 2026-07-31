@@ -318,6 +318,44 @@ int ArchiveBuilder::compare_klass_by_name(Klass** a, Klass** b) {
 void ArchiveBuilder::sort_klasses() {
   aot_log_info(aot)("Sorting classes ... ");
   _klasses->sort(compare_klass_by_name);
+  GrowableArray<Klass*>* unused = _klasses;
+  _klasses = sort_klasses_by_hierarchy();
+  delete unused;
+}
+
+static const int INITIAL_TABLE_SIZE = 15889;
+using ClassesTable = HashTable<Klass*, bool, INITIAL_TABLE_SIZE, AnyObj::C_HEAP, mtClassShared>;
+ClassesTable* _classes_added = nullptr;
+
+static void add_to_sorted_list(GrowableArray<Klass*>* sorted_list, Klass* k) {
+  if (k == nullptr) {
+    return;
+  }
+  if (_classes_added->get(k) != nullptr) {
+    return;
+  }
+  add_to_sorted_list(sorted_list, k->super());
+
+  if (k->is_instance_klass()) {
+    InstanceKlass* ik = (InstanceKlass*)k;
+    Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+    int num_interfaces = interfaces->length();
+    for (int index = 0; index < num_interfaces; index++) {
+      InstanceKlass* intf = interfaces->at(index);
+      add_to_sorted_list(sorted_list, intf);
+    }
+  }
+  _classes_added->put_when_absent(k, true);
+  sorted_list->append(k);
+}
+
+GrowableArray<Klass*>* ArchiveBuilder::sort_klasses_by_hierarchy() {
+  GrowableArray<Klass*>* sorted_by_hierarchy = new (mtClassShared) GrowableArray<Klass*>(_klasses->length(), mtClassShared);
+  _classes_added = new (mtClass)ClassesTable();
+  for (int i = 0; i < _klasses->length(); i++) {
+    add_to_sorted_list(sorted_by_hierarchy, _klasses->at(i));
+  }
+  return sorted_by_hierarchy;
 }
 
 address ArchiveBuilder::reserve_buffer() {
@@ -768,6 +806,7 @@ void ArchiveBuilder::make_klasses_shareable() {
   DECLARE_INSTANCE_KLASS_COUNTER(num_old_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_hidden_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_enum_klasses);
+  DECLARE_INSTANCE_KLASS_COUNTER(num_aot_safe_custom_loader_klasses);
   DECLARE_INSTANCE_KLASS_COUNTER(num_unregistered_klasses);
   int num_unlinked_klasses = 0;
   int num_obj_array_klasses = 0;
@@ -863,6 +902,9 @@ void ArchiveBuilder::make_klasses_shareable() {
       } else if (ik->defined_by_app_loader()) {
         type = "app";
         ADD_COUNT(num_app_klasses);
+      } else if (ik->defined_by_aot_safe_custom_loader()) {
+        type = "aot-safe custom loader";
+        ADD_COUNT(num_aot_safe_custom_loader_klasses);
       } else {
         assert(ik->defined_by_other_loaders(), "must be");
         type = "unreg";
@@ -929,20 +971,21 @@ void ArchiveBuilder::make_klasses_shareable() {
 #define STATS_PARAMS(x) num_ ## x, num_ ## x ## _a, num_ ## x ## _i
 
   aot_log_info(aot)("Number of classes %d", num_instance_klasses + num_obj_array_klasses + num_type_array_klasses);
-  aot_log_info(aot)("    instance classes   " STATS_FORMAT, STATS_PARAMS(instance_klasses));
-  aot_log_info(aot)("      boot             " STATS_FORMAT, STATS_PARAMS(boot_klasses));
-  aot_log_info(aot)("        vm             " STATS_FORMAT, STATS_PARAMS(vm_klasses));
-  aot_log_info(aot)("      platform         " STATS_FORMAT, STATS_PARAMS(platform_klasses));
-  aot_log_info(aot)("      app              " STATS_FORMAT, STATS_PARAMS(app_klasses));
-  aot_log_info(aot)("      unregistered     " STATS_FORMAT, STATS_PARAMS(unregistered_klasses));
-  aot_log_info(aot)("      (enum)           " STATS_FORMAT, STATS_PARAMS(enum_klasses));
-  aot_log_info(aot)("      (hidden)         " STATS_FORMAT, STATS_PARAMS(hidden_klasses));
-  aot_log_info(aot)("      (old)            " STATS_FORMAT, STATS_PARAMS(old_klasses));
-  aot_log_info(aot)("      (unlinked)       = %5d, boot = %d, plat = %d, app = %d, unreg = %d",
+  aot_log_info(aot)("    instance classes          " STATS_FORMAT, STATS_PARAMS(instance_klasses));
+  aot_log_info(aot)("      boot                    " STATS_FORMAT, STATS_PARAMS(boot_klasses));
+  aot_log_info(aot)("        vm                    " STATS_FORMAT, STATS_PARAMS(vm_klasses));
+  aot_log_info(aot)("      platform                " STATS_FORMAT, STATS_PARAMS(platform_klasses));
+  aot_log_info(aot)("      app                     " STATS_FORMAT, STATS_PARAMS(app_klasses));
+  aot_log_info(aot)("      aot-safe custom loader  " STATS_FORMAT, STATS_PARAMS(aot_safe_custom_loader_klasses));
+  aot_log_info(aot)("      unregistered            " STATS_FORMAT, STATS_PARAMS(unregistered_klasses));
+  aot_log_info(aot)("      (enum)                  " STATS_FORMAT, STATS_PARAMS(enum_klasses));
+  aot_log_info(aot)("      (hidden)                " STATS_FORMAT, STATS_PARAMS(hidden_klasses));
+  aot_log_info(aot)("      (old)                   " STATS_FORMAT, STATS_PARAMS(old_klasses));
+  aot_log_info(aot)("      (unlinked)              = %5d, boot = %d, plat = %d, app = %d, unreg = %d",
                 num_unlinked_klasses, boot_unlinked, platform_unlinked, app_unlinked, unreg_unlinked);
-  aot_log_info(aot)("    obj array classes  = %5d", num_obj_array_klasses);
-  aot_log_info(aot)("    type array classes = %5d", num_type_array_klasses);
-  aot_log_info(aot)("               symbols = %5d", _symbols->length());
+  aot_log_info(aot)("    obj array classes         = %5d", num_obj_array_klasses);
+  aot_log_info(aot)("    type array classes        = %5d", num_type_array_klasses);
+  aot_log_info(aot)("               symbols        = %5d", _symbols->length());
 
 #undef STATS_FORMAT
 #undef STATS_PARAMS

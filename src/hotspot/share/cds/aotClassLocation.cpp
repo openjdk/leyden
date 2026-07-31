@@ -52,55 +52,6 @@ Array<ClassPathZipEntry*>* AOTClassLocationConfig::_dumptime_jar_files = nullptr
 AOTClassLocationConfig* AOTClassLocationConfig::_dumptime_instance = nullptr;
 const AOTClassLocationConfig* AOTClassLocationConfig::_runtime_instance = nullptr;
 
-// A ClassLocationStream represents a list of code locations, which can be iterated using
-// start() and has_next().
-class ClassLocationStream {
-protected:
-  GrowableArray<const char*> _array;
-  int _current;
-
-  // Add one path to this stream.
-  void add_one_path(const char* path) {
-    _array.append(path);
-  }
-
-  // Add all paths specified in cp; cp must be from -classpath or -Xbootclasspath/a.
-  void add_paths_in_classpath(const char* cp) {
-    ClasspathStream cp_stream(cp);
-    while (cp_stream.has_next()) {
-      add_one_path(cp_stream.get_next());
-    }
-  }
-
-public:
-  ClassLocationStream() : _array(), _current(0) {}
-
-  void print(outputStream* st) const {
-    const char* sep = "";
-    for (int i = 0; i < _array.length(); i++) {
-      st->print("%s%s", sep, _array.at(i));
-      sep = os::path_separator();
-    }
-  }
-
-  void add(ClassLocationStream& css) {
-    for (css.start(); css.has_next();) {
-      add_one_path(css.get_next());
-    }
-  }
-
-  // Iteration
-  void start() { _current = 0; }
-  bool has_next() const { return _current < _array.length(); }
-  const char* get_next() {
-    return _array.at(_current++);
-  }
-
-  int current() const { return _current; }
-  bool is_empty() const { return _array.length() == 0; }
-  int size() const { return _array.length(); }
-};
-
 class BootCpClassLocationStream : public ClassLocationStream {
 public:
   BootCpClassLocationStream() : ClassLocationStream() {

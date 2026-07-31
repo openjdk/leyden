@@ -812,6 +812,7 @@ public class WhiteBox {
   public native boolean cdsMemoryMappingFailed();
   public native boolean isSharingEnabled();
   public native boolean isSharedClass(Class<?> c);
+  public native boolean isAOTSafeCustomLoader(ClassLoader loader);
   public native boolean isCDSIncluded();
   public native boolean isJFRIncluded();
   public native boolean isDTraceIncluded();

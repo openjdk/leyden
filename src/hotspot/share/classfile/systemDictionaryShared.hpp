@@ -270,7 +270,7 @@ public:
   static void record_linking_constraint(Symbol* name, InstanceKlass* klass,
                                      Handle loader1, Handle loader2) NOT_CDS_RETURN;
   static bool is_builtin(const InstanceKlass* k) {
-    return (k->shared_classpath_index() != UNREGISTERED_INDEX);
+    return k->defined_by_builtin_loader();
   }
   static bool add_unregistered_class(Thread* current, InstanceKlass* k);
   static InstanceKlass* get_unregistered_class(Symbol* name);

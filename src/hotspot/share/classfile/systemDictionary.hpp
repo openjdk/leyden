@@ -78,6 +78,7 @@ template <class E> class GrowableArray;
 class SystemDictionary : AllStatic {
   friend class AOTLinkedClassBulkLoader;
   friend class BootstrapInfo;
+  friend class FinalImageRecipes;
   friend class LambdaProxyClassDictionary;
   friend class vmClasses;
 
@@ -216,6 +217,7 @@ public:
 
   // Register a new class loader
   static ClassLoaderData* register_loader(Handle class_loader, bool create_mirror_cld = false);
+  static ClassLoaderData* register_loader(Handle class_loader, Symbol* aot_id);
 
   static void set_system_loader(ClassLoaderData *cld);
   static void set_platform_loader(ClassLoaderData *cld);
@@ -286,6 +288,7 @@ public:
 
   static void add_to_initiating_loader(JavaThread* current, InstanceKlass* k,
                                        ClassLoaderData* loader_data);
+  static void mark_as_initiating_loader_of_parent_classes(JavaThread* currentThread, Handle loader);
 
   static OopHandle  _java_system_loader;
   static OopHandle  _java_platform_loader;
@@ -339,6 +342,7 @@ protected:
                                           const ClassFileStream *cfs,
                                           PackageEntry* pkg_entry,
                                           TRAPS);
+  static void load_class_from_preimage(Handle loader, InstanceKlass* ik, PackageEntry* pkg_entry, Handle pd, TRAPS);
   static void preload_class(Handle class_loader, InstanceKlass* ik, TRAPS);
   static Handle get_loader_lock_or_null(Handle class_loader);
   static InstanceKlass* find_or_define_instance_class(Symbol* class_name,

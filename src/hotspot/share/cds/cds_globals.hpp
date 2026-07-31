@@ -171,7 +171,9 @@
                                                                             \
   develop(bool, TestAOTAdapterLinkFailure, false,                           \
           "Test failure of adapter linking when loading from AOT cache.")   \
-
+                                                                            \
+  product(bool, AOTCacheSupportForCustomLoader, false,                      \
+          "Enable support for custom loaders in AOTCache")                  \
 // end of CDS_FLAGS
 
 DECLARE_FLAGS(CDS_FLAGS)

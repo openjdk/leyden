@@ -315,6 +315,7 @@ void FileMapHeader::populate(FileMapInfo *info, size_t core_region_alignment,
   _has_aot_linked_classes = CDSConfig::is_dumping_aot_linked_classes();
   _has_full_module_graph = CDSConfig::is_dumping_full_module_graph();
   _has_valhalla_patched_classes = Arguments::is_valhalla_enabled();
+  _supports_custom_loaders = CDSConfig::supports_custom_loaders();
 
   // The following fields are for sanity checks for whether this archive
   // will function correctly with this JVM and the bootclasspath it's
@@ -399,6 +400,7 @@ void FileMapHeader::print(outputStream* st) {
   st->print_cr("- has_valhalla_patched_classes              %d", _has_valhalla_patched_classes);
   _must_match.print(st);
   st->print_cr("- has_aot_linked_classes                    %d", _has_aot_linked_classes);
+  st->print_cr("- supports_custom_loaders:                  %d", _supports_custom_loaders);
   st->print_cr("- ptrmap_size_in_bits:                      %zu", _ptrmap_size_in_bits);
 }
 
@@ -1888,6 +1890,9 @@ bool FileMapInfo::open_as_input() {
 bool FileMapInfo::validate_aot_class_linking() {
   // These checks need to be done after FileMapInfo::initialize(), which gets called before Universe::heap()
   // is available.
+  if (header()->supports_custom_loaders()) {
+    CDSConfig::set_custom_loaders_support(true);
+  }
   if (header()->has_aot_linked_classes()) {
     const char* archive_type = CDSConfig::type_of_archive_being_loaded();
     CDSConfig::set_has_aot_linked_classes(true);

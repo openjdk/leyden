@@ -127,6 +127,7 @@ public class BulkLoaderTest {
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
                 mainClass,
+                isStaticWorkflow() ? "STATIC" : "AOT",
             };
         }
 
@@ -149,10 +150,11 @@ class BulkLoaderTestApp {
     static String allPerms = "null.*<no principals>.*java.security.Permissions.*,*java.security.AllPermission.*<all permissions>.*<all actions>";
 
     public static void main(String args[]) throws Exception {
+        String workflow = args[0];
         checkClasses();
         checkInitiatingLoader();
         checkOldClasses();
-        checkCustomLoader();
+        checkCustomLoader(workflow);
     }
 
     // Check the ClassLoader/Module/Package/ProtectionDomain/CodeSource of classes that are aot-linked
@@ -274,24 +276,50 @@ class BulkLoaderTestApp {
     }
 
 
-    static void checkCustomLoader() throws Exception {
+    static void checkCustomLoader(String workflow) throws Exception {
         WhiteBox wb = WhiteBox.getWhiteBox();
-        for (int i = 0; i < 2; i++) {
-            Object o = initFromCustomLoader();
-            System.out.println(o);
-            Class c = o.getClass();
-            if (wb.isSharedClass(BulkLoaderTestApp.class)) {
-                // We are running with BulkLoaderTestApp from the AOT cache (or CDS achive)
-                if (i == 0) {
-                    if (!wb.isSharedClass(c)) {
-                        throw new RuntimeException("The first loader should load SimpleCusty from AOT cache (or CDS achive)");
-                    }
-                } else {
-                    if (wb.isSharedClass(c)) {
-                        throw new RuntimeException("The second loader should not load SimpleCusty from AOT cache (or CDS achive)");
+        if (workflow.equals("AOT")) {
+            for (int i = 0; i < 3; i++) {
+                Object o = initFromCustomLoader();
+                System.out.println(o);
+                Class c = o.getClass();
+                if (wb.isSharedClass(BulkLoaderTestApp.class)) {
+                    // We are running with BulkLoaderTestApp from the AOT cache (or CDS achive)
+                    if (i == 0) {
+                        if (!wb.isSharedClass(c)) {
+                            throw new RuntimeException("The first loader should load SimpleCusty from AOT cache (or CDS achive)");
+                        }
+                    } else if (i == 1) {
+                        if (!wb.isSharedClass(c)) {
+                            throw new RuntimeException("The second loader should load SimpleCusty from AOT cache (or CDS achive) as unregistered class");
+                        }
+                    } else {
+                        if (wb.isSharedClass(c)) {
+                            throw new RuntimeException("The third loader should not load SimpleCusty from AOT cache (or CDS achive)");
+                        }
                     }
                 }
             }
+        } else {
+            // STATIC workflow
+            for (int i = 0; i < 2; i++) {
+                Object o = initFromCustomLoader();
+                System.out.println(o);
+                Class c = o.getClass();
+                if (wb.isSharedClass(BulkLoaderTestApp.class)) {
+                    // We are running with BulkLoaderTestApp from the AOT cache (or CDS achive)
+                    if (i == 0) {
+                        if (!wb.isSharedClass(c)) {
+                            throw new RuntimeException("The first loader should load SimpleCusty from AOT cache (or CDS achive)");
+                        }
+                    } else {
+                        if (wb.isSharedClass(c)) {
+                            throw new RuntimeException("The second loader should not load SimpleCusty from AOT cache (or CDS achive)");
+                        }
+                    }
+                }
+            }
+
         }
     }
 

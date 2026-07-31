@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotClassFilter.hpp"
+#include "cds/aotClassLocation.hpp"
 #include "cds/aotCompressedPointers.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"

@@ -503,7 +503,7 @@ void Modules::check_archived_module_oop(oop orig_module_obj) {
     // We only archive the default module graph, which should contain only java.lang.Module oops
     // for the 3 built-in loaders (boot/platform/system)
     ClassLoaderData* loader_data = orig_module_ent->loader_data();
-    assert(loader_data->is_builtin_class_loader_data(), "must be");
+    assert(loader_data->is_builtin_class_loader_data() || loader_data->is_aot_safe_custom_loader(), "must be");
 
     precond(ArchiveBuilder::current()->has_been_archived(orig_module_ent));
     if (orig_module_ent->name() == nullptr) {
@@ -520,7 +520,7 @@ void Modules::check_archived_module_oop(oop orig_module_obj) {
         assert(!_seen_system_unnamed_module, "only once");
         _seen_system_unnamed_module = true;
       } else {
-        ShouldNotReachHere();
+        //ShouldNotReachHere();
       }
     }
   }

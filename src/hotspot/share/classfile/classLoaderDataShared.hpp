@@ -30,9 +30,42 @@
 #include "utilities/macros.hpp"
 
 class ClassLoaderData;
+class CustomLoaderInfo;
 class MetaspaceClosure;
 class ModuleEntry;
+class PackageEntry;
 class SerializeClosure;
+
+class ArchivedClassLoaderData {
+  Array<PackageEntry*>* _packages;
+  Array<ModuleEntry*>* _modules;
+  ModuleEntry* _unnamed_module;
+  int _archived_loader_obj_index;
+
+  void assert_valid(ClassLoaderData* loader_data);
+
+public:
+  ArchivedClassLoaderData() : _packages(nullptr), _modules(nullptr), _unnamed_module(nullptr), _archived_loader_obj_index(-1) {}
+
+  address* packages_addr() const { return (address*)&_packages; }
+  address* modules_addr() const { return (address*)&_modules; }
+  address* unnamed_module_addr() const { return (address*)&_unnamed_module; }
+  address* archived_loader_obj_index_addr() const { return (address*)&_archived_loader_obj_index; }
+
+  void iterate_roots(MetaspaceClosure* closure);
+  void build_tables(ClassLoaderData* loader_data, TRAPS);
+  void remove_unshareable_info();
+  ModuleEntry* unnamed_module() {
+    return _unnamed_module;
+  }
+
+  void set_archived_loader_obj_index(int index) { _archived_loader_obj_index = index; }
+  int archived_loader_obj_index() const { return _archived_loader_obj_index; }
+
+  void serialize(SerializeClosure* f);
+  void restore(ClassLoaderData* loader_data, bool do_entries, bool do_oops);
+  void clear_archived_oops();
+};
 
 class ClassLoaderDataShared : AllStatic {
   static bool _full_module_graph_loaded;
@@ -55,6 +88,9 @@ public:
   static ModuleEntry* archived_unnamed_module(ClassLoaderData* loader_data);
 #endif // INCLUDE_CDS_JAVA_HEAP
   static bool is_full_module_graph_loaded() { return _full_module_graph_loaded; }
+  static void restore_custom_loader_data_from_archive(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info);
+  static ArchivedClassLoaderData* get_archived_cld(Symbol* loader_id);
+  static void set_archived_index_for(oop loader);
 };
 
 #endif // SHARE_CLASSFILE_CLASSLOADERDATASHARED_HPP

@@ -3063,9 +3063,10 @@ void InstanceKlass::metaspace_pointers_do(MetaspaceClosure* it) {
   it->push(&_record_components);
   it->push(&_inline_layout_info_array, MetaspaceClosure::_writable);
 
-  if (CDSConfig::is_dumping_full_module_graph() && !defined_by_other_loaders()) {
+  if (CDSConfig::is_dumping_full_module_graph() && (defined_by_builtin_loader() || defined_by_aot_safe_custom_loader())) {
     it->push(&_package_entry);
   }
+  it->push(&_classloader_aot_id);
 }
 
 #if INCLUDE_CDS
@@ -3164,7 +3165,7 @@ void InstanceKlass::remove_java_mirror() {
 
 void InstanceKlass::init_shared_package_entry() {
   assert(CDSConfig::is_dumping_archive(), "must be");
-  if (!CDSConfig::is_dumping_full_module_graph() || defined_by_other_loaders()) {
+  if (!CDSConfig::is_dumping_full_module_graph() || (defined_by_other_loaders() && !defined_by_aot_safe_custom_loader())) {
     _package_entry = nullptr;
   }
 }

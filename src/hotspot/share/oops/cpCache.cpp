@@ -556,10 +556,10 @@ void ConstantPoolCache::remove_resolved_indy_entries_if_non_deterministic() {
 
 bool ConstantPoolCache::can_archive_resolved_method(ConstantPool* src_cp, ResolvedMethodEntry* method_entry, const char*& rejection_reason) {
   InstanceKlass* pool_holder = constant_pool()->pool_holder();
-  if (pool_holder->defined_by_other_loaders()) {
+  if (pool_holder->defined_by_other_loaders() && !pool_holder->defined_by_aot_safe_custom_loader()) {
     // Archiving resolved cp entries for classes from non-builtin loaders
     // is not yet supported.
-    rejection_reason = "(pool holder comes from a non-builtin loader)";
+    rejection_reason = "(pool holder comes from a non-aot-safe custom loader)";
     return false;
   }
 

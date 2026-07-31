@@ -28,6 +28,7 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "classfile/classLoader.hpp"
@@ -111,7 +112,11 @@ bool AOTClassLinker::is_candidate(InstanceKlass* ik) {
 void AOTClassLinker::add_new_candidate(InstanceKlass* ik) {
   assert(!is_candidate(ik), "caller need to check");
   _candidates->put_when_absent(ik, true);
-  _sorted_candidates->append(ik);
+  if (ik->defined_by_aot_safe_custom_loader()) {
+    CustomLoaderSupport::add_to_custom_loader_map(ik);
+  } else {
+    _sorted_candidates->append(ik);
+  }
 
   if (log_is_enabled(Info, aot, link)) {
     ResourceMark rm;
@@ -127,7 +132,7 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
   assert(is_initialized(), "sanity");
   assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
 
-  if (!SystemDictionaryShared::is_builtin(ik)) {
+  if (!SystemDictionaryShared::is_builtin(ik) && !ik->defined_by_aot_safe_custom_loader()) {
     // not loaded by a class loader which we know about
     return false;
   }
@@ -200,6 +205,10 @@ void AOTClassLinker::write_to_archive() {
     table->set_boot2(write_classes(nullptr, false));
     table->set_platform(write_classes(SystemDictionary::java_platform_loader(), false));
     table->set_app(write_classes(SystemDictionary::java_system_loader(), false));
+
+    if (CDSConfig::supports_custom_loaders()) {
+      CustomLoaderSupport::archive_custom_loader_info();
+    }
   }
 }
 
@@ -281,6 +290,8 @@ const char* AOTClassLinker::class_category_name(Klass* k) {
         return "plat";
       } else if (loader == SystemDictionary::java_system_loader()) {
         return "app";
+      } else if (k->is_instance_klass() && InstanceKlass::cast(k)->classloader_aot_id() != nullptr) {
+        return "aotsafe_custom_loader";
       } else {
         return "unreg";
       }

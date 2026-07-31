@@ -29,7 +29,7 @@
  * @library /test/lib /test/hotspot/jtreg/runtime/cds /test/hotspot/jtreg/runtime/cds/appcds/test-classes
  * @modules java.base/jdk.internal.misc
  * @build AOTMapTest Hello
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar AOTMapTestApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar AOTMapTestApp AOTMapTestApp$CustomLoader
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar Hello
  * @run driver/timeout=240 AOTMapTest AOT --two-step-training
  */
@@ -44,7 +44,7 @@
  * @build jdk.test.whitebox.WhiteBox
  * @run driver jdk.test.lib.helpers.ClassFileInstaller jdk.test.whitebox.WhiteBox
  * @build AOTMapTest Hello
- * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar AOTMapTestApp
+ * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar AOTMapTestApp AOTMapTestApp$CustomLoader
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar cust.jar Hello
  * @run main/othervm/timeout=240 -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xbootclasspath/a:. AOTMapTest DYNAMIC
  */
@@ -61,6 +61,7 @@
  * @compile test-classes/AOTMapTestValhallaHelper.java
  * @run driver jdk.test.lib.helpers.ClassFileInstaller -jar app.jar
  *                 AOTMapTestApp
+ *                 AOTMapTestApp$CustomLoader
  *                 Hello
  *                 AOTMapTestValhallaHelper
  *                 AOTMapTestValhallaHelper$Wrapper
@@ -185,8 +186,14 @@ class AOTMapTestApp {
     static void testCustomLoader() throws Exception {
         File custJar = new File("cust.jar");
         URL[] urls = new URL[] {custJar.toURI().toURL()};
-        loader = new URLClassLoader(urls, AOTMapTestApp.class.getClassLoader());
+        loader = new CustomLoader(urls); //URLClassLoader(urls, AOTMapTestApp.class.getClassLoader()) {};
         Class<?> c = loader.loadClass("Hello");
         System.out.println(c);
+    }
+
+    static class CustomLoader extends URLClassLoader {
+        CustomLoader(URL[] urls) {
+            super(urls, AOTMapTestApp.class.getClassLoader());
+        }
     }
 }

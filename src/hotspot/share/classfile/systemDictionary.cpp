@@ -24,6 +24,8 @@
 
 #include "cds/aotClassLocation.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/cdsProtectionDomain.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classFileParser.hpp"
 #include "classfile/classFileStream.hpp"
@@ -228,6 +230,12 @@ ClassLoaderData* SystemDictionary::register_loader(Handle class_loader, bool cre
       return cld;
     }
   }
+}
+
+ClassLoaderData* SystemDictionary::register_loader(Handle class_loader, Symbol* aot_id) {
+  assert(class_loader.not_null(), "cannot be called for builtin loaders");
+  assert(java_lang_ClassLoader::loader_data_acquire(class_loader()) == nullptr, "ClassLoader instance should not be linked to a ClassLoaderData");
+  return ClassLoaderDataGraph::add(class_loader, aot_id);
 }
 
 void SystemDictionary::set_system_loader(ClassLoaderData *cld) {
@@ -1289,6 +1297,43 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
   }
 }
 
+void SystemDictionary::load_class_from_preimage(Handle loader, InstanceKlass* ik, PackageEntry* pkg_entry, Handle pd, TRAPS) {
+  precond(CDSConfig::is_dumping_final_static_archive());
+  precond(AOTMetaspace::in_aot_cache_static_region((void*)ik));
+  precond(!ik->is_loaded());
+
+#ifdef ASSERT
+  // this method must be called in the correct order -- all super types must have
+  // already been loaded.
+  if (ik->java_super() != nullptr) {
+    assert(ik->java_super()->is_loaded(), "must be");
+  }
+
+  Array<InstanceKlass*>* interfaces = ik->local_interfaces();
+  int num_interfaces = interfaces->length();
+  for (int index = 0; index < num_interfaces; index++) {
+    assert(interfaces->at(index)->is_loaded(), "must be");
+  }
+#endif
+
+  EventClassLoad class_load_event;
+  ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(loader());
+
+  ik->restore_unshareable_info(loader_data, pd, pkg_entry, CHECK);
+  load_shared_class_misc(ik, loader_data);
+  ik->add_to_hierarchy(THREAD);
+
+  if (!ik->is_hidden()) {
+    update_dictionary(THREAD, ik, loader_data);
+  }
+
+  if (class_load_event.should_commit()) {
+    JFR_ONLY(post_class_load_event(&class_load_event, ik, loader_data);)
+  }
+
+  assert(ik->is_loaded(), "Must be in at least loaded state");
+}
+
 // This is much more lightweight than SystemDictionary::resolve_or_null
 // - There's only a single Java thread at this point. No need for placeholder.
 // - All supertypes of ik have been loaded
@@ -1296,9 +1341,8 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
 // - There's no need to call java.lang.ClassLoader::load_class() because the boot/platform/app
 //   loaders are well-behaved
 void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRAPS) {
-  precond(Universe::is_bootstrapping());
+  precond(Universe::is_bootstrapping() || !is_builtin_class_loader(class_loader()));
   precond(java_platform_loader() != nullptr && java_system_loader() != nullptr);
-  precond(class_loader() == nullptr || class_loader() == java_platform_loader() ||class_loader() == java_system_loader());
   precond(CDSConfig::is_using_aot_linked_classes());
   precond(AOTMetaspace::in_aot_cache_static_region((void*)ik));
   precond(!ik->is_loaded());
@@ -1325,9 +1369,19 @@ void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRA
   assert(java_lang_Class::module(java_mirror) != nullptr, "must have been archived");
 
   Handle pd(THREAD, java_lang_Class::protection_domain(java_mirror));
+  if (ik->defined_by_aot_safe_custom_loader()) {
+    oop loader = java_security_ProtectionDomain::classloader(pd());
+    // If it is the first time this ProtectionDomain object is accessed, its classloader field should be pointing to the
+    // scratch loader created in assembly phase. If so, patch it to point to the current loader.
+    if (loader != class_loader()) {
+      assert(CustomLoaderSupport::is_scratch_loader(loader), "PD's loader must be the scratch loader created in the assembly phase");
+      // Change PD's loader from scratch loader to the real loader object
+      java_security_ProtectionDomain::set_classloader(pd(), class_loader());
+    }
+  }
   PackageEntry* pkg_entry = ik->package();
   assert(pkg_entry != nullptr || ClassLoader::package_from_class_name(ik->name()) == nullptr,
-         "non-empty packages must have been archived");
+         "non-empty packages for builtin loaders must have been archived");
 
   // TODO: the following assert requires JDK-8365580
   // assert(is_shared_class_visible(ik->name(), ik, pkg_entry, class_loader), "must be");
@@ -1851,9 +1905,9 @@ void SystemDictionary::update_dictionary(JavaThread* current,
 
 // Indicate that loader_data has initiated the loading of class k, which
 // has already been defined by a parent loader.
-// This API is used by AOTLinkedClassBulkLoader and to register boxing
-// classes from java.lang in all class loaders to enable more value
-// classes optimizations.
+// This API should be used only when loading classes in assembly phase (see FinalImageRecipes)
+// or preloading in production phase (see AOTLinkedClassBulkLoader),
+// and to register boxing classes from java.lang in all class loaders to enable more value classes optimizations.
 void SystemDictionary::add_to_initiating_loader(JavaThread* current,
                                                 InstanceKlass* k,
                                                 ClassLoaderData* loader_data) {
@@ -1864,6 +1918,43 @@ void SystemDictionary::add_to_initiating_loader(JavaThread* current,
   assert(k->class_loader_data() != loader_data, "only for classes defined by a parent loader");
   if (dictionary->find_class(current, name) == nullptr) {
     dictionary->add_klass(current, name, k);
+  }
+}
+
+class KlassCollector : public KlassClosure {
+ private:
+  GrowableArray<InstanceKlass*> _klasses;
+ public:
+  void do_klass(Klass* k) {
+    assert(k->is_instance_klass(), "must be");
+    Symbol* name  = k->name();
+    _klasses.append(InstanceKlass::cast(k));
+  }
+  GrowableArray<InstanceKlass*>* klasses() {
+    return &_klasses;
+  }
+};
+
+// This method marks "loader" as the initiating loader of all the classes in its parent's dictionary.
+// It is similar to AOTLinkedClassBulkLoader::initiate_loading(), difference being initiate_loading()
+// needs to be called for each parent in the delegation hierarchy.
+void SystemDictionary::mark_as_initiating_loader_of_parent_classes(JavaThread* currentThread, Handle loader) {
+  ClassLoaderData* cl_data = java_lang_ClassLoader::loader_data(loader());
+  oop parent = java_lang_ClassLoader::parent(loader());
+  ClassLoaderData* parent_cl_data;
+  if (parent == nullptr) {
+    // parent is boot loader
+    parent_cl_data = ClassLoaderData::the_null_class_loader_data();
+  } else {
+    parent_cl_data = java_lang_ClassLoader::loader_data(parent);
+  }
+  Dictionary* parent_dict = parent_cl_data->dictionary();
+  KlassCollector collector;
+  parent_dict->all_entries_do(&collector);
+  GrowableArray<InstanceKlass*>* klasses = collector.klasses();
+  for (int i = 0; i < klasses->length(); i++) {
+    Symbol* name = klasses->at(i)->name();
+    add_to_initiating_loader(currentThread, klasses->at(i), cl_data);
   }
 }
 

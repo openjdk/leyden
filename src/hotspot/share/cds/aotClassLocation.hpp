@@ -27,6 +27,8 @@
 
 #include "memory/allocation.hpp"
 #include "oops/array.hpp"
+#include "runtime/os.hpp"
+#include "utilities/classpathStream.hpp"
 #include "utilities/exceptions.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/growableArray.hpp"
@@ -38,6 +40,61 @@ class ClassLocationStream;
 class ClassPathZipEntry;
 class ModulePathClassLocationStream;
 class LogStream;
+// A ClassLocationStream represents a list of code locations, which can be iterated using
+// start() and has_next().
+class ClassLocationStream {
+protected:
+  GrowableArray<const char*> _array;
+  int _current;
+
+  // Add one path to this stream.
+  void add_one_path(const char* path) {
+    _array.append(path);
+  }
+
+  // Add all paths specified in cp; cp must be from -classpath or -Xbootclasspath/a.
+  void add_paths_in_classpath(const char* cp) {
+    ClasspathStream cp_stream(cp);
+    while (cp_stream.has_next()) {
+      add_one_path(cp_stream.get_next());
+    }
+  }
+
+public:
+  ClassLocationStream() : _array(), _current(0) {}
+
+  void print(outputStream* st) const {
+    const char* sep = "";
+    for (int i = 0; i < _array.length(); i++) {
+      st->print("%s%s", sep, _array.at(i));
+      sep = os::path_separator();
+    }
+  }
+
+  void add(ClassLocationStream& css) {
+    for (css.start(); css.has_next();) {
+      add_one_path(css.get_next());
+    }
+  }
+
+  // Iteration
+  void start() { _current = 0; }
+  bool has_next() const { return _current < _array.length(); }
+  const char* get_next() {
+    return _array.at(_current++);
+  }
+
+  int current() const { return _current; }
+  bool is_empty() const { return _array.length() == 0; }
+  int size() const { return _array.length(); }
+};
+
+class URLClassLoaderClassLocationStream : public ClassLocationStream {
+public:
+  URLClassLoaderClassLocationStream(const char* classpath) : ClassLocationStream() {
+    add_paths_in_classpath(classpath);
+  }
+};
 
 // An AOTClassLocation is a location where the application is configured to load Java classes
 // from. It can be:
@@ -61,7 +118,8 @@ public:
     MODULES_IMAGE,
     BOOT_CLASSPATH,
     APP_CLASSPATH,
-    MODULE_PATH
+    MODULE_PATH,
+    URLCLASSLOADER_CLASSPATH
   };
 private:
   enum class FileType : int {
@@ -154,8 +212,6 @@ class AOTClassLocationConfig : public CHeapObj<mtClassShared> {
   size_t _dumptime_lcp_len;
 
   // accessors
-  Array<AOTClassLocation*>* class_locations() const { return _class_locations; }
-
   void parse(JavaThread* current, GrowableClassLocationArray& tmp_array, ClassLocationStream& css,
              Group group, bool parse_manifest);
   void add_class_location(JavaThread* current, GrowableClassLocationArray& tmp_array, const char* path,
@@ -230,6 +286,8 @@ public:
   int num_boot_classpaths()          const { return boot_cp_end_index() - boot_cp_start_index(); }
   int num_app_classpaths()           const { return app_cp_end_index() - app_cp_start_index(); }
   int num_module_paths()             const { return module_path_end_index() - module_path_start_index(); }
+
+  Array<AOTClassLocation*>* class_locations() const { return _class_locations; }
 
   int length() const {
     return _class_locations->length();

@@ -35,6 +35,8 @@
 #include "utilities/macros.hpp"
 
 class AOTLinkedClassTable;
+class CustomLoaderInfo;
+class ArchivedCustomLoaderInfoMap;
 class InstanceKlass;
 class SerializeClosure;
 template <typename T> class Array;

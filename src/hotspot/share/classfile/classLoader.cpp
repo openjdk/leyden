@@ -1289,11 +1289,28 @@ void ClassLoader::record_result(JavaThread* current, InstanceKlass* ik,
     return;
   }
 
-  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data())) {
+  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->defined_by_aot_safe_custom_loader()) {
     // A class loaded by a user-defined classloader.
     assert(ik->shared_classpath_index() < 0, "not assigned yet");
     ik->set_shared_classpath_index(UNREGISTERED_INDEX);
     SystemDictionaryShared::set_shared_class_misc_info(ik, (ClassFileStream*)stream);
+    return;
+  }
+
+  if (ik->defined_by_aot_safe_custom_loader()) {
+    GrowableArrayView<AOTClassLocation*>* class_locations = ik->class_loader_data()->aot_locations();
+    assert(class_locations != nullptr, "class locations not set");
+    const char* path = ClassLoader::uri_to_path(src);
+    class_locations->iterate([&](AOTClassLocation*& cl) {
+      int index = cl->index();
+      if (os::same_files(cl->path(), path)) {
+        ik->set_shared_classpath_index(index);
+	// found match; stop iterating
+	return false;
+      }
+      // keep iterating
+      return true;
+    });
     return;
   }
 

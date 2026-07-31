@@ -177,6 +177,25 @@ public:
     return top();
   }
 
+  template<typename Function>
+  void iterate(Function fn) {
+    for (int i = 0; i < length(); i++) {
+      if (!fn(at(i))) {
+        break;
+      }
+    }
+    return;
+  }
+
+  template<typename Function>
+  void iterate_all(Function fn) {
+    iterate([&] (E& elem) {
+      fn(elem);
+      return true;
+    });
+    return;
+  }
+
   GrowableArrayIterator<E> begin() const {
     return GrowableArrayIterator<E>(this, 0);
   }

@@ -26,14 +26,63 @@
 #define SHARE_CDS_CDSPROTECTIONDOMAIN_HPP
 
 #include "classfile/moduleEntry.hpp"
+#include "oops/oopCast.inline.hpp"
 #include "oops/oopHandle.inline.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/javaThread.hpp"
+#include "utilities/resizableHashTable.hpp"
 
+class AOTClassLocation;
+class KlassMirrorDataCache;
 class InstanceKlass;
-class Symbol;
-class PackageEntry;
 class ModuleEntry;
+class PackageEntry;
+class Symbol;
+
+class KlassMirrorDataCache : public CHeapObj<mtClass> {
+private:
+  Handle _protection_domains;
+  Handle _jar_urls;
+  Handle _jar_manifests;
+  Handle _class_loader;
+  Array<AOTClassLocation*>* _locations;
+
+  oop jar_url_at(int index) {
+    return oop_cast<refArrayOop>(_jar_urls())->obj_at(index);
+  }
+  void set_jar_url_at(int index, oop url) {
+    oop_cast<refArrayOop>(_jar_urls())->replace_if_null(index, url);
+  }
+
+  oop jar_manifest_at(int index) {
+    return oop_cast<refArrayOop>(_jar_manifests())->obj_at(index);
+  }
+  void set_jar_manifest_at(int index, oop man) {
+    oop_cast<refArrayOop>(_jar_manifests())->replace_if_null(index, man);
+  }
+
+  oop protection_domain_at(int index) {
+    return oop_cast<refArrayOop>(_protection_domains())->obj_at(index);
+  }
+  void set_protection_domain_at(int index, oop pd) {
+    oop_cast<refArrayOop>(_protection_domains())->replace_if_null(index, pd);
+  }
+
+public:
+  KlassMirrorDataCache(Handle class_loader, Array<AOTClassLocation*>* class_locations, TRAPS);
+
+  Handle get_jar_manifest(int index, TRAPS);
+  Handle get_jar_url(int index, TRAPS);
+  Handle get_protection_domain(int index, TRAPS);
+  Handle class_loader() const { return _class_loader; }
+  Array<AOTClassLocation*>* locations() const { return _locations; }
+};
+
+class KlassMirrorData : AllStatic {
+public:
+  static PackageEntry* get_package_entry(InstanceKlass* ik, KlassMirrorDataCache& mirror_data_cache, TRAPS);
+  static Handle get_protection_domain(InstanceKlass* ik, PackageEntry* pkg_entry, KlassMirrorDataCache&  mirror_data_cache, TRAPS);
+};
 
 // CDS security
 class CDSProtectionDomain : AllStatic {
@@ -43,6 +92,7 @@ class CDSProtectionDomain : AllStatic {
   static OopHandle _shared_jar_manifests;
 
 public:
+  static void initialize(TRAPS);
   // Package handling:
   //
   // 1. For named modules in the runtime image
@@ -72,23 +122,12 @@ public:
   // package for shared APP and PLATFORM classes.
   static Handle        get_package_name(Symbol*  class_name, TRAPS);
   static PackageEntry* get_package_entry_from_class(InstanceKlass* ik, Handle class_loader);
-  static void define_shared_package(Symbol*  class_name,
-                                    Handle class_loader,
-                                    Handle manifest,
-                                    Handle url,
-                                    TRAPS);
-  static Handle create_jar_manifest(const char* man, size_t size, TRAPS);
   static Handle get_shared_jar_manifest(int shared_path_index, TRAPS);
   static Handle get_shared_jar_url(int shared_path_index, TRAPS);
-  static oop to_file_URL(const char* path, Handle url_h, TRAPS);
-  static Handle get_protection_domain_from_classloader(Handle class_loader,
-                                                       Handle url, TRAPS);
   static Handle get_shared_protection_domain(Handle class_loader,
                                              int shared_path_index,
                                              Handle url,
                                              TRAPS);
-  static Handle get_shared_protection_domain(Handle class_loader,
-                                             ModuleEntry* mod, TRAPS);
   static void atomic_set_array_index(OopHandle array, int index, oop o);
   static oop shared_protection_domain(int index);
   static void allocate_shared_protection_domain_array(int size, TRAPS);
@@ -112,6 +151,7 @@ public:
   static void atomic_set_shared_jar_manifest(int index, oop man) {
     atomic_set_array_index(_shared_jar_manifests, index, man);
   }
+  static void exercise_runtime_cds_code(const char* dummy_manifest, const char* dummy_jar, TRAPS);
 };
 
 #endif // SHARE_CDS_CDSPROTECTIONDOMAIN_HPP
