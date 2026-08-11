@@ -79,7 +79,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
       "replay",
       "whitebox",
       "must_be_compiled",
-      "bootstrap",
       "aot_load",
       "aot_preload",
       "aot_compile",
