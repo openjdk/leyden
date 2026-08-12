@@ -306,14 +306,16 @@ void AOTCodeCache::initialize() {
 #else
   assert(!FLAG_IS_DEFAULT(AOTCache), "AOTCache should be specified");
 
-  if (VerifyOops) {
-    // Disable AOT stubs caching when VerifyOops flag is on.
-    // Verify oops code generated a lot of C strings which overflow
-    // AOT C string table (which has fixed size).
-    // AOT C string table will be reworked later to handle such cases.
-    load_info_log().print_cr("AOT Code Caching is not supported with VerifyOops");
+  if (Arguments::is_valhalla_enabled()) {
+    // Disable AOT code caching when Valhalla is enabled.
+    load_info_log().print_cr("AOT Code Caching is not supported with Valhalla");
     disable_caching();
     return;
+  }
+
+  if (VerifyOops && InlineTypePassFieldsAsArgs) {
+    load_info_log().print_cr("AOT Adapter Caching is not supported with VerifyOops + InlineTypePassFieldsAsArgs.");
+    FLAG_SET_ERGO(AOTAdapterCaching, false);
   }
 
   bool is_dumping = false;
@@ -392,6 +394,8 @@ void AOTCodeCache::init2() {
     }
     // Read strings
     opened_cache->load_strings();
+  } else if (opened_cache->for_dump()) {
+    init_C_strings_caching();
   }
   // initialize aot runtime constants as appropriate to this runtime
   AOTRuntimeConstants::initialize_from_runtime();
@@ -555,7 +559,6 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
   _load_entries(nullptr),
   _search_entries(nullptr),
   _store_entries(nullptr),
-  _C_strings_buf(nullptr),
   _store_entries_cnt(0),
   _compile_id(0),
   _comp_level(0)
@@ -2588,8 +2591,6 @@ bool AOTCodeCache::write_relocations(CodeBlob& code_blob, RelocIterator& iter,
         break;
       case relocInfo::post_call_nop_type:
         break;
-      case relocInfo::entry_guard_type:
-        break;
       default:
         log_debug(aot, codecache, reloc)("relocation %d unimplemented", (int)iter.type());
         return false;
@@ -2745,8 +2746,6 @@ void AOTCodeReader::fix_relocations(CodeBlob *code_blob, RelocIterator& iter,
         break;
       case relocInfo::post_call_nop_type:
         break;
-      case relocInfo::entry_guard_type:
-        break;
       default:
         assert(false,"relocation %d unimplemented", (int)iter.type());
         break;
@@ -2838,7 +2837,7 @@ bool AOTCodeCache::write_metadata(Metadata* m) {
   return true;
 }
 
-Metadata* AOTCodeReader::read_metadata() {
+Metadata* AOTCodeReader::read_metadata(JavaThread* thread) {
   uint code_offset = read_position();
   Metadata* m = nullptr;
   DataKind kind = *(DataKind*)addr(code_offset);
@@ -2849,7 +2848,7 @@ Metadata* AOTCodeReader::read_metadata() {
   } else if (kind == DataKind::No_Data) {
     m = (Metadata*)Universe::non_oop_word();
   } else if (kind == DataKind::Klass) {
-    m = (Metadata*)read_klass();
+    m = (Metadata*)read_klass(thread);
   } else if (kind == DataKind::Method) {
     m = (Metadata*)read_method();
   } else if (kind == DataKind::MethodCnts) {
@@ -2937,12 +2936,17 @@ Method* AOTCodeReader::read_method() {
 
 bool AOTCodeCache::write_klass(Klass* klass) {
   uint array_dim = 0;
+  uint array_flags = ArrayProperties::Invalid().value();
   bool can_write = true;
   if (klass->is_objArray_klass()) {
     // We must check klass and its bottom_klass.
     can_write = AOTCacheAccess::can_generate_aot_code(klass);
     array_dim = ObjArrayKlass::cast(klass)->dimension();
-    klass     = ObjArrayKlass::cast(klass)->bottom_klass(); // overwrites klass
+    if (klass->is_refined_objArray_klass()) {
+      // Preserve property of object array
+      array_flags = ObjArrayKlass::cast(klass)->properties().value();
+    }
+    klass = ObjArrayKlass::cast(klass)->bottom_klass(); // overwrites klass
   }
   uint init_state = 0;
   if (klass->is_instance_klass()) {
@@ -2966,6 +2970,11 @@ bool AOTCodeCache::write_klass(Klass* klass) {
     if (n != sizeof(int)) {
       return false;
     }
+    // Record array's properties
+    n = write_bytes(&array_flags, sizeof(int));
+    if (n != sizeof(int)) {
+      return false;
+    }
     narrowPtr klass_narrow_ptr = AOTCacheAccess::to_narrow_ptr(klass);
     n = write_bytes(&klass_narrow_ptr, sizeof(narrowPtr));
     if (n != sizeof(narrowPtr)) {
@@ -2985,11 +2994,13 @@ bool AOTCodeCache::write_klass(Klass* klass) {
   return false;
 }
 
-Klass* AOTCodeReader::read_klass() {
+Klass* AOTCodeReader::read_klass(JavaThread* thread) {
   uint code_offset = read_position();
   uint state = *(uint*)addr(code_offset);
   uint init_state = (state  & 1);
   uint array_dim  = (state >> 1);
+  code_offset += sizeof(int);
+  uint array_flags = *(uint*)addr(code_offset);
   code_offset += sizeof(int);
   narrowPtr klass_narrow_ptr = *(narrowPtr*)addr(code_offset);
   code_offset += sizeof(uint);
@@ -3020,6 +3031,10 @@ Klass* AOTCodeReader::read_klass() {
   if (array_dim > 0) {
     assert(k->is_instance_klass() || k->is_typeArray_klass(), "sanity check");
     Klass* ak = k->array_klass_or_null(array_dim);
+    ArrayProperties props(array_flags);
+    if (ak != nullptr && props.is_valid()) {
+      ak = ObjArrayKlass::cast(ak)->klass_with_properties(ArrayProperties(array_flags), thread);
+    }
     if (ak == nullptr) {
       set_lookup_failed("Lookup failed for array klass");
       log_debug(aot, codecache, metadata)("%d (A%d): Lookup failed for %d-dimensions array klass %s",
@@ -3159,7 +3174,7 @@ oop AOTCodeReader::read_oop(JavaThread* thread) {
   } else if (kind == DataKind::No_Data) {
     return cast_to_oop(Universe::non_oop_word());
   } else if (kind == DataKind::Klass) {
-    Klass* k = read_klass();
+    Klass* k = read_klass(thread);
     if (k == nullptr) {
       return nullptr;
     }
@@ -3265,7 +3280,7 @@ bool AOTCodeReader::read_oop_metadata_list(JavaThread* current, GrowableArray<Ha
   offset += sizeof(int);
   set_read_position(offset);
   for (int i = 0; i < count; i++) {
-    Metadata* m = read_metadata();
+    Metadata* m = read_metadata(current);
     if (lookup_failed()) {
       return false;
     }
@@ -3458,7 +3473,7 @@ void AOTCodeReader::read_dbg_strings(DbgStrings& dbg_strings, bool use_string_ta
 // values i.e.
 //   [_extrs_base, _extrs_base + _extrs_max -1],
 //   [_stubs_base, _stubs_base + _stubs_max -1],
-//   [_c_str_base, _c_str_base + _c_str_max -1],
+//   [_c_str_base, _c_str_base + _C_strings_count],
 
 #define _extrs_max 500
 #define _stubs_max static_cast<int>(EntryId::NUM_ENTRYIDS)
@@ -3519,6 +3534,10 @@ void AOTCodeAddressTable::init_extrs() {
     ADD_EXTERNAL_ADDRESS(SharedRuntime::throw_delayed_StackOverflowError);
     ADD_EXTERNAL_ADDRESS(StubRoutines::crc_table_addr());
     ADD_EXTERNAL_ADDRESS(StubRoutines::verify_oop_count_addr()); // used by generate_verify_oop()
+    ADD_EXTERNAL_ADDRESS(StubRoutines::verify_oop_subroutine_entry_address());
+    if (InlineTypeReturnedAsFields) {
+      ADD_EXTERNAL_ADDRESS(SharedRuntime::store_inline_type_fields_to_buf);
+    }
   }
 
   // Record addresses of VM runtime methods
@@ -3526,6 +3545,7 @@ void AOTCodeAddressTable::init_extrs() {
   ADD_EXTERNAL_ADDRESS(SharedRuntime::handle_wrong_method);
   ADD_EXTERNAL_ADDRESS(SharedRuntime::handle_wrong_method_abstract);
   ADD_EXTERNAL_ADDRESS(SharedRuntime::handle_wrong_method_ic_miss);
+  ADD_EXTERNAL_ADDRESS(SharedRuntime::allocate_inline_types);
 #if defined(AARCH64) && !defined(ZERO)
   ADD_EXTERNAL_ADDRESS(JavaThread::aarch64_get_thread_helper);
   ADD_EXTERNAL_ADDRESS(BarrierSetAssembler::patching_epoch_addr());
@@ -3656,6 +3676,14 @@ void AOTCodeAddressTable::init_extrs() {
     ADD_EXTERNAL_ADDRESS(Runtime1::predicate_failed_trap);
     ADD_EXTERNAL_ADDRESS(Runtime1::unimplemented_entry);
     ADD_EXTERNAL_ADDRESS(Runtime1::trace_block_entry);
+    ADD_EXTERNAL_ADDRESS(Runtime1::new_null_free_array);
+    ADD_EXTERNAL_ADDRESS(Runtime1::load_flat_array);
+    ADD_EXTERNAL_ADDRESS(Runtime1::store_flat_array);
+    ADD_EXTERNAL_ADDRESS(Runtime1::substitutability_check);
+    ADD_EXTERNAL_ADDRESS(Runtime1::buffer_inline_args);
+    ADD_EXTERNAL_ADDRESS(Runtime1::buffer_inline_args_no_receiver);
+    ADD_EXTERNAL_ADDRESS(Runtime1::throw_identity_exception);
+    ADD_EXTERNAL_ADDRESS(Runtime1::throw_illegal_monitor_state_exception);
   }
 #endif // COMPILER1
 
@@ -3679,6 +3707,8 @@ void AOTCodeAddressTable::init_extrs() {
     ADD_EXTERNAL_ADDRESS(OptoRuntime::slow_arraycopy_C);
     ADD_EXTERNAL_ADDRESS(OptoRuntime::register_finalizer_C);
     ADD_EXTERNAL_ADDRESS(OptoRuntime::compile_method_C);
+    ADD_EXTERNAL_ADDRESS(OptoRuntime::load_unknown_inline_C);
+    ADD_EXTERNAL_ADDRESS(OptoRuntime::store_unknown_inline_C);
     ADD_EXTERNAL_ADDRESS(OptoRuntime::vthread_end_first_transition_C);
     ADD_EXTERNAL_ADDRESS(OptoRuntime::vthread_start_final_transition_C);
     ADD_EXTERNAL_ADDRESS(OptoRuntime::vthread_start_transition_C);
@@ -3739,7 +3769,8 @@ void AOTCodeAddressTable::init_extrs() {
     ADD_EXTERNAL_ADDRESS(ZPointerVectorStoreGoodMask);
 #if defined(AMD64)
     ADD_EXTERNAL_ADDRESS(&ZPointerLoadShift);
-    ADD_EXTERNAL_ADDRESS(&ZPointerLoadShiftTable);
+    extern address ZPointerLoadShiftTableAddr;
+    ADD_EXTERNAL_ADDRESS(&ZPointerLoadShiftTableAddr);
 #endif
   } // UseZGC
 #endif // INCLUDE_ZGC
@@ -3857,64 +3888,68 @@ void AOTCodeAddressTable::set_stubgen_stubs_complete() {
 }
 
 #ifdef PRODUCT
-#define MAX_STR_COUNT 200
+#define INITIAL_STR_CACHE_SIZE 200
 #else
-#define MAX_STR_COUNT 2000
+#define INITIAL_STR_CACHE_SIZE 2000
 #endif
-#define _c_str_max  MAX_STR_COUNT
 static const int _c_str_base = _all_max;
 
-static const char* _C_strings_in[MAX_STR_COUNT] = {nullptr}; // Incoming strings
-static const char* _C_strings[MAX_STR_COUNT]    = {nullptr}; // Our duplicates
+static GrowableArray<const char*>* _C_strings = nullptr; // Cached duplicates
+static GrowableArray<int>* _C_strings_id = nullptr;  // id corresponding to index in _C_strings[]
+static GrowableArray<int>* _C_strings_ix = nullptr;  // index in _C_strings[] corresponding to id
+
+static const char** _cached_C_strings = nullptr;
 static int _C_strings_count = 0;
-static int _C_strings_s[MAX_STR_COUNT] = {0};
-static int _C_strings_id[MAX_STR_COUNT] = {0};
 static int _C_strings_used = 0;
 
+void AOTCodeCache::init_C_strings_caching() {
+  assert(_C_strings == nullptr, "Initialize only once");
+  // Allocate arrays in C heap
+  _C_strings = new(mtCode) GrowableArray<const char*>(INITIAL_STR_CACHE_SIZE, 0, nullptr, mtCode);
+  _C_strings_id  = new(mtCode) GrowableArray<int>(INITIAL_STR_CACHE_SIZE, 0, -1, mtCode);
+  _C_strings_ix  = new(mtCode) GrowableArray<int>(INITIAL_STR_CACHE_SIZE, 0, -1, mtCode);
+}
+
 void AOTCodeCache::load_strings() {
-  uint strings_count  = _load_header->strings_count();
+  uint strings_count = _load_header->strings_count();
   if (strings_count == 0) {
     return;
   }
-  if (strings_count > MAX_STR_COUNT) {
-    fatal("Invalid strings_count loaded from AOT Code Cache: %d > MAX_STR_COUNT [%d]", strings_count, MAX_STR_COUNT);
-    return;
-  }
   uint strings_offset = _load_header->strings_offset();
+
+  // First is the array of cached strings length
   uint* string_lengths = (uint*)addr(strings_offset);
   strings_offset += (strings_count * sizeof(uint));
-  uint strings_size = _load_header->search_table_offset() - strings_offset;
-  // We have to keep cached strings longer than _cache buffer
-  // because they are refernced from compiled code which may
-  // still be executed on VM exit after _cache is freed.
-  char* p = NEW_C_HEAP_ARRAY(char, strings_size+1, mtCode);
-  memcpy(p, addr(strings_offset), strings_size);
-  _C_strings_buf = p;
+
+  // We don't need to duplcate strings from AOT cache to C heap
+  // because we don't remove AOT code cache anymore.
+  _cached_C_strings = NEW_C_HEAP_ARRAY(const char*, strings_count, mtCode);
+  char* start = (char*)addr(strings_offset);
+  char* p = start;
   for (uint i = 0; i < strings_count; i++) {
-    _C_strings[i] = p;
+    _cached_C_strings[i] = p;
     uint len = string_lengths[i];
-    _C_strings_s[i] = i;
-    _C_strings_id[i] = i;
     log_trace(aot, codecache, stringtable)("load_strings: _C_strings[%d] " INTPTR_FORMAT " '%s'", i, p2i(p), p);
     p += len;
   }
-  assert((uint)(p - _C_strings_buf) <= strings_size, "(" INTPTR_FORMAT " - " INTPTR_FORMAT ") = %d > %d ", p2i(p), p2i(_C_strings_buf), (uint)(p - _C_strings_buf), strings_size);
+  uint strings_size = _load_header->entries_offset() - strings_offset;
+  assert((uint)(p - start) <= strings_size, "(" INTPTR_FORMAT " - " INTPTR_FORMAT ") = %d > %d ", p2i(p), p2i(start), (uint)(p - start), strings_size);
   _C_strings_count = strings_count;
-  _C_strings_used  = strings_count;
   log_info(aot, codecache, init)("  Loaded %d C strings of total length %d at offset %d from AOT Code Cache", _C_strings_count, strings_size, strings_offset);
 }
 
 int AOTCodeCache::store_strings() {
+  MutexLocker ml(AOTCodeCStrings_lock, Mutex::_no_safepoint_check_flag);
   if (_C_strings_used > 0) {
-    MutexLocker ml(AOTCodeCStrings_lock, Mutex::_no_safepoint_check_flag);
     uint offset = _write_position;
     uint length = 0;
     uint* lengths = (uint *)reserve_bytes(sizeof(uint) * _C_strings_used);
     if (lengths == nullptr) {
       return -1;
     }
+    // Write strings into AOT cache in `id` order.
     for (int i = 0; i < _C_strings_used; i++) {
-      const char* str = _C_strings[_C_strings_s[i]];
+      const char* str = _C_strings->at(_C_strings_ix->at(i));
       log_trace(aot, codecache, stringtable)("store_strings: _C_strings[%d] " INTPTR_FORMAT " '%s'", i, p2i(str), str);
       uint len = (uint)strlen(str) + 1;
       length += len;
@@ -3926,7 +3961,7 @@ int AOTCodeCache::store_strings() {
       }
     }
     log_debug(aot, codecache, exit)("  Wrote %d C strings of total length %d at offset %d to AOT Code Cache",
-                                   _C_strings_used, length, offset);
+                                    _C_strings_used, length, offset);
   }
   return _C_strings_used;
 }
@@ -3935,57 +3970,50 @@ const char* AOTCodeCache::add_C_string(const char* str) {
   if (is_on_for_dump() && str != nullptr) {
     MutexLocker ml(AOTCodeCStrings_lock, Mutex::_no_safepoint_check_flag);
     AOTCodeAddressTable* table = addr_table();
-    if (table != nullptr) {
-      return table->add_C_string(str);
-    }
+    assert(table != nullptr, "should be initialized already");
+    return table->add_C_string(str);
   }
   return str;
 }
 
+// Identical C strings get the same ID
 const char* AOTCodeAddressTable::add_C_string(const char* str) {
-  if (_extrs_complete || initializing_extrs) {
-    // Check previous strings address
-    for (int i = 0; i < _C_strings_count; i++) {
-      if (_C_strings_in[i] == str) {
-        return _C_strings[i]; // Found previous one - return our duplicate
-      } else if (strcmp(_C_strings[i], str) == 0) {
-        return _C_strings[i];
-      }
-    }
-    // Add new one
-    if (_C_strings_count < MAX_STR_COUNT) {
-      // Passed in string can be freed and used space become inaccessible.
-      // Keep original address but duplicate string for future compare.
-      _C_strings_id[_C_strings_count] = -1; // Init
-      _C_strings_in[_C_strings_count] = str;
-      const char* dup = os::strdup(str);
-      _C_strings[_C_strings_count++] = dup;
-      log_trace(aot, codecache, stringtable)("add_C_string: [%d] " INTPTR_FORMAT " '%s'", _C_strings_count, p2i(dup), dup);
+  assert_lock_strong(AOTCodeCStrings_lock);
+  for (int i = 0; i < _C_strings_count; i++) {
+    const char* dup = _C_strings->at(i);
+    if (strcmp(dup, str) == 0) {
       return dup;
-    } else {
-      assert(false, "Number of C strings >= MAX_STR_COUNT");
     }
   }
-  return str;
+  // Add one new string.
+  // Passed in string can be freed and used space become inaccessible.
+  // Duplicate string for future compare.
+  const char* dup = os::strdup(str);
+  _C_strings->at_put_grow(_C_strings_count, dup);
+  _C_strings_id->at_put_grow(_C_strings_count, -1);
+  log_trace(aot, codecache, stringtable)("add_C_string: [%d] " INTPTR_FORMAT " '%s'", _C_strings_count, p2i(dup), dup);
+  _C_strings_count++;
+  return dup;
 }
 
 int AOTCodeAddressTable::id_for_C_string(address str) {
+  assert(AOTCodeCache::is_on_for_dump(), "should be called only during AOT code cache dump");
   if (str == nullptr) {
     return BAD_ADDRESS_ID;
   }
   MutexLocker ml(AOTCodeCStrings_lock, Mutex::_no_safepoint_check_flag);
   for (int i = 0; i < _C_strings_count; i++) {
-    if (_C_strings[i] == (const char*)str) { // found
-      int id = _C_strings_id[i];
+    if (_C_strings->at(i) == (const char*)str) { // found
+      int id = _C_strings_id->at(i);
       if (id >= 0) {
         assert(id < _C_strings_used, "%d >= %d", id , _C_strings_used);
         return id; // Found recorded
       }
-      log_trace(aot, codecache, stringtable)("id_for_C_string: _C_strings[%d ==> %d] " INTPTR_FORMAT " '%s'", i, _C_strings_used, p2i(str), str);
       // Not found in recorded, add new
       id = _C_strings_used++;
-      _C_strings_s[id] = i;
-      _C_strings_id[i] = id;
+      _C_strings_ix->at_put_grow(id, i);
+      _C_strings_id->at_put_grow(i, id);
+      log_trace(aot, codecache, stringtable)("id_for_C_string: _C_strings[%d ==> %d] " INTPTR_FORMAT " '%s'", i, id, p2i(str), str);
       return id;
     }
   }
@@ -3993,8 +4021,10 @@ int AOTCodeAddressTable::id_for_C_string(address str) {
 }
 
 address AOTCodeAddressTable::address_for_C_string(int idx) {
-  assert(idx < _C_strings_count, "sanity");
-  return (address)_C_strings[idx];
+  assert(AOTCodeCache::is_on_for_use(), "should be called only when loading from AOT code cache");
+  assert((uint)idx < (uint)_C_strings_count, " %d >= %d", idx, _C_strings_count);
+  precond(_cached_C_strings != nullptr);
+  return (address)_cached_C_strings[idx];
 }
 
 static int search_address(address addr, address* table, uint length) {
@@ -4011,23 +4041,23 @@ address AOTCodeAddressTable::address_for_id(int idx) {
   if (idx == -1) {
     return (address)-1;
   }
-  uint id = (uint)idx;
-  // special case for symbols based relative to os::init
-  if (id > (_c_str_base + _c_str_max)) {
-    return (address)os::init + idx;
-  }
-  if (idx < 0) {
-    fatal("Incorrect id %d for AOT Code Cache addresses table", id);
+  if (idx >= (_c_str_base + _C_strings_count)) {
+    fatal("recorded id: %d > recorded count %d", idx, (_c_str_base + _C_strings_count));
     return nullptr;
   }
+  if (idx < 0) {
+    fatal("Incorrect id %d for AOT Code Cache addresses table", idx);
+    return nullptr;
+  }
+  uint id = (uint)idx;
   // no need to compare unsigned id against 0
-  if (/* id >= _extrs_base && */ id < _extrs_length) {
+  if (id < _extrs_length) {
     return _extrs_addr[id - _extrs_base];
   }
   if (id >= _stubs_base && id < _c_str_base) {
     return _stubs_addr[id - _stubs_base];
   }
-  if (id >= _c_str_base && id < (_c_str_base + (uint)_C_strings_count)) {
+  if (id >= _c_str_base && id < (uint)(_c_str_base + _C_strings_count)) {
     return address_for_C_string(id - _c_str_base);
   }
   fatal("Incorrect id %d for AOT Code Cache addresses table", id);
@@ -4077,18 +4107,10 @@ int AOTCodeAddressTable::id_for_address(address addr, RelocIterator reloc, CodeB
       char* func_name = NEW_RESOURCE_ARRAY(char, buflen);
       int offset = 0;
       if (os::dll_address_to_function_name(addr, func_name, buflen, &offset)) {
-        if (offset > 0) {
-          // Could be address of C string
-          uint dist = (uint)pointer_delta(addr, (address)os::init, 1);
-          log_debug(aot, codecache)("Address " INTPTR_FORMAT " (offset %d) for runtime target '%s' is missing in AOT Code Cache addresses table",
-                                    p2i(addr), dist, (const char*)addr);
-          assert(dist > (uint)(_all_max + MAX_STR_COUNT), "change encoding of distance");
-          return dist;
-        }
         reloc.print_current_on(tty);
         code_blob->print_on(tty);
         code_blob->print_code_on(tty);
-        assert(false, "Address " INTPTR_FORMAT " for runtime target '%s+%d' is missing in AOT Code Cache addresses table", p2i(addr), func_name, offset);
+        assert(false, "Address " INTPTR_FORMAT " for runtime target <%s+%d>/('%s') is missing in AOT Code Cache addresses table", p2i(addr), func_name, offset, (const char*)addr);
       } else {
         reloc.print_current_on(tty);
         code_blob->print_on(tty);
@@ -4137,12 +4159,16 @@ void AOTRuntimeConstants::initialize_from_runtime() {
   _aot_runtime_constants._card_table_base = card_table_base;
   _aot_runtime_constants._grain_shift = grain_shift;
   _aot_runtime_constants._cset_base = cset_base;
+  _aot_runtime_constants._verify_oop_mask = Universe::verify_oop_mask();
+  _aot_runtime_constants._verify_oop_bits = Universe::verify_oop_bits();
 }
 
 address AOTRuntimeConstants::_field_addresses_list[] = {
   ((address)&_aot_runtime_constants._card_table_base),
   ((address)&_aot_runtime_constants._grain_shift),
   ((address)&_aot_runtime_constants._cset_base),
+  ((address)&_aot_runtime_constants._verify_oop_mask),
+  ((address)&_aot_runtime_constants._verify_oop_bits),
   nullptr
 };
 
