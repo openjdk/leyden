@@ -1300,7 +1300,7 @@ void ciEnv::register_method(ciMethod* target,
             nm->set_preloaded(true);
           }
         }
-      } else // No need to make AOT code usable during assembly phase
+      }
 #endif
       make_code_usable(THREAD, target, /* preload */ false, entry_bci, /* aot_code_entry */ nullptr, nm);
     }
