@@ -396,7 +396,9 @@ public:
   do_var(bool,  UseSHA512Intrinsics) \
   do_var(bool,  UseIntPolyIntrinsics) \
   do_var(bool,  UseVectorizedMismatchIntrinsic) \
+  do_var(bool,  InlineTypeReturnedAsFields) \
   do_var(bool,  VMContinuations) \
+  do_var(bool,  VerifyOops) \
   do_fun(int,   CompressedKlassPointers_shift,          CompressedKlassPointers::shift()) \
   do_fun(bool,  JavaAssertions_systemClassDefault,      JavaAssertions::systemClassDefault()) \
   do_fun(bool,  JavaAssertions_userClassDefault,        JavaAssertions::userClassDefault()) \
@@ -594,7 +596,6 @@ private:
   AOTCodeEntry* _load_entries;   // Used when reading cache
   uint*         _search_entries; // sorted by ID table [id, index]
   AOTCodeEntry* _store_entries;  // Used when writing cache
-  const char*   _C_strings_buf;  // Loaded buffer for _C_strings[] table
   uint          _store_entries_cnt; // total entries count
 
   uint _compile_id;
@@ -635,6 +636,7 @@ public:
   uint load_size() const { return _load_size; }
   uint write_position() const { return _write_position; }
 
+  static void init_C_strings_caching();
   void load_strings();
   int store_strings();
 
@@ -676,9 +678,6 @@ public:
 
   bool write_oop_map_set(CodeBlob& cb);
   bool write_nmethod_reloc_immediates(GrowableArray<Handle>& oop_list, GrowableArray<Metadata*>& metadata_list);
-
-  jobject read_oop(JavaThread* thread);
-  Metadata* read_metadata();
 
   bool write_oop(jobject& jo);
   bool write_oop(oop obj);
@@ -854,12 +853,11 @@ private:
   bool lookup_failed() const { return _failure != nullptr; }
   const char* lookup_failure() const { return _failure; }
 
-  Klass* read_klass();
+  Klass* read_klass(JavaThread* thread);
   Method* read_method();
 
   oop read_oop(JavaThread* thread);
-  Metadata* read_metadata();
-  bool read_metadata(OopRecorder* oop_recorder);
+  Metadata* read_metadata(JavaThread* thread);
 
   bool read_oop_metadata_list(JavaThread* thread, GrowableArray<Handle> &oop_list, GrowableArray<Metadata*> &metadata_list, OopRecorder* oop_recorder);
 
@@ -892,6 +890,9 @@ class AOTRuntimeConstants {
   address _card_table_base;
   uint    _grain_shift;
   address _cset_base;
+  uintptr_t _verify_oop_mask;
+  uintptr_t _verify_oop_bits;
+
   static address _field_addresses_list[];
   static AOTRuntimeConstants _aot_runtime_constants;
   // private constructor for unique singleton
@@ -908,6 +909,8 @@ class AOTRuntimeConstants {
   static address card_table_base_address();
   static address grain_shift_address() { return (address)&_aot_runtime_constants._grain_shift; }
   static address cset_base_address() { return (address)&_aot_runtime_constants._cset_base; }
+  static address verify_oop_mask_address() { return (address)&_aot_runtime_constants._verify_oop_mask; }
+  static address verify_oop_bits_address() { return (address)&_aot_runtime_constants._verify_oop_bits; }
   static address* field_addresses_list() {
     return _field_addresses_list;
   }
@@ -916,6 +919,8 @@ class AOTRuntimeConstants {
   static address card_table_base_address() { return nullptr; }
   static address grain_shift_address()     { return nullptr; }
   static address cset_base_address()       { return nullptr; }
+  static address verify_oop_mask_address() { return nullptr; }
+  static address verify_oop_bits_address() { return nullptr; }
   static address* field_addresses_list()   { return nullptr; }
 #endif
 };

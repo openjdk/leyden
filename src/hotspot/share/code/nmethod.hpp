@@ -27,6 +27,7 @@
 
 #include "code/codeBlob.hpp"
 #include "code/pcDesc.hpp"
+#include "compiler/compilerDefinitions.hpp"
 #include "oops/metadata.hpp"
 #include "oops/method.hpp"
 #include "runtime/mutexLocker.hpp"
@@ -212,6 +213,9 @@ class nmethod : public CodeBlob {
   address  _osr_entry_point;       // entry point for on stack replacement
   uint16_t _entry_offset;          // entry point with class check
   uint16_t _verified_entry_offset; // entry point without class check
+  uint16_t _inline_entry_offset;             // inline type entry point (unpack all inline type args) with class check
+  uint16_t _verified_inline_entry_offset;    // inline type entry point (unpack all inline type args) without class check
+  uint16_t _verified_inline_ro_entry_offset; // inline type entry point (unpack receiver only) without class check
   int      _entry_bci;             // != InvocationEntryBci if this nmethod is an on-stack replacement method
   int      _immutable_data_size;
 
@@ -262,7 +266,8 @@ public:
       WIDE_VECTORS  = 1 << 1,
       MONITORS      = 1 << 2,
       SCOPED_ACCESS = 1 << 3,
-      CLINIT_BARRIERS = 1 << 4
+      NEEDS_STACK_REPAIR = 1 << 4,
+      CLINIT_BARRIERS = 1 << 5
     };
 
     Flags() : _bits(0) {}
@@ -270,11 +275,13 @@ public:
           bool has_wide_vectors,
           bool has_monitors,
           bool has_scoped_access,
+          bool needs_stack_repair,
           bool has_clinit_barriers) :
-      _bits((has_unsafe_access ? UNSAFE_ACCESS : 0) |
-            (has_wide_vectors  ? WIDE_VECTORS  : 0) |
-            (has_monitors      ? MONITORS      : 0) |
-            (has_scoped_access ? SCOPED_ACCESS : 0) |
+      _bits((has_unsafe_access   ? UNSAFE_ACCESS : 0) |
+            (has_wide_vectors    ? WIDE_VECTORS  : 0) |
+            (has_monitors        ? MONITORS      : 0) |
+            (has_scoped_access   ? SCOPED_ACCESS : 0) |
+            (needs_stack_repair  ? NEEDS_STACK_REPAIR : 0) |
             (has_clinit_barriers ? CLINIT_BARRIERS : 0))
     {}
 
@@ -289,6 +296,9 @@ public:
 
     // Used by shared scope closure (scopedMemoryAccess.cpp)
     bool has_scoped_access() const { return (_bits & SCOPED_ACCESS) != 0; }
+
+    // Stack has been extended and needs repair. See comment in MacroAssembler::remove_frame
+    bool needs_stack_repair() const { return (_bits & NEEDS_STACK_REPAIR) != 0; }
 
     // AOT preload code has clinit barriers
     bool has_clinit_barriers() const {  return (_bits & CLINIT_BARRIERS) != 0; }
@@ -709,6 +719,9 @@ public:
   // entry points
   address entry_point() const          { return code_begin() + _entry_offset;          } // normal entry point
   address verified_entry_point() const { return code_begin() + _verified_entry_offset; } // if klass is correct
+  address inline_entry_point() const              { return code_begin() + _inline_entry_offset; }             // inline type entry point (unpack all inline type args)
+  address verified_inline_entry_point() const     { return code_begin() + _verified_inline_entry_offset; }    // inline type entry point (unpack all inline type args) without class check
+  address verified_inline_ro_entry_point() const  { return code_begin() + _verified_inline_ro_entry_offset; } // inline type entry point (only unpack receiver) without class check
 
   int inline_instructions_size() const { return insts_end() - verified_entry_point() - skipped_instructions_size(); }
 
@@ -770,6 +783,7 @@ public:
   bool  has_monitors() const                      { return _flags.has_monitors(); }
   bool  has_scoped_access() const                 { return _flags.has_scoped_access(); }
   bool  has_wide_vectors() const                  { return _flags.has_wide_vectors(); }
+  bool  needs_stack_repair() const                { return _flags.needs_stack_repair(); }
   bool  has_clinit_barriers() const               { return _flags.has_clinit_barriers(); }
 
   bool  preloaded() const                         { return _preloaded; }
@@ -859,7 +873,7 @@ public:
   const char* state() const;
 
   bool inlinecache_check_contains(address addr) const {
-    return (addr >= code_begin() && addr < verified_entry_point());
+    return (addr >= code_begin() && (addr < verified_entry_point() || addr < verified_inline_entry_point()));
   }
 
   void preserve_callee_argument_oops(frame fr, const RegisterMap *reg_map, OopClosure* f);
@@ -1067,9 +1081,10 @@ public:
   // and the changes have invalidated it
   bool check_dependency_on(DepChange& changes);
 
-  // Fast breakpoint support. Tells if this compiled method is
-  // dependent on the given method. Returns true if this nmethod
-  // corresponds to the given method as well.
+  // Tells if this compiled method is dependent on the given method.
+  // Returns true if this nmethod corresponds to the given method as well.
+  // It is used for fast breakpoint support and updating the calling convention
+  // in case of mismatch.
   bool is_dependent_on_method(Method* dependee);
 
   // JVMTI's GetLocalInstance() support
