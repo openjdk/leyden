@@ -603,8 +603,19 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
 
 void AOTCodeCache::invalidate(AOTCodeEntry* entry) {
   // Invalidate AOT code during production run.
-  // This could be concurrent execution.
+  // This should be called only from nmethod::make_not_entrant().
+  assert_lock_strong(NMethodState_lock);
   if (entry != nullptr && is_on_for_use()) {
+    _cache->invalidate_entry(entry);
+  }
+}
+
+void AOTCodeCache::invalidate_with_lock(AOTCodeEntry* entry) {
+  // Invalidate AOT code during production run.
+  // This could be concurrently executed - use lock.
+  if (entry != nullptr && is_on_for_use()) {
+    ConditionalMutexLocker ml(NMethodState_lock, !NMethodState_lock->owned_by_self(),
+                              Mutex::_no_safepoint_check_flag);
     _cache->invalidate_entry(entry);
   }
 }
