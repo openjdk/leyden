@@ -195,9 +195,10 @@ public:
   bool is_loaded()    const { return _loaded; }
   void set_loaded()         { _loaded = true; }
 
-  bool not_entrant()  const { return _not_entrant; }
-  void set_not_entrant()    { _not_entrant = true; }
-  void set_entrant()        { _not_entrant = false; }
+  // Use atomic access to _not_entrant field.
+  bool not_entrant() const;
+  void set_not_entrant();
+  bool try_set_not_entrant();
 
   bool load_fail()  const { return _load_fail; }
   void set_load_fail()    { _load_fail = true; }
@@ -798,7 +799,6 @@ public:
   static bool maybe_dumping_code() NOT_CDS_RETURN_(false);
 
   static void invalidate(AOTCodeEntry* entry) NOT_CDS_RETURN;
-  static void invalidate_with_lock(AOTCodeEntry* entry) NOT_CDS_RETURN;
   static AOTCodeEntry* find_code_entry(const methodHandle& method, uint comp_level) NOT_CDS_RETURN_(nullptr);
   static void preload_code(JavaThread* thread) NOT_CDS_RETURN;
 

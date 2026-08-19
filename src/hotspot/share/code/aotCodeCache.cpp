@@ -603,19 +603,8 @@ AOTCodeCache::AOTCodeCache(bool is_dumping, bool is_using) :
 
 void AOTCodeCache::invalidate(AOTCodeEntry* entry) {
   // Invalidate AOT code during production run.
-  // This should be called only from nmethod::make_not_entrant().
-  assert_lock_strong(NMethodState_lock);
+  // This could be concurrent execution.
   if (entry != nullptr && is_on_for_use()) {
-    _cache->invalidate_entry(entry);
-  }
-}
-
-void AOTCodeCache::invalidate_with_lock(AOTCodeEntry* entry) {
-  // Invalidate AOT code during production run.
-  // This could be concurrently executed - use lock.
-  if (entry != nullptr && is_on_for_use()) {
-    ConditionalMutexLocker ml(NMethodState_lock, !NMethodState_lock->owned_by_self(),
-                              Mutex::_no_safepoint_check_flag);
     _cache->invalidate_entry(entry);
   }
 }
@@ -1098,6 +1087,19 @@ void* AOTCodeEntry::operator new(size_t x, AOTCodeCache* cache) {
   return (void*)(cache->add_entry());
 }
 
+bool AOTCodeEntry::not_entrant() const {
+  return AtomicAccess::load(&_not_entrant);
+}
+
+void AOTCodeEntry::set_not_entrant() {
+  return AtomicAccess::store(&_not_entrant, true);
+}
+
+bool AOTCodeEntry::try_set_not_entrant() {
+  // If old value is 'true' - other thread set it already.
+  return AtomicAccess::xchg(&_not_entrant, true);
+}
+
 static bool check_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level, AOTCodeEntry* entry) {
   if (entry->kind() == kind) {
     assert(entry->id() == id, "sanity");
@@ -1169,7 +1171,7 @@ AOTCodeEntry* AOTCodeCache::find_entry(AOTCodeEntry::Kind kind, uint id, uint co
 
 void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
   assert(entry!= nullptr, "all entries should be read already");
-  if (entry->not_entrant()) {
+  if (entry->try_set_not_entrant()) {
     return; // Someone invalidated it already
   }
 #ifdef ASSERT
@@ -1197,7 +1199,6 @@ void AOTCodeCache::invalidate_entry(AOTCodeEntry* entry) {
   found = (i < count);
   assert(found, "entry should exist");
 #endif
-  entry->set_not_entrant();
   uint name_offset = entry->offset() + entry->name_offset();
   const char* name = _load_buffer + name_offset;;
   uint level       = entry->comp_level();
@@ -1340,21 +1341,12 @@ bool AOTCodeCache::finish_write() {
     AOTCodeEntry* preload_entries = (AOTCodeEntry*)current;
     for (int i = code_count - 1; i >= 0; i--) {
       AOTCodeEntry* entry = &entries_address[i];
-      if (entry->load_fail()) {
-        continue;
-      }
       if (entry->for_preload()) {
-        if (entry->not_entrant()) {
-          // Skip not entrant preload code:
-          // we can't pre-load code which may have failing dependencies.
-          log_info(aot, codecache, exit)("Skip not entrant preload code comp_id: %d, comp_level: %d, hash: " UINT32_FORMAT_X_0 "%s",
-                                         entry->comp_id(), entry->comp_level(), entry->id(), (entry->has_clinit_barriers() ? ", has clinit barriers" : ""));
-        } else {
-          copy_bytes((const char*)entry, (address)current, sizeof(AOTCodeEntry));
-          stats.collect_entry_stats(entry);
-          current += sizeof(AOTCodeEntry);
-          preload_entries_cnt++;
-        }
+        assert(!entry->not_entrant(), "AOT code should not be not_entrant during assembly phase");
+        copy_bytes((const char*)entry, (address)current, sizeof(AOTCodeEntry));
+        stats.collect_entry_stats(entry);
+        current += sizeof(AOTCodeEntry);
+        preload_entries_cnt++;
       }
     }
 
@@ -1377,14 +1369,10 @@ bool AOTCodeCache::finish_write() {
     AOTCodeEntry* code_entries = (AOTCodeEntry*)current;
     for (int i = code_count - 1; i >= 0; i--) {
       AOTCodeEntry* entry = &entries_address[i];
-      if (entry->load_fail() || entry->for_preload()) {
+      if (entry->for_preload()) {
         continue;
       }
-      if (entry->not_entrant()) {
-        log_info(aot, codecache, exit)("Not entrant new entry comp_id: %d, comp_level: %d, hash: " UINT32_FORMAT_X_0 "%s",
-                                       entry->comp_id(), entry->comp_level(), entry->id(), (entry->has_clinit_barriers() ? ", has clinit barriers" : ""));
-        entry->set_entrant(); // Reset
-      }
+      assert(!entry->not_entrant(), "AOT code should not be not_entrant during assembly phase");
       copy_bytes((const char*)entry, (address)current, sizeof(AOTCodeEntry));
       stats.collect_entry_stats(entry);
       current += sizeof(AOTCodeEntry);

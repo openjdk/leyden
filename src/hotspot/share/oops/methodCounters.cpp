@@ -79,7 +79,7 @@ void MethodCounters::clear_counters() {
   backedge_counter()->reset();
 #if INCLUDE_CDS
   if (aot_preload_code_entry() != nullptr) {
-    AOTCodeCache::invalidate_with_lock(aot_preload_code_entry());
+    AOTCodeCache::invalidate(aot_preload_code_entry());
     set_aot_preload_code_entry(nullptr);
   }
 #endif
@@ -94,7 +94,7 @@ void MethodCounters::clear_counters() {
 #if INCLUDE_CDS
 void MethodCounters::deallocate_contents(ClassLoaderData* loader_data) {
   if (aot_preload_code_entry() != nullptr) {
-    AOTCodeCache::invalidate_with_lock(aot_preload_code_entry());
+    AOTCodeCache::invalidate(aot_preload_code_entry());
     set_aot_preload_code_entry(nullptr);
   }
 }
