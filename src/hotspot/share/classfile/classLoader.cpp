@@ -1305,8 +1305,8 @@ void ClassLoader::record_result(JavaThread* current, InstanceKlass* ik,
       int index = cl->index();
       if (os::same_files(cl->path(), path)) {
         ik->set_shared_classpath_index(index);
-	// found match; stop iterating
-	return false;
+        // found match; stop iterating
+        return false;
       }
       // keep iterating
       return true;

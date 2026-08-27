@@ -223,17 +223,17 @@ void FinalImageRecipes::write_recipes(InstanceKlassRecipes* table) {
       GrowableArray<InstanceKlassRecipe>* list = nullptr;
 
       if (SystemDictionary::is_boot_class_loader(class_loader)) {
-	if (ik->module() == ModuleEntryTable::javabase_moduleEntry()) {
-	  list = &boot1_list;
-	} else {
-	  list = &boot2_list;
-	}
+        if (ik->module() == ModuleEntryTable::javabase_moduleEntry()) {
+          list = &boot1_list;
+        } else {
+          list = &boot2_list;
+        }
       } else if (SystemDictionary::is_platform_class_loader(class_loader)) {
-	list = &plat_list;
+        list = &plat_list;
       } else if (SystemDictionary::is_system_class_loader(class_loader)) {
-	list = &app_list;
+        list = &app_list;
       } else if (!ik->defined_by_aot_safe_custom_loader()) {
-	list = &aot_unsafe_cl_list;
+        list = &aot_unsafe_cl_list;
       }
       assert(list != nullptr, "sanity check");
       list->append(recipe);

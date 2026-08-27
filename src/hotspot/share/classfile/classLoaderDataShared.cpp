@@ -55,7 +55,7 @@ void ArchivedClassLoaderData::assert_valid(ClassLoaderData* loader_data) {
   // system loaders (e.g., if you create a custom JDK image with only java.base).
   if (loader_data != nullptr) {
     assert(!loader_data->has_class_mirror_holder(),
-	   "loaders for non-strong hidden classes not supported");
+           "loaders for non-strong hidden classes not supported");
   }
 }
 

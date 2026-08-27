@@ -3562,7 +3562,7 @@ JVM_ENTRY(jboolean, JVM_RegisterURLClassLoaderForAOTLinking(JNIEnv *env, jobject
       CustomLoaderInfo* cl_info = CustomLoaderSupport::find_loader_info(aot_id_sym, classpath_str);
       if (cl_info == nullptr) {
         ClassLoaderAotIdTable::unreserve_id(aot_id_sym);
-	return JNI_FALSE;
+        return JNI_FALSE;
       }
       // successfully found archived ClassLoaderInfo for the class loader id
       ClassLoaderData* loader_data = SystemDictionary::register_loader(h_loader, aot_id_sym);

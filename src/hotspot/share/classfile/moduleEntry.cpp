@@ -469,7 +469,7 @@ void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
   // update java.lang.Module object to point to it.
   if (loader_data->is_aot_safe_custom_loader()) {
     assert(CustomLoaderSupport::is_scratch_loader(java_lang_Module::loader(module_handle())),
-	   "Module's loader must be the scratch loader created in the assembly phase");
+           "Module's loader must be the scratch loader created in the assembly phase");
     // Change Module's loader from scratch loader to the real loader object
     java_lang_Module::set_loader(module_handle(), loader_data->class_loader());
   } else {

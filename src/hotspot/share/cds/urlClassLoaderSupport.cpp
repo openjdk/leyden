@@ -55,7 +55,6 @@ void URLClassLoaderSupport::initialize(TRAPS) {
   Symbol* klass_name = SymbolTable::new_symbol("java/net/URLClassLoader");
   Klass* k = SystemDictionary::resolve_or_fail(klass_name, true, CHECK);
   _urlClassLoader_klass = InstanceKlass::cast(k);
-  
   _urlclassloader_instance_list = new (mtClassShared)GrowableArray<OopHandle>(10, mtClassShared);
 }
 

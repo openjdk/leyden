@@ -664,8 +664,8 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
         if (getClass() != java.net.URLClassLoader.class) {
             if (DEBUG) {
                 System.out.println("DEBUG: URLClassLoader with classpath \"" + createClassPath(urls) + "\" cannot be registered for AOT-linking (not an instance of URLClassLoader)");
-	    }
-	    return false;
+            }
+            return false;
         }
         if (!hasBuiltinLoaderAsParent()) {
             if (DEBUG) {
@@ -681,9 +681,9 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
                 return false;
             }
         }
-	if (DEBUG) {
+        if (DEBUG) {
             System.out.println("DEBUG: URLClassLoader with classpath \"" + createClassPath(urls) + "\" is safe for registering for AOT-linking");
-	}
+        }
         return true;
     }
 

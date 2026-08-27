@@ -93,7 +93,7 @@ public:
   address* aot_id_addr() const { return (address*)&_aot_id; }
   address* locations_addr() const { return (address*)&_cp_locations; }
   address* class_list_addr() const { return (address*)&_class_list; }
-  
+
   bool verify_classpath(const char* classpath);
 };
 
