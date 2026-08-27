@@ -473,7 +473,7 @@ void LIR_Assembler::return_op(LIR_Opr result, C1SafepointPollStub* code_stub) {
           // saved to the archive. So, a direct call to the handler
           // address cannot be injected into a caller that is saved
           // and restored.
-          __ movptr(rscratch1, vk->get_instanceKlass());
+          __ mov_metadata(rscratch1, vk->constant_encoding());
           __ ldr(rscratch1, Address(rscratch1, InlineKlass::adr_members_offset()));
           __ ldr(rscratch1, Address(rscratch1, InlineKlass::unpack_handler_offset()));
         } else

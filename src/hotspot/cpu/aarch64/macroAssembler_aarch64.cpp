@@ -7137,10 +7137,10 @@ int MacroAssembler::store_inline_type_fields_to_buf(ciInlineKlass* vk, bool from
         // to the archive. So, a direct call to the handler address
         // cannot be injected into a caller that is saved and
         // restored.
-        __ movptr(tmp1, vk->get_instanceKlass());
-        __ ldr(tmp1, Address(rscratch1, InlineKlass::adr_members_offset()));
-        __ ldr(tmp1, Address(rscratch1, InlineKlass::pack_handler_offset()));
-        __ blr(tmp1);
+        mov_metadata(tmp1, vk->constant_encoding());
+        ldr(tmp1, Address(rscratch1, InlineKlass::adr_members_offset()));
+        ldr(tmp1, Address(rscratch1, InlineKlass::pack_handler_offset()));
+        blr(tmp1);
       } else
 #endif
       far_call(RuntimeAddress(vk->pack_handler())); // no need for call info as this will not safepoint.

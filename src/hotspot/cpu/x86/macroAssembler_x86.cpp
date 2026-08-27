@@ -6087,6 +6087,19 @@ int MacroAssembler::store_inline_type_fields_to_buf(ciInlineKlass* vk, bool from
     }
     // 3. Initialize its fields with an inline class specific handler
     if (vk != nullptr) {
+#if INCLUDE_CDS
+      if (AOTCodeCache::is_on_for_dump()) {
+        // in AOT compiled code call the pack handler indirectly via
+        // the klass. The handler's blob does not currently get saved
+        // to the archive. So, a direct call to the handler address
+        // cannot be injected into a caller that is saved and
+        // restored.
+        mov_metadata(rbx, vk->constant_encoding());
+        movptr(rbx, Address(rdi, InlineKlass::adr_members_offset()));
+        movptr(rbx, Address(rdi, InlineKlass::unpack_handler_offset()));
+        call(rbx);
+      } else
+#endif
       call(RuntimeAddress(vk->pack_handler())); // no need for call info as this will not safepoint.
     } else {
       movptr(rbx, Address(klass, InlineKlass::adr_members_offset()));
