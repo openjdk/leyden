@@ -1123,6 +1123,14 @@ bool CDSConfig::is_dumping_method_handles() {
   return is_dumping_aot_linked_classes();
 }
 
+bool CDSConfig::supports_custom_loaders() {
+  return _supports_custom_loaders;
+}
+
+void CDSConfig::set_custom_loaders_support(bool value) {
+  _supports_custom_loaders = value;
+}
+
 #endif // INCLUDE_CDS_JAVA_HEAP
 
 // AOT code generation and its archiving is disabled by default.
@@ -1146,12 +1154,4 @@ void CDSConfig::enable_dumping_aot_code() {
 
 bool CDSConfig::is_dumping_adapters() {
   return (AOTAdapterCaching && is_dumping_final_static_archive());
-}
-
-bool CDSConfig::supports_custom_loaders() {
-  return _supports_custom_loaders;
-}
-
-void CDSConfig::set_custom_loaders_support(bool value) {
-  _supports_custom_loaders = value;
 }
