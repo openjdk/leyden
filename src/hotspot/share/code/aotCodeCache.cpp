@@ -298,7 +298,7 @@ void AOTCodeCache::initialize() {
     load_info_log().print_cr("AOT Code Cache is not used: disabled");
     return;
   }
-#if defined(ZERO) || !(defined(AMD64) || defined(AARCH64))
+#if defined(ZERO) || !(defined(AMD64) || defined(AARCH64) || defined(RISCV64))
   load_info_log().print_cr("AOT Code Cache is not supported on this platform");
   disable_caching();
   return;
@@ -356,7 +356,7 @@ void AOTCodeCache::initialize() {
     FLAG_SET_DEFAULT(ForceUnreachable, true);
   }
   FLAG_SET_DEFAULT(DelayCompilerStubsGeneration, false);
-#endif // defined(AMD64) || defined(AARCH64)
+#endif // defined(AMD64) || defined(AARCH64) || defined(RISCV64)
 }
 
 static AOTCodeCache*  opened_cache = nullptr; // Use this until we verify the cache
@@ -681,7 +681,7 @@ void AOTCodeCache::Config::record(uint cpu_features_offset) {
   _useUnalignedLoadStores = UseUnalignedLoadStores;
 #endif
 
-#if defined(AARCH64)  && !defined(ZERO)
+#if (defined(AARCH64) || defined(RISCV64)) && !defined(ZERO)
   _avoidUnalignedAccesses = AvoidUnalignedAccesses;
 #endif
 
@@ -830,14 +830,14 @@ bool AOTCodeCache::Config::verify(AOTCodeCache* cache) const {
   }
 #endif // defined(X86) && !defined(ZERO)
 
-#if defined(AARCH64) && !defined(ZERO)
+#if (defined(AARCH64) || defined(RISCV64)) && !defined(ZERO)
   // switching on AvoidUnalignedAccesses may affect validity of array
   // copy stubs and nmethods
   if (!_avoidUnalignedAccesses && AvoidUnalignedAccesses) {
     log_config_mismatch(_avoidUnalignedAccesses, AvoidUnalignedAccesses, "AvoidUnalignedAccesses");
     return false;
   }
-#endif // defined(AARCH64) && !defined(ZERO)
+#endif // (defined(AARCH64) || defined(RISCV64)) && !defined(ZERO)
 
   return true;
 }
@@ -3571,6 +3571,8 @@ void AOTCodeAddressTable::init_extrs() {
   ADD_EXTERNAL_ADDRESS(SharedRuntime::allocate_inline_types);
 #if defined(AARCH64) && !defined(ZERO)
   ADD_EXTERNAL_ADDRESS(JavaThread::aarch64_get_thread_helper);
+#endif
+#if (defined(AARCH64) || defined(RISCV64)) && !defined(ZERO)
   ADD_EXTERNAL_ADDRESS(BarrierSetAssembler::patching_epoch_addr());
 #endif
 
@@ -3737,6 +3739,8 @@ void AOTCodeAddressTable::init_extrs() {
     ADD_EXTERNAL_ADDRESS(OptoRuntime::vthread_start_transition_C);
     ADD_EXTERNAL_ADDRESS(OptoRuntime::vthread_end_transition_C);
     ADD_EXTERNAL_ADDRESS(Parse::trap_stress_counter_address());
+    // Used by lookup_secondary_supers_table
+    ADD_EXTERNAL_ADDRESS(Klass::on_secondary_supers_verification_failure);
   }
 #if defined(AMD64) || defined(AARCH64)
   ADD_EXTERNAL_ADDRESS(C2_MacroAssembler::abort_verify_int_in_range);
