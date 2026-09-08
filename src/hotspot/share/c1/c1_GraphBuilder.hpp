@@ -300,6 +300,7 @@ class GraphBuilder {
 
   // inline types
   void copy_inline_content(ciInlineKlass* vk, Value src, int src_off, Value dest, int dest_off, ValueStack* state_before, ciField* enclosing_field = nullptr);
+  Value load_null_reset_value(ciInlineKlass* vk);
 
   // stack/code manipulation helpers
   Instruction* append_with_bci(Instruction* instr, int bci);
