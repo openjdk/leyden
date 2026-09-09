@@ -1828,7 +1828,7 @@ void GraphBuilder::copy_inline_content(ciInlineKlass* vk, Value src, int src_off
 }
 
 Value GraphBuilder::load_null_reset_value(ciInlineKlass* vk) {
-  if (AOTCodeCache::is_dumping_code()) {
+  if (compilation()->env()->is_aot_compile()) {
     Value clazz = append(new Constant(new ClassConstant(vk)));
     Value offset = append(new Constant(new IntConstant(vk->get_null_reset_value_offset())));
     return append(new UnsafeGet(T_OBJECT, clazz, offset, /*is_volatile*/false,/*is_raw*/true));
@@ -2152,7 +2152,6 @@ void GraphBuilder::access_field(Bytecodes::Code code) {
 
           // Store the subfields when field is a nullable non-atomic field
           Value object_null = append(new Constant(objectNull));
-          // Value null_reset_value = append(new Constant(new ObjectConstant(inline_klass->get_null_reset_value().as_object())));
           Value null_reset_value = load_null_reset_value(inline_klass);
           Value src = append(new IfOp(val, Instruction::neq, object_null, val, null_reset_value, state_before, false));
           copy_inline_content(inline_klass, src, inline_klass->payload_offset(), obj, offset, state_before);
