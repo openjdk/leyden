@@ -1289,7 +1289,7 @@ void ClassLoader::record_result(JavaThread* current, InstanceKlass* ik,
     return;
   }
 
-  if (!SystemDictionaryShared::is_builtin_loader(ik->class_loader_data()) && !ik->defined_by_aot_safe_custom_loader()) {
+  if (!ik->defined_by_aot_safe_loaders()) {
     // A class loaded by a user-defined classloader.
     assert(ik->shared_classpath_index() < 0, "not assigned yet");
     ik->set_shared_classpath_index(UNREGISTERED_INDEX);

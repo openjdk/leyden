@@ -1197,7 +1197,7 @@ void java_lang_Class::create_scratch_mirror(Klass* k, TRAPS) {
   if (k->class_loader() != nullptr &&
       k->class_loader() != SystemDictionary::java_platform_loader() &&
       k->class_loader() != SystemDictionary::java_system_loader() &&
-      !(k->is_instance_klass() && InstanceKlass::cast(k)->defined_by_aot_safe_custom_loader())) {
+      k->class_loader_data()->aot_identity() == nullptr) {
     // We only archive the mirrors of classes loaded by the built-in loaders
     return;
   }

@@ -132,7 +132,7 @@ bool AOTClassLinker::try_add_candidate(InstanceKlass* ik) {
   assert(is_initialized(), "sanity");
   assert(CDSConfig::is_dumping_aot_linked_classes(), "sanity");
 
-  if (!SystemDictionaryShared::is_builtin(ik) && !ik->defined_by_aot_safe_custom_loader()) {
+  if (!ik->defined_by_aot_safe_loaders()) {
     // not loaded by a class loader which we know about
     return false;
   }
@@ -290,7 +290,7 @@ const char* AOTClassLinker::class_category_name(Klass* k) {
         return "plat";
       } else if (loader == SystemDictionary::java_system_loader()) {
         return "app";
-      } else if (k->is_instance_klass() && InstanceKlass::cast(k)->classloader_aot_id() != nullptr) {
+      } else if (k->is_instance_klass() && InstanceKlass::cast(k)->defined_by_aot_safe_custom_loader()) {
         return "aotsafe_custom_loader";
       } else {
         return "unreg";

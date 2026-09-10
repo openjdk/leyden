@@ -50,6 +50,7 @@ public:
   static bool add_entry(Symbol* id, ClassLoaderData* cld) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static ClassLoaderData* get_cld(Symbol* id) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   static bool contains(Symbol* id) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static void all_symbols_do(MetaspaceClosure* it) NOT_CDS_JAVA_HEAP_RETURN;
 };
 
 // Created in assembly phase to record custom class loader information.
@@ -129,7 +130,6 @@ public:
   static void add_to_custom_loader_map(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN;
   static CustomLoaderInfo* find_loader_info(Symbol* aot_id, const char* classpath) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   static void archive_custom_loader_info() NOT_CDS_JAVA_HEAP_RETURN;
-  static void all_symbols_do(MetaspaceClosure* it) NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize_custom_loader_info_map_header(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
   static CustomLoaderInfo* get_archived_classloader_info(Symbol* aot_id) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   static bool is_scratch_loader(oop loader) NOT_CDS_JAVA_HEAP_RETURN_(false);

@@ -707,7 +707,7 @@ public:
 };
 
 void HeapShared::add_scratch_resolved_references(ConstantPool* src, objArrayOop dest) {
-  if (SystemDictionaryShared::is_builtin_loader(src->pool_holder()->class_loader_data()) || src->pool_holder()->defined_by_aot_safe_custom_loader()) {
+  if (src->pool_holder()->defined_by_aot_safe_loaders()) {
     _scratch_objects_table->set_oop(src, dest);
   }
 }
@@ -950,7 +950,7 @@ void HeapShared::copy_java_mirror(oop orig_mirror, oop scratch_m) {
 }
 
 static objArrayOop get_archived_resolved_references(InstanceKlass* src_ik) {
-  if (SystemDictionaryShared::is_builtin_loader(src_ik->class_loader_data()) || src_ik->defined_by_aot_safe_custom_loader()) {
+  if (src_ik->defined_by_aot_safe_loaders()) {
     objArrayOop rr = src_ik->constants()->resolved_references_or_null();
     if (rr != nullptr && !HeapShared::is_too_large_to_archive(rr)) {
       return HeapShared::scratch_resolved_references(src_ik->constants());

@@ -264,7 +264,7 @@ void AOTArtifactFinder::add_cached_instance_class(InstanceKlass* ik) {
       add_cached_instance_class(nest_host);
     }
 
-    if (CDSConfig::is_dumping_final_static_archive() && ik->defined_by_other_loaders() && !ik->defined_by_aot_safe_custom_loader()) {
+    if (CDSConfig::is_dumping_final_static_archive() && !ik->defined_by_aot_safe_loaders()) {
       // The following are not appliable to unregistered classes
       return;
     }

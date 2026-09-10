@@ -412,8 +412,7 @@ bool SystemDictionaryShared::check_self_exclusion(InstanceKlass* k) {
 
 const char* SystemDictionaryShared::check_self_exclusion_helper(InstanceKlass* k, bool& log_warning) {
   assert_lock_strong(DumpTimeTable_lock);
-  if (CDSConfig::is_dumping_final_static_archive() && k->defined_by_other_loaders() && !k->defined_by_aot_safe_custom_loader()
-      && k->in_aot_cache()) {
+  if (CDSConfig::is_dumping_final_static_archive() && !k->defined_by_aot_safe_loaders() && k->in_aot_cache()) {
     return nullptr; // Do not exclude: unregistered classes are passed from preimage to final image.
   }
 
@@ -835,7 +834,7 @@ void SystemDictionaryShared::validate_before_archiving(InstanceKlass* k) {
   assert(!class_loading_may_happen(), "class loading must be disabled");
   guarantee(info != nullptr, "Class %s must be entered into _dumptime_table", name);
   guarantee(!info->is_excluded(), "Should not attempt to archive excluded class %s", name);
-  if (k->defined_by_builtin_loader() || k->defined_by_aot_safe_custom_loader()) {
+  if (k->defined_by_aot_safe_loaders()) {
     if (k->is_hidden()) {
       if (CDSConfig::is_dumping_lambdas_in_legacy_mode()) {
         assert(LambdaProxyClassDictionary::is_registered_lambda_proxy_class(k), "unexpected hidden class %s", name);
@@ -854,7 +853,7 @@ public:
   UnregisteredClassesDuplicationChecker() : _thread(Thread::current()) {}
 
   void do_entry(InstanceKlass* k, DumpTimeClassInfo& info) {
-    if (!SystemDictionaryShared::is_builtin(k) && !k->defined_by_aot_safe_custom_loader()) {
+    if (!k->defined_by_aot_safe_loaders()) {
       _list.append(k);
     }
   }
@@ -1033,7 +1032,7 @@ void SystemDictionaryShared::dumptime_classes_do(MetaspaceClosure* it) {
 
   auto do_klass = [&] (InstanceKlass* k, DumpTimeClassInfo& info) {
     if (CDSConfig::is_dumping_final_static_archive() && !k->is_loaded()) {
-      assert(k->defined_by_other_loaders() && !k->defined_by_aot_safe_custom_loader(), "must be");
+      assert(!k->defined_by_aot_safe_loaders(), "must be");
       info.metaspace_pointers_do(it);
     } else if (k->is_loader_alive() && !info.is_excluded()) {
       info.metaspace_pointers_do(it);

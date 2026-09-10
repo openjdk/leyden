@@ -83,6 +83,15 @@ bool ClassLoaderAotIdTable::contains(Symbol* id) {
   return get_cld(id) != nullptr ? true : false;
 }
 
+void ClassLoaderAotIdTable::all_symbols_do(MetaspaceClosure* it) {
+  if (_loader_id_table != nullptr) {
+    _loader_id_table->iterate_all([&](Symbol*& loader_id, ClassLoaderData*& cld) {
+      it->push(&loader_id);
+    });
+  }
+}
+
+
 static const unsigned INITIAL_TABLE_SIZE = 997; // prime number
 static const unsigned MAX_TABLE_SIZE     = 10000;
 
@@ -181,7 +190,7 @@ void CustomLoaderSupport::add_to_custom_loader_map(InstanceKlass* ik) {
   assert(CDSConfig::supports_custom_loaders(), "custom loader support is not enabled");
   assert(_custom_loader_classes_map != nullptr, "must be");
 
-  Symbol* loader_id = ik->classloader_aot_id();
+  Symbol* loader_id = ik->class_loader_data()->aot_identity();
   if (loader_id != nullptr) {
     _custom_loader_classes_map->add_class(loader_id, ik);
   }
@@ -201,15 +210,6 @@ void CustomLoaderSupport::archive_custom_loader_info() {
         InstanceKlass* ik = class_list->at(i);
         log_info(aot, link)("  %s", ik->external_name());
       }
-    });
-  }
-}
-
-void CustomLoaderSupport::all_symbols_do(MetaspaceClosure* it) {
-  assert(CDSConfig::supports_custom_loaders(), "custom loader support is not enabled");
-  if (_custom_loader_classes_map != nullptr) {
-    _custom_loader_classes_map->iterate_all([&](Symbol*& loader_id, ClassList*& class_list) {
-      it->push(&loader_id);
     });
   }
 }

@@ -62,6 +62,7 @@ class InstanceKlassFlags {
     flag(trust_final_fields                 , 1 << 20) /* All instance final fields in this class should be trusted */ \
     flag(has_null_restricted_static_fields  , 1 << 21) /* True if static null restricted fields declared */ \
     flag(fail_over_verified                 , 1 << 22) /* class failed split verification but passed inference verification */ \
+    flag(defined_by_aot_safe_custom_loader  , 1 << 23) /* */ \
     /* end of list */
 
     // (*) An inline type is considered empty if it contains no non-static fields or
@@ -115,10 +116,6 @@ private:
   }
   IK_FLAGS_DO(IK_FLAGS_GET_SET)
 #undef IK_FLAGS_GET_SET
-
-  bool defined_by_builtin_loader() const {
-    return (_flags & builtin_loader_type_bits()) != 0;
-  }
 
   bool defined_by_other_loaders() const {
     return (_flags & builtin_loader_type_bits()) == 0;

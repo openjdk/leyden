@@ -738,7 +738,7 @@ public:
       it->push(_pending_method_handle_intrinsics->adr_at(i));
     }
     if (CDSConfig::supports_custom_loaders()) {
-      CustomLoaderSupport::all_symbols_do(it);
+      ClassLoaderAotIdTable::all_symbols_do(it);
     }
   }
 };

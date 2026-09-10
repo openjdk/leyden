@@ -166,7 +166,7 @@ void FinalImageRecipes::record_aot_safe_loader_classes() {
       Array<int>* cp_recipe = record_recipe_for_constantpool(ik, flags);
       InstanceKlassRecipe ikr(ArchiveBuilder::current()->get_buffered_addr(ik), cp_recipe, flags);
 
-      Symbol* loader_id = ik->classloader_aot_id();
+      Symbol* loader_id = ik->class_loader_data()->aot_identity();
       assert(loader_id != nullptr, "must be");
       _aot_safe_loader_class_recipes->add_class_recipe(loader_id, &ikr);
     }
