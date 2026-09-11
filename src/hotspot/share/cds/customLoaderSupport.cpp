@@ -22,8 +22,6 @@
  *
  */
 
-#if INCLUDE_CDS_JAVA_HEAP
-
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotLogging.hpp"
 #include "cds/archiveBuilder.hpp"
@@ -41,7 +39,10 @@
 #include "oops/symbol.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "utilities/growableArray.hpp"
+#include "utilities/macros.hpp"
 #include "utilities/resizableHashTable.hpp"
+
+#if INCLUDE_CDS_JAVA_HEAP
 
 ClassLoaderAotIdTable::LoaderIdTable* ClassLoaderAotIdTable::_loader_id_table = nullptr;
 

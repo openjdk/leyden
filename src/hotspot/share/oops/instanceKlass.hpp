@@ -421,7 +421,6 @@ class InstanceKlass: public Klass {
   bool defined_by_aot_safe_custom_loader() const { return _misc_flags.defined_by_aot_safe_custom_loader(); }
   bool defined_by_aot_safe_loaders()       const { return !defined_by_other_loaders() || defined_by_aot_safe_custom_loader(); }
 
-
   // Java itable
   int  itable_length() const               { return _itable_len; }
   void set_itable_length(int len)          { _itable_len = len; }

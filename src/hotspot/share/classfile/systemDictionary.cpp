@@ -24,7 +24,6 @@
 
 #include "cds/aotClassLocation.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/cdsProtectionDomain.hpp"
 #include "cds/customLoaderSupport.hpp"
 #include "cds/heapShared.hpp"
 #include "classfile/classFileParser.hpp"

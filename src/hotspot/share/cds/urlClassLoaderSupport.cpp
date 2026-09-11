@@ -22,8 +22,6 @@
  *
  */
 
-#if INCLUDE_CDS_JAVA_HEAP
-
 #include "cds/aotClassLocation.hpp"
 #include "cds/customLoaderSupport.hpp"
 #include "cds/urlClassLoaderSupport.hpp"
@@ -38,6 +36,9 @@
 #include "runtime/handles.inline.hpp"
 #include "runtime/javaCalls.hpp"
 #include "utilities/growableArray.hpp"
+#include "utilities/macros.hpp"
+
+#if INCLUDE_CDS_JAVA_HEAP
 
 static InstanceKlass* _urlClassLoader_klass = nullptr;
 static GrowableArray<OopHandle>* _urlclassloader_instance_list = nullptr;
