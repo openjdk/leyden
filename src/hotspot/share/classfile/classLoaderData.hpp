@@ -374,8 +374,8 @@ private:
 
   void set_classpath(const char* classpath) NOT_CDS_JAVA_HEAP_RETURN;
 
-  GrowableArrayCHeap<AOTClassLocation*, mtClassShared>* aot_locations() const CDS_ONLY({ return _aot_locations; }) NOT_CDS_RETURN_(nullptr)
-  void set_aot_locations(const char* classpath) NOT_CDS_RETURN;
+  GrowableArrayCHeap<AOTClassLocation*, mtClassShared>* aot_locations() const CDS_JAVA_HEAP_ONLY({ return _aot_locations; }) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
+  void set_aot_locations(const char* classpath) NOT_CDS_JAVA_HEAP_RETURN;
 
   unsigned identity_hash() const {
     return (unsigned)((uintptr_t)this >> LogBytesPerWord);
