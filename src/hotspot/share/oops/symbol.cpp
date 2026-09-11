@@ -25,6 +25,7 @@
 #include "cds/archiveBuilder.hpp"
 #include "classfile/altHashing.hpp"
 #include "classfile/classLoaderData.hpp"
+#include "classfile/javaClasses.hpp"
 #include "classfile/vmSymbols.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "logging/log.hpp"
@@ -407,6 +408,16 @@ bool Symbol::is_valid(Symbol* s) {
 
   jbyte* bytes = (jbyte*) s->bytes();
   return os::is_readable_range(bytes, bytes + len);
+}
+
+unsigned Symbol::symbol_hash(Symbol* const& sym) {
+  ResourceMark rm;
+  char* str = sym->as_C_string();
+  return java_lang_String::hash_code(str, strlen(str));
+}
+
+bool Symbol::symbol_equals(Symbol* const& sym1, Symbol* const& sym2) {
+  return sym1->equals(sym2);
 }
 
 // SymbolTable prints this in its statistics

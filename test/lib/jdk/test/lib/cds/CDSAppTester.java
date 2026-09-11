@@ -268,7 +268,7 @@ abstract public class CDSAppTester {
         return cmdLine;
     }
 
-    private OutputAnalyzer recordAOTConfiguration() throws Exception {
+    public OutputAnalyzer recordAOTConfiguration() throws Exception {
         RunMode runMode = RunMode.TRAINING;
         String[] cmdLine = addCommonVMArgs(runMode);
         cmdLine = StringArrayUtils.concat(cmdLine, vmArgs(runMode));
@@ -336,7 +336,7 @@ abstract public class CDSAppTester {
         return executeAndCheck(cmdLine, runMode, staticArchiveFile, staticArchiveFileLog);
     }
 
-    private OutputAnalyzer createAOTCache() throws Exception {
+    public OutputAnalyzer createAOTCache() throws Exception {
         RunMode runMode = RunMode.ASSEMBLY;
         String[] cmdLine = addCommonVMArgs(runMode);
         cmdLine = StringArrayUtils.concat(cmdLine, vmArgs(runMode));

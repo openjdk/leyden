@@ -176,6 +176,7 @@ private:
   bool   _has_aot_linked_classes;       // Was the CDS archive created with -XX:+AOTClassLinking
   bool   _aot_class_linking_value;      // The value of the AOTClassLinking variable when this archive was created
   bool   _has_full_module_graph;        // Does this CDS archive contain the full archived module graph?
+  bool   _supports_custom_loaders;      //
   size_t _ptrmap_size_in_bits;          // Size of pointer relocation bitmap
   bool   _has_valhalla_patched_classes; // Is this archived dumped with --enable-preview?
   CDSMustMatchFlags _must_match;        // These flags must be the same between dumptime and runtime
@@ -241,6 +242,7 @@ public:
   int narrow_klass_pointer_bits()          const { return _narrow_klass_pointer_bits; }
   int narrow_klass_shift()                 const { return _narrow_klass_shift; }
   bool has_full_module_graph()             const { return _has_full_module_graph; }
+  bool supports_custom_loaders()           const { return _supports_custom_loaders; }
   size_t rw_ptrmap_start_pos()             const { return _rw_ptrmap_start_pos; }
   size_t ro_ptrmap_start_pos()             const { return _ro_ptrmap_start_pos; }
 

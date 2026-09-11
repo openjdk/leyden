@@ -1195,7 +1195,8 @@ void java_lang_Class::create_mirror(Klass* k, Handle class_loader,
 void java_lang_Class::create_scratch_mirror(Klass* k, TRAPS) {
   if (k->class_loader() != nullptr &&
       k->class_loader() != SystemDictionary::java_platform_loader() &&
-      k->class_loader() != SystemDictionary::java_system_loader()) {
+      k->class_loader() != SystemDictionary::java_system_loader() &&
+      k->class_loader_data()->aot_identity() == nullptr) {
     // We only archive the mirrors of classes loaded by the built-in loaders
     return;
   }
@@ -3747,6 +3748,39 @@ oop java_lang_ClassLoader::unnamedModule(oop loader) {
   return loader->obj_field(_unnamedModule_offset);
 }
 
+// Support for java_security_ProtectionDomain
+
+int java_security_ProtectionDomain::_classloader_offset;
+
+#define PROTECTIONDOMAIN_FIELDS_DO(macro) \
+  macro(_classloader_offset, k, "classloader", classloader_signature, false);
+
+void java_security_ProtectionDomain::compute_offsets() {
+  InstanceKlass* k = vmClasses::ProtectionDomain_klass();
+  PROTECTIONDOMAIN_FIELDS_DO(FIELD_COMPUTE_OFFSET);
+}
+
+#if INCLUDE_CDS
+void java_security_ProtectionDomain::serialize_offsets(SerializeClosure* f) {
+  PROTECTIONDOMAIN_FIELDS_DO(FIELD_SERIALIZE_OFFSET);
+}
+#endif
+
+oop java_security_ProtectionDomain::classloader(oop pd) {
+  assert(is_instance(pd), "pd must be ProtectionDomain object");
+  return pd->obj_field(_classloader_offset);
+}
+
+void java_security_ProtectionDomain::set_classloader(oop pd, oop loader) {
+  assert(is_instance(pd), "pd must be ProtectionDomain object");
+  assert(java_lang_ClassLoader::is_instance(loader), "loader must be ClassLoader object");
+  pd->obj_field_put(_classloader_offset, loader);
+}
+
+bool java_security_ProtectionDomain::is_instance(oop obj) {
+  return obj != nullptr && obj->klass() == vmClasses::ProtectionDomain_klass();
+}
+
 // Support for java_lang_System
 //
 
@@ -4147,6 +4181,7 @@ void java_lang_InternalError::serialize_offsets(SerializeClosure* f) {
 #define BASIC_JAVA_CLASSES_DO_PART2(f) \
   f(java_lang_System) \
   f(java_lang_ClassLoader) \
+  f(java_security_ProtectionDomain) \
   f(java_lang_Throwable) \
   f(java_lang_Thread) \
   f(java_lang_Thread_FieldHolder) \

@@ -132,7 +132,7 @@ bool ClassLoaderDataGraph::_metaspace_oom = false;
 
 // Add a new class loader data node to the list.  Assign the newly created
 // ClassLoaderData into the java/lang/ClassLoader object as a hidden field
-ClassLoaderData* ClassLoaderDataGraph::add_to_graph(Handle loader, bool has_class_mirror_holder) {
+ClassLoaderData* ClassLoaderDataGraph::add_to_graph(Handle loader, bool has_class_mirror_holder, Symbol* aot_id) {
 
   assert_lock_strong(ClassLoaderDataGraph_lock);
 
@@ -153,7 +153,7 @@ ClassLoaderData* ClassLoaderDataGraph::add_to_graph(Handle loader, bool has_clas
   // Before is_init_completed(), GC is not allowed to run.
   NoSafepointVerifier no_safepoints(is_init_completed());
 
-  cld = new ClassLoaderData(loader, has_class_mirror_holder);
+  cld = new ClassLoaderData(loader, has_class_mirror_holder, aot_id);
 
   // First install the new CLD to the Graph.
   cld->set_next(_head);
@@ -180,7 +180,13 @@ ClassLoaderData* ClassLoaderDataGraph::add_to_graph(Handle loader, bool has_clas
 
 ClassLoaderData* ClassLoaderDataGraph::add(Handle loader, bool has_class_mirror_holder) {
   MutexLocker ml(ClassLoaderDataGraph_lock);
-  ClassLoaderData* loader_data = add_to_graph(loader, has_class_mirror_holder);
+  ClassLoaderData* loader_data = add_to_graph(loader, has_class_mirror_holder, /*aot_id*/ nullptr);
+  return loader_data;
+}
+
+ClassLoaderData* ClassLoaderDataGraph::add(Handle loader, Symbol* aot_id) {
+  MutexLocker ml(ClassLoaderDataGraph_lock);
+  ClassLoaderData* loader_data = add_to_graph(loader, /* has_class_mirror_holder */ false, aot_id);
   return loader_data;
 }
 

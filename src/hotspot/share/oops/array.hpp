@@ -138,6 +138,25 @@ protected:
   T at_acquire(const int i)            { return AtomicAccess::load_acquire(adr_at(i)); }
   void release_at_put(int i, T x)      { AtomicAccess::release_store(adr_at(i), x); }
 
+  template<typename Function>
+  void iterate(Function fn) {
+    for (int i = 0; i < length(); i++) {
+      if (!fn(adr_at(i))) {
+        break;
+      }
+    }
+    return;
+  }
+
+  template<typename Function>
+  void iterate_all(Function fn) {
+    iterate([&] (T* elem) {
+      fn(elem);
+      return true;
+    });
+    return;
+  }
+
   static int size(int length) {
     size_t bytes = align_up(byte_sizeof(length), BytesPerWord);
     size_t words = bytes / BytesPerWord;

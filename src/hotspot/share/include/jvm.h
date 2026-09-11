@@ -637,6 +637,9 @@ JVM_InvokeMethod(JNIEnv *env, jobject method, jobject obj, jobjectArray args0);
 JNIEXPORT jobject JNICALL
 JVM_NewInstanceFromConstructor(JNIEnv *env, jobject c, jobjectArray args0);
 
+JNIEXPORT jboolean JNICALL
+JVM_RegisterURLClassLoaderForAOTLinking(JNIEnv *env, jobject loader, jobject parent, jstring classpath);
+
 /*
  * Constant pool access; currently used to implement reflective access to annotations (JDK 1.5)
  */

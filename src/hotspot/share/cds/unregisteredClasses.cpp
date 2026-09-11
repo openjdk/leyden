@@ -63,6 +63,10 @@ void UnregisteredClasses::initialize(TRAPS) {
   _unregistered_class_loader = OopHandle(Universe::vm_global(), cl());
 }
 
+Handle UnregisteredClasses::unregistered_class_loader(Thread* current) {
+  return Handle(current, _unregistered_class_loader.resolve());
+}
+
 // Load the class of the given name from the location given by path. The path is specified by
 // the "source:" in the class list file (see classListParser.cpp), and can be a directory or
 // a JAR file.

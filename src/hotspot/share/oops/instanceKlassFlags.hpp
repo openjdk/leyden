@@ -63,6 +63,7 @@ class InstanceKlassFlags {
     flag(has_null_restricted_static_fields  , 1 << 21) /* True if static null restricted fields declared */ \
     flag(fail_over_verified                 , 1 << 22) /* class failed split verification but passed inference verification */ \
     flag(has_strict_instance_fields         , 1 << 23) /* True if strict instance fields declared */ \
+    flag(defined_by_aot_safe_custom_loader  , 1 << 24) /* defining class loader is marked as safe for AOTCache optimizations */ \
     /* end of list */
 
     // (*) An inline type is considered empty if it contains no non-static fields or

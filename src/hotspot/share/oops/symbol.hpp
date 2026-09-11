@@ -194,6 +194,10 @@ class alignas(8) Symbol : public MetaspaceObj {
 
   int utf8_length() const { return length(); }
 
+  bool equals(const Symbol* sym) {
+    return equals((const char*)sym->bytes(), sym->utf8_length());
+  }
+
   // Compares the symbol with a string.
   bool equals(const char* str, int len) const {
     int l = utf8_length();
@@ -307,6 +311,9 @@ class alignas(8) Symbol : public MetaspaceObj {
   static unsigned int compute_hash(const Symbol* const& name) {
     return (unsigned int) name->identity_hash();
   }
+
+  static unsigned symbol_hash(Symbol* const& sym);
+  static bool symbol_equals(Symbol* const& sym1, Symbol* const& sym2);
 
 #ifndef PRODUCT
   // Empty constructor to create a dummy symbol object on stack
