@@ -25,8 +25,9 @@
 #ifndef SHARE_CDS_URLCLASSLOADER_SUPPORT_HPP
 #define SHARE_CDS_URLCLASSLOADER_SUPPORT_HPP
 
+#include "runtime/handles.inline.hpp"
+
 class AOTClassLocation;
-class Handle;
 
 class URLClassLoaderSupport {
 public:
