@@ -844,6 +844,7 @@ InstanceKlass* SystemDictionary::resolve_hidden_class_from_stream(
                                                       cl_info,
                                                       CHECK_NULL);
   assert(k != nullptr, "no klass created");
+  assert(k->class_loader_data() == loader_data, "invariant");
 
   // Hidden classes that are not strong must update ClassLoaderData holder
   // so that they can be unloaded when the mirror is no longer referenced.
@@ -851,8 +852,11 @@ InstanceKlass* SystemDictionary::resolve_hidden_class_from_stream(
     k->class_loader_data()->initialize_holder(Handle(THREAD, k->java_mirror()));
   }
 
+  JFR_ONLY(Jfr::on_definition(k, THREAD);)
+
   // Add to class hierarchy, and do possible deoptimizations.
   k->add_to_hierarchy(THREAD);
+  assert(k->is_loaded(), "Must be in at least loaded state");
   // But, do not add to dictionary.
 
   if (class_load_event.should_commit()) {
@@ -957,7 +961,6 @@ bool SystemDictionary::is_shared_class_visible(Symbol* class_name,
                                                InstanceKlass* ik,
                                                PackageEntry* pkg_entry,
                                                Handle class_loader) {
-
   assert(!ModuleEntryTable::javabase_moduleEntry()->is_patched(),
          "Cannot use sharing if java.base is patched");
 
@@ -1387,7 +1390,11 @@ void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRA
 
   ik->restore_unshareable_info(loader_data, pd, pkg_entry, CHECK);
   load_shared_class_misc(ik, loader_data);
+
+  JFR_ONLY(Jfr::on_definition(ik, THREAD);)
+
   ik->add_to_hierarchy(THREAD);
+  assert(ik->is_loaded(), "Must be in at least loaded state");
 
   if (!ik->is_hidden()) {
     update_dictionary(THREAD, ik, loader_data);
@@ -1396,8 +1403,6 @@ void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRA
   if (class_load_event.should_commit()) {
     JFR_ONLY(post_class_load_event(&class_load_event, ik, loader_data);)
   }
-
-  assert(ik->is_loaded(), "Must be in at least loaded state");
 }
 
 #endif // INCLUDE_CDS
@@ -1625,8 +1630,11 @@ void SystemDictionary::define_instance_class(InstanceKlass* k, Handle class_load
     JavaCalls::call(&result, m, &args, CHECK);
   }
 
+  JFR_ONLY(Jfr::on_definition(k, THREAD);)
+
   // Add to class hierarchy, and do possible deoptimizations.
   k->add_to_hierarchy(THREAD);
+  assert(k->is_loaded(), "Must be in at least loaded state");
 
   // Add to systemDictionary - so other classes can see it.
   // Grabs and releases SystemDictionary_lock

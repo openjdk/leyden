@@ -67,13 +67,12 @@
  *                 AOTMapTestValhallaHelper$Wrapper
  *                 AOTMapTestValhallaHelper$WrapperWrapper
  *                 AOTMapTestValhallaHelper$ArchivedData
- * @run main/othervm/timeout=240 AOTMapTest AOT --two-step-training
+ * @run main/othervm/timeout=240 AOTMapTest AOT --two-step-training Valhalla
  */
 
 import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
-import jdk.internal.misc.PreviewFeatures;
 import java.util.ArrayList;
 import jdk.test.lib.cds.CDSAppTester;
 import jdk.test.lib.helpers.ClassFileInstaller;
@@ -83,12 +82,9 @@ public class AOTMapTest {
     static final String appJar = ClassFileInstaller.getJarPath("app.jar");
     static final String mainClass = "AOTMapTestApp";
     static final String classLoadLogFile = "production.class.load.log";
-
+    static boolean testValhalla;
     public static void main(String[] args) throws Exception {
-        doTest(args);
-    }
-
-    public static void doTest(String[] args) throws Exception {
+        testValhalla = args.length >= 3 && args[2].equals("Valhalla");
         Tester tester = new Tester();
         tester.run(args);
 
@@ -138,7 +134,7 @@ public class AOTMapTest {
             vmArgs.add("--add-exports");
             vmArgs.add("java.base/jdk.internal.misc=ALL-UNNAMED");
 
-            if (PreviewFeatures.isEnabled()) {
+            if (testValhalla) {
                 vmArgs.add("--enable-preview");
                 vmArgs.add("--add-exports");
                 vmArgs.add("java.base/jdk.internal.value=ALL-UNNAMED");
@@ -166,6 +162,7 @@ public class AOTMapTest {
         public String[] appCommandLine(RunMode runMode) {
             return new String[] {
                 mainClass,
+                testValhalla ? "Valhalla" : "none"
             };
         }
     }
@@ -177,9 +174,10 @@ class AOTMapTestApp {
         System.out.println("Hello AOTMapTestApp");
         testCustomLoader();
 
-        if (PreviewFeatures.isEnabled()) {
+        if (args[0].equals("Valhalla")) {
             Class<?> c = Class.forName("AOTMapTestValhallaHelper");
-            c.newInstance();
+            Object o = c.newInstance();
+            System.out.println(o);
         }
     }
 
