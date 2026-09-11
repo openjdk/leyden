@@ -123,6 +123,7 @@ public:
   static PackageEntry* get_package_entry_from_class(InstanceKlass* ik, Handle class_loader);
   static Handle get_shared_jar_manifest(int shared_path_index, TRAPS);
   static Handle get_shared_jar_url(int shared_path_index, TRAPS);
+  static Handle to_file_URL(const char* path, TRAPS);
   static Handle get_shared_protection_domain(Handle class_loader,
                                              int shared_path_index,
                                              Handle url,

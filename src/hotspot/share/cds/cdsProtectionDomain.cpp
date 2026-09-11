@@ -45,7 +45,7 @@ OopHandle CDSProtectionDomain::_shared_protection_domains;
 OopHandle CDSProtectionDomain::_shared_jar_urls;
 OopHandle CDSProtectionDomain::_shared_jar_manifests;
 
-static Handle to_file_URL(const char* path, TRAPS) {
+static Handle to_file_URL_internal(const char* path, TRAPS) {
   JavaValue result(T_OBJECT);
   Handle path_string = java_lang_String::create_from_str(path, CHECK_NH);
   JavaCalls::call_static(&result,
@@ -159,7 +159,7 @@ static Handle get_pd_from_mod_entry(Handle class_loader, ModuleEntry* mod, TRAPS
 
 void CDSProtectionDomain::exercise_runtime_cds_code(const char* dummy_manifest, const char* dummy_jar, TRAPS) {
   create_jar_manifest(dummy_manifest, strlen(dummy_manifest), CHECK);
-  to_file_URL(dummy_jar, CHECK);
+  to_file_URL_internal(dummy_jar, CHECK);
 }
 
 // Initializes the java.lang.Package and java.security.ProtectionDomain objects associated with
@@ -271,7 +271,10 @@ Handle CDSProtectionDomain::get_shared_jar_url(int shared_path_index, TRAPS) {
   return url_h;
 }
 
-
+Handle CDSProtectionDomain::to_file_URL(const char* path, TRAPS) {
+  Handle url_h = to_file_URL_internal(path, CHECK_NH);
+  return url_h;
+}
 
 // Returns the ProtectionDomain associated with the JAR file identified by the url.
 Handle CDSProtectionDomain::get_shared_protection_domain(Handle class_loader,
@@ -369,7 +372,7 @@ Handle KlassMirrorDataCache::get_jar_url(int index, TRAPS) {
   oop url_oop = jar_url_at(index);
   if (url_oop == nullptr) {
     const char* path = _locations->at(index)->path();
-    url_h = to_file_URL(path, CHECK_NH);
+    url_h = to_file_URL_internal(path, CHECK_NH);
     set_jar_url_at(index, url_h());
   } else {
     url_h = Handle(THREAD, url_oop);
