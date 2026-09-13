@@ -38,10 +38,10 @@
 # Compiler:
 
 # Runtime:
-runtime/cds/appcds/aotCode/AOTCodeFlags.java#default_gc 8382398 generic-all
-runtime/cds/appcds/aotCode/AOTCodeFlags.java#parallel   8382398 generic-all
-runtime/cds/appcds/aotCode/AOTCodeFlags.java#Z          8382398 generic-all
-runtime/cds/appcds/aotCode/AOTCodeFlags.java#shenandoah 8382398 generic-all
+runtime/cds/appcds/aotCode/AOTCodeFlags.java#default_gc 8390238 generic-all
+runtime/cds/appcds/aotCode/AOTCodeFlags.java#parallel   8390238 generic-all
+runtime/cds/appcds/aotCode/AOTCodeFlags.java#Z          8390238 generic-all
+runtime/cds/appcds/aotCode/AOTCodeFlags.java#shenandoah 8390238 generic-all
 
 runtime/cds/appcds/aotCode/AOTCodeTest.java#G1          8390238 generic-all
 runtime/cds/appcds/aotCode/AOTCodeTest.java#parallel    8390238 generic-all
