@@ -54,11 +54,12 @@ class ClassLoaderDataGraph : public AllStatic {
   static volatile size_t  _num_instance_classes;
   static volatile size_t  _num_array_classes;
 
-  static ClassLoaderData* add_to_graph(Handle class_loader, bool has_class_mirror_holder);
+  static ClassLoaderData* add_to_graph(Handle class_loader, bool has_class_mirror_holder, Symbol* aot_id);
 
  public:
   static ClassLoaderData* find_or_create(Handle class_loader, bool& created);
   static ClassLoaderData* add(Handle class_loader, bool has_class_mirror_holder);
+  static ClassLoaderData* add(Handle class_loader, Symbol* aot_id);
   static void clean_module_and_package_info();
   static void purge(bool at_safepoint);
   static void clear_claimed_marks();

@@ -34,6 +34,7 @@ class Symbol;
 class UnregisteredClasses: AllStatic {
 public:
   static InstanceKlass* load_class(Symbol* name, const char* path, TRAPS);
+  static Handle unregistered_class_loader(Thread* current);
   static void initialize(TRAPS);
   // Returns true if the class is loaded internally for dumping unregistered classes.
   static bool check_for_exclusion(const InstanceKlass* k);

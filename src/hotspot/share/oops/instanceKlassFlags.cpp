@@ -48,6 +48,8 @@ void InstanceKlassFlags::set_class_loader_type(const ClassLoaderData* cld) {
   }
   else if (cld->is_system_class_loader_data()) {
     _flags |= _misc_defined_by_app_loader;
+  } else if (cld->aot_identity() != nullptr) {
+    _flags |= _misc_defined_by_aot_safe_custom_loader;
   }
 }
 
