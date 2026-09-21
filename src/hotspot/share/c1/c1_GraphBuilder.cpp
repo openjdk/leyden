@@ -1829,9 +1829,10 @@ void GraphBuilder::copy_value_content(ciValueKlass* vk, Value src, int src_off, 
 
 Value GraphBuilder::load_null_reset_value(ciValueKlass* vk) {
   if (compilation()->env()->is_aot_compile()) {
-    Value clazz = append(new Constant(new ClassConstant(vk)));
-    Value offset = append(new Constant(new IntConstant(vk->get_null_reset_value_offset())));
-    return append(new UnsafeGet(T_OBJECT, clazz, offset, /*is_volatile*/false,/*is_raw*/true));
+    // Null-reset value is stored in the class mirror.
+    Value mirror = append(new Constant(new InstanceConstant(vk->java_mirror()))); // Creates oop relocation
+    Value offset = append(new Constant(new LongConstant(vk->get_null_reset_value_offset())));
+    return append(new UnsafeGet(T_OBJECT, mirror, offset, /*is_volatile*/false,/*is_raw*/false));
   } else {
     return append(new Constant(new ObjectConstant(vk->get_null_reset_value().as_object())));
   }

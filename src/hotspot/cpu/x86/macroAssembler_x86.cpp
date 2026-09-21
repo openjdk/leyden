@@ -6041,6 +6041,11 @@ int MacroAssembler::store_value_type_fields_to_buf(ciValueKlass* vk, bool from_i
   mov(rscratch1, rax); // save rax for slow_case since *_allocate may corrupt it when allocation failed
   if (vk != nullptr) {
     // Called from C1, where the return type is statically known.
+#if INCLUDE_CDS
+    if (AOTCodeCache::is_on_for_dump()) {
+      mov_metadata(rbx, vk->constant_encoding());
+    } else
+#endif
     movptr(rbx, (intptr_t)vk->get_ValueKlass());
     jint lh = vk->layout_helper();
     assert(lh != Klass::_lh_neutral_value, "value class in return type must have been resolved");
@@ -6091,8 +6096,8 @@ int MacroAssembler::store_value_type_fields_to_buf(ciValueKlass* vk, bool from_i
         // cannot be injected into a caller that is saved and
         // restored.
         mov_metadata(rbx, vk->constant_encoding());
-        movptr(rbx, Address(rdi, ValueKlass::adr_members_offset()));
-        movptr(rbx, Address(rdi, ValueKlass::unpack_handler_offset()));
+        movptr(rbx, Address(rbx, ValueKlass::adr_members_offset()));
+        movptr(rbx, Address(rbx, ValueKlass::pack_handler_offset()));
         call(rbx);
       } else
 #endif

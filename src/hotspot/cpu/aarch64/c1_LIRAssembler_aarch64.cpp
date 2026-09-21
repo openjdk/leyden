@@ -476,6 +476,7 @@ void LIR_Assembler::return_op(LIR_Opr result, C1SafepointPollStub* code_stub) {
           __ mov_metadata(rscratch1, vk->constant_encoding());
           __ ldr(rscratch1, Address(rscratch1, ValueKlass::adr_members_offset()));
           __ ldr(rscratch1, Address(rscratch1, ValueKlass::unpack_handler_offset()));
+          __ blr(rscratch1);
         } else
 #endif
         __ far_call(RuntimeAddress(unpack_handler));
