@@ -2608,6 +2608,7 @@ bool AOTCodeCache::write_relocations(CodeBlob& code_blob, RelocIterator& iter,
         reloc_data.at_put(idx, delta);
         break;
       }
+      case relocInfo::patchable_barrier_type: // fall through
       case relocInfo::barrier_type: {
         // Patched by GC during nmethod registration
         assert(code_blob.is_nmethod(), "Only nmethod has barrier relocation");
@@ -2772,6 +2773,7 @@ void AOTCodeReader::fix_relocations(CodeBlob *code_blob, RelocIterator& iter,
         r->fix_relocation_after_aot_load(code_blob->content_begin(), delta);
         break;
       }
+      case relocInfo::patchable_barrier_type: // fall through
       case relocInfo::barrier_type: {
         // Patched by GC during nmethod registration
         assert(code_blob->is_nmethod(), "Only nmethod has barrier relocation");
