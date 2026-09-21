@@ -110,7 +110,7 @@ public class TestAOTLocalDateTime {
         }
         if (args[0].equals("Z")) {
             return; // JDK-8392746
-        } 
+        }
         Tester t;
         t = new Tester("C2", 4, "java.time.LocalDate::create", args[0], false);
         t.run(new String[] {"AOT", "--two-step-training"});

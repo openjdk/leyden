@@ -23,7 +23,6 @@
  */
 
 #include "ci/ciValueKlass.hpp"
-#include "code/aotCodeCache.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/c2/barrierSetC2.hpp"
 #include "gc/shared/gc_globals.hpp"
