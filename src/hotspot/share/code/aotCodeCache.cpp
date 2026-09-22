@@ -305,18 +305,6 @@ void AOTCodeCache::initialize() {
 #else
   assert(!FLAG_IS_DEFAULT(AOTCache), "AOTCache should be specified");
 
-  if (Arguments::is_valhalla_enabled()) {
-    // Disable AOT code caching when Valhalla is enabled.
-    load_info_log().print_cr("AOT Code Caching is not supported with Valhalla");
-    disable_caching();
-    return;
-  }
-
-  if (VerifyOops && ValueTypePassFieldsAsArgs) {
-    load_info_log().print_cr("AOT Adapter Caching is not supported with VerifyOops + ValueTypePassFieldsAsArgs.");
-    FLAG_SET_ERGO(AOTAdapterCaching, false);
-  }
-
   bool is_dumping = false;
   bool is_using   = false;
   if (CDSConfig::is_dumping_final_static_archive() && CDSConfig::is_dumping_aot_linked_classes()) {
