@@ -1448,6 +1448,23 @@ class java_lang_ClassLoader : AllStatic {
   friend class JavaClasses;
 };
 
+class java_security_ProtectionDomain : AllStatic {
+ private:
+  static int _classloader_offset;
+  static void compute_offsets();
+
+ public:
+  // Support for CDS
+  static void serialize_offsets(SerializeClosure* f) NOT_CDS_RETURN;
+
+  static oop classloader(oop pd);
+  static void set_classloader(oop pd, oop loader);
+
+  static bool is_instance(oop obj);
+
+  // Debugging
+  friend class JavaClasses;
+};
 
 // Interface to java.lang.System objects
 

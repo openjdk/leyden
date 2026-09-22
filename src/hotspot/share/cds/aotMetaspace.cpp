@@ -41,6 +41,7 @@
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/cppVtables.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
@@ -530,6 +531,9 @@ void AOTMetaspace::serialize(SerializeClosure* soc) {
   HeapShared::serialize_tables(soc);
   SystemDictionaryShared::serialize_dictionary_headers(soc);
   AOTLinkedClassBulkLoader::serialize(soc);
+  if (CDSConfig::supports_custom_loaders()) {
+    CustomLoaderSupport::serialize_custom_loader_info_map_header(soc);
+  }
   FinalImageRecipes::serialize(soc);
   TrainingData::serialize(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
@@ -733,6 +737,9 @@ public:
     for (int i = 0; i < _pending_method_handle_intrinsics->length(); i++) {
       it->push(_pending_method_handle_intrinsics->adr_at(i));
     }
+    if (CDSConfig::supports_custom_loaders()) {
+      ClassLoaderAotIdTable::all_symbols_do(it);
+    }
   }
 };
 
@@ -927,6 +934,9 @@ void AOTMetaspace::link_all_loaded_classes(JavaThread* current) {
 
 void AOTMetaspace::link_shared_classes(TRAPS) {
   AOTClassLinker::initialize();
+  if (CDSConfig::supports_custom_loaders()) {
+    CustomLoaderSupport::initialize();
+  }
   AOTClassInitializer::init_test_class(CHECK);
 
   if (CDSConfig::is_dumping_final_static_archive()) {
@@ -1116,11 +1126,10 @@ void AOTMetaspace::load_classes(TRAPS) {
 
 void AOTMetaspace::exercise_runtime_cds_code(TRAPS) {
   // Exercise the manifest processing code
-  const char* dummy = "Manifest-Version: 1.0\n";
-  CDSProtectionDomain::create_jar_manifest(dummy, strlen(dummy), CHECK);
-
+  const char* dummy_manifest = "Manifest-Version: 1.0\n";
   // Exercise FileSystem and URL code
-  CDSProtectionDomain::to_file_URL("dummy.jar", Handle(), CHECK);
+  const char* dummy_jar = "dummy.jar";
+  CDSProtectionDomain::exercise_runtime_cds_code(dummy_manifest, dummy_jar, THREAD);
 }
 
 bool AOTMetaspace::preimage_static_archive_dumped() {

@@ -33,6 +33,7 @@
 
 class AOTLinkedClassTable;
 class ClassLoaderData;
+class CustomLoaderInfo;
 class InstanceKlass;
 class SerializeClosure;
 template <typename T> class Array;
@@ -53,6 +54,7 @@ class AOTLinkedClassBulkLoader :  AllStatic {
   static void preload_classes_in_table(Array<InstanceKlass*>* classes,
                                        const char* category_name, Handle loader, TRAPS);
   static void initiate_loading(JavaThread* current, const char* category, Handle initiating_loader, Array<InstanceKlass*>* classes);
+  static void initiate_loading(JavaThread* current, Handle initiating_loader);
   static void link_classes_impl(TRAPS);
   static void link_classes_in_table(Array<InstanceKlass*>* classes, TRAPS);
   static void init_non_javabase_classes_impl(TRAPS);
@@ -76,6 +78,9 @@ public:
   static void replay_training_at_init_for_preloaded_classes(TRAPS) NOT_CDS_RETURN;
 
   static bool is_initializing_classes_early() NOT_DEBUG({return false;});
+
+  static void preload_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS);
+  static void link_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS);
 };
 
 #endif // SHARE_CDS_AOTLINKEDCLASSBULKLOADER_HPP

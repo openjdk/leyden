@@ -620,10 +620,10 @@ void ConstantPoolCache::record_classes_in_archivable_method_entries() {
 
 bool ConstantPoolCache::can_archive_resolved_method(ConstantPool* src_cp, ResolvedMethodEntry* method_entry, const char*& rejection_reason) {
   InstanceKlass* pool_holder = constant_pool()->pool_holder();
-  if (pool_holder->defined_by_other_loaders()) {
+  if (!pool_holder->defined_by_aot_safe_loaders()) {
     // Archiving resolved cp entries for classes from non-builtin loaders
     // is not yet supported.
-    rejection_reason = "(pool holder comes from a non-builtin loader)";
+    rejection_reason = "(pool holder comes from a non-aot-safe custom loader)";
     return false;
   }
 
