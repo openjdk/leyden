@@ -2608,6 +2608,16 @@ bool AOTCodeCache::write_relocations(CodeBlob& code_blob, RelocIterator& iter,
         reloc_data.at_put(idx, delta);
         break;
       }
+      case relocInfo::patchable_barrier_type: // fall through
+      case relocInfo::barrier_type: {
+        // Patched by GC during nmethod registration
+        assert(code_blob.is_nmethod(), "Only nmethod has barrier relocation");
+        if (!code_blob.is_nmethod()) {
+          log_debug(aot, codecache, reloc)("barrier relocation is used only for nmethods");
+          return false;
+        }
+        break;
+      }
       case relocInfo::poll_type:
         break;
       case relocInfo::poll_return_type:
@@ -2761,6 +2771,12 @@ void AOTCodeReader::fix_relocations(CodeBlob *code_blob, RelocIterator& iter,
         uint delta = reloc_data[j];
         section_word_Relocation* r = (section_word_Relocation*)iter.reloc();
         r->fix_relocation_after_aot_load(code_blob->content_begin(), delta);
+        break;
+      }
+      case relocInfo::patchable_barrier_type: // fall through
+      case relocInfo::barrier_type: {
+        // Patched by GC during nmethod registration
+        assert(code_blob->is_nmethod(), "Only nmethod has barrier relocation");
         break;
       }
       case relocInfo::poll_type:
