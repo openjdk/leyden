@@ -11,17 +11,16 @@
 
 # Overview
 
-
 We use a small set of benchmarks to demonstrate the performance of the optimizations in the Leyden repo.
 
-| Benchmark  | Source |
+| Benchmark  | Version | Source |
 | ------------- | ------------- |
-|[helidon-quickstart-se](helidon-quickstart-se) | https://helidon.io/docs/v4/se/guides/quickstart|
-|[javac-bench](javac_bench) | Using Javac to compile 50 source files |
-|[micronaut-first-app](micronaut-first-app) | https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
-|[quarkus-getting-started](quarkus-getting-started) | https://quarkus.io/guides/getting-started|
-|[spring-boot-getting-started](spring-boot-getting-started) | https://spring.io/guides/gs/spring-boot|
-|[spring-petclinic](spring-petclinic) | https://github.com/spring-projects/spring-petclinic|
+|[helidon-quickstart-se](helidon-quickstart-se) | 4.0.7 | https://helidon.io/docs/v4/se/guides/quickstart|
+|[javac-bench](javac_bench) | - | Using Javac to compile 50 source files |
+|[micronaut-first-app](micronaut-first-app) | 4.4.0 | https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
+|[quarkus-getting-started](quarkus-getting-started) | 1.0.0 | https://quarkus.io/guides/getting-started|
+|[spring-boot-getting-started](spring-boot-getting-started) | [3.3.0](https://github.com/spring-guides/gs-spring-boot/tree/99085f078b01fed27667c0b8fbbb957758911f4a) | https://spring.io/guides/gs/spring-boot|
+|[spring-petclinic](spring-petclinic) | [3.2.0-SNAPSHOT](https://github.com/spring-projects/spring-petclinic/tree/80fd11067c4662486e4c635deceba927375b621c) | https://github.com/spring-projects/spring-petclinic|
 
 # Benchmarking Against JDK Main-line
 
@@ -74,7 +73,7 @@ graphs below.
 The following charts show the relative start-up performance of the leyden/premain2 branch vs
 the JDK main-line.
 
-For example, a number of "premain aot cache: 255" indicates that if the application takes
+For example, a number of "premain2 aot cache: 255" indicates that if the application takes
 1000 ms to start-up with the JDK main-line, it takes only 255 ms to start up when all the
 current set of Leyden optimizations are enabled.
 
@@ -94,7 +93,7 @@ The meaning of the four rows in the following charts:
 | **mainline default**            |Run benchmark with no optimizations|
 | **mainline custom static cds**  |Run benchmark with a custom static CDS archive|
 | **mainline aot cache**          |Run benchmark with a custom AOT cache (JDK mainline)|
-| **premain aot cache**           |Run benchmark with a custom AOT cache (Leyden Premain Prototype)|
+| **premain2 aot cache**          |Run benchmark with a custom AOT cache (Leyden "premain2" branch)|
 
 We have benchmark results from two types of configurations using the
 script [bench_data/do_bench.sh](bench_data/do_bench.sh):
@@ -106,7 +105,7 @@ script [bench_data/do_bench.sh](bench_data/do_bench.sh):
 
 The 2 Cores Only setting is intended to emulate microservice configurations where a very small number
 of cores are allocated for small Java programs. In this setting, the JIT compiler may compete for CPU
-with the Java program, making start-up slower. The **premain aot cache** numbers usually are much better in
+with the Java program, making start-up slower. The **premain2 aot cache** numbers usually are much better in
 this setting because most of the start-up code has been AOT-compiled, so the app can spend most of the
 available CPUs to execute application logic.
 
@@ -118,9 +117,9 @@ These JDK versions were used in the comparisons:
 For details information about the hardware and raw numbers, see [bench.20260929.txt](bench_data/bench.20260929.txt)
  and [bench.20260929-2cpu.txt](bench_data/bench.20260929-2cpu.txt)
 
-# Premain AOT Performance Summary
+# Premain2 AOT Performance Summary
 
-This is the speed up of **premain aot cache** vs **mainline default** in the two types of configurations
+This is the speed up of **premain2 aot cache** vs **mainline default** in the two types of configurations, in the Leyden "premain2" branch.
 
 | Benchmark | Desktop/Server Class (28 Cores) | 2 Cores Only|
 |:-------------|-------------:| -------------:|
@@ -144,7 +143,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 522, 292, 226]
 ```
@@ -160,7 +159,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 793, 511, 419]
 ```
@@ -176,7 +175,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 507, 293, 250]
 ```
@@ -192,7 +191,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 438, 284, 244]
 ```
@@ -208,7 +207,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 488, 295, 212]
 ```
@@ -224,7 +223,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 609, 562, 211]
 ```
@@ -241,7 +240,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 563, 426, 239]
 ```
@@ -257,7 +256,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 871, 809, 492]
 ```
@@ -273,7 +272,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 406, 330, 184]
 ```
@@ -289,7 +288,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 447, 364, 205]
 ```
@@ -305,7 +304,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 547, 462, 235]
 ```
@@ -321,7 +320,7 @@ config:
         height: 300
 ---
 xychart-beta
-    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain aot cache"]
+    x-axis "variant" ["mainline default", "mainline custom static cds", "mainline aot cache", "premain2 aot cache"]
     y-axis "Elapsed time (normalized, smaller is better)" 0 --> 1000
     bar [1000, 635, 570, 254]
 ```
