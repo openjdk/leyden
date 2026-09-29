@@ -2,12 +2,12 @@ We use a small set of benchmarks to demonstrate the performance of the optimizat
 
 | Benchmark  | Source |
 | ------------- | ------------- |
-|[helidon-quickstart-se](test/hotspot/jtreg/premain/helidon-quickstart-se) | https://helidon.io/docs/v4/se/guides/quickstart|
-|[javac-bench](test/hotspot/jtreg/premain/javac_bench) | Using Javac to compile 50 source files |
-|[micronaut-first-app](test/hotspot/jtreg/premain/micronaut-first-app) | https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
-|[quarkus-getting-started](test/hotspot/jtreg/premain/quarkus-getting-started) | https://quarkus.io/guides/getting-started|
-|[spring-boot-getting-started](test/hotspot/jtreg/premain/spring-boot-getting-started) | https://spring.io/guides/gs/spring-boot|
-|[spring-petclinic](test/hotspot/jtreg/premain/spring-petclinic) | https://github.com/spring-projects/spring-petclinic|
+|[helidon-quickstart-se](helidon-quickstart-se) | https://helidon.io/docs/v4/se/guides/quickstart|
+|[javac-bench](javac_bench) | Using Javac to compile 50 source files |
+|[micronaut-first-app](micronaut-first-app) | https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
+|[quarkus-getting-started](quarkus-getting-started) | https://quarkus.io/guides/getting-started|
+|[spring-boot-getting-started](spring-boot-getting-started) | https://spring.io/guides/gs/spring-boot|
+|[spring-petclinic](spring-petclinic) | https://github.com/spring-projects/spring-petclinic|
 
 ### Benchmarking Against JDK Main-line
 
@@ -22,24 +22,24 @@ To can compare the performance of Leyden vs the main-line JDK, you need:
 The same steps are used for benchmarking all of the above demos. For example:
 
 ```
-$ cd test/hotspot/jtreg/premain/helidon-quickstart-se
+$ cd helidon-quickstart-se
 $ make PREMAIN_HOME=/repos/leyden/build/linux-x64/images/jdk \
        MAINLINE_HOME=/repos/jdk/build/linux-x64/images/jdk \
        BLDJDK_HOME=/usr/local/jdk21 \
        bench
 run,mainline default,mainline custom static cds,mainline aot cache,premain aot cache
-1,456,229,156,117
-2,453,227,157,117
-3,455,232,155,116
-4,448,230,154,114
-5,440,228,156,114
-6,446,228,156,114
-7,448,232,156,114
-8,465,261,159,114
-9,448,226,157,113
-10,442,233,154,114
-Geomean,450.05,232.41,155.99,114.69
-Stdev,6.98,9.72,1.41,1.35
+1,253,137,71,54
+2,267,129,67,56
+3,256,130,70,56
+4,249,132,70,55
+5,252,133,70,56
+6,257,132,73,55
+7,261,136,71,55
+8,253,129,74,58
+9,255,131,107,53
+10,260,139,74,53
+Geomean,256.25,132.76,74.05,55.08 (4.65x improvement)
+Stdev,4.96,3.28,10.95,1.45
 Markdown snippets in mainline_vs_premain.md
 ```
 
@@ -55,50 +55,16 @@ noise and other artifacts.
 The "make bench" target also generates GitHub markdown snippets (in the file `mainline_vs_premain.md`) for creating the
 graphs below.
 
-### Benchmarking Between Two Leyden Builds
-
-This is useful for Leyden developers to measure the benefits of a particular optimization.
-The steps are similar to above, but we use the "make compare_premain_builds" target:
-
-```
-$ cd helidon-quickstart-se
-$ make PM_OLD=/repos/leyden_old/build/linux-x64/images/jdk \
-       PM_NEW=/repos/leyden_new/build/linux-x64/images/jdk \
-       BLDJDK_HOME=/usr/local/jdk21 \
-       compare_premain_builds
-Old build = /repos/leyden_old/build/linux-x64/images/jdk with options
-New build = /repos/leyden_new/build/linux-x64/images/jdk with options
-Run,Old CDS + AOT,New CDS + AOT
-1,110,109
-2,131,111
-3,118,115
-4,110,108
-5,117,110
-6,114,109
-7,110,109
-8,118,110
-9,110,110
-10,113,114
-Geomean,114.94,110.48
-Stdev,6.19,2.16
-Markdown snippets in compare_premain_builds.md
-```
-
-Please see [test/hotspot/jtreg/premain/lib/Bench.gmk](test/hotspot/jtreg/premain/lib/Bench.gmk) for more details.
-
-Note: due to the variability of start-up time, the benefit of minor improvements may
-be difficult to measure.
-
 ### Preliminary Benchmark Results
 
-The following charts show the relative start-up performance of the Leyden/Premain branch vs
+The following charts show the relative start-up performance of the leyden/premain2 branch vs
 the JDK main-line.
 
 For example, a number of "premain aot cache: 255" indicates that if the application takes
 1000 ms to start-up with the JDK main-line, it takes only 255 ms to start up when all the
 current set of Leyden optimizations are enabled.
 
-The benchmark results are collected with `make bench` in the following directories under [test/hotspot/jtreg/premain](test/hotspot/jtreg/premain):
+The benchmark results are collected with `make bench` in the following directories:
 
 - `helidon-quickstart-se`
 - `javac-bench`
@@ -117,7 +83,7 @@ The meaning of the four rows in the following charts:
 | **premain aot cache**           |Run benchmark with a custom AOT cache (Leyden Premain Prototype)|
 
 We have benchmark results from two types of configurations using the
-script [test/hotspot/jtreg/premain/bench_data/do_bench.sh](test/hotspot/jtreg/premain/bench_data/do_bench.sh):
+script [bench_data/do_bench.sh](bench_data/do_bench.sh):
 
 - Desktop/Server Class: these are the results when running on a modern desktop or server, using the
   command `bash bench_data/do_bench.sh`.
@@ -132,11 +98,11 @@ available CPUs to execute application logic.
 
 These JDK versions were used in the comparisons:
 
-- JDK main-line: JDK 25, build 25+37-LTS-3491
+- JDK main-line: https://github.com/openjdk/jdk/tree/2365ecc5fd83cf27c6c55aaca5aa6bad6ae9dbbf
 - Leyden: https://github.com/openjdk/leyden/tree/ce150637130086ad2b47916d66148007f5331a28
 
-For details information about the hardware and raw numbers, see [bench.20250930.txt](test/hotspot/jtreg/premain/bench_data/bench.20250930.txt)
- and [bench.20250930-2cpu.txt](test/hotspot/jtreg/premain/bench_data/bench.20250930-2cpu.txt)
+For details information about the hardware and raw numbers, see [bench.20260929.txt](bench_data/bench.20260929.txt)
+ and [bench.20260929-2cpu.txt](bench_data/bench.20260929-2cpu.txt)
 
 #### Premain AOT Cache Summary
 
