@@ -59,8 +59,8 @@ if {![regexp "processor\[\t \]+: (\[0-9\]+)" $data dummy cores]} {
 puts "- JDK mainline: https://github.com/openjdk/jdk/tree/$mainline_version"
 puts "- Leyden: https://github.com/openjdk/leyden/tree/$leyden_version"
 puts ""
-puts "For details information about the hardware and raw numbers, see \[$file1\](test/hotspot/jtreg/premain/bench_data/$file1)"
-puts " and \[$file2\](test/hotspot/jtreg/premain/bench_data/$file2)"
+puts "For details information about the hardware and raw numbers, see \[$file1\](bench_data/$file1)"
+puts " and \[$file2\](bench_data/$file2)"
 puts ""
 
 set output ""

@@ -235,3 +235,8 @@ Unable to use AOT cache.
 
 All GCs are supported after [JEP 516 - Ahead-of-Time Object Caching with Any GC](https://openjdk.org/jeps/516)
 
+## 5. Benchmark Results
+
+See [benchmarks/README.md](benchmarks/README.md)
+
+

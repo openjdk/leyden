@@ -1,3 +1,17 @@
+# Disclaimers
+
+- *This repository contains experimental and unstable code. It is not intended to be used
+   in a production environment.*
+- *This repository is intended for developers of the JDK, and advanced Java developers who
+   are familiar with building the JDK.*
+- *The experimental features in this repository may be changed or removed without notice.
+   Command line flags and workflows will change.*
+- *The benchmarks results reported on this page are for illustrative purposes only. Your
+   applications may get better or worse results.*
+
+# Overview
+
+
 We use a small set of benchmarks to demonstrate the performance of the optimizations in the Leyden repo.
 
 | Benchmark  | Source |
@@ -101,8 +115,8 @@ These JDK versions were used in the comparisons:
 - JDK mainline: https://github.com/openjdk/jdk/tree/2365ecc5fd83cf27c6c55aaca5aa6bad6ae9dbbf
 - Leyden: https://github.com/openjdk/leyden/tree/b6ba32f3b5dd9a3485cb2a7f7d12aaf0a28979b7
 
-For details information about the hardware and raw numbers, see [bench.20260929.txt](test/hotspot/jtreg/premain/bench_data/bench.20260929.txt)
- and [bench.20260929-2cpu.txt](test/hotspot/jtreg/premain/bench_data/bench.20260929-2cpu.txt)
+For details information about the hardware and raw numbers, see [bench.20260929.txt](bench_data/bench.20260929.txt)
+ and [bench.20260929-2cpu.txt](bench_data/bench.20260929-2cpu.txt)
 
 # Premain AOT Performance Summary
 
