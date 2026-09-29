@@ -39,8 +39,13 @@ set fd [open $file1]
 set data [read $fd]
 close $fd
 
-if {![regexp {built from https://github.com/openjdk/leyden/tree/([0-9a-z]+)} $data dummy version]} {
-    puts "Error: cannot find version"
+if {![regexp {built from https://github.com/openjdk/leyden/tree/([0-9a-z]+)} $data dummy leyden_version]} {
+    puts "Error: cannot find leyden_version"
+    exit 1
+}
+
+if {![regexp {built from https://github.com/openjdk/jdk/tree/([0-9a-z]+)} $data dummy mainline_version]} {
+    puts "Error: cannot find mainline_version"
     exit 1
 }
 
@@ -51,7 +56,8 @@ if {![regexp "processor\[\t \]+: (\[0-9\]+)" $data dummy cores]} {
     incr cores 1
 }
 
-puts "- Leyden: https://github.com/openjdk/leyden/tree/$version"
+puts "- JDK mainline: https://github.com/openjdk/jdk/tree/$mainline_version"
+puts "- Leyden: https://github.com/openjdk/leyden/tree/$leyden_version"
 puts ""
 puts "For details information about the hardware and raw numbers, see \[$file1\](test/hotspot/jtreg/premain/bench_data/$file1)"
 puts " and \[$file2\](test/hotspot/jtreg/premain/bench_data/$file2)"
@@ -61,7 +67,7 @@ set output ""
 set section 1
 set runs [list $file1 "Desktop/Server Class ($cores Cores)" $file2 "2 Cores Only"] 
 foreach {file type} $runs {
-    append output "### 5.$section Benchmark Results - $type\n"
+    append output "# Benchmark Results - $type\n"
     set fd [open $file]
     set speed ""
     set i 0
@@ -81,7 +87,7 @@ foreach {file type} $runs {
                 }
             }
             set name [lindex $group [expr $i * 2 + 1]]
-            append output "\n#### $name ($speed improvement - $type)\n\n"
+            append output "\n## $name ($speed improvement - $type)\n\n"
             append output "[string trim $data]\n"
 
             set thename($i) $name
@@ -93,7 +99,7 @@ foreach {file type} $runs {
     incr section 1
 }
 
-puts "#### Premain AOT Performance Summary\n"
+puts "# Premain AOT Performance Summary\n"
 
 puts "This is the speed up of **premain aot cache** vs **mainline default** in the two types of configurations"
 puts ""
