@@ -48,7 +48,7 @@ ${DEMO_SRC}: Main.java.diff
 	    -DgroupId=io.helidon.examples \
 	    -DartifactId=helidon-quickstart-se \
 	    -Dpackage=io.helidon.examples.quickstart.se
-	patch ${DEMO_SRC} Main.java.diff
+	patch -l ${DEMO_SRC} Main.java.diff
 
 
 ${DEMO_ARTIFACT}: ${DEMO_JAR}

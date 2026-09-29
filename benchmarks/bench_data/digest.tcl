@@ -65,7 +65,7 @@ puts ""
 
 set output ""
 set section 1
-set runs [list $file1 "Desktop/Server Class ($cores Cores)" $file2 "2 Cores Only"] 
+set runs [list $file1 "Desktop/Server Class ($cores Cores)" $file2 "2 Cores Only"]
 foreach {file type} $runs {
     append output "# Benchmark Results - $type\n"
     set fd [open $file]

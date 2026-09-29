@@ -23,7 +23,7 @@
 
 /*
  Used by DemoSupport.gmk:
- 
+
  - calculate the geomean and stdev of benchmark runs
  - write markdown snippets for rendering benchmark results as a chart on GitHub .MD files
 
@@ -142,7 +142,7 @@ public class GithubMDChart {
             y-axis "Elapsed time (ms, smaller is better)" 0 --> $maxtime
             bar [$geomeans]
         ```
-        
+
         -----------------Normalized---------------------------------------------
         ```mermaid
         ---

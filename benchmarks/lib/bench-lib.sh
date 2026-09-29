@@ -29,7 +29,7 @@
 # are system noises.
 #
 # - Measure the entire elapsed time with 'perf stat -r 16 bin/java .....'
-# - Interleave the execution of the test JVMs. This way, the effect of system noises 
+# - Interleave the execution of the test JVMs. This way, the effect of system noises
 #   (CPU overheating, throttling, background tasks) is likely evenly distributed across
 #   the test JVMs.
 # - Save the results in a CSV file so you can load it in a spreadsheet and manually
@@ -72,7 +72,7 @@ fi
 #
 # $ cd test/hotspot/jtreg/premain/javac_helloworld
 # $ bash run.sh /bld/mainline/images/jdk/bin/java /bld/leyden/images/jdk/bin/java
-# 
+#
 # ===report.csv================================================
 # Run,1_xoff,1_xon,2_xon,2_td,2_aot
 # 1,313.86000,164.25000,123.031000,96.849000,92.38000
@@ -92,11 +92,11 @@ fi
 # [2_xon ] Premain Prototype (CDS )                      125.37 ms
 # [2_td  ] Premain Prototype (CDS + Training Data)       100.99 ms
 # [2_aot ] Premain Prototype (CDS + Training Data + AOT)  91.86 ms
-# 
+#
 #======================================================================
 
 
-# "$@" is the command-line specified by the user. Each element specifies a 
+# "$@" is the command-line specified by the user. Each element specifies a
 # JVM (which optionally can contain VM parameters).
 #
 # We automatically detect whether the JVM is from the mainline, or from the leyden

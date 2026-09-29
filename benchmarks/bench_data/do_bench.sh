@@ -34,7 +34,7 @@
 # bash bench_data/do_bench.sh | tee bench_data/bench.20260929.txt
 # taskset -c 1,2 bash bench_data/do_bench.sh | tee bench_data/bench.20260929-2cpu.txt
 # tclsh digest.tcl bench.20260929.txt bench.20260929-2cpu.txt
-# 
+#
 
 # <<<< start: capture the output of (set -x; ...)  as well
 (
@@ -85,8 +85,7 @@ for b in $BENCHES; do
     (set -x; bash -c "cat $b/mainline_vs_premain.md")
 done
 
-# >>>> end 
+# >>>> end
 ) 2>&1
-
 
 

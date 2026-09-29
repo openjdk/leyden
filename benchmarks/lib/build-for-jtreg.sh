@@ -56,7 +56,7 @@ done
 PM=$ROOT/test/hotspot/jtreg/premain
 echo Add the following to your jtreg command-line
 echo "  -vmoption:-Djdk.test.lib.artifacts.helidon-quickstart-se=$PM/helidon-quickstart-se/helidon-quickstart-se \\"
-echo "  -vmoption:-Djdk.test.lib.artifacts.micronaut-first-app=$PM/micronaut-first-app/download/target \\" 
+echo "  -vmoption:-Djdk.test.lib.artifacts.micronaut-first-app=$PM/micronaut-first-app/download/target \\"
 echo "  -vmoption:-Djdk.test.lib.artifacts.quarkus-getting-started=$PM/quarkus-getting-started/getting-started/target \\"
 echo "  -vmoption:-Djdk.test.lib.artifacts.spring-petclinic=$PM/spring-petclinic/petclinic-snapshot/target/spring-petclinic-3.2.0.zip \\"
 
