@@ -20,7 +20,7 @@ We use a small set of benchmarks to demonstrate the performance of the optimizat
 |[micronaut-first-app](micronaut-first-app) | 4.4.0 | https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
 |[quarkus-getting-started](quarkus-getting-started) | 1.0.0 | https://quarkus.io/guides/getting-started|
 |[spring-boot-getting-started](spring-boot-getting-started) | [3.3.0](https://github.com/spring-guides/gs-spring-boot/tree/99085f078b01fed27667c0b8fbbb957758911f4a) | https://spring.io/guides/gs/spring-boot|
-|[spring-petclinic](spring-petclinic) | [3.2.0-SNAPSHOT](https://github.com/spring-projects/spring-petclinic/tree/80fd11067c4662486e4c635deceba927375b621c) | https://github.com/spring-projects/spring-petclinic|
+|[spring-petclinic](spring-petclinic) | [3.2.0](https://github.com/spring-projects/spring-petclinic/tree/80fd11067c4662486e4c635deceba927375b621c) | https://github.com/spring-projects/spring-petclinic|
 
 # Benchmarking Against JDK Main-line
 
