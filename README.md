@@ -17,6 +17,11 @@ incorporated into future JDK releases.
 - *The benchmarks results reported on this page are for illustrative purposes only. Your
    applications may get better or worse results.*
 
+### 0.1 About this branch
+
+This branch is called "leyden/premain2" and it supercedes an older development branch
+called "leyden/premain". All new Leyden development should be done in this branch.
+
 ## 1. Overview
 
 As of JDK 27, the Leyden Project has successfully delivered ahead-of-time (AOT)
