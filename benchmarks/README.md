@@ -14,7 +14,7 @@
 We use a small set of benchmarks to demonstrate the performance of the optimizations in the Leyden repo.
 
 | Benchmark  | Version | Source |
-| ------------- | ------------- |
+| ------------- | ------------- | ------------- |
 |[helidon-quickstart-se](helidon-quickstart-se) | 4.0.7 | https://helidon.io/docs/v4/se/guides/quickstart|
 |[javac-bench](javac_bench) | - | Using Javac to compile 50 source files |
 |[micronaut-first-app](micronaut-first-app) | 4.4.0 | https://guides.micronaut.io/latest/creating-your-first-micronaut-app-maven-java.html|
