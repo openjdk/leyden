@@ -1,0 +1,49 @@
+*** Main.java.old	2024-04-11 16:17:12.132429143 -0700
+--- Main.java	2024-04-11 16:22:52.143865272 -0700
+***************
+*** 1,6 ****
+--- 1,8 ----
+  
+  package io.helidon.examples.quickstart.se;
+  
++ import java.lang.management.ManagementFactory;
++ import java.lang.management.RuntimeMXBean;
+  
+  import io.helidon.logging.common.LogConfig;
+  import io.helidon.config.Config;
+***************
+*** 29,34 ****
+--- 31,43 ----
+       */
+      public static void main(String[] args) {
+          
++ 	long mainStart = System.currentTimeMillis();
++ 	RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
++ 	// This includes all the time spent inside the JVM before main() is reached
++ 	// (since os::Posix::init is called and initial_time_count is initialized).
++ 	long vmStart = runtimeMXBean.getStartTime();
++ 	long maxBeanOverHead = System.currentTimeMillis() - mainStart;
++ 
+          // load logging configuration
+          LogConfig.configureRuntime();
+  
+***************
+*** 46,51 ****
+--- 55,71 ----
+  
+          System.out.println("WEB server is up! http://localhost:" + server.port() + "/simple-greet");
+  
++ 	long end = System.currentTimeMillis();
++ 	Boolean quit = Boolean.getBoolean("autoQuit");
++ 	if (quit) {
++ 		System.out.println("#### Booted and returned in " + (end - vmStart - maxBeanOverHead) + "ms");
++ 		System.out.println("#### (debug) mainStart = " + mainStart);
++ 		System.out.println("#### (debug) vmStart = " + vmStart);
++ 		System.out.println("#### (debug) before main (mainStart - vmStart) = " + (mainStart - vmStart));
++ 		System.out.println("#### (debug) maxBeanOverHead = " + maxBeanOverHead);
++ 		System.out.println("#### (debug) end = " + end);
++ 		System.exit(0);
++ 	}
+      }
+  
+  
