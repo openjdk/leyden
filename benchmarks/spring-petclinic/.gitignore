@@ -1,0 +1,10 @@
+petclinic-snapshot
+*.cds
+*.cds.code
+*.jsa
+*.log
+*.log.*
+*.classlist
+*.preimage
+tmp.txt
+
