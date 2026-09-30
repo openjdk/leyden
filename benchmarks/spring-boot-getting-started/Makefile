@@ -54,7 +54,7 @@ ${DEMO_SRC}: Application.java pom.xml
 # Package the app in CDS friendly way
 # See https://bell-sw.com/blog/how-to-use-cds-with-spring-boot-applications/
 ${DEMO_JAR}: ${DEMO_SRC}
-	cd gs-spring-boot/complete && JAVA_HOME=${BLDJDK_HOME} ${MVN} -Dmaven.test.skip=true package
+	cd gs-spring-boot/complete && JAVA_HOME=${BLDJDK_HOME} ${MVN} -Dmaven.test.skip=true -Dspring-javaformat.skip=true package
 	cd gs-spring-boot/complete && ${BLDJDK_JAVA} -Djarmode=tools -jar target/spring-boot-complete-0.0.1-SNAPSHOT.jar extract
 
 ${DEMO_ARTIFACT}: ${DEMO_JAR}

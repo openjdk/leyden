@@ -177,7 +177,7 @@ public class GithubMDChart {
             log += Math.log(v);
         }
 
-	return String.format("%.2f", Math.exp(log / list.size()));
+        return String.format("%.2f", Math.exp(log / list.size()));
     }
 
     static String stdev(ArrayList<Double> list) {
@@ -194,6 +194,6 @@ public class GithubMDChart {
             stdev += Math.pow(d.doubleValue() - mean, 2);
         }
 
-	return String.format("%.2f", Math.sqrt(stdev / length));
+        return String.format("%.2f", Math.sqrt(stdev / length));
     }
 }

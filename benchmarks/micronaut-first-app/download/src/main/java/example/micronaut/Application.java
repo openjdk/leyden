@@ -23,12 +23,12 @@ import io.micronaut.runtime.Micronaut;
 public class Application {
 
     public static void main(String[] args) {
- 	long mainStart = System.currentTimeMillis();
- 	RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
- 	// This includes all the time spent inside the JVM before main() is reached
- 	// (since os::Posix::init is called and initial_time_count is initialized).
- 	long vmStart = runtimeMXBean.getStartTime();
- 	long maxBeanOverHead = System.currentTimeMillis() - mainStart;
+        long mainStart = System.currentTimeMillis();
+        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+        // This includes all the time spent inside the JVM before main() is reached
+        // (since os::Posix::init is called and initial_time_count is initialized).
+        long vmStart = runtimeMXBean.getStartTime();
+        long maxBeanOverHead = System.currentTimeMillis() - mainStart;
 
         Micronaut.run(Application.class, args);
 

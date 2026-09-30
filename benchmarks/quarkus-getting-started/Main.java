@@ -31,12 +31,12 @@ import io.quarkus.runtime.annotations.QuarkusMain;
 @QuarkusMain
 public class Main {
     public static void main(String... args) throws Exception {
- 	long mainStart = System.currentTimeMillis();
- 	RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
- 	// This includes all the time spent inside the JVM before main() is reached
- 	// (since os::Posix::init is called and initial_time_count is initialized).
- 	long vmStart = runtimeMXBean.getStartTime();
- 	long maxBeanOverHead = System.currentTimeMillis() - mainStart;
+        long mainStart = System.currentTimeMillis();
+        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+        // This includes all the time spent inside the JVM before main() is reached
+        // (since os::Posix::init is called and initial_time_count is initialized).
+        long vmStart = runtimeMXBean.getStartTime();
+        long maxBeanOverHead = System.currentTimeMillis() - mainStart;
 
         if (Boolean.getBoolean("autoQuit")) {
             Quarkus.manualInitialize();

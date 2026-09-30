@@ -39,12 +39,12 @@ public class Application {
     static long mainStart, vmStart, maxBeanOverHead;
 
     public static void main(String[] args) {
- 	mainStart = System.currentTimeMillis();
- 	RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
- 	// This includes all the time spent inside the JVM before main() is reached
- 	// (since os::Posix::init is called and initial_time_count is initialized).
- 	vmStart = runtimeMXBean.getStartTime();
- 	maxBeanOverHead = System.currentTimeMillis() - mainStart;
+        mainStart = System.currentTimeMillis();
+        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+        // This includes all the time spent inside the JVM before main() is reached
+        // (since os::Posix::init is called and initial_time_count is initialized).
+        vmStart = runtimeMXBean.getStartTime();
+        maxBeanOverHead = System.currentTimeMillis() - mainStart;
 
         SpringApplication.run(Application.class, args);
     }

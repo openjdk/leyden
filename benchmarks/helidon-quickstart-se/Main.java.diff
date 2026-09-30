@@ -17,12 +17,12 @@
        */
       public static void main(String[] args) {
 
-+ 	long mainStart = System.currentTimeMillis();
-+ 	RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
-+ 	// This includes all the time spent inside the JVM before main() is reached
-+ 	// (since os::Posix::init is called and initial_time_count is initialized).
-+ 	long vmStart = runtimeMXBean.getStartTime();
-+ 	long maxBeanOverHead = System.currentTimeMillis() - mainStart;
++         long mainStart = System.currentTimeMillis();
++         RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
++         // This includes all the time spent inside the JVM before main() is reached
++         // (since os::Posix::init is called and initial_time_count is initialized).
++         long vmStart = runtimeMXBean.getStartTime();
++         long maxBeanOverHead = System.currentTimeMillis() - mainStart;
 +
           // load logging configuration
           LogConfig.configureRuntime();
@@ -33,17 +33,17 @@
 
           System.out.println("WEB server is up! http://localhost:" + server.port() + "/simple-greet");
 
-+ 	long end = System.currentTimeMillis();
-+ 	Boolean quit = Boolean.getBoolean("autoQuit");
-+ 	if (quit) {
-+ 		System.out.println("#### Booted and returned in " + (end - vmStart - maxBeanOverHead) + "ms");
-+ 		System.out.println("#### (debug) mainStart = " + mainStart);
-+ 		System.out.println("#### (debug) vmStart = " + vmStart);
-+ 		System.out.println("#### (debug) before main (mainStart - vmStart) = " + (mainStart - vmStart));
-+ 		System.out.println("#### (debug) maxBeanOverHead = " + maxBeanOverHead);
-+ 		System.out.println("#### (debug) end = " + end);
-+ 		System.exit(0);
-+ 	}
++         long end = System.currentTimeMillis();
++         Boolean quit = Boolean.getBoolean("autoQuit");
++         if (quit) {
++                 System.out.println("#### Booted and returned in " + (end - vmStart - maxBeanOverHead) + "ms");
++                 System.out.println("#### (debug) mainStart = " + mainStart);
++                 System.out.println("#### (debug) vmStart = " + vmStart);
++                 System.out.println("#### (debug) before main (mainStart - vmStart) = " + (mainStart - vmStart));
++                 System.out.println("#### (debug) maxBeanOverHead = " + maxBeanOverHead);
++                 System.out.println("#### (debug) end = " + end);
++                 System.exit(0);
++         }
       }
 
 
