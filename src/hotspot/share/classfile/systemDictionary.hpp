@@ -342,6 +342,7 @@ protected:
                                           const ClassFileStream *cfs,
                                           PackageEntry* pkg_entry,
                                           TRAPS);
+  static void patch_loader_in_preloaded_class(InstanceKlass* ik, Handle h_runtime_loader, TRAPS);
   static void load_class_from_preimage(Handle loader, InstanceKlass* ik, PackageEntry* pkg_entry, Handle pd, TRAPS);
   static void preload_class(Handle class_loader, InstanceKlass* ik, TRAPS);
   static Handle get_loader_lock_or_null(Handle class_loader);

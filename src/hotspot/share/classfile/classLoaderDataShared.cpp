@@ -295,11 +295,11 @@ ModuleEntry* ClassLoaderDataShared::archived_unnamed_module(ClassLoaderData* loa
         archived_module = _archived_platform_loader_data.unnamed_module();
       } else if (loader_data->class_loader() == HeapShared::get_root(_archived_system_loader_data.archived_loader_obj_index())) {
         archived_module = _archived_system_loader_data.unnamed_module();
+      } else if (loader_data->is_aot_safe_custom_loader()) {
+        CustomLoaderInfo* cl_info = CustomLoaderSupport::get_archived_classloader_info(loader_data->aot_identity());
+        assert(cl_info != nullptr, "sanity check");
+        archived_module = cl_info->archived_cld()->unnamed_module();
       }
-    } else if (loader_data->is_aot_safe_custom_loader()) {
-      CustomLoaderInfo* cl_info = CustomLoaderSupport::get_archived_classloader_info(loader_data->aot_identity());
-      assert(cl_info != nullptr, "sanity check");
-      archived_module = cl_info->archived_cld()->unnamed_module();
     }
   }
 

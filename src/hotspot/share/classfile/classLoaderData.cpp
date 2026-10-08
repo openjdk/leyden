@@ -212,6 +212,24 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
 
 #if INCLUDE_CDS_JAVA_HEAP
 
+void ClassLoaderData::patch_class_loader_object(Handle h_runtime_loader) {
+  assert(_aot_identity != nullptr, "must be called only for CLD with non-null aot-id");
+  assert(!h_runtime_loader.is_null(), "should not be null");
+  oop scratch_loader = _class_loader.resolve();
+  assert(CustomLoaderSupport::is_scratch_loader(scratch_loader), "CLD's classloader must be the scratch loader");
+  assert(scratch_loader->klass() == h_runtime_loader->klass(), "scratch loader's klass is different from runtime loader's klass");
+  _class_loader.replace(h_runtime_loader());
+  _class_loader_klass = h_runtime_loader->klass();
+  initialize_name(h_runtime_loader);
+  if (_unnamed_module != nullptr) {
+    _unnamed_module->patch_class_loader_object(h_runtime_loader);
+  }
+  if (_modules != nullptr) {
+    _modules->patch_class_loader_object(h_runtime_loader);
+  }
+  java_lang_ClassLoader::release_set_loader_data(h_runtime_loader(), this);
+}
+
 void ClassLoaderData::set_aot_identity(Symbol* aot_id) {
   assert(aot_id != nullptr, "must not be null");
   _aot_identity = aot_id;

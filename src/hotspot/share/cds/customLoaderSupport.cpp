@@ -23,6 +23,7 @@
  */
 
 #include "cds/aotClassLocation.hpp"
+#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotLogging.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
@@ -45,14 +46,17 @@
 #if INCLUDE_CDS_JAVA_HEAP
 
 ClassLoaderAotIdTable::LoaderIdTable* ClassLoaderAotIdTable::_loader_id_table = nullptr;
+ClassLoaderAotIdTable::LoaderIdToCLDMap* ClassLoaderAotIdTable::_id_cld_map = nullptr;
 
 void ClassLoaderAotIdTable::create_table() {
   if (!CDSConfig::supports_custom_loaders()) {
     // nothing to do if custom loader support is not enabled
     return;
   }
-  assert(_loader_id_table == nullptr, "table already created");
+  assert(_loader_id_table == nullptr, "loader id table already created");
+  assert(_id_cld_map == nullptr, "id to cld map already created");
   _loader_id_table = new (mtClass) LoaderIdTable();
+  _id_cld_map = new (mtClass) LoaderIdToCLDMap();
 }
 
 bool ClassLoaderAotIdTable::reserve_id(Symbol* id) {
@@ -68,12 +72,12 @@ void ClassLoaderAotIdTable::unreserve_id(Symbol* id) {
 }
 
 bool ClassLoaderAotIdTable::add_entry(Symbol* id, ClassLoaderData* cld) {
-  bool result = _loader_id_table->put(id, cld);
+  bool result = _id_cld_map->put(id, cld);
   return result;
 }
 
 ClassLoaderData* ClassLoaderAotIdTable::get_cld(Symbol* id) {
-  ClassLoaderData** cld = _loader_id_table->get(id);
+  ClassLoaderData** cld = _id_cld_map->get(id);
   if (cld != nullptr) {
     return *cld;
   }
@@ -85,19 +89,22 @@ bool ClassLoaderAotIdTable::contains(Symbol* id) {
 }
 
 void ClassLoaderAotIdTable::all_symbols_do(MetaspaceClosure* it) {
-  if (_loader_id_table != nullptr) {
-    _loader_id_table->iterate_all([&](Symbol*& loader_id, ClassLoaderData*& cld) {
+  if (_id_cld_map != nullptr) {
+    _id_cld_map->iterate_all([&](Symbol*& loader_id, ClassLoaderData*& cld) {
       it->push(&loader_id);
     });
   }
 }
-
 
 static const unsigned INITIAL_TABLE_SIZE = 997; // prime number
 static const unsigned MAX_TABLE_SIZE     = 10000;
 
 static AOTLinkedCustomLoaderClassesMap* _custom_loader_classes_map = nullptr;
 static ArchivedCustomLoaderInfoMap _archived_custom_loader_info_map;
+
+ArchivedCustomLoaderInfoMap* CustomLoaderSupport::archived_cl_info_map() {
+  return &_archived_custom_loader_info_map;
+}
 
 Array<AOTClassLocation*>* CustomLoaderInfo::archive_classpath(ClassLoaderData* cld) {
   GrowableArrayView<AOTClassLocation*>* locations = cld->aot_locations();
@@ -126,8 +133,22 @@ CustomLoaderInfo* CustomLoaderInfo::allocate(Symbol* aot_id, ClassLoaderData* cl
   return cl_info;
 }
 
-bool CustomLoaderInfo::verify_classpath(const char* classpath) {
-  URLClassLoaderClassLocationStream uccs(classpath);
+bool CustomLoaderInfo::check_classpath() {
+  for (int i = 0; i < _cp_locations->length(); i++) {
+    AOTClassLocation* location = _cp_locations->at(i);
+    const char* archived_path = location->path();
+    if (!location->check(archived_path, true)) {
+      ResourceMark rm;
+      char* loader_id_str = aot_id()->as_C_string();
+      aot_log_warning(aot)("Classpath check failed for classloader with id %s for entry %s", loader_id_str, archived_path);
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CustomLoaderInfo::match_classpath(const char* runtime_cp) {
+  URLClassLoaderClassLocationStream uccs(runtime_cp);
   if (uccs.size() > _cp_locations->length()) {
     aot_log_warning(aot)("URLClassLoader classpath validation failed (reason: runtime classpath has more elements than the archived classpath)");
     return false;
@@ -143,10 +164,6 @@ bool CustomLoaderInfo::verify_classpath(const char* classpath) {
     const char* runtime_path = uccs.get_next();
     if (!os::same_files(location->path(), runtime_path)) {
       aot_log_warning(aot)("URLClassLoader classpath validation failed (reason: same file check failed)");
-      return false;
-    }
-    if (!location->check(runtime_path, true)) {
-      aot_log_warning(aot)("URLClassLoader classpath validation failed");
       return false;
     }
   }
@@ -219,18 +236,6 @@ void CustomLoaderSupport::serialize_custom_loader_info_map_header(SerializeClosu
   _archived_custom_loader_info_map.serialize_header(soc);
 }
 
-CustomLoaderInfo* CustomLoaderSupport::find_loader_info(Symbol* aot_id, const char* classpath) {
-  assert(CDSConfig::supports_custom_loaders(), "custom loader support is not enabled");
-  CustomLoaderInfo* cl_info = _archived_custom_loader_info_map.get_loader_info(aot_id);
-  if (cl_info == nullptr) {
-    return nullptr;
-  }
-  if (!cl_info->verify_classpath(classpath)) {
-    return nullptr;
-  }
-  return cl_info;
-}
-
 CustomLoaderInfo* CustomLoaderSupport::get_archived_classloader_info(Symbol* aot_id) {
   assert(CDSConfig::supports_custom_loaders(), "custom loader support is not enabled");
   CustomLoaderInfo* cl_info = _archived_custom_loader_info_map.get_loader_info(aot_id);
@@ -253,6 +258,25 @@ bool CustomLoaderSupport::is_scratch_loader(oop loader) {
     return true;
   });
   return found;
+}
+
+bool CustomLoaderSupport::patch_loader_and_link_classes(Handle h_loader, Symbol* aot_id, const char* classpath) {
+  JavaThread* THREAD = JavaThread::current();
+  ClassLoaderData* loader_data = ClassLoaderAotIdTable::get_cld(aot_id);
+  // It is possible that ClassLoaderData for this aot_id was not created by AOTLinkedClassBulkLoader::preload_classes_for_custom_loaders()
+  // due to classpath check failure. If so, return failure.
+  if (loader_data == nullptr) {
+    return false;
+  }
+  CustomLoaderInfo* cl_info = _archived_custom_loader_info_map.get_loader_info(aot_id);
+  assert(cl_info != nullptr, "cannot be null");
+  if (!cl_info->match_classpath(classpath)) {
+    return false;
+  }
+  loader_data->patch_class_loader_object(h_loader);
+  AOTLinkedClassBulkLoader::patch_loader_in_preloaded_classes(loader_data, h_loader, cl_info, CHECK_AND_CLEAR_(false));
+  AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, cl_info, CHECK_AND_CLEAR_(false));
+  return true;
 }
 
 #endif // INCLUDE_CDS_JAVA_HEAP

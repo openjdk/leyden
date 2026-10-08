@@ -118,12 +118,14 @@ ClassLoaderRecipe* ClassLoaderRecipe::allocate(Symbol* aot_id, Symbol* parent_id
   return archived_recipe;
 }
 
-bool ClassLoaderRecipe::verify_classpath() {
+bool ClassLoaderRecipe::check_classpath() {
   for (int i = 0; i < _cp_locations->length(); i++) {
     AOTClassLocation* location = _cp_locations->at(i);
     const char* archived_path = location->path();
     if (!location->check(archived_path, true)) {
-      aot_log_warning(aot)("URLClassLoader classpath validation failed");
+      ResourceMark rm;
+      char* loader_id_str = aot_id()->as_C_string();
+      aot_log_warning(aot)("Classpath check failed for classloader with id %s for entry %s", loader_id_str, archived_path);
       return false;
     }
   }
@@ -425,8 +427,15 @@ void FinalImageRecipes::load_builtin_loader_classes(TRAPS) {
   load_classes_in_table(_class_recipes->app(), "app", h_system_loader, AOTClassLocationConfig::runtime()->class_locations(), CHECK);
 }
 
+static const int TABLE_SIZE = 17; // prime number
+using InvalidClassLoaderRecipeTable = HashTable<ClassLoaderRecipe*, bool, TABLE_SIZE, AnyObj::C_HEAP, mtClass>;
+static InvalidClassLoaderRecipeTable* _invalidCLRTable = nullptr;
+
 void FinalImageRecipes::load_aot_safe_custom_loader_classes(TRAPS) {
   URLClassLoaderSupport::initialize(CHECK);
+
+  _invalidCLRTable = new (mtClass) InvalidClassLoaderRecipeTable();
+
   _class_loader_recipes->iterate_all([&](ClassLoaderRecipe** cl_recipe_ptr) {
     ClassLoaderRecipe* cl_recipe = *cl_recipe_ptr;
     ResourceMark rm;
@@ -434,10 +443,9 @@ void FinalImageRecipes::load_aot_safe_custom_loader_classes(TRAPS) {
     Symbol* parent_id = cl_recipe->parent_aot_id();
     assert(ClassLoaderAotIdTable::contains(parent_id), "parent id is not yet registered");
 
-    if (!cl_recipe->verify_classpath()) {
-      // TODO: Does it make sense to just skip loading the classes for this classloader, instead of failing to create the cache?
-      aot_log_warning(aot)("ClassLoaderRecipe associated with loader id %s will not be processed", loader_id_str);
-      AOTMetaspace::unrecoverable_writing_error("Unable to create AOTCache");
+    if (!cl_recipe->check_classpath()) {
+      bool value = true;
+      _invalidCLRTable->put(cl_recipe, value);
       return;
     }
 
@@ -491,6 +499,9 @@ void FinalImageRecipes::link_classes_impl(TRAPS) {
   link_classes_in_table(_class_recipes->platform(), CHECK);
   link_classes_in_table(_class_recipes->app(), CHECK);
   _class_loader_recipes->iterate_all([&](ClassLoaderRecipe** cl_recipe) {
+    if (_invalidCLRTable->contains(*cl_recipe)) {
+      return;
+    }
     link_classes_in_table((*cl_recipe)->class_recipes(), CHECK);
   });
 }

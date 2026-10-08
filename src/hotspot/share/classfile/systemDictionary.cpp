@@ -1299,6 +1299,24 @@ void SystemDictionary::load_shared_class_misc(InstanceKlass* ik, ClassLoaderData
   }
 }
 
+void SystemDictionary::patch_loader_in_preloaded_class(InstanceKlass* ik, Handle h_runtime_loader, TRAPS) {
+  oop java_mirror = ik->java_mirror();
+  precond(java_mirror != nullptr);
+
+  Handle pd(THREAD, java_lang_Class::protection_domain(java_mirror));
+  assert(ik->defined_by_aot_safe_custom_loader(), "must be");
+
+  oop loader = java_security_ProtectionDomain::classloader(pd());
+  // If it is the first time this ProtectionDomain object is accessed, its classloader field should be pointing to the
+  // scratch loader created in assembly phase. If so, patch it to point to the current loader.
+  if (loader != h_runtime_loader()) {
+    assert(CustomLoaderSupport::is_scratch_loader(loader), "PD's loader must be the scratch loader created in the assembly phase");
+    // Change PD's loader from scratch loader to the real loader object
+    java_security_ProtectionDomain::set_classloader(pd(), h_runtime_loader());
+  }
+  java_lang_Class::set_class_loader(java_mirror, h_runtime_loader());
+}
+
 void SystemDictionary::load_class_from_preimage(Handle loader, InstanceKlass* ik, PackageEntry* pkg_entry, Handle pd, TRAPS) {
   precond(CDSConfig::is_dumping_final_static_archive());
   precond(AOTMetaspace::in_aot_cache_static_region((void*)ik));
@@ -1371,16 +1389,6 @@ void SystemDictionary::preload_class(Handle class_loader, InstanceKlass* ik, TRA
   assert(java_lang_Class::module(java_mirror) != nullptr, "must have been archived");
 
   Handle pd(THREAD, java_lang_Class::protection_domain(java_mirror));
-  if (ik->defined_by_aot_safe_custom_loader()) {
-    oop loader = java_security_ProtectionDomain::classloader(pd());
-    // If it is the first time this ProtectionDomain object is accessed, its classloader field should be pointing to the
-    // scratch loader created in assembly phase. If so, patch it to point to the current loader.
-    if (loader != class_loader()) {
-      assert(CustomLoaderSupport::is_scratch_loader(loader), "PD's loader must be the scratch loader created in the assembly phase");
-      // Change PD's loader from scratch loader to the real loader object
-      java_security_ProtectionDomain::set_classloader(pd(), class_loader());
-    }
-  }
   PackageEntry* pkg_entry = ik->package();
   assert(pkg_entry != nullptr || ClassLoader::package_from_class_name(ik->name()) == nullptr,
          "non-empty packages for builtin loaders must have been archived");

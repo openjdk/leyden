@@ -74,7 +74,7 @@ public class ClasspathVerificationFailureTest {
         Files.copy(Paths.get("cust-orig.jar"), Paths.get("cust.jar"), StandardCopyOption.REPLACE_EXISTING);
 
         Tester tester2 = new Tester(ExpectedVerificationFailurePhase.PRODUCTION_PHASE);
-        tester2.runAOTAssemblyWorkflow();
+        tester2.runAOTTrainingAndAssemblyWorkflow();
         // Replace cust.jar with cust1.jar
         Files.copy(Paths.get("cust1.jar"), Paths.get("cust.jar"), StandardCopyOption.REPLACE_EXISTING);
         tester2.productionRun();
@@ -119,11 +119,11 @@ public class ClasspathVerificationFailureTest {
                 }
                 if (_failurePhase == ExpectedVerificationFailurePhase.ASSEMBLY_PHASE && runMode == RunMode.ASSEMBLY) {
                     out.shouldMatch("This file is not the one used while building the AOT cache:.*cust.jar");
-                    out.shouldMatch("URLClassLoader classpath validation failed");
+                    out.shouldMatch("Classpath check failed for classloader");
                 }
                 if (_failurePhase == ExpectedVerificationFailurePhase.PRODUCTION_PHASE && runMode == RunMode.PRODUCTION) {
                     out.shouldMatch("This file is not the one used while building the AOT cache:.*cust.jar");
-                    out.shouldMatch("URLClassLoader classpath validation failed");
+                    out.shouldMatch("Classpath check failed for classloader");
                     out.shouldNotMatch("\\[aot,load\\] SYSTEM:.*cust.jar MyLoadeeA");
                 }
             }

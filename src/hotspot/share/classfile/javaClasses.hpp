@@ -268,7 +268,6 @@ class java_lang_Class : AllStatic {
 
   static void set_init_lock(oop java_class, oop init_lock);
   static void set_protection_domain(oop java_class, oop protection_domain);
-  static void set_class_loader(oop java_class, oop class_loader);
   static void set_component_mirror(oop java_class, oop comp_mirror);
   static void initialize_mirror_fields(InstanceKlass* ik, Handle mirror, Handle protection_domain,
                                        Handle classData, TRAPS);
@@ -292,6 +291,7 @@ class java_lang_Class : AllStatic {
   static oop  create_basic_type_mirror(const char* basic_type_name, BasicType type, TRAPS);
 
   // Archiving
+  static void set_class_loader(oop java_class, oop class_loader);
   static void serialize_offsets(SerializeClosure* f) NOT_CDS_RETURN;
   static void create_scratch_mirror(Klass* k, TRAPS) NOT_CDS_JAVA_HEAP_RETURN;
   static bool restore_archived_mirror(Klass *k, Handle class_loader, Handle module,

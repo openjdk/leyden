@@ -94,7 +94,7 @@ public:
   Array<AOTClassLocation*>* cp_locations() const { return _cp_locations; }
   Array<InstanceKlassRecipe>* class_recipes() const { return _class_recipes; }
 
-  bool verify_classpath();
+  bool check_classpath();
 };
 
 class InstanceKlassRecipes {

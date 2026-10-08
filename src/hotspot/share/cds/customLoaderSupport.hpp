@@ -41,8 +41,10 @@ class SerializeClosure;
 class ClassLoaderAotIdTable : AllStatic {
 private:
   static const int TABLE_SIZE = 17; // prime number
-  using LoaderIdTable = HashTable<Symbol*, ClassLoaderData*, TABLE_SIZE, AnyObj::C_HEAP, mtClass>;
+  using LoaderIdTable = HashTable<Symbol*, bool, TABLE_SIZE, AnyObj::C_HEAP, mtClass>;
+  using LoaderIdToCLDMap = HashTable<Symbol*, ClassLoaderData*, TABLE_SIZE, AnyObj::C_HEAP, mtClass>;
   static LoaderIdTable* _loader_id_table;
+  static LoaderIdToCLDMap *_id_cld_map;
 public:
   static void create_table() NOT_CDS_JAVA_HEAP_RETURN;
   static bool reserve_id(Symbol* id) NOT_CDS_JAVA_HEAP_RETURN_(false);
@@ -95,7 +97,8 @@ public:
   address* locations_addr() const { return (address*)&_cp_locations; }
   address* class_list_addr() const { return (address*)&_class_list; }
 
-  bool verify_classpath(const char* classpath);
+  bool check_classpath();
+  bool match_classpath(const char* classpath);
 };
 
 inline bool custom_loader_info_equals(CustomLoaderInfo* cl_info, Symbol* aot_id, int unused) {
@@ -125,14 +128,24 @@ public:
 };
 
 class CustomLoaderSupport: AllStatic {
+private:
+  static ArchivedCustomLoaderInfoMap* archived_cl_info_map();
 public:
   static void initialize() NOT_CDS_JAVA_HEAP_RETURN;
   static void add_to_custom_loader_map(InstanceKlass* ik) NOT_CDS_JAVA_HEAP_RETURN;
-  static CustomLoaderInfo* find_loader_info(Symbol* aot_id, const char* classpath) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   static void archive_custom_loader_info() NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize_custom_loader_info_map_header(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
   static CustomLoaderInfo* get_archived_classloader_info(Symbol* aot_id) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   static bool is_scratch_loader(oop loader) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool patch_loader_and_link_classes(Handle h_loader, Symbol* aot_id, const char* classpath) NOT_CDS_JAVA_HEAP_RETURN_(false);
+
+  template<typename Function>
+  static void iterate_custom_loader_info(Function fn) {
+    archived_cl_info_map()->iterate([&](CustomLoaderInfo* cl_info) {
+      fn(cl_info);
+      return true;
+    });
+  }
 };
 
 #endif // SHARE_CDS_CUSTOM_LOADER_SUPPORT_HPP

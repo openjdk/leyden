@@ -88,8 +88,19 @@ void AOTLinkedClassBulkLoader::preload_classes_impl(TRAPS) {
   initiate_loading(THREAD, "app", h_system_loader, table->platform());
   preload_classes_in_table(table->app(), "app", h_system_loader, CHECK);
 
+  preload_classes_for_custom_loaders(CHECK);
+
   // Do this after all boot/platform/app classes are loaded, but before bytecode execution.
   HeapShared::load_cached_resolved_methods();
+}
+
+void AOTLinkedClassBulkLoader::patch_loader_in_preloaded_classes(ClassLoaderData* loader_data, Handle h_runtime_loader, CustomLoaderInfo* cl_info, TRAPS) {
+  precond(!SystemDictionary::is_builtin_class_loader(h_runtime_loader()));
+  Array<InstanceKlass*>* classes = cl_info->class_list();
+  for (int i = 0; i < classes->length(); i++) {
+    InstanceKlass* ik = classes->at(i);
+    SystemDictionary::patch_loader_in_preloaded_class(ik, h_runtime_loader, CHECK);
+  }
 }
 
 void AOTLinkedClassBulkLoader::preload_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS) {
@@ -98,6 +109,18 @@ void AOTLinkedClassBulkLoader::preload_classes_for_loader(ClassLoaderData* loade
   precond(cl_info != nullptr);
   initiate_loading(THREAD, h_loader);
   preload_classes_in_table(cl_info->class_list(), cl_info->aot_id()->as_C_string(), h_loader, CHECK);
+}
+
+void AOTLinkedClassBulkLoader::preload_classes_for_custom_loaders(TRAPS) {
+  CustomLoaderSupport::iterate_custom_loader_info([&](CustomLoaderInfo* cl_info) {
+    if (cl_info->check_classpath()) {
+      Handle h_scratch_loader(THREAD, HeapShared::get_root(cl_info->archived_loader_obj_index()));
+      Symbol* aot_id = cl_info->aot_id();
+      ClassLoaderData* loader_data = SystemDictionary::register_loader(h_scratch_loader, aot_id);
+      ClassLoaderDataShared::restore_custom_loader_data_from_archive(loader_data, cl_info);
+      preload_classes_for_loader(loader_data, cl_info, CHECK);
+    }
+  });
 }
 
 void AOTLinkedClassBulkLoader::initiate_loading(JavaThread* current, Handle initiating_loader) {

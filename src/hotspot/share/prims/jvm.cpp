@@ -3557,20 +3557,15 @@ JVM_ENTRY(jboolean, JVM_RegisterURLClassLoaderForAOTLinking(JNIEnv *env, jobject
     }
 
     Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
+
     if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
       ClassLoaderData* loader_data = SystemDictionary::register_loader(h_loader, aot_id_sym);
       loader_data->set_classpath(classpath_str);
     } else if (CDSConfig::is_using_aot_linked_classes()) {
-      CustomLoaderInfo* cl_info = CustomLoaderSupport::find_loader_info(aot_id_sym, classpath_str);
-      if (cl_info == nullptr) {
-        ClassLoaderAotIdTable::unreserve_id(aot_id_sym);
-        return JNI_FALSE;
+      if (!CustomLoaderSupport::patch_loader_and_link_classes(h_loader, aot_id_sym, classpath_str)) {
+         ClassLoaderAotIdTable::unreserve_id(aot_id_sym);
+         return JNI_FALSE;
       }
-      // successfully found archived ClassLoaderInfo for the class loader id
-      ClassLoaderData* loader_data = SystemDictionary::register_loader(h_loader, aot_id_sym);
-      ClassLoaderDataShared::restore_custom_loader_data_from_archive(loader_data, cl_info);
-      AOTLinkedClassBulkLoader::preload_classes_for_loader(loader_data, cl_info, CHECK_AND_CLEAR_(JNI_FALSE));
-      AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, cl_info, CHECK_AND_CLEAR_(JNI_FALSE));
     }
     return JNI_TRUE;
   }

@@ -886,6 +886,9 @@ void ArchiveBuilder::make_klasses_shareable() {
         } else if (loader == SystemDictionary::java_system_loader()) {
           type = "app";
           ADD_COUNT(num_app_klasses);
+        } else if (ik->defined_by_aot_safe_custom_loader()) {
+          type = "aot-safe custom loader";
+          ADD_COUNT(num_aot_safe_custom_loader_klasses);
         } else {
           type = "bad";
           assert(0, "shouldn't happen");

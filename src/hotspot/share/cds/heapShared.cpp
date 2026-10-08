@@ -1209,9 +1209,7 @@ void KlassSubGraphInfo::check_allowed_klass(InstanceKlass* ik) {
   if (CDSConfig::is_dumping_method_handles()) {
     lambda_msg = ", or a lambda proxy class";
     if (HeapShared::is_lambda_proxy_klass(ik) &&
-        (ik->class_loader() == nullptr ||
-         ik->class_loader() == SystemDictionary::java_platform_loader() ||
-         ik->class_loader() == SystemDictionary::java_system_loader())) {
+        ik->defined_by_aot_safe_loaders()) {
       return;
     }
   }

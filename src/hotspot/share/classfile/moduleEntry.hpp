@@ -203,6 +203,7 @@ public:
   void preload_archived_oops();
   void restore_archived_oops(ClassLoaderData* loader_data);
   void clear_archived_oops();
+  void patch_class_loader_object(Handle h_runtime_loader);
 #endif
 };
 
@@ -273,6 +274,7 @@ public:
                              Array<ModuleEntry*>* archived_modules);
   void restore_archived_oops(ClassLoaderData* loader_data,
                              Array<ModuleEntry*>* archived_modules);
+  void patch_class_loader_object(Handle h_runtime_loader);
 #endif
 };
 

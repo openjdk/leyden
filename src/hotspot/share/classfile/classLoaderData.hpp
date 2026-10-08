@@ -367,6 +367,8 @@ private:
   const char* loader_name_and_id() const;
   Symbol* name_and_id() const { return _name_and_id; }
 
+  void patch_class_loader_object(Handle h_loader);
+
   Symbol* aot_identity() const CDS_JAVA_HEAP_ONLY({ return _aot_identity; }) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
   void set_aot_identity(Symbol* aot_id) NOT_CDS_JAVA_HEAP_RETURN;
   Symbol* parent_aot_id() const NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
