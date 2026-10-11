@@ -178,6 +178,8 @@ ciEnv::ciEnv(CompileTask* task)
   _jvmti_can_access_local_variables = false;
   _jvmti_can_post_on_exceptions = false;
   _jvmti_can_pop_frame = false;
+  _jvmti_can_get_owned_monitor_info = false;
+  _jvmti_can_walk_any_space = false;
 
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
@@ -302,6 +304,8 @@ ciEnv::ciEnv(Arena* arena) : _ciEnv_arena(mtCompiler, Arena::Tag::tag_cienv) {
   _jvmti_can_access_local_variables = false;
   _jvmti_can_post_on_exceptions = false;
   _jvmti_can_pop_frame = false;
+  _jvmti_can_get_owned_monitor_info = false;
+  _jvmti_can_walk_any_space = false;
 
   _dyno_klasses = nullptr;
   _dyno_locs = nullptr;
@@ -988,12 +992,16 @@ void ciEnv::validate_compile_task_dependencies(ciMethod* target) {
 }
 
 // is_loading_aot_code = true implies loading compiled code from AOT code cache
-bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool install_code, bool is_loading_aot_code, bool preload) {
+bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool install_code, bool is_loading_aot_code, bool aot_preload) {
   methodHandle method(thread, target->get_Method());
 
   // Change in Jvmti state may invalidate compilation.
   if (!failing() && jvmti_state_changed()) {
     record_failure("Jvmti state change invalidated dependencies");
+  }
+
+  if (!failing() && is_loading_aot_code && !AOTCodeCache::verify_jvmti_state(this)) {
+    record_failure("Jvmti state change invalidated dependencies for AOT code or other AOT code cache failure");
   }
 
   // Change in DTrace flags may invalidate compilation.
@@ -1024,10 +1032,10 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool inst
   if (!failing() && (install_code || is_loading_aot_code)) {
     // Check for {class loads, evolution, breakpoints, ...} during compilation
     validate_compile_task_dependencies(target);
-    if (failing() && preload) {
+    if (failing() && aot_preload) {
       ResourceMark rm;
       char* method_name = method->name_and_sig_as_C_string();
-      log_info(aot, codecache, nmethod)("preload code for '%s' failed dependency check", method_name);
+      log_info(aot, codecache, nmethod)("AOT preload code for '%s' failed dependency check", method_name);
     }
   }
 
@@ -1042,11 +1050,18 @@ bool ciEnv::is_compilation_valid(JavaThread* thread, ciMethod* target, bool inst
   return true;
 }
 
-void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload, int entry_bci, AOTCodeEntry* aot_code_entry, nmethod* nm) {
+void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool aot_preload, int entry_bci, AOTCodeEntry* aot_code_entry, nmethod* nm) {
   methodHandle method(thread, target->get_Method());
 
   if (entry_bci == InvocationEntryBci) {
-    if (TieredCompilation || is_aot_compile()) {
+    // With TieredCompilation OFF we still have two versions
+    // of AOT code and also JIT compilation.
+    // During assembly phase we need to replace previous
+    // AOT preload code with normal AOT code to check
+    // success of compilation in AOTCompileIterator.
+    // After JDK-8380476 FIXME: AOT compiler should not be installing
+    // nmethods on the Method::code pointer. Find other way to report success.
+    if (TieredCompilation || AOTCodeCache::is_using_code() || is_aot_compile()) {
       // If there is an old version we're done with it
       nmethod* old = method->code();
       if (TraceMethodReplacement && old != nullptr) {
@@ -1065,20 +1080,20 @@ void ciEnv::make_code_usable(JavaThread* thread, ciMethod* target, bool preload,
       char *method_name = method->name_and_sig_as_C_string();
       lt.print("Installing method (L%d) %s id=%d aot=%s%s%u",
                task()->comp_level(), method_name, compile_id(),
-               task()->is_aot_load() ? "A" : "", preload ? "P" : "",
+               task()->is_aot_load() ? "A" : "", aot_preload ? "P" : "",
                (aot_code_entry != nullptr ? aot_code_entry->offset() : 0));
     }
     // Allow the code to be executed
     MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
     if (nm->make_in_use()) {
-      assert(!preload || method->method_holder()->is_linked(), "AOT code preloaded only for linked method holder");
+      assert(!aot_preload || method->method_holder()->is_linked(), "AOT code preloaded only for linked method holder");
       method->set_code(method, nm);
 #if INCLUDE_CDS
-      if (preload) {
+      if (aot_preload) {
         MethodCounters* mc = method->get_method_counters(thread);
         assert(mc != nullptr, "CompileBroker should create MethodCounters if it is missing");
         mc->set_aot_preload_code_entry(aot_code_entry);
-        nm->set_preloaded(true);
+        nm->set_aot_preloaded(true);
       }
 #endif
     }
@@ -1112,7 +1127,7 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
   nmethod* nm = nullptr;
   {
     methodHandle method(thread, target->get_Method());
-    bool preload = task()->preload(); // Code is preloaded before Java method execution
+    bool aot_preload = task()->is_aot_preload(); // AOT code to preload before Java method execution
 
     // We require method counters to store some method state (max compilation levels) required by the compilation policy.
     if (method->get_method_counters(thread) == nullptr) {
@@ -1138,12 +1153,12 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
       return nullptr;
     }
 
-    if (!is_compilation_valid(thread, target, install_code, /*is_loading_aot_code*/ true, preload)) {
+    if (!is_compilation_valid(thread, target, install_code, /*is_loading_aot_code*/ true, aot_preload)) {
       return nullptr;
     }
 
     if (install_code) {
-      nm = nmethod::new_nmethod(archived_nm, method, compiler, aot_code_reader);
+      nm = nmethod::new_nmethod(archived_nm, method, aot_code_reader);
     }
     if (nm != nullptr) {
 #ifdef ASSERT
@@ -1162,7 +1177,7 @@ nmethod* ciEnv::register_aot_method(JavaThread* thread,
       assert(nm->aot_code_entry() == aot_code_entry, "mismatched entry");
       assert(aot_code_entry->is_loaded(), "AOT entry should be marked as loaded already");
       assert(nm->has_clinit_barriers() == aot_code_entry->has_clinit_barriers(), "should match");
-      make_code_usable(thread, target, preload, InvocationEntryBci, aot_code_entry, nm);
+      make_code_usable(thread, target, aot_preload, InvocationEntryBci, aot_code_entry, nm);
     }
   }
 
@@ -1192,7 +1207,7 @@ void ciEnv::register_method(ciMethod* target,
                             ImplicitExceptionTable* inc_table,
                             AbstractCompiler* compiler,
                             bool has_clinit_barriers,
-                            bool for_preload,
+                            bool for_aot_preload,
                             bool has_unsafe_access,
                             bool has_wide_vectors,
                             bool has_monitors,
@@ -1226,7 +1241,7 @@ void ciEnv::register_method(ciMethod* target,
     MutexLocker ml(Compile_lock);
     NoSafepointVerifier nsv;
 
-    if (!is_compilation_valid(THREAD, target, install_code, /*is_loading_aot_code*/ false, /*preload*/ false)) {
+    if (!is_compilation_valid(THREAD, target, install_code, /*is_loading_aot_code*/ false, /*aot_preload*/ false)) {
       code_buffer->free_blob();
       return;
     }
@@ -1275,8 +1290,9 @@ void ciEnv::register_method(ciMethod* target,
           log.print_cr("%s", ss.freeze());
         }
 #endif
-        AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_preload);
+        AOTCodeEntry* aot_code_entry = AOTCodeCache::store_nmethod(nm, compiler, for_aot_preload);
         if (aot_code_entry != nullptr) {
+          aot_code_entry->set_has_vectors(debug_info()->has_vectors());
           nm->set_aot_code_entry(aot_code_entry);
           aot_code_entry->set_inlined_bytecodes(num_inlined_bytecodes());
           // Inline size was recorded during training.
@@ -1290,15 +1306,23 @@ void ciEnv::register_method(ciMethod* target,
           assert(ctd != nullptr, "AOT compiled method should have CompileTrainingData");
           int inline_size = ctd->inline_instructions_size();
           aot_code_entry->set_inline_instructions_size(inline_size);
-          if (for_preload) {
+          if (for_aot_preload) {
             // Set it only for printing purpose, otherwise it is unused
             // during assembly phase.
-            nm->set_preloaded(true);
+            nm->set_aot_preloaded(true);
           }
         }
+        // After JDK-8380476 FIXME: The AOT compiler runs in a special AOT assembly
+        // phase, not part of any Java application.  The compiled code is not
+        // runnable in this instance of the JVM.  For consistency of access,
+        // we will fall through to make_code_usable and link the Method::code
+        // field to the new nmethod nm.  But this would be a mistake if (for
+        // any reason) the compiled method were to be invoked in this JVM
+        // instance.  Consider returning at this point, relying only on
+        // AOTCodeCache::store_nmethod to keep track of the new nmethod.
       }
 #endif
-      make_code_usable(THREAD, target, /* preload */ false, entry_bci, /* aot_code_entry */ nullptr, nm);
+      make_code_usable(THREAD, target, /* aot_preload */ false, entry_bci, /* aot_code_entry */ nullptr, nm);
     }
   }
 
@@ -1891,14 +1915,63 @@ void ciEnv::dump_replay_data_version(outputStream* out) {
 
 #if INCLUDE_CDS
 
-bool ciEnv::is_aot_compile() {
+bool ciEnv::is_aot_compile() const {
   return (task() != nullptr) && task()->is_aot_compile();
 }
 
+// The AOT compiler must model clinit state before classes are actually loaded
+// in the eventual production run.  Its model is provisional and approximate,
+// and any nmethod compiled from this model must conserve semantic
+// correctness.
+//
+// For "preload" AOT code (AP tier), the model optimistically speculates that
+// the class is probably loaded, but the speculation is checked before every
+// static field or method use or instance allocation, just like the
+// interpreter.  (See Parse::do_call and GraphKit::clinit_barrier.)  Thus, we
+// usually return fully_initialized, when compiling preload code.
+//
+// For non-preload AOT code (A tier), we can make some predictions about which
+// classes must be initialized by the time the code gets executed.  First,
+// 1. the top-level method's holder can be assumed initialized, since somebody
+// else already triggered initialization before the method could be called.
+// Also 2. the clinit dependencies listed in the CompileTrainingData (CTD) are
+// always checked off before a non-preload nmethod is installed, so all those
+// classes can be assumed initialized.  Finally 3. certain core JDK classes are always
+// force-initialized early enough that all compiled code can assume they are
+// initialized.
+//
+// Neither the JIT nor the AOT compiler will attempt to optimize code classes
+// that are unusable because their initializers have failed.  This fallback
+// is also used when there is not enough information available about a class
+// during AOT cache assembly.  In that case, we return the special sentinel
+// value initialization_error, used here as a sentinel meaning "unknown"; a distinct
+// value (unavailable_aot) is proposed for a later change.
+//
+// One thing this function does NOT do is look at the clinit state of any class.
+// This may be surprising, since a normal JIT compilation task directly queries
+// clinit states, via ciInstanceKlass::compute_init_state.  But for an AOT
+// compilation task, ciIK::compute_init_state calls here, and a future clinit state
+// is predicted, instead of a current state.  The nmethod code cannot be loaded
+// until all such predictions come true.  Eventually, as a future production run
+// initializes classes in some order, a countdown counter on the CTD will tally
+// every clinit event, and eventually reach zero, opening the gate to load the
+// AOT code in the nmethod.
+//
+// These predictions, of which class needs to be initialized for the code to work,
+// have already been made by a previous pass of the compiler, on the same method
+// at the same level, in the earlier training run (TR).  The CTD contains a dep-list
+// of every class which the JIT, running in the TR, observed to be initialized.
+// That dep-list gets passed forward to the AOT compiler, which re-runs a similar
+// compilation, after the TR, in the assembly phase (APH) that creates the AOT cache.
+// Since the APH is a fresh instance of the JVM, there are no interesting clinit
+// states to be observed directly in the InstanceKlass metadata.  (The JVM running
+// the APH does have a few initialized class states, but they are not useful to
+// AOT compilation, so they are deliberately not examined.)
+//
 InstanceKlass::ClassState ciEnv::compute_init_state_for_aot_compile(InstanceKlass* ik) {
   ASSERT_IN_VM;
   ResourceMark rm;
-  assert(is_aot_compile(), "should be called only for AOT compialtion in assembly phase");
+  assert(is_aot_compile(), "should be called only for AOT compilation in assembly phase");
   assert(!ik->is_in_error_state(), "comp_id: %d, klass %s", task()->compile_id(), ik->external_name());
 
   if (!AOTCacheAccess::can_generate_aot_code_for(ik)) {
@@ -1951,7 +2024,7 @@ InstanceKlass::ClassState ciEnv::compute_init_state_for_aot_compile(InstanceKlas
       // Preload AOT code does not depend on Training Data,
       // it has class init barriers to initialize class by
       // going into interpreter or directly calling runtime.
-      log_trace(aot, compilation)("%d: for_preload: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
+      log_trace(aot, compilation)("%d: for_aot_preload: (%s) %s", task()->compile_id(), InstanceKlass::state2name(ik->init_state()), ik->external_name());
       return InstanceKlass::ClassState::fully_initialized;
     }
     default: fatal("%s", CompileTask::reason_name(task()->compile_reason()));
