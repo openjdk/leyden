@@ -315,8 +315,8 @@ private:
 
   // Helper routines to factor out common code used by routines that register a method
   // i.e. register_aot_method() and register_method()
-  bool is_compilation_valid(JavaThread* thread, ciMethod* target, bool install_code, bool is_loading_aot_code, bool preload);
-  void make_code_usable(JavaThread* thread, ciMethod* target, bool preload, int entry_bci, AOTCodeEntry* aot_code_entry, nmethod* nm);
+  bool is_compilation_valid(JavaThread* thread, ciMethod* target, bool install_code, bool is_loading_aot_code, bool aot_preload);
+  void make_code_usable(JavaThread* thread, ciMethod* target, bool aot_preload, int entry_bci, AOTCodeEntry* aot_code_entry, nmethod* nm);
 
 public:
   enum {
@@ -374,6 +374,8 @@ public:
   bool  should_retain_local_variables() const {
     return _jvmti_can_access_local_variables || _jvmti_can_pop_frame;
   }
+  bool  jvmti_can_access_local_variables()     const { return _jvmti_can_access_local_variables; }
+  bool  jvmti_can_pop_frame()                  const { return _jvmti_can_pop_frame; }
   bool  jvmti_can_hotswap_or_post_breakpoint() const { return _jvmti_can_hotswap_or_post_breakpoint; }
   bool  jvmti_can_post_on_exceptions()         const { return _jvmti_can_post_on_exceptions; }
   bool  jvmti_can_get_owned_monitor_info()     const { return _jvmti_can_get_owned_monitor_info; }
@@ -413,7 +415,7 @@ public:
                        ImplicitExceptionTable*   inc_table,
                        AbstractCompiler*         compiler,
                        bool                      has_clinit_barriers,
-                       bool                      for_preload,
+                       bool                      for_aot_preload,
                        bool                      has_unsafe_access,
                        bool                      has_wide_vectors,
                        bool                      has_monitors,
@@ -563,7 +565,7 @@ public:
   void process_invokehandle(const constantPoolHandle &cp, int index, JavaThread* thread);
   void find_dynamic_call_sites();
 
-  bool is_aot_compile() NOT_CDS_RETURN_(false);
+  bool is_aot_compile() const NOT_CDS_RETURN_(false);
   InstanceKlass::ClassState compute_init_state_for_aot_compile(InstanceKlass* ik) NOT_CDS_RETURN_((InstanceKlass::ClassState)0);
 };
 

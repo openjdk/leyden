@@ -111,19 +111,6 @@ OopMap::OopMap(int frame_size, int arg_count) {
 #endif
 }
 
-OopMap::OopMap(int data_size) {
-  // OopMaps are usually quite so small, so pick a small initial size
-  set_write_stream(new CompressedWriteStream(data_size));
-  set_omv_count(0);
-  _num_oops = 0;
-  _has_derived_oops = false;
-  _index = -1;
-#ifdef ASSERT
-  _locs_length = 0;
-  _locs_used   = nullptr;
-#endif
-}
-
 OopMap::OopMap(OopMap::DeepCopyToken, OopMap* source) {
   // This constructor does a deep copy
   // of the source OopMap.

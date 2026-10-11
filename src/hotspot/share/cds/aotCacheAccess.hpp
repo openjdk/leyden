@@ -45,6 +45,7 @@ class AOTCacheAccess : AllStatic {
   using narrowPtr = AOTCompressedPointers::narrowPtr;
 private:
   static bool can_generate_aot_code(address addr) NOT_CDS_RETURN_(false);
+  static bool verify_narrow_ptr;
 public:
   static bool can_generate_aot_code(Method* m) {
     return can_generate_aot_code((address)m);
@@ -66,25 +67,38 @@ public:
     return AOTCompressedPointers::encode_not_null(addr);
   }
 
+  // Get metadata with narrowp verification
+  static Metadata* try_narrow_ptr_to_metadata(narrowPtr narrowp, size_t size);
+
   /*
    * Used during a production run to materialize a real pointer to a Klass from the encoded pointer located in a loaded AOT Cache.
    * The encoded pointer is normally obtained by reading a value embedded in some other AOT-ed entry, like an AOT compiled code.
    */
   static Klass* narrow_ptr_to_klass(narrowPtr narrowp) {
+    if (verify_narrow_ptr) {
+      return try_narrow_ptr_to_klass(narrowp);
+    }
     Metadata* metadata = AOTCompressedPointers::decode_not_null<Metadata*>(narrowp);
     assert(metadata->is_klass(), "sanity check");
     return (Klass*)metadata;
   }
+  // Version with narrowp verification
+  static Klass* try_narrow_ptr_to_klass(narrowPtr narrowp);
 
   /*
    * Used during a production run to materialize a real pointer to a Method from the encoded pointer located in a loaded AOT Cache.
    * The encoded pointer is normally obtained by reading a value embedded in some other AOT-ed entry, like an AOT compiled code.
    */
   static Method* narrow_ptr_to_method(narrowPtr narrowp) {
+    if (verify_narrow_ptr) {
+      return try_narrow_ptr_to_method(narrowp);
+    }
     Metadata* metadata = AOTCompressedPointers::decode_not_null<Metadata*>(narrowp);
     assert(metadata->is_method(), "sanity check");
     return (Method*)metadata;
   }
+  // Version with narrowp verification
+  static Method* try_narrow_ptr_to_method(narrowPtr narrowp);
 
   // Used during production run to convert a Method in AOTCache to encoded pointer
   static narrowPtr method_to_narrow_ptr(Method* method) {
@@ -102,6 +116,7 @@ public:
   static void set_aot_code_region_size(size_t sz) NOT_CDS_RETURN;
 
   static bool map_aot_code_region(ReservedSpace rs) NOT_CDS_RETURN_(false);
+  static void unmap_aot_code_region() NOT_CDS_RETURN;
 
   static bool is_aot_code_region_empty() NOT_CDS_RETURN_(true);
 

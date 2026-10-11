@@ -363,7 +363,8 @@ void AOTMetaspace::post_initialize(TRAPS) {
     // Close any open file descriptors. However, mmap'ed pages will remain in memory.
     static_mapinfo->close();
 
-    if (HeapShared::is_loading() && HeapShared::is_loading_mapping_mode()) {
+    if (!(HeapShared::is_loading() && HeapShared::is_loading_streaming_mode())) {
+      // Streaming mode will unmap the bm region later in AOTStreamedHeapLoader::cleanup()
       static_mapinfo->unmap_region(AOTMetaspace::bm);
     }
 
@@ -980,17 +981,7 @@ void AOTMetaspace::dump_static_archive(TRAPS) {
   StaticArchiveBuilder builder;
   dump_static_archive_impl(builder, THREAD);
   if (HAS_PENDING_EXCEPTION) {
-    if (PENDING_EXCEPTION->is_a(vmClasses::OutOfMemoryError_klass())) {
-      aot_log_error(aot)("Out of memory. Please run with a larger Java heap, current MaxHeapSize = "
-                     "%zuM", MaxHeapSize/M);
-      AOTMetaspace::writing_error();
-    } else {
-      oop message = java_lang_Throwable::message(PENDING_EXCEPTION);
-      aot_log_error(aot)("%s: %s", PENDING_EXCEPTION->klass()->external_name(),
-                         message == nullptr ? "(null)" : java_lang_String::as_utf8_string(message));
-      AOTMetaspace::writing_error(err_msg("Unexpected exception, use -Xlog:aot%s,exceptions=trace for detail",
-                                             CDSConfig::new_aot_flags_used() ? "" : ",cds"));
-    }
+    writing_error(PENDING_EXCEPTION);
   }
 
   if (CDSConfig::new_aot_flags_used()) {
@@ -1014,6 +1005,8 @@ void AOTMetaspace::dump_static_archive(TRAPS) {
       vm_direct_exit(0);
     }
   }
+
+  // If we have a pending exception here, it will be propagated to the caller of this function.
 }
 
 #if INCLUDE_CDS_JAVA_HEAP && defined(_LP64)
@@ -1223,8 +1216,9 @@ void AOTMetaspace::dump_static_archive_impl(StaticArchiveBuilder& builder, TRAPS
       CDSConfig::disable_dumping_aot_code();
     }
     // Write the contents to AOT code region before packing the region
-    AOTCodeCache::dump();
-    log_info(aot)("Dumped AOT code Cache");
+    if (AOTCodeCache::dump()) {
+      log_info(aot)("Dumped AOT code Cache");
+    }
     builder.end_ac_region();
   }
 
@@ -1540,6 +1534,22 @@ void AOTMetaspace::writing_error(const char* message) {
   }
 }
 
+void AOTMetaspace::writing_error(oop exception_oop) {
+  if (exception_oop->is_a(vmClasses::OutOfMemoryError_klass())) {
+    aot_log_error(aot)("Out of memory. Please run with a larger Java heap, current MaxHeapSize = "
+                       "%zuM", MaxHeapSize/M);
+    AOTMetaspace::writing_error();
+  } else {
+    ResourceMark rm;
+    oop message = java_lang_Throwable::message(exception_oop);
+    aot_log_error(aot)("%s: %s", exception_oop->klass()->external_name(),
+                       message == nullptr ? "(null)" : java_lang_String::as_utf8_string(message));
+    AOTMetaspace::writing_error(err_msg("Unexpected exception, use -Xlog:aot%s,exceptions=trace for detail",
+                                        CDSConfig::new_aot_flags_used() ? "" : ",cds"));
+  }
+}
+
+
 void AOTMetaspace::initialize_runtime_shared_and_meta_spaces() {
   assert(CDSConfig::is_using_archive(), "Must be called when UseSharedSpaces is enabled");
   MapArchiveResult result = MAP_ARCHIVE_OTHER_FAILURE;
@@ -1573,6 +1583,8 @@ void AOTMetaspace::initialize_runtime_shared_and_meta_spaces() {
     // Register CDS memory region with LSan.
     LSAN_REGISTER_ROOT_REGION(cds_base, cds_end - cds_base);
     set_aot_metaspace_range(cds_base, static_mapinfo->mapped_end(), cds_end);
+    guarantee(SharedBaseAddress == p2u(MetaspaceObj::aot_metaspace_base()), "must be");
+    guarantee(p2u(MetaspaceObj::aot_metaspace_base()) <= p2u(MetaspaceObj::aot_metaspace_top()), "must be");
     _relocation_delta = static_mapinfo->relocation_delta();
     _requested_base_address = static_mapinfo->requested_base_address();
     if (dynamic_mapped) {
@@ -1617,7 +1629,7 @@ void AOTMetaspace::initialize_runtime_shared_and_meta_spaces() {
 
 // This is called very early at VM start up to get AOT cache header
 // and the size of the AOT code region during production run.
-// We need the size to reserve space in CodeCache to map code from AOT code region.
+// We need the size to reserve space to map code from AOT code region.
 void AOTMetaspace::get_aot_code_region_size() {
   if (!AOTCodeCache::is_caching_enabled() || CDSConfig::is_dumping_final_static_archive()) {
     return;

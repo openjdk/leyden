@@ -95,6 +95,10 @@ inline void CDSMustMatchFlags::do_print(outputStream* st, bool v) {
 inline void CDSMustMatchFlags::do_print(outputStream* st, uint v) {
   st->print("%u", v);
 }
+
+inline void CDSMustMatchFlags::do_print(outputStream* st, int v) {
+  st->print("%d", v);
+}
 #endif
 
 inline void CDSMustMatchFlags::do_print(outputStream* st, intx v) {
@@ -1281,6 +1285,9 @@ MapArchiveResult FileMapInfo::map_regions(int regions[], int num_regions, char* 
   header()->set_mapped_base_address(header()->requested_base_address() + addr_delta);
   if (addr_delta != 0 && !relocate_pointers_in_core_regions(addr_delta)) {
     return MAP_ARCHIVE_OTHER_FAILURE;
+  } else if (VerifySharedSpaces) {
+    // Map and check the CRC of the bitmap region even if it may not be used.
+    map_bitmap_region();
   }
 
   return MAP_ARCHIVE_SUCCESS;
@@ -1451,7 +1458,6 @@ bool FileMapInfo::map_aot_code_region(ReservedSpace rs) {
 
     if (VerifySharedSpaces && !r->check_region_crc(mapped_base)) {
       aot_log_error(aot)("region %d CRC error", AOTMetaspace::ac);
-      os::unmap_memory(mapped_base, r->used_aligned());
       return false;
     }
 
@@ -1460,14 +1466,19 @@ bool FileMapInfo::map_aot_code_region(ReservedSpace rs) {
     if (!relocate_pointers_in_aot_code_region()) {
       r->set_mapped_from_file(false);
       r->set_mapped_base(nullptr);
-      os::unmap_memory(mapped_base, r->used_aligned());
       return false;
     }
+    r->set_in_reserved_space(true);
     aot_log_info(aot)("Mapped static  region #%d at base " INTPTR_FORMAT " top " INTPTR_FORMAT " (%s)",
                   AOTMetaspace::ac, p2i(r->mapped_base()), p2i(r->mapped_end()),
                   shared_region_name[AOTMetaspace::ac]);
     return true;
   }
+}
+
+void FileMapInfo::unmap_aot_code_region() {
+  unmap_region(AOTMetaspace::ac);
+  return;
 }
 
 class CachedCodeRelocator: public BitMapClosure {

@@ -25,7 +25,7 @@
 /*
  * @test
  * @summary "AOT" aliases for traditional CDS command-line options
- * @requires vm.cds
+ * @requires vm.cds.supports.aot.code.caching
  * @requires vm.flagless
  * @library /test/lib /test/hotspot/jtreg/runtime/cds/appcds/test-classes
  * @build Hello
@@ -53,7 +53,6 @@ public class AOTFlags {
 
     static void positiveTests() throws Exception {
         String hasTrainingDataPattern = "MethodTrainingData *= *[1-9]";
-        String noTrainingDataPattern = "MethodTrainingData *= *0";
         String hasAOTCodePattern = "Shared file region .ac. .: *[1-9]";
         String noAOTCodePattern = "Shared file region .ac. .: *0";
         String hasMappedAOTCodePattern = "Mapped [0-9]+ bytes at address 0x[0-9a-f]+ from AOT Code Cache";

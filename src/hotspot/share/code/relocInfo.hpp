@@ -1310,7 +1310,9 @@ class trampoline_stub_Relocation : public Relocation {
 
   void pack_data_to(CodeSection * dest) override;
   void unpack_data() override;
-#if defined(AARCH64) && !defined(ZERO)
+// Platforms that keep the call destination in a trampoline stub read and write it
+// through these. A platform needing USE_TRAMPOLINE_STUB_FIX_OWNER also needs them.
+#if defined(USE_TRAMPOLINE_STUB_DESTINATION) || defined(USE_TRAMPOLINE_STUB_FIX_OWNER)
   address pd_destination     ();
   void    pd_set_destination (address x);
 #else
@@ -1320,6 +1322,11 @@ class trampoline_stub_Relocation : public Relocation {
   }
   void    pd_set_destination (address x) {
     fatal("trampoline_stub_Relocation::set_destination() unimplemented");
+  }
+#endif
+#ifdef USE_TRAMPOLINE_STUB_FIX_OWNER
+  void    fix_owner_after_move() {
+    pd_fix_owner_after_move();
   }
 #endif
   address destination() {

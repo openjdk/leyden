@@ -1232,13 +1232,6 @@ SafePointNode* Parse::create_entry_map() {
     GraphKit kit(_caller);
     if (!method()->is_static()) {
       kit.null_check_receiver_before_call(method());
-    } else if (C->do_clinit_barriers() && C->needs_clinit_barrier(method()->holder(), _caller->method())) {
-      ciMethod* declared_method = kit.method()->get_method_at_bci(kit.bci());
-      const int nargs = declared_method->arg_size();
-      kit.inc_sp(nargs);
-      Node* holder = makecon(TypeKlassPtr::make(method()->holder(), Type::trust_interfaces));
-      kit.guard_klass_is_initialized(holder);
-      kit.dec_sp(nargs);
     }
     _caller = kit.transfer_exceptions_into_jvms();
 
@@ -1309,9 +1302,51 @@ static bool is_auto_boxed_primitive(Node* n) {
 }
 
 #if INCLUDE_CDS
+// Even the highest tier of AOT code (A4) incorporates an invocation
+// counter on entry to an AOT nmethod.  This is necessary because AOT
+// optimizations are performed on less accurate information than JIT
+// optimizations.  A long-running JVM is likely to eventually
+// recompile AOT code with the JIT compiler, so as to reoptimize with
+// the fullest possible information.  This helps AOT-assisted
+// workloads attain the same peak performance as pure JIT-based
+// workloads.
+//
+// One example of "less accurate" information for optimization is a
+// static final field value which the AOT compiler refuses to fold as
+// a constant, because many static finals cannot be predicted AOT.
+// Another is the exact configuration of block and type profiles; the
+// AOT compiler only sees profile information from the training run up
+// to the point at which the AOT cache was built, while a production
+// run may execute much longer, eventually adding very different
+// information to the profile.
+//
+// The counter helps decide when to reoptimize.  The counter limit
+// chosen depends on the invocation count observed during the training
+// run.  The limit is an approximately linear function of the observed
+// count, but at least about a hundred (see AOTCodeInvokeBase), and
+// saturating out to about a million (times AOTCodeInvokeScale).
+//
+// The diagnostic flag UseAOTCodeCounters can be used to determine
+// whether the counter overhead affected application performance.
+// Note that the counter is only on the root method of any given
+// nmethod.  Inlined method calls are not counted.  Counting overhead
+// is therefore expected to be small.
+//
+// After JDK-8380476 TODO: The interpreter also uses a backedge counter
+// to ensure eventual optimization of a method with a small invocation
+// count that sits in a long-running loop.  A4 methods could be given an
+// equivalent counter, if they contain loops which may turn out to be
+// long-running.  It is help to deoptimize a long-running loop to the
+// interpreter, without replacing the A4 method.  The interpreter
+// could be primed with a high backedge count, so that the loop will
+// be reoptimized quickly by an OSR compilation.  This whole concern
+// is a corner case of a corner case, since OSR assumes low invocation
+// count, while reoptimization to peak assumes a long-lived production
+// run.
+
 static int scale_limit(int64_t limit) {
  // To scale invocation limit a hyperbolic saturation curve formula
- // is used with upper limit 100K.
+ // is used with upper limit 1M.
  return (int)(AOTCodeInvokeBase + limit / (1.0 + limit / (1000000.0 * AOTCodeInvokeScale)));
 }
 
@@ -1329,10 +1364,10 @@ void Parse::count_aot_code_calls() {
     const TypePtr* mc_type = TypeMetadataPtr::make(TypePtr::Constant, mcp, Type::Offset(0));
     Node* mc = makecon(mc_type);
 
-    assert(MethodTrainingData::have_data(), "TrainingData should be present for AOT compialtion");
+    assert(MethodTrainingData::have_data(), "TrainingData should be present for AOT compilation");
     methodHandle mh(Thread::current(), method()->get_Method());
     MethodTrainingData* mtd = MethodTrainingData::find_fast(mh);
-    assert(mtd != nullptr, "AOT compilated method should have MethodTrainingData");
+    assert(mtd != nullptr, "AOT compiled method should have MethodTrainingData");
     int64_t limit = mtd->invocation_count();
     int step = InvocationCounter::count_increment;
     int scaled_limit = step * scale_limit(limit);
@@ -1387,10 +1422,10 @@ void Parse::count_aot_code_calls() {
 
     const TypePtr* m_type = TypeMetadataPtr::make(method());
     Node* m = makecon(m_type);
-    Node* call = make_runtime_call(RC_NO_LEAF | RC_UNCOMMON,
-                          OptoRuntime::compile_method_Type(),
-                          OptoRuntime::compile_method_Java(),
-                          "compile_method", TypePtr::BOTTOM, m);
+    make_runtime_call(RC_NO_LEAF | RC_UNCOMMON,
+                      OptoRuntime::compile_method_Type(),
+                      OptoRuntime::compile_method_Java(),
+                      "compile_method", TypePtr::BOTTOM, m);
 
     // State before call
     io_phi ->init_req(2, in1_io);
@@ -1407,10 +1442,7 @@ void Parse::count_aot_code_calls() {
   }
 }
 
-#undef AOT_COUNT_INC
-#undef AOT_RECOMPILE_BIT
-
-#endif
+#endif // INCLUDE_CDS
 
 //-----------------------------do_method_entry--------------------------------
 // Emit any code needed in the pseudo-block before BCI zero.

@@ -1119,11 +1119,6 @@ ciMethodData* ciMethod::method_data() {
         log_debug(aot, compilation)("%d: No profile for %s", comp_id, h_m->name_and_sig_as_C_string());
         _method_data_recorded = CURRENT_ENV->get_empty_methodData();
       } else {
-        if (mdo->extra_data_lock() == nullptr) {
-          assert(!HAS_PENDING_EXCEPTION, "");
-          mdo->restore_unshareable_info(thread);
-          assert(!HAS_PENDING_EXCEPTION, "");
-        }
         _method_data_recorded = CURRENT_ENV->get_method_data(mdo);
         _method_data_recorded->load_data();
         {
@@ -1317,7 +1312,7 @@ bool ciMethod::was_executed_more_than(int times) {
   if (CURRENT_ENV->is_aot_compile()) { // Look only on training data
     // Invocation counter is reset when the Method* is compiled.
     // If the method has compiled code we therefore assume it has
-    // be executed more than n times.
+    // been executed more than n times.
     if (is_accessor() || is_empty() || has_compiled_code()) {
       // interpreter doesn't bump invocation counter of trivial methods
       // compiler does not bump invocation counter of compiled methods

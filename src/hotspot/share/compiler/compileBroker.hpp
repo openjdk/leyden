@@ -184,13 +184,13 @@ class CompileBroker: AllStatic {
   static AbstractCompiler* _compilers[2];
 
   // The maximum numbers of compiler threads to be determined during startup.
-  static int _c1_count, _c2_count, _ac_count;
+  static int _c1_count, _c2_count, _ac1_count, _ac2_count;
 
   // An array of compiler thread Java objects
-  static jobject *_compiler1_objects, *_compiler2_objects, *_ac_objects;
+  static jobject *_compiler1_objects, *_compiler2_objects, *_ac1_objects, *_ac2_objects;
 
   // An array of compiler logs
-  static CompileLog **_compiler1_logs, **_compiler2_logs, **_ac_logs;
+  static CompileLog **_compiler1_logs, **_compiler2_logs, **_ac1_logs, **_ac2_logs;
 
   // These counters are used for assigning id's to each compilation
   static volatile jint _compilation_id;
@@ -201,6 +201,9 @@ class CompileBroker: AllStatic {
   static CompileQueue* _c1_compile_queue;
   static CompileQueue* _ac1_compile_queue;
   static CompileQueue* _ac2_compile_queue;
+  // Note: AOT nmethods are "virtually compiled" - copied in from the AOT cache.
+  // The dynamics of method replacement and dependency checks are common to AOT and JIT.
+  // See checks of is_aot_load and is_aot_compile for behavioral differences.
 
   // performance counters
   static PerfCounter* _perf_total_compilation;
@@ -288,6 +291,7 @@ private:
                                    int compilable, const char* failure_reason);
   static void update_compile_perf_data(CompilerThread *thread, const methodHandle& method, bool is_osr);
 
+  static CompilerStatistics* stats_for(int comp_level, bool aot_preload, bool is_aot);
   static void collect_statistics(CompilerThread* thread, elapsedTimer time, CompileTask* task);
 
   static void compile_method_base(const methodHandle& method,
@@ -428,12 +432,6 @@ public:
     assert(_compiler2_objects != nullptr, "must be initialized");
     assert(idx < _c2_count, "oob");
     return _compiler2_objects[idx];
-  }
-
-  static jobject ac_object(int idx) {
-    assert(_ac_objects != nullptr, "must be initialized");
-    assert(idx < _ac_count, "oob");
-    return _ac_objects[idx];
   }
 
   static AbstractCompiler* compiler1() { return _compilers[0]; }
