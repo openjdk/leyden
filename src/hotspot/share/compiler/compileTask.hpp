@@ -154,7 +154,6 @@ class CompileTask : public CHeapObj<mtCompiler> {
   void         set_nm_insts_size(CodeSection::csize_t size) { _nm_insts_size = size; }
   CodeSection::csize_t nm_total_size() { return _nm_total_size; }
   void         set_nm_total_size(CodeSection::csize_t size) { _nm_total_size = size; }
-  bool         preload() const                   { return (_compile_reason == Reason_AOTPreload); }
   bool         can_become_stale() const          {
     switch (_compile_reason) {
       case Reason_BackedgeCount:

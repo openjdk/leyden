@@ -363,8 +363,6 @@ void OopMap::set_derived_oop(VMReg reg, VMReg derived_from_local_register ) {
 
 OopMapSet::OopMapSet() : _list(MinOopMapAllocation) {}
 
-OopMapSet::OopMapSet(int size) : _list(size) {}
-
 int OopMapSet::add_gc_map(int pc_offset, OopMap *map ) {
   map->set_offset(pc_offset);
 
