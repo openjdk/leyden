@@ -219,6 +219,25 @@ else # not java.base
   endif
 endif
 
+# Combine the extracted linker flags from the module's native libraries. The
+# flags are saved a $(MODULE).ldflags and included in the .jmod.
+ifneq ($(LIBS_DIR), )
+  MODULE_LDFLAGS_FILES := $(call FindFiles, $(LIBS_DIR), *$(SHARED_LIBRARY_SUFFIX).ldflags)
+
+  ifneq ($(MODULE_LDFLAGS_FILES), )
+    MODULE_LDFLAGS := $(LIBS_DIR)/$(MODULE).ldflags
+    $(MODULE_LDFLAGS): $(MODULE_LDFLAGS_FILES)
+	$(call MakeTargetDir)
+	$(CAT) $^ | $(SED) -e 's/-framework /-framework=@@@/g' | \
+	$(AWK) '{ for (i = 1; i <= NF; i++) if (!seen[$$i]++) printf "%s ", $$i } END { print "" }' | \
+	$(SED) -e 's/-framework=@@@/-framework /g' > $@
+
+    JMOD_FLAGS += --exclude '**{*.so.ldflags}'
+
+    DEPS += $(MODULE_LDFLAGS)
+  endif
+endif
+
 ################################################################################
 # Include module specific build settings
 

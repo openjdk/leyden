@@ -243,6 +243,9 @@ define AddJdkLibrary
 
   $1_EXTRA_HEADER_DIRS += $$($1_$2_MODULE):lib$$($1_$2_NAME)
 
+  # Collect the JDK libs
+  $1_JDK_LIB_FLAGS += -l$$($1_$2_NAME)
+
   ifneq ($(STATIC_LIBS), true)
     ifeq ($$(call isTargetOs, windows), true)
       ifeq ($$(filter -libpath:$$($1_$2_LIBPATH), $$($1_LDFLAGS)), )
