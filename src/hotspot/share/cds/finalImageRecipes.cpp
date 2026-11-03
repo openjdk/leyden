@@ -219,7 +219,7 @@ void FinalImageRecipes::link_all_classes(TRAPS) {
   }
 }
 
-void FinalImageRecipes::initialize_all_classes(TRAPS) {
+void FinalImageRecipes::initialize_all_safe_classes(TRAPS) {
   for (int i = 0; i < _all_klasses->length(); i++) {
     Klass* k = _all_klasses->at(i);
     int flags = _flags->at(i);
