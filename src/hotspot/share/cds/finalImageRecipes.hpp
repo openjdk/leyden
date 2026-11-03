@@ -68,7 +68,7 @@ class FinalImageRecipes {
   void apply_recipes_impl(TRAPS);
   void load_all_classes(TRAPS);
   void link_all_classes(TRAPS);
-  void initialize_all_classes(TRAPS);
+  void initialize_all_safe_classes(TRAPS);
   void apply_recipes_for_constantpool(JavaThread* current);
 
 public:

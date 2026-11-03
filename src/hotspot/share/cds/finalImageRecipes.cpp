@@ -266,7 +266,7 @@ void FinalImageRecipes::apply_recipes_impl(TRAPS) {
   assert(CDSConfig::is_dumping_final_static_archive(), "sanity");
   load_all_classes(CHECK);
   link_all_classes(CHECK);
-  initialize_all_classes(CHECK);
+  initialize_all_safe_classes(CHECK);
   apply_recipes_for_constantpool(THREAD);
 }
 
