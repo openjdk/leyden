@@ -127,7 +127,7 @@ private:
 
   union {
     uint   _embedded_stub_offset; // Start of embedded stubs in StubGenBlobs
-    uint   _comp_level;           // nmethod compilation level (not needed in StubGenBlobs)
+    uint   _comp_level;           // compilation level, nmethod only
   };
   uint   _comp_id;     // compilation id, nmethod only
   uint   _num_inlined_bytecodes;    // nmethod only
@@ -490,7 +490,6 @@ public:
 #if INCLUDE_SHENANDOAHGC
 #define AOTCODECACHE_CONFIGS_SHENANDOAHGC_DO(do_var, do_fun) \
   do_var(bool,  ExplicitGCInvokesConcurrent) \
-  do_var(bool,  ShenandoahImplicitGCInvokesConcurrent) \
   do_var(bool,  ShenandoahLoadRefBarrier) \
   do_var(bool,  ShenandoahSATBBarrier) \
   do_var(bool,  ShenandoahCloneBarrier) \
@@ -553,15 +552,13 @@ public:
 
 #if defined(RISCV64) && !defined(ZERO)
 #define AOTCODECACHE_CONFIGS_RISCV_DO(do_var, do_fun) \
-  do_var(intx,  BlockZeroingLowLimit)                   /* zero blocks stub */ \
-  do_var(bool,  UseBlockZeroing)                        /* zero blocks stub and nmethods */ \
+  do_var(intx,  BlockZeroingLowLimit)                   /* array clear nmethods */ \
   do_var(bool,  UseConservativeFence)                   /* fence encoding in stubs and nmethods */ \
   do_var(bool,  UseCtxFencei)                           /* method entry barrier stub */ \
   do_var(bool,  UseSecondarySupersCache)                /* secondary supers cache in nmethods */ \
   do_var(bool,  UseZabha)                               /* narrow cmpxchg selection in nmethods */ \
   do_var(bool,  UsePopCountInstruction)                 /* other platforms record it in CPU features */ \
   do_fun(int,   SatpMode,                               (int)VM_Version::satp_mode.value()) \
-  do_fun(int,   RVZicbozBlockSize,                      (int)VM_Version::zicboz_block_size.value()) \
   // END
 #else
 #define AOTCODECACHE_CONFIGS_RISCV_DO(do_var, do_fun)
@@ -990,7 +987,7 @@ public:
   bool write_metadata(Metadata* m);
   bool write_oops(nmethod* nm);
   bool write_metadata(nmethod* nm);
-  bool write_stub_data(CodeBlob& blob, AOTStubData *stub_data, uint* stubs_offset = nullptr);
+  bool write_stub_data(CodeBlob& blob, AOTStubData* stub_data, uint* stubs_offset = nullptr);
 
 #ifndef PRODUCT
   bool write_asm_remarks(AsmRemarks& asm_remarks, GrowableArray<const char*>& remarks, GrowableArray<uint>& remarks_len, uint* size);
@@ -1088,6 +1085,9 @@ public:
   static bool is_caching_enabled() NOT_CDS_RETURN_(false);
   static bool verify_jvmti_state(ciEnv* env) NOT_CDS_RETURN_(true);
 
+  //Helper for logging
+  static const char* get_kind_name(AOTCodeEntry::Kind kind);
+
   // It is used before AOTCodeCache is initialized.
   static bool maybe_dumping_code() NOT_CDS_RETURN_(false);
 
@@ -1098,15 +1098,12 @@ public:
 
   static const char* add_C_string(const char* str) NOT_CDS_RETURN_(str);
 
-  //Helper for logging
-  static const char *get_kind_name(AOTCodeEntry::Kind kind);
-
   static void print_on(outputStream* st) NOT_CDS_RETURN;
   static void print_statistics_on(outputStream* st) NOT_CDS_RETURN;
   static void print_timers_on(outputStream* st) NOT_CDS_RETURN;
 
   typedef void (*embedded_stub_func)(intptr_t pointer, uint size, uint stub_id, const char* stub_name, uint entry_id) ;
-  void iterate_embedded_stubs(const AOTCodeEntry *entry, embedded_stub_func func);
+  void iterate_embedded_stubs(const AOTCodeEntry* entry, embedded_stub_func func);
 };
 
 // Control block for loading a single AOTCodeEntry asset from the "ac" region
