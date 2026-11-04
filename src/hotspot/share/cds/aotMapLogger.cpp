@@ -27,12 +27,12 @@
 #include "cds/aotMappedHeapWriter.hpp"
 #include "cds/aotStreamedHeapLoader.hpp"
 #include "cds/aotStreamedHeapWriter.hpp"
+#include "cds/aotSystemDictionary.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/filemap.hpp"
 #include "classfile/moduleEntry.hpp"
 #include "classfile/packageEntry.hpp"
-#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "code/aotCodeCache.hpp"
 #include "logging/log.hpp"
@@ -47,6 +47,7 @@
 #include "oops/trainingData.hpp"
 #include "runtime/fieldDescriptor.inline.hpp"
 #include "runtime/globals_extension.hpp"
+#include "runtime/safepointVerifiers.hpp"
 #include "utilities/growableArray.hpp"
 
 bool AOTMapLogger::_is_logging_at_bootstrap;
@@ -80,7 +81,7 @@ public:
 }; // AOTMapLogger::RequestedMetadataAddr
 
 void AOTMapLogger::ergo_initialize() {
-  if (!CDSConfig::is_dumping_archive() && CDSConfig::is_using_archive() && log_is_enabled(Info, aot, map)) {
+  if (CDSConfig::is_using_archive() && log_is_enabled(Info, aot, map)) {
     _is_logging_at_bootstrap = true;
     if (FLAG_IS_DEFAULT(ArchiveRelocationMode)) {
       FLAG_SET_ERGO(ArchiveRelocationMode, 0);
@@ -146,32 +147,31 @@ void AOTMapLogger::log_ac_region() {
       const char* name = cache-> _store_buffer + name_offset;
 
       switch (entry->kind()) {
-        case  AOTCodeEntry::Kind::Nmethod:
-          log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d level=%d id=%d %s",
-            p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
-            entry->size(), entry->comp_level(), entry->comp_id(), name);
-          break;
-        case  AOTCodeEntry::Kind::StubGenBlob:
-          {
-            BlobId blob_id = (BlobId) entry->id();
+      case  AOTCodeEntry::Kind::Nmethod:
+        log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d level=%d id=%d %s",
+          p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
+          entry->size(), entry->comp_level(), entry->comp_id(), name);
+        break;
+      case  AOTCodeEntry::Kind::StubGenBlob:
+        {
+          BlobId blob_id = (BlobId) entry->id();
 
-            //First we log the stub blob
-            log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d id=%d %s",
-              p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
-              entry->size(), entry->id(), StubInfo::name(blob_id));
-
-            //Now we log each stub embedded inside the blob
-            cache->iterate_embedded_stubs(entry,  log_embedded_stub);
-          }
-            break;
-          default:
+          //First we log the stub blob
           log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d id=%d %s",
             p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
-            entry->size(), entry->id(), name);
-          break;
+            entry->size(), entry->id(), StubInfo::name(blob_id));
+
+          //Now we log each stub embedded inside the blob
+          cache->iterate_embedded_stubs(entry,  log_embedded_stub);
+        }
+        break;
+      default:
+        log_debug(aot, map)(PTR_FORMAT ": @@ %-17s %d id=%d %s",
+          p2i(entry), AOTCodeCache::get_kind_name(entry->kind()),
+          entry->size(), entry->id(), name);
+        break;
       }
     }
-
   }
 }
 
@@ -205,6 +205,7 @@ public:
 }; // AOTMapLogger::RuntimeGatherArchivedMetaspaceObjs
 
 void AOTMapLogger::runtime_log(FileMapInfo* static_mapinfo, FileMapInfo* dynamic_mapinfo) {
+  NoSafepointVerifier nsv;
   _is_runtime_logging = true;
   _requested_to_mapped_metadata_delta = static_mapinfo->relocation_delta();
 
@@ -217,16 +218,19 @@ void AOTMapLogger::runtime_log(FileMapInfo* static_mapinfo, FileMapInfo* dynamic
     // another object starts. There's also no type information.
     //
     // However, we can rebuild our index by iterating over all the objects using
-    // MetaspaceClosure, starting from the dictionary of Klasses in SystemDictionaryShared.
+    // MetaspaceClosure, starting from the dictionary of Klasses in AOTSystemDictionary.
     GrowableArray<Klass*> klasses;
-    SystemDictionaryShared::get_all_archived_classes(/*is_static*/true, &klasses);
+    AOTSystemDictionary::get_all_archived_classes(/*is_static*/true, &klasses);
     if (dynamic_mapinfo != nullptr) {
-      SystemDictionaryShared::get_all_archived_classes(/*is_static*/false, &klasses);
+      AOTSystemDictionary::get_all_archived_classes(/*is_static*/false, &klasses);
     }
 
     for (int i = 0; i < klasses.length(); i++) {
       gatherer.push(klasses.adr_at(i));
     }
+
+    TrainingData::runtime_iterate_roots(&gatherer);
+
     gatherer.finish();
   }
 
@@ -234,6 +238,9 @@ void AOTMapLogger::runtime_log(FileMapInfo* static_mapinfo, FileMapInfo* dynamic
   if (dynamic_mapinfo != nullptr) {
     runtime_log(dynamic_mapinfo, gatherer.objs());
   }
+
+  _is_runtime_logging = false;
+  _is_logging_at_bootstrap = false;
 }
 
 void AOTMapLogger::runtime_log(FileMapInfo* mapinfo, GrowableArrayCHeap<ArchivedObjInfo, mtClass>* objs) {
@@ -471,6 +478,15 @@ void AOTMapLogger::log_metaspace_objects_impl(address region_base, address regio
   }
 }
 
+template <typename FUNC> void AOTMapLogger::log_metaspace_obj_details(FUNC func) {
+  if (_is_runtime_logging) {
+    LogStreamHandle(Trace, aot, map) trace_st;
+    if (trace_st.is_enabled()) {
+      func(&trace_st);
+    }
+  }
+}
+
 void AOTMapLogger::log_constant_pool(ConstantPool* cp, address requested_addr,
                                      const char* type_name, int bytes, Thread* current) {
   ResourceMark rm(current);
@@ -552,6 +568,10 @@ void AOTMapLogger::log_klass_training_data(KlassTrainingData* ktd, address reque
   } else {
     log_debug(aot, map)(_LOG_PREFIX, p2i(requested_addr), type_name, bytes);
   }
+
+  log_metaspace_obj_details([&] (outputStream* st) {
+    ktd->print_on(st);
+  });
 }
 
 void AOTMapLogger::log_method_training_data(MethodTrainingData* mtd, address requested_addr, const char* type_name,
@@ -563,6 +583,10 @@ void AOTMapLogger::log_method_training_data(MethodTrainingData* mtd, address req
   } else {
     log_debug(aot, map)(_LOG_PREFIX, p2i(requested_addr), type_name, bytes);
   }
+
+  log_metaspace_obj_details([&] (outputStream* st) {
+    mtd->print_on(st);
+  });
 }
 
 void AOTMapLogger::log_compile_training_data(CompileTrainingData* ctd, address requested_addr, const char* type_name,
@@ -574,6 +598,10 @@ void AOTMapLogger::log_compile_training_data(CompileTrainingData* ctd, address r
   } else {
     log_debug(aot, map)(_LOG_PREFIX, p2i(requested_addr), type_name, bytes);
   }
+
+  log_metaspace_obj_details([&] (outputStream* st) {
+    ctd->print_on(st);
+  });
 }
 #undef _LOG_PREFIX
 
