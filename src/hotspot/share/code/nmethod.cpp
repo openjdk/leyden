@@ -41,6 +41,7 @@
 #include "compiler/directivesParser.hpp"
 #include "compiler/disassembler.hpp"
 #include "compiler/oopMap.inline.hpp"
+#include "cppstdlib/new.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetNMethod.hpp"
 #include "gc/shared/classUnloadingContext.hpp"
@@ -691,8 +692,8 @@ void nmethod::preserve_callee_argument_oops(frame fr, const RegisterMap *reg_map
       has_appendix = false;
       signature    = callee->signature();
 
-      // If inline types are passed as fields, use the extended signature
-      // which contains the types of all (oop) fields of the inline type.
+      // If value types are passed as fields, use the extended signature
+      // which contains the types of all (oop) fields of the value type.
       if (is_compiled_by_c2() && callee->has_scalarized_args()) {
         const GrowableArray<SigEntry>* sig = callee->adapter()->get_sig_cc();
         assert(sig != nullptr, "sig should never be null");
@@ -986,7 +987,7 @@ int nmethod::total_size() const {
 
 const char* nmethod::compile_kind() const {
   if (is_osr_method()) return "osr";
-  if (preloaded())     return "AP";
+  if (aot_preloaded()) return "AP";
   if (is_aot())        return "A";
 
   if (method() != nullptr && is_native_method()) {
@@ -995,7 +996,7 @@ const char* nmethod::compile_kind() const {
     }
     return "c2n";
   }
-  return "";
+  return "jit";
 }
 
 const char* nmethod::compiler_name() const {
@@ -1201,7 +1202,6 @@ nmethod* nmethod::restore(address code_cache_buffer,
 
 nmethod* nmethod::new_nmethod(nmethod* archived_nm,
                               const methodHandle& method,
-                              AbstractCompiler* compiler,
                               AOTCodeReader* aot_code_reader)
 {
   nmethod* nm = nullptr;
@@ -1213,6 +1213,13 @@ nmethod* nmethod::new_nmethod(nmethod* archived_nm,
     address code_cache_buffer = (address)CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(comp_level));
     if (code_cache_buffer != nullptr) {
       nm = archived_nm->restore(code_cache_buffer, method, aot_code_reader);
+      AOTCodeEntry* entry = nm->aot_code_entry();
+      assert(entry != nullptr, "AOTCodeReader::restore() should set it");
+      // Mark the AOT code entry as loaded before releasing CodeCache_lock.
+      // This guarantees that CodeCache iterators can not observe the restored
+      // AOT nmethod before its AOT entry is loaded, preserving the normal
+      // installation vs deoptimization protocol.
+      entry->set_loaded();
       nm->record_nmethod_dependency();
       NOT_PRODUCT(note_java_nmethod(nm));
     }
@@ -1244,7 +1251,7 @@ void nmethod::init_defaults(CodeBuffer *code_buffer, CodeOffsets* offsets) {
   _has_flushed_dependencies   = false;
   _is_unlinked                = false;
   _load_reported              = false; // jvmti state
-  _preloaded                  = false;
+  _aot_preloaded              = false;
 
   _deoptimization_status      = not_marked;
 
@@ -1257,9 +1264,9 @@ void nmethod::init_defaults(CodeBuffer *code_buffer, CodeOffsets* offsets) {
   CHECKED_CAST(_entry_offset,              uint16_t, (offsets->value(CodeOffsets::Entry)));
   CHECKED_CAST(_verified_entry_offset,     uint16_t, (offsets->value(CodeOffsets::Verified_Entry)));
 
-  _inline_entry_offset             = _entry_offset;
-  _verified_inline_entry_offset    = _verified_entry_offset;
-  _verified_inline_ro_entry_offset = _verified_entry_offset;
+  _value_entry_offset             = _entry_offset;
+  _verified_value_entry_offset    = _verified_entry_offset;
+  _verified_value_ro_entry_offset = _verified_entry_offset;
 
   _skipped_instructions_size = code_buffer->total_skipped_instructions_size();
 }
@@ -1461,9 +1468,9 @@ nmethod::nmethod(const nmethod &nm) : CodeBlob(nm._name, nm._kind, nm._size, nm.
   }
   _entry_offset                 = nm._entry_offset;
   _verified_entry_offset        = nm._verified_entry_offset;
-  _inline_entry_offset             = nm._inline_entry_offset;
-  _verified_inline_entry_offset    = nm._verified_inline_entry_offset;
-  _verified_inline_ro_entry_offset = nm._verified_inline_ro_entry_offset;
+  _value_entry_offset             = nm._value_entry_offset;
+  _verified_value_entry_offset    = nm._verified_value_entry_offset;
+  _verified_value_ro_entry_offset = nm._verified_value_ro_entry_offset;
 
   _entry_bci                    = nm._entry_bci;
   _immutable_data_size          = nm._immutable_data_size;
@@ -1498,7 +1505,7 @@ nmethod::nmethod(const nmethod &nm) : CodeBlob(nm._name, nm._kind, nm._size, nm.
   _has_flushed_dependencies     = nm._has_flushed_dependencies;
   _is_unlinked                  = nm._is_unlinked;
   _load_reported                = nm._load_reported;
-  _preloaded                    = nm._preloaded;
+  _aot_preloaded                = nm._aot_preloaded;
 
   _deoptimization_status        = nm._deoptimization_status;
 
@@ -1554,7 +1561,13 @@ nmethod::nmethod(const nmethod &nm) : CodeBlob(nm._name, nm._kind, nm._size, nm.
   post_init();
 }
 
-nmethod* nmethod::relocate(CodeBlobType code_blob_type) {
+static inline void set_relocation_result(nmethod::RelocationResult* relocation_result, nmethod::RelocationResult result) {
+  if (relocation_result != nullptr) {
+    *relocation_result = result;
+  }
+}
+
+nmethod* nmethod::relocate(CodeBlobType code_blob_type, RelocationResult* relocation_result) {
   assert(NMethodRelocation, "must enable use of function");
 
   // Locks required to be held by caller to ensure the nmethod
@@ -1564,15 +1577,21 @@ nmethod* nmethod::relocate(CodeBlobType code_blob_type) {
   assert(CompiledICLocker::is_safe(this), "mt unsafe call");
 
   if (!is_relocatable()) {
+    set_relocation_result(relocation_result, RelocationResult::FAILED_NOT_RELOCATABLE_NMETHOD);
     return nullptr;
   }
 
   run_nmethod_entry_barrier();
-  nmethod* nm_copy = new (size(), code_blob_type) nmethod(*this);
 
-  if (nm_copy == nullptr) {
+  // Relocation is not compilation: on allocation failure it should not
+  // stop compilation.
+  void* blob = CodeCache::allocate(size(), code_blob_type, false /* handle_alloc_failure */);
+  if (blob == nullptr) {
+    set_relocation_result(relocation_result, RelocationResult::FAILED_NO_SPACE_IN_CODE_HEAP);
     return nullptr;
   }
+
+  nmethod* nm_copy = ::new (blob) nmethod(*this);
 
   // To make dependency checking during class loading fast, record
   // the nmethod dependencies in the classes it is dependent on.
@@ -1614,12 +1633,13 @@ nmethod* nmethod::relocate(CodeBlobType code_blob_type) {
 
       nm_copy->log_relocated_nmethod(this);
 
+      set_relocation_result(relocation_result, RelocationResult::SUCCESS);
       return nm_copy;
     }
   }
 
   nm_copy->make_not_used();
-
+  set_relocation_result(relocation_result, RelocationResult::FAILED_INVALIDATED_NMETHOD);
   return nullptr;
 }
 
@@ -1657,10 +1677,6 @@ bool nmethod::is_relocatable() {
 
 void* nmethod::operator new(size_t size, int nmethod_size, int comp_level) throw () {
   return CodeCache::allocate(nmethod_size, CodeCache::get_code_blob_type(comp_level));
-}
-
-void* nmethod::operator new(size_t size, int nmethod_size, CodeBlobType code_blob_type) throw () {
-  return CodeCache::allocate(nmethod_size, code_blob_type);
 }
 
 void* nmethod::operator new(size_t size, int nmethod_size, bool allow_NonNMethod_space) throw () {
@@ -1744,14 +1760,14 @@ nmethod::nmethod(
     }
 
     int metadata_size = align_up(code_buffer->total_metadata_size(), wordSize);
-    if (offsets->value(CodeOffsets::Inline_Entry) != CodeOffsets::no_such_entry_point) {
-      CHECKED_CAST(_inline_entry_offset            , uint16_t, offsets->value(CodeOffsets::Inline_Entry));
+    if (offsets->value(CodeOffsets::Value_Entry) != CodeOffsets::no_such_entry_point) {
+      CHECKED_CAST(_value_entry_offset            , uint16_t, offsets->value(CodeOffsets::Value_Entry));
     }
-    if (offsets->value(CodeOffsets::Verified_Inline_Entry) != CodeOffsets::no_such_entry_point) {
-      CHECKED_CAST(_verified_inline_entry_offset   , uint16_t, offsets->value(CodeOffsets::Verified_Inline_Entry));
+    if (offsets->value(CodeOffsets::Verified_Value_Entry) != CodeOffsets::no_such_entry_point) {
+      CHECKED_CAST(_verified_value_entry_offset   , uint16_t, offsets->value(CodeOffsets::Verified_Value_Entry));
     }
-    if (offsets->value(CodeOffsets::Verified_Inline_Entry_RO) != CodeOffsets::no_such_entry_point) {
-      CHECKED_CAST(_verified_inline_ro_entry_offset, uint16_t, offsets->value(CodeOffsets::Verified_Inline_Entry_RO));
+    if (offsets->value(CodeOffsets::Verified_Value_Entry_RO) != CodeOffsets::no_such_entry_point) {
+      CHECKED_CAST(_verified_value_ro_entry_offset, uint16_t, offsets->value(CodeOffsets::Verified_Value_Entry_RO));
     }
 
     assert(_mutable_data_size == _relocation_size + metadata_size,
@@ -2075,13 +2091,13 @@ void nmethod::create_reloc_immediates_list(JavaThread* thread, GrowableArray<Han
       if (reloc->oop_is_immediate()) {
         oop dest = reloc->oop_value();
         Handle h(thread, dest);
-        oop_list.append(h);
+        oop_list.append_if_missing(h);
       }
     } else if (iter.type() == relocInfo::metadata_type) {
       metadata_Relocation* reloc = iter.metadata_reloc();
       if (reloc->metadata_is_immediate()) {
         Metadata* m = reloc->metadata_value();
-        metadata_list.append(m);
+        metadata_list.append_if_missing(m);
       }
     }
   }
@@ -2130,6 +2146,9 @@ void nmethod::finalize_relocations() {
       next_data++;
     }
   }
+
+  BarrierSetNMethod* bs_nm = BarrierSet::barrier_set()->barrier_set_nmethod();
+  bs_nm->finalize_relocations(this);
 }
 
 void nmethod::make_deoptimized() {
@@ -2302,7 +2321,21 @@ void nmethod::unlink_from_method() {
   }
 }
 
-// Invalidate code
+// Invalidate code, making it impossible for future calls to the nmethod to
+// proceed past its entry point.  Future calls will instead be finished by a
+// different code path, lazily updating call sites that link to this this
+// nmethod.
+//
+// This function does nothing about existing activations of the nmethod.  The
+// nmethod code is sometimes out of date, so it cannot execute further; in
+// such cases the user of this function must also ensure that existing
+// activations are deoptimized.  In other cases, the nmethod code works
+// well enough to keep running the existing activations to completion.
+//
+// The invalidation reason is used as a label in logging the nmethod
+// transition.  It also affects invalidation policy for any associated
+// AOTCodeCache entry.
+// TODO: move keep_aot_entry to caller or derive from invalidation_reason.
 bool nmethod::make_not_entrant(InvalidationReason invalidation_reason, bool keep_aot_entry) {
   // This can be called while the system is already at a safepoint which is ok
   NoSafepointVerifier nsv;
@@ -2387,7 +2420,19 @@ bool nmethod::make_not_entrant(InvalidationReason invalidation_reason, bool keep
   return true;
 }
 
-// For concurrent GCs, there must be a handshake between unlink and flush
+// Remove an nmethod from service when a GC has determined its class is unreachable.
+// For concurrent GCs, there must be a handshake between unlink and flush.
+//
+// This function is roughly parallel to nmethod::make_not_entrant.  Both remove
+// the nmethod from the in_use state, this one because the nmethod is unreachable,
+// and the other because its code is may be reachable, but should not be executed.
+// AOT interaction:  While make_not_entrant marks associated AOT code assets unloaded,
+// this function does not touch them (see AOTCodeEntry).
+// After JDK-8380476 TODO:  Maybe unload the AOT method and record a reason like UNLOADING,
+// so that the activity can be traced.  AOT methods could get GC-ed if we support
+// custom class loaders.  Perhaps two versions of a custom class loader could use
+// the same asset twice?  In any case we need a comment like the above showing the
+// missing logic, even if we don't do anything yet.  Log messages would be nice too.
 void nmethod::unlink() {
   if (is_unlinked()) {
     // Already unlinked.
@@ -2451,7 +2496,8 @@ void nmethod::purge(bool unregister_nmethod) {
     delete[] _compiled_ic_data;
   }
 
-  if (_immutable_data != blob_end() && !AOTCodeCache::is_address_in_aot_cache((address)_oop_maps)) {
+  // Don't remove _immutable_data reference from AOT code
+  if (_immutable_data != blob_end() && !AOTCodeCache::is_address_in_aot_cache((address)_immutable_data)) {
     // Free memory if this was the last nmethod referencing immutable data
     if (dec_immutable_data_ref_count() == 0) {
       os::free(_immutable_data);
@@ -2534,7 +2580,7 @@ void nmethod::post_compiled_method(CompileTask* task) {
   // task->is_aot_load() is true only for loaded AOT code.
   // nmethod::_aot_code_entry is set for loaded and stored AOT code
   // to invalidate the entry when nmethod is deoptimized.
-  // VerifyAOTCode is option to not store in archive AOT code.
+  // VerifyAOTCode is option to verify AOT code without installing.
   guarantee((_aot_code_entry != nullptr) || !task->is_aot_load() || VerifyAOTCode, "sanity");
 
   // JVMTI -- compiled method notification (must be done outside lock)
@@ -3295,8 +3341,8 @@ void nmethod::verify() {
     fatal("find_nmethod did not find this nmethod (" INTPTR_FORMAT ")", p2i(this));
   }
 
-  // Verification can triggered during shutdown after AOTCodeCache is closed.
   // If the Scopes data is in the AOT code cache, then we should avoid verification during shutdown.
+  // Note that the AOT cache can be alive even during shutdown (it is never closed).
   if (!is_aot() || AOTCodeCache::is_on()) {
     for (PcDesc* p = scopes_pcs_begin(); p < scopes_pcs_end(); p++) {
       if (! p->verify(this)) {
@@ -4010,6 +4056,13 @@ const char* nmethod::reloc_string_for(u_char* begin, u_char* end) {
           st.print("barrier format=%d", reloc->format());
           return st.as_string();
         }
+        case relocInfo::patchable_barrier_type: {
+          patchable_barrier_Relocation* const reloc = iter.patchable_barrier_reloc();
+          stringStream st;
+          st.print("patchable_barrier metadata=0x%x target=" PTR_FORMAT,
+                   reloc->metadata(), (intptr_t)code_begin() + reloc->target_offset());
+          return st.as_string();
+        }
 
         case relocInfo::type_mask:             return "type_bit_mask";
 
@@ -4036,10 +4089,10 @@ const char* nmethod::nmethod_section_label(address pos) const {
   const char* label = nullptr;
   if (pos == code_begin())                                              label = "[Instructions begin]";
   if (pos == entry_point())                                             label = "[Entry Point]";
-  if (pos == inline_entry_point())                                      label = "[Inline Entry Point]";
+  if (pos == value_entry_point())                                       label = "[Value Entry Point]";
   if (pos == verified_entry_point())                                    label = "[Verified Entry Point]";
-  if (pos == verified_inline_entry_point())                             label = "[Verified Inline Entry Point]";
-  if (pos == verified_inline_ro_entry_point())                          label = "[Verified Inline Entry Point (RO)]";
+  if (pos == verified_value_entry_point())                              label = "[Verified Value Entry Point]";
+  if (pos == verified_value_ro_entry_point())                           label = "[Verified Value Entry Point (RO)]";
   if (pos == consts_begin() && pos != insts_begin())                    label = "[Constants]";
   // Check stub_code before checking exception_handler or deopt_handler.
   if (pos == this->stub_begin())                                        label = "[Stub Code]";
@@ -4063,10 +4116,10 @@ void nmethod::print_nmethod_labels(outputStream* stream, address block_begin, bo
     int n = 0;
     // Multiple entry points may be at the same position. Print them all.
     n += maybe_print_entry_label(stream, block_begin, entry_point(),                    "[Entry Point]");
-    n += maybe_print_entry_label(stream, block_begin, inline_entry_point(),             "[Inline Entry Point]");
+    n += maybe_print_entry_label(stream, block_begin, value_entry_point(),              "[Value Entry Point]");
     n += maybe_print_entry_label(stream, block_begin, verified_entry_point(),           "[Verified Entry Point]");
-    n += maybe_print_entry_label(stream, block_begin, verified_inline_entry_point(),    "[Verified Inline Entry Point]");
-    n += maybe_print_entry_label(stream, block_begin, verified_inline_ro_entry_point(), "[Verified Inline Entry Point (RO)]");
+    n += maybe_print_entry_label(stream, block_begin, verified_value_entry_point(),     "[Verified Value Entry Point]");
+    n += maybe_print_entry_label(stream, block_begin, verified_value_ro_entry_point(),  "[Verified Value Entry Point (RO)]");
     if (n == 0) {
       const char* label = nmethod_section_label(block_begin);
       if (label != nullptr) {
@@ -4084,15 +4137,15 @@ void nmethod::print_nmethod_labels(outputStream* stream, address block_begin, bo
   // Print the name of the method (only once)
   address low = MIN3(entry_point(),
                      verified_entry_point(),
-                     inline_entry_point());
-  // The verified inline entry point and verified inline RO entry point are not always
-  // used. When they are unused. CodeOffsets::Verified_Inline_Entry(_RO) is -1. Hence,
+                     value_entry_point());
+  // The verified value entry point and verified value RO entry point are not always
+  // used. When they are unused. CodeOffsets::Verified_Value_Entry(_RO) is -1. Hence,
   // the calculated entry point is smaller than the block they are offsetting into.
-  if (verified_inline_entry_point() >= block_begin) {
-    low = MIN2(low, verified_inline_entry_point());
+  if (verified_value_entry_point() >= block_begin) {
+    low = MIN2(low, verified_value_entry_point());
   }
-  if (verified_inline_ro_entry_point() >= block_begin) {
-    low = MIN2(low, verified_inline_ro_entry_point());
+  if (verified_value_ro_entry_point() >= block_begin) {
+    low = MIN2(low, verified_value_ro_entry_point());
   }
   assert(low != nullptr, "sanity");
   if (block_begin == low) {
@@ -4109,10 +4162,10 @@ void nmethod::print_nmethod_labels(outputStream* stream, address block_begin, bo
   if (block_begin == verified_entry_point()) {
     sig_cc = ces.sig_cc();
     regs = ces.regs_cc();
-  } else if (block_begin == verified_inline_entry_point()) {
+  } else if (block_begin == verified_value_entry_point()) {
     sig_cc = ces.sig();
     regs = ces.regs();
-  } else if (block_begin == verified_inline_ro_entry_point()) {
+  } else if (block_begin == verified_value_ro_entry_point()) {
     sig_cc = ces.sig_cc_ro();
     regs = ces.regs_cc_ro();
   } else {
@@ -4120,7 +4173,7 @@ void nmethod::print_nmethod_labels(outputStream* stream, address block_begin, bo
   }
 
   bool has_this = !m->is_static();
-  if (ces.has_inline_recv() && block_begin == verified_entry_point()) {
+  if (ces.has_value_recv() && block_begin == verified_entry_point()) {
     // <this> argument is scalarized for verified_entry_point()
     has_this = false;
   }

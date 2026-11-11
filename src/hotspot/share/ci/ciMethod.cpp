@@ -22,7 +22,6 @@
  *
  */
 
-#include "cds/aotLinkedClassBulkLoader.hpp"
 #include "ci/ciCallProfile.hpp"
 #include "ci/ciExceptionHandler.hpp"
 #include "ci/ciInstanceKlass.hpp"
@@ -716,7 +715,7 @@ bool ciMethod::array_access_profiled_type(int bci, ciKlass*& array_type, ciKlass
   return false;
 }
 
-bool ciMethod::acmp_profiled_type(int bci, ciKlass*& left_type, ciKlass*& right_type, ProfilePtrKind& left_ptr, ProfilePtrKind& right_ptr, bool &left_inline_type, bool &right_inline_type) {
+bool ciMethod::acmp_profiled_type(int bci, ciKlass*& left_type, ciKlass*& right_type, ProfilePtrKind& left_ptr, ProfilePtrKind& right_ptr, bool &left_value_type, bool &right_value_type) {
   if (method_data() != nullptr && method_data()->is_mature()) {
     ciProfileData* data = method_data()->bci_to_data(bci);
     if (data != nullptr && data->is_ACmpData()) {
@@ -725,8 +724,8 @@ bool ciMethod::acmp_profiled_type(int bci, ciKlass*& left_type, ciKlass*& right_
       right_type = acmp->right()->valid_type();
       left_ptr = acmp->left()->ptr_kind();
       right_ptr = acmp->right()->ptr_kind();
-      left_inline_type = acmp->left_inline_type();
-      right_inline_type = acmp->right_inline_type();
+      left_value_type = acmp->left_value_type();
+      right_value_type = acmp->right_value_type();
       return true;
     }
   }
@@ -1119,11 +1118,6 @@ ciMethodData* ciMethod::method_data() {
         log_debug(aot, compilation)("%d: No profile for %s", comp_id, h_m->name_and_sig_as_C_string());
         _method_data_recorded = CURRENT_ENV->get_empty_methodData();
       } else {
-        if (mdo->extra_data_lock() == nullptr) {
-          assert(!HAS_PENDING_EXCEPTION, "");
-          mdo->restore_unshareable_info(thread);
-          assert(!HAS_PENDING_EXCEPTION, "");
-        }
         _method_data_recorded = CURRENT_ENV->get_method_data(mdo);
         _method_data_recorded->load_data();
         {
@@ -1282,7 +1276,9 @@ int ciMethod::inline_instructions_size() {
         if (ctd != nullptr) {
           methodHandle mh(Thread::current(), get_Method());
           MethodTrainingData* this_mtd = MethodTrainingData::make(mh);
-          ctd->ci_records().ciMethod__inline_instructions_size.append_if_missing(_inline_instructions_size, this_mtd);
+          if (this_mtd != nullptr) {
+            ctd->ci_records().ciMethod__inline_instructions_size.append_if_missing(_inline_instructions_size, this_mtd);
+          }
         }
       }
     );
@@ -1317,7 +1313,7 @@ bool ciMethod::was_executed_more_than(int times) {
   if (CURRENT_ENV->is_aot_compile()) { // Look only on training data
     // Invocation counter is reset when the Method* is compiled.
     // If the method has compiled code we therefore assume it has
-    // be executed more than n times.
+    // been executed more than n times.
     if (is_accessor() || is_empty() || has_compiled_code()) {
       // interpreter doesn't bump invocation counter of trivial methods
       // compiler does not bump invocation counter of compiled methods

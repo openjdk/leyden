@@ -25,14 +25,15 @@
 #include "cds/aotCacheAccess.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/cdsConfig.hpp"
-#include "cds/runTimeClassInfo.hpp"
 #include "code/aotCodeCache.hpp"
 #include "compiler/aotCompileBroker.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
 #include "compiler/compiler_globals.hpp"
+#include "compiler/compilerDefinitions.hpp"
 #include "logging/logStream.hpp"
 #include "memory/allocation.hpp"
+#include "oops/method.inline.hpp"
 #include "oops/trainingData.hpp"
 #include "runtime/handles.inline.hpp"
 
@@ -68,10 +69,8 @@ public:
         // For profiled C1 compilations, generate limited profile when there was limited/full
         // profiled compilation in training.
         return CompLevel_limited_profile <= high_top_level && high_top_level <= CompLevel_full_profile;
-      case CompLevel_full_profile:
-        // We do not include C1 full profiled methods at this time.
-        return false;
       default:
+        // This includes CompLevel_full_profile which should be filtered out.
         assert(false, "Unexpected AOT compilation level: %d", _comp_level);
     }
     // Do not include methods by default.
@@ -132,7 +131,7 @@ public:
       }
       assert(!HAS_PENDING_EXCEPTION, "");
       CompileBroker::compile_method(mh, InvocationEntryBci, _comp_level,
-                                    0, nullptr /*requires_online_comp*/,
+                                    0, nullptr /* AOTCodeEntry* */,
                                     _for_preload ? CompileTask::Reason_AOTCompileForPreload : CompileTask::Reason_AOTCompile,
                                     THREAD);
       if (HAS_PENDING_EXCEPTION) {
@@ -152,7 +151,13 @@ public:
     for (int i = 0; i < _methods.length(); i++) {
       Method* m = _methods.at(i);
 
-      bool is_success = !m->is_not_compilable(_comp_level);
+      bool is_preloaded_code = m->has_compiled_code() && m->code()->aot_preloaded();
+      bool is_success = !m->is_not_compilable(_comp_level) &&
+                        m->has_compiled_code() && m->code()->is_aot();
+      // Successful preloaded AP4 code may mask failed normal A4 code later load.
+      if (is_success && is_preloaded_code != _for_preload) {
+        is_success = false;
+      }
       if (is_success) {
         success_count++;
       }
@@ -160,33 +165,63 @@ public:
       LogStreamHandle(Debug, aot, compilation) log;
       if (log.is_enabled()) {
         ResourceMark rm;
-        log.print("[%4d] T%d Compiled %s [%p", i, log_comp_level, m->external_name(), m);
-        if (builder != nullptr) {
-          Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
-          log.print(" -> %p", requested_m);
-        }
+        log.print("[%4d] A%d Compiled %s [%p", i, log_comp_level, m->external_name(), m);
+        Method* requested_m = builder->to_requested(builder->get_buffered_addr(m));
+        log.print(" -> %p", requested_m);
         log.print_cr("] {%d} [%d] (%s)", compile_id(m), AOTCodeCache::store_entries_cnt(), (is_success ? "success" : "FAILED"));
       }
     }
 
-    logi.print_cr("AOT Compilation for level %d finished (%d successful out of %d total)",
+    logi.print_cr("AOT Compilation for level A%d finished (%d successful out of %d total)",
                   log_comp_level, success_count, _methods.length());
   }
 
   void compile(ArchiveBuilder* builder, TRAPS) {
     _methods.sort(&compare_methods);
+
+    intx tier2_invoke_notify_freq_log = Tier2InvokeNotifyFreqLog;
+    intx tier2_backedge_notify_freq_log = Tier2BackedgeNotifyFreqLog;
+    double compile_threshold_scaling = CompileThresholdScaling;
+    bool restore_freq_logs_flags = false;
+    if (_comp_level == CompLevel_limited_profile && _methods.length() > 0 &&
+        CompileThresholdScaling != CDSConfig::aot_compile_threshold_scaling()) {
+      // CDSConfig reset CompileThresholdScaling to default 1.0 and preserved original value.
+      // Restore scaling for A2 compilation based on preserved CompileThresholdScaling.
+      CompileThresholdScaling = CDSConfig::aot_compile_threshold_scaling();
+      Tier2InvokeNotifyFreqLog = CompilerConfig::jvmflag_scaled_freq_log(Tier2InvokeNotifyFreqLog);
+      Tier2BackedgeNotifyFreqLog = CompilerConfig::jvmflag_scaled_freq_log(Tier2BackedgeNotifyFreqLog);
+      restore_freq_logs_flags = true;
+    }
     schedule_compilations(THREAD);
     CompileBroker::wait_for_no_active_tasks();
     print_compilation_status(builder);
+    if (restore_freq_logs_flags) {
+      Tier2InvokeNotifyFreqLog = tier2_invoke_notify_freq_log;
+      Tier2BackedgeNotifyFreqLog = tier2_backedge_notify_freq_log;
+      CompileThresholdScaling = compile_threshold_scaling;
+    }
   }
 };
 
+// Top level driver for AOT code compilation.  Runs after metadata and
+// Java object heap have been added to the AOT cache.  Inside this pass,
+// the scope function CDSConfig::is_dumping_aot_code returns true.
+// Normal JIT compilation is suppressed, and the JIT pipeline is repurposed
+// to create AOT code (tasks are marked Reason_AOTCompileForPreload, etc.).
+// Some JIT policy flags are forcibly adjusted to settings required by AOT code.
+// These include -FoldStableValues, +ForceUnreachable, -DelayCompilerStubsGeneration,
+// +AOTCompileEagerly, CompileThresholdScaling=1.0
 void AOTCompileBroker::compile_aot_code(ArchiveBuilder* builder, TRAPS) {
   assert(AOTCodeCache::is_dumping_code(), "sanity");
+  assert(CDSConfig::is_dumping_aot_code(), "AOT compilation must be enabled");
   if (TrainingData::have_data()) {
+    // Drain normal JIT compilation tasks before submitting AOT compilation.
+    CompileBroker::wait_for_no_active_tasks();
+
     ResourceMark rm;
     CompLevel highest_level = CompilationPolicy::highest_compile_level();
-    if (highest_level >= CompLevel_full_optimization && ClassInitBarrierMode > 0) {
+    if (highest_level >= CompLevel_full_optimization && ClassInitBarrierMode > 0 &&
+        !AOTCodeCache::skip_aot_code(CompLevel_preload_optimization)) {
       AOTCompileIterator aci(CompLevel_full_optimization, true /*for_preload*/, THREAD);
       TrainingData::iterate([&](TrainingData* td) {
         aci.apply(td);
@@ -195,11 +230,13 @@ void AOTCompileBroker::compile_aot_code(ArchiveBuilder* builder, TRAPS) {
     }
 
     for (int level = CompLevel_simple; level <= highest_level; level++) {
-      AOTCompileIterator aci((CompLevel)level, false /*for_preload*/, THREAD);
-      TrainingData::iterate([&](TrainingData* td) {
-        aci.apply(td);
-      });
-      aci.compile(builder, THREAD);
+      if (!AOTCodeCache::skip_aot_code(level) && CompileBroker::compiler(level) != nullptr) {
+        AOTCompileIterator aci((CompLevel)level, false /*for_preload*/, THREAD);
+        TrainingData::iterate([&](TrainingData* td) {
+          aci.apply(td);
+        });
+        aci.compile(builder, THREAD);
+      }
     }
   }
 }

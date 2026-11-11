@@ -76,6 +76,7 @@ class CompilerStatistics {
 class AbstractCompiler : public CHeapObj<mtCompiler> {
  private:
   volatile int _num_compiler_threads;
+  volatile int _num_aot_compiler_threads;
 
  protected:
   volatile int _compiler_state;
@@ -86,17 +87,22 @@ class AbstractCompiler : public CHeapObj<mtCompiler> {
   // This thread will initialize the compiler runtime.
   bool should_perform_init();
 
+  void wait_for_initialization();
+
  private:
   const CompilerType _type;
 
   CompilerStatistics _stats;
 
  public:
-  AbstractCompiler(CompilerType type) : _num_compiler_threads(0), _compiler_state(uninitialized), _type(type) {}
+  AbstractCompiler(CompilerType type) : _num_compiler_threads(0),
+                                        _num_aot_compiler_threads(0),
+                                        _compiler_state(uninitialized),
+                                        _type(type) {}
 
   // This function determines the compiler thread that will perform the
   // shutdown of the corresponding compiler runtime.
-  bool should_perform_shutdown();
+  bool should_perform_shutdown(bool is_aot_comp_thread);
 
   // Name of this compiler
   virtual const char* name() = 0;
@@ -155,11 +161,14 @@ class AbstractCompiler : public CHeapObj<mtCompiler> {
   virtual void initialize () = 0;
 
   void set_num_compiler_threads(int num) { _num_compiler_threads = num;  }
-  int num_compiler_threads()             { return _num_compiler_threads; }
+  int num_compiler_threads() const       { return _num_compiler_threads; }
+
+  void set_num_aot_compiler_threads(int num) { _num_aot_compiler_threads = num;  }
+  int num_aot_compiler_threads() const       { return _num_aot_compiler_threads; }
 
   // Get/set state of compiler objects
-  bool is_initialized()           { return _compiler_state == initialized; }
-  bool is_failed     ()           { return _compiler_state == failed;}
+  bool is_initialized() const     { return _compiler_state == initialized; }
+  bool is_failed     () const     { return _compiler_state == failed;}
   void set_state     (int state);
   void set_shut_down ()           { set_state(shut_down); }
   // Compilation entry point for methods

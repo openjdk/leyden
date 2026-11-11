@@ -29,7 +29,7 @@
 
 public:
   // C2 compiled method's prolog code.
-  void verified_entry(Compile* C, int sp_inc = 0);
+  void verified_entry(Compile* C, int sp_inc = 0, bool do_stack_bang = true);
 
   void entry_barrier();
   Assembler::AvxVectorLen vector_length_encoding(int vlen_in_bytes);
@@ -509,15 +509,6 @@ public:
 
   void efp16sh(int opcode, XMMRegister dst, XMMRegister src1, XMMRegister src2);
 
-  void vgather_subword(BasicType elem_ty, XMMRegister dst,  Register base, Register idx_base, Register mask,
-                       XMMRegister xtmp1, XMMRegister xtmp2, XMMRegister xtmp3, Register rtmp,
-                       Register midx, Register length, int vector_len, int vlen_enc);
-
-  void vgather8b_masked(BasicType elem_bt, XMMRegister dst, Register base, Register idx_base,
-                        Register mask, Register midx, Register rtmp, int vlen_enc);
-  void vgather8b(BasicType elem_bt, XMMRegister dst, Register base, Register idx_base,
-                 Register rtmp, int vlen_enc);
-
   void vector_saturating_op(int opc, BasicType elem_bt, XMMRegister dst, XMMRegister src1, XMMRegister src2, bool is_unsigned, int vlen_enc);
 
   void vector_saturating_op(int opc, BasicType elem_bt, XMMRegister dst, XMMRegister src1, Address src2, bool is_unsigned, int vlen_enc);
@@ -583,6 +574,10 @@ public:
                                        Address src2, bool merge, int vlen_enc);
 
   void select_from_two_vectors_evex(BasicType elem_bt, XMMRegister dst, XMMRegister src1, XMMRegister src2, int vlen_enc);
+
+  void vector_slice_evex(XMMRegister dst, XMMRegister src1, XMMRegister src2, XMMRegister xtmp, int origin, int vlen_enc);
+
+  void vector_slice_avx(XMMRegister dst, XMMRegister src1, XMMRegister src2, int origin, int vlen_enc);
 
   void evfp16ph(int opcode, XMMRegister dst, XMMRegister src1, XMMRegister src2, int vlen_enc);
 

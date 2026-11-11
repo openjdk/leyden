@@ -213,9 +213,9 @@ class nmethod : public CodeBlob {
   address  _osr_entry_point;       // entry point for on stack replacement
   uint16_t _entry_offset;          // entry point with class check
   uint16_t _verified_entry_offset; // entry point without class check
-  uint16_t _inline_entry_offset;             // inline type entry point (unpack all inline type args) with class check
-  uint16_t _verified_inline_entry_offset;    // inline type entry point (unpack all inline type args) without class check
-  uint16_t _verified_inline_ro_entry_offset; // inline type entry point (unpack receiver only) without class check
+  uint16_t _value_entry_offset;             // value type entry point (unpack all value type args) with class check
+  uint16_t _verified_value_entry_offset;    // value type entry point (unpack all value type args) without class check
+  uint16_t _verified_value_ro_entry_offset; // value type entry point (unpack receiver only) without class check
   int      _entry_bci;             // != InvocationEntryBci if this nmethod is an on-stack replacement method
   int      _immutable_data_size;
 
@@ -318,7 +318,7 @@ private:
   bool _load_reported;
 
   // This AOT code was preloaded before method is called
-  bool _preloaded;
+  bool _aot_preloaded;
 
   enum DeoptimizationStatus : u1 {
     not_marked,
@@ -378,7 +378,6 @@ private:
 
   // helper methods
   void* operator new(size_t size, int nmethod_size, int comp_level) throw();
-  void* operator new(size_t size, int nmethod_size, CodeBlobType code_blob_type) throw();
 
   // For method handle intrinsics: Try MethodNonProfiled, MethodProfiled and NonNMethod.
   // Attention: Only allow NonNMethod space for special nmethods which don't need to be
@@ -522,7 +521,6 @@ public:
   // create nmethod using archived nmethod from AOT code cache
   static nmethod* new_nmethod(nmethod* archived_nm,
                               const methodHandle& method,
-                              AbstractCompiler* compiler,
                               AOTCodeReader* aot_code_reader);
 #endif
 public:
@@ -608,11 +606,40 @@ public:
                               CompLevel comp_level,
                               Flags flags);
 
+  enum class RelocationResult : u1 {
+    SUCCESS,
+    FAILED_NO_SPACE_IN_CODE_HEAP,
+    FAILED_NOT_RELOCATABLE_NMETHOD,
+    FAILED_INVALIDATED_NMETHOD
+  };
+
+  static const char* relocation_result_to_string(RelocationResult relocation_result) {
+    switch (relocation_result) {
+      case RelocationResult::SUCCESS:
+        return "relocated";
+      case RelocationResult::FAILED_NO_SPACE_IN_CODE_HEAP:
+        return "not enough space in the code heap";
+      case RelocationResult::FAILED_NOT_RELOCATABLE_NMETHOD:
+        return "not relocatable nmethod";
+      case RelocationResult::FAILED_INVALIDATED_NMETHOD:
+        return "nmethod invalidated during relocation";
+      default: {
+        assert(false, "Unhandled relocation result");
+        return "Unknown";
+      }
+    }
+  }
+
   // Relocate the nmethod to the code heap identified by code_blob_type.
-  // Returns nullptr if the code heap does not have enough space, the
-  // nmethod is unrelocatable, or the nmethod is invalidated during relocation,
-  // otherwise the relocated nmethod. The original nmethod will be marked not entrant.
-  nmethod* relocate(CodeBlobType code_blob_type);
+  // Returns nullptr if the code heap does not have enough space,
+  // the nmethod is unrelocatable, or the nmethod is invalidated during
+  // relocation, otherwise the relocated nmethod (relocation_result is set
+  // if provided).
+  //
+  // If relocation succeeds, the relocated nmethod is installed into
+  // the owner of the original nmethod and the original nmethod is made
+  // not entrant.
+  nmethod* relocate(CodeBlobType code_blob_type, RelocationResult* relocation_result = nullptr);
 
   static nmethod* new_native_nmethod(const methodHandle& method,
                                      int compile_id,
@@ -631,7 +658,7 @@ public:
   bool is_java_method  () const { return _method != nullptr && !_method->is_native(); }
   bool is_osr_method   () const { return _entry_bci != InvocationEntryBci; }
 
-  int  orig_pc_offset() { return _orig_pc_offset; }
+  int  orig_pc_offset() const { return _orig_pc_offset; }
   bool is_relocatable();
 
   // Compiler task identification.  Note that all OSR methods
@@ -719,9 +746,9 @@ public:
   // entry points
   address entry_point() const          { return code_begin() + _entry_offset;          } // normal entry point
   address verified_entry_point() const { return code_begin() + _verified_entry_offset; } // if klass is correct
-  address inline_entry_point() const              { return code_begin() + _inline_entry_offset; }             // inline type entry point (unpack all inline type args)
-  address verified_inline_entry_point() const     { return code_begin() + _verified_inline_entry_offset; }    // inline type entry point (unpack all inline type args) without class check
-  address verified_inline_ro_entry_point() const  { return code_begin() + _verified_inline_ro_entry_offset; } // inline type entry point (only unpack receiver) without class check
+  address value_entry_point() const              { return code_begin() + _value_entry_offset; }             // value type entry point (unpack all value type args)
+  address verified_value_entry_point() const     { return code_begin() + _verified_value_entry_offset; }    // value type entry point (unpack all value type args) without class check
+  address verified_value_ro_entry_point() const  { return code_begin() + _verified_value_ro_entry_offset; } // value type entry point (only unpack receiver) without class check
 
   int inline_instructions_size() const { return insts_end() - verified_entry_point() - skipped_instructions_size(); }
 
@@ -786,8 +813,8 @@ public:
   bool  needs_stack_repair() const                { return _flags.needs_stack_repair(); }
   bool  has_clinit_barriers() const               { return _flags.has_clinit_barriers(); }
 
-  bool  preloaded() const                         { return _preloaded; }
-  void  set_preloaded(bool z)                     { _preloaded = z; }
+  bool  aot_preloaded() const                     { return _aot_preloaded; }
+  void  set_aot_preloaded(bool z)                 { _aot_preloaded = z; }
 
   bool  has_flushed_dependencies() const          { return _has_flushed_dependencies; }
   void  set_has_flushed_dependencies(bool z)      {
@@ -873,7 +900,7 @@ public:
   const char* state() const;
 
   bool inlinecache_check_contains(address addr) const {
-    return (addr >= code_begin() && (addr < verified_entry_point() || addr < verified_inline_entry_point()));
+    return (addr >= code_begin() && (addr < verified_entry_point() || addr < verified_value_entry_point()));
   }
 
   void preserve_callee_argument_oops(frame fr, const RegisterMap *reg_map, OopClosure* f);

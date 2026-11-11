@@ -30,7 +30,6 @@
 #include "cds/aotMetaspace.hpp"
 #include "cds/aotStreamedHeap.hpp"
 #include "cds/archiveUtils.hpp"
-#include "cds/heapShared.hpp"
 #include "include/cds.h"
 #include "logging/logLevel.hpp"
 #include "memory/allocation.hpp"
@@ -106,13 +105,16 @@ public:
 #define CDS_MUST_MATCH_FLAGS_DO(f) \
   f(UseArrayFlattening) \
   f(UseFieldFlattening) \
-  f(InlineTypePassFieldsAsArgs) \
-  f(InlineTypeReturnedAsFields) \
+  f(ValueTypePassFieldsAsArgs) \
+  f(ValueTypeReturnedAsFields) \
   f(UseNullFreeNonAtomicValueFlattening) \
   f(UseNullFreeAtomicValueFlattening) \
   f(UseNullableAtomicValueFlattening) \
   f(UseNullableNonAtomicValueFlattening) \
-  f(FlatteningBudget)
+  f(FlatteningBudget) \
+  f(FlatArrayElementMaxOops) \
+  f(RestrictReservedStack) \
+  f(DiagnoseSyncOnValueBasedClasses)
 
 
 class CDSMustMatchFlags {
@@ -125,6 +127,7 @@ private:
 
   inline static void do_print(outputStream* st, bool v);
   LP64_ONLY(inline static void do_print(outputStream* st, uint v);)
+  LP64_ONLY(inline static void do_print(outputStream* st, int v);)
   inline static void do_print(outputStream* st, intx v);
   inline static void do_print(outputStream* st, uintx v);
   inline static void do_print(outputStream* st, double v);
@@ -177,7 +180,6 @@ private:
   bool   _aot_class_linking_value;      // The value of the AOTClassLinking variable when this archive was created
   bool   _has_full_module_graph;        // Does this CDS archive contain the full archived module graph?
   bool   _supports_custom_loaders;      //
-  size_t _ptrmap_size_in_bits;          // Size of pointer relocation bitmap
   bool   _has_valhalla_patched_classes; // Is this archived dumped with --enable-preview?
   CDSMustMatchFlags _must_match;        // These flags must be the same between dumptime and runtime
   size_t _rw_ptrmap_start_pos;          // The first bit in the ptrmap corresponds to this position in the rw region
@@ -236,7 +238,6 @@ public:
   bool has_platform_or_app_classes()       const { return _has_platform_or_app_classes; }
   bool has_aot_linked_classes()            const { return _has_aot_linked_classes; }
   bool aot_class_linking_value()           const { return _aot_class_linking_value; }
-  size_t ptrmap_size_in_bits()             const { return _ptrmap_size_in_bits; }
   bool compressed_oops()                   const { return _compressed_oops; }
   bool compatible_oop_compression()        const { return _compatible_oop_compression; }
   int narrow_klass_pointer_bits()          const { return _narrow_klass_pointer_bits; }
@@ -318,9 +319,11 @@ private:
   // mapped.  This structure gets written to a file.  It is not a class, so
   // that the compilers don't add any compiler-private data to it.
 
-  static FileMapInfo* _current_info;
-  static FileMapInfo* _dynamic_archive_info;
+  static FileMapInfo* _static_input_archive;
+  static FileMapInfo* _dynamic_input_archive;
+  static FileMapInfo* _output_archive;
   static bool _memory_mapping_failed;
+  FileMapInfo(const char* full_path, bool is_static);
 
 public:
   FileMapHeader *header() const       { return _header; }
@@ -332,9 +335,7 @@ public:
 
   void log_paths(const char* msg, int start_idx, int end_idx);
 
-  FileMapInfo(const char* full_path, bool is_static);
   ~FileMapInfo();
-  static void free_current_info();
 
   // Accessors
   int    compute_header_crc()  const { return header()->compute_crc(); }
@@ -388,24 +389,18 @@ public:
     return header()->has_platform_or_app_classes();
   }
 
-  static FileMapInfo* current_info() {
-    CDS_ONLY(return _current_info;)
-    NOT_CDS(return nullptr;)
-  }
+  static FileMapInfo* allocate_static_input_archive(const char* filename);
+  static FileMapInfo* allocate_dynamic_input_archive(const char* filename);
+  static FileMapInfo* allocate_output_archive(const char* filename, bool is_static);
 
-  static void set_current_info(FileMapInfo* info) {
-    CDS_ONLY(_current_info = info;)
-  }
-
-  static FileMapInfo* dynamic_info() {
-    CDS_ONLY(return _dynamic_archive_info;)
-    NOT_CDS(return nullptr;)
-  }
+  static FileMapInfo* static_input_archive()   {  NOT_CDS(return nullptr;) CDS_ONLY(return _static_input_archive;)  }
+  static FileMapInfo* dynamic_input_archive()  {  NOT_CDS(return nullptr;) CDS_ONLY(return _dynamic_input_archive;) }
+  static FileMapInfo* output_archive()         {  NOT_CDS(return nullptr;) CDS_ONLY(return _output_archive;)        }
 
   static void assert_mark(bool check);
 
   // File manipulation.
-  bool  open_as_input() NOT_CDS_RETURN_(false);
+  bool  open_as_input();
   void  open_as_output();
   void  prepare_for_writing();
   void  write_header();
@@ -435,6 +430,7 @@ public:
   bool  read_region(int i, char* base, size_t size, bool do_commit);
   char* map_bitmap_region();
   bool  map_aot_code_region(ReservedSpace rs);
+  void  unmap_aot_code_region();
   char* map_forwarding_region();
   void  unmap_region(int i);
   void  close();

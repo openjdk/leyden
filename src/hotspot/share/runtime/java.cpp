@@ -255,7 +255,6 @@ void print_statistics_before_exit() {
   LogStreamHandle(Info, aot, codecache, stats) aot_log;
   if (CITime) {
     CompileBroker::print_times();
-    AOTCodeCache::print_timers_on(tty);
   } else if (aot_log.is_enabled()) {
     AOTCodeCache::print_timers_on(&aot_log);
   }
@@ -767,21 +766,21 @@ void JDK_Version::to_string(char* buffer, size_t buflen) const {
 }
 
 void JDK_Version::set_java_version(const char* version) {
-  _java_version = os::strdup(version);
+  _java_version = os::strdup(version, mtInternal);
 }
 
 void JDK_Version::set_runtime_name(const char* name) {
-  _runtime_name = os::strdup(name);
+  _runtime_name = os::strdup(name, mtInternal);
 }
 
 void JDK_Version::set_runtime_version(const char* version) {
-  _runtime_version = os::strdup(version);
+  _runtime_version = os::strdup(version, mtInternal);
 }
 
 void JDK_Version::set_runtime_vendor_version(const char* vendor_version) {
-  _runtime_vendor_version = os::strdup(vendor_version);
+  _runtime_vendor_version = os::strdup(vendor_version, mtInternal);
 }
 
 void JDK_Version::set_runtime_vendor_vm_bug_url(const char* vendor_vm_bug_url) {
-  _runtime_vendor_vm_bug_url = os::strdup(vendor_vm_bug_url);
+  _runtime_vendor_vm_bug_url = os::strdup(vendor_vm_bug_url, mtInternal);
 }

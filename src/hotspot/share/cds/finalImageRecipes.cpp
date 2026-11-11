@@ -25,6 +25,7 @@
 #include "cds/aotClassLinker.hpp"
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotConstantPoolResolver.hpp"
+#include "cds/aotSystemDictionary.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/cdsConfig.hpp"
@@ -37,7 +38,6 @@
 #include "classfile/javaClasses.hpp"
 #include "classfile/javaStackTraceClasses.hpp"
 #include "classfile/systemDictionary.hpp"
-#include "classfile/systemDictionaryShared.hpp"
 #include "classfile/vmClasses.hpp"
 #include "memory/metadataFactory.hpp"
 #include "memory/oopFactory.hpp"
@@ -486,7 +486,7 @@ void exit_on_exception(JavaThread* current) {
 // Some cached heap objects may hold references to methods in aot-linked
 // classes (via MemberName). We need to make sure all classes are
 // linked before executing any bytecode.
-void FinalImageRecipes::link_classes(JavaThread* current) {
+void FinalImageRecipes::link_all_classes(JavaThread* current) {
   link_classes_impl(current);
   if (current->has_pending_exception()) {
     exit_on_exception(current);
@@ -509,17 +509,39 @@ void FinalImageRecipes::link_classes_impl(TRAPS) {
 void FinalImageRecipes::link_classes_in_table(Array<InstanceKlassRecipe>* recipes, TRAPS) {
   if (recipes != nullptr) {
     for (int i = 0; i < recipes->length(); i++) {
-      // NOTE: CDSConfig::is_preserving_verification_constraints() is required
-      // when storing ik in the AOT cache. This means we don't have to verify
-      // ik at all.
-      //
-      // Without is_preserving_verification_constraints(), ik->link_class() may cause
-      // class loading, which may result in invocation of ClassLoader::loadClass() calls,
-      // which CANNOT happen because we are not ready to execute any Java byecodes yet
-      // at this point.
       InstanceKlass* ik = recipes->adr_at(i)->instance_klass();
+      if (ik->is_hidden()) {
+        continue;
+      }
+      assert(ik->is_loaded(), "must be");
       ik->link_class(CHECK);
-      if (ik->has_aot_safe_initializer() && (recipes->adr_at(i)->flags() & WAS_INITED) != 0) {
+    }
+  }
+}
+
+void FinalImageRecipes::initialize_all_safe_classes(TRAPS) {
+  initialize_safe_classes_in_table(_class_recipes->boot1(), CHECK);
+  initialize_safe_classes_in_table(_class_recipes->boot2(), CHECK);
+  initialize_safe_classes_in_table(_class_recipes->platform(), CHECK);
+  initialize_safe_classes_in_table(_class_recipes->app(), CHECK);
+  _class_loader_recipes->iterate_all([&](ClassLoaderRecipe** cl_recipe) {
+    if (_invalidCLRTable->contains(*cl_recipe)) {
+      return;
+    }
+    initialize_safe_classes_in_table((*cl_recipe)->class_recipes(), CHECK);
+  });
+}
+
+void FinalImageRecipes::initialize_safe_classes_in_table(Array<InstanceKlassRecipe>* recipes, TRAPS) {
+  if (recipes != nullptr) {
+    for (int i = 0; i < recipes->length(); i++) {
+      InstanceKlass* ik = recipes->adr_at(i)->instance_klass();
+      if (ik->is_hidden()) {
+        continue;
+      }
+      assert(ik->is_linked(), "must be");
+      int flags = recipes->adr_at(i)->flags();
+      if (ik->has_aot_safe_initializer() && (flags & WAS_INITED) != 0) {
         assert(ik->class_loader() == nullptr, "supported only for boot classes for now");
         ResourceMark rm(THREAD);
         log_info(aot, init)("Initializing %s", ik->external_name());
@@ -529,13 +551,31 @@ void FinalImageRecipes::link_classes_in_table(Array<InstanceKlassRecipe>* recipe
   }
 }
 
-void FinalImageRecipes::load_and_link_all_classes(TRAPS) {
+void FinalImageRecipes::initialize_all_safe_classes(TRAPS) {
+  for (int i = 0; i < _all_klasses->length(); i++) {
+    Klass* k = _all_klasses->at(i);
+    int flags = _flags->at(i);
+    if (k->is_instance_klass()) {
+      InstanceKlass* ik = InstanceKlass::cast(k);
+      if (!ik->defined_by_other_loaders() && !ik->is_hidden()) {
+        assert(ik->is_linked(), "must be");
+        if (ik->has_aot_safe_initializer() && (flags & WAS_INITED) != 0) {
+          assert(ik->class_loader() == nullptr, "supported only for boot classes for now");
+          ResourceMark rm(THREAD);
+          log_info(aot, init)("Initializing %s", ik->external_name());
+          ik->initialize(CHECK);
+        }
+      }
+    }
+  }
+}
+
+void FinalImageRecipes::load_all_classes(TRAPS) {
   /* Built-in loader classes come first */
   load_builtin_loader_classes(CHECK);
   /* Now load custom loader classes */
   load_aot_safe_custom_loader_classes(CHECK);
   load_aot_unsafe_custom_loader_classes(CHECK);
-  link_classes(THREAD);
 }
 
 void FinalImageRecipes::apply_cp_recipes_for_class(JavaThread* current, InstanceKlassRecipe* ikr) {
@@ -599,8 +639,13 @@ void FinalImageRecipes::apply_recipes(TRAPS) {
   _final_image_recipes = nullptr;
 }
 
+// Follow the same class processing phases as during production run
 void FinalImageRecipes::apply_recipes_impl(TRAPS) {
-  load_and_link_all_classes(CHECK);
+
+  assert(CDSConfig::is_dumping_final_static_archive(), "sanity");
+  load_all_classes(CHECK);
+  link_all_classes(CHECK);
+  initialize_all_safe_classes(CHECK);
   apply_recipes_for_constantpool(THREAD);
 }
 

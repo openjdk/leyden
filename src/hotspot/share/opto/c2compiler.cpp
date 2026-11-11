@@ -62,6 +62,9 @@ const char* C2Compiler::retry_no_reduce_allocation_merges() {
 const char* C2Compiler::retry_no_superword() {
   return "retry without SuperWord";
 }
+const char* C2Compiler::retry_no_stringopts() {
+  return "retry without StringOpts";
+}
 
 void compiler_stubs_init(bool in_compiler_thread);
 
@@ -127,8 +130,9 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   assert(is_initialized(), "Compiler thread must be initialized");
   CompilationMemoryStatisticMark cmsm(directive);
   CompileTask* task = env->task();
-  if (install_code && task->is_aot_load()) {
-    AOTCodeCache::load_nmethod(env, target, entry_bci, this, CompLevel_full_optimization);
+  if (task->is_aot_load()) {
+    assert(install_code, "AOT code loading requires install_code");
+    AOTCodeCache::load_nmethod(env, target, entry_bci, this);
     // We want to go quickly through AOT code load requests
     // instead of spending time on normal compilation.
     return;
@@ -141,8 +145,12 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
   bool eliminate_boxing = EliminateAutoBox;
   bool do_locks_coarsening = EliminateLocks;
   bool do_superword = UseSuperWord;
-  bool for_preload = (task->compile_reason() == CompileTask::Reason_AOTCompileForPreload);
-  assert(!for_preload || (ClassInitBarrierMode > 0), "sanity");
+  bool do_stringopts = OptimizeStringConcat;
+  bool aot_compile = env->is_aot_compile();
+  bool for_aot_preload = (task->compile_reason() == CompileTask::Reason_AOTCompileForPreload);
+  assert(!for_aot_preload || aot_compile, "sanity");
+  assert(!for_aot_preload || (ClassInitBarrierMode > 0), "sanity");
+
   while (!env->failing()) {
     ResourceMark rm;
     // Attempt to compile while subsuming loads into machine instructions.
@@ -153,7 +161,9 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
                     eliminate_boxing,
                     do_locks_coarsening,
                     do_superword,
-                    for_preload,
+                    do_stringopts,
+                    aot_compile,
+                    for_aot_preload,
                     install_code);
     Compile C(env, target, entry_bci, options, directive);
 
@@ -195,6 +205,12 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
         env->report_failure(C.failure_reason());
         continue;  // retry
       }
+      if (C.failure_reason_is(retry_no_stringopts())) {
+        assert(do_stringopts, "must make progress");
+        do_stringopts = false;
+        env->report_failure(C.failure_reason());
+        continue;  // retry
+      }
       if (C.has_boxed_value()) {
         // Recompile without boxing elimination regardless failure reason.
         assert(eliminate_boxing, "must make progress");
@@ -218,6 +234,10 @@ void C2Compiler::compile_method(ciEnv* env, ciMethod* target, int entry_bci, boo
       }
       if (do_locks_coarsening) {
         do_locks_coarsening = false;
+        continue;  // retry
+      }
+      if (do_stringopts) {
+        do_stringopts = false;
         continue;  // retry
       }
     }
@@ -856,6 +876,10 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_Preconditions_checkIndex:
   case vmIntrinsics::_Preconditions_checkLongIndex:
   case vmIntrinsics::_getObjectSize:
+  case vmIntrinsics::_addInt128TLo:
+  case vmIntrinsics::_addInt128THi:
+  case vmIntrinsics::_subInt128TLo:
+  case vmIntrinsics::_subInt128THi:
     break;
   case vmIntrinsics::_VectorCompressExpand:
   case vmIntrinsics::_VectorUnaryOp:
@@ -869,6 +893,7 @@ bool C2Compiler::is_intrinsic_supported(vmIntrinsics::ID id) {
   case vmIntrinsics::_VectorSelectFromTwoVectorOp:
   case vmIntrinsics::_VectorGatherOp:
   case vmIntrinsics::_VectorScatterOp:
+  case vmIntrinsics::_VectorSlice:
   case vmIntrinsics::_VectorReductionCoerced:
   case vmIntrinsics::_VectorTest:
   case vmIntrinsics::_VectorBlend:

@@ -77,7 +77,7 @@ private:
 
  public:
   NamedCounter(const char *n, CounterTag tag = NoTag):
-    _name(n == nullptr ? nullptr : os::strdup(n)),
+    _name(n == nullptr ? nullptr : os::strdup(n, mtCompiler)),
     _count(0),
     _tag(tag),
     _next(nullptr) {}
@@ -200,9 +200,6 @@ class OptoRuntime : public AllStatic {
   static const TypeFunc* _osr_end_Type;
   static const TypeFunc* _register_finalizer_Type;
   static const TypeFunc* _vthread_transition_Type;
-#if INCLUDE_JFR
-  static const TypeFunc* _class_id_load_barrier_Type;
-#endif // INCLUDE_JFR
   static const TypeFunc* _dtrace_method_entry_exit_Type;
   static const TypeFunc* _dtrace_object_alloc_Type;
 
@@ -247,9 +244,6 @@ public:
 
 private:
 
-  // Implicit exception support
-  static void throw_null_exception_C(JavaThread* thread);
-
   // Exception handling
   static address handle_exception_C       (JavaThread* current);
   static address handle_exception_C_helper(JavaThread* current, nmethod*& nm);
@@ -267,8 +261,8 @@ private:
   static void register_finalizer_C(oopDesc* obj, JavaThread* current);
 
  public:
-  static void load_unknown_inline_C(flatArrayOopDesc* array, int index, JavaThread* current);
-  static void store_unknown_inline_C(instanceOopDesc* buffer, flatArrayOopDesc* array, int index, JavaThread* current);
+  static void load_unknown_value_C(flatArrayOopDesc* array, int index, JavaThread* current);
+  static void store_unknown_value_C(instanceOopDesc* buffer, flatArrayOopDesc* array, int index, JavaThread* current);
 
   static bool is_callee_saved_register(MachRegisterNumbers reg);
 
@@ -302,8 +296,8 @@ private:
   static address slow_arraycopy_Java()                   { return _slow_arraycopy_Java; }
   static address register_finalizer_Java()               { return _register_finalizer_Java; }
   static address compile_method_Java()                   { return _compile_method_Java; }
-  static address load_unknown_inline_Java()              { return _load_unknown_inline_Java; }
-  static address store_unknown_inline_Java()             { return _store_unknown_inline_Java; }
+  static address load_unknown_value_Java()               { return _load_unknown_value_Java; }
+  static address store_unknown_value_Java()              { return _store_unknown_value_Java; }
 
   static address vthread_end_first_transition_Java()     { return _vthread_end_first_transition_Java; }
   static address vthread_start_final_transition_Java()   { return _vthread_start_final_transition_Java; }
@@ -312,10 +306,6 @@ private:
 
   static UncommonTrapBlob* uncommon_trap_blob()                  { return _uncommon_trap_blob; }
   static ExceptionBlob*    exception_blob()                      { return _exception_blob; }
-
-  // Implicit exception support
-  static void throw_div0_exception_C      (JavaThread* thread);
-  static void throw_stack_overflow_error_C(JavaThread* thread);
 
   // Exception handling
   static address rethrow_stub()             { return _rethrow_Java; }
@@ -772,18 +762,11 @@ private:
     return vthread_transition_Type();
   }
 
-#if INCLUDE_JFR
-  static inline const TypeFunc* class_id_load_barrier_Type() {
-    assert(_class_id_load_barrier_Type != nullptr, "should be initialized");
-    return _class_id_load_barrier_Type;
-  }
-#endif // INCLUDE_JFR
+  static const TypeFunc* load_unknown_value_Type();
+  static const TypeFunc* store_unknown_value_Type();
 
-  static const TypeFunc* load_unknown_inline_Type();
-  static const TypeFunc* store_unknown_inline_Type();
-
-  static const TypeFunc* store_inline_type_fields_Type();
-  static const TypeFunc* pack_inline_type_Type();
+  static const TypeFunc* store_value_type_fields_Type();
+  static const TypeFunc* pack_value_type_Type();
 
   // Dtrace support. entry and exit probes have the same signature
   static inline const TypeFunc* dtrace_method_entry_exit_Type() {
