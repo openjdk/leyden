@@ -28,6 +28,34 @@ ifeq ($(INCLUDE), true)
 
 ################################################################################
 
+##############################################################################
+## Build liblauncher.a for static JDK.
+##############################################################################
+ifeq ($(STATIC_LIBS), true)
+  # TODO: Share the java launcher CFLAGS defs with LauncherCommon.gmk.
+  LIBLAUNCHER_CFLAGS := -I$(TOPDIR)/src/java.base/share/native/launcher \
+    -I$(TOPDIR)/src/java.base/share/native/libjli \
+    -I$(TOPDIR)/src/java.base/$(OPENJDK_TARGET_OS_TYPE)/native/libjli \
+    -I$(TOPDIR)/src/java.base/$(OPENJDK_TARGET_OS)/native/libjli \
+    $(VERSION_CFLAGS) -DLAUNCHER_NAME='"$(LAUNCHER_NAME)"' -DPROGNAME='"java"' -DSTATIC_BUILD=1 -DDISABLE_ARGFILE=JNI_FALSE -DCLASSPATH_WILDCARDS=JNI_TRUE
+
+  $(eval $(call SetupJdkLibrary, BUILD_LIBLAUNCHER, \
+      NAME := launcher, \
+      TYPE := STATIC_LIBRARY, \
+      EXTRA_FILES := $(TOPDIR)/src/java.base/share/native/launcher/main.c, \
+      OPTIMIZATION := HIGH, \
+      CFLAGS := $(LIBLAUNCHER_CFLAGS), \
+      EXTRA_HEADER_DIRS := libjvm, \
+      JAVA_HEADERS := false, \
+      DISABLED_WARNINGS_gcc := unused-function unused-variable, \
+      DISABLED_WARNINGS_clang := unused-function, \
+      ONLY_EXPORTED := true, \
+  ))
+
+  TARGETS += $(BUILD_LIBLAUNCHER)
+endif
+
+
 ################################################################################
 ## Build libverify
 ################################################################################

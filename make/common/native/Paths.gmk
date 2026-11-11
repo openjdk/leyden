@@ -161,10 +161,6 @@ define SetupSourceFiles
 
   $1_SRCS += $$($1_EXTRA_FILES)
 
-  ifeq ($$($1_SRCS), )
-    $$(error No sources found for $1 when looking inside the dirs $$($1_SRC))
-  endif
-
   ifeq ($$($1_TYPE), EXECUTABLE)
     ifeq ($(UBSAN_ENABLED), true)
       # We need to set the default options for UBSan. This needs to be included in every executable.

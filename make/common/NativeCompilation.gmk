@@ -382,8 +382,8 @@ define CreateDependencyFile
 	$(RM) $$@
         # CD into dir to reduce risk of hitting command length limits, which
         # could otherwise happen if TOPDIR is a very long path.
-	$(CD) $$($1_OBJECT_DIR) && $(CAT) *.d > $$@.tmp
-	$(CD) $$($1_OBJECT_DIR) && $(CAT) *.d.targets | $(SORT) -u >> $$@.tmp
+	$(CD) $$($1_OBJECT_DIR) && ($(CAT) *.d 2> /dev/null || true) > $$@.tmp
+	$(CD) $$($1_OBJECT_DIR) && ($(CAT) *.d.targets 2> /dev/null || true) | $(SORT) -u >> $$@.tmp
         # After generating the file, which happens after all objects have been
         # compiled, copy it to .old extension. On the next make invocation, this
         # .old file will be included by make.

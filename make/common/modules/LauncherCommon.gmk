@@ -163,6 +163,16 @@ define SetupBuildLauncherBody
     endif
   endif
 
+  # When linking the static Java launcher, link with the liblauncher static
+  # library. Set $1_EXTRA_FILES to empty to avoid duplicated main.o.
+  ifeq ($$($1_STATIC_LAUNCHER), true)
+    ifeq ($1, java)
+      $1_EXTRA_FILES :=
+      $1_LIBS += $(SUPPORT_OUTPUTDIR)/native/java.base/liblauncher/static/liblauncher.a
+    endif
+  endif
+
+
   ##############################################################################
   ## Build launcher "$1"
   ##############################################################################
