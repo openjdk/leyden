@@ -31,6 +31,7 @@
 #include "cds/aotMappedHeapLoader.hpp"
 #include "cds/aotMappedHeapWriter.hpp"
 #include "cds/aotMetaspace.hpp"
+#include "cds/aotModules.hpp"
 #include "cds/aotOopChecker.hpp"
 #include "cds/aotReferenceObjSupport.hpp"
 #include "cds/aotStreamedHeapLoader.hpp"
@@ -44,7 +45,6 @@
 #include "cds/cdsHeapVerifier.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoaderData.hpp"
-#include "classfile/classLoaderDataShared.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/modules.hpp"
 #include "classfile/stringTable.hpp"
@@ -678,7 +678,7 @@ bool AOTHeap::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgraph_
       append_root(obj);
     } else if(java_lang_ClassLoader::is_instance(obj) &&
               !obj->klass()->name()->equals("jdk/internal/loader/ClassLoaders$BootClassLoader")) {
-      ClassLoaderDataShared::set_archived_index_for(obj);
+      AOTModules::set_archived_index_for(obj);
     }
   }
 

@@ -463,9 +463,7 @@ void FinalImageRecipes::load_aot_unsafe_custom_loader_classes(TRAPS) {
   Array<InstanceKlassRecipe>* recipes = _class_recipes->aot_unsafe_custom_loader_classes();
   for (int i = 0; i < recipes->length(); i++) {
     InstanceKlass* ik = recipes->adr_at(i)->instance_klass();
-    SystemDictionaryShared::init_dumptime_info(ik);
-    SystemDictionaryShared::add_unregistered_class(THREAD, ik);
-    SystemDictionaryShared::copy_unregistered_class_size_and_crc32(ik);
+    AOTSystemDictionary::copy_unregistered_class(THREAD, ik);
   }
 }
 
@@ -546,25 +544,6 @@ void FinalImageRecipes::initialize_safe_classes_in_table(Array<InstanceKlassReci
         ResourceMark rm(THREAD);
         log_info(aot, init)("Initializing %s", ik->external_name());
         ik->initialize(CHECK);
-      }
-    }
-  }
-}
-
-void FinalImageRecipes::initialize_all_safe_classes(TRAPS) {
-  for (int i = 0; i < _all_klasses->length(); i++) {
-    Klass* k = _all_klasses->at(i);
-    int flags = _flags->at(i);
-    if (k->is_instance_klass()) {
-      InstanceKlass* ik = InstanceKlass::cast(k);
-      if (!ik->defined_by_other_loaders() && !ik->is_hidden()) {
-        assert(ik->is_linked(), "must be");
-        if (ik->has_aot_safe_initializer() && (flags & WAS_INITED) != 0) {
-          assert(ik->class_loader() == nullptr, "supported only for boot classes for now");
-          ResourceMark rm(THREAD);
-          log_info(aot, init)("Initializing %s", ik->external_name());
-          ik->initialize(CHECK);
-        }
       }
     }
   }

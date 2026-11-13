@@ -23,12 +23,13 @@
  */
 
 #include "cds/aotClassLocation.hpp"
+#include "cds/aotHeap.hpp"
+#include "cds/aotModules.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotLogging.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/customLoaderSupport.hpp"
-#include "cds/heapShared.hpp"
 #include "cds/serializeClosure.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/compactHashtable.hpp"
@@ -124,8 +125,8 @@ CustomLoaderInfo* CustomLoaderInfo::allocate(Symbol* aot_id, ClassLoaderData* cl
   Array<AOTClassLocation*>* locations = archive_classpath(cld);
 
   Array<InstanceKlass*>* class_list = ArchiveUtils::archive_array(table);
-  ArchivedClassLoaderData* archived_cld = ClassLoaderDataShared::get_archived_cld(aot_id);
-  assert(archived_cld != nullptr, "ArchivedClassLoaderData is missing");
+  AOTClassLoaderData* archived_cld = AOTModules::get_archived_cld(aot_id);
+  assert(archived_cld != nullptr, "AOTClassLoaderData is missing");
 
   CustomLoaderInfo* cl_info = (CustomLoaderInfo*)ArchiveBuilder::ro_region_alloc(sizeof(CustomLoaderInfo));
   cl_info->init(builder->get_buffered_addr(aot_id), locations, class_list, archived_cld);
@@ -249,7 +250,7 @@ bool CustomLoaderSupport::is_scratch_loader(oop loader) {
 
   bool found = false;
   _archived_custom_loader_info_map.iterate([&](CustomLoaderInfo* cl_info) {
-    if (HeapShared::get_root(cl_info->archived_loader_obj_index()) == loader) {
+    if (AOTHeap::get_root(cl_info->archived_loader_obj_index()) == loader) {
       found = true;
       // match found; stop iterating
       return false;

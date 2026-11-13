@@ -25,8 +25,8 @@
 #ifndef SHARE_CDS_CUSTOM_LOADER_SUPPORT_HPP
 #define SHARE_CDS_CUSTOM_LOADER_SUPPORT_HPP
 
+#include "cds/aotModules.hpp"
 #include "cds/archiveUtils.hpp"
-#include "classfile/classLoaderDataShared.hpp"
 #include "classfile/compactHashtable.hpp"
 #include "oops/array.hpp"
 #include "oops/symbol.hpp"
@@ -61,7 +61,7 @@ private:
   Symbol* _aot_id;
   Array<AOTClassLocation*>* _cp_locations;
   Array<InstanceKlass*>* _class_list;
-  ArchivedClassLoaderData _archived_cld;
+  AOTClassLoaderData _archived_cld;
 
   void mark_pointers() {
     ArchivePtrMarker::mark_pointer(aot_id_addr());
@@ -80,7 +80,7 @@ private:
 public:
   static CustomLoaderInfo* allocate(Symbol* aot_id, ClassLoaderData* cld, GrowableArrayView<InstanceKlass*>* class_list);
 
-  void init(Symbol* aot_id, Array<AOTClassLocation*>* locations, Array<InstanceKlass*>* class_list, ArchivedClassLoaderData* archived_cld) {
+  void init(Symbol* aot_id, Array<AOTClassLocation*>* locations, Array<InstanceKlass*>* class_list, AOTClassLoaderData* archived_cld) {
     _aot_id = aot_id;
     _cp_locations = locations;
     _class_list = class_list;
@@ -90,7 +90,7 @@ public:
   Symbol* aot_id() const { return _aot_id; }
   Array<AOTClassLocation*>* locations() const { return _cp_locations; }
   Array<InstanceKlass*>* class_list() const { return _class_list; }
-  ArchivedClassLoaderData* archived_cld() { return &_archived_cld; }
+  AOTClassLoaderData* archived_cld() { return &_archived_cld; }
   int archived_loader_obj_index() const { return _archived_cld.archived_loader_obj_index(); }
 
   address* aot_id_addr() const { return (address*)&_aot_id; }

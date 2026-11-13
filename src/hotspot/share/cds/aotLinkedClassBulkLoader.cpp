@@ -121,10 +121,10 @@ void AOTLinkedClassBulkLoader::preload_classes_for_loader(ClassLoaderData* loade
 void AOTLinkedClassBulkLoader::preload_classes_for_custom_loaders(TRAPS) {
   CustomLoaderSupport::iterate_custom_loader_info([&](CustomLoaderInfo* cl_info) {
     if (cl_info->check_classpath()) {
-      Handle h_scratch_loader(THREAD, HeapShared::get_root(cl_info->archived_loader_obj_index()));
+      Handle h_scratch_loader(THREAD, AOTHeap::get_root(cl_info->archived_loader_obj_index()));
       Symbol* aot_id = cl_info->aot_id();
       ClassLoaderData* loader_data = SystemDictionary::register_loader(h_scratch_loader, aot_id);
-      ClassLoaderDataShared::restore_custom_loader_data_from_archive(loader_data, cl_info);
+      AOTModules::restore_custom_loader_data_from_archive(loader_data, cl_info);
       preload_classes_for_loader(loader_data, cl_info, CHECK);
     }
   });

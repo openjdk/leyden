@@ -393,8 +393,7 @@ bool ClassPathZipEntry::has_entry(const char* name, Handle class_loader, bool is
     JavaValue result(T_OBJECT);
     oop class_name_oop = java_lang_String::create_oop_from_str(name, CHECK_false);
     Handle h_class_name(THREAD, class_name_oop);
-    oop zip_name_oop = CDSProtectionDomain::to_file_URL(_zip_name, Handle(), CHECK_false);
-    Handle h_zip_name(THREAD, zip_name_oop);
+    Handle h_zip_name = CDSProtectionDomain::to_file_URL(_zip_name, CHECK_false);
 
     // URL ClassLoader.getResource(String name)
     JavaCalls::call_static(&result,

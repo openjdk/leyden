@@ -268,8 +268,8 @@ Handle CDSProtectionDomain::get_shared_jar_url(int shared_path_index, TRAPS) {
     ResourceMark rm;
     const char* path = AOTClassLocationConfig::runtime()->class_location_at(shared_path_index)->path();
     path = AOTClassLocationConfig::runtime()->get_runtime_path(shared_path_index, path);
-    oop result_oop = to_file_URL(path, url_h, CHECK_(url_h));
-    atomic_set_shared_jar_url(shared_path_index, result_oop);
+    url_h = to_file_URL(path, CHECK_NH);
+    atomic_set_shared_jar_url(shared_path_index, url_h());
   }
 
   url_h = Handle(THREAD, shared_jar_url(shared_path_index));
