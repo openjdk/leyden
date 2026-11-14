@@ -133,6 +133,8 @@ include native/Paths.gmk
 #   ALL_OBJS All object files
 #   IMPORT_LIBRARY The import library created for a shared library on Windows
 #
+#   CAPTURE_LDFLAGS Set to true to capture the filtered linker flags to
+#       <TARGET>.ldflags for packaging in the jmod.
 SetupNativeCompilation = $(NamedParamsMacroTemplate)
 define SetupNativeCompilationBody
   # When reading this code, note that macros named Setup<Foo> are just setting

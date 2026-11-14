@@ -42,6 +42,7 @@ $(eval $(call SetupBuildLauncher, java, \
     EXTRA_RCFLAGS := $(JAVA_RCFLAGS), \
     VERSION_INFO_RESOURCE := $(JAVA_VERSION_INFO_RESOURCE), \
     OPTIMIZATION := HIGH, \
+    CAPTURE_LDFLAGS := true, \
 ))
 
 ################################################################################
