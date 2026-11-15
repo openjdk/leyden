@@ -101,7 +101,8 @@ ifeq ($(STATIC_JMOD), true)
     JMOD_FLAGS += --static-libs $(STATIC_LIBS_DIR)
   endif
 
-  # Copy hotspot libs, currently only libjvm.a
+  # 1. Copy hotspot libs, currently only libjvm.a
+  # 2. Include the static Java launcher's linker flags (java.ldflags) via --cmds.
   ifeq ($(MODULE), java.base)
     HOTSPOT_LIB_FILES := $(filter %$(STATIC_LIBRARY_SUFFIX), \
           $(call FindFiles, $(HOTSPOT_OUTPUTDIR)/*/*/objs/static))
@@ -112,6 +113,11 @@ ifeq ($(STATIC_JMOD), true)
         FILES := $(HOTSPOT_LIB_FILES), \
     ))
     DEPS += $(COPY_HOTSPOT_STATIC_LIBS)
+
+    STATIC_CMDS_DIR := $(SUPPORT_OUTPUTDIR)/modules_static-launchers/java.base
+    DEPS += $(STATIC_CMDS_DIR)/java.ldflags
+
+    JMOD_FLAGS += --exclude '**module-included-launchers.txt'
   endif
 endif
 
@@ -130,9 +136,9 @@ ifneq ($(CMDS_DIR), )
         NAME_MACRO := rename_stripped, \
     ))
     DEPS += $(COPY_FILTERED_CMDS)
-    JMOD_FLAGS += --cmds $(CMDS_DIR_FILTERED)
+    JMOD_FLAGS += --cmds $(call PathList, $(CMDS_DIR_FILTERED) $(STATIC_CMDS_DIR))
   else
-    JMOD_FLAGS += --cmds $(CMDS_DIR)
+    JMOD_FLAGS += --cmds $(call PathList, $(CMDS_DIR) $(STATIC_CMDS_DIR))
   endif
 endif
 ifneq ($(CONF_DIR), )
@@ -232,7 +238,7 @@ ifneq ($(LIBS_DIR), )
 	$(AWK) '{ for (i = 1; i <= NF; i++) if (!seen[$$i]++) printf "%s ", $$i } END { print "" }' | \
 	$(SED) -e 's/-framework=@@@/-framework /g' > $@
 
-    JMOD_FLAGS += --exclude '**{*.so.ldflags}'
+    JMOD_FLAGS += --exclude '**{*$(SHARED_LIBRARY_SUFFIX).ldflags}'
 
     DEPS += $(MODULE_LDFLAGS)
   endif

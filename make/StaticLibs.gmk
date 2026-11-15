@@ -147,6 +147,7 @@ $(eval $(call SetupBuildLauncher, java, \
     LINK_TYPE := C++, \
     OUTPUT_DIR := $(STATIC_LAUNCHER_OUTPUT_DIR), \
     OBJECT_DIR := $(STATIC_LAUNCHER_OUTPUT_DIR), \
+    CAPTURE_LDFLAGS := true, \
 ))
 
 $(java): $(STATIC_LIB_FILES)
@@ -158,7 +159,16 @@ TARGETS += $(java)
 
 JAVA_LAUNCHER := $(BUILD_LAUNCHER_java_TARGET)
 
-static-launchers: $(java)
+# Copy java.ldflags into $(SUPPORT_OUTPUTDIR)/modules_static-launchers/java.base/ for
+# packaging into java.base.jmod.
+STATIC_LAUNCHER_LDFLAGS := $(SUPPORT_OUTPUTDIR)/modules_static-launchers/java.base/java.ldflags
+$(eval $(call SetupCopyFiles, copy-static-launcher-ldflags, \
+    FILES := $(STATIC_LAUNCHER_OUTPUT_DIR)/java.ldflags, \
+    DEST := $(dir $(STATIC_LAUNCHER_LDFLAGS)), \
+))
+$(copy-static-launcher-ldflags): $(java)
+
+static-launchers: $(copy-static-launcher-ldflags)
 
 ################################################################################
 # Build relaunchers (thin wrappers calling the java binary) for all other
