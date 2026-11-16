@@ -3554,14 +3554,14 @@ JVM_ENTRY(jboolean, JVM_RegisterURLClassLoaderForAOTLinking(JNIEnv *env, jobject
 
     Handle h_loader(THREAD, JNIHandles::resolve_non_null(loader));
 
-    if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
-      ClassLoaderData* loader_data = SystemDictionary::register_loader(h_loader, aot_id_sym);
-      loader_data->set_classpath(classpath_str);
-    } else if (CDSConfig::is_using_aot_linked_classes()) {
+    if (CDSConfig::is_using_aot_linked_classes()) {
       if (!CustomLoaderSupport::patch_loader_and_link_classes(h_loader, aot_id_sym, classpath_str)) {
          ClassLoaderAotIdTable::unreserve_id(aot_id_sym);
          return JNI_FALSE;
       }
+    } else if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {
+      ClassLoaderData* loader_data = SystemDictionary::register_loader(h_loader, aot_id_sym);
+      loader_data->set_classpath(classpath_str);
     }
     return JNI_TRUE;
   }

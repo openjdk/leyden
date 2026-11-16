@@ -529,8 +529,14 @@ void AOTMetaspace::serialize(SerializeClosure* soc) {
   AOTHeap::serialize_tables(soc);
   AOTSystemDictionary::serialize_dictionary_headers(soc);
   AOTLinkedClassBulkLoader::serialize(soc);
+  // Write the custom loader info map only in the assembly phase
+  // Read the custom loader info map only in the production phase (which can also be
+  // a training phase in iterative workflow)
   if (CDSConfig::supports_custom_loaders()) {
-    CustomLoaderSupport::serialize_custom_loader_info_map_header(soc);
+    if ((soc->writing() && !CDSConfig::is_dumping_aot_configuration()) ||
+        (soc->reading() && !CDSConfig::is_dumping_final_static_archive())) {
+      CustomLoaderSupport::serialize_custom_loader_info_map_header(soc);
+    }
   }
   FinalImageRecipes::serialize(soc);
   TrainingData::serialize(soc);

@@ -272,6 +272,10 @@ void ClassLoaderData::set_aot_locations(const char* classpath) {
   }
   _aot_locations = locations;
 }
+
+void ClassLoaderData::set_aot_locations(GrowableArrayCHeap<AOTClassLocation*, mtClassShared>* locations) {
+  _aot_locations = locations;
+}
 #endif /* INCLUDE_CDS_JAVA_HEAP */
 
 ClassLoaderData::ChunkedHandleList::~ChunkedHandleList() {

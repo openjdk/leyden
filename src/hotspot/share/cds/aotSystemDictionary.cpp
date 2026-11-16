@@ -825,7 +825,7 @@ void AOTSystemDictionary::handle_class_unloading(InstanceKlass* klass) {
 }
 
 void AOTSystemDictionary::init_dumptime_info_from_input_archive(InstanceKlass* k) {
-  if (CDSConfig::is_dumping_preimage_static_archive() && k->defined_by_other_loaders()) {
+  if (CDSConfig::is_dumping_preimage_static_archive() && !k->defined_by_aot_safe_loaders()) {
     DEBUG_ONLY({
         DumpTimeClassInfo* info = _dumptime_table->get(k);
         guarantee(info != nullptr, "Already added in AOTSystemDictionary::copy_unregistered_classes_for_retraining()");
