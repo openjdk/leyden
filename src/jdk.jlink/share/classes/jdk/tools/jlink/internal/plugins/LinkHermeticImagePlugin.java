@@ -28,6 +28,7 @@ import static jdk.tools.jlink.internal.LinkableRuntimeImage.STATIC_LAUNCHER_EXEC
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,6 +46,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import jdk.tools.jlink.internal.JlinkTask;
 import jdk.tools.jlink.internal.Utils;
 import jdk.tools.jlink.plugin.PluginException;
 import jdk.tools.jlink.plugin.ResourcePool;
@@ -59,13 +61,46 @@ import jdk.tools.jlink.plugin.ResourcePoolModule;
 /**
  * NOTE: Comma separated --link-hermetic-image options does not work well
  *       as the native linking flag may contain ",".
+ *       Each --link-hermetic-image occurrence supports one key=value sub-option,
+ *       e.g.
  *
- * Link launcher executable using the native linker. Supported options with
- * --link-hermetic-image:
+ *       --link-hermetic-image linker=<linker_path> \
+ *       --link-hermetic-image "extra-link-flags=<flags>"
+ *
+ * Links launcher executable using the native linker, or uses a pre-linked
+ * launcher executable.
+ *
+ * When performing native linking, the plugin builds the link command from
+ * jmod packaged artifacts:
+ *   - Java launcher linker flags in /java.base/bin/java.ldflags
+ *   - /<module>/lib/<module>.ldflags of all linked modules
+ *   - static libraries of linked modules, the java.base module includes
+ *     liblauncher.a in addition to the JDK and VM's static libraries.
+ *
+ * Supported sub-options with --link-hermetic-image:
+ *
+ *   linker=<path>
+ *       Native linker path, e.g. /usr/bin/g++. Currently, only ld/lld
+ *       on Linux are supported.
  *
  *   link-command=<complete_linking_command>
+ *       When this sub-option is present, the provided command is used for
+ *       linking the launcher executable without constructing the linking
+ *       command using jmod packaged .ldflags.
  *
  *   extra-link-flags=<flags>
+ *       Additional flags appended to the link command constructed for
+ *       {@code linker}. If {@code -o <output>} is present, <output>
+ *       is used as the linked executable's path, otherwise the output
+ *       executable is written to a temporary directory.
+ *       NOTE: Requires linker.
+ *
+ * Example:
+ * $ jlink --hermetic \
+ *     --link-hermetic-image linker=/usr/bin/g++ \
+ *     --module-path $STATIC_JDK/jmods:$APP/mods \
+ *     --add-modules <module_name> \
+ *     --output <demo_image_name>
  *
  * Or use a pre-linked static launcher executable:
  *
@@ -74,17 +109,19 @@ import jdk.tools.jlink.plugin.ResourcePoolModule;
 public final class LinkHermeticImagePlugin extends AbstractPlugin {
 
     private static String executable;
+    private static String linker;
     private static String linkOutput;
     private static List<String> linkCommand;
-    private static List<String> extraLinkFlags;
+    private static List<String> extraLinkFlags = new ArrayList<>();
 
-    private static boolean link = false;
-    private static boolean collectNativeLibs = false;
+    private static boolean link = true;
+    private static boolean collectNativeLibs = true;
 
     // For ld and lld support.
     private static final String WHOLE_ARCHIVE = "-Wl,--whole-archive";
     private static final String NO_WHOLE_ARCHIVE = "-Wl,--no-whole-archive";
     private static final String OUT = "-o";
+    private static final String EXPORT_DYNAMIC = "-Wl,--export-dynamic";
 
     public LinkHermeticImagePlugin() {
         super("link-hermetic-image");
@@ -121,11 +158,18 @@ public final class LinkHermeticImagePlugin extends AbstractPlugin {
             case "pre-linked-exe": {
                 // FIXME: Check if the executable exists?
                 executable = opt[1];
+                link = false;
+                collectNativeLibs = false;
+                return;
+            }
+
+            case "linker": {
+                linker = opt[1];
                 return;
             }
 
             case "link-command": {
-                link = true;
+                collectNativeLibs = false;
                 linkCommand = parseCommand(opt[1]);
                 linkOutput = findLinkOutput(linkCommand);
                 if (linkOutput != null) {
@@ -135,8 +179,6 @@ public final class LinkHermeticImagePlugin extends AbstractPlugin {
             }
 
             case "extra-link-flags": {
-                link = true;
-                collectNativeLibs = true;
                 extraLinkFlags = parseCommand(opt[1]);
                 // It's not fatal if output is not specified in the extra link flags.
                 linkOutput = findLinkOutput(extraLinkFlags);
@@ -150,7 +192,26 @@ public final class LinkHermeticImagePlugin extends AbstractPlugin {
     }
 
     private byte[] linkAndGetExecutable() {
-        if (link && linkCommand != null) {
+        if (link) {
+            if (collectNativeLibs) {
+                if (linker == null) {
+                    throw new PluginException(getName() + ": linker is missing");
+                }
+                collectedFlags = linker
+                    + " " + launcherLinkerFlags
+                    + " " + OUT + " " + linkOutput
+                    + " " + EXPORT_DYNAMIC
+                    + " " + linkLibs
+                    + " " + libLinkerFlags;
+                List<String> linkFlags = parseCommand(collectedFlags);
+                linkCommand = new ArrayList<>(linkFlags.size() + extraLinkFlags.size());
+                linkCommand.addAll(linkFlags);
+                linkCommand.addAll(extraLinkFlags);
+            }
+            if (JlinkTask.DEBUG) {
+                System.err.println("Native linking using command:");
+                System.err.println("  " + String.join(" ", linkCommand));
+            }
             ProcessBuilder builder = new ProcessBuilder(linkCommand);
             int status = -1;
             try {
@@ -158,6 +219,10 @@ public final class LinkHermeticImagePlugin extends AbstractPlugin {
                 status = p.waitFor();
             } catch (InterruptedException | IOException e) {
                 throw new PluginException(e);
+            }
+            if (status != 0) {
+                throw new PluginException("Native linking failed, exit code " + status
+                                          + ": " + String.join(" ", linkCommand));
             }
             executable = linkOutput;
         }
@@ -172,8 +237,15 @@ public final class LinkHermeticImagePlugin extends AbstractPlugin {
         return data;
     }
 
-    private static String collectedFlags;
+    private static String collectedFlags = "";
+    private static String launcherLinkerFlags = "";
+    private static String libLinkerFlags = "";
+    private static String linkLibs = "";
     private static Path tmpDir;
+
+    // TODO: Use list from static-lib/module-included-libs.txt.
+    private static final Set<String> EXCLUDED_LIBS = Set.of(
+        "libsplashscreen.a", "libjsig.a", "libawt_headless.a");
 
     @Override
     public ResourcePool transform(ResourcePool in, ResourcePoolBuilder out) {
@@ -185,7 +257,7 @@ public final class LinkHermeticImagePlugin extends AbstractPlugin {
             // or native linking command is provided.
             try {
                 tmpDir = Files.createTempDirectory("jlink-natives");
-                collectedFlags = WHOLE_ARCHIVE;
+                linkLibs += " " + WHOLE_ARCHIVE;
 
                 in.transformAndCopy(res -> {
                     if (res.type().equals(ResourcePoolEntry.Type.NATIVE_LIB)) {
@@ -195,41 +267,49 @@ public final class LinkHermeticImagePlugin extends AbstractPlugin {
                         String entryPath = res.path();
                         if (entryPath.endsWith(".a")) {
                             String lib = entryPath.substring(entryPath.lastIndexOf('/') + 1);
+                            if (EXCLUDED_LIBS.contains(lib)) {
+                                return res;
+                            }
                             // Extract the static library into the temp directory.
                             Path p = tmpDir.resolve(lib);
                             try {
                                 res.content().transferTo(Files.newOutputStream(p));
                             } catch (IOException ioe) { throw new PluginException(ioe); }
-                            collectedFlags += " " + p.toString();
+                            linkLibs += " " + p.toString();
+                        } else if (res.path().endsWith(".ldflags")) {
+                            // TODO: I think we can add a new resource type for jmod packaged
+                            //       .ldflags. For now, just hardcode explicit checks for
+                            //       files ending with .ldflags.
+                            libLinkerFlags += " " + new String(res.contentBytes(), StandardCharsets.UTF_8).trim();
                         }
+                    } else if (res.type().equals(ResourcePoolEntry.Type.NATIVE_CMD) &&
+                               res.path().endsWith("bin/java.ldflags")) {
+                        launcherLinkerFlags =
+                            new String(res.contentBytes(), StandardCharsets.UTF_8).trim();
                     }
                     return res;
                 }, out);
 
-                collectedFlags += " " + NO_WHOLE_ARCHIVE;
-                if (linkOutput == null) {
-                    // User provided extra link flags do not specify output.
-                    linkOutput = tmpDir.resolve("static-launcher-executable").toString();
-                    collectedFlags += " " + OUT + " " + linkOutput;
-                }
-
+                linkLibs += " " + NO_WHOLE_ARCHIVE;
             } catch (IOException e) {
                 throw new PluginException(e);
             }
 
-            List<String> linkFlags = parseCommand(collectedFlags);
-            linkCommand = new ArrayList<>(extraLinkFlags.size() + linkFlags.size());
-            linkCommand.addAll(extraLinkFlags);
-            linkCommand.addAll(linkFlags);
+            if (linkOutput == null) {
+                // User provided extra link flags do not specify output.
+                linkOutput = tmpDir.resolve("static-launcher-executable").toString();
+            }
         }
 
-        byte[] data = linkAndGetExecutable();
-        out.add(ResourcePoolEntry.create(STATIC_LAUNCHER_EXECUTABLE,
-                                         ResourcePoolEntry.Type.NATIVE_CMD,
-                                         data));
-
-        if (tmpDir != null) {
-            deleteDirRecursivelyIgnoreResult(tmpDir);
+        try {
+            byte[] data = linkAndGetExecutable();
+            out.add(ResourcePoolEntry.create(STATIC_LAUNCHER_EXECUTABLE,
+                                             ResourcePoolEntry.Type.NATIVE_CMD,
+                                             data));
+        } finally {
+            if (tmpDir != null) {
+               deleteDirRecursivelyIgnoreResult(tmpDir);
+            }
         }
         return out.build();
     }
