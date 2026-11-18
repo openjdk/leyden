@@ -393,8 +393,7 @@ bool ClassPathZipEntry::has_entry(const char* name, Handle class_loader, bool is
     JavaValue result(T_OBJECT);
     oop class_name_oop = java_lang_String::create_oop_from_str(name, CHECK_false);
     Handle h_class_name(THREAD, class_name_oop);
-    oop zip_name_oop = CDSProtectionDomain::to_file_URL(_zip_name, Handle(), CHECK_false);
-    Handle h_zip_name(THREAD, zip_name_oop);
+    Handle h_zip_name = CDSProtectionDomain::to_file_URL(_zip_name, CHECK_false);
 
     // URL ClassLoader.getResource(String name)
     JavaCalls::call_static(&result,
@@ -1323,11 +1322,28 @@ void ClassLoader::record_result(JavaThread* current, InstanceKlass* ik,
     return;
   }
 
-  if (!AOTSystemDictionary::is_builtin_loader(ik->class_loader_data())) {
+  if (!ik->defined_by_aot_safe_loaders()) {
     // A class loaded by a user-defined classloader.
     assert(ik->shared_classpath_index() < 0, "not assigned yet");
     ik->set_shared_classpath_index(UNREGISTERED_INDEX);
     AOTSystemDictionary::set_shared_class_misc_info(ik, (ClassFileStream*)stream);
+    return;
+  }
+
+  if (ik->defined_by_aot_safe_custom_loader()) {
+    GrowableArrayView<AOTClassLocation*>* class_locations = ik->class_loader_data()->aot_locations();
+    assert(class_locations != nullptr, "class locations not set");
+    const char* path = ClassLoader::uri_to_path(src);
+    class_locations->iterate([&](AOTClassLocation*& cl) {
+      int index = cl->index();
+      if (os::same_files(cl->path(), path)) {
+        ik->set_shared_classpath_index(index);
+        // found match; stop iterating
+        return false;
+      }
+      // keep iterating
+      return true;
+    });
     return;
   }
 

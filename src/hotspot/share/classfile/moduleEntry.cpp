@@ -29,6 +29,7 @@
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/javaClasses.inline.hpp"
@@ -274,7 +275,11 @@ ModuleEntry::ModuleEntry(Handle module_handle,
     _has_default_read_edges(false),
     _must_walk_reads(false),
     _is_open(is_open),
-    _is_patched(false) {
+    _is_patched(false)
+#if INCLUDE_CDS_JAVA_HEAP
+    , _archived_module_index(-1)
+#endif
+{
 
   // Initialize fields specific to a ModuleEntry
   if (_name == nullptr) {
@@ -409,7 +414,7 @@ void ModuleEntry::metaspace_pointers_do(MetaspaceClosure* it) {
 
 #if INCLUDE_CDS_JAVA_HEAP
 bool ModuleEntry::should_be_archived() const {
-  return AOTSystemDictionary::is_builtin_loader(loader_data());
+  return AOTSystemDictionary::is_builtin_loader(loader_data()) || loader_data()->is_aot_safe_custom_loader();
 }
 
 void ModuleEntry::remove_unshareable_info() {
@@ -452,6 +457,16 @@ void ModuleEntry::preload_archived_oops() {
   (void)AOTHeap::get_root(_archived_module_index, false /* clear */);
 }
 
+void ModuleEntry::patch_class_loader_object(Handle h_runtime_loader) {
+  // For AOT-safe custom loaders java.lang.Module would point to the scratch java.lang.ClassLoader object
+  // created during the assembly phase. Now that we have the correct java.lang.ClassLoader object
+  // update java.lang.Module object to point to it.
+  assert(CustomLoaderSupport::is_archived_scratch_loader(java_lang_Module::loader(module_oop())),
+         "Module's loader must be the scratch loader created in the assembly phase");
+  // Change Module's loader from scratch loader to the real loader object
+  java_lang_Module::set_loader(module_oop(), h_runtime_loader());
+}
+
 void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
   assert(CDSConfig::is_using_full_module_graph(), "runtime only");
   Handle module_handle(Thread::current(), AOTHeap::get_root(_archived_module_index, /*clear=*/true));
@@ -462,8 +477,7 @@ void ModuleEntry::restore_archived_oops(ClassLoaderData* loader_data) {
   // because it may be affected by archive relocation.
   java_lang_Module::set_module_entry(module_handle(), this);
 
-  assert(java_lang_Module::loader(module_handle()) == loader_data->class_loader(),
-         "must be set in dump time");
+  assert(java_lang_Module::loader(module_handle()) == loader_data->class_loader(), "must be set in dump time");
 
   if (log_is_enabled(Info, aot, module)) {
     ResourceMark rm;
@@ -524,6 +538,14 @@ void ModuleEntryTable::restore_archived_oops(ClassLoaderData* loader_data, Array
     ModuleEntry* archived_entry = archived_modules->at(i);
     archived_entry->restore_archived_oops(loader_data);
   }
+}
+
+void ModuleEntryTable::patch_class_loader_object(Handle h_runtime_loader) {
+  assert(CDSConfig::is_using_full_module_graph(), "runtime only");
+  auto patcher = [&] (const SymbolHandle& key, ModuleEntry*& entry) {
+    entry->patch_class_loader_object(h_runtime_loader);
+  };
+  _table.iterate_all(patcher);
 }
 #endif // INCLUDE_CDS_JAVA_HEAP
 

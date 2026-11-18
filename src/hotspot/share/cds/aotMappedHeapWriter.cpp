@@ -567,7 +567,8 @@ size_t AOTMappedHeapWriter::copy_one_source_obj_to_buffer(oop src_obj) {
     // We only archive these loaders
     if (src_obj != SystemDictionary::java_platform_loader() &&
         src_obj != SystemDictionary::java_system_loader()) {
-      assert(src_obj->klass()->name()->equals("jdk/internal/loader/ClassLoaders$BootClassLoader"), "must be");
+      assert(src_obj->klass()->name()->equals("jdk/internal/loader/ClassLoaders$BootClassLoader") ||
+             src_obj->klass()->name()->equals("java/net/URLClassLoader"), "must be");
     }
 #endif
     update_buffered_object_field<ClassLoaderData*>(to, java_lang_ClassLoader::loader_data_offset(), nullptr);

@@ -44,6 +44,7 @@
 #include "cds/classListParser.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/cppVtables.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/dumpAllocStats.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "cds/filemap.hpp"
@@ -528,6 +529,15 @@ void AOTMetaspace::serialize(SerializeClosure* soc) {
   AOTHeap::serialize_tables(soc);
   AOTSystemDictionary::serialize_dictionary_headers(soc);
   AOTLinkedClassBulkLoader::serialize(soc);
+  // Write the custom loader info map only in the assembly phase
+  // Read the custom loader info map only in the production phase (which can also be
+  // a training phase in iterative workflow)
+  if (CDSConfig::supports_custom_loaders()) {
+    if ((soc->writing() && !CDSConfig::is_dumping_aot_configuration()) ||
+        (soc->reading() && !CDSConfig::is_dumping_final_static_archive())) {
+      CustomLoaderSupport::serialize_custom_loader_info_map_header(soc);
+    }
+  }
   FinalImageRecipes::serialize(soc);
   TrainingData::serialize(soc);
   InstanceMirrorKlass::serialize_offsets(soc);
@@ -731,6 +741,9 @@ public:
     for (int i = 0; i < _pending_method_handle_intrinsics->length(); i++) {
       it->push(_pending_method_handle_intrinsics->adr_at(i));
     }
+    if (CDSConfig::supports_custom_loaders()) {
+      ClassLoaderAOTIdTable::all_symbols_do(it);
+    }
   }
 };
 
@@ -925,6 +938,9 @@ void AOTMetaspace::link_all_loaded_classes(JavaThread* current) {
 
 void AOTMetaspace::link_shared_classes(TRAPS) {
   AOTClassLinker::initialize();
+  if (CDSConfig::supports_custom_loaders()) {
+    CustomLoaderSupport::initialize();
+  }
   AOTClassInitializer::init_test_class(CHECK);
 
   if (CDSConfig::is_dumping_final_static_archive()) {
@@ -1089,12 +1105,13 @@ void AOTMetaspace::load_classes(TRAPS) {
 }
 
 void AOTMetaspace::exercise_runtime_cds_code(TRAPS) {
-  // Exercise the manifest processing code
-  const char* dummy = "Manifest-Version: 1.0\n";
-  CDSProtectionDomain::create_jar_manifest(dummy, strlen(dummy), CHECK);
-
+  // Exercise Java manifest processing code using
+  // a dummy jar and manifest, forcing the associated
+  // Java classes to be loaded into the current VM.
+  const char* dummy_manifest = "Manifest-Version: 1.0\n";
   // Exercise FileSystem and URL code
-  CDSProtectionDomain::to_file_URL("dummy.jar", Handle(), CHECK);
+  const char* dummy_jar = "dummy.jar";
+  CDSProtectionDomain::exercise_runtime_cds_code(dummy_manifest, dummy_jar, THREAD);
 }
 
 bool AOTMetaspace::preimage_static_archive_dumped() {

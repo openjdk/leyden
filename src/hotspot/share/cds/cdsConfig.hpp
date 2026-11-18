@@ -54,6 +54,7 @@ class CDSConfig : public AllStatic {
   static bool  _new_aot_flags_used;
   static bool  _disable_heap_dumping;
 
+  static bool _supports_custom_loaders;
   // preserve CompileThresholdScaling for A2 compilation
   static double _aot_compile_threshold_scaling;
 
@@ -215,6 +216,8 @@ public:
   static void stop_dumping_full_module_graph(const char* reason = nullptr) NOT_CDS_JAVA_HEAP_RETURN;
   static void stop_using_full_module_graph(const char* reason = nullptr) NOT_CDS_JAVA_HEAP_RETURN;
 
+  static bool supports_custom_loaders()                      NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static void set_custom_loaders_support(bool value)         NOT_CDS_JAVA_HEAP_RETURN;
   // --- AOT code
 
   static bool is_dumping_aot_code()                          NOT_CDS_RETURN_(false);

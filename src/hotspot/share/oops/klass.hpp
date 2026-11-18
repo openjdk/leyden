@@ -820,6 +820,7 @@ public:
 #if INCLUDE_CDS
   // For klass in AOT cache
   static bool is_valid_aot_klass(const Klass* k);
+  bool defined_by_aot_safe_loader();
 #endif
 
   static void on_secondary_supers_verification_failure(Klass* super, Klass* sub, bool linear_result, bool table_result, const char* msg);

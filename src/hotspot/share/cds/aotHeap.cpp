@@ -31,6 +31,7 @@
 #include "cds/aotMappedHeapLoader.hpp"
 #include "cds/aotMappedHeapWriter.hpp"
 #include "cds/aotMetaspace.hpp"
+#include "cds/aotModules.hpp"
 #include "cds/aotOopChecker.hpp"
 #include "cds/aotReferenceObjSupport.hpp"
 #include "cds/aotStreamedHeapLoader.hpp"
@@ -675,6 +676,9 @@ bool AOTHeap::archive_object(oop obj, oop referrer, KlassSubGraphInfo* subgraph_
                (java_lang_invoke_MethodHandle::is_instance(obj) || is_interned_string(obj))) {
       // Needed by AOT compiler.
       append_root(obj);
+    } else if(java_lang_ClassLoader::is_instance(obj) &&
+              !obj->klass()->name()->equals("jdk/internal/loader/ClassLoaders$BootClassLoader")) {
+      AOTModules::set_archived_index_for(obj);
     }
   }
 
@@ -728,7 +732,7 @@ public:
 };
 
 void AOTHeap::add_scratch_resolved_references(ConstantPool* src, objArrayOop dest) {
-  if (AOTSystemDictionary::is_builtin_loader(src->pool_holder()->class_loader_data())) {
+  if (src->pool_holder()->defined_by_aot_safe_loaders()) {
     _scratch_objects_table->set_oop(src, dest);
   }
 }
@@ -961,7 +965,7 @@ void AOTHeap::copy_java_mirror(oop orig_mirror, oop scratch_m) {
 }
 
 static objArrayOop get_archived_resolved_references(InstanceKlass* src_ik) {
-  if (AOTSystemDictionary::is_builtin_loader(src_ik->class_loader_data())) {
+  if (src_ik->defined_by_aot_safe_loaders()) {
     objArrayOop rr = src_ik->constants()->resolved_references_or_null();
     if (rr != nullptr && !AOTHeap::is_too_large_to_archive(rr)) {
       return AOTHeap::scratch_resolved_references(src_ik->constants());
@@ -1219,9 +1223,7 @@ void KlassSubGraphInfo::check_allowed_klass(InstanceKlass* ik) {
   if (CDSConfig::is_dumping_method_handles()) {
     lambda_msg = ", or a lambda proxy class";
     if (AOTHeap::is_lambda_proxy_klass(ik) &&
-        (ik->class_loader() == nullptr ||
-         ik->class_loader() == SystemDictionary::java_platform_loader() ||
-         ik->class_loader() == SystemDictionary::java_system_loader())) {
+        ik->defined_by_aot_safe_loaders()) {
       return;
     }
   }
@@ -1944,6 +1946,16 @@ bool AOTHeap::walk_one_object(PendingOopStack* stack, int level, KlassSubGraphIn
     if (java_lang_Class::is_instance(orig_obj)) {
       orig_obj = scratch_java_mirror(orig_obj);
       assert(orig_obj != nullptr, "must be archived");
+    }
+    if (java_lang_ClassLoader::is_instance(orig_obj)) {
+      ResourceMark rm;
+      if (orig_obj->klass()->name()->equals("java/lang/URLClassLoader")) {
+        ClassLoaderData* cld = java_lang_ClassLoader::loader_data(orig_obj);
+        assert(cld->is_aot_safe_custom_loader(), "Attempting to archive a URLClassLoader without aot-id");
+        assert(java_lang_Class::is_instance(referrer) || java_lang_Module::is_instance(referrer) || java_security_ProtectionDomain::is_instance(referrer),
+               "User-defined ClassLoader object should only be referenced by the Class or Module objects (referrer's class is %s)",
+               referrer->klass()->external_name());
+      }
     }
   } else if (java_lang_Class::is_instance(orig_obj) && subgraph_info != _dump_time_special_subgraph) {
     // Without CDSConfig::is_dumping_aot_linked_classes(), we only allow archived objects to

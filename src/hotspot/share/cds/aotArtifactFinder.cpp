@@ -273,7 +273,7 @@ void AOTArtifactFinder::add_cached_instance_class(InstanceKlass* ik) {
       // discover the anonymous classes that are reachable only from the archivable entries.
       cpCache->record_classes_in_archivable_entries();
     }
-    if (!ik->defined_by_other_loaders()) {
+    if (ik->defined_by_aot_safe_loaders()) {
       scan_oops_in_instance_class(ik);
       if (ik->is_hidden() && CDSConfig::is_dumping_aot_linked_classes()) {
         bool succeed = AOTClassLinker::try_add_candidate(ik);

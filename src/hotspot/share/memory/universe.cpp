@@ -26,6 +26,7 @@
 #include "cds/aotMetaspace.hpp"
 #include "cds/aotModules.hpp"
 #include "cds/cdsConfig.hpp"
+#include "cds/customLoaderSupport.hpp"
 #include "cds/dynamicArchive.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
@@ -933,6 +934,8 @@ jint universe_init() {
   }
 #endif
 
+  SymbolTable::create_table();
+  ClassLoaderAOTIdTable::create_table();
   ClassLoaderData::init_null_class_loader_data();
 
 #if INCLUDE_CDS
@@ -945,8 +948,6 @@ jint universe_init() {
     CDSConfig::prepare_for_dumping();
   }
 #endif
-
-  SymbolTable::create_table();
 
   if (strlen(VerifySubSet) > 0) {
     Universe::initialize_verify_flags();

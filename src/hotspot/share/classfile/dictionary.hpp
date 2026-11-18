@@ -71,6 +71,7 @@ public:
   void print_on(outputStream* st) const;
   void print_size(outputStream* st) const;
   void verify();
+  int number_of_entries() const { return _number_of_entries; }
 };
 
 #endif // SHARE_CLASSFILE_DICTIONARY_HPP

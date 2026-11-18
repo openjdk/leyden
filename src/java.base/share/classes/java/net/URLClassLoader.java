@@ -25,7 +25,9 @@
 
 package java.net;
 
+import java.nio.file.Path;
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.CodeSigner;
@@ -44,6 +46,7 @@ import java.util.jar.Attributes.Name;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
+import jdk.internal.loader.ClassLoaders;
 import jdk.internal.loader.Resource;
 import jdk.internal.loader.URLClassPath;
 import jdk.internal.access.SharedSecrets;
@@ -64,9 +67,11 @@ import jdk.internal.perf.PerfCounter;
  * @author  David Connelly
  * @since   1.2
  */
+@SuppressWarnings("this-escape")
 public class URLClassLoader extends SecureClassLoader implements Closeable {
     /* The search path for classes and resources */
     private final URLClassPath ucp;
+    private static final boolean DEBUG = Boolean.getBoolean("urlclassloader.debug");
 
     /**
      * Constructs a new URLClassLoader for the given URLs. The URLs will be
@@ -92,6 +97,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
     public URLClassLoader(URL[] urls, ClassLoader parent) {
         super(parent);
         this.ucp = new URLClassPath(urls);
+        registerForAOTLinking();
     }
 
     /**
@@ -111,6 +117,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
     public URLClassLoader(URL[] urls) {
         super();
         this.ucp = new URLClassPath(urls);
+        registerForAOTLinking();
     }
 
     /**
@@ -138,6 +145,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
                           URLStreamHandlerFactory factory) {
         super(parent);
         this.ucp = new URLClassPath(urls, factory);
+        registerForAOTLinking();
     }
 
 
@@ -171,6 +179,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
                           ClassLoader parent) {
         super(name, parent);
         this.ucp = new URLClassPath(urls);
+        registerForAOTLinking();
     }
 
     /**
@@ -202,6 +211,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
                           URLStreamHandlerFactory factory) {
         super(name, parent);
         this.ucp = new URLClassPath(urls, factory);
+        registerForAOTLinking();
     }
 
     /* A map (used as a set) to keep track of closeable local resources
@@ -639,4 +649,87 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
     static {
         ClassLoader.registerAsParallelCapable();
     }
+
+    /**
+     * Returns true if the parent is a builtin loader
+     *
+     * @return true if the parent is a builtin loader
+     */
+    @SuppressWarnings("this-escape")
+    private final boolean hasBuiltinLoaderAsParent() {
+        ClassLoader parent = getParent();
+        return parent == null || parent == ClassLoaders.platformClassLoader() || parent == ClassLoaders.appClassLoader();
+    }
+
+    // It is AOT-safe if only jar files are present in the urls
+    private boolean isSafeForAOTLinking(final URL[] urls) throws Exception {
+        if (getClass() != java.net.URLClassLoader.class) {
+            return false;
+        }
+        if (!hasBuiltinLoaderAsParent()) {
+            return false;
+        }
+        for (URL url: urls) {
+            URL urlToCheck = url;
+            if (urlToCheck.getProtocol().equals("jar")) {
+                // check if URL is of type "jar:file:/path/to/file!/"
+                String file = urlToCheck.getFile();
+                if (file.startsWith("file:") && file.endsWith("!/")) {
+                    // strip off "!/"
+                    @SuppressWarnings("deprecation")
+                    URL nestedURL = new URL(file.substring(0, file.length() - 2));
+                    url = nestedURL;
+                } else {
+                    return false;
+                }
+            }
+            if (!urlToCheck.getProtocol().equals("file") || !urlToCheck.getPath().endsWith(".jar")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Convert the urls to classpath by concatenating them
+    private String createClassPath(final URL[] urls) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < urls.length; i++) {
+           URL url = urls[i];
+           if (url.getProtocol().equals("jar")) {
+                String file = url.getFile();
+                if (file.startsWith("file:") && file.endsWith("!/")) {
+                    // strip off "!/"
+                    @SuppressWarnings("deprecation")
+                    URL nestedURL = new URL(file.substring(0, file.length() - 2));
+                    url = nestedURL;
+                } else {
+                    throw new AssertionError("Unexpected url " + url);
+                }
+           }
+           String path = Path.of(url.toURI()).toString();
+           sb.append(path);
+           if (i < urls.length-1) {
+             sb.append(File.pathSeparator);
+           }
+        }
+        return sb.toString();
+    }
+
+    private void registerForAOTLinking() {
+        final URL[] urls = this.ucp.getURLs();
+        try {
+            if (isSafeForAOTLinking(urls)) {
+                String classpath = createClassPath(urls);
+                registerForAOTLinkingImpl(getParent(), classpath);
+            } else {
+                if (DEBUG) {
+                    System.out.println("DEBUG: URLClassLoader cannot be registered for AOT-linking");
+                }
+            }
+        } catch (Exception e) {
+            // absorb any exception; not critical
+        }
+    }
+
+    private native boolean registerForAOTLinkingImpl(ClassLoader parent, String classpath);
 }

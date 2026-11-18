@@ -333,7 +333,7 @@ refArrayOop ConstantPool::prepare_resolved_references_for_archiving() {
   }
 
   InstanceKlass *ik = pool_holder();
-  if (!AOTSystemDictionary::is_builtin_loader(ik->class_loader_data())) {
+  if (!ik->defined_by_aot_safe_loaders()) {
     // Archiving resolved references for classes from non-builtin loaders
     // is not yet supported.
     return nullptr;
@@ -448,7 +448,7 @@ void ConstantPool::remove_unshareable_info() {
   InstanceKlass* src_holder = src_cp->pool_holder();
   if (!src_cp->pool_holder()->is_loaded()) {
     precond(src_holder->in_aot_cache());
-    precond(src_holder->defined_by_other_loaders());
+    precond(!src_holder->defined_by_aot_safe_loaders());
     precond(CDSConfig::is_dumping_with_input_archive());
     // <src_cp> is a cached unregistered class that has been entered into
     // AOTSystemDictionary::_dumptime_table, but it has not been actually
