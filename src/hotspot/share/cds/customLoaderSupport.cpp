@@ -24,9 +24,9 @@
 
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotHeap.hpp"
-#include "cds/aotModules.hpp"
 #include "cds/aotLinkedClassBulkLoader.hpp"
 #include "cds/aotLogging.hpp"
+#include "cds/aotModules.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveUtils.inline.hpp"
 #include "cds/customLoaderSupport.hpp"
