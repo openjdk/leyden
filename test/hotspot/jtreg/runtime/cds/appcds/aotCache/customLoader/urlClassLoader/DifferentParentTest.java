@@ -123,7 +123,7 @@ class AppWithDifferentParent {
         // classes loaded by system loader should not be visible to the custom loader
         // that has boot loader as its parent
         try {
-            Class appClass = loader2.loadClass("AppWithURLClassLoaders");
+            Class appClass = loader2.loadClass("AppWithDifferentParent");
             throw new RuntimeException("should have thrown ClassNotFoundException");
         } catch (ClassNotFoundException e) {
             // expected; ignore it

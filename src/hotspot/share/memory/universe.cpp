@@ -935,7 +935,7 @@ jint universe_init() {
 #endif
 
   SymbolTable::create_table();
-  ClassLoaderAotIdTable::create_table();
+  ClassLoaderAOTIdTable::create_table();
   ClassLoaderData::init_null_class_loader_data();
 
 #if INCLUDE_CDS

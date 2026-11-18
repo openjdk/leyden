@@ -33,6 +33,7 @@
 #include "cds/serializeClosure.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/compactHashtable.hpp"
+#include "classfile/dictionary.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "memory/metaspaceClosure.hpp"
 #include "memory/resourceArea.hpp"
@@ -46,10 +47,10 @@
 
 #if INCLUDE_CDS_JAVA_HEAP
 
-ClassLoaderAotIdTable::LoaderIdTable* ClassLoaderAotIdTable::_loader_id_table = nullptr;
-ClassLoaderAotIdTable::LoaderIdToCLDMap* ClassLoaderAotIdTable::_id_cld_map = nullptr;
+ClassLoaderAOTIdTable::LoaderIdTable* ClassLoaderAOTIdTable::_loader_id_table = nullptr;
+ClassLoaderAOTIdTable::LoaderIdToCLDMap* ClassLoaderAOTIdTable::_id_cld_map = nullptr;
 
-void ClassLoaderAotIdTable::create_table() {
+void ClassLoaderAOTIdTable::create_table() {
   if (!CDSConfig::supports_custom_loaders()) {
     // nothing to do if custom loader support is not enabled
     return;
@@ -60,24 +61,24 @@ void ClassLoaderAotIdTable::create_table() {
   _id_cld_map = new (mtClass) LoaderIdToCLDMap();
 }
 
-bool ClassLoaderAotIdTable::reserve_id(Symbol* id) {
-  MutexLocker mu(ClassLoaderAotIdTable_lock, Mutex::_no_safepoint_check_flag);
+bool ClassLoaderAOTIdTable::reserve_id(Symbol* id) {
+  MutexLocker mu(ClassLoaderAOTIdTable_lock, Mutex::_no_safepoint_check_flag);
   bool created = false;
   _loader_id_table->put_if_absent(id, &created);
   return created;
 }
 
-void ClassLoaderAotIdTable::unreserve_id(Symbol* id) {
+void ClassLoaderAOTIdTable::unreserve_id(Symbol* id) {
   assert(_loader_id_table->contains(id), "id is not present in the table");
   _loader_id_table->remove(id);
 }
 
-bool ClassLoaderAotIdTable::add_entry(Symbol* id, ClassLoaderData* cld) {
+bool ClassLoaderAOTIdTable::add_entry(Symbol* id, ClassLoaderData* cld) {
   bool result = _id_cld_map->put(id, cld);
   return result;
 }
 
-ClassLoaderData* ClassLoaderAotIdTable::get_cld(Symbol* id) {
+ClassLoaderData* ClassLoaderAOTIdTable::get_cld(Symbol* id) {
   ClassLoaderData** cld = _id_cld_map->get(id);
   if (cld != nullptr) {
     return *cld;
@@ -85,11 +86,11 @@ ClassLoaderData* ClassLoaderAotIdTable::get_cld(Symbol* id) {
   return nullptr;
 }
 
-bool ClassLoaderAotIdTable::contains(Symbol* id) {
+bool ClassLoaderAOTIdTable::contains(Symbol* id) {
   return get_cld(id) != nullptr ? true : false;
 }
 
-void ClassLoaderAotIdTable::all_symbols_do(MetaspaceClosure* it) {
+void ClassLoaderAOTIdTable::all_symbols_do(MetaspaceClosure* it) {
   if (_id_cld_map != nullptr) {
     _id_cld_map->iterate_all([&](Symbol*& loader_id, ClassLoaderData*& cld) {
       it->push(&loader_id);
@@ -150,12 +151,9 @@ bool CustomLoaderInfo::check_classpath() {
 
 bool CustomLoaderInfo::match_classpath(const char* runtime_cp) {
   URLClassLoaderClassLocationStream uccs(runtime_cp);
-  if (uccs.size() > _cp_locations->length()) {
-    aot_log_warning(aot)("URLClassLoader classpath validation failed (reason: runtime classpath has more elements than the archived classpath)");
-    return false;
-  }
-  if (uccs.size() < _cp_locations->length()) {
-    aot_log_warning(aot)("URLClassLoader classpath validation failed (reason: runtime classpath has fewer elements than the archived classpath)");
+  if (uccs.size() != _cp_locations->length()) {
+    aot_log_warning(aot)("URLClassLoader classpath validation failed (reason: runtime classpath has %i elements but the archived classpath has %i)",
+                         uccs.size(), _cp_locations->length());
     return false;
   }
   uccs.start();
@@ -171,19 +169,20 @@ bool CustomLoaderInfo::match_classpath(const char* runtime_cp) {
   return true;
 }
 
-void AOTLinkedCustomLoaderClassesMap::add_class(Symbol* loader_id, InstanceKlass* ik) {
+#if 0
+void AOTLinkedCustomLoaderClassesMap::add_class(Symbol* loader_id, InstanceKlass* ik, int list_size_hint) {
   assert(loader_id != nullptr, "sanity check");
   ClassList** class_list_ptr = get(loader_id);
   ClassList* class_list = nullptr;
   if (class_list_ptr != nullptr) {
     class_list = *class_list_ptr;
   } else {
-    class_list = new ClassList(1000);
+    class_list = new ClassList(list_size_hint);
     put(loader_id, class_list);
   }
   class_list->append(ik);
 }
-
+#endif
 void AOTLinkedCustomLoaderClassesMap::write_to_archive(ArchivedCustomLoaderInfoMap* archived_map, const char* map_name) {
   CompactHashtableStats stats;
   CompactHashtableWriter writer(number_of_entries(), &stats);
@@ -211,7 +210,8 @@ void CustomLoaderSupport::add_to_custom_loader_map(InstanceKlass* ik) {
 
   Symbol* loader_id = ik->class_loader_data()->aot_identity();
   if (loader_id != nullptr) {
-    _custom_loader_classes_map->add_class(loader_id, ik);
+    int list_size_hint = ik->class_loader_data()->dictionary()->number_of_entries();
+    _custom_loader_classes_map->add_entry(loader_id, ik, list_size_hint);
   }
 }
 
@@ -239,12 +239,11 @@ void CustomLoaderSupport::serialize_custom_loader_info_map_header(SerializeClosu
 
 CustomLoaderInfo* CustomLoaderSupport::get_archived_classloader_info(Symbol* aot_id) {
   assert(CDSConfig::supports_custom_loaders(), "custom loader support is not enabled");
-  CustomLoaderInfo* cl_info = _archived_custom_loader_info_map.get_loader_info(aot_id);
-  return cl_info;
+  return _archived_custom_loader_info_map.get_loader_info(aot_id);
 }
 
 // Used only during production run
-bool CustomLoaderSupport::is_scratch_loader(oop loader) {
+bool CustomLoaderSupport::is_archived_scratch_loader(oop loader) {
   assert(CDSConfig::is_using_aot_linked_classes(), "sanity check");
   assert(CDSConfig::supports_custom_loaders(), "custom loader support is not enabled");
 
@@ -263,7 +262,7 @@ bool CustomLoaderSupport::is_scratch_loader(oop loader) {
 
 bool CustomLoaderSupport::patch_loader_and_link_classes(Handle h_loader, Symbol* aot_id, const char* classpath) {
   JavaThread* THREAD = JavaThread::current();
-  ClassLoaderData* loader_data = ClassLoaderAotIdTable::get_cld(aot_id);
+  ClassLoaderData* loader_data = ClassLoaderAOTIdTable::get_cld(aot_id);
   // It is possible that ClassLoaderData for this aot_id was not created by AOTLinkedClassBulkLoader::preload_classes_for_custom_loaders()
   // due to classpath check failure. If so, return failure.
   if (loader_data == nullptr) {
@@ -276,7 +275,7 @@ bool CustomLoaderSupport::patch_loader_and_link_classes(Handle h_loader, Symbol*
   }
   loader_data->patch_class_loader_object(h_loader);
   AOTLinkedClassBulkLoader::patch_loader_in_preloaded_classes(loader_data, h_loader, cl_info, CHECK_AND_CLEAR_(false));
-  AOTLinkedClassBulkLoader::link_classes_for_loader(loader_data, cl_info, CHECK_AND_CLEAR_(false));
+  AOTLinkedClassBulkLoader::link_classes_for_custom_loader(loader_data, cl_info, CHECK_AND_CLEAR_(false));
   return true;
 }
 

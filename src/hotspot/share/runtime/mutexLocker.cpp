@@ -157,7 +157,7 @@ Mutex*   LambdaFormInvokers_lock      = nullptr;
 Mutex*   ScratchObjects_lock          = nullptr;
 Mutex*   FinalImageRecipes_lock       = nullptr;
 #if INCLUDE_CDS_JAVA_HEAP
-Mutex*   ClassLoaderAotIdTable_lock   = nullptr;
+Mutex*   ClassLoaderAOTIdTable_lock   = nullptr;
 #endif // INCLUDE_CDS_JAVA_HEAP
 #endif // INCLUDE_CDS
 Mutex*   Bootclasspath_lock           = nullptr;
@@ -310,7 +310,7 @@ void mutex_init() {
   MUTEX_DEFL(ScratchObjects_lock             , PaddedMutex  , DumpTimeTable_lock);
   MUTEX_DEFN(FinalImageRecipes_lock          , PaddedMutex  , nosafepoint);
 #if INCLUDE_CDS_JAVA_HEAP
-  MUTEX_DEFN(ClassLoaderAotIdTable_lock      , PaddedMutex  , nosafepoint);
+  MUTEX_DEFN(ClassLoaderAOTIdTable_lock      , PaddedMutex  , nosafepoint);
 #endif // INCLUDE_CDS_JAVA_HEAP
 #endif // INCLUDE_CDS
   MUTEX_DEFN(Bootclasspath_lock              , PaddedMutex  , nosafepoint);

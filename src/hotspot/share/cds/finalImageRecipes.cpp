@@ -35,6 +35,7 @@
 #include "cds/unregisteredClasses.hpp"
 #include "cds/urlClassLoaderSupport.hpp"
 #include "classfile/classLoader.hpp"
+#include "classfile/dictionary.hpp"
 #include "classfile/javaClasses.hpp"
 #include "classfile/javaStackTraceClasses.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -59,28 +60,36 @@ static void mark_pointers_in_array(Array<InstanceKlassRecipe>* array) {
   }
 }
 
-class AotSafeLoaderClassRecipeMap: public ResizeableHashTable<Symbol*, ClassRecipeList*, AnyObj::C_HEAP, mtClass>
+class AOTSafeCustomLoaderClassRecipeMap : public AOTCustomLoaderClassesMap<InstanceKlassRecipe>
+{
+public:
+  AOTSafeCustomLoaderClassRecipeMap(unsigned size, unsigned max_size) : AOTCustomLoaderClassesMap<InstanceKlassRecipe>(size, max_size) {}
+};
+
+#if 0
+class AOTSafeCustomLoaderClassRecipeMap: public ResizeableHashTable<Symbol*, ClassRecipeList*, AnyObj::C_HEAP, mtClass>
 {
   using ResizeableHashTableBase = ResizeableHashTable<Symbol*, ClassRecipeList*, AnyObj::C_HEAP, mtClass>;
 private:
 public:
-  AotSafeLoaderClassRecipeMap(unsigned size, unsigned max_size) : ResizeableHashTableBase(size, max_size) {}
+  AOTSafeCustomLoaderClassRecipeMap(unsigned size, unsigned max_size) : ResizeableHashTableBase(size, max_size) {}
 
-  void add_class_recipe(Symbol* loader_id, InstanceKlassRecipe* ikr) {
+  void add_class_recipe(Symbol* loader_id, InstanceKlassRecipe* ikr, int list_size_hint) {
     assert(loader_id != nullptr, "sanity check");
     ClassRecipeList** class_recipes_ptr = get(loader_id);
     ClassRecipeList* class_recipes = nullptr;
     if (class_recipes_ptr != nullptr) {
       class_recipes = *class_recipes_ptr;
     } else {
-      class_recipes = new ClassRecipeList(1000);
+      class_recipes = new ClassRecipeList(list_size_hint);
       put(loader_id, class_recipes);
     }
     class_recipes->append(*ikr);
   }
 };
 
-AotSafeLoaderClassRecipeMap* _aot_safe_loader_class_recipes = nullptr;
+#endif
+AOTSafeCustomLoaderClassRecipeMap* _aot_safe_loader_class_recipes = nullptr;
 FinalImageRecipes* _final_image_recipes = nullptr;
 
 void InstanceKlassRecipes::log_recorded_classes(Array<InstanceKlassRecipe>* list) {
@@ -157,20 +166,21 @@ void FinalImageRecipes::record_class_recipes() {
 }
 
 void FinalImageRecipes::record_aot_safe_loader_classes() {
-  _aot_safe_loader_class_recipes = new (mtClass) AotSafeLoaderClassRecipeMap(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
+  _aot_safe_loader_class_recipes = new (mtClass) AOTSafeCustomLoaderClassRecipeMap(INITIAL_TABLE_SIZE, MAX_TABLE_SIZE);
 
   GrowableArray<Klass*>* all_classes = ArchiveBuilder::current()->klasses();
   for (int i = 0; i < all_classes->length(); i++) {
     Klass* k = all_classes->at(i);
     if (k->is_instance_klass() && InstanceKlass::cast(k)->defined_by_aot_safe_custom_loader()) {
       InstanceKlass* ik = InstanceKlass::cast(k);
+      int list_size_hint = ik->class_loader_data()->dictionary()->number_of_entries();
       int flags = 0;
       Array<int>* cp_recipe = record_recipe_for_constantpool(ik, flags);
       InstanceKlassRecipe ikr(ArchiveBuilder::current()->get_buffered_addr(ik), cp_recipe, flags);
 
       Symbol* loader_id = ik->class_loader_data()->aot_identity();
       assert(loader_id != nullptr, "must be");
-      _aot_safe_loader_class_recipes->add_class_recipe(loader_id, &ikr);
+      _aot_safe_loader_class_recipes->add_entry(loader_id, ikr, list_size_hint);
     }
   }
   if (log_is_enabled(Info, aot, load)) {
@@ -330,7 +340,7 @@ Array<int>* FinalImageRecipes::record_recipe_for_constantpool(InstanceKlass* ik,
 
 void FinalImageRecipes::load_classes_in_table(Array<InstanceKlassRecipe>* recipes, const char* category_name,
                                               Handle loader, Array<AOTClassLocation*>* class_locations, TRAPS) {
-  KlassMirrorDataCache mirror_data_cache(loader, class_locations, CHECK);
+  KlassMirrorData mirror_data(class_locations, CHECK);
 
   for (int i = 0; i < recipes->length(); i++) {
     InstanceKlass* ik = recipes->adr_at(i)->instance_klass();
@@ -345,7 +355,7 @@ void FinalImageRecipes::load_classes_in_table(Array<InstanceKlassRecipe>* recipe
     InstanceKlass* loaded_ik = SystemDictionary::find_instance_klass(THREAD, ik->name(), loader);
     if (loaded_ik == nullptr) {
       int index = ik->shared_classpath_index();
-      PackageEntry* pkg_entry = KlassMirrorData::get_package_entry(ik, mirror_data_cache, THREAD);
+      PackageEntry* pkg_entry = mirror_data.get_package_entry(ik, loader, THREAD);
       if (HAS_PENDING_EXCEPTION) {
         log_warning(aot, load)("Exception occurred in getting package entry");
         CLEAR_PENDING_EXCEPTION;
@@ -353,7 +363,7 @@ void FinalImageRecipes::load_classes_in_table(Array<InstanceKlassRecipe>* recipe
       }
       Handle pd;
       if (loader() != nullptr) {
-        pd = KlassMirrorData::get_protection_domain(ik, pkg_entry, mirror_data_cache, THREAD);
+        pd = mirror_data.get_protection_domain(ik, loader, pkg_entry, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           log_warning(aot, load)("Exception occurred in getting protection domain");
           CLEAR_PENDING_EXCEPTION;
@@ -441,7 +451,7 @@ void FinalImageRecipes::load_aot_safe_custom_loader_classes(TRAPS) {
     ResourceMark rm;
     char* loader_id_str = cl_recipe->aot_id()->as_C_string();
     Symbol* parent_id = cl_recipe->parent_aot_id();
-    assert(ClassLoaderAotIdTable::contains(parent_id), "parent id is not yet registered");
+    assert(ClassLoaderAOTIdTable::contains(parent_id), "parent id is not yet registered");
 
     if (!cl_recipe->check_classpath()) {
       bool value = true;

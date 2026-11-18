@@ -742,7 +742,7 @@ public:
       it->push(_pending_method_handle_intrinsics->adr_at(i));
     }
     if (CDSConfig::supports_custom_loaders()) {
-      ClassLoaderAotIdTable::all_symbols_do(it);
+      ClassLoaderAOTIdTable::all_symbols_do(it);
     }
   }
 };
@@ -1105,7 +1105,9 @@ void AOTMetaspace::load_classes(TRAPS) {
 }
 
 void AOTMetaspace::exercise_runtime_cds_code(TRAPS) {
-  // Exercise the manifest processing code
+  // Exercise Java manifest processing code using
+  // a dummy jar and manifest, forcing the associated
+  // Java classes to be loaded into the current VM.
   const char* dummy_manifest = "Manifest-Version: 1.0\n";
   // Exercise FileSystem and URL code
   const char* dummy_jar = "dummy.jar";

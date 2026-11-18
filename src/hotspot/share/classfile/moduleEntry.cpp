@@ -461,7 +461,7 @@ void ModuleEntry::patch_class_loader_object(Handle h_runtime_loader) {
   // For AOT-safe custom loaders java.lang.Module would point to the scratch java.lang.ClassLoader object
   // created during the assembly phase. Now that we have the correct java.lang.ClassLoader object
   // update java.lang.Module object to point to it.
-  assert(CustomLoaderSupport::is_scratch_loader(java_lang_Module::loader(module_oop())),
+  assert(CustomLoaderSupport::is_archived_scratch_loader(java_lang_Module::loader(module_oop())),
          "Module's loader must be the scratch loader created in the assembly phase");
   // Change Module's loader from scratch loader to the real loader object
   java_lang_Module::set_loader(module_oop(), h_runtime_loader());

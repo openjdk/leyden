@@ -37,8 +37,9 @@
 class AOTClassLocation;
 class MetaspaceClosure;
 class SerializeClosure;
+class InstanceKlassRecipe;
 
-class ClassLoaderAotIdTable : AllStatic {
+class ClassLoaderAOTIdTable : AllStatic {
 private:
   static const int TABLE_SIZE = 17; // prime number
   using LoaderIdTable = HashTable<Symbol*, bool, TABLE_SIZE, AnyObj::C_HEAP, mtClass>;
@@ -62,6 +63,7 @@ private:
   Array<AOTClassLocation*>* _cp_locations;
   Array<InstanceKlass*>* _class_list;
   AOTClassLoaderData _archived_cld;
+  DEBUG_ONLY(bool _inited;)
 
   void mark_pointers() {
     ArchivePtrMarker::mark_pointer(aot_id_addr());
@@ -85,17 +87,18 @@ public:
     _cp_locations = locations;
     _class_list = class_list;
     _archived_cld = *archived_cld;
+    DEBUG_ONLY(_inited = true;)
   }
 
-  Symbol* aot_id() const { return _aot_id; }
-  Array<AOTClassLocation*>* locations() const { return _cp_locations; }
-  Array<InstanceKlass*>* class_list() const { return _class_list; }
-  AOTClassLoaderData* archived_cld() { return &_archived_cld; }
-  int archived_loader_obj_index() const { return _archived_cld.archived_loader_obj_index(); }
+  Symbol* aot_id() const { assert(_inited, "sanity check"); return _aot_id; }
+  Array<AOTClassLocation*>* locations() const { assert(_inited, "sanity check"); return _cp_locations; }
+  Array<InstanceKlass*>* class_list() const { assert(_inited, "sanity check"); return _class_list; }
+  AOTClassLoaderData* archived_cld() { assert(_inited, "sanity check"); return &_archived_cld; }
+  int archived_loader_obj_index() const { assert(_inited, "sanity check"); return _archived_cld.archived_loader_obj_index(); }
 
-  address* aot_id_addr() const { return (address*)&_aot_id; }
-  address* locations_addr() const { return (address*)&_cp_locations; }
-  address* class_list_addr() const { return (address*)&_class_list; }
+  address* aot_id_addr() const { assert(_inited, "sanity check"); return (address*)&_aot_id; }
+  address* locations_addr() const { assert(_inited, "sanity check"); return (address*)&_cp_locations; }
+  address* class_list_addr() const { assert(_inited, "sanity check"); return (address*)&_class_list; }
 
   bool check_classpath();
   bool match_classpath(const char* classpath);
@@ -116,6 +119,40 @@ public:
 
 using ClassList = GrowableArrayCHeap<InstanceKlass*, mtClassShared>;
 
+template <typename T>
+class AOTCustomLoaderClassesMap : public ResizeableHashTable<Symbol*, GrowableArrayCHeap<T, mtClassShared>*, AnyObj::C_HEAP, mtClass>
+{
+  static_assert(std::is_same<T, InstanceKlass*>::value || std::is_same<T, InstanceKlassRecipe>::value,
+                "T must be InstanceKlassRecipe or InstanceKlass*");
+
+  using GrowableList = GrowableArrayCHeap<T, mtClassShared>;
+  using ResizeableHashTableBase = ResizeableHashTable<Symbol*, GrowableList*, AnyObj::C_HEAP, mtClass>;
+
+public:
+  AOTCustomLoaderClassesMap(unsigned size, unsigned max_size) : ResizeableHashTableBase(size, max_size) {}
+
+  void add_entry(Symbol* loader_id, T entry, int list_size_hint) {
+    assert(loader_id != nullptr, "sanity check");
+    GrowableList** list_ptr = this->get(loader_id);
+    GrowableList* list = nullptr;
+    if (list_ptr != nullptr) {
+      list = *list_ptr;
+    } else {
+      list = new GrowableList(list_size_hint);
+      this->put(loader_id, list);
+    }
+    list->append(entry);
+  }
+};
+
+class AOTLinkedCustomLoaderClassesMap : public AOTCustomLoaderClassesMap<InstanceKlass*>
+{
+public:
+  AOTLinkedCustomLoaderClassesMap(unsigned size, unsigned max_size) : AOTCustomLoaderClassesMap<InstanceKlass*>(size, max_size) {}
+  void write_to_archive(ArchivedCustomLoaderInfoMap* archived_map, const char* map_name);
+};
+
+#if 0
 class AOTLinkedCustomLoaderClassesMap : public ResizeableHashTable<Symbol*, ClassList*, AnyObj::C_HEAP, mtClass>
 {
   using ResizeableHashTableBase = ResizeableHashTable<Symbol*, ClassList*, AnyObj::C_HEAP, mtClass>;
@@ -123,9 +160,10 @@ class AOTLinkedCustomLoaderClassesMap : public ResizeableHashTable<Symbol*, Clas
 public:
   AOTLinkedCustomLoaderClassesMap(unsigned size, unsigned max_size) : ResizeableHashTableBase(size, max_size) {}
 
-  void add_class(Symbol* loader_id, InstanceKlass* ik);
+  void add_class(Symbol* loader_id, InstanceKlass* ik, int list_size_hint);
   void write_to_archive(ArchivedCustomLoaderInfoMap* archived_map, const char* map_name);
 };
+#endif
 
 class CustomLoaderSupport: AllStatic {
 private:
@@ -136,7 +174,7 @@ public:
   static void archive_custom_loader_info() NOT_CDS_JAVA_HEAP_RETURN;
   static void serialize_custom_loader_info_map_header(SerializeClosure* soc) NOT_CDS_JAVA_HEAP_RETURN;
   static CustomLoaderInfo* get_archived_classloader_info(Symbol* aot_id) NOT_CDS_JAVA_HEAP_RETURN_(nullptr);
-  static bool is_scratch_loader(oop loader) NOT_CDS_JAVA_HEAP_RETURN_(false);
+  static bool is_archived_scratch_loader(oop loader) NOT_CDS_JAVA_HEAP_RETURN_(false);
   static bool patch_loader_and_link_classes(Handle h_loader, Symbol* aot_id, const char* classpath) NOT_CDS_JAVA_HEAP_RETURN_(false);
 
   template<typename Function>

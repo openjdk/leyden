@@ -54,15 +54,10 @@ import jdk.test.whitebox.WhiteBox;
 public class ClasspathVerificationFailureTest {
     private static final String mainClass = "AppWithClasspathVerificationFailure";
 
-    enum ExpectedVerificationFailurePhase {
-        ASSEMBLY_PHASE,
-        PRODUCTION_PHASE
-    };
-
     public static void main(String... args) throws Exception {
         // Make a copy of the original jar file used by URLClassLoader
         Files.copy(Paths.get("cust.jar"), Paths.get("cust-orig.jar"));
-        Tester tester1 = new Tester(ExpectedVerificationFailurePhase.ASSEMBLY_PHASE);
+        Tester tester1 = new Tester(CDSAppTester.RunMode.ASSEMBLY);
         tester1.recordAOTConfiguration();
         // Replace cust.jar with cust1.jar
         Files.copy(Paths.get("cust1.jar"), Paths.get("cust.jar"), StandardCopyOption.REPLACE_EXISTING);
@@ -73,7 +68,7 @@ public class ClasspathVerificationFailureTest {
         // Restore original cust.jar
         Files.copy(Paths.get("cust-orig.jar"), Paths.get("cust.jar"), StandardCopyOption.REPLACE_EXISTING);
 
-        Tester tester2 = new Tester(ExpectedVerificationFailurePhase.PRODUCTION_PHASE);
+        Tester tester2 = new Tester(CDSAppTester.RunMode.PRODUCTION);
         tester2.runAOTTrainingAndAssemblyWorkflow();
         // Replace cust.jar with cust1.jar
         Files.copy(Paths.get("cust1.jar"), Paths.get("cust.jar"), StandardCopyOption.REPLACE_EXISTING);
@@ -81,11 +76,11 @@ public class ClasspathVerificationFailureTest {
     }
 
     static class Tester extends CDSAppTester {
-        ExpectedVerificationFailurePhase _failurePhase;
+        RunMode verificationFailurePhase;
 
-        public Tester(ExpectedVerificationFailurePhase failurePhase) {
+        public Tester(RunMode verificationFailurePhase) {
             super(mainClass);
-            _failurePhase = failurePhase;
+            this.verificationFailurePhase = verificationFailurePhase;
             useWhiteBox(ClassFileInstaller.getJarPath("WhiteBox.jar"));
         }
 
@@ -117,14 +112,15 @@ public class ClasspathVerificationFailureTest {
                     // MyLoadeeA from cust.jar should be in a custom loader category
                     out.shouldMatch("\\[aot,load\\] category SYSTEM:.*cust.jar\\[0\\] MyLoadeeA");
                 }
-                if (_failurePhase == ExpectedVerificationFailurePhase.ASSEMBLY_PHASE && runMode == RunMode.ASSEMBLY) {
-                    out.shouldMatch("This file is not the one used while building the AOT cache:.*cust.jar");
-                    out.shouldMatch("Classpath check failed for classloader");
-                }
-                if (_failurePhase == ExpectedVerificationFailurePhase.PRODUCTION_PHASE && runMode == RunMode.PRODUCTION) {
-                    out.shouldMatch("This file is not the one used while building the AOT cache:.*cust.jar");
-                    out.shouldMatch("Classpath check failed for classloader");
-                    out.shouldNotMatch("\\[aot,load\\] SYSTEM:.*cust.jar MyLoadeeA");
+                if (runMode == verificationFailurePhase) {
+                    if (verificationFailurePhase == RunMode.ASSEMBLY) {
+                        out.shouldMatch("This file is not the one used while building the AOT cache:.*cust.jar");
+                        out.shouldMatch("Classpath check failed for classloader");
+                    } else if (verificationFailurePhase == RunMode.PRODUCTION) {
+                        out.shouldMatch("This file is not the one used while building the AOT cache:.*cust.jar");
+                        out.shouldMatch("Classpath check failed for classloader");
+                        out.shouldNotMatch("\\[aot,load\\] SYSTEM:.*cust.jar MyLoadeeA");
+                    }
                 }
             }
         }

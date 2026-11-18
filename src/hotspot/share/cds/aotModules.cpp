@@ -512,7 +512,8 @@ void AOTModules::ensure_module_entry_table_exists(oop class_loader) {
   assert(met != nullptr, "sanity");
 }
 
-using ArchivedCustomClassLoaderDataMap = HashTable<Symbol*, AOTClassLoaderData, 5,  AnyObj::C_HEAP, mtClassShared>;
+#define HASHTABLE_SIZE 11
+using ArchivedCustomClassLoaderDataMap = HashTable<Symbol*, AOTClassLoaderData, HASHTABLE_SIZE, AnyObj::C_HEAP, mtClassShared>;
 ArchivedCustomClassLoaderDataMap* _archived_cld_map = nullptr;
 
 class CollectAOTSafeCustomLoaders : public CLDClosure {
@@ -535,7 +536,7 @@ void AOTModules::build_tables(TRAPS) {
   _archived_platform_loader_data.build_tables(java_platform_loader_data_or_null(), CHECK);
   _archived_system_loader_data.build_tables(java_system_loader_data_or_null(), CHECK);
   _archived_cld_map = new (mtClassShared) ArchivedCustomClassLoaderDataMap();
-  // Collect aot-safe custom loaders in a list before calling built_tables().
+  // Collect aot-safe custom loaders in a list before calling build_tables().
   // This is required because build_tables() allocates memory in Metaspace
   // which is not allowed when holding the mutex.
   CollectAOTSafeCustomLoaders collector(THREAD);

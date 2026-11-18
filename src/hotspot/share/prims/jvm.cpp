@@ -3546,9 +3546,12 @@ JVM_ENTRY(jboolean, JVM_RegisterURLClassLoaderForAOTLinking(JNIEnv *env, jobject
     ss.print("%s%s%s", parent_aot_id->as_C_string(), os::path_separator(), classpath_str);
     const char* aot_id = ss.as_string();
 
+    if (strlen(aot_id) > (size_t)Symbol::max_length()) {
+      return JNI_FALSE;
+    }
     Symbol* aot_id_sym = SymbolTable::new_symbol(aot_id);
 
-    if (!ClassLoaderAotIdTable::reserve_id(aot_id_sym)) {
+    if (!ClassLoaderAOTIdTable::reserve_id(aot_id_sym)) {
       return JNI_FALSE;
     }
 
@@ -3556,7 +3559,7 @@ JVM_ENTRY(jboolean, JVM_RegisterURLClassLoaderForAOTLinking(JNIEnv *env, jobject
 
     if (CDSConfig::is_using_aot_linked_classes()) {
       if (!CustomLoaderSupport::patch_loader_and_link_classes(h_loader, aot_id_sym, classpath_str)) {
-         ClassLoaderAotIdTable::unreserve_id(aot_id_sym);
+         ClassLoaderAOTIdTable::unreserve_id(aot_id_sym);
          return JNI_FALSE;
       }
     } else if (CDSConfig::is_dumping_preimage_static_archive() || CDSConfig::is_dumping_final_static_archive()) {

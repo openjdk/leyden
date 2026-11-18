@@ -342,7 +342,7 @@ void CDSProtectionDomain::allocate_shared_jar_manifest_array(int size, TRAPS) {
   }
 }
 
-KlassMirrorDataCache::KlassMirrorDataCache(Handle class_loader, Array<AOTClassLocation*>* class_locations, TRAPS) {
+KlassMirrorData::KlassMirrorDataCache::KlassMirrorDataCache(Array<AOTClassLocation*>* class_locations, TRAPS) {
   int size = class_locations->length();
   oop manifest_array = oopFactory::new_refArray(vmClasses::Jar_Manifest_klass(), size, CHECK);
   _jar_manifests = Handle(THREAD, manifest_array);
@@ -350,11 +350,10 @@ KlassMirrorDataCache::KlassMirrorDataCache(Handle class_loader, Array<AOTClassLo
   _jar_urls = Handle(THREAD, jar_array);
   oop pd_array = oopFactory::new_refArray(vmClasses::ProtectionDomain_klass(), size, CHECK);
   _protection_domains = Handle(THREAD, pd_array);
-  _class_loader = class_loader;
   _locations = class_locations;
 }
 
-Handle KlassMirrorDataCache::get_jar_manifest(int index, TRAPS) {
+Handle KlassMirrorData::KlassMirrorDataCache::get_jar_manifest(int index, TRAPS) {
   Handle manifest_h;
   oop manifest_oop = jar_manifest_at(index);
   if (manifest_oop == nullptr) {
@@ -373,7 +372,7 @@ Handle KlassMirrorDataCache::get_jar_manifest(int index, TRAPS) {
   return manifest_h;
 }
 
-Handle KlassMirrorDataCache::get_jar_url(int index, TRAPS) {
+Handle KlassMirrorData::KlassMirrorDataCache::get_jar_url(int index, TRAPS) {
   Handle url_h;
   oop url_oop = jar_url_at(index);
   if (url_oop == nullptr) {
@@ -387,13 +386,13 @@ Handle KlassMirrorDataCache::get_jar_url(int index, TRAPS) {
 }
 
 // Returns the ProtectionDomain associated with the JAR file identified by the url.
-Handle KlassMirrorDataCache::get_protection_domain(int index, TRAPS) {
+Handle KlassMirrorData::KlassMirrorDataCache::get_protection_domain(Handle class_loader, int index, TRAPS) {
   Handle pd_h;
   oop pd_oop = protection_domain_at(index);
   if (pd_oop == nullptr) {
     Handle url_h = get_jar_url(index, CHECK_NH);
     assert(url_h.not_null(), "sanity check");
-    pd_h = get_protection_domain_from_classloader(_class_loader, url_h, CHECK_NH);
+    pd_h = get_protection_domain_from_classloader(class_loader, url_h, CHECK_NH);
     set_protection_domain_at(index, pd_h());
   } else {
     // Acquire from the cache because if another thread beats the current one to
@@ -404,15 +403,14 @@ Handle KlassMirrorDataCache::get_protection_domain(int index, TRAPS) {
   return pd_h;
 }
 
-PackageEntry* KlassMirrorData::get_package_entry(InstanceKlass* ik, KlassMirrorDataCache& mirror_data_cache, TRAPS) {
+PackageEntry* KlassMirrorData::get_package_entry(InstanceKlass* ik, Handle class_loader, TRAPS) {
   PackageEntry* pkg_entry = nullptr;
   TempNewSymbol pkg_name = ClassLoader::package_from_class_name(ik->name());
-  Handle loader = mirror_data_cache.class_loader();
   if (pkg_name != nullptr) {
     int index = ik->shared_classpath_index();
-    pkg_entry = ClassLoaderData::class_loader_data(loader())->packages()->lookup_only(pkg_name);
+    pkg_entry = ClassLoaderData::class_loader_data(class_loader())->packages()->lookup_only(pkg_name);
 #ifdef ASSERT
-    AOTClassLocation* cl = mirror_data_cache.locations()->at(index);
+    AOTClassLocation* cl = _cache.locations()->at(index);
     if (cl->is_modules_image()) {
       // All packages from module image are already created during VM bootstrap in
       // Modules::define_module().
@@ -420,26 +418,26 @@ PackageEntry* KlassMirrorData::get_package_entry(InstanceKlass* ik, KlassMirrorD
     }
 #endif
     // If the packageEntry is not yet created, then create the Package object
-    if (pkg_entry == nullptr && loader.not_null()) {
-      Handle url = mirror_data_cache.get_jar_url(index, CHECK_NULL);
-      Handle manifest = mirror_data_cache.get_jar_manifest(index, CHECK_NULL);
-      define_shared_package(ik->name(), loader, manifest, url, CHECK_NULL);
+    if (pkg_entry == nullptr && class_loader.not_null()) {
+      Handle url = _cache.get_jar_url(index, CHECK_NULL);
+      Handle manifest = _cache.get_jar_manifest(index, CHECK_NULL);
+      define_shared_package(ik->name(), class_loader, manifest, url, CHECK_NULL);
     }
   }
   return pkg_entry;
 }
 
-Handle KlassMirrorData::get_protection_domain(InstanceKlass* ik, PackageEntry* pkg_entry, KlassMirrorDataCache& mirror_data_cache, TRAPS) {
+Handle KlassMirrorData::get_protection_domain(InstanceKlass* ik, Handle class_loader, PackageEntry* pkg_entry, TRAPS) {
     int index = ik->shared_classpath_index();
-    AOTClassLocation* cl = mirror_data_cache.locations()->at(ik->shared_classpath_index());
+    AOTClassLocation* cl = _cache.locations()->at(index);
     if (cl->is_modules_image()) {
       // For shared app/platform classes originated from the run-time image:
       //   The ProtectionDomains are cached in the corresponding ModuleEntries
       //   for fast access by the VM.
       assert(pkg_entry != nullptr, "archived class in module image cannot be from unnamed package");
       ModuleEntry* mod_entry = pkg_entry->module();
-      return get_pd_from_mod_entry(mirror_data_cache.class_loader(), mod_entry, THREAD);
+      return get_pd_from_mod_entry(class_loader, mod_entry, THREAD);
     } else {
-      return mirror_data_cache.get_protection_domain(index, THREAD);
+      return _cache.get_protection_domain(class_loader, index, THREAD);
     }
 }

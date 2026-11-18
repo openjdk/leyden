@@ -1310,7 +1310,7 @@ void SystemDictionary::patch_loader_in_preloaded_class(InstanceKlass* ik, Handle
   // If it is the first time this ProtectionDomain object is accessed, its classloader field should be pointing to the
   // scratch loader created in assembly phase. If so, patch it to point to the current loader.
   if (loader != h_runtime_loader()) {
-    assert(CustomLoaderSupport::is_scratch_loader(loader), "PD's loader must be the scratch loader created in the assembly phase");
+    assert(CustomLoaderSupport::is_archived_scratch_loader(loader), "PD's loader must be the scratch loader created in the assembly phase");
     // Change PD's loader from scratch loader to the real loader object
     java_security_ProtectionDomain::set_classloader(pd(), h_runtime_loader());
   }
@@ -1909,7 +1909,7 @@ void SystemDictionary::update_dictionary(JavaThread* current,
 // has already been defined by a parent loader.
 // This API should be used only when loading classes in assembly phase (see FinalImageRecipes)
 // or preloading in production phase (see AOTLinkedClassBulkLoader),
-// and to register boxing classes from java.lang in all class loaders to enable more value classes optimizations.
+// and to register migrated value classes (boxing classes) from java.lang in all class loaders to enable more value classes optimizations.
 void SystemDictionary::add_to_initiating_loader(JavaThread* current,
                                                 InstanceKlass* k,
                                                 ClassLoaderData* loader_data) {

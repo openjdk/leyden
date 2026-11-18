@@ -39,49 +39,51 @@ class ModuleEntry;
 class PackageEntry;
 class Symbol;
 
-class KlassMirrorDataCache : public CHeapObj<mtClass> {
+class KlassMirrorData {
 private:
-  Handle _protection_domains;
-  Handle _jar_urls;
-  Handle _jar_manifests;
-  Handle _class_loader;
-  Array<AOTClassLocation*>* _locations;
+  class KlassMirrorDataCache : public CHeapObj<mtClass> {
+  private:
+    Handle _protection_domains;
+    Handle _jar_urls;
+    Handle _jar_manifests;
+    Array<AOTClassLocation*>* _locations;
 
-  oop jar_url_at(int index) {
-    return oop_cast<refArrayOop>(_jar_urls())->obj_at(index);
-  }
-  void set_jar_url_at(int index, oop url) {
-    oop_cast<refArrayOop>(_jar_urls())->replace_if_null(index, url);
-  }
+    oop jar_url_at(int index) {
+      return oop_cast<refArrayOop>(_jar_urls())->obj_at(index);
+    }
+    void set_jar_url_at(int index, oop url) {
+      oop_cast<refArrayOop>(_jar_urls())->replace_if_null(index, url);
+    }
 
-  oop jar_manifest_at(int index) {
-    return oop_cast<refArrayOop>(_jar_manifests())->obj_at(index);
-  }
-  void set_jar_manifest_at(int index, oop man) {
-    oop_cast<refArrayOop>(_jar_manifests())->replace_if_null(index, man);
-  }
+    oop jar_manifest_at(int index) {
+      return oop_cast<refArrayOop>(_jar_manifests())->obj_at(index);
+    }
+    void set_jar_manifest_at(int index, oop man) {
+      oop_cast<refArrayOop>(_jar_manifests())->replace_if_null(index, man);
+    }
 
-  oop protection_domain_at(int index) {
-    return oop_cast<refArrayOop>(_protection_domains())->obj_at(index);
-  }
-  void set_protection_domain_at(int index, oop pd) {
-    oop_cast<refArrayOop>(_protection_domains())->replace_if_null(index, pd);
-  }
+    oop protection_domain_at(int index) {
+      return oop_cast<refArrayOop>(_protection_domains())->obj_at(index);
+    }
+    void set_protection_domain_at(int index, oop pd) {
+      oop_cast<refArrayOop>(_protection_domains())->replace_if_null(index, pd);
+    }
+
+  public:
+    KlassMirrorDataCache(Array<AOTClassLocation*>* class_locations, TRAPS);
+
+    Handle get_jar_manifest(int index, TRAPS);
+    Handle get_jar_url(int index, TRAPS);
+    Handle get_protection_domain(Handle class_loader, int index, TRAPS);
+    Array<AOTClassLocation*>* locations() const { return _locations; }
+  };
+
+  KlassMirrorDataCache _cache;
 
 public:
-  KlassMirrorDataCache(Handle class_loader, Array<AOTClassLocation*>* class_locations, TRAPS);
-
-  Handle get_jar_manifest(int index, TRAPS);
-  Handle get_jar_url(int index, TRAPS);
-  Handle get_protection_domain(int index, TRAPS);
-  Handle class_loader() const { return _class_loader; }
-  Array<AOTClassLocation*>* locations() const { return _locations; }
-};
-
-class KlassMirrorData : AllStatic {
-public:
-  static PackageEntry* get_package_entry(InstanceKlass* ik, KlassMirrorDataCache& mirror_data_cache, TRAPS);
-  static Handle get_protection_domain(InstanceKlass* ik, PackageEntry* pkg_entry, KlassMirrorDataCache&  mirror_data_cache, TRAPS);
+  KlassMirrorData(Array<AOTClassLocation*>* class_locations, TRAPS) : _cache(class_locations, THREAD) {}
+  PackageEntry* get_package_entry(InstanceKlass* ik, Handle class_loader, TRAPS);
+  Handle get_protection_domain(InstanceKlass* ik, Handle class_loader, PackageEntry* pkg_entry, TRAPS);
 };
 
 // CDS security

@@ -55,7 +55,7 @@ static Handle to_file_URL(const char* path, TRAPS) {
 }
 
 void URLClassLoaderSupport::initialize(TRAPS) {
-  Symbol* klass_name = SymbolTable::new_symbol("java/net/URLClassLoader");
+  TempNewSymbol klass_name = SymbolTable::new_symbol("java/net/URLClassLoader");
   Klass* k = SystemDictionary::resolve_or_fail(klass_name, true, CHECK);
   _urlClassLoader_klass = InstanceKlass::cast(k);
   _urlclassloader_instance_list = new (mtClassShared)GrowableArray<OopHandle>(10, mtClassShared);
@@ -71,12 +71,12 @@ Handle URLClassLoaderSupport::create_urlclassloader(Symbol* parent_id, Array<AOT
   }
 
   //get parent loader obj using the parent_id
-  ClassLoaderData* parent_cld = ClassLoaderAotIdTable::get_cld(parent_id);
+  ClassLoaderData* parent_cld = ClassLoaderAOTIdTable::get_cld(parent_id);
   assert(parent_cld != nullptr, "parent class loader data cannot be null");
   Handle parent(THREAD, parent_cld->class_loader());
 
-  Symbol* methodSignature = SymbolTable::new_symbol("([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
-  // URLClassLoader classloder = new URLClassLoader(urls, parent);
+  TempNewSymbol methodSignature = SymbolTable::new_symbol("([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
+  // URLClassLoader classloader = new URLClassLoader(urls, parent);
   Handle classloader = JavaCalls::construct_new_instance(_urlClassLoader_klass,
                                                          methodSignature, urls, parent, CHECK_NH);
 

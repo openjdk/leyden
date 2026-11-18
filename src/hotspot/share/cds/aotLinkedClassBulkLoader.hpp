@@ -81,8 +81,8 @@ public:
 
   static void preload_classes_for_custom_loaders(TRAPS);
   static void patch_loader_in_preloaded_classes(ClassLoaderData* loader_data, Handle h_loader, CustomLoaderInfo* cl_info, TRAPS);
-  static void preload_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS);
-  static void link_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS);
+  static void preload_classes_for_custom_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS);
+  static void link_classes_for_custom_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS);
 };
 
 #endif // SHARE_CDS_AOTLINKEDCLASSBULKLOADER_HPP

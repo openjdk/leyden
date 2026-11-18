@@ -823,6 +823,8 @@ public:
 #endif
 
   static void on_secondary_supers_verification_failure(Klass* super, Klass* sub, bool linear_result, bool table_result, const char* msg);
+
+  bool defined_by_aot_safe_loader();
 };
 
 #endif // SHARE_OOPS_KLASS_HPP

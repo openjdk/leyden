@@ -135,7 +135,7 @@ extern Mutex*   LambdaFormInvokers_lock;         // Protecting LambdaFormInvoker
 extern Mutex*   ScratchObjects_lock;             // Protecting _scratch_xxx_table in heapShared.cpp
 extern Mutex*   FinalImageRecipes_lock;          // Protecting the tables used by FinalImageRecipes.
 #if INCLUDE_CDS_JAVA_HEAP
-extern Mutex*   ClassLoaderAotIdTable_lock;      // lock to synchronize addition of user-defined loader's AOT Id to the global table
+extern Mutex*   ClassLoaderAOTIdTable_lock;      // lock to synchronize addition of user-defined loader's AOT Id to the global table
 #endif // INCLUDE_CDS_JAVA_HEAP
 #endif // INCLUDE_CDS
 #if INCLUDE_JFR

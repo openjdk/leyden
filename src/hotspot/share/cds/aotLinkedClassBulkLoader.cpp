@@ -110,7 +110,7 @@ void AOTLinkedClassBulkLoader::patch_loader_in_preloaded_classes(ClassLoaderData
   }
 }
 
-void AOTLinkedClassBulkLoader::preload_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS) {
+void AOTLinkedClassBulkLoader::preload_classes_for_custom_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS) {
   Handle h_loader(THREAD, loader_data->class_loader());
   precond(!SystemDictionary::is_builtin_class_loader(h_loader()));
   precond(cl_info != nullptr);
@@ -128,7 +128,7 @@ void AOTLinkedClassBulkLoader::preload_classes_for_custom_loaders(TRAPS) {
       aot_locations->appendAll(cl_info->locations());
       loader_data->set_aot_locations(aot_locations);
       AOTModules::restore_custom_loader_data_from_archive(loader_data, cl_info);
-      preload_classes_for_loader(loader_data, cl_info, CHECK);
+      preload_classes_for_custom_loader(loader_data, cl_info, CHECK);
     }
   });
 }
@@ -243,7 +243,7 @@ void AOTLinkedClassBulkLoader::link_classes_impl(TRAPS) {
   log_info(aot, init)("------ finished early class init");
 }
 
-void AOTLinkedClassBulkLoader::link_classes_for_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS) {
+void AOTLinkedClassBulkLoader::link_classes_for_custom_loader(ClassLoaderData* loader_data, CustomLoaderInfo* cl_info, TRAPS) {
   Handle h_loader(THREAD, loader_data->class_loader());
   precond(CDSConfig::is_using_aot_linked_classes());
   precond(!SystemDictionary::is_builtin_class_loader(h_loader()));

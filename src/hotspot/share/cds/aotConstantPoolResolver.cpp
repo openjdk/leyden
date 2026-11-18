@@ -457,8 +457,7 @@ bool AOTConstantPoolResolver::check_methodtype_signature(ConstantPool* cp, Symbo
       }
 
       // cp->pool_holder() must be able to resolve k in production run
-      precond(AOTSystemDictionary::is_builtin_loader(k->class_loader_data()) ||
-              (k->is_instance_klass() && InstanceKlass::cast(k)->defined_by_aot_safe_loaders()));
+      precond(k->defined_by_aot_safe_loader());
 
       if (ss.at_return_type() && return_type_ret != nullptr) {
         *return_type_ret = k;
@@ -552,8 +551,7 @@ bool AOTConstantPoolResolver::check_lambda_metafactory_methodhandle_arg(Constant
     // cp->pool_holder() must be able to resolve k in production run
     precond(CDSConfig::is_dumping_aot_linked_classes());
     precond(cp->pool_holder()->defined_by_aot_safe_loaders());
-    precond(AOTSystemDictionary::is_builtin_loader(k->class_loader_data()) ||
-            (k->is_instance_klass() && InstanceKlass::cast(k)->defined_by_aot_safe_loaders()));
+    precond(k->defined_by_aot_safe_loader());
   }
 
   return check_methodtype_signature(cp, sig);

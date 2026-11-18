@@ -696,6 +696,7 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
   } else {
     // All of these *might* depend on AOTClassLinking. Better be safe than sorry.
     FLAG_SET_ERGO(AOTInvokeDynamicLinking, false);
+    FLAG_SET_ERGO(AOTCacheSupportForCustomLoader, false);
 
     if (CDSConfig::is_dumping_archive()) {
       FLAG_SET_ERGO(AOTRecordTraining, false);

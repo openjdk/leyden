@@ -187,7 +187,7 @@ ClassLoaderData::ClassLoaderData(Handle h_class_loader, bool has_class_mirror_ho
         _aot_identity = SymbolTable::new_symbol("SYSTEM");
       }
       if (_aot_identity != nullptr) {
-        ClassLoaderAotIdTable::add_entry(_aot_identity, this);
+        ClassLoaderAOTIdTable::add_entry(_aot_identity, this);
       }
     }
 #endif // INCLUDE_CDS_JAVA_HEAP
@@ -216,7 +216,7 @@ void ClassLoaderData::patch_class_loader_object(Handle h_runtime_loader) {
   assert(_aot_identity != nullptr, "must be called only for CLD with non-null aot-id");
   assert(!h_runtime_loader.is_null(), "should not be null");
   oop scratch_loader = _class_loader.resolve();
-  assert(CustomLoaderSupport::is_scratch_loader(scratch_loader), "CLD's classloader must be the scratch loader");
+  assert(CustomLoaderSupport::is_archived_scratch_loader(scratch_loader), "CLD's classloader must be the scratch loader");
   assert(scratch_loader->klass() == h_runtime_loader->klass(), "scratch loader's klass is different from runtime loader's klass");
   _class_loader.replace(h_runtime_loader());
   _class_loader_klass = h_runtime_loader->klass();

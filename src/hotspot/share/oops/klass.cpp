@@ -1376,3 +1376,10 @@ void Klass::on_secondary_supers_verification_failure(Klass* super, Klass* sub, b
   fatal("%s: %s implements %s: linear_search: %d; table_lookup: %d",
         msg, sub->external_name(), super->external_name(), linear_result, table_result);
 }
+
+// This should only be used after Klass has been loaded and linked to its class lodaer data
+bool Klass::defined_by_aot_safe_loader() {
+  assert(class_loader_data() != nullptr, "sanity check");
+  return AOTSystemDictionary::is_builtin_loader(class_loader_data()) ||
+         class_loader_data()->aot_identity() != nullptr;
+}
